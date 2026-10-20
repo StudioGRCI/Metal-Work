@@ -36,7 +36,20 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
   if (filtros.estado === 'activos') consulta = consulta.eq('activo', true)
   if (filtros.estado === 'bajas') consulta = consulta.eq('activo', false)
 
-  for (const filtro of filtrosDeBusqueda(['nombres', 'apellidos', 'correo'], filtros.busqueda)) consulta = consulta.or(filtro)
+  // Un DNI se busca en la tabla reservada, que solo lee quien puede verlo; para
+  // los demás no encuentra a nadie, igual que no ven el número.
+  const dni = filtros.busqueda?.trim().replace(/\s+/g, '') ?? ''
+  if (/^\d{4,}$/.test(dni)) {
+    const { data: conDni, error: errorDni } = await supabase
+      .from('usuario_datos_reservados')
+      .select('usuario_id')
+      .ilike('documento', `%${dni}%`)
+      .limit(200)
+    if (errorDni) throw new Error(`No se pudo buscar por documento: ${errorDni.message}`)
+    consulta = consulta.in('id', (conDni ?? []).map((r) => r.usuario_id))
+  } else {
+    for (const filtro of filtrosDeBusqueda(['nombres', 'apellidos', 'correo'], filtros.busqueda)) consulta = consulta.or(filtro)
+  }
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo listar el personal: ${error.message}`)

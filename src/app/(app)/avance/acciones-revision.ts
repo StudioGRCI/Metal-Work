@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { apruebaSinOrden, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -57,7 +57,7 @@ const esquemaRevision = z.object({
 
 export async function revisarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'produccion.aprobar_reportes')) {
+  if (!apruebaSinOrden(perfil)) {
     return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
   }
 
@@ -67,6 +67,10 @@ export async function revisarReporte(_previo: unknown, datos: FormData): Promise
   }
 
   const v = analisis.data
+  // Gerencia aprueba solo los trabajos sin orden; las hojas de las OT, no.
+  if (v.clase !== 'flota' && !puede(perfil, 'produccion.aprobar_reportes')) {
+    return { ok: false, error: 'Los reportes de las órdenes los revisa Administración.' }
+  }
   const observacion = v.observacion ?? ''
   if (v.decision === 'OBSERVADO' && observacion.length < 3) {
     return { ok: false, error: 'Escribe qué hay que corregir: es lo que le llega a quien lo reportó.' }
@@ -173,13 +177,16 @@ const esquemaEliminar = z.object({
  */
 export async function eliminarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes'])) {
+  if (!puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])) {
     return { ok: false, error: 'No tienes permiso para borrar reportes del taller.' }
   }
 
   const analisis = esquemaEliminar.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'No se pudo identificar el reporte.' }
   const v = analisis.data
+  if (v.clase !== 'flota' && !puede(perfil, ['produccion.registrar', 'produccion.aprobar_reportes'])) {
+    return { ok: false, error: 'No tienes permiso para borrar reportes de las órdenes.' }
+  }
 
   const supabase = await createClient()
 

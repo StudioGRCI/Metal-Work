@@ -8,8 +8,8 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { areasDelTaller } from '@/lib/datos/actividades'
-import { listarFlota, type EstadoFlota } from '@/lib/datos/flota'
-import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
+import { listarFlota, porAprobarDeFlota, type EstadoFlota } from '@/lib/datos/flota'
+import { apruebaSinOrden, areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Trabajos sin orden' }
 
@@ -26,20 +26,27 @@ const FILTROS = [
  * tabla: se miran desde el teléfono, parado al lado de la unidad.
  */
 export default async function PaginaTrabajos({ searchParams }: PageProps<'/avance/trabajos'>) {
-  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes'])
+  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])
   const params = await searchParams
 
   const estado =
     params.estado === 'LISTA' || params.estado === 'SALIO' ? (params.estado as EstadoFlota) : null
   const buscar = typeof params.buscar === 'string' ? params.buscar.trim() : ''
 
-  const [trabajos, areas] = await Promise.all([listarFlota({ estado, buscar }), areasDelTaller()])
+  const [lista, areas] = await Promise.all([listarFlota({ estado, buscar }), areasDelTaller()])
   const puedeRegistrar = puede(perfil, 'produccion.actividades') && areasDeSuMano(perfil, areas).length > 0
+
+  // Quien aprueba viene a eso: el trabajo con reportes por aprobar va primero y
+  // lo dice en su tarjeta, para no tener que abrirlos todos a buscarlos.
+  const aprueba = apruebaSinOrden(perfil)
+  const porAprobar = aprueba ? await porAprobarDeFlota(lista.map((t) => t.id)) : new Map<string, number>()
+  const trabajos = aprueba
+    ? [...lista].sort((a, b) => Number(porAprobar.has(b.id)) - Number(porAprobar.has(a.id)))
+    : lista
 
   return (
     <>
       <EncabezadoPagina
-        migas={[{ titulo: 'Avance en taller', ruta: '/avance' }, { titulo: 'Trabajos sin orden' }]}
         titulo="Trabajos sin orden"
         ayuda="Lo que se hace en el taller sin orden de trabajo: unidades de clientes que entraron sin orden, o lo que el propio taller está implementando. Se reportan igual, para que Supervisión y Administración sepan cómo va."
         acciones={
@@ -108,7 +115,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {trabajos.map((t) => (
-            <TarjetaTrabajo key={t.id} trabajo={t} />
+            <TarjetaTrabajo key={t.id} trabajo={t} porAprobar={porAprobar.get(t.id) ?? 0} />
           ))}
         </div>
       )}

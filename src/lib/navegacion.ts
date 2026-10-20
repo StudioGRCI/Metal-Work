@@ -353,7 +353,7 @@ export const NAVEGACION = [
         titulo: 'Trabajos sin orden',
         ruta: '/avance/trabajos',
         icono: Truck,
-        permiso: 'produccion.aprobar_reportes',
+        permiso: ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'],
         descripcion: 'Las unidades que entraron sin OT, con lo que el taller reportó de cada una, para aprobarlo u observarlo',
         disponible: true,
       },

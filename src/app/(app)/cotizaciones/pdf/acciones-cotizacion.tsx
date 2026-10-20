@@ -118,6 +118,7 @@ export function CorregirCotizacion({
   id,
   numero,
   observacion,
+  rechazada = false,
   version,
   clienteId,
   carroceriaId,
@@ -127,6 +128,8 @@ export function CorregirCotizacion({
   id: string
   numero: string
   observacion: string | null
+  /** La rechazada solo se corrige —no se quita—, y el botón lo dice así. */
+  rechazada?: boolean
   version: number
   clienteId: string
   carroceriaId: string
@@ -265,7 +268,7 @@ export function CorregirCotizacion({
     <>
       <Boton type="button" tamano="sm" onClick={abrir}>
         <RefreshCw aria-hidden className="size-3.5" />
-        Editar cotización
+        {rechazada ? 'Subir corrección' : 'Editar cotización'}
       </Boton>
 
       <Ventana

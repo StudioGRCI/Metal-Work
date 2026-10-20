@@ -50,3 +50,34 @@ alter policy borrar_cotizaciones_pdf on public.cotizaciones_pdf using (
     and estado = 'POR_REVISAR' and version = 1
   )
 );
+
+-- -----------------------------------------------------------------------------
+-- LA REVISADA NO VUELVE A «POR REVISAR» SIN SU CORRECCIÓN
+-- -----------------------------------------------------------------------------
+-- Quien revisa podía devolver por la API una rechazada, o una aprobada, a «por
+-- revisar» sin archivo nuevo: seguía en versión 1 y por revisar, y entonces la
+-- regla de arriba la dejaba quitar. Dos pasos y la evidencia desaparecía. Lo
+-- encontró el auditor de funcionamiento el 2026-10-20. Ninguna pantalla hace
+-- ese cambio: la cotización vuelve a Gerencia solo con su corrección, que sube
+-- la versión. Desde aquí es la única manera, también para el administrador.
+--
+-- Disparador propio, con «zz» para correr después de `trg_cotizacion_pdf_revision`,
+-- que es el que sube la versión de la corrección.
+-- -----------------------------------------------------------------------------
+create or replace function public.fn_cotizacion_pdf_no_se_reabre()
+returns trigger language plpgsql set search_path to 'public'
+as $$
+begin
+  if old.estado in ('APROBADA', 'RECHAZADA', 'ANULADA') and new.estado = 'POR_REVISAR'
+     and new.version = old.version then
+    raise exception 'La cotización % vuelve a Gerencia solo con su corrección: sube la nueva versión con «Subir corrección».', old.numero
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_cotizacion_pdf_no_se_reabre() from public, anon, authenticated;
+
+create or replace trigger trg_cotizacion_pdf_zz_no_se_reabre
+  before update of estado on public.cotizaciones_pdf
+  for each row execute function public.fn_cotizacion_pdf_no_se_reabre();

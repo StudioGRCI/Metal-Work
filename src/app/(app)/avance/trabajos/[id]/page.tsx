@@ -19,7 +19,7 @@ import { AccionesTrabajo } from './acciones-trabajo'
 export const metadata = { title: 'Trabajo sin orden' }
 
 export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avance/trabajos/[id]'>) {
-  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes'])
+  const perfil = await exigirPermiso(['produccion.ver', 'produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])
   const { id } = await params
   if (!esUuid(id)) notFound()
 
@@ -34,11 +34,11 @@ export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avan
   return (
     <>
       <Link
-        href="/avance"
+        href="/avance/trabajos"
         className="mb-3 inline-flex min-h-11 items-center gap-1.5 text-sm text-texto-suave hover:text-texto sm:min-h-0"
       >
         <ArrowLeft aria-hidden className="size-4" />
-        Volver al taller
+        Volver a los trabajos sin orden
       </Link>
 
       <EncabezadoPagina

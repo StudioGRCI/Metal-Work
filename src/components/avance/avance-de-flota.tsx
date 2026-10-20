@@ -10,7 +10,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos } from '@/lib/datos/avances'
 import { fotosDeReportesFlota, reportesDeFlota } from '@/lib/datos/flota'
 import { fecha as formatearFecha, hora, hoyLima, numero } from '@/lib/format'
-import { puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
+import { apruebaSinOrden, puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
  * La línea de reportes de un trabajo sin orden: qué se hizo cada día, de qué
@@ -30,7 +30,7 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
       .map((f) => f.ruta_storage),
   )
 
-  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
+  const aprueba = apruebaSinOrden(perfil)
   const hoy = hoyLima()
 
   if (reportes.length === 0) {
@@ -56,7 +56,7 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
           hoy,
         )
         const revisa = aprueba && r.revision !== 'APROBADO'
-        const elimina = puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por })
+        const elimina = puedeEliminarReporte(perfil, { revision: r.revision, autor: r.registrado_por, clase: 'flota' })
 
         return (
           <li key={r.id}>

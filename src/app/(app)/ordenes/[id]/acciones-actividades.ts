@@ -58,7 +58,8 @@ const SIN_AREA = 'No se pudo comprobar de qué área es la actividad. Vuelve a i
 async function areaOFallo(actividadId: string): Promise<string | null | undefined> {
   try {
     return await areaDeActividad(actividadId)
-  } catch {
+  } catch (e) {
+    console.error('No se pudo leer el área de la actividad', actividadId, e)
     return undefined
   }
 }

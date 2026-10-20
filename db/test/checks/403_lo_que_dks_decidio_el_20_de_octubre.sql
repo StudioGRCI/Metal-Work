@@ -27,11 +27,17 @@ select test.crear_usuario('Olo', 'Operario', 'operario403@demo.pe', 'OPERARIO', 
 select set_config('prueba.operario', :'operario_id', true);
 
 -- =========================================== trabajos sin OT: quién aprueba
-select test.afirmar(
-  (select bool_and(exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-                            where r.codigo = c and rp.permiso_codigo = 'produccion.aprobar_reportes'))
-     from unnest(array['ADMINISTRACION', 'GERENTE']) c),
-  'Administración y Gerencia tienen el permiso de aprobar los reportes del taller');
+select test.afirmar(exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                             where r.codigo = 'ADMINISTRACION' and rp.permiso_codigo = 'produccion.aprobar_reportes'),
+  'Administración tiene el permiso de aprobar los reportes del taller');
+select test.afirmar(exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                             where r.codigo = 'GERENTE' and rp.permiso_codigo = 'produccion.aprobar_sin_orden'),
+  'Gerencia tiene el permiso de aprobar los reportes de los trabajos sin orden');
+-- Y solo ese: las hojas de las OT, sus observaciones y sus avisos van con el
+-- permiso ancho, que DKS no le dio.
+select test.afirmar(not exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+                                 where r.codigo = 'GERENTE' and rp.permiso_codigo = 'produccion.aprobar_reportes'),
+  'Gerencia no aprueba los reportes de las OT');
 
 insert into public.flota_unidades (placa, trabajo, registrado_por) values ('QA4-031', 'Cambio de piso', :'admin_id');
 insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por)
@@ -73,6 +79,35 @@ select test.afirmar((select count(*) from public.flota_avances where id = :'avan
   'Portería no ve los reportes del taller');
 reset role;
 
+-- Lo aprobado queda firme también para quien aprueba: Gerencia no lo borra.
+-- El pendiente sí, como antes. Un segundo reporte, pendiente, para probarlo.
+insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por)
+select f.id, (select id from public.areas where codigo = 'ACB'), 'Pintura del piso', :'admin_id'
+  from public.flota_unidades f where f.placa = 'QA4-031';
+select set_config('prueba.pendiente',
+  (select id::text from public.flota_avances where descripcion = 'Pintura del piso'), true);
+
+select test.como_usuario(:'oficina_id');
+set local role authenticated;
+update public.flota_avances set revision = 'APROBADO', observacion = null where id = :'avance_id';
+reset role;
+
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+do $$
+declare v_n integer;
+begin
+  perform test.afirmar((select revision::text from public.flota_avances where id = current_setting('prueba.avance')::uuid) = 'APROBADO',
+    'el reporte quedó aprobado por Administración');
+  delete from public.flota_avances where id = current_setting('prueba.avance')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 0, 'Gerencia no borra un reporte que ya está aprobado');
+  delete from public.flota_avances where id = current_setting('prueba.pendiente')::uuid;
+  get diagnostics v_n = row_count;
+  perform test.afirmar(v_n = 1, 'Gerencia sí borra un reporte pendiente, como cualquiera que aprueba');
+end $$;
+reset role;
+
 -- ================================= la cotización rechazada queda como evidencia
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
 values ('RUC', '20607761403', 'TRANSPORTES PRUEBA 403 S.A.C.') on conflict do nothing;
@@ -109,6 +144,16 @@ begin
   perform test.afirmar(v_n = 1, 'Ventas sí quita la que acaba de subir y nadie revisó');
 end $$;
 reset role;
+
+-- La rechazada no se esconde en dos pasos: devolverla a «por revisar» sin su
+-- corrección para después quitarla. Ni Gerencia, que es quien revisa.
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+select test.debe_fallar($$ update public.cotizaciones_pdf set estado = 'POR_REVISAR' where numero = 'COT-403-R' $$,
+  'Gerencia no devuelve una rechazada a «por revisar» sin su corrección', 'solo con su corrección');
+reset role;
+select test.afirmar((select estado::text from public.cotizaciones_pdf where numero = 'COT-403-R') = 'RECHAZADA',
+  'la rechazada sigue rechazada');
 
 -- ====================================== la salida de almacén tiene número
 select m.id as mp_id from public.materiales m join public.categorias_material c on c.id = m.categoria_id
@@ -192,9 +237,23 @@ reset role;
 -- La auditoría de la tabla reservada pide lo mismo que la tabla.
 select test.afirmar(exists (select 1 from public.audit_log where tabla = 'usuario_datos_reservados'),
   'los cambios del costo y del DNI quedan en la auditoría');
+-- La auditoría de `usuarios` de antes de la mudanza: una fila con costo y DNI,
+-- otra sin ellos (un cambio de cargo). Gerencia ve la segunda, no la primera.
+insert into public.audit_log (tabla, registro_id, accion, datos_antes, datos_despues, campos_modificados)
+values ('usuarios', :'lia_id', 'UPDATE', '{"documento": null, "costo_hora": 0, "cargo": "x"}',
+        '{"documento": "40404040", "costo_hora": 12.5, "cargo": "x"}', array['documento', 'costo_hora']),
+       ('usuarios', :'lia_id', 'UPDATE', '{"documento": null, "costo_hora": 0, "cargo": "Soldadora"}',
+        '{"documento": null, "costo_hora": 0, "cargo": "Soldadora líder"}', array['cargo']);
+
 select test.como_usuario(:'gerente_id');
 set local role authenticated;
 select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Gerencia consulta la auditoría');
+select test.afirmar((select count(*) from public.audit_log where tabla = 'usuarios' and registro_id = :'lia_id'
+                       and datos_despues ->> 'documento' = '40404040') = 0,
+  'Gerencia no ve la auditoría vieja de usuarios que lleva el DNI y el costo');
+select test.afirmar((select count(*) from public.audit_log where tabla = 'usuarios' and registro_id = :'lia_id'
+                       and datos_despues ->> 'cargo' = 'Soldadora líder') = 1,
+  'pero sí la que no los lleva, como un cambio de cargo');
 select test.afirmar((select count(*) from public.usuario_datos_reservados) = 0,
   'Gerencia no lee el costo por hora ni el DNI');
 select test.afirmar((select count(*) from public.audit_log where tabla = 'usuario_datos_reservados') = 0,

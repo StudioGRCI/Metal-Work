@@ -138,7 +138,7 @@ export function puedeCorregirReporte(
   hoy: string,
 ): boolean {
   if (!perfil) return false
-  const aprueba = puede(perfil, 'produccion.aprobar_reportes')
+  const aprueba = r.clase === 'flota' ? apruebaSinOrden(perfil) : puede(perfil, 'produccion.aprobar_reportes')
   const esAutor = r.autor === perfil.id
   if (r.revision === 'APROBADO' && !aprueba) return false
   if (aprueba && !esAutor) return false
@@ -152,18 +152,30 @@ export function puedeCorregirReporte(
 }
 
 /**
+ * Si aprueba u observa los reportes de los trabajos sin orden: quien aprueba
+ * todos los del taller, y Gerencia, que solo aprueba esos (migración
+ * 20261020160000, `produccion.aprobar_sin_orden`).
+ */
+export function apruebaSinOrden(perfil: PerfilSesion | null): boolean {
+  return puede(perfil, ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'])
+}
+
+/**
  * Si esta persona ve «Eliminar» en un reporte del día. Gemelo de las políticas
- * de DELETE de la migración 099: el jefe borra cualquiera; el autor, mientras
- * no esté aprobado. El avance con foto que movió una etapa no se borra —lo
+ * de DELETE (migraciones 099 y 20261020160000): quien aprueba y el autor lo
+ * borran mientras no esté aprobado; el aprobado queda firme, salvo para el
+ * administrador. El avance con foto que movió una etapa no se borra —lo
  * impide un disparador—, así que ni se ofrece.
  */
 export function puedeEliminarReporte(
   perfil: PerfilSesion | null,
-  r: { revision: string | null; autor: string | null; movioEtapa?: boolean },
+  r: { revision: string | null; autor: string | null; movioEtapa?: boolean; clase?: ClaseReporte },
 ): boolean {
   if (!perfil || r.movioEtapa) return false
-  if (puede(perfil, 'produccion.aprobar_reportes')) return true
-  return r.autor === perfil.id && r.revision !== 'APROBADO'
+  if (perfil.rol.codigo === 'ADMIN') return true
+  if (r.revision === 'APROBADO') return false
+  const aprueba = r.clase === 'flota' ? apruebaSinOrden(perfil) : puede(perfil, 'produccion.aprobar_reportes')
+  return aprueba || r.autor === perfil.id
 }
 
 /**

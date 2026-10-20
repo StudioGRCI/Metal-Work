@@ -27,9 +27,12 @@
 -- toman el costo de `trabajadores` (Recursos Humanos). Este costo por hora es
 -- el de la ficha de Personal.
 --
--- Lo que queda: el historial de la auditoría guarda las filas de `usuarios`
--- tal como estaban, con su costo y su DNI. Solo lo lee quien tiene
--- `auditoria.ver` (Gerencia), y no se reescribe: es evidencia.
+-- El historial de la auditoría guarda las filas de `usuarios` tal como
+-- estaban, con su costo y su DNI (14 de 54 en producción al 2026-10-20). No se
+-- reescribe, porque es evidencia: las filas que llevan alguno de los dos dejan
+-- de verse con `auditoria.ver` solo y piden lo mismo que la tabla reservada.
+-- La tabla reservada lleva su propia auditoría por la misma razón, cerrada con
+-- ese mismo permiso: así un cambio de costo deja rastro sin que Gerencia lo lea.
 -- =============================================================================
 
 create table if not exists public.usuario_datos_reservados (
@@ -84,6 +87,16 @@ alter policy ver_audit_log on public.audit_log using (
          or public.tiene_permiso('rrhh.personal'))
     and (tabla <> 'usuario_datos_reservados'
          or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('usuarios.gestionar'))
+    -- La auditoría de `usuarios` de antes de la mudanza copió la fila entera,
+    -- con el DNI y el costo. Esas filas no se reescriben (son evidencia): las
+    -- que llevan alguno de los dos se ven solo con el mismo permiso que la
+    -- tabla reservada. Las demás, y todas las de después, siguen a la vista.
+    and (tabla <> 'usuarios'
+         or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('usuarios.gestionar')
+         or (nullif(datos_antes ->> 'documento', '') is null
+             and nullif(datos_despues ->> 'documento', '') is null
+             and coalesce((datos_antes ->> 'costo_hora')::numeric, 0) = 0
+             and coalesce((datos_despues ->> 'costo_hora')::numeric, 0) = 0))
     and (tabla <> all (array['planillas', 'planilla_personas', 'planilla_distribuciones'])
          or public.tiene_permiso('rrhh.ver_planillas'))
     and (tabla <> all (array['cotizaciones_pdf', 'cotizaciones_pdf_versiones', 'cotizaciones_pdf_igv',

@@ -22,14 +22,16 @@ export default async function PaginaFormato({ params }: PageProps<'/almacen/movi
   const { id } = await params
   if (!esUuid(id)) notFound()
   const db = await createClient()
-  const { data: m, error } = await db.from('v_kardex_almacen')
-    .select('id,fecha,material,material_codigo,unidad_medida,salida,codigo_unidad,documento,recibido_por_nombre,registrado_por_nombre,almacen,requerimiento_numero,con_formato,orden_numero')
-    .eq('id', id).eq('movimiento', 'SALIDA').maybeSingle()
+  // El número de la casa (migración 20261020162000) no está en el kardex: se
+  // lee del movimiento mismo, con los mismos permisos, a la par.
+  const [{ data: m, error }, { data: mov, error: errorNumero }] = await Promise.all([
+    db.from('v_kardex_almacen')
+      .select('id,fecha,material,material_codigo,unidad_medida,salida,codigo_unidad,documento,recibido_por_nombre,registrado_por_nombre,almacen,requerimiento_numero,con_formato,orden_numero')
+      .eq('id', id).eq('movimiento', 'SALIDA').maybeSingle(),
+    db.from('movimientos_materiales').select('numero_salida').eq('id', id).maybeSingle(),
+  ])
   if (error) throw new Error('No se pudo cargar la salida.')
   if (!m) notFound()
-  // El número de la casa (migración 20261020162000) no está en el kardex: se
-  // lee del movimiento mismo, con los mismos permisos.
-  const { data: mov, error: errorNumero } = await db.from('movimientos_materiales').select('numero_salida').eq('id', id).maybeSingle()
   if (errorNumero) throw new Error('No se pudo cargar el número de la salida.')
 
   const almacen = esAlmacen(m.almacen) ? m.almacen : null

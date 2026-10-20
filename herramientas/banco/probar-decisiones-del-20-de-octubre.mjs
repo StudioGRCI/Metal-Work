@@ -109,6 +109,9 @@ try {
     for (let i = 0; i < (await costos.count()); i++) visible ||= await costos.nth(i).isVisible()
     comprobar(visible, 'la ficha vuelve a mostrar el costo por hora')
     await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-personal.png'), fullPage: true })
+    await pagina.goto(`${BASE}/personal?q=${dni}`, { waitUntil: 'networkidle' })
+    comprobar(await pagina.getByRole('button', { name: `Editar a ${persona.nombres}` }).first().isVisible().catch(() => false),
+      'el buscador de Personal la encuentra por su DNI')
     comprobar(errores.length === 0, `Personal sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }
@@ -126,6 +129,11 @@ try {
        values ($1, (select id from public.areas where codigo = 'ACB'), $2, $3) returning id`,
       [unidad.id, `Piso nuevo ${sufijo}`, admin],
     )
+    const [otro] = await consulta(
+      `insert into public.flota_avances (flota_id, area_id, descripcion, registrado_por)
+       values ($1, (select id from public.areas where codigo = 'ACB'), $2, $3) returning id`,
+      [unidad.id, `Pintura del piso ${sufijo}`, admin],
+    )
     for (const puesto of ['administracion', 'gerencia']) {
       const { pagina, contexto } = await entrar(CUENTAS[puesto])
       comprobar(await pagina.getByRole('link', { name: /Trabajos sin orden/ }).first().isVisible().catch(() => false),
@@ -133,11 +141,32 @@ try {
       if (puesto === 'administracion') {
         await pagina.goto(`${BASE}/avance/trabajos/${unidad.id}`, { waitUntil: 'networkidle' })
         comprobar(await pagina.getByText(`Piso nuevo ${sufijo}`).isVisible().catch(() => false), 'Administración ve el reporte')
-        await pagina.getByRole('button', { name: 'Aprobar', exact: true }).first().click()
+        await pagina.getByRole('listitem').filter({ hasText: `Piso nuevo ${sufijo}` })
+          .getByRole('button', { name: 'Aprobar', exact: true }).click()
         await pagina.getByText('Aprobado.').waitFor({ timeout: 15000 }).catch(() => {})
         const [fila] = await consulta('select revision::text from public.flota_avances where id = $1', [avance.id])
         comprobar(fila.revision === 'APROBADO', `la base dice que Administración lo aprobó (${fila.revision})`)
         await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-trabajo-sin-ot.png'), fullPage: true })
+      } else {
+        // Gerencia: el aviso la lleva a los trabajos sin orden, la tarjeta dice
+        // cuántos esperan, aprueba con clic y lo aprobado no lo puede borrar.
+        comprobar(await pagina.locator('a[href="/avance/trabajos"]').filter({ hasText: /orden\s*1$/ }).first().isVisible().catch(() => false),
+          'el pendiente de Gerencia se cuenta en «Trabajos sin orden»')
+        await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
+        comprobar(await pagina.getByText('1 por aprobar').first().isVisible().catch(() => false), 'la tarjeta del trabajo dice «1 por aprobar»')
+        await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-trabajos-gerencia.png'), fullPage: true })
+        await pagina.goto(`${BASE}/avance/trabajos/${unidad.id}`, { waitUntil: 'networkidle' })
+        await pagina.getByRole('listitem').filter({ hasText: `Pintura del piso ${sufijo}` })
+          .getByRole('button', { name: 'Aprobar', exact: true }).click()
+        await pagina.getByText('Aprobado.').waitFor({ timeout: 15000 }).catch(() => {})
+        const [fila] = await consulta(
+          `select a.revision::text, u.correo from public.flota_avances a left join public.usuarios u on u.id = a.revisado_por where a.id = $1`,
+          [otro.id],
+        )
+        comprobar(fila.revision === 'APROBADO' && fila.correo === CUENTAS.gerencia, `la base dice que Gerencia lo aprobó (${fila.revision}, ${fila.correo})`)
+        await pagina.reload({ waitUntil: 'networkidle' })
+        comprobar((await pagina.getByRole('button', { name: /Eliminar/ }).count()) === 0, 'Gerencia no ve «Eliminar» en los reportes aprobados')
+        await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-trabajo-gerencia.png'), fullPage: true })
       }
       await contexto.close()
     }
@@ -165,6 +194,8 @@ try {
     comprobar(await pagina.getByText(`R-${sufijo}`).first().isVisible().catch(() => false), 'Ventas ve su cotización rechazada')
     comprobar((await quitarRechazada.count()) === 0, 'la rechazada no ofrece «Quitar»')
     comprobar((await quitarNueva.count()) > 0, 'la recién subida sí ofrece «Quitar»')
+    const subir = pagina.getByRole('listitem').filter({ hasText: `R-${sufijo}` }).getByRole('button', { name: 'Subir corrección' })
+    comprobar((await subir.count()) > 0, 'la rechazada ofrece «Subir corrección», como dice su aviso')
     await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-cotizaciones.png'), fullPage: true })
     await contexto.close()
   }
@@ -192,6 +223,10 @@ try {
     comprobar(await pagina.getByText(`N.º ${salida.numero_salida}`).isVisible().catch(() => false), 'el formato imprime ese número')
     await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-formato-salida.png'), fullPage: true })
     comprobar(errores.length === 0, `el formato sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    comprobar(await pagina.getByText(salida.numero_salida, { exact: true }).first().isVisible().catch(() => false),
+      '«Salidas por cerrar» muestra el mismo número, para casar cada hoja con su fila')
+    await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-por-cerrar.png'), fullPage: true })
     await contexto.close()
   }
 

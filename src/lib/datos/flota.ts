@@ -116,6 +116,25 @@ export async function listarFlota(
   return (data ?? []) as unknown as TrabajoSinOrden[]
 }
 
+/**
+ * Cuántos reportes esperan aprobación en cada trabajo, para que quien aprueba
+ * sepa en qué tarjeta entrar. Solo trae los trabajos que tienen alguno.
+ */
+export async function porAprobarDeFlota(ids: string[]): Promise<Map<string, number>> {
+  const cuenta = new Map<string, number>()
+  if (ids.length === 0) return cuenta
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('v_flota_avance_diario')
+    .select('flota_id')
+    .eq('revision', 'PENDIENTE')
+    .in('flota_id', ids)
+    .limit(1000)
+  if (error) throw new Error(`No se pudieron contar los reportes por aprobar: ${error.message}`)
+  for (const r of data ?? []) if (r.flota_id) cuenta.set(r.flota_id, (cuenta.get(r.flota_id) ?? 0) + 1)
+  return cuenta
+}
+
 /** Los que siguen abiertos: para el tablero del taller y para «quién no reportó». */
 export function flotaEnTaller() {
   return listarFlota()

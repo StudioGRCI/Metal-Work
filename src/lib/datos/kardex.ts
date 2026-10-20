@@ -182,8 +182,14 @@ export async function minimosDeStock(): Promise<Map<string, number>> {
 /** Una salida de materia prima o EPP que sigue abierta: falta su formato firmado. */
 export type SalidaPorCerrar = Pick<FilaKardex, 'id' | 'fecha' | 'material_id' | 'material' | 'material_codigo' | 'unidad_medida'
   | 'salida' | 'codigo_unidad' | 'recibido_por_nombre' | 'documento' | 'almacen' | 'requerimiento_numero'>
+  & { numero_salida: string | null }
 
-/** Las salidas que esperan el escaneo del formato firmado, la más antigua primero. */
+/**
+ * Las salidas que esperan el escaneo del formato firmado, la más antigua primero.
+ * Cada una con su número SA-…, el que va impreso en la hoja: con el montón de
+ * hojas firmadas en la mano, es lo que casa cada papel con su fila. El número
+ * vive en el movimiento y no en la vista del kardex, así que se lee aparte.
+ */
 export async function salidasPorCerrar(): Promise<SalidaPorCerrar[]> {
   const db = await createClient()
   const { data, error } = await db.from('v_kardex_almacen')
@@ -192,7 +198,15 @@ export async function salidasPorCerrar(): Promise<SalidaPorCerrar[]> {
     .order('fecha', { ascending: true })
     .limit(200)
   if (error) throw new Error(`No se pudieron cargar las salidas por cerrar: ${error.message}`)
-  return data ?? []
+  const filas = data ?? []
+  const ids = filas.map((f) => f.id).filter((id): id is string => Boolean(id))
+  if (ids.length === 0) return []
+  const { data: numeros, error: errorNumeros } = await db.from('movimientos_materiales')
+    .select('id,numero_salida')
+    .in('id', ids)
+  if (errorNumeros) throw new Error(`No se pudieron leer los números de las salidas: ${errorNumeros.message}`)
+  const numeroDe = new Map((numeros ?? []).map((n) => [n.id, n.numero_salida]))
+  return filas.map((f) => ({ ...f, numero_salida: (f.id && numeroDe.get(f.id)) ?? null }))
 }
 
 /** Una línea de requerimiento con algo por entregar, para atenderla desde la salida. */
