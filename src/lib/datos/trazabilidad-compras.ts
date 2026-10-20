@@ -131,6 +131,7 @@ export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<{ urls: 
   const firmados = await Promise.all(
     [...porBucket].map(async ([bucket, rutas]) => {
       const { data, error } = await supabase.storage.from(bucket).createSignedUrls([...new Set(rutas)], 600)
+      if (error) console.error(`No se pudieron firmar los enlaces de ${bucket}:`, error.message)
       return { bucket, firmados: data ?? [], fallo: Boolean(error) }
     }),
   )

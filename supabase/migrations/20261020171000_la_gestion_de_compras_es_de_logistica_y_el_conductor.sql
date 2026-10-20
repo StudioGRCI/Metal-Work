@@ -457,6 +457,7 @@ do $$ begin
    where ruta = '/compras/gestion' and titulo like 'Guía de remisión por emitir:%';
   update public.notificaciones n
      set ruta = '/compras',
+         titulo = replace(titulo, 'Programa el recojo:', 'Recojo por programar:'),
          cuerpo = replace(replace(cuerpo,
            'Prográmala en Gestión de compras: su peso y su lugar en la lista del conductor.',
            'Logística la programa para que el conductor la recoja.'),
