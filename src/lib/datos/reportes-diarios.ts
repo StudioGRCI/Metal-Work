@@ -173,18 +173,19 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     fila.observado_en
       ? supabase.from('reportes_diarios').select('id').eq('reemplaza_a', id).limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
-    // Una corrección entra sola: no tiene hermanos.
+    // Una corrección entra sola: no tiene hermanos. Los del día de esa persona
+    // son pocos; el instante se compara aquí, al milisegundo: igualarlo en la
+    // consulta depende de cuántos decimales devuelve la API.
     fila.reemplaza_a
       ? Promise.resolve({ data: [], error: null })
       : supabase
           .from('reportes_diarios')
-          .select('id, codigo_interno, anulado_en')
+          .select('id, codigo_interno, anulado_en, creado_en')
           .eq('registrado_por', fila.registrado_por)
           .eq('fecha', fila.fecha)
-          .eq('creado_en', fila.creado_en)
           .neq('id', id)
           .order('codigo_interno')
-          .limit(20),
+          .limit(50),
   ])
   if (hermanos.error) throw new Error(`No se pudieron leer los otros códigos del reporte: ${hermanos.error.message}`)
 
@@ -200,7 +201,9 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     }),
     fotos: fotos.map((f) => ({ ...f, enlace: enlaces[f.ruta] ?? null })),
     corregido_por: corregido.data?.id ?? null,
-    del_mismo_envio: hermanos.data ?? [],
+    del_mismo_envio: (hermanos.data ?? [])
+      .filter((h) => Date.parse(h.creado_en) === Date.parse(fila.creado_en))
+      .map(({ id: hermano, codigo_interno, anulado_en }) => ({ id: hermano, codigo_interno, anulado_en })),
   }
 }
 

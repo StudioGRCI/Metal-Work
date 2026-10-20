@@ -589,7 +589,8 @@ function SeccionDelCodigo({
   alEscribirCodigo: (texto: string) => void
   alQuitar: (() => void) | null
 }) {
-  const prefijo = `rd-${s.clave}`
+  // El primero conserva el id de siempre: lo buscan los recorridos del banco.
+  const idCodigo = s.clave === 'codigo-1' ? 'rd-codigo' : `rd-${s.clave}-codigo`
   const porClave = new Map(s.opciones.map((o) => [claveDe(o), o]))
   const elegidos = new Set(s.trabajos.map((t) => t.sobre).filter((v) => v && v !== NUEVA))
   const nombre = s.codigo.trim().toUpperCase() || `Código ${numero}`
@@ -615,13 +616,13 @@ function SeccionDelCodigo({
         )}
         <Campo
           etiqueta="Código interno"
-          htmlFor={`${prefijo}-codigo`}
+          htmlFor={idCodigo}
           requerido
           ayuda={numero === 1 ? 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28; PLANTA si no es para una unidad.' : undefined}
           className="min-w-0 flex-1"
         >
           <BuscadorCodigo
-            id={`${prefijo}-codigo`}
+            id={idCodigo}
             codigos={codigos}
             valor={s.codigo}
             alCambiar={alEscribirCodigo}
@@ -694,9 +695,9 @@ function SeccionDelCodigo({
                   <Trash2 aria-hidden className="size-4" />
                 </Boton>
               </div>
-              <Campo etiqueta="Sobre qué" htmlFor={`${prefijo}-sobre-${t.clave}`} requerido>
+              <Campo etiqueta="Sobre qué" htmlFor={`rd-sobre-${t.clave}`} requerido>
                 <SeleccionBuscable
-                  id={`${prefijo}-sobre-${t.clave}`}
+                  id={`rd-sobre-${t.clave}`}
                   name={`sobre-${t.clave}`}
                   opciones={lista}
                   valor={t.sobre}
@@ -712,12 +713,12 @@ function SeccionDelCodigo({
                 {t.sobre === NUEVA ? (
                   <Campo
                     etiqueta="Qué tarea es"
-                    htmlFor={`${prefijo}-trabajo-${t.clave}`}
+                    htmlFor={`rd-trabajo-${t.clave}`}
                     requerido
                     ayuda="Queda en el código: en tus próximos reportes la eliges en «Sobre qué» para sumarle avance."
                   >
                     <AreaTexto
-                      id={`${prefijo}-trabajo-${t.clave}`}
+                      id={`rd-trabajo-${t.clave}`}
                       required
                       minLength={3}
                       maxLength={500}
@@ -728,7 +729,7 @@ function SeccionDelCodigo({
                     />
                   </Campo>
                 ) : (
-                  <p className="self-end text-xs text-texto-suave" id={`${prefijo}-lleva-${t.clave}`}>
+                  <p className="self-end text-xs text-texto-suave" id={`rd-lleva-${t.clave}`}>
                     {elegida
                       ? tope !== null
                         ? `${lleva !== null ? `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)} y el` : 'El'} ${fechaCorta(elegida.tope_fecha)} ya iba en ${tope} %: pon en cuánto iba este día, de ${desde} a ${hasta}.`
@@ -740,9 +741,9 @@ function SeccionDelCodigo({
                       : ''}
                   </p>
                 )}
-                <Campo etiqueta="Va en (%)" htmlFor={`${prefijo}-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
+                <Campo etiqueta="Va en (%)" htmlFor={`rd-avance-${t.clave}`} requerido className="max-w-32 sm:max-w-none">
                   <Entrada
-                    id={`${prefijo}-avance-${t.clave}`}
+                    id={`rd-avance-${t.clave}`}
                     type="number"
                     inputMode="numeric"
                     required
@@ -751,7 +752,7 @@ function SeccionDelCodigo({
                     step={1}
                     value={t.avance}
                     onChange={(e) => cambiarTrabajo(t.clave, { avance: e.target.value })}
-                    aria-describedby={t.sobre && t.sobre !== NUEVA ? `${prefijo}-lleva-${t.clave}` : undefined}
+                    aria-describedby={t.sobre && t.sobre !== NUEVA ? `rd-lleva-${t.clave}` : undefined}
                     className="tabular"
                   />
                 </Campo>
