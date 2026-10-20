@@ -126,6 +126,7 @@ function Formulario({
             requerido
             valor={codigo}
             onChange={setCodigo}
+            aceptadoInicial={rq.codigo_interno}
             codigos={codigos}
             fijos={fijos}
           />

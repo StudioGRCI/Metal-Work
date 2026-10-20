@@ -76,8 +76,8 @@ export function ResumenDeRequerimientos({
   enlaceRecoger,
 }: {
   requerimientos: RequerimientoListado[]
-  /** La lista con solo los RQ que tienen algo para recoger. */
-  enlaceRecoger: string
+  /** La lista con solo los RQ que tienen algo para recoger; `null` si ya es esa lista. */
+  enlaceRecoger: string | null
 }) {
   let recoger = 0
   let porLlegar = 0
@@ -110,8 +110,12 @@ export function ResumenDeRequerimientos({
         valor={recoger}
         icono={PackageCheck}
         tono={recoger > 0 ? 'exito' : 'neutro'}
-        pie={recoger > 0 ? `${recoger === 1 ? 'insumo ya en almacén' : 'insumos ya en almacén'}: tócalo para ver cuáles` : 'nada en almacén todavía'}
-        href={recoger > 0 ? enlaceRecoger : undefined}
+        pie={
+          recoger > 0
+            ? `${recoger === 1 ? 'insumo ya en almacén' : 'insumos ya en almacén'}${enlaceRecoger ? ': tócalo para ver cuáles' : ': son los de abajo'}`
+            : 'nada en almacén todavía'
+        }
+        href={recoger > 0 && enlaceRecoger ? enlaceRecoger : undefined}
       />
       <Indicador
         titulo="Por llegar"
@@ -199,7 +203,7 @@ export function TarjetaRequerimiento({
             <Link
               href={`${enlaceCodigo}${encodeURIComponent(rq.codigo_interno)}`}
               title="Ver los requerimientos de este código interno"
-              className="font-mono font-medium text-acento hover:underline"
+              className="inline-flex min-h-11 items-center font-mono font-medium text-acento hover:underline sm:min-h-0"
             >
               {rq.codigo_interno}
             </Link>

@@ -144,6 +144,7 @@ function FormularioHoras({
             requerido
             valor={codigoEscrito}
             onChange={setCodigoEscrito}
+            aceptadoInicial={codigo}
             codigos={codigos}
             fijos={[CODIGO_FIJO_PLANTA]}
           />

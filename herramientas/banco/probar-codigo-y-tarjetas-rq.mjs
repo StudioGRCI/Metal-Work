@@ -111,7 +111,8 @@ const sufijo = Date.now().toString(36).slice(-5).toUpperCase()
 const CODIGO = `BNC_${sufijo}_26/1`
 // La misma unidad, escrita con guiones por la portería: la variante que la lista avisa.
 const GEMELO = `BNC-${sufijo}-26-1`
-const PLACA = `BNC-${sufijo}`
+// El dominio `placa` pide tres y tres (`ABC-123`): `BNC-` más el sufijo entero no entraba.
+const PLACA = `B${sufijo.slice(0, 2)}-${sufijo.slice(2, 5)}`
 const MATERIAL = `Aceite de banco ${sufijo}`
 const almacenero = await uno(`select id from public.usuarios where lower(correo) = $1`, [CUENTAS.almacen])
 await consulta(
@@ -138,13 +139,16 @@ await consulta(
 console.log(`  unidad ${PLACA} con el código ${CODIGO} (y ${GEMELO} en la portería); material «${MATERIAL}» con 20 en stock`)
 
 /** Abre un formulario, toca el campo de código, escribe y mira qué queda en la lista. */
+// Las opciones que son códigos: la última, «Usar … como código nuevo», no cuenta.
+const CODIGOS = '[role="option"]:not([id$="-nuevo"])'
+
 async function buscaEn(v, selector, busqueda) {
   const campo = v.locator(selector)
   await campo.click()
   const lista = v.locator('[role="listbox"][aria-label="Códigos internos abiertos"]')
   await lista.waitFor({ timeout: 5000 })
   await campo.pressSequentially(busqueda)
-  return (await lista.locator('[role="option"]').allInnerTexts()).map(limpio)
+  return (await lista.locator(CODIGOS).allInnerTexts()).map(limpio)
 }
 
 // ============================================ 1. Requerimientos elige el código de la lista
@@ -161,7 +165,7 @@ let numero = ''
   const lista = v.locator('#rq-codigo-lista')
   await campo.click()
   await lista.waitFor({ timeout: 5000 })
-  const opciones = lista.locator('[role="option"]')
+  const opciones = lista.locator(CODIGOS)
   const primero = limpio(await opciones.first().innerText())
   comprobar(primero.startsWith('PLANTA'), `al tocar el campo sale la lista, con PLANTA primero («${primero}»)`)
   comprobar((await opciones.count()) > 1, `y los códigos abiertos (${await opciones.count()} a la vista)`)
@@ -224,6 +228,18 @@ let numero = ''
   await v2.locator('#rq-codigo-estado button', { hasText: 'como código nuevo' }).click()
   comprobar((await v2.locator('#rq-codigo').inputValue()) === NUEVO && !(await v2.locator('#rq-codigo').evaluate((e) => e.validity.customError)),
     `confirmado, queda ${NUEVO} y el formulario puede salir`)
+  // …o desde la misma lista, sin cerrarla: es su última opción, con flechas y Enter.
+  const OTRO = `OTRO_${sufijo}`
+  await v2.locator('#rq-codigo').fill(OTRO.toLowerCase())
+  const enLista = v2.locator('#rq-codigo-lista-nuevo')
+  await enLista.waitFor({ timeout: 5000 })
+  comprobar(limpio(await enLista.innerText()).includes(`Usar ${OTRO} como código nuevo`), `con la lista abierta, su última opción ofrece usar ${OTRO} como código nuevo`)
+  const opcionesOtro = await v2.locator('#rq-codigo-lista [role="option"]').count()
+  for (let i = 0; i < opcionesOtro; i++) await v2.locator('#rq-codigo').press('ArrowDown')
+  await v2.locator('#rq-codigo').press('Enter')
+  comprobar((await v2.locator('#rq-codigo').inputValue()) === OTRO && !(await v2.locator('#rq-codigo').evaluate((e) => e.validity.customError))
+    && !(await v2.locator('#rq-codigo-lista').isVisible()) && (await v2.isVisible()),
+    'flecha abajo hasta ella y Enter lo confirman, sin mandar ni cerrar el formulario')
   // Con la lista cerrada, Escape cierra la ventana sin registrar nada.
   await pagina.keyboard.press('Escape')
   await v2.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
@@ -388,6 +404,28 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   } else {
     comprobar(false, 'Administración no ve «Nuevo subcontrato»')
   }
+
+  // En el RQA, lo escrito para buscar no queda aceptado por ir a «Todos» y volver.
+  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  const nuevoRq = pagina.getByRole('button', { name: 'Nuevo requerimiento', exact: true })
+  if (await nuevoRq.isVisible().catch(() => false)) {
+    await nuevoRq.click()
+    const v = pagina.locator('[role="dialog"]')
+    if ((await v.locator('#rq-tipo').count()) > 0) await v.locator('#rq-tipo').selectOption('ADMINISTRACION')
+    if ((await v.locator('#rq-cargo').count()) > 0) {
+      await v.locator('#rq-codigo').fill('volvo')
+      await v.locator('#rq-cargo').selectOption('TODOS')
+      await v.locator('#rq-cargo').selectOption('UNO')
+      const campo = v.locator('#rq-codigo')
+      comprobar((await campo.inputValue()) === 'volvo' && (await campo.evaluate((e) => e.validity.customError)),
+        'en el RQA, «volvo» escrito para buscar sigue sin valer después de pasar por «Todos los códigos activos»')
+    } else {
+      console.log('    (Administración no tiene «Se carga a» en el RQ: no se probó el paso por «Todos»)')
+    }
+    await pagina.keyboard.press('Escape')
+  } else {
+    console.log('    (Administración no ve «Nuevo requerimiento»: no se probó el RQA)')
+  }
   comprobar(errores.length === 0, `Administración, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -401,7 +439,7 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
     const campo = v.locator('[role="combobox"][name="codigo_interno"]')
     await campo.click()
     await campo.pressSequentially(`volvo ${sufijo.toLowerCase()}`)
-    const quedan = await v.locator('[role="listbox"] [role="option"]').allInnerTexts()
+    const quedan = await v.locator(`[role="listbox"] ${CODIGOS}`).allInnerTexts()
     comprobar(quedan.length === 1 && quedan[0].includes(CODIGO), `Tesorería encuentra ${CODIGO} en la caja diaria`)
   } else {
     console.log('    (la caja no tiene una cuenta abierta hoy: no se probó el buscador de la caja)')

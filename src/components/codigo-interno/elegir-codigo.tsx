@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Plus, TriangleAlert } from 'lucide-react'
 
 import { Entrada } from '@/components/ui/campos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -28,8 +28,10 @@ type Opcion = { codigo: string; detalle: string | null; registrada: boolean }
  * otra unidad. El formulario no sale hasta que se elige uno de la lista o se
  * confirma «es de una unidad nueva» —la unidad nueva todavía no aparece en
  * ningún documento—, y debajo del campo se ofrece el que se parece o los que
- * coinciden. El código con que se abrió el formulario (al corregir) vale como
- * está. El de costeo cerrado no se ofrece y, escrito, avisa.
+ * coinciden; la confirmación está también al final de la lista. El que el
+ * formulario da por bueno (`aceptadoInicial`: el que ya tenía el documento al
+ * corregir, o el de la carga anterior) vale como está. El de costeo cerrado no
+ * se ofrece y, escrito, avisa.
  *
  * Es un `datalist` hecho a mano: el del navegador filtra a su modo (con tildes,
  * sin la O por cero) y en el teléfono sale distinto en cada marca.
@@ -39,6 +41,7 @@ export function EntradaCodigoInterno({
   name,
   valor,
   onChange,
+  aceptadoInicial = '',
   codigos,
   fijos = [],
   requerido,
@@ -49,6 +52,13 @@ export function EntradaCodigoInterno({
   name?: string
   valor: string
   onChange: (valor: string) => void
+  /**
+   * El código que vale aunque no esté en la lista: el que ya tenía el documento
+   * al corregirlo, o el de la carga anterior. Nunca lo que se está escribiendo:
+   * si el campo se desmonta y vuelve con una búsqueda a medias, esa búsqueda
+   * tiene que elegirse o confirmarse otra vez.
+   */
+  aceptadoInicial?: string
   /** `null` si la lista no se pudo leer: el campo queda para escribir. */
   codigos: CodigoParaElegir[] | null
   fijos?: CodigoFijo[]
@@ -63,8 +73,8 @@ export function EntradaCodigoInterno({
 
   const [abierto, setAbierto] = useState(false)
   const [resaltado, setResaltado] = useState(-1)
-  // El que no está en la lista y vale igual: el que ya traía el formulario, o el nuevo que se confirmó.
-  const [aceptado, setAceptado] = useState(() => normalizarCodigo(valor))
+  // El que no está en la lista y vale igual: el que el formulario da por bueno, o el nuevo que se confirmó.
+  const [aceptado, setAceptado] = useState(() => normalizarCodigo(aceptadoInicial))
   const contenedor = useRef<HTMLDivElement>(null)
   const caja = useRef<HTMLInputElement>(null)
 
@@ -95,6 +105,11 @@ export function EntradaCodigoInterno({
   const cerrado = codigos?.some((c) => c.cerrado && c.codigo === escrito) ?? false
   // Lo escrito no es un código de la lista: una búsqueda a medias o una unidad nueva sin confirmar.
   const sinElegir = codigos !== null && escrito.length > 0 && !exacto && !cerrado && escrito !== aceptado
+  // Al final de la lista, la salida de la unidad nueva: sin ella, con la lista
+  // abierta y nada que coincida, no había cómo seguir sin cerrarla primero.
+  const conNuevo = sinElegir && escrito.length >= 2
+  const idNuevo = `${idLista}-nuevo`
+  const enNuevo = conNuevo && resaltado === visibles.length
 
   // Con `required` y `minLength`, la validación del navegador ya para el envío
   // y lleva al campo; esto le suma el caso de lo que no se eligió.
@@ -126,18 +141,22 @@ export function EntradaCodigoInterno({
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (!abierto) return abrir()
-      setResaltado((i) => Math.min(i + 1, visibles.length - 1))
+      setResaltado((i) => Math.min(i + 1, visibles.length - (conNuevo ? 0 : 1)))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setResaltado((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter' && lista && enNuevo) {
+      e.preventDefault()
+      usarNuevo()
     } else if (e.key === 'Enter' && lista && (visibles[resaltado] || (!exacto && coincidencias.length === 1))) {
       // Enter elige la resaltada, o la única que coincide con lo escrito; si no,
       // manda el formulario como siempre.
       e.preventDefault()
       elegir(visibles[resaltado] ?? coincidencias[0])
-    } else if (e.key === 'Escape' && abierto) {
+    } else if (e.key === 'Escape' && lista) {
       // Cortado aquí, como en `SeleccionBuscable`: dentro de una Ventana, el
-      // Escape seguía subiendo y cerraba el formulario con todo lo escrito.
+      // Escape seguía subiendo y cerraba el formulario con todo lo escrito. Sin
+      // lista a la vista sigue su camino y cierra la ventana.
       e.preventDefault()
       e.stopPropagation()
       setAbierto(false)
@@ -167,6 +186,8 @@ export function EntradaCodigoInterno({
         // tapaba el formulario (y en el teléfono subía el teclado).
         onClick={() => !abierto && abrir()}
         onKeyDown={teclas}
+        // Si el envío se para aquí, la lista se cierra: debajo del campo está qué falta.
+        onInvalid={() => setAbierto(false)}
         required={requerido}
         minLength={2}
         maxLength={60}
@@ -178,7 +199,7 @@ export function EntradaCodigoInterno({
         aria-autocomplete="list"
         aria-expanded={lista}
         aria-controls={idLista}
-        aria-activedescendant={lista && visibles[resaltado] ? `${idLista}-${resaltado}` : undefined}
+        aria-activedescendant={lista && visibles[resaltado] ? `${idLista}-${resaltado}` : lista && enNuevo ? idNuevo : undefined}
         aria-describedby={[descripcion, idEstado].filter(Boolean).join(' ')}
         aria-invalid={invalido || (sinElegir && !lista) || undefined}
         className="pr-9 font-mono uppercase placeholder:font-sans placeholder:normal-case"
@@ -228,6 +249,28 @@ export function EntradaCodigoInterno({
               y {ocultas} más: sigue escribiendo para acotar
             </li>
           )}
+          {conNuevo && (
+            <li
+              id={idNuevo}
+              role="option"
+              aria-selected={false}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setResaltado(visibles.length)}
+              onClick={usarNuevo}
+              className={cn(
+                'flex min-h-11 cursor-pointer items-start gap-2 border-t border-borde px-3 py-2 text-left text-texto sm:min-h-0 sm:py-1.5',
+                enNuevo && 'bg-superficie-2',
+              )}
+            >
+              <Plus aria-hidden className="mt-0.5 size-3.5 shrink-0 text-acento" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  Usar <span className="font-mono break-all">{escrito}</span> como código nuevo
+                </span>
+                <span className="block text-xs text-texto-suave">Solo si es de una unidad que todavía no está en la lista</span>
+              </span>
+            </li>
+          )}
         </ul>
       )}
 
@@ -254,9 +297,10 @@ export function EntradaCodigoInterno({
 export function CodigoInternoConLista({
   valorInicial = '',
   ...props
-}: Omit<React.ComponentProps<typeof EntradaCodigoInterno>, 'valor' | 'onChange'> & { valorInicial?: string }) {
+}: Omit<React.ComponentProps<typeof EntradaCodigoInterno>, 'valor' | 'onChange' | 'aceptadoInicial'> & { valorInicial?: string }) {
   const [valor, setValor] = useState(valorInicial)
-  return <EntradaCodigoInterno {...props} valor={valor} onChange={setValor} />
+  // Lo que trae el formulario sale de la base (al corregir) o es un fijo: vale como está.
+  return <EntradaCodigoInterno {...props} valor={valor} onChange={setValor} aceptadoInicial={valorInicial} />
 }
 
 /**
@@ -380,9 +424,13 @@ function EstadoDelCodigo({
 function Gemelas({ opcion, gemelas }: { opcion: Opcion; gemelas: Opcion[] }) {
   if (gemelas.length === 0) return null
   return (
-    <span className="block text-xs text-aviso">
-      {opcion.registrada ? 'Del padrón de unidades. ' : ''}
-      Casi igual a {gemelas.map((g) => (g.registrada ? `${g.codigo} (del padrón)` : g.codigo)).join(', ')}
+    // El color va en el ícono: el texto en ámbar no se leía sobre la opción resaltada.
+    <span className="mt-0.5 flex items-start gap-1 text-xs text-texto">
+      <TriangleAlert aria-hidden className="mt-px size-3 shrink-0 text-aviso" />
+      <span>
+        {opcion.registrada ? 'Del padrón de unidades. ' : ''}
+        Casi igual a {gemelas.map((g) => (g.registrada ? `${g.codigo} (del padrón)` : g.codigo)).join(', ')}
+      </span>
     </span>
   )
 }

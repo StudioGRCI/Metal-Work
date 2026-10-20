@@ -104,7 +104,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
           ...v,
           href: codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href,
           activa: !soloUno && v.activa,
-          cuenta: !soloUno && v.activa ? requerimientos.length : undefined,
+          cuenta: !soloUno && v.activa ? mostrados.length : undefined,
         }))}
       />
 
@@ -135,7 +135,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         </p>
       )}
 
-      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={conRecoger} />}
+      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={soloRecoger ? null : conRecoger} />}
 
       {mostrados.length === 0 ? (
         !soloUno && (

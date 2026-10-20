@@ -37,7 +37,7 @@ begin
   end if;
 
   return query
-  select l.requerimiento_id, l.item,
+  select l.requerimiento_id, l.item::integer,
          coalesce((
            select sum(greatest(m.cantidad - coalesce((
                     select sum(d.cantidad) from public.movimientos_materiales d
