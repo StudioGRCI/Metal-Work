@@ -130,6 +130,9 @@ export function FormularioReporteDiario({
   const [dia, setDia] = useState(corrige?.fecha ?? hoy)
   const [opciones, setOpciones] = useState<OpcionDeTrabajo[]>(opcionesIniciales)
   const [codigoLeido, setCodigoLeido] = useState(corrige?.codigo_interno.trim().toUpperCase() ?? '')
+  // Lo que lleva cada cosa se lee al día del reporte: cambiar el día vuelve a pedirlo.
+  const [diaLeido, setDiaLeido] = useState(corrige?.fecha ?? hoy)
+  const codigoEscrito = useRef(corrige?.codigo_interno ?? '')
   const [leyendo, setLeyendo] = useState(false)
   const [errorOpciones, setErrorOpciones] = useState<string | null>(null)
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -174,16 +177,17 @@ export function FormularioReporteDiario({
   }
 
   /**
-   * Al escribir el código se piden sus planos, subcontratos y actividades, un
-   * momento después de la última tecla. La respuesta de un código anterior se
-   * descarta, y lo elegido que el código nuevo no tiene se vacía.
+   * Al escribir el código (o cambiar el día) se piden sus planos, subcontratos
+   * y actividades con lo que llevaban ese día, un momento después de la última
+   * tecla. La respuesta de un pedido anterior se descarta, y lo elegido que el
+   * código nuevo no tiene se vacía.
    */
-  function leerCodigo(texto: string) {
+  function leerCodigo(texto: string, fecha: string) {
     const codigo = texto.trim().toUpperCase()
     if (espera.current) clearTimeout(espera.current)
     const numero = ++pedido.current
-    if (codigo === codigoLeido) {
-      // Volvió al código que ya estaba leído: lo que se pidió en medio ya no vale.
+    if (codigo === codigoLeido && fecha === diaLeido) {
+      // Volvió a lo que ya estaba leído: lo que se pidió en medio ya no vale.
       setLeyendo(false)
       return
     }
@@ -195,7 +199,7 @@ export function FormularioReporteDiario({
     }
     setLeyendo(true)
     espera.current = setTimeout(async () => {
-      const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null).catch(() => null)
+      const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch(() => null)
       if (numero !== pedido.current) return
       setLeyendo(false)
       if (!r || !r.ok) {
@@ -207,6 +211,7 @@ export function FormularioReporteDiario({
       setErrorOpciones(null)
       setOpciones(nuevas)
       setCodigoLeido(codigo)
+      setDiaLeido(fecha)
       setTrabajos((ts) => ts.map((t) => (t.sobre === '' || t.sobre === NUEVA || validas.has(t.sobre) ? t : { ...t, sobre: '', avance: '' })))
     }, 400)
   }
@@ -248,7 +253,19 @@ export function FormularioReporteDiario({
         </h2>
         <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
           <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
-            <Entrada id="rd-fecha" name="fecha" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} min={minimo} max={hoy} />
+            <Entrada
+              id="rd-fecha"
+              name="fecha"
+              type="date"
+              required
+              value={dia}
+              onChange={(e) => {
+                setDia(e.target.value)
+                leerCodigo(codigoEscrito.current, e.target.value)
+              }}
+              min={minimo}
+              max={hoy}
+            />
           </Campo>
           <Campo
             etiqueta="Código interno"
@@ -264,7 +281,10 @@ export function FormularioReporteDiario({
               maxLength={60}
               list="rd-codigos"
               defaultValue={corrige?.codigo_interno}
-              onChange={(e) => leerCodigo(e.target.value)}
+              onChange={(e) => {
+                codigoEscrito.current = e.target.value
+                leerCodigo(e.target.value, dia)
+              }}
               autoComplete="off"
               autoCapitalize="characters"
               className="font-mono uppercase"
@@ -319,11 +339,11 @@ export function FormularioReporteDiario({
         </p>
         {trabajos.map((t, i) => {
           const elegida = porClave.get(t.sobre) ?? null
-          // El avance solo sube: más que lo último reportado; en un día anterior a ese, menos.
+          // El avance solo sube: más que lo que llevaba ese día y menos que lo de un día posterior.
           const lleva = elegida?.avance ?? null
-          const atrasado = lleva !== null && Boolean(elegida?.ultima_fecha) && dia < (elegida?.ultima_fecha ?? '')
-          const desde = lleva !== null && !atrasado ? lleva + 1 : 0
-          const hasta = atrasado && lleva !== null ? Math.max(0, lleva - 1) : 100
+          const tope = elegida?.tope ?? null
+          const desde = lleva !== null ? lleva + 1 : 0
+          const hasta = tope !== null ? tope - 1 : 100
           const lista: OpcionBuscable[] = [
             ...opciones
               .filter((o) => claveDe(o) === t.sobre || !elegidos.has(claveDe(o)))
@@ -379,10 +399,10 @@ export function FormularioReporteDiario({
                 ) : (
                   <p className="self-end text-xs text-texto-suave" id={`rd-lleva-${t.clave}`}>
                     {elegida
-                      ? lleva === null
-                        ? 'Todavía nadie lo reportó.'
-                        : atrasado
-                          ? `El ${fechaCorta(elegida.ultima_fecha)} ya iba en ${lleva} %: este día es anterior, pon en cuánto iba ese día (menos de ${lleva}).`
+                      ? tope !== null
+                        ? `${lleva !== null ? `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)} y el` : 'El'} ${fechaCorta(elegida.tope_fecha)} ya iba en ${tope} %: pon en cuánto iba este día, de ${desde} a ${hasta}.`
+                        : lleva === null
+                          ? 'Todavía nadie lo reportó.'
                           : `Iba en ${lleva} % el ${fechaCorta(elegida.ultima_fecha)}: pon en cuánto va ahora, de ${desde} a 100.`
                       : ''}
                   </p>

@@ -81,18 +81,19 @@ function trabajoParaLaBase(t: Trabajo, general: boolean) {
 
 /**
  * Sobre qué puede reportar el supervisor en un código, con el avance que ya
- * lleva cada cosa. Mismo permiso que `reporte_diario_opciones`. `corrige`: su
+ * llevaba cada cosa el día del reporte (`fecha`). Mismo permiso que
+ * `reporte_diario_opciones`. `corrige`: su
  * reporte observado, que no se cuenta porque lo va a reemplazar.
  */
-export async function opcionesDelCodigo(codigo: string, corrige: string | null): Promise<ResultadoAccion<OpcionDeTrabajo[]>> {
+export async function opcionesDelCodigo(codigo: string, corrige: string | null, fecha: string | null): Promise<ResultadoAccion<OpcionDeTrabajo[]>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
   const analisis = z
-    .object({ codigo: z.string().trim().min(2).max(60), corrige: z.guid().nullable() })
-    .safeParse({ codigo, corrige })
+    .object({ codigo: z.string().trim().min(2).max(60), corrige: z.guid().nullable(), fecha: z.iso.date().nullable() })
+    .safeParse({ codigo, corrige, fecha })
   if (!analisis.success) return { ok: false, error: 'Revisa el código interno: de 2 a 60 caracteres.' }
   try {
-    return { ok: true, datos: await opcionesDeTrabajo(analisis.data.codigo, analisis.data.corrige) }
+    return { ok: true, datos: await opcionesDeTrabajo(analisis.data.codigo, analisis.data.corrige, analisis.data.fecha) }
   } catch (e) {
     return { ok: false, error: mensajeDeError({ message: e instanceof Error ? e.message : String(e) }) }
   }
@@ -172,7 +173,7 @@ export async function registrarReporteDiario(_previo: unknown, formulario: FormD
   revalidatePath('/rrhh/costeo')
   return {
     ok: true,
-    mensaje: 'Reporte subido: sus horas van al costeo y Gerencia y Recursos Humanos lo validan.',
+    mensaje: 'Reporte subido: Gerencia y Recursos Humanos lo validan.',
     datos: { id: d.id },
   }
 }

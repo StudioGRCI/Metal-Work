@@ -437,6 +437,16 @@ select test.afirmar(
   (select count(*) from public.reporte_diario_opciones(pg_temp.txt('codigo'))
     where tipo = 'ACTIVIDAD' and etiqueta = 'Corte de materia prima') = 0,
   'y ya no aparece para continuarlo');
+-- Pero a un día anterior sí: lo que lleva se mira a ese día, con el tope del día siguiente.
+select test.afirmar(
+  (select avance = 5 and tope = 9 and tope_fecha = pg_temp.dia(3)
+     from public.reporte_diario_opciones(pg_temp.txt('codigo'), null, pg_temp.dia(4))
+    where tipo = 'ACTIVIDAD' and etiqueta = 'Corte de materia prima'),
+  'el miércoles todavía ofrece el corte: iba en 5 y el jueves fue 9');
+select test.afirmar(
+  (select count(*) from public.reporte_diario_opciones(pg_temp.txt('codigo'), null, pg_temp.dia(3))
+    where tipo = 'ACTIVIDAD' and etiqueta = 'Corte de materia prima') = 0,
+  'el jueves no se ofrece: entre el 9 de ese día y el 10 del viernes no cabe otro avance');
 -- Terminado, el nombre queda libre para una actividad nueva.
 select pg_temp.subir(gen_random_uuid()::text, 0, jsonb_build_array(
   pg_temp.trabajo('descripcion', 'Corte de materia prima', 5)));
@@ -452,6 +462,10 @@ set local role authenticated;
 select test.debe_fallar(pg_temp.reporte_sql(gen_random_uuid()::text, 0, jsonb_build_array(
     pg_temp.trabajo('actividad_id', (select id::text from public.codigo_actividades where plano_id = pg_temp.id('p1')), 90))),
   'la actividad de un plano no entra por su id', 'elígelo como tal');
+-- Dos actividades nuevas con el mismo nombre en un reporte son una sola, aunque la primera vaya en 100.
+select test.debe_fallar(pg_temp.reporte_sql(gen_random_uuid()::text, 0, jsonb_build_array(
+    pg_temp.trabajo('descripcion', 'Pulido de soldaduras', 100), pg_temp.trabajo('descripcion', 'pulido de soldaduras', 20, false))),
+  'la misma actividad nueva dos veces en el reporte', 'repite');
 reset role;
 -- Diseño anula el cajón: su actividad deja de contar, porque ya nadie la puede reportar ni cerrar.
 select pg_temp.como('gerente');

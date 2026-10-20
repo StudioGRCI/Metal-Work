@@ -176,7 +176,7 @@ async function Vista({ vista, codigo }: { vista: VistaDiseno; codigo: string }) 
 }
 
 async function VistaPlanos({ codigo }: { codigo: string }) {
-  const [planos, areas] = await Promise.all([planosDeCodigo(codigo), areasDePlanos()])
+  const [planos, areas, etapas] = await Promise.all([planosDeCodigo(codigo), areasDePlanos(), etapasDeCodigo(codigo)])
   const conHistoria = planos.filter((p) => p.revisiones > 1)
   const repartido = planos.filter((p) => !p.anulado_en).reduce((suma, p) => suma + (p.peso ?? 0), 0)
   const libre = Math.max(0, Math.round((100 - repartido) * 100) / 100)
@@ -200,7 +200,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
           descripcion={
             planos.length === 0
               ? undefined
-              : `Repartido entre los planos: ${cantidad(repartido)} % de la unidad${libre > 0 ? ` · el ${cantidad(libre)} % restante se mide por las etapas` : ''}${
+              : `Repartido entre los planos: ${cantidad(repartido)} % de la unidad${libre > 0 ? ` · el ${cantidad(libre)} % restante se mide por ${etapas.length > 0 ? 'las etapas' : 'las actividades del reporte diario'}` : ''}${
                   sinPeso > 0 ? ` · ${sinPeso} sin porcentaje` : ''
                 }`
           }
@@ -283,7 +283,7 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
 }
 
 async function VistaEtapas({ codigo }: { codigo: string }) {
-  const [etapas, areas] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas()])
+  const [etapas, areas, planos] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas(), planosDeCodigo(codigo)])
   const hoy = hoyLima()
   return (
     <>
@@ -308,6 +308,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
             <ListaEtapas
               etapas={etapas}
               hoy={hoy}
+              conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)}
               acciones={(e, i) => (
                 <>
                   <MarcarEtapa etapa={e} hoy={hoy} />

@@ -235,12 +235,23 @@ export type OpcionDeTrabajo = {
   ultima_fecha: string | null
   /** El porcentaje de la unidad, en los planos. */
   peso: number | null
+  /** El menor avance de un día posterior al del reporte, que este día no puede alcanzar. */
+  tope: number | null
+  tope_fecha: string | null
 }
 
-/** Lo que el supervisor puede elegir en un código; `corrige`: su reporte observado, que no se cuenta. */
-export async function opcionesDeTrabajo(codigo: string, corrige: string | null): Promise<OpcionDeTrabajo[]> {
+/**
+ * Lo que el supervisor puede elegir en un código, con lo que llevaba cada cosa
+ * el día del reporte (`fecha`; hoy si no se da). `corrige`: su reporte
+ * observado, que no se cuenta.
+ */
+export async function opcionesDeTrabajo(codigo: string, corrige: string | null, fecha: string | null): Promise<OpcionDeTrabajo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('reporte_diario_opciones', { p_codigo: codigo, p_corrige: corrige ?? undefined })
+  const { data, error } = await supabase.rpc('reporte_diario_opciones', {
+    p_codigo: codigo,
+    p_corrige: corrige ?? undefined,
+    p_fecha: fecha ?? undefined,
+  })
   if (error) throw new Error(`No se pudo leer sobre qué se reporta en ${codigo}: ${error.message}`)
   return (data ?? []).flatMap((o) =>
     o.id && (o.tipo === 'PLANO' || o.tipo === 'SUBCONTRATO' || o.tipo === 'ACTIVIDAD')
@@ -253,6 +264,8 @@ export async function opcionesDeTrabajo(codigo: string, corrige: string | null):
             avance: o.avance === null ? null : Number(o.avance),
             ultima_fecha: o.ultima_fecha,
             peso: o.peso === null ? null : Number(o.peso),
+            tope: o.tope === null ? null : Number(o.tope),
+            tope_fecha: o.tope_fecha,
           },
         ]
       : [],

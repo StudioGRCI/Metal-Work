@@ -349,7 +349,8 @@ create index if not exists idx_reporte_diario_trabajos_actividad
 -- actividad de un plano que Diseño anuló o de un subcontrato ANULADO ya no
 -- cuenta: nadie puede reportarla ni cerrarla, y sumaría para siempre.
 -- p_sin: un reporte que no se cuenta (el observado que el supervisor está corrigiendo).
-create or replace function public.codigo_interno_actividades_estado(p_codigo text, p_sin uuid default null)
+-- p_hasta: solo los reportes hasta ese día (lo que llevaba cada actividad ese día).
+create or replace function public.codigo_interno_actividades_estado(p_codigo text, p_sin uuid default null, p_hasta date default null)
 returns table (clave text, actividad_id uuid, codigo text, area_id uuid, descripcion text, plano_id uuid,
                subcontrato_id uuid, avance numeric, ultima_fecha date, primera_fecha date, reportes integer)
 language sql stable set search_path to 'public' as $$
@@ -362,7 +363,7 @@ language sql stable set search_path to 'public' as $$
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
       left join public.codigo_actividades a on a.id = t.actividad_id
-     where r.anulado_en is null and r.id is distinct from p_sin
+     where r.anulado_en is null and r.id is distinct from p_sin and (p_hasta is null or r.fecha <= p_hasta)
        and (public.normalizar_codigo_interno(p_codigo) is null
             or public.normalizar_codigo_interno(r.codigo_interno) = public.normalizar_codigo_interno(p_codigo))
   ), ultimo as (
@@ -383,9 +384,9 @@ language sql stable set search_path to 'public' as $$
      and (u.plano_id is null or pl.anulado_en is null)
      and (u.subcontrato_id is null or s.estado is distinct from 'ANULADO')
 $$;
-comment on function public.codigo_interno_actividades_estado(text, uuid) is
-  'El último avance de cada actividad de los reportes diarios vigentes de un código (o de todos), con su área, su plano o subcontrato y cuántos reportes la llevan; sin el reporte p_sin, si se da, ni las de un plano anulado o un subcontrato ANULADO. Los trabajos de antes, sin actividad, por su texto y su área. No pide permiso: la llaman las funciones del avance.';
-revoke all on function public.codigo_interno_actividades_estado(text, uuid) from public, anon, authenticated;
+comment on function public.codigo_interno_actividades_estado(text, uuid, date) is
+  'El último avance de cada actividad de los reportes diarios vigentes de un código (o de todos), con su área, su plano o subcontrato y cuántos reportes la llevan; sin el reporte p_sin, si se da, solo hasta el día p_hasta, si se da, y sin las de un plano anulado o un subcontrato ANULADO. Los trabajos de antes, sin actividad, por su texto y su área. No pide permiso: la llaman las funciones del avance.';
+revoke all on function public.codigo_interno_actividades_estado(text, uuid, date) from public, anon, authenticated;
 
 -- 6. Subir el reporte, con sus actividades ----------------------------------------------------------
 -- La misma función de 20261014201000, con el trabajo atado a su actividad, el
@@ -554,6 +555,10 @@ begin
       -- Una actividad propia que ya está abierta con el mismo nombre se continúa, no se abre otra.
       -- PLANTA no lleva avance: su trabajo de cada día va suelto.
       v_clave := lower(v_tdesc);
+      if exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = p_id and lower(t.descripcion) = v_clave) then
+        raise exception 'El trabajo % repite «%»: cada actividad va una sola vez en el reporte.', v_orden, v_tdesc
+          using errcode = 'check_violation';
+      end if;
       select a.* into v_act
         from public.codigo_actividades a
         join public.codigo_interno_actividades_estado(v_norma) e on e.actividad_id = a.id
@@ -581,6 +586,8 @@ begin
     v_tdesc := v_act.descripcion;
 
     -- Solo hacia arriba: más que el último reporte anterior, menos que uno de un día posterior.
+    -- La fila de la actividad se toma primero: dos supervisores a la vez no se pisan el avance.
+    perform 1 from public.codigo_actividades where id = v_act.id for update;
     select t.avance, r.fecha into v_antes, v_antes_el
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
@@ -679,8 +686,13 @@ revoke all on function public.reporte_diario_insertar(uuid, date, text, text, te
 -- Con el avance que llevan y la fecha de su último reporte: el formulario pide más.
 -- p_corrige: el reporte observado que el supervisor corrige. Se cuenta sin él,
 -- como lo hará la base al subirlo (lo anula primero); solo si es suyo y está observado.
-create or replace function public.reporte_diario_opciones(p_codigo text, p_corrige uuid default null)
-returns table (tipo text, id uuid, etiqueta text, area text, avance numeric, ultima_fecha date, peso numeric)
+-- p_fecha: el día del reporte. Lo que lleva cada cosa se mira a ese día, no a hoy:
+-- un reporte olvidado del miércoles, o la corrección de uno observado, sigue
+-- pudiendo ir sobre un plano que el viernes llegó al 100 %. tope y tope_fecha:
+-- el menor avance de un día posterior, que este día no puede alcanzar.
+create or replace function public.reporte_diario_opciones(p_codigo text, p_corrige uuid default null, p_fecha date default null)
+returns table (tipo text, id uuid, etiqueta text, area text, avance numeric, ultima_fecha date, peso numeric,
+               tope numeric, tope_fecha date)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 declare
@@ -695,42 +707,58 @@ begin
   select r.id into v_sin from public.reportes_diarios r
    where r.id = p_corrige and r.registrado_por = v_yo and r.observado_en is not null and r.anulado_en is null;
   return query
-  with estado as (select * from public.codigo_interno_actividades_estado(v_codigo, v_sin))
+  with estado as (
+    select * from public.codigo_interno_actividades_estado(v_codigo, v_sin, p_fecha)
+  ), siguiente as (
+    select distinct on (t.actividad_id) t.actividad_id, t.avance::numeric as tope, r.fecha as tope_fecha
+      from public.reporte_diario_trabajos t
+      join public.reportes_diarios r on r.id = t.reporte_id
+     where p_fecha is not null and r.fecha > p_fecha and r.anulado_en is null and r.id is distinct from v_sin
+       and t.actividad_id is not null and public.normalizar_codigo_interno(r.codigo_interno) = v_codigo
+     order by t.actividad_id, t.avance, r.fecha
+  )
   select 'PLANO'::text, p.id, ('Plano ' || p.numero || ' · ' || p.nombre)::text, a.nombre::text,
-         e.avance, e.ultima_fecha, p.peso
+         e.avance, e.ultima_fecha, p.peso, sg.tope, sg.tope_fecha
     from public.codigo_planos p
     join public.areas a on a.id = p.area_id
     left join public.codigo_actividades x on x.plano_id = p.id
     left join estado e on e.actividad_id = x.id
+    left join siguiente sg on sg.actividad_id = x.id
    where p.codigo_interno = v_codigo and p.anulado_en is null and public.puede_hoja_de_area(p.area_id)
-     and coalesce(e.avance, 0) < 100
+     and coalesce(e.avance, 0) < 100 and (sg.tope is null or coalesce(e.avance, -1) + 1 < sg.tope)
   union all
   select 'SUBCONTRATO', s.id, ('Subcontrato ' || s.numero || ' · ' || s.descripcion)::text, a.nombre::text,
-         e.avance, e.ultima_fecha, null::numeric
+         e.avance, e.ultima_fecha, null::numeric, sg.tope, sg.tope_fecha
     from public.subcontratos s
     join public.areas a on a.id = s.area_id
     left join public.codigo_actividades x on x.subcontrato_id = s.id
     left join estado e on e.actividad_id = x.id
+    left join siguiente sg on sg.actividad_id = x.id
    where public.normalizar_codigo_interno(s.codigo_interno) = v_codigo and s.estado = 'VIGENTE'
      and public.puede_hoja_de_area(s.area_id) and coalesce(e.avance, 0) < 100
+     and (sg.tope is null or coalesce(e.avance, -1) + 1 < sg.tope)
   union all
-  -- La que se abrió en el mismo reporte que se corrige no tiene otro reporte, y se ofrece igual.
-  select 'ACTIVIDAD', x.id, x.descripcion, a.nombre::text, e.avance, e.ultima_fecha, null::numeric
+  -- La que todavía no tenía reporte a ese día se ofrece si se abrió en el reporte
+  -- que se corrige o si tiene uno después (el día olvidado va antes que ese).
+  select 'ACTIVIDAD', x.id, x.descripcion, a.nombre::text, e.avance, e.ultima_fecha, null::numeric, sg.tope, sg.tope_fecha
     from public.codigo_actividades x
     left join estado e on e.actividad_id = x.id
+    left join siguiente sg on sg.actividad_id = x.id
     left join public.areas a on a.id = x.area_id
    where x.codigo_interno = v_codigo and x.codigo_interno <> 'PLANTA' and x.plano_id is null and x.subcontrato_id is null
      and (e.avance < 100
           or (e.actividad_id is null
-              and exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = v_sin and t.actividad_id = x.id)))
+              and (sg.actividad_id is not null
+                   or exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = v_sin and t.actividad_id = x.id))))
+     and (sg.tope is null or coalesce(e.avance, -1) + 1 < sg.tope)
      and (x.creado_por = v_yo or (x.area_id is not null and public.puede_hoja_de_area(x.area_id)))
    order by 1, 3;
 end;
 $$;
-comment on function public.reporte_diario_opciones(text, uuid) is
-  'Sobre qué puede reportar el supervisor en un código: los planos vigentes y los subcontratos vigentes de su área, y sus actividades propias abiertas, con el avance que llevan y su último reporte (sin su reporte observado p_corrige, si lo está corrigiendo). Exige reporte_diario.registrar.';
-revoke all on function public.reporte_diario_opciones(text, uuid) from public, anon;
-grant execute on function public.reporte_diario_opciones(text, uuid) to authenticated;
+comment on function public.reporte_diario_opciones(text, uuid, date) is
+  'Sobre qué puede reportar el supervisor en un código: los planos vigentes y los subcontratos vigentes de su área, y sus actividades propias abiertas, con el avance que llevan al día p_fecha (o hoy), su último reporte y el tope de un día posterior (sin su reporte observado p_corrige, si lo está corrigiendo). Exige reporte_diario.registrar.';
+revoke all on function public.reporte_diario_opciones(text, uuid, date) from public, anon;
+grant execute on function public.reporte_diario_opciones(text, uuid, date) to authenticated;
 
 -- 8. El aporte de cada plano -------------------------------------------------------------------------
 -- Cada plano vigente con peso: cuánto avanzó y cuánto aporta a la unidad. Vale

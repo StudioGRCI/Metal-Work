@@ -10831,6 +10831,7 @@ export type Database = {
         Args: {
           p_codigo: string | null
           p_sin?: string | null
+          p_hasta?: string | null
         }
         Returns: {
           clave: string | null
@@ -13543,6 +13544,7 @@ export type Database = {
         Args: {
           p_codigo: string | null
           p_corrige?: string | null
+          p_fecha?: string | null
         }
         Returns: {
           tipo: string | null
@@ -13552,6 +13554,8 @@ export type Database = {
           avance: number | null
           ultima_fecha: string | null
           peso: number | null
+          tope: number | null
+          tope_fecha: string | null
         }[]
       }
       reporte_diario_personal_disponible: {

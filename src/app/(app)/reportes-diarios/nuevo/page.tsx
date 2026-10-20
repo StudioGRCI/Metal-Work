@@ -77,7 +77,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       }
     : null
   // Al corregir, lo que se puede elegir se cuenta sin el observado, que se va a reemplazar.
-  const opcionesIniciales = corrige ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza) : []
+  const opcionesIniciales = corrige ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza, corrige.fecha) : []
   // El corregido conserva su día aunque ya pasaran los 7: la base lo deja.
   const minimo = sumarDias(hoy, -DIAS_PARA_EL_REPORTE)
 

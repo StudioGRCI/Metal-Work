@@ -20,7 +20,7 @@ import { hoyLima } from '@/lib/format'
  */
 
 export async function VistaEtapas({ codigo }: { codigo: string }) {
-  const etapas = await etapasDeCodigo(codigo)
+  const [etapas, planos] = await Promise.all([etapasDeCodigo(codigo), planosDeCodigo(codigo)])
   const hoy = hoyLima()
   return (
     <Tarjeta>
@@ -33,7 +33,7 @@ export async function VistaEtapas({ codigo }: { codigo: string }) {
         {etapas.length === 0 ? (
           <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas de este código. Las carga en «Control de etapas».</p>
         ) : (
-          <ListaEtapas etapas={etapas} hoy={hoy} />
+          <ListaEtapas etapas={etapas} hoy={hoy} conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>
