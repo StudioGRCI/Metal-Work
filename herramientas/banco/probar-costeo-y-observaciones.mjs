@@ -207,7 +207,8 @@ const codigoB = 'PLANTA'
 // ------------------------------------------------ 4. Gerencia consulta
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
-  comprobar((await pagina.locator('nav a[href="/rrhh/observaciones"]').count()) >= 1, 'Gerencia tiene Observaciones en su menú')
+  // Desde el 2026-10-15 las observaciones salieron de su menú: las abre por su dirección.
+  comprobar((await pagina.locator('nav a[href="/rrhh/observaciones"]').count()) === 0, 'Gerencia ya no tiene Observaciones en su menú')
   comprobar((await pagina.locator('nav a[href="/rrhh/costeo"]').count()) === 0, 'Gerencia no tiene Costeo en su menú')
   await pagina.goto(`${BASE}/rrhh/observaciones`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator('h1', { hasText: 'Observaciones y amonestaciones' }).count()) === 1, 'Gerencia abre las observaciones')
