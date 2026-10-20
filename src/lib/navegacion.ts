@@ -367,14 +367,15 @@ export const NAVEGACION = [
         descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
         disponible: true,
       },
-      // Los subcontratos que Administración registró para Producción o Acabados
-      // (migración 20261017100000): el supervisor de esa área los consulta, sin montos.
+      // Los subcontratos que Administración registró para Maestranza, Producción o
+      // Acabados (migraciones 20261017100000 y 20261020160000): el supervisor de esa
+      // área los ve sin montos, con su inicio, su fin y el avance que reporta.
       {
         titulo: 'Subcontratos',
         ruta: '/subcontratos/area',
         icono: Handshake,
         permiso: 'subcontratos.area',
-        descripcion: 'Los trabajos de terceros que Administración registró para tu área, por código interno, con sus recibos y si ya se pagaron; sin montos',
+        descripcion: 'Los trabajos de terceros para tu área, por código interno: su inicio, su fin y el avance que reportas; sin montos',
         disponible: true,
       },
       // Supervisión general sigue todas las áreas sin la OT (2026-10-15): lo que

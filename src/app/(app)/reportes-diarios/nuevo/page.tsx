@@ -4,7 +4,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { opcionesDeTrabajo, personalParaReporte, reporteDiario } from '@/lib/datos/reportes-diarios'
 import { codigosInternos } from '@/lib/datos/rrhh'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { AREA_QUE_VALIDA, DIAS_PARA_EL_REPORTE, estadoDeReporte } from '@/lib/dominio/reporte-diario'
+import { AREA_QUE_VALIDA, DIAS_PARA_EL_REPORTE, MAXIMO_CODIGOS_REPORTE, estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -17,7 +17,9 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/reportes-diarios/nuevo'>) {
   const perfil = await exigirPermiso('reporte_diario.registrar')
   const hoy = hoyLima()
-  const { corrige: idCorrige } = await searchParams
+  const { corrige: idCorrige, codigo: codigoPedido } = await searchParams
+  // Desde Subcontratos, «Reportar avance» abre el reporte con su código escrito.
+  const codigoInicial = typeof codigoPedido === 'string' && codigoPedido.trim().length >= 2 ? codigoPedido.trim().slice(0, 60).toUpperCase() : ''
   const [personal, codigos, observado] = await Promise.all([
     personalParaReporte(),
     codigosInternos(),
@@ -77,7 +79,11 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       }
     : null
   // Al corregir, lo que se puede elegir se cuenta sin el observado, que se va a reemplazar.
-  const opcionesIniciales = corrige ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza, corrige.fecha) : []
+  const opcionesIniciales = corrige
+    ? await opcionesDeTrabajo(corrige.codigo_interno, corrige.reemplaza, corrige.fecha)
+    : codigoInicial
+      ? await opcionesDeTrabajo(codigoInicial, null, hoy).catch(() => [])
+      : []
   // El corregido conserva su día aunque ya pasaran los 7: la base lo deja.
   const minimo = sumarDias(hoy, -DIAS_PARA_EL_REPORTE)
 
@@ -97,7 +103,7 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
         ayuda={
           corrige
             ? 'Se abre con lo que ya subiste y sus fotos. Corrige lo observado y súbelo: el observado queda anulado con la observación como motivo, y Gerencia y Recursos Humanos validan este.'
-            : 'Un reporte por código interno: qué se hizo, cuánto avanzó, quién trabajó y cuántas horas. Las horas pasan solas al costeo de Recursos Humanos.'
+            : 'Lo que hizo tu gente en el día: en cada código interno, qué se hizo, cuánto avanzó, quién trabajó y cuántas horas. Si trabajaron en varios códigos, agrega cada uno al mismo reporte. Se guarda un reporte por código y las horas pasan solas al costeo de cada uno.'
         }
         migas={[{ titulo: 'Reporte diario', ruta: '/reportes-diarios' }, { titulo: corrige ? 'Corregir' : 'Nuevo' }]}
       />
@@ -109,13 +115,14 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       <Tarjeta className="max-w-3xl">
         <TarjetaCuerpo>
           <FormularioReporteDiario
-            id={crypto.randomUUID()}
+            ids={Array.from({ length: corrige ? 1 : MAXIMO_CODIGOS_REPORTE }, () => crypto.randomUUID())}
             cuentaId={perfil.id}
             hoy={hoy}
             minimo={corrige && corrige.fecha < minimo ? corrige.fecha : minimo}
             personal={opciones}
             codigos={codigos}
             corrige={corrige}
+            codigoInicial={corrige ? '' : codigoInicial}
             opcionesIniciales={opcionesIniciales}
           />
         </TarjetaCuerpo>

@@ -20,6 +20,7 @@ import {
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { fechaHora, fechaLarga, hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { AnularReporte } from './anular'
 import { ValidarReporte } from './validacion'
@@ -88,10 +89,29 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
 
       {subido === '1' && !anulado && (
         <p role="status" className="mb-4 rounded-lg border border-exito bg-exito-suave px-3 py-2 text-sm text-texto">
-          {sinHoras
-            ? `Reporte subido, sin horas de tu gente: el avance queda en ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan.`
-            : `Reporte subido. Sus horas van al costeo de Recursos Humanos con el código ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan para la planilla diaria.`}
+          {r.del_mismo_envio.length > 0
+            ? `Reporte subido con ${r.del_mismo_envio.length + 1} códigos: cada uno queda como su propio reporte, sus horas van al costeo de su código, y Gerencia y Recursos Humanos validan cada uno.`
+            : sinHoras
+              ? `Reporte subido, sin horas de tu gente: el avance queda en ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan.`
+              : `Reporte subido. Sus horas van al costeo de Recursos Humanos con el código ${r.codigo_interno}, y Gerencia y Recursos Humanos lo validan para la planilla diaria.`}
         </p>
+      )}
+      {r.del_mismo_envio.length > 0 && (
+        <nav aria-label="Códigos del mismo reporte" className="mb-4 flex flex-wrap items-center gap-2 text-sm" data-mismo-envio>
+          <span className="text-texto-suave">Subió junto con:</span>
+          {r.del_mismo_envio.map((h) => (
+            <Link
+              key={h.id}
+              href={`/reportes-diarios/${h.id}`}
+              className={cn(
+                'inline-flex min-h-11 items-center rounded-full border border-borde px-3 font-mono text-xs text-acento hover:bg-superficie-2 sm:min-h-8',
+                h.anulado_en && 'text-texto-suave line-through',
+              )}
+            >
+              {h.codigo_interno}
+            </Link>
+          ))}
+        </nav>
       )}
       {r.observado_en && (
         <div className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-observacion>

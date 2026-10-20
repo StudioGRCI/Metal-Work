@@ -265,10 +265,11 @@ export async function recibosParaTesoreria(): Promise<ReciboParaPagar[]> {
   }))
 }
 
-/** Un recibo como lo ve el supervisor del área: sin montos ni archivo. */
-export type ReciboDelArea = { numero: string; fecha_emision: string; concepto: string | null; pagado: boolean }
-
-/** Un subcontrato como lo ve el supervisor de su área (migración 20261017100000): sin montos. */
+/**
+ * Un subcontrato como lo ve el supervisor de su área (migración
+ * 20261020160000): sin montos ni recibos, con su inicio, su fin y el avance
+ * que su área reportó en el reporte diario.
+ */
 export type SubcontratoDelArea = {
   id: string
   numero: string
@@ -280,26 +281,31 @@ export type SubcontratoDelArea = {
   subcontratista: string
   fecha_inicio: string | null
   fecha_fin: string | null
-  creado_en: string
   terminado_en: string | null
-  recibos: ReciboDelArea[]
+  /** El último avance reportado; `null` si nadie lo reportó. Terminado, 100. */
+  avance: number | null
+  ultimo_reporte: string | null
+  reportes: number
 }
 
 /**
- * Los subcontratos del área de quien mira, Producción o Acabados, por código
- * interno. Los da una función de la base que exige `subcontratos.area` y no
- * devuelve ni un monto: el supervisor no lee las tablas.
+ * Los subcontratos del área de quien mira (Maestranza, Producción o Acabados),
+ * por código interno. Los da una función de la base que exige
+ * `subcontratos.area` y no devuelve ni un monto: el supervisor no lee las tablas.
  */
-export async function subcontratosDeMiArea(): Promise<SubcontratoDelArea[]> {
+export async function subcontratosDelArea(): Promise<SubcontratoDelArea[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('subcontratos_de_mi_area')
+  const { data, error } = await supabase.rpc('subcontratos_del_area')
   if (error) throw new Error(`No se pudieron leer los subcontratos de tu área: ${error.message}`)
-  // La función devuelve todo con valor (las columnas salen de llaves no nulas); los tipos generados no lo saben.
-  type Fila = Omit<SubcontratoDelArea, 'recibos'> & { recibos: ReciboDelArea[] | null }
-  return ((data ?? []) as unknown as Fila[]).map((s) => ({ ...s, recibos: Array.isArray(s.recibos) ? s.recibos : [] }))
+  // La función devuelve con valor todo lo que sale de llaves no nulas; los tipos generados no lo saben.
+  return ((data ?? []) as unknown as SubcontratoDelArea[]).map((s) => ({
+    ...s,
+    avance: s.avance === null ? null : Number(s.avance),
+    reportes: Number(s.reportes ?? 0),
+  }))
 }
 
-/** Producción y Acabados, con su id: para saber si el área de quien mira recibe subcontratos. */
+/** Las áreas que reciben subcontratos, con su id: para nombrar la de quien mira. */
 export async function areasDeSubcontratos(): Promise<{ id: string; codigo: string; nombre: string }[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
