@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 
 import type { TonoIndicador } from '@/components/ui/indicador'
-import { avanceDeLosCodigos, listarCodigosInternos } from '@/lib/datos/codigos-internos'
+import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
@@ -347,16 +347,19 @@ const CIFRAS = {
 
   // Gerencia: los códigos internos
   codigos_en_trabajo: {
-    ruta: '/codigos-internos',
+    // Cuenta abiertos y cerrados: la lista, también.
+    ruta: '/codigos-internos?costeo=todos',
     calcular: async (c) => {
-      const codigos = await c.una('codigos', () => listarCodigosInternos())
+      // Con los que solo tienen planos o etapas de Diseño, como la lista.
+      const codigos = sumarCodigosDeDiseno(await c.una('codigos', () => listarCodigosInternos()), await deDiseno(c))
       const desde = sumarDias(c.hoy, -30)
       const activos = codigos.filter((k) => k.ultima_actividad && k.ultima_actividad.slice(0, 10) >= desde).length
       return { titulo: 'Códigos con movimiento', valor: String(activos), pie: `en 30 días · ${codigos.length} en total`, icono: Hash, tono: 'acento' }
     },
   },
   costo_de_codigos: {
-    ruta: '/codigos-internos?ver=costo',
+    // La tarjeta suma abiertos y cerrados: la lista, también.
+    ruta: '/codigos-internos?costeo=todos&ver=costo',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const pen = codigos.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
@@ -366,7 +369,7 @@ const CIFRAS = {
     },
   },
   codigos_por_completar: {
-    ruta: '/codigos-internos?ver=por-completar',
+    ruta: '/codigos-internos?costeo=todos&ver=por-completar',
     calcular: async (c) => {
       const codigos = await c.una('codigos', () => listarCodigosInternos())
       const n = codigos.filter((k) => k.horas_sin_costo > 0 || k.materiales_sin_precio > 0 || k.compras_sin_precio > 0 || k.lineas_sin_cambio > 0).length
@@ -374,7 +377,7 @@ const CIFRAS = {
     },
   },
   facturado_y_cobrado: {
-    ruta: '/codigos-internos',
+    ruta: '/codigos-internos?costeo=todos',
     calcular: async (c) => {
       const r = await todas((d, h) => c.supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo, cancelada').is('anulada_en', null).order('id').range(d, h))
       fallo(r)
@@ -615,11 +618,16 @@ const CIFRAS = {
     ruta: '/planos',
     calcular: async (c) => {
       const [planos, etapas] = await Promise.all([planosDeCodigo(null, { conPeso: false }), etapasDeCodigo(null)])
-      const vigentes = planos.filter((p) => !p.anulado_en).length
-      const enCurso = etapas.filter(
-        (e) => e.area_id !== null && puedeHojaDeArea(c.perfil, e.area_id) && !e.fin_real && (e.inicio_real || e.inicio_plan),
-      ).length
-      return { titulo: 'Planos de tu área', valor: String(vigentes), pie: plural(enCurso, 'etapa abierta', 'etapas abiertas'), icono: DraftingCompass }
+      // La misma cuenta con que abre la pantalla: los códigos con un plano por recibir o una etapa sin terminar.
+      const porRecibir = planos.filter((p) => !p.anulado_en && !p.recibido_en)
+      const abiertas = etapas.filter((e) => e.area_id !== null && puedeHojaDeArea(c.perfil, e.area_id) && !e.fin_real)
+      const porHacer = new Set([...porRecibir.map((p) => p.codigo), ...abiertas.map((e) => e.codigo)]).size
+      return {
+        titulo: 'Códigos por hacer',
+        valor: String(porHacer),
+        pie: `${plural(porRecibir.length, 'plano por recibir', 'planos por recibir')} · ${plural(abiertas.length, 'etapa abierta', 'etapas abiertas')}`,
+        icono: DraftingCompass,
+      }
     },
   },
 

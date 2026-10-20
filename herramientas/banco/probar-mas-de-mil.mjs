@@ -7,10 +7,13 @@
  *      total del mes es el de la base.
  *   2. Gerencia, en el costeo de una unidad con horas en 1 100 días: la mano
  *      de obra suma lo de la base.
- *   3. Supervisión de Maestranza, en Planos y etapas: ve la etapa del último
- *      código de 1 100, en orden alfabético.
+ *   3. Supervisión de Maestranza, en Planos y etapas: de entrada ve solo los
+ *      códigos con algo por hacer, el último de 1 100 entre ellos, y los
+ *      terminados aparte, de cincuenta en cincuenta y con el buscador.
  *   4. Gerencia abre el código con el cambio más viejo, el último de la lista
  *      de 1 100: no le dice que no existe.
+ *   5. Gerencia, en Códigos internos: de entrada ve los abiertos, y los de
+ *      costeo cerrado aparte, de cincuenta en cincuenta y con el buscador.
  *
  * Los datos se siembran como postgres con un código distinto en cada corrida y
  * se borran al final, aunque algo falle. Necesita las cuentas
@@ -57,6 +60,12 @@ const CUANTOS = 1100
 const MES = '2025-03'
 const ultimoCodigo = `${prefijo}${String(CUANTOS).padStart(4, '0')}`
 const masViejo = `${prefijo}0001`
+// Los primeros, con su etapa terminada y el costeo cerrado; los últimos, abiertos.
+const TERMINADOS = 1040
+const ABIERTOS = CUANTOS - TERMINADOS
+const POR_PAGINA = 50
+// Una página que se pinta entera con mil códigos tardaba medio minuto en `next dev`.
+const RESPUESTA_MAXIMA_MS = 15000
 const TRABAJADOR = randomUUID()
 const DNI = String(Math.floor(Math.random() * 1e8)).padStart(8, '9')
 
@@ -86,11 +95,25 @@ async function sembrar() {
     [trabajador, LARGO, rrhh],
   )
   await base.query(
-    `insert into codigo_etapas (codigo_interno, orden, nombre, area_id, inicio_plan, fin_plan, creado_por, creado_en, actualizado_en)
-     select $1 || lpad(i::text, 4, '0'), 1, 'Habilitado', $2, current_date, current_date + 10, $3,
+    `insert into codigo_etapas (codigo_interno, orden, nombre, area_id, inicio_plan, fin_plan, inicio_real, fin_real, creado_por, creado_en, actualizado_en)
+     select $1 || lpad(i::text, 4, '0'), 1, 'Habilitado', $2, current_date, current_date + 10,
+            case when i <= ${TERMINADOS} then current_date - 20 end, case when i <= ${TERMINADOS} then current_date - 20 + (i % 15) end, $3,
             now() - make_interval(days => i), case when i = 1 then timestamptz '2001-01-01' else now() - make_interval(mins => i) end
        from generate_series(1, ${CUANTOS}) i`,
     [prefijo, mtz, rrhh],
+  )
+  // Los terminados tienen algo costeado y Gerencia les cerró el costeo.
+  await base.query(
+    `insert into tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, registrado_por)
+     select $1, date '2024-06-15', $2 || lpad(i::text, 4, '0'), 1, 'Prueba de más de mil', 10.5, 10.5, $3
+       from generate_series(1, ${TERMINADOS}) i`,
+    [trabajador, prefijo, rrhh],
+  )
+  const [{ id: gerencia }] = (await base.query(`select id from usuarios where correo = 'gerencia.local@metalwork.test'`)).rows
+  await base.query(
+    `insert into codigo_interno_cierres (codigo, costo_pen, por_fuente, cerrado_por)
+     select $1 || lpad(i::text, 4, '0'), 10.5, '{}'::jsonb, $2 from generate_series(1, ${TERMINADOS}) i`,
+    [prefijo, gerencia],
   )
   await base.query('commit')
 }
@@ -98,13 +121,23 @@ async function sembrar() {
 async function limpiar() {
   await base.query('begin')
   await base.query('set local session_replication_role = replica')
-  await base.query('delete from tareos where codigo_interno in ($1, $2)', [COSTEO, LARGO])
+  await base.query('delete from tareos where codigo_interno in ($1, $2) or codigo_interno like $3', [COSTEO, LARGO, `${prefijo}%`])
+  await base.query('delete from codigo_interno_cierres where codigo like $1', [`${prefijo}%`])
   await base.query('delete from codigo_etapas where codigo_interno like $1', [`${prefijo}%`])
   await base.query('delete from trabajadores where id = $1', [TRABAJADOR])
   await base.query('commit')
 }
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
+
+/** Abre la ruta y devuelve cuánto tardó la página en responder. */
+async function ir(pagina, ruta) {
+  const desde = Date.now()
+  await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+  return Date.now() - desde
+}
+const tarjetas = (pagina) => pagina.locator('main li[data-codigo]').evaluateAll((li) => li.map((l) => l.dataset.codigo))
+const pastilla = async (pagina, texto) => limpio(await pagina.locator('main a[data-filtro]', { hasText: texto }).first().innerText())
 
 async function entrar(correo) {
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
@@ -159,12 +192,74 @@ try {
     await contexto.close()
   }
 
-  // 3. Supervisión de Maestranza: la etapa del último código.
+  // 3. Supervisión de Maestranza: lo que falta hacer, y los terminados aparte.
   {
     const { pagina, contexto } = await entrar('sup.mtz.local@metalwork.test')
-    await pagina.goto(`${BASE}/planos`, { waitUntil: 'networkidle' })
+    const ms = await ir(pagina, '/planos')
+    comprobar(ms < RESPUESTA_MAXIMA_MS, `Planos y etapas responde en ${(ms / 1000).toFixed(1)} s (antes, medio minuto)`)
+    // Con el buscador puesto en los de esta corrida: otros códigos del banco no corren las páginas.
+    await ir(pagina, `/planos?q=${encodeURIComponent(prefijo)}`)
+    const primera = await tarjetas(pagina)
+    comprobar(primera.length === POR_PAGINA, `«Por hacer» pinta ${POR_PAGINA} por página (pintó ${primera.length})`)
+    await ir(pagina, `/planos?q=${encodeURIComponent(prefijo)}&pagina=2`)
+    const vistos = [...primera, ...(await tarjetas(pagina))].filter((c) => c.startsWith(prefijo))
+    comprobar(vistos.includes(ultimoCodigo), `Supervisión de Maestranza ve ${ultimoCodigo}, el último de ${CUANTOS}, en «Por hacer»`)
+    comprobar(vistos.length === ABIERTOS, `«Por hacer» trae los ${ABIERTOS} códigos con la etapa sin terminar (trajo ${vistos.length})`)
+    comprobar(!vistos.includes(masViejo), `${masViejo}, con su etapa terminada, no sale en «Por hacer»`)
+    const terminados = await pastilla(pagina, 'Terminados')
+    comprobar(terminados === `Terminados (${TERMINADOS.toLocaleString('es-PE')})`, `buscando los de esta corrida, la pastilla dice «${terminados}», con los ${TERMINADOS} terminados`)
+
+    const ms2 = await ir(pagina, '/planos?ver=terminados')
+    const pagina1 = await tarjetas(pagina)
+    comprobar(pagina1.length === POR_PAGINA, `«Terminados» pinta ${POR_PAGINA} por página (pintó ${pagina1.length}, en ${(ms2 / 1000).toFixed(1)} s)`)
+    comprobar(pagina1.every((c) => !c.startsWith(prefijo) || Number(c.slice(prefijo.length)) <= TERMINADOS), '«Terminados» no trae ningún código con la etapa abierta')
+    comprobar((await pagina.locator('nav[aria-label="Paginación"] a', { hasText: 'Siguiente' }).count()) === 1, '«Terminados» ofrece la página siguiente')
+    await pagina.locator('nav[aria-label="Paginación"] a', { hasText: 'Siguiente' }).click()
+    await pagina.waitForURL((u) => u.searchParams.get('pagina') === '2')
+    await pagina.waitForLoadState('networkidle')
+    const pagina2 = await tarjetas(pagina)
+    comprobar(pagina2.length > 0 && pagina2.every((c) => !pagina1.includes(c)), `la página 2 trae otros ${pagina2.length} códigos`)
+
+    await ir(pagina, `/planos?ver=terminados&q=${encodeURIComponent(masViejo)}`)
+    comprobar((await tarjetas(pagina)).includes(masViejo), `el buscador encuentra ${masViejo} entre los terminados`)
+    await ir(pagina, `/planos?q=${encodeURIComponent(masViejo)}`)
     const cuerpo = limpio(await pagina.locator('main').innerText())
-    comprobar(cuerpo.includes(ultimoCodigo), `Supervisión de Maestranza ve ${ultimoCodigo}, el último de ${CUANTOS} en Planos y etapas`)
+    comprobar(cuerpo.includes('Ningún código con esta búsqueda'), `buscado en «Por hacer», ${masViejo} dice que mire en las otras pestañas`)
+    await contexto.close()
+  }
+
+  // 5. Gerencia: los códigos abiertos, y los de costeo cerrado aparte.
+  {
+    const [{ n: cerrados }] = await consulta(`select count(*)::int n from codigo_interno_cierres where reabierto_en is null`)
+    const { pagina, contexto } = await entrar('gerencia.local@metalwork.test')
+    const ms = await ir(pagina, '/codigos-internos')
+    comprobar(ms < RESPUESTA_MAXIMA_MS, `Códigos internos responde en ${(ms / 1000).toFixed(1)} s (antes, de 21 a 32 s)`)
+    const vistos = await pagina.locator('main li a[data-codigo]').evaluateAll((a) => a.map((l) => l.dataset.codigo))
+    comprobar(vistos.length === POR_PAGINA, `pinta ${POR_PAGINA} por página (pintó ${vistos.length})`)
+    comprobar(
+      vistos.every((c) => !c.startsWith(prefijo) || Number(c.slice(prefijo.length)) > TERMINADOS),
+      'de entrada no sale ningún código con el costeo cerrado',
+    )
+    comprobar((await pagina.locator('main li', { hasText: 'Costeo cerrado' }).count()) === 0, 'ninguna fila dice «Costeo cerrado»')
+    const deCerrados = await pastilla(pagina, 'Costeo cerrado')
+    comprobar(deCerrados === `Costeo cerrado (${cerrados.toLocaleString('es-PE')})`, `la pastilla dice «${deCerrados}» y la base tiene ${cerrados} cerrados`)
+
+    await ir(pagina, '/codigos-internos?costeo=cerrados')
+    const filas = await pagina.locator('main li a[data-codigo]').count()
+    const conInsignia = await pagina.locator('main li', { hasText: 'Costeo cerrado' }).count()
+    comprobar(filas === POR_PAGINA && conInsignia === filas, `«Costeo cerrado» pinta ${filas}, todos con su insignia (${conInsignia})`)
+
+    await ir(pagina, `/codigos-internos?q=${encodeURIComponent(masViejo)}`)
+    const cuerpo = limpio(await pagina.locator('main').innerText())
+    comprobar(cuerpo.includes('Mira en «Costeo cerrado» (1)'), `buscado entre los abiertos, ${masViejo} avisa que está en «Costeo cerrado»`)
+    await ir(pagina, `/codigos-internos?costeo=cerrados&q=${encodeURIComponent(masViejo)}`)
+    const encontrado = await pagina
+      .locator(`main li a[data-codigo="${masViejo}"]`)
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false)
+    comprobar(encontrado, `el buscador encuentra ${masViejo} entre los de costeo cerrado`)
+    if (!encontrado) console.log(`    vio en ${pagina.url()}: ${limpio(await pagina.locator('main').innerText()).slice(0, 400)}`)
     await contexto.close()
   }
 } catch (e) {
