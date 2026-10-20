@@ -15,6 +15,8 @@ test('las palabras salen sin tildes, sin signos y en minúsculas', () => {
 test('la letra suelta no se busca si hay otras, y la sigla del final no se pierde', () => {
   assert.deepEqual(palabrasDeBusqueda('Transportes Peña y Núñez S.A.C.'), ['transportes', 'pena', 'nunez', 'sac'])
   assert.deepEqual(palabrasDeBusqueda('y'), ['y'])
+  assert.deepEqual(palabrasDeBusqueda('Transportes de Peña'), ['transportes', 'pena'])
+  assert.deepEqual(palabrasDeBusqueda('de'), ['de'])
   assert.deepEqual(palabrasDeBusqueda('tubo 2 x 1/4'), ['tubo', '2', '14'])
   // Una palabra larga con guion o punto son dos: la base las encuentra sueltas.
   assert.deepEqual(palabrasDeBusqueda('Mercedes-Benz'), ['mercedes', 'benz'])

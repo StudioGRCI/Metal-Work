@@ -123,6 +123,7 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
                 persona={persona}
                 catalogos={catalogos}
                 gestiona={gestiona}
+                propia={persona.id === perfil.id}
               />
             ))}
           </tbody>

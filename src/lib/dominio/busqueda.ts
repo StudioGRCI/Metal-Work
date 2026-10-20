@@ -30,11 +30,13 @@ function trozos(texto: string): string[] {
 /**
  * Las palabras que se buscan, en minúsculas y sin tildes; «S.A.C.» es una sola
  * palabra, «sac», y no tres letras sueltas que están en casi todo. Una letra
- * sola —la «y» de «Peña y Núñez»— no se busca si hay otras: está en todo.
+ * sola —la «y» de «Peña y Núñez»— o una palabra de enlace —«transportes de
+ * peña»— no se busca si hay otras: está en todo, o no está en el nombre.
  */
+const DE_ENLACE = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'en', 'con', 'por'])
 export function palabrasDeBusqueda(texto: string | null | undefined): string[] {
   const todas = plano(texto ?? '').split(/[^a-z0-9._/-]+/).flatMap(trozos).filter(Boolean)
-  const utiles = todas.filter((p) => p.length > 1 || /\d/.test(p))
+  const utiles = todas.filter((p) => (p.length > 1 && !DE_ENLACE.has(p)) || /\d/.test(p))
   return (utiles.length ? utiles : todas).slice(0, 8).map((p) => p.slice(0, 20))
 }
 
@@ -112,7 +114,7 @@ export function filtrosDeBusqueda(columnas: string[], texto: string | null | und
 /**
  * Lo mismo para una lista ya leída: cada palabra está en alguno de los campos,
  * leídos también sin los `SIGNOS` y con la O igual al cero, como hace
- * la expresión. Una medida —una palabra con números— se busca además sin
+ * la expresión (aquí algo más generosa: «transportes» está en «TRANS-PORTES»). Una medida —una palabra con números— se busca además sin
  * espacios: en el taller se anota «2X1/4» lo que el catálogo tiene como
  * «2 X 1/4». Una palabra sin números no salta espacios: «sac» no está en
  * «PLANCHAS ACERO».

@@ -8,6 +8,7 @@
  *   3. Una coma o un paréntesis escritos no tiran la pantalla (en Materiales
  *      «plancha, a36» la tumbaba).
  *   4. Ningún buscador pide apretar «Buscar»: lo escrito llega solo a la URL.
+ *      El filtro del Kardex sí espera «Ver», porque combina cinco filtros.
  *   5. «Limpiar» quita el término y deja los demás filtros puestos.
  *   6. Lo que la pantalla muestra es lo que la base tiene: se cuenta en SQL.
  *   7. El desplegable con buscador (`SeleccionBuscable`), el buscador de la

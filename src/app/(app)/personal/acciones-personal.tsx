@@ -243,10 +243,13 @@ export function FilaDePersona({
   persona,
   catalogos,
   gestiona,
+  propia = false,
 }: {
   persona: PersonaEnLista
   catalogos: Catalogos
   gestiona: boolean
+  /** La fila de quien mira: la base no deja darse de baja a uno mismo. */
+  propia?: boolean
 }) {
   const router = useRouter()
   const [ventana, setVentana] = useState<'editar' | 'clave' | 'baja' | null>(null)
@@ -255,11 +258,16 @@ export function FilaDePersona({
   const clave = useEnvio(cambiarClave)
   // Dada de baja, la fila se va de «Activos» y con ella el botón para
   // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
-  const estado = useEnvio(cambiarEstado, () => {
-    setVentana(null)
-    const lista = persona.activo ? 'bajas' : 'activos'
-    router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
-  })
+  const estado = useEnvio(
+    cambiarEstado,
+    () => {
+      setVentana(null)
+      const lista = persona.activo ? 'bajas' : 'activos'
+      router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+    },
+    // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
+    { refrescar: false },
+  )
 
   const alcance = (
     <>
@@ -273,7 +281,9 @@ export function FilaDePersona({
   )
   return (
     <>
-      <TR className={persona.activo ? undefined : 'opacity-60'}>
+      {/* Sin atenuar la fila: dejaba «Reactivar» y el correo por debajo del
+          contraste que se lee. La insignia «De baja» ya dice el estado. */}
+      <TR>
         <TD>
           <div className="font-medium">
             {persona.apellidos}, {persona.nombres}
@@ -329,9 +339,12 @@ export function FilaDePersona({
               {/* Dar de baja pregunta: el ícono está a un dedo del de la
                   contraseña y deja a la persona sin entrar. Reactivar no. */}
               {persona.activo ? (
-                <button
+                !propia && <button
                   type="button"
-                  onClick={() => setVentana('baja')}
+                  onClick={() => {
+                    estado.limpiar()
+                    setVentana('baja')
+                  }}
                   title="Dar de baja"
                   aria-label={`Dar de baja a ${persona.nombres}`}
                   className={BOTON_ICONO}
@@ -365,7 +378,7 @@ export function FilaDePersona({
                   {estado.resultado?.ok === false && (
                     <p role="alert" className="w-full text-sm text-peligro">{estado.resultado.error}</p>
                   )}
-                  <Boton type="button" variante="secundario" onClick={() => setVentana(null)}>
+                  <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
                     Cancelar
                   </Boton>
                   <Boton type="submit" variante="peligro" cargando={estado.enviando}>
@@ -378,11 +391,11 @@ export function FilaDePersona({
         )}
       </TR>
 
-      {(estado.resultado?.ok === false || clave.resultado || edicion.resultado?.ok === false) && (
+      {((!persona.activo && estado.resultado?.ok === false) || clave.resultado || edicion.resultado?.ok === false) && (
         <TR>
           <TD colSpan={gestiona ? 7 : 6} className="py-1">
             <Aviso
-              resultado={estado.resultado?.ok === false ? estado.resultado : (clave.resultado ?? edicion.resultado)}
+              resultado={!persona.activo && estado.resultado?.ok === false ? estado.resultado : (clave.resultado ?? edicion.resultado)}
             />
           </TD>
         </TR>

@@ -65,7 +65,7 @@ export function BuscadorSimple({
     const alTocar = (e: MouseEvent) => {
       if (!(e.target instanceof Element) || !e.target.closest('a[href]')) return
       clearTimeout(temporizador)
-      temporizador = setTimeout(disparar, 3000)
+      temporizador = setTimeout(disparar, 1500)
     }
     document.addEventListener('click', alTocar, true)
 
