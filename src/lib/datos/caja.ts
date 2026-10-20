@@ -1,8 +1,8 @@
 import 'server-only'
 
-import type { CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { CAJA_NO_SE_MOVIO, CAJA_SIN_LEER, monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
+import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { fecha as textoFecha, hoyLima, type CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 

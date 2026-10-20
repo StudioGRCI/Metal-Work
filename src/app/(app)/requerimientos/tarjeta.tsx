@@ -2,16 +2,17 @@ import Link from 'next/link'
 import { ChevronDown, ClipboardList, PackageCheck, Truck, Workflow } from 'lucide-react'
 
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
-import type { CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
+import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import {
   ESTADO_REQUERIMIENTO,
   ESTADOS_RQ_ABIERTOS,
   ETAPA_AVANCE_RQ,
+  ETAPAS_DE_RECOJO,
   PASOS_DEL_RQ,
   partesDelInsumo,
   pasoDelRequerimiento,
@@ -53,14 +54,37 @@ function tonoPorLlegar(l: LineaRequerimiento): Tono {
 }
 
 /**
- * Las cuatro cifras de arriba: cuántos insumos ya se pueden recoger en Almacén,
- * cuántos faltan que lleguen, cuántos revisa Almacén y cuántos RQ van en camino.
- * Cuentan insumos, no unidades: cada uno va en la suya.
+ * Los dos recojos no son el mismo: el conductor recoge la compra del proveedor
+ * y el área recoge lo suyo en Almacén. Junto a «para recoger en Almacén», la
+ * etapa de la compra dice de dónde.
  */
-export function ResumenDeRequerimientos({ requerimientos }: { requerimientos: RequerimientoListado[] }) {
+const delProveedor = (etapa: string | null) => (ETAPAS_DE_RECOJO as readonly (string | null)[]).includes(etapa)
+
+/** ¿Tiene algún insumo que ya se puede recoger en Almacén? */
+export function tieneParaRecoger(rq: RequerimientoListado): boolean {
+  return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
+}
+
+/**
+ * Las cuatro cifras de arriba: cuántos insumos ya se pueden recoger en Almacén
+ * (al tocarla, solo esos RQ), cuántos faltan que lleguen y cuántos de ellos
+ * esperan su recojo del proveedor o van en él, cuántos revisa Almacén y cuántos
+ * RQ van en camino. Cuentan insumos, no unidades: cada uno va en la suya.
+ */
+export function ResumenDeRequerimientos({
+  requerimientos,
+  enlaceRecoger,
+}: {
+  requerimientos: RequerimientoListado[]
+  /** La lista con solo los RQ que tienen algo para recoger. */
+  enlaceRecoger: string
+}) {
   let recoger = 0
   let porLlegar = 0
   let revisar = 0
+  // Lo que Gerencia pidió distinguir de un vistazo (PR #76): los dos momentos del recojo del proveedor.
+  let esperanRecojo = 0
+  let enRecojo = 0
   const compran = new Set<string>()
   for (const rq of requerimientos) {
     for (const l of rq.lineas) {
@@ -71,6 +95,8 @@ export function ResumenDeRequerimientos({ requerimientos }: { requerimientos: Re
       if (p.porLlegar > 0) {
         porLlegar++
         compran.add(quienCompra(rq))
+        if (l.etapa === 'PENDIENTE_RECOJO') esperanRecojo++
+        if (l.etapa === 'EN_RECOJO') enRecojo++
       }
     }
   }
@@ -79,8 +105,35 @@ export function ResumenDeRequerimientos({ requerimientos }: { requerimientos: Re
   const quien = compran.size === 1 ? `que trae ${[...compran][0]}` : compran.size > 1 ? 'que traen Logística y Administración' : 'que se compran'
   return (
     <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-resumen-rq>
-      <Indicador titulo="Para recoger en Almacén" valor={recoger} icono={PackageCheck} tono={recoger > 0 ? 'exito' : 'neutro'} pie={recoger === 1 ? 'insumo ya en almacén' : 'insumos ya en almacén'} />
-      <Indicador titulo="Por llegar" valor={porLlegar} icono={Truck} tono={porLlegar > 0 ? 'aviso' : 'neutro'} pie={`${porLlegar === 1 ? 'insumo' : 'insumos'} ${quien}`} />
+      <Indicador
+        titulo="Para recoger en Almacén"
+        valor={recoger}
+        icono={PackageCheck}
+        tono={recoger > 0 ? 'exito' : 'neutro'}
+        pie={recoger > 0 ? `${recoger === 1 ? 'insumo ya en almacén' : 'insumos ya en almacén'}: tócalo para ver cuáles` : 'nada en almacén todavía'}
+        href={recoger > 0 ? enlaceRecoger : undefined}
+      />
+      <Indicador
+        titulo="Por llegar"
+        valor={porLlegar}
+        icono={Truck}
+        tono={porLlegar > 0 ? 'aviso' : 'neutro'}
+        pie={
+          <>
+            {porLlegar === 1 ? 'insumo' : 'insumos'} {quien}
+            {(esperanRecojo > 0 || enRecojo > 0) && (
+              <span className="block">
+                {[
+                  esperanRecojo > 0 ? `${esperanRecojo} ${esperanRecojo === 1 ? 'espera' : 'esperan'} su recojo del proveedor` : null,
+                  enRecojo > 0 ? `${enRecojo} en recojo` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            )}
+          </>
+        }
+      />
       <Indicador titulo="Almacén revisa" valor={revisar} icono={ClipboardList} pie={revisar === 1 ? 'insumo sin revisar el stock' : 'insumos sin revisar el stock'} />
       <Indicador
         titulo="Requerimientos en camino"
@@ -152,7 +205,7 @@ export function TarjetaRequerimiento({
             </Link>
           </p>
           <p className="mt-1 text-sm break-words text-texto-suave">{rq.justificacion}</p>
-          <p className="mt-0.5 text-[11px] text-texto-tenue">
+          <p className="mt-0.5 text-xs text-texto-tenue">
             {[`Registrado ${fechaHora(rq.creado_en)}`, rq.fecha_requerida ? `se necesita el ${fecha(rq.fecha_requerida)}` : null]
               .filter(Boolean)
               .join(' · ')}
@@ -208,7 +261,19 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
   const indice = PASOS_DEL_RQ.indexOf(actual)
   const sinCompra =
     indice >= PASOS_DEL_RQ.indexOf('EN_ALMACEN') && rq.lineas.every((l) => !l.orden_compra && l.en_stock !== null && l.en_stock >= l.cantidad)
-  const etiqueta = (p: PasoDelRq) => (p === 'COMPRA' ? `${quienCompra(rq)} compra` : TITULO_PASO[p])
+  // Mientras se compra el resto, lo que Almacén ya tenía se puede ir recogiendo:
+  // el paso queda a medias, como dice la barra de cada insumo.
+  const aMedias = indice < PASOS_DEL_RQ.indexOf('EN_ALMACEN') && tieneParaRecoger(rq)
+  const etiqueta = (p: PasoDelRq) =>
+    p === 'COMPRA' ? (
+      <>
+        {/* En el teléfono la columna mide unos 77 px: «Administración» no entra. */}
+        <span className="sm:hidden">Compra</span>
+        <span className="hidden sm:inline">{quienCompra(rq)} compra</span>
+      </>
+    ) : (
+      TITULO_PASO[p]
+    )
   return (
     <div className="px-4 pb-3">
       <ol className="grid grid-cols-4 gap-1.5" aria-label={`En qué va ${rq.numero}`}>
@@ -216,20 +281,27 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           const hecho = i < indice || actual === 'ENTREGADO'
           const ahora = i === indice && actual !== 'ENTREGADO'
           const saltado = p === 'COMPRA' && sinCompra
+          const parcial = p === 'EN_ALMACEN' && aMedias
           return (
-            <li key={p} aria-current={ahora ? 'step' : undefined} className="min-w-0">
+            <li key={p} aria-current={ahora ? 'step' : undefined} className="min-w-0" data-paso={p}>
               <span
                 aria-hidden
-                className={cn('block h-1.5 rounded-full', saltado ? 'bg-neutro-suave' : hecho ? 'bg-exito' : ahora ? 'bg-acento' : 'bg-neutro-suave')}
-              />
+                className={cn(
+                  'block h-1.5 overflow-hidden rounded-full',
+                  saltado ? 'bg-neutro-suave' : hecho ? 'bg-exito' : ahora ? 'bg-acento' : 'bg-neutro-suave',
+                )}
+              >
+                {parcial && <span className="block h-full w-1/2 bg-exito" />}
+              </span>
               <span
                 className={cn(
-                  'mt-1 block text-[11px] leading-tight',
-                  ahora ? 'font-semibold text-texto' : hecho && !saltado ? 'text-texto-suave' : 'text-texto-tenue',
+                  'mt-1 block text-xs leading-tight',
+                  ahora ? 'font-semibold text-texto' : (hecho && !saltado) || parcial ? 'text-texto-suave' : 'text-texto-tenue',
                 )}
               >
                 {etiqueta(p)}
                 {saltado && <span className="block">no hizo falta</span>}
+                {parcial && <span className="block font-medium text-exito">ya hay una parte</span>}
                 <span className="sr-only">{hecho && !saltado ? ': hecho' : ahora ? ': va aquí' : ''}</span>
               </span>
             </li>
@@ -237,7 +309,7 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
         })}
       </ol>
       {rq.avance && actual !== 'ENTREGADO' && (
-        <p className="mt-1.5 text-[11px] text-texto-suave">
+        <p className="mt-1.5 text-xs text-texto-suave">
           Avance <span className="tabular font-medium text-texto">{rq.avance.porcentaje} %</span>
         </p>
       )}
@@ -299,7 +371,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
         </span>{' '}
         {l.descripcion}
       </p>
-      <p className="text-[11px] text-texto-suave">
+      <p className="text-xs text-texto-suave">
         <MaterialDelInsumo linea={l} />
         {l.categoria}
       </p>
@@ -331,6 +403,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
                   <span className={TEXTO[tono]}>
                     {' · '}
                     {etapa.etiqueta}
+                    {delProveedor(l.etapa) && ' del proveedor'}
                   </span>
                 )}
                 {l.etapa_desde && <span className="text-texto-suave"> desde {fechaHora(l.etapa_desde)}</span>}

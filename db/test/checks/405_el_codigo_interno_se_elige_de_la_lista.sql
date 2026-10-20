@@ -7,8 +7,10 @@
 --      guarda el costeo, con su unidad (placa y marca, o lo que anotó la
 --      portería). El de costeo cerrado viene marcado; el reabierto no. No vienen
 --      TODOS LOS ACTIVOS, el código de un RQ anulado ni el de una unidad dada de
---      baja. La leen Requerimientos, la administradora, Tesorería (caja), RR. HH.
---      (costeo de horas) y Supervisión (reporte diario); Almacén y la portería no.
+--      baja. `registrada` marca el del padrón de unidades: entre CHK405_A y la
+--      variante CHK4O5_A (con O) que escribió un RQ, el bueno. La abre cada uno
+--      de los permisos de los formularios que la usan, uno por uno; Almacén y la
+--      portería no la leen.
 --   2. Lo entregado de cada insumo: Maestranza ve cuánto salió ya del almacén
 --      para su RQ, menos lo devuelto, aunque no lea el kardex. Con 15 pedidos,
 --      10 en almacén y 4 entregados de los que devolvieron 2, la lista dice
@@ -33,7 +35,7 @@ begin
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
-  foreach v in array array['rq', 'rq_anulado', 'sal', 'dev1', 'dev2'] loop
+  foreach v in array array['rq', 'rq_anulado', 'rq_gemelo', 'sal', 'dev1', 'dev2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -88,6 +90,9 @@ select public.emitir_requerimiento(current_setting('prueba.rq')::uuid, 'OPERACIO
 select public.emitir_requerimiento(current_setting('prueba.rq_anulado')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
   'CHK405_ANULADO', 'Pedido equivocado de la prueba 405', null, format('[{"material_id": "%s", "cantidad": 1}]', current_setting('prueba.m1'))::jsonb);
 select public.anular_requerimiento(current_setting('prueba.rq_anulado')::uuid, 'Se pidió con el código equivocado (prueba 405)');
+-- Y otro con la O por el cero, como pasa al escribirlo de memoria: la variante que la lista avisa.
+select public.emitir_requerimiento(current_setting('prueba.rq_gemelo')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
+  'chk4o5_a', 'Pedido con el código mal escrito (prueba 405)', null, format('[{"material_id": "%s", "cantidad": 1}]', current_setting('prueba.m1'))::jsonb);
 
 -- ============================================ 1. La lista de códigos para elegir
 create temp table _lista on commit drop as select * from public.codigos_internos_para_elegir();
@@ -99,6 +104,10 @@ begin
   perform test.afirmar(v_n = 1, format('CHK405_A sale una vez, aunque lo nombren la unidad y el RQ escrito en minúsculas (%s)', v_n));
   select unidad, cerrado into v_unidad, v_cerrado from _lista where codigo = 'CHK405_A';
   perform test.afirmar(v_unidad = 'CHK-405 · Volvo FH' and not v_cerrado, format('CHK405_A con su placa y su marca: «%s»', v_unidad));
+  perform test.afirmar((select registrada from _lista where codigo = 'CHK405_A'), 'CHK405_A es de una unidad del padrón');
+  perform test.afirmar((select not registrada and unidad is null from _lista where codigo = 'CHK4O5_A'),
+    'la variante CHK4O5_A que escribió un RQ sale, sin unidad y sin ser del padrón: la pantalla la avisa como casi igual');
+  perform test.afirmar(not (select registrada from _lista where codigo = 'CHK405_PORTERIA'), 'el que solo anotó la portería no es del padrón');
   select unidad into v_unidad from _lista where codigo = 'CHK405_PORTERIA';
   perform test.afirmar(v_unidad = 'POR-405 · Hino 500', format('el código que solo anotó la portería, normalizado y con lo que ella anotó: «%s»', v_unidad));
   perform test.afirmar(not exists (select 1 from _lista where codigo = 'chk405_porteria'), 'no sale también como lo escribió la portería');
@@ -115,8 +124,8 @@ end $$;
 
 -- La lista no trae montos: solo el código, la unidad y si está cerrado.
 select test.afirmar(pg_get_function_result('public.codigos_internos_para_elegir()'::regprocedure)
-                    = 'TABLE(codigo text, unidad text, cerrado boolean)',
-  'la lista trae código, unidad y cerrado, sin el costo ni el margen del cierre');
+                    = 'TABLE(codigo text, unidad text, cerrado boolean, registrada boolean)',
+  'la lista trae código, unidad, cerrado y si es del padrón, sin el costo ni el margen del cierre');
 
 -- La misma lista en cada formulario que pide el código, con la cuenta de cada puesto.
 create or replace function pg_temp.lee_la_lista(p_clave text, p_para text) returns void language plpgsql as $$
@@ -128,10 +137,34 @@ begin
   reset role;
   perform test.afirmar(v = 1, format('%s la lee, para %s', p_clave, p_para));
 end $$;
-select pg_temp.lee_la_lista('administracion', 'su RQA');
+select pg_temp.lee_la_lista('administracion', 'su RQA, la compra directa, el servicio y el subcontrato');
 select pg_temp.lee_la_lista('tesoreria', 'la caja diaria');
-select pg_temp.lee_la_lista('recursos_humanos', 'el costeo de horas');
+select pg_temp.lee_la_lista('recursos_humanos', 'el costeo de horas y las observaciones');
 select pg_temp.lee_la_lista('supervisor', 'el reporte diario');
+
+-- Cada permiso de la puerta, solo, la abre: un rol de prueba por permiso, con
+-- ese y ningún otro. Si la función dejara de aceptar uno, ese formulario se
+-- quedaría sin lista sin que nada avise.
+do $$
+declare v_permiso text; v_rol uuid; v_usuario uuid; v int; i int := 0;
+begin
+  foreach v_permiso in array array['requerimientos.emitir', 'requerimientos.administracion', 'tesoreria.caja', 'rrhh.personal',
+                                   'reporte_diario.registrar', 'compras.crear', 'subcontratos.gestionar'] loop
+    i := i + 1;
+    insert into public.roles (codigo, nombre) values ('CHK405_' || i, 'Prueba 405 · ' || v_permiso) returning id into v_rol;
+    insert into public.roles_permisos (rol_id, permiso_codigo) values (v_rol, v_permiso);
+    v_usuario := gen_random_uuid();
+    insert into auth.users (id, email) values (v_usuario, 'permiso' || i || '.405@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
+    values (v_usuario, 'Permiso ' || i, 'Check 405', 'permiso' || i || '.405@prueba.local', v_rol);
+    perform set_config('prueba.permiso' || i, v_usuario::text, true);
+    perform pg_temp.como('permiso' || i);
+    set local role authenticated;
+    select count(*) into v from public.codigos_internos_para_elegir() where codigo = 'CHK405_A';
+    reset role;
+    perform test.afirmar(v = 1, format('con solo %s se lee la lista', v_permiso));
+  end loop;
+end $$;
 
 select pg_temp.como('almacenero');
 set local role authenticated;

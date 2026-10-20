@@ -11584,6 +11584,7 @@ export type Database = {
           codigo: string | null
           unidad: string | null
           cerrado: boolean | null
+          registrada: boolean | null
         }[]
       }
       codigos_internos_resumen: {

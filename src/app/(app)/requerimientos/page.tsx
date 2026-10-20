@@ -11,7 +11,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
 import { NuevoRequerimiento } from './formulario'
-import { ResumenDeRequerimientos, TarjetaRequerimiento } from './tarjeta'
+import { ResumenDeRequerimientos, TarjetaRequerimiento, tieneParaRecoger } from './tarjeta'
 
 export const metadata = { title: 'Requerimientos' }
 
@@ -54,7 +54,21 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     ),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
-  const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
+  // `?ver=recoger` deja solo los que tienen algo para recoger en Almacén: es la
+  // cifra verde de arriba. Las cifras siguen contando todos.
+  const soloRecoger = !soloUno && params.ver === 'recoger'
+  const mostrados = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
+  const correcciones = await correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id))
+  // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
+  const filtros = new URLSearchParams()
+  if (pedida) filtros.set('tipo', pedida)
+  if (supervisaArea && !deSuArea) filtros.set('area', 'todas')
+  if (codigo) filtros.set('codigo', codigo)
+  const sinRecoger = `/requerimientos${filtros.size > 0 ? `?${filtros}` : ''}`
+  filtros.set('ver', 'recoger')
+  const conRecoger = `/requerimientos?${filtros}`
+  const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
+  const vacio = listaVacia({ soloRecoger, codigo, deSuArea: Boolean(deSuArea), emite, sinRecoger, verTodos })
 
   return (
     <>
@@ -97,7 +111,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       {!soloUno && codigo && (
         <p className="mb-3 text-sm text-texto-suave">
           Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}
-          <Link href={supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'} className="font-medium text-acento hover:underline">
+          <Link href={verTodos} className="font-medium text-acento hover:underline">
             Ver todos
           </Link>
         </p>
@@ -112,19 +126,26 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         </p>
       )}
 
-      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} />}
+      {soloRecoger && (
+        <p className="mb-3 text-sm text-texto-suave">
+          Solo los que tienen algo para recoger en Almacén.{' '}
+          <Link href={sinRecoger} className="font-medium text-acento hover:underline">
+            Ver todos
+          </Link>
+        </p>
+      )}
 
-      {requerimientos.length === 0 ? (
-        <Tarjeta>
-          <SinDatos
-            enTabla={false}
-            titulo="Todavía no hay requerimientos"
-            descripcion={emite ? 'Registra el primero con «Nuevo requerimiento».' : 'Requerimientos y la administradora los registran; aparecen aquí con su número.'}
-          />
-        </Tarjeta>
+      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={conRecoger} />}
+
+      {mostrados.length === 0 ? (
+        !soloUno && (
+          <Tarjeta>
+            <SinDatos enTabla={false} titulo={vacio.titulo} descripcion={vacio.descripcion} accion={vacio.accion} />
+          </Tarjeta>
+        )
       ) : (
         <div className="space-y-3">
-          {requerimientos.map((r) => (
+          {mostrados.map((r) => (
             <TarjetaRequerimiento
               key={r.id}
               rq={r}
@@ -142,4 +163,56 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       )}
     </>
   )
+}
+
+/**
+ * Qué decir cuando la lista sale vacía: con un filtro puesto no es que no haya
+ * requerimientos, es que ese filtro no trae ninguno, y se dice cómo quitarlo.
+ */
+function listaVacia({
+  soloRecoger,
+  codigo,
+  deSuArea,
+  emite,
+  sinRecoger,
+  verTodos,
+}: {
+  soloRecoger: boolean
+  codigo: string | undefined
+  deSuArea: boolean
+  emite: boolean
+  sinRecoger: string
+  /** La lista sin el código: la del área, o la de todas si se miraban todas. */
+  verTodos: string
+}): { titulo: string; descripcion: string; accion?: React.ReactNode } {
+  const enlace = (href: string, texto: string) => (
+    <Link href={href} className="text-sm font-medium text-acento hover:underline">
+      {texto}
+    </Link>
+  )
+  if (soloRecoger) {
+    return {
+      titulo: 'Nada para recoger en Almacén todavía',
+      descripcion: 'Cuando Almacén tenga algo de lo pedido, el requerimiento aparece aquí.',
+      accion: enlace(sinRecoger, 'Ver todos'),
+    }
+  }
+  if (codigo) {
+    return {
+      titulo: `Ningún requerimiento con el código ${codigo}`,
+      descripcion: 'Revisa el código o mira todos los requerimientos.',
+      accion: enlace(verTodos, 'Ver todos'),
+    }
+  }
+  if (deSuArea) {
+    return {
+      titulo: 'Tu área todavía no tiene requerimientos',
+      descripcion: 'Los de las demás áreas están en «Todas las áreas».',
+      accion: enlace('/requerimientos?area=todas', 'Ver todas las áreas'),
+    }
+  }
+  return {
+    titulo: 'Todavía no hay requerimientos',
+    descripcion: emite ? 'Registra el primero con «Nuevo requerimiento».' : 'Requerimientos y la administradora los registran; aparecen aquí con su número.',
+  }
 }

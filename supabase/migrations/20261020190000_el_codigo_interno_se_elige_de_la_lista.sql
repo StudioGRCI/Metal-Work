@@ -19,25 +19,32 @@
 -- marcado (`cerrado`) para que la pantalla avise si alguien lo escribe, sin
 -- ofrecerlo. Del cierre sale solo si existe: el costo, el precio y el margen
 -- congelados siguen tapados (`codigo_interno_cierres` se lee con su propia
--- política).
+-- política). `registrada` dice si es el código de una unidad del padrón: entre
+-- `PLA_SR_O4…` y `PLA_SR_04…`, que la lista muestra como casi iguales, el del
+-- padrón es el bueno.
 --
 -- La lee quien registra algo con código interno: Requerimientos
 -- (`requerimientos.emitir`) y la administradora (`requerimientos.
 -- administracion`) en el requerimiento, Tesorería en la caja diaria
--- (`tesoreria.caja`), RR. HH. en el costeo de horas (`rrhh.personal`) y
--- Supervisión en el reporte diario (`reporte_diario.registrar`): los mismos
--- permisos que piden esos formularios. TODOS LOS ACTIVOS no viene: no es un
--- código, es «Se carga a todos» del RQA.
+-- (`tesoreria.caja`), RR. HH. en el costeo de horas y las observaciones
+-- (`rrhh.personal`), Supervisión en el reporte diario (`reporte_diario.
+-- registrar`), Logística y la administradora en la orden de compra directa y la
+-- de servicio (`compras.crear`) y quien registra los subcontratos
+-- (`subcontratos.gestionar`): los mismos permisos que piden esos formularios.
+-- Les muestra la placa, la marca y el modelo de la unidad aunque no lean
+-- Unidades ni la portería: es lo que se busca, y no lleva montos ni dueños.
+-- TODOS LOS ACTIVOS no viene: no es un código, es «Se carga a todos» del RQA.
 -- =============================================================================
 
 create or replace function public.codigos_internos_para_elegir()
-returns table (codigo text, unidad text, cerrado boolean)
+returns table (codigo text, unidad text, cerrado boolean, registrada boolean)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
   if not (public.es_admin() or public.tiene_permiso('requerimientos.emitir')
           or public.tiene_permiso('requerimientos.administracion') or public.tiene_permiso('tesoreria.caja')
-          or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('reporte_diario.registrar')) then
+          or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('reporte_diario.registrar')
+          or public.tiene_permiso('compras.crear') or public.tiene_permiso('subcontratos.gestionar')) then
     raise exception 'No tienes permiso para ver la lista de códigos internos.' using errcode = 'insufficient_privilege';
   end if;
   return query
@@ -63,7 +70,8 @@ begin
   ), unidad as (
     -- Como en Diseño: la placa y la marca y modelo de la unidad.
     select public.normalizar_codigo_interno(u.codigo_interno) as codigo,
-           string_agg(distinct nullif(concat_ws(' · ', nullif(btrim(u.placa), ''), nullif(btrim(concat_ws(' ', u.marca, u.modelo)), '')), ''), ', ') as texto
+           string_agg(distinct nullif(concat_ws(' · ', nullif(btrim(u.placa), ''), nullif(btrim(concat_ws(' ', u.marca, u.modelo)), '')), ''), ', ') as texto,
+           bool_or(u.activo) as activa
       from public.unidades u where u.codigo_interno is not null group by 1
   ), porteria as (
     -- La que no está en Unidades, por lo que anotó la portería la última vez que entró.
@@ -75,7 +83,8 @@ begin
      order by public.normalizar_codigo_interno(v.codigo_interno), v.ingreso_en desc
   )
   select c.codigo, coalesce(u.texto, p.texto),
-         exists (select 1 from public.codigo_interno_cierres k where k.codigo = c.codigo and k.reabierto_en is null)
+         exists (select 1 from public.codigo_interno_cierres k where k.codigo = c.codigo and k.reabierto_en is null),
+         coalesce(u.activa, false)
     from conocido c
     left join unidad u on u.codigo = c.codigo
     left join porteria p on p.codigo = c.codigo
@@ -84,6 +93,6 @@ begin
 end;
 $$;
 comment on function public.codigos_internos_para_elegir() is
-  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, reporte diario), con su unidad y si su costeo está cerrado (sin montos).';
+  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, observaciones, reporte diario, compra directa, servicio, subcontrato), con su unidad, si su costeo está cerrado (sin montos) y si es de una unidad del padrón.';
 revoke all on function public.codigos_internos_para_elegir() from public, anon;
 grant execute on function public.codigos_internos_para_elegir() to authenticated;

@@ -4,6 +4,7 @@ import { ArrowLeftRight, Ban, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
+import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -153,7 +154,7 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
           <Entrada id={`${p}-monto`} name="monto" inputMode="decimal" required autoComplete="off" className="tabular" />
         </Campo>
         <Campo etiqueta="Código interno" htmlFor={`${p}-codigo`} ayudaEnIcono={false} ayuda="Búscalo por el código, la placa o la marca. Un egreso con código entra al costo de esa unidad: trámites, comisión, viáticos, compras chicas. No lo pongas en el pago de una OC, OS, recibo o planilla, ni en un gasto que Administración ya aprobó en la OT: ese ya está en su costo.">
-          <EntradaCodigoInterno id={`${p}-codigo`} name="codigo_interno" valor={codigo} onChange={setCodigo} codigos={codigos} />
+          <EntradaCodigoInterno id={`${p}-codigo`} name="codigo_interno" valor={codigo} onChange={setCodigo} codigos={codigos} fijos={CODIGOS_FIJOS} />
         </Campo>
         <Campo etiqueta="N.º de operación" htmlFor={`${p}-operacion`} ayuda="El del banco, si lo hay.">
           <Entrada id={`${p}-operacion`} name="operacion" maxLength={60} autoComplete="off" className="tabular" />

@@ -20,6 +20,8 @@ import { mkdirSync } from 'node:fs'
 
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -67,7 +69,18 @@ async function entrar(correo) {
 const texto = async (loc) => (await loc.innerText()).replace(/\s+/g, ' ')
 /** La tarjeta de la OC en Recojos (una por compra, dentro de su sección). */
 const tarjetaDe = (pagina) => pagina.locator('main section > div', { hasText: oc })
-const porcentaje = async (fila) => Number(await fila.getByRole('progressbar').getAttribute('aria-valuenow'))
+/**
+ * El RQ en la pantalla: en Requerimientos, su tarjeta (rehecha el 2026-10-20,
+ * con «Avance N %» en texto); en Atención, su fila con la barra de avance.
+ */
+const filaDe = (pagina, ruta) =>
+  ruta.startsWith('/requerimientos/atencion') ? pagina.locator('tbody tr', { hasText: numeroRq }) : pagina.locator(`[data-rq="${numeroRq}"]`)
+const porcentaje = async (fila) => {
+  const barra = fila.getByRole('progressbar')
+  if ((await barra.count()) > 0) return Number(await barra.first().getAttribute('aria-valuenow'))
+  const m = (await texto(fila)).match(/Avance (\d+) %/)
+  return m ? Number(m[1]) : NaN
+}
 const sello = Date.now().toString().slice(-6)
 let numeroRq = ''
 let oc = ''
@@ -76,7 +89,7 @@ let oc = ''
 async function mirarRq(cuenta, ruta, captura) {
   const { pagina, contexto, errores } = await entrar(cuenta)
   await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
-  const fila = pagina.locator('tbody tr', { hasText: numeroRq })
+  const fila = filaDe(pagina, ruta)
   const t = (await fila.count()) === 1 ? await texto(fila) : ''
   const pct = (await fila.count()) === 1 ? await porcentaje(fila) : NaN
   const resumen = await texto(pagina.locator('main'))
@@ -93,7 +106,7 @@ async function mirarRq(cuenta, ruta, captura) {
   await pagina.getByRole('button', { name: 'Nuevo requerimiento' }).click()
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.locator('#rq-area').selectOption({ index: 1 })
-  await ventana.locator('#rq-codigo').fill(`PLA_SR_O4_1_26/${sello.slice(-2)}`)
+  await escribirCodigo(ventana.locator('#rq-codigo'), `PLA_SR_O4_1_26/${sello.slice(-2)}`)
   await ventana.locator('#rq-justificacion').fill('Armado del chasis de la plataforma; no hay planchas en almacén.')
   const descs = ventana.locator('input[name="descripcion"]')
   await descs.nth(0).fill(`Plancha LAF 2 mm 4x8 ${sello}`)
@@ -109,8 +122,8 @@ async function mirarRq(cuenta, ruta, captura) {
   numeroRq = (aviso.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   comprobar(numeroRq !== '', `RQ registrado: «${aviso}»`)
   await pagina.waitForTimeout(800)
-  const fila = pagina.locator('tbody tr', { hasText: numeroRq })
-  comprobar((await porcentaje(fila)) === 10 && (await texto(fila)).includes('Almacén revisa el stock'), 'recién registrado: 10 %, Almacén revisa el stock')
+  const fila = filaDe(pagina, '/requerimientos')
+  comprobar((await porcentaje(fila)) === 10 && (await texto(fila)).includes('Almacén ve si lo tiene'), 'recién registrado: 10 %, Almacén revisa el stock')
   comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
 }
@@ -174,7 +187,7 @@ async function mirarRq(cuenta, ruta, captura) {
   const { t, pct, resumen } = await mirarRq(CUENTAS.supervisor, '/requerimientos', 'avance-pendiente-recojo')
   comprobar(pct === 45 && t.includes('Pendiente de recojo'), `aprobada: Supervisión ve «Pendiente de recojo» y 45 % (${pct})`)
   comprobar(t.includes(oc), `Supervisión ve con qué OC va (${oc})`)
-  comprobar(/con insumos pendientes de recojo/.test(resumen), 'el resumen cuenta los pendientes de recojo')
+  comprobar(/esperan? su recojo del proveedor/.test(resumen), 'las cifras de arriba cuentan los que esperan su recojo del proveedor')
 }
 
 // ------------------------------------------------ 4b. Logística la programa
@@ -213,7 +226,7 @@ async function mirarRq(cuenta, ruta, captura) {
 {
   const { t, pct, resumen } = await mirarRq(CUENTAS.supervisor, '/requerimientos', 'avance-en-recojo')
   comprobar(pct === 60 && t.includes('En recojo'), `Supervisión ve «En recojo» y 60 % (${pct})`)
-  comprobar(/con insumos en recojo/.test(resumen), 'el resumen cuenta aparte los que están en recojo')
+  comprobar(/\d+ en recojo/.test(resumen), 'las cifras de arriba cuentan aparte los que están en recojo')
 }
 {
   const { t } = await mirarRq(CUENTAS.logistica, '/requerimientos/atencion', 'atencion-en-recojo')

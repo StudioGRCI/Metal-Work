@@ -4,18 +4,25 @@
  *
  *   1. Requerimientos abre «Nuevo requerimiento» y, al tocar «Código interno»,
  *      le sale la lista de los códigos abiertos con PLANTA primero. Escribe
- *      parte de la marca y de la placa, queda solo la unidad del banco, la
- *      toca y el RQ se registra con ese código, escrito como lo guarda el
- *      costeo. Escrito con guion en vez de barra, el campo ofrece el bueno.
+ *      parte de la marca y de la placa y queda solo la unidad del banco. Si sale
+ *      del campo sin elegirla, lo escrito no se envía: el formulario no sale y
+ *      debajo le ofrece la unidad. Enter elige la única que coincide, debajo
+ *      dice de qué unidad es y avisa la variante casi igual que anotó la
+ *      portería, y el RQ se registra con el código del padrón. Escrito con
+ *      guion, el campo ofrece el del padrón; uno nuevo se confirma con «usa …
+ *      como código nuevo». Al abrir «Corregir», la lista no tapa el formulario.
  *   2. En el teléfono la lista cabe en la pantalla y la página no se corre.
  *   3. Almacén tiene 10 de 15, entrega 4 y le devuelven 1 (armado en la base
  *      con la cuenta de Almacén y `set local role authenticated`).
  *   4. Maestranza ve en la tarjeta del RQ, sin presionar nada: 3 ya
  *      entregados, 7 para recoger en Almacén y 5 que faltan de Logística, por
- *      comprar; el paso de ahora es la compra, y las cifras de arriba cuentan
- *      el insumo. En el teléfono la tarjeta cabe.
- *   5. RR. HH. (costeo de horas) y Tesorería (caja diaria, si hay una cuenta
- *      abierta) encuentran la unidad del banco con el mismo buscador.
+ *      comprar; el paso de ahora es la compra y «Para recoger» va a medias, y
+ *      las cifras de arriba cuentan el insumo. En el teléfono la tarjeta cabe.
+ *      La cifra verde deja solo los RQ con algo para recoger.
+ *   5. RR. HH. (costeo de horas y observaciones), Tesorería (caja diaria, si
+ *      hay una cuenta abierta), Logística (OC directa y orden de servicio) y
+ *      Administración (subcontrato) encuentran la unidad del banco con el
+ *      mismo buscador.
  *
  * Crea su propia unidad y su material, con un sufijo distinto en cada corrida.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
@@ -36,6 +43,8 @@ const CUENTAS = {
   maestranza: 'sup.mtz.local@metalwork.test',
   rrhh: 'rrhh.local@metalwork.test',
   tesoreria: 'tesoreria.local@metalwork.test',
+  logistica: 'logistica.local@metalwork.test',
+  administracion: 'administracion.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
@@ -100,6 +109,8 @@ async function comoCuenta(correo, sql, valores = []) {
 // ============================================ armazón: una unidad y un material del banco
 const sufijo = Date.now().toString(36).slice(-5).toUpperCase()
 const CODIGO = `BNC_${sufijo}_26/1`
+// La misma unidad, escrita con guiones por la portería: la variante que la lista avisa.
+const GEMELO = `BNC-${sufijo}-26-1`
 const PLACA = `BNC-${sufijo}`
 const MATERIAL = `Aceite de banco ${sufijo}`
 const almacenero = await uno(`select id from public.usuarios where lower(correo) = $1`, [CUENTAS.almacen])
@@ -119,7 +130,22 @@ await consulta(
    values (gen_random_uuid(), 'INGRESO', $1, 20, 'INGRESO_GENERAL', 'Compra del banco', $2, 10, 'PEN')`,
   [materialId, almacenero.id],
 )
-console.log(`  unidad ${PLACA} con el código ${CODIGO}; material «${MATERIAL}» con 20 en stock`)
+await consulta(
+  `insert into public.registro_vehiculos (placa, codigo_interno, unidad, empresa, motivo, ingreso_en, ingreso_por)
+   values ($1, $2, 'Hino 500', 'Transportes del banco', 'FABRICACION', now() - interval '1 day', $3)`,
+  [`POR-${sufijo}`, GEMELO, almacenero.id],
+)
+console.log(`  unidad ${PLACA} con el código ${CODIGO} (y ${GEMELO} en la portería); material «${MATERIAL}» con 20 en stock`)
+
+/** Abre un formulario, toca el campo de código, escribe y mira qué queda en la lista. */
+async function buscaEn(v, selector, busqueda) {
+  const campo = v.locator(selector)
+  await campo.click()
+  const lista = v.locator('[role="listbox"][aria-label="Códigos internos abiertos"]')
+  await lista.waitFor({ timeout: 5000 })
+  await campo.pressSequentially(busqueda)
+  return (await lista.locator('[role="option"]').allInnerTexts()).map(limpio)
+}
 
 // ============================================ 1. Requerimientos elige el código de la lista
 let numero = ''
@@ -142,34 +168,73 @@ let numero = ''
 
   await campo.pressSequentially(`volvo ${PLACA.toLowerCase()}`)
   await v.screenshot({ path: `${CAPTURAS}/rq-codigo-busca.png` })
-  const quedan = await opciones.allInnerTexts()
+  const quedan = (await opciones.allInnerTexts()).map(limpio)
   comprobar(quedan.length === 1 && quedan[0].includes(CODIGO) && quedan[0].includes('Volvo FH') && quedan[0].includes(PLACA),
-    `escribiendo la marca y la placa queda solo ${CODIGO} con su unidad (${quedan.map(limpio).join(' | ')})`)
-  await opciones.first().click()
-  comprobar((await campo.inputValue()) === CODIGO, 'al tocarlo, el campo queda con el código entero')
-  comprobar(!(await lista.isVisible()), 'y la lista se cierra')
-  comprobar(limpio(await v.locator('#rq-codigo-estado').innerText()).includes('Volvo FH'), 'debajo dice de qué unidad es')
+    `escribiendo la marca y la placa queda solo ${CODIGO} con su unidad (${quedan.join(' | ')})`)
+  comprobar(quedan[0].includes('Del padrón de unidades') && quedan[0].includes(GEMELO), `y avisa que ${GEMELO} es casi igual («${quedan[0]}»)`)
 
+  // Sale del campo sin elegirla: lo escrito no es un código y el formulario no sale.
   await v.locator('#rq-justificacion').fill(`Aceite para la unidad del banco ${sufijo}`)
   await v.locator('[aria-haspopup="listbox"]').first().click()
   await pagina.getByRole('searchbox').fill(MATERIAL)
   await pagina.locator('[role="option"]').filter({ hasText: MATERIAL }).first().click()
   await v.locator('input[type="number"]').first().fill('15')
+  const antes = (await uno(`select count(*)::int as n from public.requerimientos where justificacion = $1`, [`Aceite para la unidad del banco ${sufijo}`])).n
+  await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
+  await pagina.waitForTimeout(1500)
+  const despues = (await uno(`select count(*)::int as n from public.requerimientos where justificacion = $1`, [`Aceite para la unidad del banco ${sufijo}`])).n
+  comprobar(despues === antes && (await v.isVisible()), 'con «volvo y la placa» escrito y sin elegir, el RQ no se registra')
+  comprobar(await campo.evaluate((e) => e.validity.customError), 'el navegador para el envío en el campo del código')
+  const sinElegir = limpio(await v.locator('#rq-codigo-estado').innerText())
+  comprobar(sinElegir.includes('No es un código') && sinElegir.includes(CODIGO), `debajo le ofrece ${CODIGO} («${sinElegir}»)`)
+
+  // Enter elige la única que coincide, sin mandar el formulario.
+  await campo.click()
+  await campo.press('Enter')
+  comprobar((await campo.inputValue()) === CODIGO, 'Enter elige la única que coincide: el campo queda con el código entero')
+  comprobar(!(await lista.isVisible()) && (await v.isVisible()), 'la lista se cierra y el formulario sigue abierto')
+  const elegido = limpio(await v.locator('#rq-codigo-estado').innerText())
+  comprobar(elegido.includes('Volvo FH') && elegido.includes(GEMELO) && elegido.includes('que es el del padrón'),
+    `debajo dice de qué unidad es y avisa la variante («${elegido}»)`)
+  comprobar(!(await campo.evaluate((e) => e.validity.customError)), 'con el código elegido, nada para el envío')
+
   await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
   await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
   numero = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   const rq = await uno(`select codigo_interno from public.requerimientos where numero = $1`, [numero])
   comprobar(rq?.codigo_interno === CODIGO, `el ${numero || 'RQ'} queda con ${CODIGO} (${rq?.codigo_interno})`)
 
-  // Mal escrito, con guion: ofrece el bueno.
+  // Mal escrito, con guion: ofrece el del padrón, no la variante de la portería.
   await pagina.getByRole('button', { name: 'Nuevo requerimiento', exact: true }).click()
   const v2 = pagina.locator('[role="dialog"]')
   await v2.locator('#rq-codigo').fill(`bnc ${sufijo.toLowerCase()} 26-1`)
   await v2.locator('#rq-justificacion').click()
   const aviso = limpio(await v2.locator('#rq-codigo-estado').innerText())
   comprobar(aviso.includes('se parece a') && aviso.includes(CODIGO), `escrito con guion avisa que se parece a ${CODIGO} («${aviso}»)`)
-  await v2.locator('#rq-codigo-estado button').click()
+  await v2.locator('#rq-codigo-estado button', { hasText: CODIGO }).click()
   comprobar((await v2.locator('#rq-codigo').inputValue()) === CODIGO, 'tocando el parecido queda el bueno')
+
+  // Uno que no está en ninguna parte: se confirma como código nuevo.
+  const NUEVO = `NUEVO_${sufijo}`
+  await v2.locator('#rq-codigo').fill(NUEVO.toLowerCase())
+  await v2.locator('#rq-justificacion').click()
+  const nuevo = limpio(await v2.locator('#rq-codigo-estado').innerText())
+  comprobar(nuevo.includes('No está entre los códigos abiertos') && nuevo.includes('como código nuevo'), `uno nuevo pide confirmarlo («${nuevo}»)`)
+  comprobar(await v2.locator('#rq-codigo').evaluate((e) => e.validity.customError), 'y mientras tanto el formulario no sale')
+  await v2.locator('#rq-codigo-estado button', { hasText: 'como código nuevo' }).click()
+  comprobar((await v2.locator('#rq-codigo').inputValue()) === NUEVO && !(await v2.locator('#rq-codigo').evaluate((e) => e.validity.customError)),
+    `confirmado, queda ${NUEVO} y el formulario puede salir`)
+  // Con la lista cerrada, Escape cierra la ventana sin registrar nada.
+  await pagina.keyboard.press('Escape')
+  await v2.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+
+  // «Corregir» pone el foco en el código: la lista no se abre sola encima del formulario.
+  await pagina.getByRole('button', { name: `Corregir el requerimiento ${numero}` }).click()
+  const v3 = pagina.locator('[role="dialog"]')
+  await v3.waitFor({ timeout: 5000 })
+  await pagina.waitForTimeout(400)
+  comprobar((await v3.locator('[role="listbox"]').count()) === 0, 'al abrir «Corregir» la lista no tapa el formulario')
+  comprobar(!(await v3.locator('[id^="rq-corr-codigo-"][role="combobox"]').evaluate((e) => e.validity.customError)), 'el código del RQ vale como está')
   await pagina.keyboard.press('Escape')
   comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
@@ -226,12 +291,27 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
     `en ${nombre}: 5 UND que faltan de Logística, por comprar`)
   comprobar(entregado.startsWith('3 UND') && entregado.includes('ya se entregaron'), `en ${nombre}: 3 UND ya entregadas`)
   const paso = limpio(await tarjeta.locator('[aria-current="step"]').innerText())
-  comprobar(paso.startsWith('Logística compra'), `en ${nombre}, el paso de ahora es la compra («${paso}»)`)
+  // En el teléfono la columna es angosta: dice «Compra»; en el monitor, quién compra.
+  comprobar(paso.startsWith(nombre === 'monitor' ? 'Logística compra' : 'Compra'), `en ${nombre}, el paso de ahora es la compra («${paso}»)`)
+  const recojo = limpio(await tarjeta.locator('[data-paso="EN_ALMACEN"]').innerText())
+  comprobar(recojo.includes('ya hay una parte'), `en ${nombre}, «Para recoger» va a medias, como la barra («${recojo}»)`)
   const resumen = limpio(await pagina.locator('[data-resumen-rq]').innerText())
   comprobar(resumen.includes('Para recoger en Almacén') && resumen.includes('Por llegar'), `en ${nombre}, arriba están las cifras («${resumen.slice(0, 120)}»)`)
   const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= viewport.width, `en ${nombre} la página no se corre de costado (${ancho} px de ${viewport.width})`)
   await tarjeta.screenshot({ path: `${CAPTURAS}/rq-tarjeta-${nombre === 'monitor' ? 'monitor' : 'telefono'}.png` })
+  if (nombre === 'monitor') {
+    // La cifra verde lleva a los RQ que tienen algo para recoger, y solo a esos.
+    await pagina.locator('[data-resumen-rq] a', { hasText: 'Para recoger en Almacén' }).click()
+    await pagina.waitForURL(/ver=recoger/)
+    await pagina.waitForLoadState('networkidle')
+    const tarjetas = pagina.locator('[data-rq]')
+    const n = await tarjetas.count()
+    let todasRecogen = n > 0
+    for (let k = 0; k < n; k++) if ((await tarjetas.nth(k).locator('[data-parte="recoger"]').count()) === 0) todasRecogen = false
+    comprobar(todasRecogen && (await pagina.locator(`[data-rq="${numero}"]`).isVisible()),
+      `la cifra verde deja ${n} RQ, todos con algo para recoger, entre ellos el ${numero}`)
+  }
   comprobar(errores.length === 0, `en ${nombre}, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -250,7 +330,47 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await campo.pressSequentially(`volvo ${sufijo.toLowerCase()}`)
   const quedan = await lista.locator('[role="option"]').allInnerTexts()
   comprobar(quedan.length === 1 && quedan[0].includes(CODIGO), `RR. HH. encuentra ${CODIGO} por la marca y la placa`)
+  await pagina.keyboard.press('Escape')
+  await pagina.keyboard.press('Escape')
+
+  await pagina.goto(`${BASE}/rrhh/observaciones`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: 'Registrar observación' }).click()
+  const obs = await buscaEn(pagina.locator('[role="dialog"]'), '[id^="obs-codigo-"][role="combobox"]', `volvo ${sufijo.toLowerCase()}`)
+  comprobar(obs.length === 1 && obs[0].includes(CODIGO), `RR. HH. lo encuentra también en las observaciones (${obs.join(' | ')})`)
   comprobar(errores.length === 0, `RR. HH., sin errores de consola ${errores.join(' | ')}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: 'Nueva OC directa' }).click()
+  const v = pagina.locator('[role="dialog"]')
+  comprobar((await v.locator('#ocd-codigo').inputValue()) === 'PLANTA', 'la OC directa sigue abriendo con PLANTA')
+  await v.locator('#ocd-codigo').fill('')
+  const oc = await buscaEn(v, '#ocd-codigo', `volvo ${sufijo.toLowerCase()}`)
+  comprobar(oc.length === 1 && oc[0].includes(CODIGO), `Logística lo encuentra en la OC directa (${oc.join(' | ')})`)
+  await pagina.keyboard.press('Escape')
+  await pagina.keyboard.press('Escape')
+
+  await pagina.goto(`${BASE}/compras/servicios`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: 'Nueva orden de servicio' }).click()
+  const os = await buscaEn(pagina.locator('[role="dialog"]'), '#os-codigo', `volvo ${sufijo.toLowerCase()}`)
+  comprobar(os.length === 1 && os[0].includes(CODIGO), `y en la orden de servicio (${os.join(' | ')})`)
+  comprobar(errores.length === 0, `Logística, sin errores de consola ${errores.join(' | ')}`)
+  await contexto.close()
+}
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.administracion)
+  await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
+  const boton = pagina.getByRole('button', { name: 'Nuevo subcontrato' })
+  if (await boton.isVisible().catch(() => false)) {
+    await boton.click()
+    const sc = await buscaEn(pagina.locator('[role="dialog"]'), '#sc-codigo', `volvo ${sufijo.toLowerCase()}`)
+    comprobar(sc.length === 1 && sc[0].includes(CODIGO), `Administración lo encuentra en el subcontrato (${sc.join(' | ')})`)
+  } else {
+    comprobar(false, 'Administración no ve «Nuevo subcontrato»')
+  }
+  comprobar(errores.length === 0, `Administración, sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }
 {
