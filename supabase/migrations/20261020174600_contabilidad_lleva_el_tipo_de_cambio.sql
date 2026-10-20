@@ -76,27 +76,31 @@ update public.roles set nombre = 'Contabilidad'
 -- Solo cambia la palabra «Adquisición» o «Adquisiciones»; lo demás de cada campo
 -- queda como está y un campo que no la dice no se toca. Si el campo ya dice
 -- «Contabilidad», la palabra sale con lo que la une: los paréntesis que la
--- envuelven, o «y», «de», «del», «/», «-», «,», «&» delante o detrás.
+-- envuelven, o «y», «e», «o», «y/o», «de», «del», «la», «las», «los», «el» o un
+-- signo («-», «–», «—», «,», «/», «&», «|», «·», «:») delante o detrás.
 -- «Contabilidad (Adquisiciones)», «Contabilidad de Adquisiciones» y
--- «Adquisiciones y Contabilidad» → «Contabilidad». Si no la dice, en el nombre y
+-- «Adquisiciones – Contabilidad» → «Contabilidad». Si no la dice, en el nombre y
 -- el cargo pasa a decirla («Jefa de Adquisiciones» → «Jefa de Contabilidad»); en
 -- los apellidos solo sale. Al final no queda un «( )» vacío ni un signo colgando.
+-- La «Ó» va escrita aparte porque con la intercalación «C» el ~* no la iguala a
+-- la «ó». Cada campo se decide por sí solo: el select del final muestra lo que
+-- quedó, y si algo se lee raro se corrige en Usuarios.
 -- La función es temporal: muere con la sesión.
 create or replace function pg_temp.sin_adquisiciones(p text, p_poner boolean) returns text language sql immutable as $f$
   select regexp_replace(regexp_replace(btrim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
     case when p_poner and p !~* 'contabilidad'
-      then regexp_replace(p, '\yadquisici[oó]n(es)?\y', 'Contabilidad', 'gi')
+      then regexp_replace(p, '\yadquisici[oóÓ]n(es)?\y', 'Contabilidad', 'gi')
       else regexp_replace(regexp_replace(regexp_replace(regexp_replace(p,
-        '\(\s*adquisici[oó]n(es)?\s*\)', '', 'gi'),
-        '\yadquisici[oó]n(es)?\s*(\yy\y|[-,/&])\s*', '', 'gi'),
-        '\s*(\yy\y|\yde(l)?\y|[-,/&])\s*adquisici[oó]n(es)?\y', '', 'gi'),
-        '\yadquisici[oó]n(es)?\y', '', 'gi')
+        '\(\s*adquisici[oóÓ]n(es)?\s*\)', '', 'gi'),
+        '\yadquisici[oóÓ]n(es)?(\s*(\yy/o\y|\y[yeo]\y|[-–—,/&|·:]))+\s*', '', 'gi'),
+        '(\s*(\yy/o\y|\y[yeo]\y|\ydel?\y|\yl[ao]s?\y|\yel\y|[-–—,/&|·:]))+\s*adquisici[oóÓ]n(es)?\y', '', 'gi'),
+        '\yadquisici[oóÓ]n(es)?\y', '', 'gi')
     end,
     '\(\s*\)', '', 'g'),
     '\(\s+', '(', 'g'),
     '\s+\)', ')', 'g'),
     '\s+', ' ', 'g')),
-    '^[-,/&\s]+|[-,/&\s]+$', '', 'g'),
+    '^[-–—,/&|·:\s]+|[-–—,/&|·:\s]+$', '', 'g'),
     '^\(([^()]*)\)$', '\1');
 $f$;
 
@@ -104,19 +108,19 @@ update public.usuarios u
    set cargo = coalesce(nullif(pg_temp.sin_adquisiciones(u.cargo, true), ''), 'Contabilidad')
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
-   and u.cargo ~* 'adquisici[oó]n';
+   and u.cargo ~* 'adquisici[oóÓ]n';
 
 update public.usuarios u
    set nombres = coalesce(nullif(pg_temp.sin_adquisiciones(u.nombres, true), ''), 'Contabilidad')
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
-   and u.nombres ~* 'adquisici[oó]n';
+   and u.nombres ~* 'adquisici[oóÓ]n';
 
 update public.usuarios u
    set apellidos = pg_temp.sin_adquisiciones(u.apellidos, false)
   from public.roles r
  where r.id = u.rol_id and r.codigo = 'CONTABILIDAD'
-   and u.apellidos ~* 'adquisici[oó]n';
+   and u.apellidos ~* 'adquisici[oóÓ]n';
 
 -- Lo que quedó, para leerlo en el SQL Editor al pegarlo.
 select r.nombre as puesto, u.nombres, u.apellidos, u.cargo
