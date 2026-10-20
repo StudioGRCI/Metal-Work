@@ -29,7 +29,11 @@ export const NO_TOCO_NADA =
 export function mensajeDeError(error: { message: string; code?: string }): string {
   const m = error.message
 
-  if (error.code === '23505') return 'Ya existe un registro con esos datos.'
+  // El duplicado del motor se reescribe; el que explica un disparador («El
+  // número de OT no se reinicia cada año») se deja pasar.
+  if (error.code === '23505') {
+    return /duplicate key|unique constraint/i.test(m) ? 'Ya existe un registro con esos datos.' : m
+  }
   if (error.code === '23503')
     return 'El registro está referenciado por otro documento y no se puede modificar.'
   // 42501 es también el código con que las funciones del esquema explican por
@@ -39,7 +43,9 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
   // reemplaza, porque en inglés no le dice nada a nadie.
   if (error.code === 'PGRST301') return 'No tienes permisos para realizar esta operación.'
   if (error.code === '42501') {
-    return /row-level security|permission denied|insufficient privilege/i.test(m)
+    // `exigir_permiso` nombra el permiso por su código («No tiene el permiso
+    // compras.crear…»), que no le dice nada al taller.
+    return /row-level security|permission denied|insufficient privilege|^No tiene el permiso /i.test(m)
       ? 'No tienes permisos para realizar esta operación.'
       : m
   }

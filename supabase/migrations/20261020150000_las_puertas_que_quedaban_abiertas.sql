@@ -26,7 +26,11 @@
 -- 5. La auditoría (`audit_log`) copia la fila entera de cada tabla auditada, y
 --    Gerencia la lee con `auditoria.ver`: veía ahí los sueldos, los costos, las
 --    cuentas bancarias y las planillas de cada trabajador que RR. HH. le tapa en
---    sus tablas, y el monto de venta de las cotizaciones a quien no lo ve. La
+--    sus tablas, y el monto de venta de las cotizaciones a quien no lo ve. Y a
+--    Supervisión General (sin cuentas hoy, pero con `auditoria.ver`) le mostraba
+--    facturas de venta, cobros, presupuestos, cuentas bancarias de proveedores y
+--    subcontratistas, la planilla diaria y los trabajadores: cada una de esas
+--    tablas pide ahora en la auditoría lo mismo que pide su política de lectura. La
 --    caja ya se había tapado así (migración 20261019100000); ahora RR. HH. y
 --    las cotizaciones también.
 -- 6. Las firmas viejas de `emitir_compra_directa` y `emitir_compra_agrupada`,
@@ -125,8 +129,20 @@ alter policy ver_audit_log on public.audit_log using (
          or public.tiene_permiso('rrhh.personal'))
     and (tabla <> all (array['planillas', 'planilla_personas', 'planilla_distribuciones'])
          or public.tiene_permiso('rrhh.ver_planillas'))
-    and (tabla <> all (array['cotizaciones_pdf', 'cotizaciones_pdf_versiones', 'cotizaciones_pdf_igv'])
+    and (tabla <> all (array['cotizaciones_pdf', 'cotizaciones_pdf_versiones', 'cotizaciones_pdf_igv',
+                             'ot_presupuestos', 'ot_ventas_anteriores'])
          or public.tiene_permiso('cotizaciones.ver_pdf_comercial'))
+    -- Cada tabla, con lo mismo que pide su política de lectura.
+    and (tabla <> all (array['facturas_venta', 'cobros_factura_venta'])
+         or public.tiene_permiso('contabilidad.facturar') or public.tiene_permiso('cotizaciones.ver_aprobadas')
+         or public.tiene_permiso('tesoreria.ver_documentos'))
+    and (tabla <> 'cuentas_cobrar_ot'
+         or public.tiene_permiso('tesoreria.ver_documentos') or public.tiene_permiso('adquisiciones.ver'))
+    and (tabla <> 'proveedor_cuentas' or public.tiene_permiso('proveedores.ver_cuentas'))
+    and (tabla <> 'subcontratistas' or public.puede_ver_subcontratos())
+    and (tabla <> all (array['planilla_diaria_personas', 'planilla_diaria_detalle'])
+         or public.puede_ver_planilla_diaria())
+    and (tabla <> 'trabajadores' or public.puede_ver_trabajadores())
   )
 );
 

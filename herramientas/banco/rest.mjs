@@ -442,6 +442,11 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
   const ctx = crearContexto()
   const nodos = parsearSeleccion(busqueda.get('select'))
   const { propios } = repartirFiltros(busqueda)
+  // Como PostgREST: la escritura devuelve solo las columnas que pide el select.
+  // Con `returning *` una tabla con permiso por columna (tipos_carroceria)
+  // rechazaba toda escritura en el banco, y en Supabase entraba.
+  const soloColumnas = nodos.every((n) => n.tipo === 'columna' && n.nombre !== '*')
+  const devolver = soloColumnas ? nodos.map((n) => comillas(n.nombre)).join(', ') : '*'
 
   if (metodo === 'POST') {
     const filas = Array.isArray(cuerpo) ? cuerpo : [cuerpo]
@@ -453,7 +458,7 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
     )
     const texto =
       `insert into public.${comillas(relacion)} (${columnas.map(comillas).join(', ')}) ` +
-      `values ${valores.join(', ')} returning *`
+      `values ${valores.join(', ')} returning ${devolver}`
     return { texto, valores: ctx.valores, seleccion: nodos, relacion }
   }
 
@@ -465,14 +470,14 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda) 
     if (donde.length === 0) throw new ErrorNoSoportado('Actualización sin filtro: se negó por seguridad')
     const texto =
       `update public.${comillas(relacion)} t set ${asignaciones.join(', ')} ` +
-      `where ${donde.join(' and ')} returning *`
+      `where ${donde.join(' and ')} returning ${devolver}`
     return { texto, valores: ctx.valores, seleccion: nodos, relacion }
   }
 
   if (metodo === 'DELETE') {
     const donde = construirDonde(propios, ctx, 't')
     if (donde.length === 0) throw new ErrorNoSoportado('Borrado sin filtro: se negó por seguridad')
-    const texto = `delete from public.${comillas(relacion)} t where ${donde.join(' and ')} returning *`
+    const texto = `delete from public.${comillas(relacion)} t where ${donde.join(' and ')} returning ${devolver}`
     return { texto, valores: ctx.valores, seleccion: nodos, relacion }
   }
 

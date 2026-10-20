@@ -131,6 +131,37 @@ select test.afirmar((select count(*) from public.audit_log where tabla in ('clie
   'Gerencia sí sigue viendo la auditoría de lo demás, la cotización incluida');
 reset role;
 
+-- Supervisión General también tiene `auditoria.ver`, pero no lee la venta, las
+-- cuentas bancarias, la planilla diaria ni los trabajadores. Ya no se dan de
+-- alta cuentas de ese puesto: se le cambia el puesto a una de prueba como
+-- dueño de las tablas, sin sus reglas de alta.
+insert into public.audit_log (tabla, registro_id, accion, datos_despues)
+values ('facturas_venta', gen_random_uuid(), 'INSERT', '{"total": 5000}'),
+       ('proveedor_cuentas', gen_random_uuid(), 'INSERT', '{"numero_cuenta": "191-0000"}'),
+       ('planilla_diaria_personas', gen_random_uuid(), 'INSERT', '{"valor_hora": 12}'),
+       ('trabajadores', gen_random_uuid(), 'INSERT', '{"documento": "41255678"}');
+select test.crear_usuario('Sergio', 'General', 'supgeneral402@demo.pe', 'GERENTE', :'sede_id') as sg_id \gset
+set local session_replication_role = replica;
+update public.usuarios set rol_id = (select id from public.roles where codigo = 'SUPERVISOR_GENERAL') where id = :'sg_id';
+set local session_replication_role = origin;
+select test.como_usuario(:'sg_id');
+set local role authenticated;
+select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Supervisión General consulta la auditoría');
+select test.afirmar(
+  (select count(*) from public.audit_log
+    where tabla in ('facturas_venta', 'proveedor_cuentas', 'planilla_diaria_personas', 'trabajadores',
+                    'cotizaciones_pdf', 'tareos', 'planillas', 'movimientos_caja')) = 0,
+  'Supervisión General no ve en la auditoría la venta, las cuentas, la planilla diaria ni los trabajadores');
+select test.afirmar((select count(*) from public.audit_log where tabla = 'clientes') >= 1,
+  'Supervisión General sí ve la auditoría de lo demás');
+reset role;
+
+select test.como_usuario(:'gerente_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.audit_log where tabla = 'facturas_venta') >= 1,
+  'Gerencia, que lee las facturas de venta, sí las ve en la auditoría');
+reset role;
+
 select test.como_usuario(:'admin_id');
 set local role authenticated;
 select test.afirmar(
