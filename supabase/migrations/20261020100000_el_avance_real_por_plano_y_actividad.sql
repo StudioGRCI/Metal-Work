@@ -349,8 +349,13 @@ create index if not exists idx_reporte_diario_trabajos_actividad
 -- actividad de un plano que Diseño anuló o de un subcontrato ANULADO ya no
 -- cuenta: nadie puede reportarla ni cerrarla, y sumaría para siempre.
 -- p_sin: un reporte que no se cuenta (el observado que el supervisor está corrigiendo).
--- p_hasta: solo los reportes hasta ese día (lo que llevaba cada actividad ese día).
-create or replace function public.codigo_interno_actividades_estado(p_codigo text, p_sin uuid default null, p_hasta date default null)
+-- p_hasta: solo los reportes hasta ese día (lo que llevaba cada actividad ese día);
+-- con p_antes_de, de ese mismo día solo los subidos antes (la corrección de un
+-- reporte de la mañana no cuenta el de la tarde, que va después).
+-- Dentro de un mismo día manda el avance más alto, no el último subido: corregir
+-- el reporte de la mañana lo vuelve a subir después del de la tarde.
+create or replace function public.codigo_interno_actividades_estado(p_codigo text, p_sin uuid default null, p_hasta date default null,
+                                                                    p_antes_de timestamptz default null)
 returns table (clave text, actividad_id uuid, codigo text, area_id uuid, descripcion text, plano_id uuid,
                subcontrato_id uuid, avance numeric, ultima_fecha date, primera_fecha date, reportes integer)
 language sql stable set search_path to 'public' as $$
@@ -363,13 +368,14 @@ language sql stable set search_path to 'public' as $$
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
       left join public.codigo_actividades a on a.id = t.actividad_id
-     where r.anulado_en is null and r.id is distinct from p_sin and (p_hasta is null or r.fecha <= p_hasta)
+     where r.anulado_en is null and r.id is distinct from p_sin
+       and (p_hasta is null or r.fecha < p_hasta or (r.fecha = p_hasta and (p_antes_de is null or r.creado_en < p_antes_de)))
        and (public.normalizar_codigo_interno(p_codigo) is null
             or public.normalizar_codigo_interno(r.codigo_interno) = public.normalizar_codigo_interno(p_codigo))
   ), ultimo as (
     select distinct on (f.codigo, f.clave) f.*
       from fila f
-     order by f.codigo, f.clave, f.fecha desc, f.creado_en desc, f.orden
+     order by f.codigo, f.clave, f.fecha desc, f.avance desc, f.creado_en desc, f.orden
   ), cuenta as (
     select f.codigo, f.clave, min(f.fecha) as primera, count(*)::integer as reportes from fila f group by f.codigo, f.clave
   )
@@ -384,9 +390,9 @@ language sql stable set search_path to 'public' as $$
      and (u.plano_id is null or pl.anulado_en is null)
      and (u.subcontrato_id is null or s.estado is distinct from 'ANULADO')
 $$;
-comment on function public.codigo_interno_actividades_estado(text, uuid, date) is
-  'El último avance de cada actividad de los reportes diarios vigentes de un código (o de todos), con su área, su plano o subcontrato y cuántos reportes la llevan; sin el reporte p_sin, si se da, solo hasta el día p_hasta, si se da, y sin las de un plano anulado o un subcontrato ANULADO. Los trabajos de antes, sin actividad, por su texto y su área. No pide permiso: la llaman las funciones del avance.';
-revoke all on function public.codigo_interno_actividades_estado(text, uuid, date) from public, anon, authenticated;
+comment on function public.codigo_interno_actividades_estado(text, uuid, date, timestamptz) is
+  'El último avance de cada actividad de los reportes diarios vigentes de un código (o de todos), con su área, su plano o subcontrato y cuántos reportes la llevan; sin el reporte p_sin, si se da, solo hasta el día p_hasta (y de ese día, los subidos antes de p_antes_de), si se da, y sin las de un plano anulado o un subcontrato ANULADO. Dentro de un día, el avance más alto. Los trabajos de antes, sin actividad, por su texto y su área. No pide permiso: la llaman las funciones del avance.';
+revoke all on function public.codigo_interno_actividades_estado(text, uuid, date, timestamptz) from public, anon, authenticated;
 
 -- 6. Subir el reporte, con sus actividades ----------------------------------------------------------
 -- La misma función de 20261014201000, con el trabajo atado a su actividad, el
@@ -433,9 +439,14 @@ declare
   v_despues  smallint;
   v_despues_el date;
   v_clave    text;
+  -- Dónde cae este reporte entre los demás: su día y, dentro del día, cuándo se
+  -- subió. La corrección va donde estaba el observado, no al final del día.
+  v_ref      timestamptz := now();
+  v_sub_prev boolean;
 begin
   if p_reemplaza is not null then
-    select fecha into v_fecha_previa from public.reportes_diarios where id = p_reemplaza;
+    select fecha, creado_en into v_fecha_previa, v_ref from public.reportes_diarios where id = p_reemplaza;
+    v_ref := coalesce(v_ref, now());
   end if;
   if p_fecha is null or p_fecha > v_hoy then
     raise exception 'Elige el día del reporte: hoy o un día anterior.' using errcode = 'check_violation';
@@ -465,6 +476,15 @@ begin
   insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, personal_general, area_id, registrado_por, reemplaza_a)
   values (p_id, p_fecha, v_codigo, v_asunto, v_desc, v_general, (select u.area_id from public.usuarios u where u.id = v_yo), v_yo, p_reemplaza)
   returning * into v_reporte;
+
+  -- Las actividades que ya existen se toman de una vez y en orden: dos reportes
+  -- a la vez con los mismos planos en distinto orden no se traban entre sí.
+  perform 1 from public.codigo_actividades a
+   where a.plano_id in (select (j->>'plano_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'plano_id' ~ '^[0-9a-fA-F-]{36}$')
+      or a.subcontrato_id in (select (j->>'subcontrato_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'subcontrato_id' ~ '^[0-9a-fA-F-]{36}$')
+      or a.id in (select (j->>'actividad_id')::uuid from jsonb_array_elements(p_trabajos) j where j->>'actividad_id' ~ '^[0-9a-fA-F-]{36}$')
+   order by a.id
+   for update;
 
   for v_trabajo in select * from jsonb_array_elements(p_trabajos) loop
     v_orden := v_orden + 1;
@@ -513,6 +533,17 @@ begin
       if not found or v_sub.estado = 'ANULADO' then
         raise exception 'El subcontrato del trabajo % ya no está vigente. Vuelve a cargar la pantalla.', v_orden using errcode = 'check_violation';
       end if;
+      -- El que Administración ya dio por terminado solo vuelve en la corrección
+      -- del reporte que lo llevaba: Gerencia pudo observar las horas, no el subcontrato.
+      if v_sub.estado = 'TERMINADO' then
+        select exists (select 1 from public.reporte_diario_trabajos t
+                         join public.codigo_actividades a on a.id = t.actividad_id
+                        where t.reporte_id = p_reemplaza and a.subcontrato_id = v_sub_id) into v_sub_prev;
+        if not v_sub_prev then
+          raise exception 'El subcontrato % ya está terminado: Administración lo cerró y no se reporta más.', v_sub.numero
+            using errcode = 'check_violation';
+        end if;
+      end if;
       if public.normalizar_codigo_interno(v_sub.codigo_interno) is distinct from v_norma then
         raise exception 'El subcontrato % es del código %, no de %.', v_sub.numero, v_sub.codigo_interno, v_codigo using errcode = 'check_violation';
       end if;
@@ -552,7 +583,8 @@ begin
       -- Una actividad propia que ya está abierta con el mismo nombre se continúa, no se abre otra.
       -- PLANTA no lleva avance: su trabajo de cada día va suelto, sin actividad.
       v_clave := lower(v_tdesc);
-      if exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = p_id and lower(t.descripcion) = v_clave) then
+      if v_norma <> 'PLANTA'
+         and exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = p_id and lower(t.descripcion) = v_clave) then
         raise exception 'El trabajo % repite «%»: cada actividad va una sola vez en el reporte.', v_orden, v_tdesc
           using errcode = 'check_violation';
       end if;
@@ -579,20 +611,21 @@ begin
       v_solo_sub := false;
     end if;
 
-    if v_act.id = any(v_vistas) then
+    if v_act.id is not null and v_act.id = any(v_vistas) then
       raise exception 'El trabajo % repite «%»: cada actividad va una sola vez en el reporte.', v_orden, v_act.descripcion
         using errcode = 'check_violation';
     end if;
     v_vistas := v_vistas || v_act.id;
     v_tdesc := coalesce(v_act.descripcion, v_tdesc);
 
-    -- Solo hacia arriba: más que el último reporte anterior, menos que uno de un día posterior.
+    -- Solo hacia arriba: más que lo reportado antes, menos que lo reportado después.
     -- La fila de la actividad se toma primero: dos supervisores a la vez no se pisan el avance.
     perform 1 from public.codigo_actividades where id = v_act.id for update;
     select t.avance, r.fecha into v_antes, v_antes_el
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
-     where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id and r.fecha <= p_fecha
+     where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id
+       and r.id is distinct from p_reemplaza and (r.fecha, r.creado_en) < (p_fecha, v_ref)
      order by t.avance desc, r.fecha desc
      limit 1;
     if found and v_avance <= v_antes then
@@ -606,11 +639,12 @@ begin
     select t.avance, r.fecha into v_despues, v_despues_el
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
-     where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id and r.fecha > p_fecha
+     where t.actividad_id = v_act.id and r.anulado_en is null and r.id <> p_id
+       and r.id is distinct from p_reemplaza and (r.fecha, r.creado_en) > (p_fecha, v_ref)
      order by t.avance, r.fecha
      limit 1;
     if found and v_avance >= v_despues then
-      raise exception '«%» ya tiene % %% en el reporte del %: este día tiene que quedar por debajo.',
+      raise exception '«%» ya tiene % %% en un reporte posterior (del %): este tiene que quedar por debajo.',
         v_tdesc, v_despues, to_char(v_despues_el, 'DD/MM/YYYY') using errcode = 'check_violation';
     end if;
 
@@ -700,21 +734,25 @@ declare
   v_codigo text := public.normalizar_codigo_interno(p_codigo);
   v_yo uuid := public.usuario_actual();
   v_sin uuid;
+  v_ref timestamptz;
 begin
   perform public.exigir_permiso('reporte_diario.registrar');
   if v_codigo is null then
     return;
   end if;
-  select r.id into v_sin from public.reportes_diarios r
+  -- La corrección va donde estaba el observado: de su mismo día, lo subido
+  -- después (el reporte de la tarde) es el tope, no lo que ya lleva.
+  select r.id, r.creado_en into v_sin, v_ref from public.reportes_diarios r
    where r.id = p_corrige and r.registrado_por = v_yo and r.observado_en is not null and r.anulado_en is null;
   return query
   with estado as (
-    select * from public.codigo_interno_actividades_estado(v_codigo, v_sin, p_fecha)
+    select * from public.codigo_interno_actividades_estado(v_codigo, v_sin, p_fecha, v_ref)
   ), siguiente as (
     select distinct on (t.actividad_id) t.actividad_id, t.avance::numeric as tope, r.fecha as tope_fecha
       from public.reporte_diario_trabajos t
       join public.reportes_diarios r on r.id = t.reporte_id
-     where p_fecha is not null and r.fecha > p_fecha and r.anulado_en is null and r.id is distinct from v_sin
+     where p_fecha is not null and (r.fecha > p_fecha or (r.fecha = p_fecha and v_ref is not null and r.creado_en > v_ref))
+       and r.anulado_en is null and r.id is distinct from v_sin
        and t.actividad_id is not null and public.normalizar_codigo_interno(r.codigo_interno) = v_codigo
      order by t.actividad_id, t.avance, r.fecha
   )
@@ -728,16 +766,34 @@ begin
    where p.codigo_interno = v_codigo and p.anulado_en is null and public.puede_hoja_de_area(p.area_id)
      and coalesce(e.avance, 0) < 100 and (sg.tope is null or coalesce(e.avance, -1) + 1 < sg.tope)
   union all
+  -- El TERMINADO vuelve solo en la corrección del reporte que lo llevaba, con lo
+  -- que de verdad se había reportado (el estado lo da por 100).
   select 'SUBCONTRATO', s.id, ('Subcontrato ' || s.numero || ' · ' || s.descripcion)::text, a.nombre::text,
-         e.avance, e.ultima_fecha, null::numeric, sg.tope, sg.tope_fecha
+         k.avance, k.ultima_fecha, null::numeric, sg.tope, sg.tope_fecha
     from public.subcontratos s
     join public.areas a on a.id = s.area_id
     left join public.codigo_actividades x on x.subcontrato_id = s.id
     left join estado e on e.actividad_id = x.id
     left join siguiente sg on sg.actividad_id = x.id
-   where public.normalizar_codigo_interno(s.codigo_interno) = v_codigo and s.estado = 'VIGENTE'
-     and public.puede_hoja_de_area(s.area_id) and coalesce(e.avance, 0) < 100
-     and (sg.tope is null or coalesce(e.avance, -1) + 1 < sg.tope)
+    left join lateral (
+      select t.avance::numeric as avance, r.fecha as ultima_fecha
+        from public.reporte_diario_trabajos t
+        join public.reportes_diarios r on r.id = t.reporte_id
+       where s.estado = 'TERMINADO' and t.actividad_id = x.id and r.anulado_en is null and r.id is distinct from v_sin
+         and (p_fecha is null or r.fecha < p_fecha or (r.fecha = p_fecha and (v_ref is null or r.creado_en < v_ref)))
+       order by t.avance desc, r.fecha desc
+       limit 1
+    ) real on true
+    cross join lateral (
+      select case when s.estado = 'TERMINADO' then real.avance else e.avance end as avance,
+             case when s.estado = 'TERMINADO' then real.ultima_fecha else e.ultima_fecha end as ultima_fecha
+    ) k
+   where public.normalizar_codigo_interno(s.codigo_interno) = v_codigo
+     and (s.estado = 'VIGENTE'
+          or (s.estado = 'TERMINADO'
+              and exists (select 1 from public.reporte_diario_trabajos t where t.reporte_id = v_sin and t.actividad_id = x.id)))
+     and public.puede_hoja_de_area(s.area_id) and coalesce(k.avance, 0) < 100
+     and (sg.tope is null or coalesce(k.avance, -1) + 1 < sg.tope)
   union all
   -- La que todavía no tenía reporte a ese día se ofrece si se abrió en el reporte
   -- que se corrige o si tiene uno después (el día olvidado va antes que ese).
@@ -757,7 +813,7 @@ begin
 end;
 $$;
 comment on function public.reporte_diario_opciones(text, uuid, date) is
-  'Sobre qué puede reportar el supervisor en un código: los planos vigentes y los subcontratos vigentes de su área, y sus actividades propias abiertas, con el avance que llevan al día p_fecha (o hoy), su último reporte y el tope de un día posterior (sin su reporte observado p_corrige, si lo está corrigiendo). Exige reporte_diario.registrar.';
+  'Sobre qué puede reportar el supervisor en un código: los planos vigentes y los subcontratos vigentes de su área (el terminado, solo al corregir el reporte que lo llevaba), y sus actividades propias abiertas, con el avance que llevan al día p_fecha (o hoy), su último reporte y el tope de un día posterior (sin su reporte observado p_corrige, si lo está corrigiendo). Exige reporte_diario.registrar.';
 revoke all on function public.reporte_diario_opciones(text, uuid, date) from public, anon;
 grant execute on function public.reporte_diario_opciones(text, uuid, date) to authenticated;
 

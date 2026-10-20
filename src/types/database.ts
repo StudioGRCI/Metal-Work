@@ -10848,6 +10848,7 @@ export type Database = {
           p_codigo: string | null
           p_sin?: string | null
           p_hasta?: string | null
+          p_antes_de?: string | null
         }
         Returns: {
           clave: string | null

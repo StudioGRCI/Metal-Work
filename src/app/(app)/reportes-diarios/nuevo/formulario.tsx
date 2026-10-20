@@ -14,6 +14,7 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
+import { CODIGO_SIN_AVANCE } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
 import { useEnvio } from '@/lib/envio'
@@ -82,6 +83,11 @@ function paraEnviar(filas: FilaPersona[]) {
     .map((p) => ({ trabajador_id: p.trabajadorId, horas: horasDe(p.horas) }))
 }
 
+/** Por qué lo elegido ya no está en la lista de ese día. */
+function noEntra(nombres: string[], fecha: string) {
+  return `${nombres.join(', ')} no ${nombres.length === 1 ? 'entra' : 'entran'} el ${fechaCorta(fecha)}: ese día ya estaba terminado o un reporte posterior ya lleva tanto o más. Elige otra cosa.`
+}
+
 /** Lo que ya lleva lo elegido, para el detalle de la lista y la ayuda del avance. */
 function yaLleva(o: OpcionDeTrabajo, pasado: boolean) {
   return o.avance === null ? 'sin reportar todavía' : `${pasado ? 'iba' : 'va'} en ${o.avance} % (${fechaCorta(o.ultima_fecha)})`
@@ -135,15 +141,21 @@ export function FormularioReporteDiario({
   const codigoEscrito = useRef(corrige?.codigo_interno ?? '')
   const [leyendo, setLeyendo] = useState(false)
   const [errorOpciones, setErrorOpciones] = useState<string | null>(null)
-  // Lo elegido que la última lectura sacó, para decir por qué desapareció.
-  const [quitados, setQuitados] = useState<string | null>(null)
+  // Lo elegido que la última lectura sacó, para decir por qué desapareció. Al
+  // corregir, lo que el observado llevaba y ese día ya no entra.
+  const sinLugar = (corrige?.trabajos ?? []).filter(
+    (t) => t.sobre !== NUEVA && !opcionesIniciales.some((o) => claveDe(o) === t.sobre),
+  )
+  const [quitados, setQuitados] = useState<string | null>(() =>
+    corrige && sinLugar.length > 0 ? noEntra(sinLugar.map((t) => t.descripcion), corrige.fecha) : null,
+  )
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pedido = useRef(0)
   const [trabajos, setTrabajos] = useState<FilaTrabajo[]>(() =>
     corrige && corrige.trabajos.length > 0
       ? corrige.trabajos.map((t, i) => ({
           clave: `trabajo-${i + 1}`,
-          sobre: t.sobre,
+          sobre: sinLugar.includes(t) ? '' : t.sobre,
           descripcion: t.sobre === NUEVA ? t.descripcion : '',
           avance: String(t.avance),
           personal: filasDe(t.personal, `trabajo-${i + 1}`),
@@ -220,11 +232,9 @@ export function FormularioReporteDiario({
       setQuitados(
         sacados.length === 0
           ? null
-          : `${sacados.join(', ')} ${
-              codigo !== codigoLeido
-                ? `no ${sacados.length === 1 ? 'es' : 'son'} de ${codigo}`
-                : `no ${sacados.length === 1 ? 'entra' : 'entran'} el ${fechaCorta(fecha)}: ese día ya estaba terminado o un reporte posterior ya lleva tanto o más`
-            }. Elige otra cosa.`,
+          : codigo !== codigoLeido
+            ? `${sacados.join(', ')} no ${sacados.length === 1 ? 'es' : 'son'} de ${codigo}. Elige otra cosa.`
+            : noEntra(sacados, fecha),
       )
       setErrorOpciones(null)
       setOpciones(nuevas)
@@ -354,9 +364,9 @@ export function FormularioReporteDiario({
                 : `${quitados ? `${quitados} ` : ''}${
                     opciones.length > 0
                       ? `${codigoLeido}: ${opciones.length} ${opciones.length === 1 ? 'cosa' : 'cosas'} para reportar en tu área, o una actividad nueva.`
-                      : codigos.some((c) => c.trim().toUpperCase() === codigoLeido)
-                        ? `${codigoLeido} no tiene planos ni subcontratos de tu área, ni actividades abiertas: anota una actividad nueva.`
-                        : `No encuentro el código ${codigoLeido} en el taller: revisa cómo está escrito. Si es una unidad nueva, anota una actividad nueva.`
+                      : codigoLeido === CODIGO_SIN_AVANCE
+                        ? `${CODIGO_SIN_AVANCE} no lleva avance: anota el trabajo del día como actividad nueva.`
+                        : `${codigoLeido} no tiene planos ni subcontratos de tu área, ni actividades abiertas. Revisa que el código esté bien escrito; si lo está, anota una actividad nueva.`
                   }`}
         </p>
         {trabajos.map((t, i) => {

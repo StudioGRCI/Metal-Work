@@ -289,6 +289,7 @@ let idViernes = null
 }
 
 // ------------------------------------------------------------------ 4. Producción, su subcontrato
+let idSubcontrato = null
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.prd)
   const opciones = await nuevoReporte(pagina, { fecha: dia(1), asunto: `Armado ${sello}` })
@@ -302,6 +303,7 @@ let idViernes = null
   await avanceDe(pagina, 1).fill('26')
   const r = await subir(pagina)
   comprobar(Boolean(r.id), `el subcontrato se reporta sin gente propia${r.error ? `: ${r.error}` : ''}`)
+  idSubcontrato = r.id
   if (r.id) {
     const [p] = await consulta(`select count(*)::int as n from reporte_diario_personal where reporte_id = $1`, [r.id])
     comprobar(p.n === 0, 'el reporte queda sin horas')
@@ -393,6 +395,20 @@ let idViernes = null
   await elegirPersona(pagina, 1, JUAN, '1')
   const r = await subir(pagina)
   comprobar(Boolean(r.id), `el reporte del miércoles entra${r.error ? `: ${r.error}` : ''}`)
+  if (r.id) {
+    const [fila] = await consulta(
+      `select r.fecha::text as fecha, t.avance, a.descripcion
+         from reporte_diario_trabajos t
+         join reportes_diarios r on r.id = t.reporte_id
+         join codigo_actividades a on a.id = t.actividad_id
+        where r.id = $1`,
+      [r.id],
+    )
+    comprobar(
+      fila?.fecha === dia(4) && fila?.avance === 5 && fila?.descripcion === 'Corte de materia prima',
+      `y en la base queda el miércoles, en 5 %, sobre el mismo corte (${JSON.stringify(fila)})`,
+    )
+  }
   comprobar(errores.length === 0, `el miércoles sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -406,9 +422,48 @@ let idViernes = null
   await pagina.waitForFunction(() => /ZZZ999/.test(document.querySelector('[data-opciones]')?.textContent ?? ''), null, { timeout: 30000 })
   const aviso = limpio(await pagina.locator('[data-opciones]').innerText())
   comprobar(
-    aviso.includes('Corte de materia prima no es de ZZZ999') && aviso.includes('No encuentro el código ZZZ999'),
+    aviso.includes('Corte de materia prima no es de ZZZ999') && aviso.includes('Revisa que el código esté bien escrito'),
     `al cambiar a un código que no existe, dice qué se quitó y que revise el código (${aviso})`,
   )
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------- 6d. Administración termina el subcontrato, Gerencia observa su reporte y Producción lo corrige
+/** Una sentencia con la cuenta de un puesto, como la corre la aplicación (nunca ADMIN). */
+async function comoPuesto(correo, sql, valores = []) {
+  await base.query('begin')
+  try {
+    const [{ id }] = await consulta('select id from usuarios where correo = $1', [correo])
+    await base.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [
+      JSON.stringify({ sub: id, role: 'authenticated' }),
+      id,
+    ])
+    await base.query('set local role authenticated')
+    await base.query(sql, valores)
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+}
+if (idSubcontrato) {
+  const [sc] = await consulta(
+    `select s.id, s.numero from subcontratos s where public.normalizar_codigo_interno(s.codigo_interno) = $1 and s.estado = 'VIGENTE'`,
+    [CODIGO],
+  )
+  await comoPuesto(CUENTAS.administracion, `select public.cambiar_estado_subcontrato($1, 'TERMINADO')`, [sc.id])
+  await comoPuesto(CUENTAS.gerencia, `select public.observar_reporte_diario($1, 'GERENCIA', 'Describe mejor la soldadura')`, [idSubcontrato])
+  const { pagina, contexto, errores } = await entrar(CUENTAS.prd, CELULAR)
+  await pagina.goto(`${BASE}/reportes-diarios/${idSubcontrato}`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('link', { name: 'Corregir y subir de nuevo' }).click()
+  await pagina.waitForURL(/corrige=/, { timeout: 30000 })
+  await pagina.waitForLoadState('networkidle')
+  const elegido = limpio(await pagina.getByRole('combobox', { name: 'Trabajo 1: sobre qué' }).innerText())
+  comprobar(elegido.startsWith(`Subcontrato ${sc.numero}`), `al corregir, el subcontrato terminado sigue elegido (${elegido})`)
+  await avanceDe(pagina, 1).fill('26')
+  const r = await subir(pagina, 'Subir el reporte corregido')
+  comprobar(Boolean(r.id), `la corrección del subcontrato terminado sube${r.error ? `: ${r.error}` : ''}`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

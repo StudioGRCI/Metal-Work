@@ -904,7 +904,11 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
           titulo="Cada trabajo con su último avance"
           ayuda={`El porcentaje que el supervisor de cada área puso la última vez que reportó cada trabajo; el subcontrato que Administración dio por terminado vale 100 %. ${
             avance?.fuente === 'ETAPAS' || avance?.fuente === 'PLANOS'
-              ? 'El de un plano con % de la unidad cuenta por su plano; el promedio de los demás, área por área, es lo que vale la etapa de esa área mientras no termine.'
+              ? `El de un plano con % de la unidad cuenta por su plano; ${
+                  (avance?.etapas ?? 0) > 0
+                    ? 'el promedio de los demás, área por área, es lo que vale la etapa de esa área mientras no termine.'
+                    : 'el promedio de los demás es lo que vale la parte de la unidad que no está en planos.'
+                }`
               : 'El avance del código es el promedio de estos.'
           }`}
         />
