@@ -15,9 +15,10 @@
  *
  * Necesita las cuentas `*.local@metalwork.test` de cada puesto. El código y las
  * personas los crea el script, distintos en cada corrida; al final, aunque algo
- * falle, deja la luz anulada y las personas de baja.
+ * falle, deja la luz y las horas anuladas y las personas de baja.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS.
  */
+import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 
 import pg from 'pg'
@@ -100,6 +101,7 @@ const [{ hoy, mes }] = await consulta(`select (now() at time zone 'America/Lima'
 const sello = Date.now().toString().slice(-8)
 const CODIGO = `GPH${sello.slice(-4)}_SR_O4_1_26/41`
 const DETALLE = `Recibo de luz del banco ${sello}`
+const TAREO = randomUUID()
 console.log(`  · código de la prueba: ${CODIGO}`)
 
 try {
@@ -119,10 +121,11 @@ try {
     [sello, CUENTAS.rrhh],
   )
   const [soldador] = await consulta(`select id from trabajadores where nombres = $1`, [`Soldador ${sello}`])
-  await comoPuesto(CUENTAS.rrhh, `select public.rrhh_registrar_tareo(gen_random_uuid(), $1, $2::date, $3, 8, 'Soldadura del piso')`, [
+  await comoPuesto(CUENTAS.rrhh, `select public.rrhh_registrar_tareo($4, $1, $2::date, $3, 8, 'Soldadura del piso')`, [
     soldador.id,
     hoy,
     CODIGO,
+    TAREO,
   ])
   const [horasUnidad] = await consulta(`select horas::numeric, total::numeric from public.horas_por_codigo_del_mes($1::date) where codigo = $2`, [
     `${mes}-01`,
@@ -202,6 +205,8 @@ try {
     comprobar(filaOfi.includes(`S/ ${soles(ofi.monto)}`) && filaOfi.includes('costo mensual de RR. HH. de la oficina') && !/persona/.test(filaOfi),
       `y su parte de la oficina, sin nombres: «${filaOfi}»`)
     await pagina.screenshot({ path: `${CAPTURAS}/gph-costeo.png`, fullPage: true })
+    const cierre = limpio(await pagina.locator('[data-cierre="incompleto"]').innerText())
+    comprobar(cierre.includes('que termine el mes'), `antes de intentar cerrarla, dice que espera a que termine el mes: «${cierre}»`)
 
     // Gerencia también abre Gastos del mes desde su menú (Consultas) y ve el sueldo de la oficina sumado.
     const enlace = pagina.getByRole('navigation', { name: 'Menú principal' }).getByRole('link', { name: /Gastos del mes/ })
@@ -240,10 +245,13 @@ try {
     await contexto.close()
   }
 } finally {
-  // Pase lo que pase, la prueba no deja nada sumando en el banco: la luz anulada
-  // con su motivo y las dos personas de baja.
+  // Pase lo que pase, la prueba no deja nada sumando en el banco: la luz y las 8 h
+  // anuladas con su motivo, y las dos personas de baja.
   for (const g of await consulta(`select id from gastos_generales_mes where descripcion = $1 and estado = 'ACTIVO'`, [DETALLE])) {
     await comoPuesto(CUENTAS.administracion, 'select public.anular_gasto_general($1, $2)', [g.id, 'Prueba del banco: se deja anulada al terminar'])
+  }
+  if ((await consulta(`select 1 from tareos where id = $1 and anulado_en is null`, [TAREO])).length > 0) {
+    await comoPuesto(CUENTAS.rrhh, 'select public.rrhh_anular_tareo($1, $2)', [TAREO, 'Prueba del banco: se deja anulada al terminar'])
   }
   await consulta(`update trabajadores set activo = false where nombres = any($1::text[])`, [[`Soldador ${sello}`, `Asistente ${sello}`]])
 }

@@ -3,13 +3,13 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
 
-export type ConceptoGastoGeneral = Pick<Tablas<'conceptos_gasto_general'>, 'codigo' | 'nombre' | 'grupo' | 'tasa_sugerida'>
+export type ConceptoGastoGeneral = Pick<Tablas<'conceptos_gasto_general'>, 'codigo' | 'nombre' | 'grupo'>
 
 /** Los conceptos activos, en el orden de la hoja RESUMEN de la empresa. */
 export async function conceptosGastoGeneral(): Promise<ConceptoGastoGeneral[]> {
   const db = await createClient()
   const { data, error } = await db.from('conceptos_gasto_general')
-    .select('codigo,nombre,grupo,tasa_sugerida').eq('activo', true).order('orden')
+    .select('codigo,nombre,grupo').eq('activo', true).order('orden')
   if (error) throw new Error(`No se pudieron leer los conceptos de gasto: ${error.message}`)
   return data ?? []
 }

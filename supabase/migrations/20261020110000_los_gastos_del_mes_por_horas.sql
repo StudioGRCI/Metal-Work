@@ -143,6 +143,12 @@ comment on column public.areas.es_oficina is
 -- anota quiénes eran la oficina de cada mes pasado con horas, y con qué costo; el
 -- mes en curso sigue al día. Lo que cada uno cargó en horas a una unidad se sigue
 -- descontando al leer: un tareo tardío de un mes pasado sí cuenta.
+-- Cuenta quien está activo, no quien ya estaba dado de alta en el sistema ese mes:
+-- trabajadores no guarda la fecha de ingreso, y la de alta es el día en que RR. HH.
+-- lo tecleó (en producción, toda la gente se está dando de alta en octubre de
+-- 2026), así que un tareo atrasado de setiembre dejaba la oficina en cero. Quien
+-- entra después no llega a los meses pasados porque su primer costo los anota antes.
+-- Sin activar_timestamps: son anotaciones que nadie edita, sin permisos de escritura.
 create table if not exists public.oficina_meses_congelados (
   periodo date primary key check (extract(day from periodo) = 1),
   congelado_en timestamptz not null default now()
@@ -198,7 +204,7 @@ begin
   insert into public.oficina_mes_personas (periodo, trabajador_id, costo_mensual)
   select n.periodo, w.id, c.costo_mensual
     from nuevo n
-    join public.trabajadores w on w.activo and w.creado_en < n.periodo + interval '1 month'
+    join public.trabajadores w on w.activo
                               and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id)
     join public.trabajador_costos c on c.trabajador_id = w.id
     join public.areas a on a.id = w.area_id and a.es_oficina;
@@ -257,7 +263,7 @@ language sql stable set search_path to 'public' as $$
     union all
     select m.periodo, w.id, c.costo_mensual
       from mes m
-      join public.trabajadores w on w.activo and w.creado_en < m.periodo + interval '1 month'
+      join public.trabajadores w on w.activo
       join public.trabajador_costos c on c.trabajador_id = w.id
       join public.areas a on a.id = w.area_id and a.es_oficina
      where not exists (select 1 from public.oficina_meses_congelados k where k.periodo = m.periodo)
@@ -276,7 +282,7 @@ language sql stable set search_path to 'public' as $$
          coalesce((select round(sum(n.monto), 2) from neto n where n.periodo = m.periodo), 0),
          (select count(*) from public.trabajadores w
             join public.trabajador_costos c on c.trabajador_id = w.id
-           where w.activo and w.area_id is null and w.creado_en < m.periodo + interval '1 month'
+           where w.activo and w.area_id is null
              and not exists (select 1 from public.oficina_meses_congelados k where k.periodo = m.periodo)
              and not exists (select 1 from public.pruebas_filas f where f.tabla = 'trabajadores' and f.fila_id = w.id))::integer
     from mes m
@@ -321,9 +327,11 @@ returns table (monto numeric, sin_area integer)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
-  -- Quien ve el costeo de los códigos ya ve este total en cada unidad; costos.ver
-  -- solo (Supervisión general, Costos y Materiales) no lo lee: restando un mes del
-  -- otro saldría el sueldo de quien entra.
+  -- El total, solo a quien registra los gastos o ve el costeo de cada código.
+  -- Con costos.ver solo (Supervisión general, Costos y Materiales) no se muestra
+  -- suelto, pero el costo de cada código lo lleva dentro (codigos_internos_costo):
+  -- el costeo de una unidad es el mismo para todo puesto. Si la oficina se tapa a
+  -- esos puestos lo decide DKS.
   if public.usuario_actual() is not null
      and not (public.es_admin() or public.tiene_permiso('costos.gastos_generales') or public.tiene_permiso('codigos_internos.ver')) then
     raise exception 'No tiene el permiso costos.gastos_generales ni codigos_internos.ver para realizar esta operación' using errcode = 'insufficient_privilege';

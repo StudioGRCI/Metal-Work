@@ -193,7 +193,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           descripcion={reparto.length === 0
             ? '0 h en el mes.'
             : `${reparto.length} ${reparto.length === 1 ? 'unidad' : 'unidades'} con ${cantidad(horasDelMes)} h en el mes.`}
-          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es el costo mensual que RR. HH. tiene de cada persona activa de las áreas marcadas como oficina (Administración, Contabilidad, Gerencias, Logística, Marketing, Requerimientos, RR. HH., Tesorería y TI; no las del taller ni las de apoyo, como Almacén, Calidad o Diseño, que cargan sus horas a cada unidad), sin lo que ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
+          ayuda="Cada unidad carga de cada gasto del mes, y del sueldo de la oficina, la parte de sus horas: las del reporte diario y las del tareo de RR. HH. PLANTA y OFICINA no son unidades y no reciben. El sueldo de la oficina es el costo mensual que RR. HH. tiene de cada persona activa de las áreas marcadas como oficina, las de escritorio (no las del taller ni las de apoyo, que cargan sus horas a cada unidad), sin lo que ya cargó en horas a una unidad. Sin horas en el mes, los gastos esperan y se reparten en cuanto alguien reporte."
         />
         {oficina.sinArea > 0 && (
           <TarjetaCuerpo className="border-b border-borde text-sm text-aviso">

@@ -31,6 +31,7 @@ import {
 } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
+import { repartoDelMes } from '@/lib/datos/gastos-generales'
 import {
   CODIGO_SIN_AVANCE,
   CODIGO_TODOS_LOS_ACTIVOS,
@@ -57,7 +58,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -78,16 +79,22 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const vistas = VISTAS_CODIGO.filter((v) =>
     aTodos ? v.valor === 'avance' || v.valor === 'documentos' : v.valor !== 'facturacion' || veFacturas,
   )
+  // Quien cierra el costeo sabe antes de intentarlo si la unidad espera a que termine el mes
+  // (cerrar_costeo_codigo lo exige: sus gastos del mes se reparten por las horas del mes entero).
+  const cierra = puede(perfil, 'codigos_internos.cerrar')
+  const miraMes = cierra && !aTodos && puede(perfil, ['costos.gastos_generales', 'costos.ver'])
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [conDocumentos, deDiseno, avances, facturado, reparto] = await Promise.all([
+  const [conDocumentos, deDiseno, avances, facturado, reparto, horasDelMes] = await Promise.all([
     listarCodigosInternos(),
     codigosDeDiseno(),
     avanceDeLosCodigos(codigo),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
+    miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
   ])
+  const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const resumen = todos.find((c) => c.codigo === codigo)
@@ -160,7 +167,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                 facturado={facturado}
                 codigo={codigo}
                 verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
-                cierra={puede(perfil, 'codigos_internos.cerrar')}
+                cierra={cierra}
+                esperaElMes={esperaElMes}
               />
               <LineaDeDiseno d={diseno} />
             </>
@@ -197,6 +205,7 @@ function ComoVa({
   codigo,
   verPrecio,
   cierra,
+  esperaElMes,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
@@ -206,6 +215,8 @@ function ComoVa({
   verPrecio: boolean
   /** Quien cierra el costeo (`codigos_internos.cerrar`). */
   cierra: boolean
+  /** La unidad tiene horas en el mes en curso: el cierre espera a que termine. */
+  esperaElMes: boolean
 }) {
   const costo = costoDelCodigo(c)
   const manoObra = c.mano_obra + c.recargo_extras
@@ -342,7 +353,7 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} />}
+      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} />}
     </div>
   )
 }
@@ -519,7 +530,19 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
 }
 
 /** El cierre del costeo: congelado al entregar la unidad, o el botón para cerrarlo. */
-function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codigo: string; verPrecio: boolean; cierra: boolean }) {
+function LineaCierre({
+  c,
+  codigo,
+  verPrecio,
+  cierra,
+  esperaElMes,
+}: {
+  c: ResumenCodigo
+  codigo: string
+  verPrecio: boolean
+  cierra: boolean
+  esperaElMes: boolean
+}) {
   const z = c.cierre
   if (!z) {
     if (!cierra) return null
@@ -531,6 +554,7 @@ function LineaCierre({ c, codigo, verPrecio, cierra }: { c: ResumenCodigo; codig
       c.venta && c.venta.sin_igv > 0 &&
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
       c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo carga Tesorería)',
+      esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
     ].filter(Boolean)
     if (falta.length > 0) {
       return (

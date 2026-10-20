@@ -48,7 +48,7 @@ $$;
 -- ----------------------------------------- Armazón (ADMIN): la gente, sus costos y sus horas
 -- Ana (Administración, S/ 3,000), Caro (Administración, S/ 2,000, que cargó 10 h a
 -- la unidad A a S/ 10), Beto (Maestranza, S/ 2,400), Dani (sin área, S/ 1,000),
--- Eli (Administración, de baja), Fico (Administración, entró en abril) y Gil
+-- Eli (Administración, de baja), Fico (Administración, entra cuando marzo ya tiene horas) y Gil
 -- (Almacén, S/ 1,500: apoya al taller, no es oficina).
 -- Marzo: A 40 h (30 de Beto y 10 de Caro), B 10 h; PLANTA 5 h y OFICINA 4 h no son unidades.
 select test.como_usuario(:'admin_id');
@@ -58,10 +58,15 @@ begin
   perform test.afirmar(not exists (select 1 from public.horas_por_codigo_del_mes(date '2021-03-01'))
                        and not exists (select 1 from public.horas_por_codigo_del_mes(date '2021-05-01')),
     'la base no tiene horas en marzo ni mayo de 2021: los números de esta prueba son solo suyos');
+  -- La oficina es la gente activa de hoy: la que ya está en la base, de baja dentro
+  -- de esta prueba (se deshace al final), para que los números sean solo de ella.
+  update public.trabajadores w set activo = false
+   where w.activo and exists (select 1 from public.trabajador_costos c where c.trabajador_id = w.id)
+     and (w.area_id is null or w.area_id in (select a.id from public.areas a where a.es_oficina));
   for v_nombre, v_area, v_costo, v_activo, v_alta in
     select * from (values ('Ana', 'ADM', 3000, true, date '2021-01-04'), ('Caro', 'ADM', 2000, true, date '2021-01-04'),
                           ('Beto', 'MTZ', 2400, true, date '2021-01-04'), ('Dani', null, 1000, true, date '2021-01-04'),
-                          ('Eli', 'ADM', 5000, false, date '2021-01-04'), ('Fico', 'ADM', 9000, true, date '2021-04-05'),
+                          ('Eli', 'ADM', 5000, false, date '2021-01-04'), 
                           ('Gil', 'ALM', 1500, true, date '2021-01-04')) x
   loop
     insert into public.trabajadores (nombres, apellidos, dni, area_id, activo, creado_en)
@@ -80,6 +85,16 @@ begin
     (current_setting('prueba.caro')::uuid, date '2021-03-12', 'OFICINA', 4, 'Archivo', 10, 40),
     (current_setting('prueba.caro')::uuid, date '2021-03-15', 'CHK401_A_21/03', 10, 'Compras en obra', 10, 100);
 end $$;
+-- Fico entra a la oficina con marzo ya trabajado: RR. HH. le pone su primer costo
+-- y eso anota antes los meses pasados, así que no llega a ninguno.
+insert into public.trabajadores (nombres, apellidos, dni, area_id, activo)
+values ('Fico', 'Check 401', '40109998', (select id from public.areas where codigo = 'ADM'), true)
+returning id as fico_id \gset
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_guardar_costo_trabajador(:'fico_id'::uuid, 9000);
+reset role;
+select test.como_usuario(:'admin_id');
 
 -- ------------------------------------------------- 1. Administración registra POR HORAS
 select pg_temp.como('oficina');
@@ -157,9 +172,9 @@ select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK401_B
                              where l.referencia_id = current_setting('prueba.agua')::uuid and l.monto = 300
                                and l.detalle = 'Todo a este código, la única unidad con horas ese mes · Recibo de agua de mayo'),
   'con las primeras horas de mayo, el agua entera va a la única unidad que trabajó');
--- Mayo: Ana, Caro y Fico (que ya entró): 3,000 + 2,000 + 9,000.
-select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 05/2021') = 14000,
-  format('la oficina de mayo cuenta a quien entró en abril: %s', pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 05/2021')));
+-- Mayo ya era pasado cuando entró Fico: Ana y Caro, 3,000 + 2,000.
+select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 05/2021') = 5000,
+  format('la oficina de mayo es la de cuando se anotó, sin Fico: %s', pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 05/2021')));
 reset role;
 
 -- ------------------------------------------------------------- 5. La pantalla de Gastos del mes
@@ -170,8 +185,10 @@ select test.afirmar((select string_agg(r.codigo || ' ' || r.horas::text || ' ' |
   format('Administración ve entre quiénes se reparte marzo: %s',
          (select string_agg(r.codigo || ' ' || r.horas::text || ' ' || r.parte::text, ' | ' order by r.horas desc)
             from public.gastos_del_mes_reparto(date '2021-03-01') r)));
-select test.afirmar((select o.monto = 4900 and o.sin_area = 1 from public.gastos_del_mes_oficina(date '2021-03-01') o),
-  'Administración ve la oficina de marzo sumada (S/ 4,900), sin cuántas personas, y 1 trabajador con costo sin área');
+select test.afirmar((select o.monto = 4900 and o.sin_area = 0 from public.gastos_del_mes_oficina(date '2021-03-01') o),
+  'Administración ve la oficina de marzo sumada (S/ 4,900), sin cuántas personas; marzo ya está anotado y no avisa de nadie sin área');
+select test.afirmar((select o.sin_area = 1 from public.gastos_del_mes_oficina(date_trunc('month', now() at time zone 'America/Lima')::date) o),
+  'en el mes en curso sí avisa: Dani tiene costo y no tiene área');
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
@@ -198,7 +215,12 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.gastos_del_mes_reparto(date '2021-03-01')) = 2,
   'Costos y Materiales ve entre quiénes se reparte marzo');
 select test.debe_fallar($q$select * from public.gastos_del_mes_oficina(date '2021-03-01')$q$,
-  'Costos y Materiales no lee el total de la oficina', 'codigos_internos.ver');
+  'Costos y Materiales no lee el total de la oficina suelto', 'codigos_internos.ver');
+-- Pero el costo de la unidad es el mismo para todo puesto: lleva su parte de la
+-- oficina (luz 800 + oficina 3,920 en A). Si eso se tapa, lo decide DKS.
+select test.afirmar((select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c) = 800 + 3920,
+  format('Costos y Materiales ve el costo de A con su parte de la oficina: %s',
+         (select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c)));
 reset role;
 
 -- ------------------------------------- 6. Un mes pasado no cambia con el personal de hoy
@@ -210,8 +232,8 @@ select public.rrhh_cambiar_estado_trabajador(current_setting('prueba.caro')::uui
 reset role;
 select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4900,
   format('marzo sigue con S/ 4,900 de oficina: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
-select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 14000,
-  format('mayo sigue con S/ 14,000: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 5000,
+  format('mayo sigue con S/ 5,000: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
 select test.afirmar(not exists (select 1 from public.oficina_meses_congelados
                                  where periodo = date_trunc('month', now() at time zone 'America/Lima')::date),
   'el mes en curso no se congela: sigue con el personal de hoy');
