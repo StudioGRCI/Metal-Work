@@ -322,8 +322,9 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   const { pagina, contexto } = await entrar(CUENTAS.contabilidad)
   const items = await menu(pagina)
   console.log('     menú de Contabilidad:', items.join(' · '))
-  comprobar(items.indexOf('Facturación') === 1, 'el menú de Contabilidad trae Facturación primero')
-  comprobar(items.includes('Kardex') && items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con el Kardex y la Cotización en Consultas, y sin la OT')
+  comprobar(items.indexOf('Adquisiciones') === 1 && items.indexOf('Facturación') === 2, 'el menú de Contabilidad trae Adquisiciones y después Facturación')
+  comprobar(items.includes('Kardex') && items.includes('Proveedores') && items.includes('Tipo de cambio') && !items.includes('Cotización') && !items.includes('Órdenes de trabajo'),
+    'con el Kardex, Proveedores y el Tipo de cambio en Consultas, sin la Cotización (la ve en Facturación) ni la OT')
   comprobar((await cuenta(pagina, '/contabilidad/facturacion')) === antes.facturar + 1, `el menú de Contabilidad cuenta la cotización por facturar (${antes.facturar} + 1)`)
 
   await ir(pagina, `${BASE}/contabilidad/facturacion`)
@@ -390,9 +391,9 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
   const items = await menu(pagina)
   console.log('     menú de Tesorería:', items.join(' · '))
-  // Desde el 2026-10-16 la caja diaria va primero (src/lib/navegacion.ts), y después sus cuatro.
-  const orden = ['Caja diaria', 'Adquisiciones', 'Cuentas por cobrar', 'Cuentas por pagar', 'Pagos de servicio', 'Recibos por honorarios', 'Planilla diaria', 'Tipo de cambio']
-  comprobar(orden.every((t, i) => items.indexOf(t) === i + 1), 'el menú de Tesorería va la caja diaria y después Adquisiciones, por cobrar, por pagar, pagos de servicio')
+  const orden = ['Adquisiciones', 'Caja diaria', 'Cuentas por cobrar', 'Cuentas por pagar', 'Pagos de servicio', 'Recibos por honorarios', 'Planilla diaria']
+  comprobar(orden.every((t, i) => items.indexOf(t) === i + 1) && !items.includes('Tipo de cambio'),
+    'el menú de Tesorería va Adquisiciones, Caja diaria, por cobrar, por pagar, pagos de servicio, sin el Tipo de cambio')
   comprobar(items.includes('Cotización') && !items.includes('Órdenes de trabajo'), 'con la Cotización en Consultas, y sin la OT')
   comprobar(
     (await cuenta(pagina, '/tesoreria/por-cobrar')) === antes.cobrar + 1 && (await cuenta(pagina, '/tesoreria/pagos-de-servicio')) === antes.servicios + 1,
@@ -452,9 +453,8 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   const telefono = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
   const pestanas = (await telefono.pagina.locator('nav[aria-label="Secciones"] li').allTextContents()).map(limpio)
   console.log('     pestañas de Tesorería:', pestanas.join(' · '))
-  // En el teléfono también va primero la caja y los pagos de servicio pasan a «Más» (2026-10-17).
-  // El globo va delante del nombre, y desde nueve dice «9+».
-  comprobar(['Caja', 'Compras', 'Por cobrar', 'Por pagar'].every((t, i) => pestanas[i]?.replace(/^\d+\+?/, '').startsWith(t)), 'en el teléfono, sus cuatro pestañas en orden, con la caja primero')
+  // Los pagos de servicio van en «Más» (2026-10-17). El globo va delante del nombre, y desde nueve dice «9+».
+  comprobar(['Compras', 'Caja', 'Por cobrar', 'Por pagar'].every((t, i) => pestanas[i]?.replace(/^\d+\+?/, '').startsWith(t)), 'en el teléfono, sus cuatro pestañas en orden')
   await ir(telefono.pagina, `${BASE}/tesoreria/por-cobrar`)
   const ancho = await telefono.pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `Cuentas por cobrar cabe en el teléfono (${ancho}px)`)

@@ -359,6 +359,7 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          apertura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -372,6 +373,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          apertura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -385,6 +387,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          apertura_ruta?: string | null
         }
         Relationships: [
           {
@@ -12525,6 +12528,7 @@ export type Database = {
           p_saldo_inicial: number | null
           p_fecha_inicio: string | null
           p_activa: boolean | null
+          p_apertura_ruta: string | null
         }
         Returns: string
       }

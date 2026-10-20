@@ -168,3 +168,42 @@ export function normalizarMonto(texto: string) {
 export const MONTO = /^\d{1,9}(?:\.\d{1,2})?$/
 /** El saldo puede ser negativo: un sobregiro. */
 export const SALDO = /^-?\d{1,9}(?:\.\d{1,2})?$/
+
+/*
+ * La captura del saldo con que se abre una cuenta (migración 20261020174500):
+ * la pantalla del aplicativo del banco con el saldo de ese día, o la foto del
+ * conteo de la caja chica. Va al bucket privado `apertura-caja`, a
+ * `{cuenta}/{archivo}.{extensión}`, y la base exige esa forma.
+ */
+export const BUCKET_APERTURA_CAJA = 'apertura-caja'
+
+/**
+ * Dónde se abre la captura de una cuenta: el enlace firmado se pide al tocar
+ * (`caja-diaria/captura/[id]/route.ts`). Aquí y no en el formulario, que es
+ * 'use client': la página, que corre en el servidor, también lo arma.
+ */
+export const enlaceCaptura = (cuentaId: string) => `/tesoreria/caja-diaria/captura/${cuentaId}`
+
+/** Lo que acepta la base, con la extensión que lleva la ruta. */
+export const TIPOS_CAPTURA_SALDO: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+}
+export const ACEPTA_CAPTURA_SALDO = 'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf'
+export const MAXIMO_MB_CAPTURA_SALDO = 10
+
+/** La ruta que exige la base para la captura de esa cuenta; null si el tipo no va. */
+export function rutaDeCapturaDeSaldo(cuentaId: string, archivoId: string, mime: string): string | null {
+  const extension = TIPOS_CAPTURA_SALDO[mime]
+  return extension ? `${cuentaId}/${archivoId}.${extension}` : null
+}
+
+/** Por qué no sirve el archivo elegido como captura del saldo; null si sirve. */
+export function problemaDeLaCaptura(archivo: { size: number; type: string }): string | null {
+  if (archivo.size < 1) return 'El archivo de la captura está vacío: vuelve a elegirlo.'
+  if (!TIPOS_CAPTURA_SALDO[archivo.type]) return 'La captura va en foto (JPG, PNG o WEBP) o en PDF.'
+  if (archivo.size > MAXIMO_MB_CAPTURA_SALDO * 1024 * 1024) return `La captura pasa de ${MAXIMO_MB_CAPTURA_SALDO} MB: recórtala o compártela de nuevo desde el aplicativo.`
+  return null
+}
