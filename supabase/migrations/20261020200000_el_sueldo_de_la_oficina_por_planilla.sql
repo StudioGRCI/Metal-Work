@@ -166,9 +166,3 @@ $$;
 comment on function public.sueldos_oficina_del_mes(date) is
   'El sueldo de la oficina de cada mes (o del mes de p_periodo): la parte, por días, de cada pago de oficina_pagos que cae en el mes (con aportes), menos lo que esa persona cargó ese mes en horas a una unidad; y cuántas personas de planilla administrativa tienen días trabajados del mes, desde inicio_registro_pagos_oficina(persona) y hasta hoy, sin pago. No pide permiso: la llaman el costeo y gastos_del_mes_oficina.';
 revoke all on function public.sueldos_oficina_del_mes(date) from public, anon, authenticated;
-
--- La llave oficina_pagos → trabajadores solo la cubría ix_oficina_pagos_persona,
--- que es parcial (where anulado_en is null) y la integridad no puede usar: el check
--- 190 lo marcó en rojo desde la 20261020120000. Cumple (a): ningún índice completo
--- empieza por trabajador_id.
-create index if not exists ix_oficina_pagos_trabajador on public.oficina_pagos (trabajador_id);
