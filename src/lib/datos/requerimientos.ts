@@ -40,6 +40,13 @@ export type LineaRequerimiento = {
    * un 0 diría «nada entregado» y lo ya llevado saldría para recoger.
    */
   entregado: number | null
+  /**
+   * De lo que se compró para este insumo, cuánto entró ya al kardex, aunque el
+   * proveedor haya traído solo una parte (`entregado_de_requerimientos`).
+   * `null` si el insumo no está enlazado a una línea de OC o no se pidió con
+   * `conEntregado`: entonces cuenta la etapa.
+   */
+  llegado: number | null
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -120,9 +127,9 @@ export async function cargarRequerimientos(
   // también el número de la OC, que Supervisión y Requerimientos no leen de la
   // tabla de compras.
   const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
-  // Lo que ya salió del almacén para cada insumo: Supervisión no lee el kardex,
-  // así que también lo da la base (migración 20261020191000).
-  const entregados = new Map<string, number>()
+  // Lo que ya salió del almacén para cada insumo y lo que llegó de su compra:
+  // Supervisión no lee el kardex, así que también lo da la base (migración 20261020191000).
+  const entregados = new Map<string, { entregado: number; llegado: number | null }>()
   if (data && data.length > 0) {
     const ids = data.map((r) => r.id)
     const [avance, entregado] = await Promise.all([
@@ -140,7 +147,8 @@ export async function cargarRequerimientos(
       avances.set(a.requerimiento_id, { porcentaje: a.porcentaje, etapa: a.etapa, lineas: new Map(lineas.map((l) => [l.item, l])) })
     }
     for (const e of entregado?.data ?? []) {
-      if (e.requerimiento_id && e.item != null) entregados.set(`${e.requerimiento_id}:${e.item}`, Number(e.entregado ?? 0))
+      if (!e.requerimiento_id || e.item == null) continue
+      entregados.set(`${e.requerimiento_id}:${e.item}`, { entregado: Number(e.entregado ?? 0), llegado: e.llegado == null ? null : Number(e.llegado) })
     }
   }
   return (data ?? []).map((r) => {
@@ -184,7 +192,8 @@ export async function cargarRequerimientos(
             etapa_desde: deLinea?.desde ?? null,
             en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),
             por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
-            entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`) ?? 0) : null,
+            entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
+            llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
           }
         })
         .sort((a, b) => a.item - b.item),

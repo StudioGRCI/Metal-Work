@@ -19,7 +19,12 @@
  *      comprar; el paso de ahora es la compra y «Para recoger» va a medias, y
  *      las cifras de arriba cuentan el insumo. En el teléfono la tarjeta cabe.
  *      La cifra verde deja solo los RQ con algo para recoger.
- *   5. RR. HH. (costeo de horas y observaciones), Tesorería (caja diaria),
+ *   4b. La compra llega en partes: Logística compra los 5, el proveedor trae 3
+ *      y Almacén los valida con observación. Maestranza ve 10 para recoger y 2
+ *      que faltan, no 5. Con otro RQ cuya compra entra completa, la tarjeta
+ *      dice «Ya llegó todo» y el paso de ahora es «Para recoger».
+ *   5. RR. HH. (costeo de horas y observaciones, también en el teléfono, donde
+ *      la lista cabe en la pantalla aunque el campo esté al fondo), Tesorería (caja diaria),
  *      Logística (OC directa, orden de servicio y OC desde los materiales de
  *      una OT) y Administración (subcontrato) encuentran la unidad del banco
  *      con el mismo buscador.
@@ -47,6 +52,8 @@ const CUENTAS = {
   tesoreria: 'tesoreria.local@metalwork.test',
   logistica: 'logistica.local@metalwork.test',
   administracion: 'administracion.local@metalwork.test',
+  gerencia: 'gerencia.local@metalwork.test',
+  conductor: 'conductor.local@metalwork.test',
 }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
@@ -369,6 +376,75 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   await contexto.close()
 }
 
+// ============================================ 4b. La compra llega en partes
+/**
+ * Lo que falta del insumo lo compra Logística, Gerencia lo aprueba si el monto lo
+ * pide, el conductor lo trae y Almacén valida `validados` de lo comprado, cada
+ * paso con la cuenta de su puesto y como lo hace su pantalla.
+ */
+async function comprarYTraer(lineaId, cantidadOc, validados) {
+  const oc = randomUUID()
+  const proveedor = await uno('select id from public.proveedores where activo order by razon_social limit 1')
+  // La cotización no se repite con el mismo proveedor.
+  await comoCuenta(CUENTAS.logistica, `select public.emitir_compra_de_requerimientos($1, $2::jsonb, $3, $4, null, 'CONTADO', 0, 'PEN', true)`, [
+    oc, JSON.stringify([{ material_id: materialId, cantidad: cantidadOc, precio: 12, insumos: [lineaId] }]), proveedor.id, `COT-BANCO-${oc.slice(0, 8)}`,
+  ])
+  if ((await uno('select aprobacion from public.ordenes_compra_materiales where id = $1', [oc]))?.aprobacion === 'POR_APROBAR') {
+    await comoCuenta(CUENTAS.gerencia, 'select public.aprobar_compra($1)', [oc])
+  }
+  await comoCuenta(CUENTAS.logistica, 'select public.mandar_compra_a_recojo($1)', [oc])
+  await comoCuenta(CUENTAS.logistica, 'select public.programar_recojo($1, 25, null)', [oc])
+  for (const paso of ['marcar_compra_en_recojo', 'marcar_compra_recogida', 'marcar_compra_dejada_almacen']) {
+    await comoCuenta(CUENTAS.conductor, `select public.${paso}($1)`, [oc])
+  }
+  const pendientes = await consulta('select id from public.ingresos_pendientes_almacen where orden_compra_id = $1', [oc])
+  await comoCuenta(CUENTAS.almacen, 'select public.validar_ingresos_compra($1, $2::jsonb, null)', [
+    oc,
+    JSON.stringify(pendientes.map((x) => ({
+      id: x.id, movimiento_id: randomUUID(), cantidad: validados,
+      observacion: validados < cantidadOc ? `Llegaron ${validados} de ${cantidadOc}: el proveedor no tenía más` : null,
+    }))),
+  ])
+  return oc
+}
+
+await comprarYTraer(linea.id, 5, 3)
+// Otro RQ de Maestranza, de 4 que Almacén no tiene: su compra entra completa.
+const rqCompleto = randomUUID()
+await comoCuenta(CUENTAS.requerimientos,
+  `select public.emitir_requerimiento($1, 'OPERACION', (select id from public.areas where codigo = 'MTZ'), $2, 'Pedido del banco que llega completo', null, $3::jsonb)`,
+  [rqCompleto, CODIGO, JSON.stringify([{ material_id: materialId, cantidad: 4 }])])
+await comoCuenta(CUENTAS.almacen, `select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]'::jsonb, null)`, [rqCompleto])
+const lineaCompleta = await uno('select l.id, r.numero from public.requerimiento_lineas l join public.requerimientos r on r.id = l.requerimiento_id where r.id = $1', [rqCompleto])
+await comprarYTraer(lineaCompleta.id, 4, 4)
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.maestranza)
+  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator(`[data-rq="${numero}"]`)
+  const insumo = tarjeta.locator('li[data-insumo="1"]')
+  const parte = async (t, p) => limpio(await t.locator(`li[data-insumo="1"] [data-parte="${p}"]`).innerText().catch(() => ''))
+  const [recoger, porLlegar] = [await parte(tarjeta, 'recoger'), await parte(tarjeta, 'por-llegar')]
+  console.log(`    llegaron 3 de 5: ${recoger} | ${porLlegar}`)
+  comprobar(recoger.startsWith('10 UND'), `llegaron 3 de los 5: 7 + 3 = 10 UND para recoger («${recoger}»)`)
+  comprobar(porLlegar.startsWith('2 UND') && porLlegar.includes('Observado'), `y faltan 2, no 5, con la compra observada («${porLlegar}»)`)
+  comprobar((await insumo.count()) === 1, 'la tarjeta sigue con su insumo')
+  const paso = limpio(await tarjeta.locator('[aria-current="step"]').innerText())
+  comprobar(paso.startsWith('Logística compra'), `con 2 por llegar, el paso sigue en la compra («${paso}»)`)
+
+  const completa = pagina.locator(`[data-rq="${lineaCompleta.numero}"]`)
+  const [recogerC, porLlegarC] = [await parte(completa, 'recoger'), await parte(completa, 'por-llegar')]
+  comprobar(recogerC.startsWith('4 UND') && porLlegarC === '', `con la compra completa, 4 UND para recoger y nada por llegar («${recogerC}»)`)
+  const pasoC = limpio(await completa.locator('[aria-current="step"]').innerText())
+  comprobar(pasoC.startsWith('Para recoger'), `y el paso de ahora es «Para recoger», no la compra («${pasoC}»)`)
+  const insignia = limpio(await completa.locator('h2 + *').first().innerText())
+  comprobar(insignia.includes('Ya llegó todo'), `la insignia dice que ya llegó todo («${insignia}»)`)
+  const estadoRq = (await uno('select estado from public.requerimientos where id = $1', [rqCompleto]))?.estado
+  comprobar(estadoRq === 'EN_ATENCION', `en la base el RQ sigue en compra hasta que Almacén lo marque listo (${estadoRq})`)
+  await completa.screenshot({ path: `${CAPTURAS}/rq-tarjeta-ya-llego-todo.png` })
+  comprobar(errores.length === 0, `con la compra en partes, sin errores de consola ${errores.join(' | ')}`)
+  await contexto.close()
+}
+
 // ============================================ 5. El mismo buscador en el costeo de horas y en la caja
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.rrhh)
@@ -391,6 +467,39 @@ for (const [nombre, viewport] of [['monitor', { width: 1280, height: 900 }], ['t
   const obs = await buscaEn(pagina.locator('[role="dialog"]'), '[id^="obs-codigo-"][role="combobox"]', `volvo ${sufijo.toLowerCase()}`)
   comprobar(obs.length === 1 && obs[0].includes(CODIGO), `RR. HH. lo encuentra también en las observaciones (${obs.join(' | ')})`)
   comprobar(errores.length === 0, `RR. HH., sin errores de consola ${errores.join(' | ')}`)
+  await contexto.close()
+}
+{
+  // En el teléfono el campo de las observaciones queda al fondo de la ventana:
+  // la lista se abría por debajo del borde y se veía una sola opción.
+  const { pagina, contexto } = await entrar(CUENTAS.rrhh, CELULAR)
+  await pagina.goto(`${BASE}/rrhh/observaciones`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: /Registrar( observación)?$/ }).first().click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.locator('[id^="obs-codigo-"][role="combobox"]').click()
+  const lista = v.locator('[role="listbox"]')
+  await lista.waitFor({ timeout: 5000 })
+  await pagina.waitForTimeout(300)
+  const caja = await lista.boundingBox()
+  const alto = await pagina.evaluate(() => window.visualViewport?.height ?? window.innerHeight)
+  comprobar(caja && caja.y >= 0 && caja.y + caja.height <= alto + 1,
+    `en el teléfono, la lista de las observaciones cabe en la pantalla (de ${caja ? Math.round(caja.y) : '?'} a ${caja ? Math.round(caja.y + caja.height) : '?'} px, de ${alto})`)
+  // Con el teclado abierto queda a la vista unos 500 px: la lista se acorta a lo que se ve.
+  await pagina.keyboard.press('Escape')
+  await pagina.setViewportSize({ width: CELULAR.width, height: 500 })
+  await pagina.waitForTimeout(300)
+  await v.locator('[id^="obs-codigo-"][role="combobox"]').click()
+  await lista.waitFor({ timeout: 5000 })
+  await pagina.waitForTimeout(300)
+  const corta = await lista.boundingBox()
+  const opciones = await lista.locator(CODIGOS).count()
+  comprobar(corta && corta.y >= 0 && corta.y + corta.height <= 501 && corta.height >= 110,
+    `con 500 px a la vista, la lista también cabe (de ${corta ? Math.round(corta.y) : '?'} a ${corta ? Math.round(corta.y + corta.height) : '?'} px, ${opciones} opciones al desplazarla)`)
+  await pagina.setViewportSize(CELULAR)
+  const campo = await v.locator('[id^="obs-codigo-"][role="combobox"]').boundingBox()
+  const flecha = await v.locator('[id^="obs-codigo-"][role="combobox"] + svg').boundingBox()
+  comprobar(campo && flecha && flecha.y >= campo.y && flecha.y + flecha.height <= campo.y + campo.height,
+    `la flecha queda dentro del campo (campo de ${campo ? Math.round(campo.y) : '?'} a ${campo ? Math.round(campo.y + campo.height) : '?'}, flecha de ${flecha ? Math.round(flecha.y) : '?'} a ${flecha ? Math.round(flecha.y + flecha.height) : '?'})`)
   await contexto.close()
 }
 {

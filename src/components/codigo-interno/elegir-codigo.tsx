@@ -87,6 +87,7 @@ export function EntradaCodigoInterno({
   const [aceptado, setAceptado] = useState(() => normalizarCodigo(aceptadoInicial))
   const contenedor = useRef<HTMLDivElement>(null)
   const caja = useRef<HTMLInputElement>(null)
+  const listaRef = useRef<HTMLUListElement>(null)
   // La lista se desplaza hacia la resaltada solo si se movió con las flechas: con
   // el ratón encima, desplazarla la corría en contra de la rueda.
   const porTeclado = useRef(false)
@@ -136,6 +137,28 @@ export function EntradaCodigoInterno({
     porTeclado.current = false
     if (idResaltado) document.getElementById(idResaltado)?.scrollIntoView({ block: 'nearest' })
   }, [idResaltado])
+
+  // En el teléfono el campo suele quedar al fondo de la ventana, y la lista se
+  // abría por debajo del borde de la pantalla o detrás del teclado: en
+  // Observaciones se veía una sola opción. Si no cabe en lo visible, el campo
+  // sube arriba, y si ni así cabe, la lista se acorta a lo que se ve. Se mira
+  // otra vez cuando el teclado aparece o se va y cambia lo visible.
+  useEffect(() => {
+    if (!lista) return
+    const vista = window.visualViewport
+    function acomodar() {
+      const ul = listaRef.current
+      if (!ul) return
+      const visible = vista ? vista.offsetTop + vista.height : window.innerHeight
+      ul.style.maxHeight = ''
+      if (ul.getBoundingClientRect().bottom > visible) contenedor.current?.scrollIntoView({ block: 'start' })
+      const caja = ul.getBoundingClientRect()
+      if (caja.bottom > visible) ul.style.maxHeight = `${Math.max(Math.floor(visible - caja.top - 8), 120)}px`
+    }
+    acomodar()
+    vista?.addEventListener('resize', acomodar)
+    return () => vista?.removeEventListener('resize', acomodar)
+  }, [lista])
 
   // Con `required` y `minLength`, la validación del navegador ya para el envío
   // y lleva al campo; esto le suma el caso de lo que no se eligió.
@@ -194,48 +217,53 @@ export function EntradaCodigoInterno({
   return (
     <div
       ref={contenedor}
-      className="relative min-w-0"
+      className="relative min-w-0 scroll-mt-2"
       onBlur={(e) => {
         if (!contenedor.current?.contains(e.relatedTarget as Node | null)) setAbierto(false)
       }}
     >
-      <Entrada
-        ref={caja}
-        id={idCampo}
-        name={name}
-        value={valor}
-        onChange={(e) => {
-          onChange(e.target.value)
-          setResaltado(-1)
-          setAbierto(true)
-        }}
-        // Se abre al tocarlo o al escribir, no al recibir el foco: al abrir
-        // «Corregir», la ventana pone el foco en el primer campo y la lista
-        // tapaba el formulario (y en el teléfono subía el teclado).
-        onClick={() => !abierto && abrir()}
-        onKeyDown={teclas}
-        // Si el envío se para aquí, la lista se cierra: debajo del campo está qué falta.
-        onInvalid={() => setAbierto(false)}
-        required={requerido}
-        minLength={2}
-        maxLength={60}
-        autoComplete="off"
-        autoCapitalize="characters"
-        spellCheck={false}
-        placeholder={codigos === null ? undefined : 'Escribe el código o la unidad'}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={lista}
-        aria-controls={lista ? idLista : undefined}
-        aria-activedescendant={idResaltado}
-        aria-describedby={[descripcion, idEstado].filter(Boolean).join(' ')}
-        aria-invalid={invalido || (sinElegir && !lista) || undefined}
-        className="pr-9 font-mono uppercase placeholder:font-sans placeholder:normal-case"
-      />
-      <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-texto-tenue" />
+      {/* La flecha se centra en el campo, no en el bloque, que lleva debajo lo que dice del código. */}
+      <div className="relative">
+        <Entrada
+          ref={caja}
+          id={idCampo}
+          name={name}
+          value={valor}
+          onChange={(e) => {
+            onChange(e.target.value)
+            setResaltado(-1)
+            setAbierto(true)
+          }}
+          // Se abre al tocarlo o al escribir, no al recibir el foco: al abrir
+          // «Corregir», la ventana pone el foco en el primer campo y la lista
+          // tapaba el formulario (y en el teléfono subía el teclado).
+          onClick={() => !abierto && abrir()}
+          onKeyDown={teclas}
+          // Si el envío se para aquí, la lista se cierra: debajo del campo está qué falta.
+          onInvalid={() => setAbierto(false)}
+          required={requerido}
+          minLength={2}
+          maxLength={60}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          // Corto: en la caja diaria el campo mide 227 px y «Escribe el código o la unidad» salía cortado.
+          placeholder={codigos === null ? undefined : 'Código, placa o marca'}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={lista}
+          aria-controls={lista ? idLista : undefined}
+          aria-activedescendant={idResaltado}
+          aria-describedby={[descripcion, idEstado].filter(Boolean).join(' ')}
+          aria-invalid={invalido || (sinElegir && !lista) || undefined}
+          className="pr-9 font-mono uppercase placeholder:font-sans placeholder:normal-case"
+        />
+        <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-texto-tenue" />
+      </div>
 
       {lista && (
         <ul
+          ref={listaRef}
           id={idLista}
           role="listbox"
           aria-label="Códigos internos abiertos"
@@ -478,4 +506,6 @@ function Gemelas({ opcion, gemelas }: { opcion: Opcion; gemelas: Opcion[] }) {
   )
 }
 
-const ENLACE = 'inline-flex min-h-11 items-center font-medium text-acento underline underline-offset-2 sm:min-h-0'
+// En el teléfono cada enlace se toca en 44 px de alto sin separar los renglones:
+// con `min-h-11` dentro del párrafo abría huecos de 44 px entre ellos.
+const ENLACE = 'relative font-medium text-acento underline underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-3.5 sm:after:hidden'

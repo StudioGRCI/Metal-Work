@@ -15,6 +15,11 @@
 --      para su RQ, menos lo devuelto, aunque no lea el kardex. Con 15 pedidos,
 --      10 en almacén y 4 entregados de los que devolvieron 2, la lista dice
 --      2 entregados, 8 para recoger y 5 que faltan de Logística.
+--   3. Lo que llegó de la compra: otro RQ pide 4 que Almacén no tiene, y
+--      Logística compra los 9 que faltan de los dos en una sola línea de OC.
+--      El proveedor trae 6 y Almacén los valida con observación: al primer RQ
+--      le llegaron sus 5 y al segundo 1, aunque la etapa diga «Observado».
+--      Antes de validarlos no llegó nada.
 \set ON_ERROR_STOP on
 begin;
 
@@ -25,7 +30,7 @@ do $$
 declare v text; v_id uuid;
 begin
   foreach v in array array['REQUERIMIENTOS:REQ', 'ADMINISTRACION:ADM', 'SUPERVISOR:MTZ', 'PORTERO:SAP', 'ALMACENERO:ALM',
-                           'TESORERIA:TES', 'RECURSOS_HUMANOS:RRH'] loop
+                           'TESORERIA:TES', 'RECURSOS_HUMANOS:RRH', 'COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.420@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -36,10 +41,10 @@ begin
   end loop;
   -- El insert…select no falla si un código de rol cambia: sin esto, un usuario que
   -- no se creó recibiría el mismo «sin permiso» y los debe_fallar pasarían igual.
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 420') = 7,
-    'se crearon los siete usuarios del check, uno por puesto');
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 420') = 10,
+    'se crearon los diez usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
-  foreach v in array array['rq', 'rq_anulado', 'rq_gemelo', 'sal', 'dev1', 'dev2'] loop
+  foreach v in array array['rq', 'rq_anulado', 'rq_gemelo', 'rq2', 'oc', 'sal', 'dev1', 'dev2', 'ing'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -81,6 +86,9 @@ begin
                                              precio_unitario, moneda, registrado_en)
   values (gen_random_uuid(), 'INGRESO', v_m, 20, 'INGRESO_GENERAL', 'Compra de prueba 420', current_setting('prueba.almacenero')::uuid,
           10, 'PEN', now() - interval '1 hour');
+  -- El proveedor de la compra de la sección 3, como en el check 306.
+  insert into public.proveedores (id, numero_documento, razon_social) values (gen_random_uuid(), '20100047218', 'PROVEEDOR DE PRUEBA')
+  on conflict (tipo_documento, numero_documento) do update set activo = true;
   insert into storage.objects (bucket_id, name, owner_id, metadata)
   values ('evidencias-almacen', current_setting('prueba.almacenero') || '/' || current_setting('prueba.sal') || '.jpg',
           current_setting('prueba.almacenero'), '{"mimetype":"image/jpeg","size":100}'::jsonb);
@@ -225,6 +233,97 @@ do $$
 begin
   raise notice '  nota · v_rq_lineas_para_salida dice % entregados de la misma línea',
     (select entregado from public.v_rq_lineas_para_salida where requerimiento_id = current_setting('prueba.rq')::uuid and item = 1);
+end $$;
+
+-- ============================================ 3. Lo que llegó de la compra
+-- Cada paso con la cuenta de su puesto. Otro RQ de Maestranza pide 4 del mismo
+-- material, y Almacén no tiene para él.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select public.emitir_requerimiento(current_setting('prueba.rq2')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
+  'CHK420_A', 'Segundo pedido de la prueba 420', null, format('[{"material_id": "%s", "cantidad": 4}]', current_setting('prueba.m1'))::jsonb);
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.rq_revisar_stock(current_setting('prueba.rq2')::uuid, '[{"item": 1, "en_stock": 0}]'::jsonb, null);
+reset role;
+-- Logística compra lo que falta de los dos, 5 + 4, en una sola línea de OC.
+select set_config('prueba.insumos',
+  (select jsonb_agg(l.id order by r.numero) from public.requerimiento_lineas l join public.requerimientos r on r.id = l.requerimiento_id
+    where r.id in (current_setting('prueba.rq')::uuid, current_setting('prueba.rq2')::uuid))::text, true);
+select set_config('prueba.proveedor',
+  (select id::text from public.proveedores where tipo_documento = 'RUC' and numero_documento = '20100047218'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.emitir_compra_de_requerimientos(current_setting('prueba.oc')::uuid,
+  jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.m1'), 'cantidad', 9, 'precio', 12,
+                                       'insumos', current_setting('prueba.insumos')::jsonb)),
+  current_setting('prueba.proveedor')::uuid, 'COT-420', null, 'CONTADO', 0, 'PEN', true);
+reset role;
+-- Gerencia la aprueba, si el monto lo pide (una compra chica entra aprobada).
+select set_config('prueba.por_aprobar',
+  (select (aprobacion = 'POR_APROBAR')::text from public.ordenes_compra_materiales where id = current_setting('prueba.oc')::uuid), true);
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(current_setting('prueba.oc')::uuid) where current_setting('prueba.por_aprobar')::boolean;
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.mandar_compra_a_recojo(current_setting('prueba.oc')::uuid);
+select public.programar_recojo(current_setting('prueba.oc')::uuid, 25, null);
+reset role;
+select pg_temp.como('conductor');
+set local role authenticated;
+select public.marcar_compra_en_recojo(current_setting('prueba.oc')::uuid);
+select public.marcar_compra_recogida(current_setting('prueba.oc')::uuid);
+select public.marcar_compra_dejada_almacen(current_setting('prueba.oc')::uuid);
+reset role;
+-- Dejada en almacén y sin validar: todavía no llegó nada.
+select pg_temp.como('supervisor');
+set local role authenticated;
+create temp table _antes on commit drop as
+  select * from public.entregado_de_requerimientos(array[current_setting('prueba.rq')::uuid, current_setting('prueba.rq2')::uuid]);
+reset role;
+-- El proveedor trajo 6 de los 9: Almacén valida esos 6 con observación.
+select set_config('prueba.ingresos',
+  (select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', current_setting('prueba.ing'), 'cantidad', 6,
+                                       'observacion', 'Llegaron 6 de 9: el proveedor no tenía más (prueba 420)'))
+     from public.ingresos_pendientes_almacen i where i.orden_compra_id = current_setting('prueba.oc')::uuid)::text, true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.validar_ingresos_compra(current_setting('prueba.oc')::uuid, current_setting('prueba.ingresos')::jsonb, null);
+reset role;
+select pg_temp.como('supervisor');
+set local role authenticated;
+create temp table _llegado on commit drop as
+  select * from public.entregado_de_requerimientos(array[current_setting('prueba.rq')::uuid, current_setting('prueba.rq2')::uuid]);
+create temp table _avance2 on commit drop as
+  select * from public.avance_de_requerimientos(array[current_setting('prueba.rq')::uuid]);
+reset role;
+do $$
+declare
+  v_rq uuid := current_setting('prueba.rq')::uuid;
+  v_rq2 uuid := current_setting('prueba.rq2')::uuid;
+  v_detalles integer;
+begin
+  select count(distinct orden_compra_detalle_id) into v_detalles from public.requerimiento_lineas where requerimiento_id in (v_rq, v_rq2);
+  perform test.afirmar(v_detalles = 1 and not exists (select 1 from public.requerimiento_lineas where requerimiento_id in (v_rq, v_rq2) and orden_compra_detalle_id is null),
+    format('los dos insumos van en la misma línea de la OC (%s distinta)', v_detalles));
+  perform test.afirmar((select estado from public.ingresos_pendientes_almacen where orden_compra_id = current_setting('prueba.oc')::uuid) = 'OBSERVADO',
+    'el ingreso queda observado: llegaron 6 de 9');
+  perform test.afirmar((select coalesce(sum(llegado), -1) from _antes) = 0,
+    format('dejada en almacén y sin validar, no llegó nada (%s)', (select string_agg(coalesce(llegado::text, 'null'), ', ') from _antes)));
+  perform test.afirmar((select llegado from _llegado where requerimiento_id = v_rq and item = 1) = 5,
+    format('al primer RQ le llegaron sus 5, aunque la etapa diga observado (%s)', (select llegado from _llegado where requerimiento_id = v_rq and item = 1)));
+  perform test.afirmar((select llegado from _llegado where requerimiento_id = v_rq2 and item = 1) = 1,
+    format('al segundo, el que sobra de los 6: 1 (%s)', (select llegado from _llegado where requerimiento_id = v_rq2 and item = 1)));
+  perform test.afirmar((select entregado from _llegado where requerimiento_id = v_rq and item = 1) = 2,
+    'lo entregado no cambia con la compra: siguen 2');
+  -- Con esto la pantalla parte el insumo del primer RQ: 2 entregados, 10 + 5 − 2 = 13 para recoger y nada por llegar.
+  perform test.afirmar((select a.lineas -> 0 ->> 'etapa' from _avance2 a) = 'OBSERVADO',
+    format('la etapa sola diría que no llegó: %s', (select a.lineas -> 0 ->> 'etapa' from _avance2 a)));
+  perform test.afirmar(not exists (select 1 from _entregado where llegado is not null),
+    'sin línea de OC, lo llegado viene vacío y la pantalla sigue con la etapa');
 end $$;
 
 select pg_temp.como('portero');

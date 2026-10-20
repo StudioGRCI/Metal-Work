@@ -17,6 +17,8 @@ import {
   partesDelInsumo,
   pasoDelRequerimiento,
   quienCompra,
+  YA_LLEGO_TODO,
+  yaLlegoTodo,
   type PartesDelInsumo,
   type PasoDelRq,
 } from '@/lib/dominio/requerimientos'
@@ -60,6 +62,11 @@ function tonoPorLlegar(l: LineaRequerimiento): Tono {
  */
 const delProveedor = (etapa: string | null) => (ETAPAS_DE_RECOJO as readonly (string | null)[]).includes(etapa)
 
+/** ¿Está en compra y ya llegó todo lo que faltaba? Almacén todavía no lo marca listo. */
+function llegoTodo(rq: RequerimientoListado): boolean {
+  return (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && yaLlegoTodo(rq.lineas.map((l) => partesDelInsumo(l, rq.estado)))
+}
+
 /** ¿Tiene algún insumo que ya se puede recoger en Almacén? */
 export function tieneParaRecoger(rq: RequerimientoListado): boolean {
   return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
@@ -101,7 +108,7 @@ export function ResumenDeRequerimientos({
     }
   }
   const enCamino = requerimientos.filter((r) => abierto(r.estado)).length
-  const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
+  const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN' || llegoTodo(r)).length
   const quien = compran.size === 1 ? `que trae ${[...compran][0]}` : compran.size > 1 ? 'que traen Logística y Administración' : 'que se compran'
   return (
     <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-resumen-rq>
@@ -144,7 +151,7 @@ export function ResumenDeRequerimientos({
         valor={enCamino}
         icono={Workflow}
         tono={enCamino > 0 ? 'acento' : 'neutro'}
-        pie={listos > 0 ? `${listos} ${listos === 1 ? 'listo' : 'listos'} en almacén` : 'ninguno listo todavía'}
+        pie={listos > 0 ? `${listos} ${listos === 1 ? 'completo' : 'completos'} en almacén` : 'ninguno completo todavía'}
       />
     </div>
   )
@@ -176,7 +183,8 @@ export function TarjetaRequerimiento({
   codigos: CodigoParaElegir[] | null
   correcciones: CorreccionVista[] | undefined
 }) {
-  const estado = ESTADO_REQUERIMIENTO[rq.estado]
+  // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
+  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : ESTADO_REQUERIMIENTO[rq.estado]
   const plazo = abierto(rq.estado) ? diasHasta(rq.fecha_requerida) : null
   const corrige = anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO'
   const anulable = anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK')
@@ -260,7 +268,10 @@ const TITULO_PASO: Record<PasoDelRq, string> = {
  * hizo falta» cuando Almacén tenía todo.
  */
 function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
-  const actual = pasoDelRequerimiento(rq.estado)
+  const actual = pasoDelRequerimiento(
+    rq.estado,
+    rq.lineas.map((l) => partesDelInsumo(l, rq.estado)),
+  )
   if (!actual) return null
   const indice = PASOS_DEL_RQ.indexOf(actual)
   const sinCompra =
@@ -312,9 +323,11 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           )
         })}
       </ol>
+      {/* El porcentaje sale de la etapa del insumo más atrasado, no de lo recibido: junto a la barra parecía contradecirla. */}
       {rq.avance && actual !== 'ENTREGADO' && (
         <p className="mt-1.5 text-xs text-texto-suave">
           Avance <span className="tabular font-medium text-texto">{rq.avance.porcentaje} %</span>
+          {` · por la etapa${rq.lineas.length > 1 ? ' del insumo más atrasado' : ''}, no por lo recibido`}
         </p>
       )}
     </div>
@@ -420,7 +433,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
               </Parte>
             )}
             {partes.entregado > 0 && (
-              <Parte color="bg-texto" cifra={`${cantidad(partes.entregado)} ${u}`} data-parte="entregado">
+              <Parte color="bg-texto-suave" cifra={`${cantidad(partes.entregado)} ${u}`} data-parte="entregado">
                 <span className="text-texto-suave">{partes.entregado === 1 ? 'ya se entregó' : 'ya se entregaron'}</span>
               </Parte>
             )}
@@ -432,17 +445,19 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
 }
 
 /**
- * La barra del insumo, partida en lo que se recoge, lo que falta, lo que Almacén
- * revisa y lo ya entregado, en proporción a lo pedido y en el orden de la
- * leyenda de abajo, que dice lo mismo con números. Es solo para el ojo. Lo
- * entregado va en el color del texto: en gris se confundía con lo que se revisa.
+ * La barra del insumo, partida en proporción a lo pedido: de lo ya hecho a lo
+ * que falta. Primero lo entregado, apagado porque ya no pide nada (en el color
+ * del texto, en modo oscuro era el tramo blanco y el que más llamaba); después
+ * lo que se recoge, lo que falta y lo que Almacén revisa, al otro extremo para
+ * que su gris no se junte con el de lo entregado. Es solo para el ojo: la
+ * leyenda de abajo dice lo mismo con números, primero lo que pide ir a Almacén.
  */
 function BarraDePartes({ partes, tonoPorLlegar }: { partes: PartesDelInsumo; tonoPorLlegar: Tono }) {
   const tramos = [
+    { n: partes.entregado, clase: 'bg-texto-suave' },
     { n: partes.recoger, clase: 'bg-exito' },
     { n: partes.porLlegar, clase: BARRA[tonoPorLlegar] },
     { n: partes.revisar, clase: 'bg-borde-fuerte' },
-    { n: partes.entregado, clase: 'bg-texto' },
   ].filter((t) => t.n > 0)
   return (
     <div aria-hidden className="mt-2 flex h-2.5 w-full max-w-xl gap-0.5 overflow-hidden rounded-full bg-neutro-suave">

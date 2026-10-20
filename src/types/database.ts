@@ -12255,6 +12255,7 @@ export type Database = {
           requerimiento_id: string | null
           item: number | null
           entregado: number | null
+          llegado: number | null
         }[]
       }
       entregar_boleta_planilla_diaria: {
