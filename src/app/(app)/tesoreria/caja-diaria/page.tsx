@@ -9,7 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
+import { cajaDelDia, type CajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
 import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -327,7 +327,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   movimientos: MovimientoDelDia[]
   reabiertos: CierreReabierto[]
   abiertas: CuentaElegible[]
-  codigos: string[]
+  codigos: CajaDelDia['codigos']
 }) {
   const m = monedaDeCuenta(c.moneda)
   const estado = estadoDelDia(c, dia, hoy)

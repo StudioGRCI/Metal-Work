@@ -3,10 +3,12 @@
 import { Ban, MessageSquareWarning } from 'lucide-react'
 import { useState } from 'react'
 
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
@@ -15,7 +17,18 @@ import { anularObservacion, registrarObservacion } from './acciones'
 type Persona = { id: string; nombre: string; cargo: string | null }
 
 /** El botón «Registrar observación» y su ventana. */
-export function RegistrarObservacion({ personal, hoy, personaInicial }: { personal: Persona[]; hoy: string; personaInicial?: string }) {
+export function RegistrarObservacion({
+  personal,
+  hoy,
+  personaInicial,
+  codigos,
+}: {
+  personal: Persona[]
+  hoy: string
+  personaInicial?: string
+  /** Para el buscador de código interno; `null` si la lista no se pudo leer. */
+  codigos: CodigoParaElegir[] | null
+}) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -49,6 +62,7 @@ export function RegistrarObservacion({ personal, hoy, personaInicial }: { person
           personal={personal}
           hoy={hoy}
           personaInicial={personaInicial}
+          codigos={codigos}
           alTerminar={(mensaje) => {
             setAbierta(false)
             setAviso(mensaje)
@@ -63,11 +77,13 @@ function FormularioObservacion({
   personal,
   hoy,
   personaInicial,
+  codigos,
   alTerminar,
 }: {
   personal: Persona[]
   hoy: string
   personaInicial?: string
+  codigos: CodigoParaElegir[] | null
   alTerminar: (mensaje: string) => void
 }) {
   // Decidido aquí: un reintento manda el mismo id y la base no duplica.
@@ -128,8 +144,8 @@ function FormularioObservacion({
         />
       </Campo>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Código interno" htmlFor={`obs-codigo-${id}`} ayuda="Si pasó trabajando en una unidad.">
-          <Entrada id={`obs-codigo-${id}`} name="codigo_interno" maxLength={60} autoComplete="off" className="uppercase" />
+        <Campo etiqueta="Código interno" htmlFor={`obs-codigo-${id}`} ayuda="Si pasó trabajando en una unidad. Búscalo por el código, la placa o la marca.">
+          <CodigoInternoConLista id={`obs-codigo-${id}`} name="codigo_interno" codigos={codigos} />
         </Campo>
         {tipo === 'SUSPENSION' && (
           <Campo etiqueta="Días de suspensión" htmlFor={`obs-dias-${id}`} requerido>

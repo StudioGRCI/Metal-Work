@@ -1,9 +1,7 @@
-import { ChevronDown } from 'lucide-react'
-
-import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import type { Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import type { LineaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ATENCION_INSUMO, ETAPA_AVANCE_RQ, atencionDelInsumo, resumenDeAtencion, resumenDeEtapas } from '@/lib/dominio/requerimientos'
+import { ETAPA_AVANCE_RQ, resumenDeEtapas } from '@/lib/dominio/requerimientos'
 import { cantidad, fechaHora } from '@/lib/format'
 
 const COLOR: Record<Tono, string> = {
@@ -17,8 +15,8 @@ const COLOR: Record<Tono, string> = {
 
 /**
  * En qué porcentaje va el RQ: la barra, la etapa del insumo más atrasado y,
- * cuando los insumos van separados, cuántos hay en cada etapa. Lo comparten
- * Requerimientos y Atención de requerimiento.
+ * cuando los insumos van separados, cuántos hay en cada etapa. Es de Atención
+ * de requerimiento; la lista de Requerimientos lo dice en pasos (`tarjeta.tsx`).
  */
 export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
   if (!rq.avance) return null
@@ -89,82 +87,5 @@ export function CompraDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimie
         </>
       )}
     </>
-  )
-}
-
-/**
- * Los insumos del RQ, que se despliegan al presionar: cada uno con quién lo da
- * —Almacén de su stock, una compra, o los dos— y en qué va. Cerrado dice
- * cuántos son y cuántos da Almacén y cuántos van a compra. Lo pidió Supervisión
- * (2026-10-15): en un mismo RQ unos insumos los entrega Almacén y otros esperan
- * su compra.
- */
-export function InsumosDelRequerimiento({ rq, abierto }: { rq: RequerimientoListado; abierto: boolean }) {
-  const atenciones = rq.lineas.map((l) => atencionDelInsumo(l, rq.estado))
-  const resumen = resumenDeAtencion(atenciones)
-  const total = rq.lineas.length
-  return (
-    <details open={abierto || undefined} className="group" data-insumos={rq.numero}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-start gap-1.5 rounded-[var(--radius-base)] py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento sm:min-h-0 [&::-webkit-details-marker]:hidden">
-        <ChevronDown aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave transition-transform group-open:rotate-180" />
-        <span className="min-w-0 text-xs">
-          <span className="font-medium text-acento group-open:text-texto">
-            {total} {total === 1 ? 'insumo' : 'insumos'}
-            <span className="font-normal text-texto-suave group-open:hidden"> · ver cada uno</span>
-          </span>
-          {resumen && <span className="block text-[11px] text-texto-suave">{resumen}</span>}
-        </span>
-      </summary>
-      <ul className="mt-2 space-y-2.5 border-l border-borde pl-3 text-xs">
-        {rq.lineas.map((l, i) => (
-          <InsumoDelRequerimiento key={l.item} linea={l} atencion={atenciones[i]} />
-        ))}
-      </ul>
-    </details>
-  )
-}
-
-function InsumoDelRequerimiento({ linea: l, atencion }: { linea: LineaRequerimiento; atencion: ReturnType<typeof atencionDelInsumo> }) {
-  const def = atencion ? ATENCION_INSUMO[atencion] : null
-  const etapa = l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : null
-  // «Almacén lo tiene» repite «Lo da Almacén»: la etapa se dice cuando agrega algo.
-  const etapaDice = etapa && !(atencion === 'ALMACEN' && l.etapa === 'EN_STOCK') && !(atencion === 'POR_REVISAR' && l.etapa === 'POR_REVISAR')
-  return (
-    <li data-insumo={l.item}>
-      <p>
-        <span className="tabular font-medium text-texto">
-          {cantidad(l.cantidad)} {l.unidad}
-        </span>{' '}
-        <span className="text-texto">{l.descripcion}</span>
-      </p>
-      <p className="text-[11px] text-texto-suave">
-        <MaterialDelInsumo linea={l} />
-        {l.categoria}
-      </p>
-      {def && (
-        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-texto-suave">
-          <Insignia tono={def.tono} title={def.descripcion}>
-            {def.etiqueta}
-          </Insignia>
-          {atencion === 'ALMACEN_Y_COMPRA' && l.en_stock !== null && (
-            <span className="text-texto">
-              Almacén {cantidad(l.en_stock)} · compra {cantidad(l.por_comprar ?? 0)} {l.unidad}
-            </span>
-          )}
-          {l.orden_compra && (
-            <span className={`tabular ${l.compra_rechazada ? 'text-peligro' : 'text-texto'}`}>
-              {l.orden_compra}
-              {l.compra_rechazada ? ' rechazada' : ''}
-            </span>
-          )}
-          {etapaDice && etapa && (
-            <span className={COLOR[etapa.tono]}>
-              {etapa.etiqueta}
-              {l.etapa_desde && <span className="text-texto-suave"> desde {fechaHora(l.etapa_desde)}</span>}
-            </span>
-          )}
-        </p>
-      )}
-    </li>
   )
 }

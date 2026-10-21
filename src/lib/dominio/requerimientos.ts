@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { CODIGO_FIJO_OFICINA, CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
 import type { PerfilSesion } from '@/lib/sesion'
 
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
@@ -10,7 +11,7 @@ type Def = { etiqueta: string; tono: Tono; descripcion: string }
  */
 export const ESTADO_REQUERIMIENTO: Record<string, Def> = {
   POR_ATENDER: { etiqueta: 'Por revisar', tono: 'aviso', descripcion: 'Almacén revisa si hay stock.' },
-  SIN_STOCK: { etiqueta: 'Por comprar', tono: 'peligro', descripcion: 'Almacén no tiene todo: se compra solo lo que falta.' },
+  SIN_STOCK: { etiqueta: 'Por comprar', tono: 'aviso', descripcion: 'Almacén no tiene todo: se compra solo lo que falta.' },
   EN_ATENCION: { etiqueta: 'En compra', tono: 'info', descripcion: 'Se está comprando lo que falta.' },
   LISTO_EN_ALMACEN: { etiqueta: 'Listo en almacén', tono: 'exito', descripcion: 'El área puede recogerlo.' },
   ENTREGADO: { etiqueta: 'Entregado', tono: 'neutro', descripcion: 'Almacén lo entregó al área.' },
@@ -30,6 +31,16 @@ export const TIPO_REQUERIMIENTO: Record<string, Def> = {
 }
 
 export type TipoRequerimiento = 'OPERACION' | 'ADMINISTRACION'
+
+/**
+ * Los códigos del requerimiento que no son de una unidad, primeros en la lista
+ * del código interno: PLANTA en el de operación y OFICINA en el de
+ * Administración, como decía la ayuda del campo cuando se escribía a mano.
+ */
+export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; detalle: string }[]> = {
+  OPERACION: [CODIGO_FIJO_PLANTA],
+  ADMINISTRACION: [CODIGO_FIJO_OFICINA],
+}
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
 export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
@@ -95,54 +106,113 @@ export const ETAPA_AVANCE_RQ: Record<string, Def> = {
 }
 
 /**
- * Quién da cada insumo del RQ. Almacén revisa el RQ insumo por insumo
- * (migración 20261015162000): lo que tiene lo separa de su stock y lo demás se
- * compra con una OC. En un mismo RQ unos insumos los da Almacén y otros van a
- * compra, y el supervisor quiere saber cuál es cuál.
+ * En cuántas partes va un insumo del RQ, en su unidad. Lo pidió DKS el
+ * 2026-10-20 para Maestranza: «que pueda detectar que ya hay 10 de recojo en
+ * almacén, faltarían 5 de logística». Suman lo pedido:
+ *
+ * - `entregado`: lo que ya salió del almacén para este insumo, menos lo devuelto.
+ * - `recoger`: lo que ya está en almacén para el RQ y el área todavía no se
+ *   llevó. Almacén lo separó de su stock al revisarlo, o entró con su compra:
+ *   lo que de verdad ingresó al kardex por la línea de su OC (`llegado`),
+ *   aunque el proveedor haya traído solo una parte.
+ * - `porLlegar`: lo que se compra y todavía no entra al almacén; va en la etapa
+ *   de su OC (`etapa`). Lo compra Logística, o la administradora en el RQA.
+ * - `revisar`: Almacén todavía no dice si lo tiene.
+ *
+ * Los RQ de antes de la revisión por insumo no dicen cuánto tenía Almacén, y
+ * los de antes de que la OC se enlazara por insumo no dicen cuánto llegó: ahí
+ * lo comprado está todo en almacén o todo por llegar, según su etapa.
  */
-export type AtencionDelInsumo = 'POR_REVISAR' | 'ALMACEN' | 'ALMACEN_Y_COMPRA' | 'COMPRA'
+export type PartesDelInsumo = { entregado: number; recoger: number; porLlegar: number; revisar: number }
 
-export const ATENCION_INSUMO: Record<AtencionDelInsumo, Def> = {
-  POR_REVISAR: { etiqueta: 'Almacén lo revisa', tono: 'aviso', descripcion: 'Almacén todavía no dice si lo tiene.' },
-  ALMACEN: { etiqueta: 'Lo da Almacén', tono: 'exito', descripcion: 'Almacén lo tiene completo en su stock: no se compra.' },
-  ALMACEN_Y_COMPRA: { etiqueta: 'Almacén y compra', tono: 'info', descripcion: 'Almacén tiene una parte; el resto se compra.' },
-  COMPRA: { etiqueta: 'Va a compra', tono: 'info', descripcion: 'Almacén no lo tiene: se compra con una orden de compra.' },
-}
+/** Las etapas en que lo comprado ya está en el almacén y se puede entregar. */
+const LLEGO_AL_ALMACEN = ['EN_KARDEX', 'EN_STOCK', 'LISTO_EN_ALMACEN', 'ENTREGADO']
 
-/**
- * Quién da el insumo, por lo que Almacén dijo al revisarlo y por su OC. Los RQ
- * de antes de la revisión por insumo no dicen cuánto tenía Almacén: ahí cuenta
- * si el insumo tiene OC y en qué va el RQ. Vacío en un RQ anulado.
- */
-export function atencionDelInsumo(
-  l: { cantidad: number; en_stock: number | null; orden_compra: string | null },
+export function partesDelInsumo(
+  l: { cantidad: number; en_stock: number | null; etapa: string | null; entregado: number | null; llegado: number | null },
   estadoRq: string,
-): AtencionDelInsumo | null {
-  if (estadoRq === 'ANULADO') return null
-  if (estadoRq === 'POR_ATENDER') return 'POR_REVISAR'
-  if (l.en_stock === null) {
-    if (l.orden_compra) return 'COMPRA'
-    return estadoRq === 'LISTO_EN_ALMACEN' || estadoRq === 'ENTREGADO' ? 'ALMACEN' : 'COMPRA'
+): PartesDelInsumo | null {
+  // Sin lo entregado no se parte: no se sabe cuánto de lo llegado ya se llevaron.
+  if (estadoRq === 'ANULADO' || l.entregado === null) return null
+  const pedido = Math.max(l.cantidad, 0)
+  if (estadoRq === 'ENTREGADO') return { entregado: pedido, recoger: 0, porLlegar: 0, revisar: 0 }
+  const entregado = Math.min(Math.max(l.entregado, 0), pedido)
+  if (estadoRq === 'POR_ATENDER') return { entregado, recoger: 0, porLlegar: 0, revisar: pedido - entregado }
+  // Lo que Almacén separó de su stock más lo que ya entró de su compra.
+  const deStock = l.en_stock === null ? 0 : Math.min(Math.max(l.en_stock, 0), pedido)
+  let llegado: number
+  if (estadoRq === 'LISTO_EN_ALMACEN') llegado = pedido
+  else if (l.llegado !== null) llegado = Math.min(deStock + Math.max(l.llegado, 0), pedido)
+  else if (LLEGO_AL_ALMACEN.includes(l.etapa ?? '')) llegado = pedido
+  else llegado = deStock
+  return {
+    entregado,
+    recoger: Math.max(llegado - entregado, 0),
+    porLlegar: Math.max(pedido - Math.max(llegado, entregado), 0),
+    revisar: 0,
   }
-  if (l.en_stock >= l.cantidad) return 'ALMACEN'
-  return l.en_stock > 0 ? 'ALMACEN_Y_COMPRA' : 'COMPRA'
+}
+
+/** Quién trae lo que falta: Logística en el RQ de operación, la administradora en el de Administración. */
+export const quienCompra = (rq: { tipo: string | null }) => (tipoDeRequerimiento(rq) === 'ADMINISTRACION' ? 'Administración' : 'Logística')
+
+/**
+ * Los cuatro pasos del RQ, para la línea de pasos de cada tarjeta. La compra se
+ * salta cuando Almacén tenía todo: el RQ pasa de la revisión a estar listo.
+ */
+export const PASOS_DEL_RQ = ['REVISION', 'COMPRA', 'EN_ALMACEN', 'ENTREGADO'] as const
+export type PasoDelRq = (typeof PASOS_DEL_RQ)[number]
+
+/**
+ * Ya llegó todo lo que faltaba, aunque Almacén todavía no marque el RQ listo:
+ * ningún insumo espera su compra ni la revisión. Con la compra validada en el
+ * kardex, la tarjeta decía «Logística compra» encima de una barra sin nada por
+ * llegar.
+ */
+export function yaLlegoTodo(partes: readonly (PartesDelInsumo | null)[]): boolean {
+  return partes.length > 0 && partes.every((p) => p !== null && p.porLlegar === 0 && p.revisar === 0)
 }
 
 /**
- * Cuántos insumos hay de cada clase: «1 lo da Almacén · 1 en parte Almacén y en
- * parte compra · 1 va a compra». Suman el total del RQ.
+ * La compra del insumo ya entró al almacén y todavía falta: la OC se emitió por
+ * menos de lo que faltaba (o su línea, compartida con otros RQ, no alcanzó a
+ * este). Lo que falta ya no va en ninguna compra; la etapa de la OC, verde, no
+ * puede pintarlo como si ya estuviera (auditoría del 2026-10-20).
  */
-export function resumenDeAtencion(atenciones: (AtencionDelInsumo | null)[]): string {
-  const n = (a: AtencionDelInsumo) => atenciones.filter((x) => x === a).length
-  const [revisa, almacen, partido, compra] = [n('POR_REVISAR'), n('ALMACEN'), n('ALMACEN_Y_COMPRA'), n('COMPRA')]
-  return [
-    revisa > 0 ? `${revisa} por revisar en Almacén` : null,
-    almacen > 0 ? `${almacen} ${almacen === 1 ? 'lo da' : 'los da'} Almacén` : null,
-    partido > 0 ? `${partido} en parte Almacén y en parte compra` : null,
-    compra > 0 ? `${compra} ${compra === 1 ? 'va' : 'van'} a compra` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+export function laCompraQuedoCorta(l: { etapa: string | null; compra_rechazada: boolean }, partes: PartesDelInsumo): boolean {
+  return partes.porLlegar > 0 && !l.compra_rechazada && LLEGO_AL_ALMACEN.includes(l.etapa ?? '')
+}
+
+export const COMPRA_CORTA: Def = {
+  etiqueta: 'La OC compró menos: pide el resto en un RQ nuevo',
+  tono: 'aviso',
+  descripcion: 'La orden de compra ya entró entera y no alcanzó para todo el insumo.',
+}
+
+/** Lo que dice la insignia del RQ en compra cuando solo falta lo que la OC no compró. */
+export const FALTA_LO_NO_COMPRADO: Def = {
+  etiqueta: 'Falta lo que la OC no compró',
+  tono: 'aviso',
+  descripcion: 'Lo comprado ya está en almacén; el resto no va en ninguna compra y se pide en un RQ nuevo.',
+}
+
+/** Lo que dice la insignia del RQ en compra cuando ya llegó todo (`yaLlegoTodo`). */
+export const YA_LLEGO_TODO: Def = {
+  etiqueta: 'Ya llegó todo',
+  tono: 'exito',
+  descripcion: 'Está en almacén todo lo que faltaba. Almacén lo marca listo para recoger.',
+}
+
+/**
+ * En qué paso va el RQ por su estado; vacío si está anulado. Con las partes de
+ * sus insumos, el RQ en compra al que ya le llegó todo va en «Para recoger».
+ */
+export function pasoDelRequerimiento(estado: string, partes?: readonly (PartesDelInsumo | null)[]): PasoDelRq | null {
+  if (estado === 'POR_ATENDER') return 'REVISION'
+  if (estado === 'SIN_STOCK' || estado === 'EN_ATENCION') return partes && yaLlegoTodo(partes) ? 'EN_ALMACEN' : 'COMPRA'
+  if (estado === 'LISTO_EN_ALMACEN') return 'EN_ALMACEN'
+  if (estado === 'ENTREGADO') return 'ENTREGADO'
+  return null
 }
 
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */

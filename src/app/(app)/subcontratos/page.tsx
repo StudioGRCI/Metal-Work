@@ -6,7 +6,8 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { codigosParaSubcontratos, listarSubcontratistas, listarSubcontratos, type Subcontratista, type SubcontratoListado } from '@/lib/datos/subcontratos'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { listarSubcontratistas, listarSubcontratos, type Subcontratista, type SubcontratoListado } from '@/lib/datos/subcontratos'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
 import { fecha, moneda } from '@/lib/format'
@@ -60,7 +61,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
   const [subcontratos, subcontratistas, codigos] = await Promise.all([
     listarSubcontratos(),
     gestiona ? listarSubcontratistas() : Promise.resolve([]),
-    gestiona ? codigosParaSubcontratos() : Promise.resolve([]),
+    gestiona ? codigosParaElegir() : Promise.resolve(null),
   ])
   // El código se compara como en «Códigos internos»: sin mayúsculas, espacios ni signos, y O igual a 0.
   const llave = llaveParecido(buscado)

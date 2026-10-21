@@ -251,7 +251,8 @@ try {
     const corr = await uno(`select count(*)::int as n, max(justificante_nombre) as nombre from public.correcciones where documento_id = $1`, [rqId])
     comprobar(corr.n === 1 && corr.nombre === 'justificante-correccion.pdf', 'la corrección queda una vez con su justificante')
     await pagina.reload({ waitUntil: 'networkidle' })
-    const fila = pagina.locator('tr', { hasText: rq.numero })
+    // Desde el 2026-10-20 la lista de RQ son tarjetas, no filas.
+    const fila = pagina.locator(`[data-rq="${rq.numero}"]`)
     comprobar((await fila.getByText('Corregido una vez').count()) === 1, 'el RQ muestra «Corregido una vez» en la lista')
     await fila.getByText('Corregido una vez').click()
     comprobar((await fila.getByText(/Insumo 1: Plancha LAC 2 mm QA .* → Plancha LAC 3 mm QA/).count()) === 1, 'el historial dice qué insumo cambió')

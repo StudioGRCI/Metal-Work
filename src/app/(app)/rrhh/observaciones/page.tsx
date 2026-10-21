@@ -5,6 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { listarObservaciones, listarTrabajadores, type Observacion } from '@/lib/datos/rrhh'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
@@ -45,9 +46,10 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
   const mes = mesValido(params.mes) ? params.mes : mesActual
   const personaId = typeof params.persona === 'string' && GUID.test(params.persona) ? params.persona : null
 
-  const [observaciones, personal] = await Promise.all([
+  const [observaciones, personal, codigos] = await Promise.all([
     listarObservaciones(personaId ? { trabajadorId: personaId } : { mes }),
     listarTrabajadores('todos'),
+    registra ? codigosParaElegir() : Promise.resolve(null),
   ])
   const persona = personaId ? personal.find((p) => p.id === personaId) : undefined
   const resumen = resumir(observaciones)
@@ -69,6 +71,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
             <RegistrarObservacion
               hoy={hoy}
               personaInicial={persona?.activo ? persona.id : undefined}
+              codigos={codigos}
               personal={personal.filter((p) => p.activo).map((p) => ({ id: p.id, nombre: `${p.nombres} ${p.apellidos}`, cargo: p.cargo }))}
             />
           )

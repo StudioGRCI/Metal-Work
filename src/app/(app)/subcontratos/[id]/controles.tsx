@@ -15,6 +15,7 @@ import {
   UMBRAL_RETENCION_PEN,
   retencionYNeto,
 } from '@/lib/dominio/subcontratos'
+import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { useAccion, useEnvio } from '@/lib/envio'
 import { moneda as formatoMoneda } from '@/lib/format'
 
@@ -200,7 +201,7 @@ export function CorregirSubcontrato({
     fecha_inicio: string | null
     fecha_fin: string | null
   }
-  codigos: string[]
+  codigos: CodigoParaElegir[] | null
 }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(corregirSubcontrato, () => setAbierta(false))

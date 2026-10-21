@@ -4,7 +4,8 @@ import { AdjuntarContrato, ContratoVigente } from '@/components/estructura/contr
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { codigosParaSubcontratos, subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
 import { BUCKET_SUBCONTRATOS, ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -24,7 +25,7 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
   // Al registrar con contrato, si el subcontrato entró y el contrato no, llega aquí con ?contrato=pendiente.
   const contratoPendiente = (await searchParams).contrato === 'pendiente'
   if (!GUID.test(id)) notFound()
-  const [s, codigos] = await Promise.all([subcontratoDetalle(id), gestiona ? codigosParaSubcontratos() : Promise.resolve([])])
+  const [s, codigos] = await Promise.all([subcontratoDetalle(id), gestiona ? codigosParaElegir() : Promise.resolve(null)])
   if (!s) notFound()
 
   const estado = estadoDeSubcontrato(s.estado)
