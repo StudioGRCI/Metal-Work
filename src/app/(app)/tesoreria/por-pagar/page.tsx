@@ -216,7 +216,7 @@ export default async function PaginaPorPagar() {
 /** Cómo se nombra cada documento de la OC con boleta en la tarjeta y en la ventana del pago. */
 function etiquetaDelComprobante(d: CompraConBoleta['comprobantes'][number]) {
   if (!d.numero) return d.nombre
-  if (d.tipo === 'BORRADOR') return `Comprobante ${d.numero} (en borrador)`
+  if (d.tipo === 'BORRADOR') return `Comprobante ${d.numero} (en borrador${d.sinPdf ? ', sin PDF todavía' : ''})`
   return `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}`
 }
 
@@ -234,7 +234,7 @@ function avisoDelComprobante(b: CompraConBoleta, vigentes: number, paga: boolean
   const llego = deLogistica
     ? `El proveedor entregó la factura ${numero} y Logística la anexó a la OC`
     : `Contabilidad tiene en borrador el comprobante ${numero} de esta OC`
-  if (vigentes === 0) return `${llego}: cuando Contabilidad ${lo} registre, se paga en «Facturas por pagar».`
+  if (vigentes === 0) return `${llego}: cuando ${deLogistica ? 'Contabilidad la' : 'lo'} registre, se paga en «Facturas por pagar».`
   const pagos = vigentes === 1 ? 'el pago' : 'los pagos'
   const sigue = paga
     ? `Anula ${pagos} de aquí y, cuando Contabilidad ${lo} registre, págal${deLogistica ? 'a' : 'o'} en «Facturas por pagar» con ${vigentes === 1 ? 'el mismo voucher' : 'los mismos vouchers'}.`
@@ -290,7 +290,8 @@ function Factura({
     // El id es el ancla con que Adquisiciones salta a esta factura.
     <article id={`factura-${c.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div>
+        {/* Con un aviso largo, el monto sigue en su columna de la derecha. */}
+        <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-texto">
               {c.proveedor} · <span className="tabular">{c.numero_documento}</span>
@@ -431,7 +432,7 @@ function CompraConBoletaFila({
   return (
     <article id={`compra-${b.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div>
+        <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-texto">
               {b.proveedor} · <span className="tabular whitespace-nowrap">{nombre}</span>
@@ -446,7 +447,7 @@ function CompraConBoletaFila({
             )}
           </p>
           <p className="text-xs text-texto-suave">
-            Boleta · {condicion}
+            {b.comprobante_en_camino_origen === 'LOGISTICA' ? 'Iba con boleta' : 'Boleta'} · {condicion}
             {b.codigo_interno && ` · ${b.codigo_interno}`}
             {b.cancelada ? ` · Pagada el ${fecha(b.ultimo_pago)}` : !enCamino && <> · <Vencimiento dia={b.vence} saldo={saldo} /></>}
           </p>
@@ -463,12 +464,25 @@ function CompraConBoletaFila({
           )}
           {b.sin_precio && <p className="text-xs text-aviso">Logística tiene que completar los precios antes del pago.</p>}
         </div>
+        {/* La que espera su comprobante no debe aquí: se paga por él, con su IGV, en las facturas. */}
         <div className="sm:text-right">
-          <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : moneda(b.total ?? 0, m)}</p>
-          <p className="tabular text-xs text-texto-suave">
-            Total {moneda(b.total ?? 0, m)}
-            {pagado > 0 && saldo > 0 && ` · pagado ${moneda(pagado, m)}`}
-          </p>
+          {enCamino ? (
+            <>
+              <p className="tabular text-sm font-semibold text-texto">Total {moneda(b.total ?? 0, m)}</p>
+              <p className="tabular text-xs text-texto-suave">
+                Se paga por su comprobante
+                {pagado > 0 && ` · pagado directo ${moneda(pagado, m)}`}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : moneda(b.total ?? 0, m)}</p>
+              <p className="tabular text-xs text-texto-suave">
+                Total {moneda(b.total ?? 0, m)}
+                {pagado > 0 && saldo > 0 && ` · pagado ${moneda(pagado, m)}`}
+              </p>
+            </>
+          )}
         </div>
       </div>
 
@@ -501,7 +515,8 @@ function CompraConBoletaFila({
                   Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span>
                   {p.operacion && ` · op. ${p.operacion}`}
                   {p.comprobante_proveedor && ` · boleta ${p.comprobante_proveedor}`}
-                  {p.cancela && !p.anulado_en && ' · cancela la OC'}
+                  {/* Si se anuló otro pago y ya no llega al total, este no la cancela. */}
+                  {p.cancela && !p.anulado_en && b.cancelada && ' · cancela la OC'}
                 </span>
                 {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
                 <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={m} />
@@ -514,7 +529,7 @@ function CompraConBoletaFila({
                     Voucher
                   </a>
                 )}
-                {paga && !p.anulado_en && <AnularPagoCompra pagoId={p.id} />}
+                {paga && !p.anulado_en && <AnularPagoCompra pagoId={p.id} enCamino={b.comprobante_en_camino} otrosVigentes={vigentes - 1} />}
               </span>
             </li>
           ))}

@@ -674,8 +674,12 @@ export function PagarCompra({
   )
 }
 
-/** Anular con su motivo un pago de OC con boleta mal registrado: la OC vuelve a quedar por pagar. */
-export function AnularPagoCompra({ pagoId }: { pagoId: string }) {
+/**
+ * Anular con su motivo un pago de OC con boleta mal registrado. La ventana dice
+ * qué pasa con la OC: si le llegó su comprobante, ya no se paga aquí, sino por
+ * él; y si le queda otro pago directo vigente, ese también se anula antes.
+ */
+export function AnularPagoCompra({ pagoId, enCamino, otrosVigentes }: { pagoId: string; enCamino: string | null; otrosVigentes: number }) {
   const [abierta, setAbierta] = useState(false)
   const avisar = useAvisoDeLaCaja()
   const { alEnviar, enviando, error } = useEnvio(anularPagoCompra, (r) => {
@@ -692,7 +696,13 @@ export function AnularPagoCompra({ pagoId }: { pagoId: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular el pago"
-        descripcion="Queda en el historial con su motivo y su voucher. La OC vuelve a quedar por pagar y la caja diaria anula su egreso."
+        descripcion={`Queda en el historial con su motivo y su voucher, y la caja diaria anula su egreso. ${
+          !enCamino
+            ? 'La OC vuelve a deber lo que este pago cubría.'
+            : otrosVigentes > 0
+              ? `La OC se paga por su comprobante ${enCamino}, pero ${otrosVigentes === 1 ? 'queda otro pago directo vigente: anúlalo también' : `quedan ${otrosVigentes} pagos directos vigentes: anúlalos también`} para que Contabilidad lo registre.`
+              : `La OC se paga por su comprobante ${enCamino} en «Facturas por pagar» cuando Contabilidad lo registre.`
+        }`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

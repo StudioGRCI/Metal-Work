@@ -6,8 +6,10 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { cajaTrasAnular, cajaTrasElPago } from '@/lib/datos/caja'
+import { moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 
 function dato(formulario: FormData, nombre: string) {
   const valor = formulario.get(nombre)
@@ -283,28 +285,45 @@ export async function anularPagoCompra(_previo: unknown, formulario: FormData): 
   const { data, error } = await supabase.rpc('anular_pago_compra', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
-  const [caja, comprobante] = await Promise.all([
+  const [caja, situacion] = await Promise.all([
     cajaTrasAnular('PAGO_ORDEN_COMPRA', analisis.data.id, 'pago'),
-    comprobanteDeLaCompraDelPago(supabase, analisis.data.id),
+    situacionDeLaCompraDelPago(supabase, analisis.data.id),
   ])
   repintarPagosDeCompra()
-  // Si a la OC le llegó su comprobante, ya no vuelve a pagarse aquí; si no se pudo leer, no se adivina.
-  const queda =
-    comprobante === undefined
-      ? 'Pago anulado.'
-      : comprobante
-        ? `Pago anulado: la OC se paga por su comprobante ${comprobante} en «Facturas por pagar» cuando Contabilidad lo registre.`
-        : 'Pago anulado: la OC vuelve a quedar por pagar.'
-  return { ok: true, mensaje: `${queda} ${caja}`.trim() }
+  return { ok: true, mensaje: `${queQuedaTrasAnular(situacion)} ${caja}`.trim() }
 }
 
-/** El comprobante en camino de la OC de ese pago, `null` si no hay, `undefined` si no se pudo leer. */
-async function comprobanteDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string) {
+type SituacionDePago = Database['public']['Functions']['situacion_de_pago_de_compra']['Returns'][number]
+
+/** Cómo quedó el pago de la OC de ese pago, leído de la base; `null` si no se pudo leer. */
+async function situacionDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string) {
   const { data: pago, error } = await supabase.from('pagos_orden_compra').select('orden_compra_id').eq('id', pagoId).maybeSingle()
-  if (error || !pago) return undefined
-  const { data: lista, error: errorLista } = await supabase.rpc('compras_con_boleta_por_pagar')
-  if (errorLista) return undefined
-  return lista?.find((f) => f.id === pago.orden_compra_id)?.comprobante_en_camino ?? null
+  if (error || !pago) return null
+  const { data, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: pago.orden_compra_id })
+  if (errorSituacion) {
+    console.error('No se pudo leer cómo quedó el pago de la OC', errorSituacion)
+    return null
+  }
+  return data?.[0] ?? null
+}
+
+/**
+ * Lo que dice el aviso después de anular un pago de OC con boleta: lo que la
+ * base va a dejar hacer, no lo que se esperaba. Si a la OC le llegó su
+ * comprobante y le queda otro pago directo vigente, Contabilidad todavía no lo
+ * registra. Si no se pudo leer, no se adivina.
+ */
+function queQuedaTrasAnular(s: SituacionDePago | null): string {
+  if (!s) return 'Pago anulado.'
+  const n = s.pagos_vigentes ?? 0
+  if (s.en_camino && n > 0) {
+    return `Pago anulado, pero ${n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`} de esta OC: ${n === 1 ? 'anúlalo' : 'anúlalos'} también para que Contabilidad registre su comprobante ${s.en_camino}.`
+  }
+  if (s.en_camino) {
+    return `Pago anulado: la OC se paga por su comprobante ${s.en_camino} en «Facturas por pagar» cuando Contabilidad lo registre.`
+  }
+  if (s.cancelada) return 'Pago anulado. La OC sigue pagada: otro de sus pagos la dio por cancelada.'
+  return `Pago anulado: a la OC le quedan ${moneda(Number(s.saldo ?? 0), s.moneda === 'USD' ? 'USD' : 'PEN')} por pagar.`
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'

@@ -101,7 +101,11 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
       return f.pago === 'ESPERA_APROBACION'
     case 'por-facturar':
       // Como `compras_sin_factura()`: aprobada, con factura y sin una que la complete.
-      return f.tipo === 'OC' && f.con_factura === true && (f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA') && !f.facturada_entera
+      // Y la OC con boleta a la que el proveedor entregó factura: espera que Contabilidad la registre.
+      return (
+        (f.tipo === 'OC' && f.con_factura === true && (f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA') && !f.facturada_entera) ||
+        (f.tipo === 'OC' && f.con_factura === false && f.pago === 'POR_FACTURAR')
+      )
     case 'por-pagar':
       return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR'
     case 'pagadas':

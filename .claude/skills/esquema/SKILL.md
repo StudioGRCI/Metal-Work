@@ -225,3 +225,11 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   (insertar, devolver una fila quitada, cambiar la llave, pasar a REGISTRADA,
   pagar) y poner la guarda en un disparador propio de cada tabla, sin lista de
   columnas; y en el check, una prueba que falle por cada una de esas puertas.
+
+- **Una función que la aplicación llama por `rpc` devuelve columnas con nombre.**
+  Con `returns setof uuid`, Supabase entrega una lista de valores y el banco una
+  lista de objetos: `new Set(data)` funcionaba en uno y en el otro no encontraba
+  nada, y el desplegable «Factura que anexó Logística» volvía a ofrecer una
+  factura ya registrada (2026-10-21, lo cazó `probar-oc-de-varios-rq.mjs`). Se
+  escribe `returns table (documento uuid)` y se lee `fila.documento`, como
+  `rrhh_codigos_internos`: igual en los dos.

@@ -136,17 +136,22 @@ export async function registrarDocumentoCompra(
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
   if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
-  // La OC con boleta que Tesorería ya pagó directo: Contabilidad no la registra hasta que se anule ese pago.
-  const { count: pagosDirectos, error: errorPagos } = await supabase
-    .from('pagos_orden_compra')
-    .select('id', { count: 'exact', head: true })
-    .eq('orden_compra_id', datos.data.orden_compra_id)
-    .is('anulado_en', null)
+  // La OC con boleta que Tesorería ya pagó directo: Contabilidad no registra la
+  // factura hasta que se anule ese pago, salvo que ya la registrara para otra OC.
+  // Lo dice la base con la misma regla del aviso a Tesorería; si no se pudo leer,
+  // no se afirma el paso siguiente.
+  const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
+  if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
+  const s = situacion?.[0]
+  const pagos = s?.pagos_vigentes ?? 0
   return {
     ok: true,
-    mensaje:
-      !errorPagos && (pagosDirectos ?? 0) > 0
-        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ese pago.`
-        : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
+    mensaje: errorSituacion || !s
+      ? `Factura ${numeroFactura} adjuntada a la compra.`
+      : pagos > 0 && s.en_camino
+        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ${pagos === 1 ? 'ese pago' : 'esos pagos'}.`
+        : pagos > 0
+          ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya registró esa factura para otra OC: el pago de esta OC no cambia.`
+          : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
   }
 }

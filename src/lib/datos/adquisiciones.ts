@@ -128,12 +128,13 @@ export type FacturaDeLogistica = {
   /** Null en las anexadas antes del 2026-10-16, que se subieron sin número. */
   numero: string | null
   fecha: string | null
-  /** Contabilidad ya la registró: la eligió, o registró una factura con su número para el mismo proveedor. */
+  /**
+   * Contabilidad ya la registró: la eligió, o registró con su número —con o sin
+   * ceros— y el mismo proveedor una factura ligada a alguna OC
+   * (`factura_anexada_registrada`). La que registró sin OC no cuenta.
+   */
   registrada: boolean
 }
-
-const mismoProveedor = (a: string | null | undefined, b: string | null | undefined) =>
-  (a ?? '').trim().toUpperCase() === (b ?? '').trim().toUpperCase()
 
 /**
  * Las facturas que Logística anexó a sus OC, de la más nueva a la más vieja,
@@ -150,21 +151,12 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     .limit(300)
   if (error) throw new Error(`No se pudieron leer las facturas que anexó Logística: ${error.message}`)
   const documentos = data ?? []
-  const ids = documentos.map((d) => d.id)
-  const numeros = [...new Set(documentos.flatMap((d) => (d.numero_documento ? [d.numero_documento] : [])))]
-  const [porDocumento, porNumero] = await Promise.all([
-    enTandas(ids, async (tanda) => {
-      const r = await supabase.from('adquisiciones').select('documento_compra_id').in('documento_compra_id', tanda)
-      if (r.error) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${r.error.message}`)
-      return r.data ?? []
-    }),
-    enTandas(numeros, async (tanda) => {
-      const r = await supabase.from('adquisiciones').select('numero_documento, proveedor').in('numero_documento', tanda)
-      if (r.error) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${r.error.message}`)
-      return r.data ?? []
-    }),
-  ])
-  const usadas = new Set(porDocumento.map((a) => a.documento_compra_id))
+  // La regla vive en la base: es la misma que cierra el pago directo de la OC con boleta.
+  const { data: registradas, error: errorRegistradas } = documentos.length
+    ? await supabase.rpc('facturas_anexadas_registradas', { p_documentos: documentos.map((d) => d.id) })
+    : { data: [], error: null }
+  if (errorRegistradas) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${errorRegistradas.message}`)
+  const usadas = new Set((registradas ?? []).map((r) => r.documento))
   return documentos.map((d) => ({
     id: d.id,
     orden_compra_id: d.orden_compra_id,
@@ -173,9 +165,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     nombre_archivo: d.nombre_archivo,
     numero: d.numero_documento,
     fecha: d.fecha_emision,
-    registrada:
-      usadas.has(d.id) ||
-      (d.numero_documento !== null && porNumero.some((a) => a.numero_documento === d.numero_documento && mismoProveedor(a.proveedor, d.oc?.proveedor))),
+    registrada: usadas.has(d.id),
   }))
 }
 
@@ -511,6 +501,8 @@ export type ComprobanteDeCompra = {
   nombre: string
   numero: string | null
   url: string | null
+  /** El borrador al que Contabilidad todavía no le subió su PDF. */
+  sinPdf?: boolean
 }
 export type CompraConBoleta = CompraConBoletaFila & {
   pagos: (PagoCompraFila & { url: string | null })[]
@@ -573,6 +565,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
               nombre: 'Comprobante en borrador',
               numero: f.comprobante_en_camino,
               url: (rutaBorrador && (f.comprobante_en_camino_bucket === 'comprobantes-financieros' ? borradores : pdfs).get(rutaBorrador)) || null,
+              sinPdf: !rutaBorrador,
             },
           ]
         : []

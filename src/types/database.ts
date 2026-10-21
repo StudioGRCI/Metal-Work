@@ -6442,6 +6442,7 @@ export type Database = {
           moneda: string
           monto: number
           cancela: boolean
+          cancela_sin_completar: boolean
           operacion: string | null
           comprobante_proveedor: string | null
           archivo_ruta: string
@@ -6461,6 +6462,7 @@ export type Database = {
           moneda: string
           monto: number
           cancela?: boolean
+          cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
           archivo_ruta: string
@@ -6480,6 +6482,7 @@ export type Database = {
           moneda?: string
           monto?: number
           cancela?: boolean
+          cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
           archivo_ruta?: string
@@ -11092,6 +11095,12 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_pago_por_anular: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
+      }
       caja_anular_por_pago: {
         Args: {
           p_origen: string | null
@@ -12731,6 +12740,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: null
       }
+      factura_anexada_registrada: {
+        Args: {
+          p_documento: string | null
+        }
+        Returns: boolean
+      }
       facturacion_pendientes: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -12748,6 +12763,14 @@ export type Database = {
           facturado: number | null
           completa: boolean | null
           facturas: Json | null
+        }[]
+      }
+      facturas_anexadas_registradas: {
+        Args: {
+          p_documentos: string[] | null
+        }
+        Returns: {
+          documento: string | null
         }[]
       }
       fijar_condicion_pago_compra: {
@@ -14764,6 +14787,19 @@ export type Database = {
           p_sede?: string | null
         }
         Returns: string
+      }
+      situacion_de_pago_de_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          en_camino: string | null
+          en_camino_origen: string | null
+          pagos_vigentes: number | null
+          cancelada: boolean | null
+          saldo: number | null
+          moneda: string | null
+        }[]
       }
       solicitar_revision_salida: {
         Args: {

@@ -731,15 +731,30 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       contar: async () => (await porPagar()).resto,
     })
     // Las OC con boleta, que Tesorería paga directo (migración 20261020210000);
-    // la que tiene líneas sin precio espera a Logística, no a Tesorería.
+    // la que tiene líneas sin precio espera a Logística, y la que trae su
+    // comprobante se paga por él, en las facturas: ninguna de las dos se paga
+    // aquí. La que ya tenía un pago directo cuando llegó su comprobante sí
+    // espera a Tesorería, que tiene que anularlo: va aparte.
+    let boletas: Promise<{ porPagar: number; porAnular: number }> | null = null
+    const conBoleta = () =>
+      (boletas ??= (async () => {
+        const { data, error } = await supabase.rpc('compras_con_boleta_por_pagar')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        const filas = data ?? []
+        return {
+          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino).length,
+          porAnular: filas.filter((c) => c.comprobante_en_camino && Number(c.pagado) > 0).length,
+        }
+      })())
+    tareas.push({
+      clave: 'compras_con_pago_por_anular', ruta: '/tesoreria/por-pagar', tono: 'peligro',
+      texto: n => plural(n, 'OC con boleta trajo factura y tiene un pago directo que anular', 'OC con boleta trajeron factura y tienen un pago directo que anular'),
+      contar: async () => (await conBoleta()).porAnular,
+    })
     tareas.push({
       clave: 'compras_con_boleta_por_pagar', ruta: '/tesoreria/por-pagar', tono: 'aviso',
       texto: n => plural(n, 'OC con boleta por pagar', 'OC con boleta por pagar'),
-      contar: async () => {
-        const { data, error } = await supabase.rpc('compras_con_boleta_por_pagar')
-        if (error) throw new Error('No se pudo consultar el pendiente.')
-        return (data ?? []).filter((c) => !c.cancelada && !c.sin_precio).length
-      },
+      contar: async () => (await conBoleta()).porPagar,
     })
   }
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({

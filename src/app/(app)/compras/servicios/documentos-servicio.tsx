@@ -43,7 +43,10 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
           {/* Antes del «Anular» que recomienda: el archivo que ya no está no vuelve recargando. */}
           {!d.url &&
             (d.faltaArchivo ? (
-              <span className="block w-full text-aviso">{anula ? 'Sin archivo: anúlalo y vuelve a adjuntarlo.' : 'Sin archivo.'}</span>
+              <span className="block w-full text-aviso">
+                {/* Nombra su botón: a la misma altura está el «Anular» de la OS entera. */}
+                {anula ? `Sin archivo: anúlalo con «Anular ${(TIPO_DOCUMENTO_SERVICIO[d.tipo] ?? 'documento').toLowerCase()}» y vuelve a adjuntarlo.` : 'Sin archivo.'}
+              </span>
             ) : (
               <span className="block w-full text-texto-suave">No se pudo abrir: recarga la pantalla.</span>
             ))}

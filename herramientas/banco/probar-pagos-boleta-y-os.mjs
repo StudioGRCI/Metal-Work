@@ -354,6 +354,9 @@ let pagoId
   await v.getByRole('button', { name: 'Anular' }).click()
   const errorAnular = await esperarVentana(pagina)
   comprobar(!errorAnular, `anula el pago${errorAnular ? ` (dijo «${errorAnular}»)` : ''}`)
+  const avisoAnular = limpio(await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => Boolean(t), 5000))
+  comprobar(avisoAnular.includes('a la OC le quedan') && avisoAnular.includes(String(total)),
+    `el aviso dice lo que le queda por pagar: «${avisoAnular}»`)
   const [anulado] = await hasta(() => consulta(`select anulado_en from pagos_orden_compra where id = $1`, [pagoId]), (r) => r[0]?.anulado_en)
   const [egreso] = await consulta(`select anulado_en from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagoId])
   comprobar(Boolean(anulado?.anulado_en) && Boolean(egreso?.anulado_en), 'el pago queda anulado y su egreso también')
@@ -429,6 +432,8 @@ let pagoId
   comprobar(texto.includes('Llegó factura') && texto.includes(`El proveedor entregó la factura F009-${SUFIJO}`) && texto.includes('Facturas por pagar'),
     `dice que llegó factura y dónde se paga: «${texto.slice(0, 220)}»`)
   comprobar(!texto.includes('Falta la boleta'), 'y no pide la boleta')
+  comprobar(texto.includes('Iba con boleta') && texto.includes('Se paga por su comprobante') && !texto.includes('Saldo'),
+    'su cifra es el total de la OC, que se paga por la factura, no un saldo por pagar aquí')
   comprobar((await fila.getByRole('link', { name: `Factura F009-${SUFIJO}` }).count()) === 1, 'muestra la factura que anexó Logística')
   comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'y no ofrece el pago directo')
   comprobar((await pagoSegunAdquisiciones(oc[3])) === 'POR_FACTURAR', 'Adquisiciones la da por esperar su factura')
@@ -506,6 +511,69 @@ let pagoId
   comprobar(paraGerencia.includes('Tesorería tiene que anular') && !paraGerencia.includes('Anula el pago de aquí'),
     `a Gerencia le dice quién anula: «${paraGerencia.slice(0, 220)}»`)
   await g.contexto.close()
+
+  // Con dos pagos directos vigentes, anular uno no basta: la ventana y el aviso lo dicen.
+  const [{ id: tercerPago }] = await consulta('select gen_random_uuid() as id')
+  await consulta('begin')
+  await consulta('set local session_replication_role = replica')
+  await consulta(
+    `insert into pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+     values ($1, $2, $3::date, 'PEN', 5, false, $4, 'application/pdf', $5, $6)`,
+    [tercerPago, oc[4], hoy, `${oc[4]}/${tercerPago}.pdf`, PDF.length, ids[CUENTAS.tesoreria]],
+  )
+  await consulta('commit')
+  const t = await entrar('tesoreria')
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  // Lo que pide algo a Tesorería va primero.
+  const tarjetas = (await t.pagina.locator('#compras-con-boleta article').allTextContents()).map(limpio)
+  const porAnular = tarjetas.map((x, i) => (x.includes('Pago por anular') ? i : -1)).filter((i) => i >= 0)
+  const resto = tarjetas.map((x, i) => (x.includes('Pago por anular') ? -1 : i)).filter((i) => i >= 0)
+  comprobar(porAnular.length > 0 && (resto.length === 0 || Math.max(...porAnular) < Math.min(...resto)),
+    `las OC con pago por anular salen antes que las demás (${porAnular.join(', ')} de ${tarjetas.length})`)
+  const tarjeta = t.pagina.locator(`article#compra-${oc[4]}`)
+  comprobar(limpio(await tarjeta.textContent()).includes('Total S/') && !limpio(await tarjeta.textContent()).includes('Saldo'),
+    'la pagada con factura muestra su total, no un saldo')
+  await t.pagina.locator(`[data-anular-pago-compra="${otroPago}"]`).click()
+  const vt = t.pagina.locator('[role="dialog"]')
+  await vt.waitFor()
+  const descripcion = limpio(await vt.textContent())
+  comprobar(descripcion.includes(`se paga por su comprobante F010-${SUFIJO}`) && descripcion.includes('queda otro pago directo vigente: anúlalo también'),
+    `la ventana dice que queda otro pago por anular: «${descripcion.slice(0, 260)}»`)
+  await vt.locator('textarea[name="motivo"]').fill('Se registró dos veces el mismo voucher')
+  await vt.getByRole('button', { name: 'Anular' }).click()
+  const errorUno = await esperarVentana(t.pagina)
+  comprobar(!errorUno, `anula uno de los dos${errorUno ? ` (dijo «${errorUno}»)` : ''}`)
+  const avisoUno = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => Boolean(x), 5000))
+  comprobar(avisoUno.includes('queda otro pago directo vigente de esta OC') && avisoUno.includes(`registre su comprobante F010-${SUFIJO}`),
+    `y el aviso no lo da por terminado: «${avisoUno}»`)
+  const [{ n: vigentes }] = await consulta(`select count(*)::int as n from pagos_orden_compra where orden_compra_id = $1 and anulado_en is null`, [oc[4]])
+  comprobar(vigentes === 1, `en la base queda un pago vigente (${vigentes})`)
+  await t.contexto.close()
+}
+
+// ---------------------------------------------------------------- 3e. Contabilidad no la registra a mano sin su OC
+// La cuarta auditoría: registrada con su número y su proveedor, sin elegirla en
+// «Factura que anexó Logística», quedaba sin OC y la compra se pagaba dos veces.
+{
+  const { pagina, contexto } = await entrar('contabilidad')
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1,
+    `el desplegable ofrece la factura F009-${SUFIJO} que anexó Logística`)
+  await pagina.locator('#adq-proveedor').fill(PROVEEDOR.toLowerCase())
+  await pagina.locator('#adq-numero').fill(`F009-000${SUFIJO}`)
+  await pagina.locator('#adq-total').fill('100')
+  await pagina.locator('#adq-emision').fill(hoy)
+  await pagina.locator('#adq-vencimiento').fill(hoy)
+  await pagina.locator('#adq-pdf').setInputFiles(join(archivos, 'voucher.pdf'))
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  const error = limpio(await hasta(() => pagina.locator('form [role="alert"]').first().textContent({ timeout: 500 }).catch(() => ''), (x) => Boolean(x), 20000))
+  comprobar(error.includes('elígela en «Factura que anexó Logística»') && error.includes(`F009-${SUFIJO}`),
+    `escrita a mano, con ceros y en minúsculas, no entra y le dice dónde elegirla: «${error}»`)
+  const [{ n: altas }] = await consulta(
+    `select count(*)::int as n from adquisiciones where public.normalizar_numero_factura(numero_documento) = $1`, [`F009-${SUFIJO}`])
+  comprobar(altas === 0, `y no deja ni un borrador (${altas})`)
+  comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1, 'la factura sigue en el desplegable')
+  await contexto.close()
 }
 
 // ---------------------------------------------------------------- 4. Logística adjunta la factura y el contrato de la OS

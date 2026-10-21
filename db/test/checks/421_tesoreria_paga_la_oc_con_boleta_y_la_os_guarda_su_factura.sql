@@ -39,7 +39,7 @@ begin
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
   foreach v in array array['rq', 'oc1', 'oc2', 'oc3', 'oc4', 'oc5', 'os1', 'os2', 'os3', 'f1', 'f3', 'f4',
-                           'p1', 'p2', 'p3', 'p4', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
+                           'p1', 'p2', 'p3', 'p4', 'p4a', 'p4b', 'p4c', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -97,7 +97,8 @@ begin
                            'public.anular_pago_compra(uuid, text)', 'public.compras_con_boleta_por_pagar()',
                            'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text)',
                            'public.anular_documento_servicio(uuid, text)', 'public.pasar_compra_a_tesoreria(uuid)',
-                           'public.puede_adjuntar_documento_servicio()'] loop
+                           'public.puede_adjuntar_documento_servicio()', 'public.situacion_de_pago_de_compra(uuid)',
+                           'public.factura_anexada_registrada(uuid)', 'public.facturas_anexadas_registradas(uuid[])'] loop
     perform test.afirmar(not has_function_privilege('anon', f, 'execute') and has_function_privilege('authenticated', f, 'execute'),
                          'anon no llama ' || f || '; una sesión sí');
   end loop;
@@ -105,8 +106,13 @@ begin
                        and not has_function_privilege('authenticated', 'public.fn_pago_compra_guardia()', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_documento_servicio_guardia()', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_factura_sin_pago_directo()', 'execute')
-                       and not has_function_privilege('authenticated', 'public.compra_pagada_directo(uuid[])', 'execute'),
-                       'los disparadores los llama el sistema, no la gente');
+                       and not has_function_privilege('authenticated', 'public.compra_pagada_directo(uuid[])', 'execute')
+                       and not has_function_privilege('authenticated', 'public.comprobante_en_camino(uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_aviso_factura_de_compra_pagada()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_compra_pagada_total_fijo()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_factura_anexada_con_su_oc()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.avisar_pago_por_anular(uuid[])', 'execute'),
+                       'los disparadores y sus ayudantes los llama el sistema, no la gente');
   perform test.afirmar((select bool_and(c.relrowsecurity) from pg_class c
                          where c.oid in ('public.pagos_orden_compra'::regclass, 'public.documentos_orden_servicio'::regclass)),
                        'las dos tablas nuevas tienen RLS');
@@ -328,6 +334,51 @@ select test.afirmar((select not cancelada and pagado = 100 from public.compras_c
   'la OC vuelve a quedar por pagar el saldo');
 reset role;
 
+-- ============================================ 6b. Lo pagado se vuelve a contar al anular
+-- La OC 4: 100 a cuenta y el resto, que la cancela solo. Si se anula el primero,
+-- la OC vuelve a deberlo (la cuarta auditoría la vio «Pagada» debiendo S/ 100).
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('p4a', 'oc4', 100, false, pg_temp.subir('pagos-compras', 'oc4'));
+select pg_temp.pagar('p4b', 'oc4', current_setting('prueba.total1')::numeric - 100, false, pg_temp.subir('pagos-compras', 'oc4'));
+select test.afirmar((select cancelada from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+  'con los dos pagos, la OC 4 queda pagada');
+select public.anular_pago_compra(pg_temp.id('p4a'), 'Se pagó a otra cuenta del proveedor');
+select test.afirmar((select not cancelada and pagado = current_setting('prueba.total1')::numeric - 100
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+  'anulado el primero, vuelve a deber lo que falta, aunque el que queda la había cancelado');
+select test.afirmar((select en_camino is null and pagos_vigentes = 1 and not cancelada and saldo = 100 and moneda = 'PEN'
+                       from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
+  'y su situación lo dice: un pago vigente y S/ 100 por pagar');
+select test.afirmar(pg_temp.pago('oc4') = 'PAGO_PARCIAL', 'Adquisiciones la da pagada en parte');
+-- «Sí, queda pagada» con menos del total: la decisión de Tesorería vale mientras ese pago siga vigente.
+select pg_temp.pagar('p4c', 'oc4', 50, true, pg_temp.subir('pagos-compras', 'oc4'));
+select test.afirmar((select cancela and cancela_sin_completar from public.pagos_orden_compra where id = pg_temp.id('p4c')),
+  'el pago que la da por cancelada sin completar el total lo guarda aparte');
+select test.afirmar((select cancelada from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                    and pg_temp.pago('oc4') = 'PAGADA',
+  'y la OC queda pagada con S/ 50 por debajo de su total');
+select test.debe_fallar($$ select pg_temp.pagar('p3', 'oc4', 1, false, pg_temp.subir('pagos-compras', 'oc4')) $$,
+  'ya no se le paga más', 'ya está pagada');
+select public.anular_pago_compra(pg_temp.id('p4b'), 'El banco devolvió la transferencia del saldo');
+select test.afirmar((select cancelada from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+  'anulado otro pago, sigue pagada: la dio por cancelada un pago vigente');
+select public.anular_pago_compra(pg_temp.id('p4c'), 'Se registró en la OC que no era');
+select test.afirmar((select pagos_vigentes = 0 and not cancelada and saldo = current_setting('prueba.total1')::numeric
+                       from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
+  'anulado ese también, vuelve a deberse entera');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar((select pagos_vigentes = 0 from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
+  'Logística, que emitió la OC, también lee su situación');
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar($$ select * from public.situacion_de_pago_de_compra(pg_temp.id('oc4')) $$,
+  'Contabilidad no: no paga ni emitió la OC', 'Tesorería y Logística');
+reset role;
+
 -- ============================================ 7. Dos caminos son dos pagos
 -- Contabilidad registró la boleta de la OC 4 como comprobante: se paga por ahí.
 select pg_temp.como('contabilidad');
@@ -432,29 +483,82 @@ select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada
 -- la OC vuelve a pagarse directo, en vez de quedar sin camino.
 select pg_temp.como('contabilidad');
 select set_config('prueba.fx', gen_random_uuid()::text, true);
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-values (pg_temp.id('fx'), 'FACTURA_COMPRA', 'proveedor de prueba 421 ', 'F009-421', current_setting('prueba.hoy')::date,
-        current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO');
-insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (pg_temp.id('fx'), pg_temp.id('oc2'));
+-- Con la OC en la cabecera, como la da de alta la aplicación (la base la enlaza sola).
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago,
+                                  orden_compra_id)
+values (pg_temp.id('fx'), 'FACTURA_COMPRA', 'proveedor de prueba 421 ', 'F009-0421', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO', pg_temp.id('oc2'));
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.afirmar((select comprobante_en_camino is null from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
-  'la factura anexada que es de otra OC ya no le cierra el pago directo');
+  'la factura anexada que es de otra OC, aunque se escriba con ceros, ya no le cierra el pago directo');
 select test.afirmar(pg_temp.pago('oc1') = 'PAGO_PARCIAL', 'y Adquisiciones la vuelve a dar por pagada en parte');
 reset role;
--- La factura de otra OC sale de esta prueba: el resto del check no la espera.
-set local session_replication_role = replica;
-update public.adquisiciones set numero_documento = 'F009-421X' where id = pg_temp.id('fx');
-set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar((select array_agg(documento) from public.facturas_anexadas_registradas(array[pg_temp.id('dfac'), gen_random_uuid()]))
+                      = array[pg_temp.id('dfac')],
+  'y el desplegable de Contabilidad ya no la ofrece: la da por registrada, por su columna «documento»');
+reset role;
+-- Contabilidad corrige el número de la factura de la otra OC: la anexada vuelve
+-- a contar, la OC vuelve a «Pago por anular» y a Tesorería le llega el aviso
+-- otra vez (el de antes ya lo leyó). La factura de otra OC sale así de la prueba.
+update public.notificaciones set leida_en = now()
+ where usuario_id = pg_temp.id('tesoreria') and titulo like 'Llegó factura de una OC pagada: %';
+select pg_temp.como('contabilidad');
+update public.adquisiciones set numero_documento = 'F009-4219' where id = pg_temp.id('fx');
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.afirmar((select comprobante_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
   'con el número de otra factura, la anexada vuelve a contar');
+select test.afirmar(pg_temp.pago('oc1') = 'PAGO_POR_ANULAR', 'y la OC vuelve a tener un pago que anular');
 reset role;
+select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 2
+    and (select cuerpo like '%Anula ese pago%' from public.notificaciones
+          where usuario_id = pg_temp.id('tesoreria') and titulo like 'Llegó factura de una OC pagada: %' and leida_en is null),
+  'a Tesorería le llega otra vez el aviso de anular su pago');
+select pg_temp.como('contabilidad');
+update public.adquisiciones set numero_documento = 'F009-42199' where id = pg_temp.id('fx');
+select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 2,
+  'y no se le repite mientras no lo lea');
+
+-- Registrada a mano con su número y su proveedor, la factura anexada quedaba
+-- sin OC y la compra se pagaba dos veces (cuarta auditoría): no se da de alta así.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar($$ insert into public.adquisiciones (tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+                           values ('FACTURA_COMPRA', 'Proveedor de prueba 421', 'F009-421', current_setting('prueba.hoy')::date,
+                                   current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO') $$,
+  'Contabilidad no registra sin OC la factura que Logística anexó a una OC con boleta', 'elígela en «Factura que anexó Logística»');
+select test.debe_fallar($$ insert into public.adquisiciones (tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+                           values ('FACTURA_COMPRA', ' PROVEEDOR DE PRUEBA 421', 'f009-00421', current_setting('prueba.hoy')::date,
+                                   current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO') $$,
+  'tampoco escrita con ceros o en otras mayúsculas', 'elígela en «Factura que anexó Logística»');
+select test.afirmar((select count(*) from public.facturas_anexadas_registradas(array[pg_temp.id('dfac')])) = 0,
+  'y en su desplegable la factura sigue por registrar');
+reset role;
+-- La que ya estaba registrada sin OC (de antes, o registrada antes de que
+-- Logística la anexara) no le abre el pago directo: la OC sigue esperándola.
+select set_config('prueba.fsin', gen_random_uuid()::text, true);
+set local session_replication_role = replica;
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado,
+                                  ruta_storage)
+values (pg_temp.id('fsin'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F009-421', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || pg_temp.id('fsin') || '/comprobante.pdf');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'registrada sin OC, la factura anexada sigue en camino: la OC no se paga directo');
+reset role;
+select test.afirmar(not public.factura_anexada_registrada(pg_temp.id('dfac')), 'ni cuenta como registrada');
+set local session_replication_role = replica;
+update public.adquisiciones set numero_documento = 'F009-42198' where id = pg_temp.id('fsin');
+set local session_replication_role = origin;
 -- Pagada entera y con la factura después: sale una vez y en la parte de la
 -- lista que no se corta en las 60 últimas canceladas.
 set local session_replication_role = replica;
-update public.pagos_orden_compra set cancela = true where id = pg_temp.id('p1');
+update public.pagos_orden_compra set cancela = true, cancela_sin_completar = true where id = pg_temp.id('p1');
 set local session_replication_role = origin;
 select pg_temp.como('tesoreria');
 set local role authenticated;
@@ -463,7 +567,7 @@ select test.afirmar((select count(*) = 1 and bool_and(cancelada and comprobante_
   'la OC pagada a la que llegó factura sale una vez, con su factura en camino');
 reset role;
 set local session_replication_role = replica;
-update public.pagos_orden_compra set cancela = false where id = pg_temp.id('p1');
+update public.pagos_orden_compra set cancela = false, cancela_sin_completar = false where id = pg_temp.id('p1');
 set local session_replication_role = origin;
 
 -- ============================================ 8. La OC con boleta de antes que no se pagó
@@ -503,6 +607,20 @@ select test.afirmar((select total = 361.50 and pagado = 0 and not cancelada from
   'ya sale en las OC con boleta por pagar');
 select test.afirmar(pg_temp.pago('oc3') = 'POR_PAGAR', 'y Adquisiciones la da por pagar');
 reset role;
+-- La pagada a la que llegó su factura pide algo a Tesorería: sale antes que las por pagar.
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela = true, cancela_sin_completar = true where id = pg_temp.id('p1');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select array_agg(x.id order by x.ordinality) from public.compras_con_boleta_por_pagar() with ordinality x
+                      where x.id in (pg_temp.id('oc1'), pg_temp.id('oc3'))) = array[pg_temp.id('oc1'), pg_temp.id('oc3')]
+                    and (select cancelada and comprobante_en_camino is not null from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la OC pagada con su pago por anular sale antes que la que está por pagar');
+reset role;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela = false, cancela_sin_completar = false where id = pg_temp.id('p1');
+set local session_replication_role = origin;
 -- La de antes con su comprobante registrado se paga por ahí: no se pasa.
 set local session_replication_role = replica;
 update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('oc4');
