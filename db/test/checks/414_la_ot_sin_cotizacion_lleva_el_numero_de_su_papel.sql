@@ -42,6 +42,10 @@ end;
 $$;
 grant execute on function pg_temp.registrar(text) to authenticated;
 
+select coalesce(max(correlativo_actual), 0) as serie_antes from public.series_documentarias
+ where tipo = 'ORDEN_TRABAJO' and (sede_id is null or sede_id = :'sede_id') \gset
+select test.afirmar(:'serie_antes'::bigint < 12414, 'la serie empieza por debajo del papel de la prueba');
+
 select test.como_usuario(:'adm_id');
 set local role authenticated;
 
@@ -54,6 +58,9 @@ begin
   perform test.debe_fallar(pg_temp.registrar('OT-2922'), 'un número con letras no entra', 'el que trae su papel');
   perform test.debe_fallar(pg_temp.registrar('2922-26'), 'el año va con cuatro cifras', 'el que trae su papel');
   perform test.debe_fallar(pg_temp.registrar('0000'), 'el cero no es número de orden', 'el que trae su papel');
+  perform test.debe_fallar(pg_temp.registrar('2930-0000'), 'el año 0000 no es de ningún papel', 'el que trae su papel');
+  perform test.debe_fallar(pg_temp.registrar('2930-' || (current_setting('prueba.anio')::integer + 1)),
+    'ni un año que todavía no llega', 'el que trae su papel');
   perform test.afirmar(not exists (select 1 from public.ordenes_trabajo where descripcion = 'Reparación de prueba 414'),
     'los intentos fallidos no dejaron orden');
 
@@ -100,8 +107,13 @@ select test.debe_fallar(format($q$select public.registrar_orden_sin_cotizacion(g
   current_setting('prueba.cliente'), current_setting('prueba.sede')), 'Ventas no registra la orden sin cotización', 'ordenes.crear');
 reset role;
 
--- 7. La firma vieja, sin número, ya no existe.
-select test.afirmar(to_regprocedure('public.registrar_orden_sin_cotizacion(uuid, uuid, uuid, uuid, uuid, public.tipo_trabajo_ot, public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint)') is null,
-  'la orden sin número ya no tiene puerta');
+-- 7. La firma vieja, sin número, ya no registra: pide recargar.
+select test.como_usuario(:'adm_id');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.registrar_orden_sin_cotizacion(gen_random_uuid(), %L, null, %L, null,
+  'REPARACION', 'NORMAL', 'Reparación de prueba 414', null, null, null, null, null, null, 'ot/x/orden.pdf', 'orden.pdf', 2048)$q$,
+  current_setting('prueba.cliente'), current_setting('prueba.sede')),
+  'la orden sin número ya no tiene puerta: la firma vieja pide recargar', 'Recarga la página');
+reset role;
 
 rollback;

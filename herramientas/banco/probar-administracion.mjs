@@ -308,6 +308,12 @@ let ordenId = ''
     await pagina.getByText(`Ya hay una orden de trabajo ${repetido}`).waitFor({ timeout: 30000 }).catch(() => {})
     comprobar(limpio(await pagina.locator('main').innerText()).includes(`Ya hay una orden de trabajo ${repetido}`),
       `con el número ${repetido}, que ya es de otra orden, no se registra y lo dice`)
+    comprobar((await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
+              && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero',
+      'el rechazo queda en el campo del número, con el cursor ahí')
+    // El de su campo también es `role="alert"`: se cuentan los que lo dicen.
+    comprobar((await pagina.locator('[role="alert"]', { hasText: 'Ya hay una orden de trabajo' }).count()) === 1,
+      'y no se repite en el aviso de abajo')
     comprobar((await uno(`select count(*)::int as n from public.ordenes_trabajo where descripcion like $1`, [`%banco ${sello}`])).n === 0,
       'y no dejó ninguna orden')
     await pagina.waitForTimeout(1500)
@@ -315,7 +321,11 @@ let ordenId = ''
                             and not exists (select 1 from public.ot_adjuntos a where a.ruta_storage = o.name)`, [antesDelRepetido])).n === 0,
       'ni su PDF suelto en Storage')
   }
-  await pagina.locator('#numero').fill(sello)
+  // Sin ceros adelante: la base los quita («016992» queda 16992).
+  const numeroPapel = String(Number(sello) || 1)
+  await pagina.locator('#numero').fill(numeroPapel)
+  comprobar(limpio(await pagina.locator('main').innerText()).includes(`Se registrará como la OT ${numeroPapel.padStart(4, '0')}-`),
+    'antes de registrar, dice cómo va a quedar el número')
   await Promise.all([
     pagina.waitForURL(/\/ordenes\/[0-9a-f-]{36}/, { timeout: 30000 }),
     pagina.getByRole('button', { name: 'Registrar orden' }).click(),
@@ -328,7 +338,7 @@ let ordenId = ''
                             join public.ot_adjuntos a on a.orden_id = o.id and a.tipo = 'ORDEN' where o.id = $1`, [ordenId])
   comprobar(orden?.estado === 'BORRADOR' && Boolean(orden?.ruta_storage), `la orden ${orden?.numero ?? ''} nace en borrador con su PDF`)
   const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
-  comprobar(orden?.numero === `${sello}-${anio}`, `y con el número de su papel: ${orden?.numero ?? ''}`)
+  comprobar(orden?.numero === `${numeroPapel.padStart(4, '0')}-${anio}`, `y con el número de su papel: ${orden?.numero ?? ''}`)
   let guardado = false
   try {
     guardado = statSync(join(ARCHIVOS, 'adjuntos-ot', orden?.ruta_storage ?? 'x')).size > 0

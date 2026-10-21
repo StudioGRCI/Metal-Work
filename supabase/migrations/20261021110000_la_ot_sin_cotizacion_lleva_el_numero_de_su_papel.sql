@@ -17,15 +17,37 @@
 --   * «2922» toma el año en curso y «2922-2026» entra tal cual; «12345» queda
 --     «12345», sin recortarse a cuatro cifras;
 --   * no se repite: si ya hay una orden con ese número, lo dice;
---   * la serie automática salta por encima de él, así la siguiente orden que
---     abra el taller no choca con ninguna.
+--   * el año va de 2000 al año en curso;
+--   * la serie automática salta por encima de él, como al aprobar una
+--     cotización. Hoy casi nadie numera por la serie (solo el administrador del
+--     sistema), pero si vuelve a usarse no caerá sobre un número de papel.
 --
--- La firma cambia (un parámetro más), así que la vieja se va para que no quede
--- una puerta sin número.
+-- La firma cambia (un parámetro más). La vieja se queda, pero ya no registra:
+-- solo pide recargar. Así no queda una puerta sin número, y la pantalla que
+-- todavía no se actualizó cuando se pega este SQL dice qué hacer en vez de un
+-- error en inglés. Se retira más adelante.
 -- =============================================================================
 
-drop function if exists public.registrar_orden_sin_cotizacion(uuid, uuid, uuid, uuid, uuid, public.tipo_trabajo_ot,
-  public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint);
+create or replace function public.registrar_orden_sin_cotizacion(
+  p_orden uuid, p_cliente uuid, p_unidad uuid, p_sede uuid, p_tipo_carroceria uuid,
+  p_tipo_trabajo public.tipo_trabajo_ot, p_prioridad public.prioridad_ot, p_descripcion text,
+  p_especificaciones text, p_inicio date, p_fin date, p_entrega date, p_responsable uuid,
+  p_observaciones text, p_ruta_pdf text, p_nombre_pdf text, p_tamano_pdf bigint
+) returns uuid
+language plpgsql
+set search_path to 'public'
+as $$
+begin
+  raise exception 'Recarga la página: la orden ahora pide el número de su papel.' using errcode = 'check_violation';
+end;
+$$;
+comment on function public.registrar_orden_sin_cotizacion(uuid, uuid, uuid, uuid, uuid, public.tipo_trabajo_ot,
+  public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint) is
+  'Ya no registra: la orden sin cotización lleva el número de su papel (la firma con p_numero, migración 20261021110000). Solo pide recargar la página.';
+revoke all on function public.registrar_orden_sin_cotizacion(uuid, uuid, uuid, uuid, uuid, public.tipo_trabajo_ot,
+  public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint) from public, anon;
+grant execute on function public.registrar_orden_sin_cotizacion(uuid, uuid, uuid, uuid, uuid, public.tipo_trabajo_ot,
+  public.prioridad_ot, text, text, date, date, date, uuid, text, text, text, bigint) to authenticated;
 
 create or replace function public.registrar_orden_sin_cotizacion(
   p_orden            uuid,
@@ -81,7 +103,9 @@ begin
       using errcode = 'check_violation';
   end if;
   v_cifras := ltrim(v_cifras, '0');
-  if v_cifras = '' then
+  -- El año es el de un papel que existe: desde 2000 y no después del actual.
+  if v_cifras = '' or v_anio::integer not between 2000
+       and extract(year from (now() at time zone 'America/Lima'))::integer then
     raise exception 'El número de la orden es el que trae su papel: 2922 o 2922-2026.'
       using errcode = 'check_violation';
   end if;
