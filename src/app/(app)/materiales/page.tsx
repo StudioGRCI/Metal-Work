@@ -26,13 +26,13 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
 
   const busqueda = typeof params.buscar === 'string' ? params.buscar : undefined
   const inactivos = params.todos === '1'
-  const pagina = Math.max(1, Number.parseInt(typeof params.pagina === 'string' ? params.pagina : '1', 10) || 1)
+  const pedida = Math.max(1, Number.parseInt(typeof params.pagina === 'string' ? params.pagina : '1', 10) || 1)
 
   const [resultado, catalogos] = await Promise.all([
-    listarCatalogoMateriales({ busqueda, inactivos, pagina }),
+    listarCatalogoMateriales({ busqueda, inactivos, pagina: pedida }),
     catalogosDeMateriales(),
   ])
-  const { materiales, total, tamanoPagina } = resultado
+  const { materiales, total, tamanoPagina, pagina } = resultado
   const paginas = Math.max(1, Math.ceil(total / tamanoPagina))
   const enlacePagina = (numero: number) => {
     const consulta = new URLSearchParams()
@@ -87,7 +87,7 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
                   <TH className="hidden sm:table-cell">Categoría</TH>
                   <TH>Unidad</TH>
                   <TH className="hidden sm:table-cell">Especificación</TH>
-                  {puedeEditar && <TH className="w-28" />}
+                  {puedeEditar && <TH className="sm:w-28" />}
                 </TR>
               </TablaCabecera>
               <tbody>

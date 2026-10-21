@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { paginaQueExiste } from '@/lib/dominio/paginas'
 
 export type MaterialDelCatalogo = {
   id: string
@@ -22,7 +23,7 @@ const TAMANO_PAGINA = 50
  */
 export async function listarCatalogoMateriales(
   filtros: { busqueda?: string; inactivos?: boolean; pagina?: number } = {},
-): Promise<{ materiales: MaterialDelCatalogo[]; total: number; tamanoPagina: number }> {
+): Promise<{ materiales: MaterialDelCatalogo[]; total: number; tamanoPagina: number; pagina: number }> {
   const supabase = await createClient()
 
   const pagina = Math.max(1, Math.floor(filtros.pagina ?? 1))
@@ -46,8 +47,11 @@ export async function listarCatalogoMateriales(
   for (const filtro of filtrosDeBusqueda(['descripcion', 'codigo'], filtros.busqueda)) consulta = consulta.or(filtro)
 
   const { data, count, error } = await consulta
+  // Una página que ya no existe se cambia por la última que sí hay.
+  const otra = await paginaQueExiste(pagina, TAMANO_PAGINA, { error, count, filas: data?.length ?? 0 }, async () => (await listarCatalogoMateriales({ ...filtros, pagina: 1 })).total)
+  if (otra) return listarCatalogoMateriales({ ...filtros, pagina: otra })
   if (error) throw new Error(`No se pudo leer el catálogo de materiales: ${error.message}`)
-  return { materiales: (data ?? []) as unknown as MaterialDelCatalogo[], total: count ?? 0, tamanoPagina: TAMANO_PAGINA }
+  return { materiales: (data ?? []) as unknown as MaterialDelCatalogo[], total: count ?? 0, tamanoPagina: TAMANO_PAGINA, pagina }
 }
 
 /** Las categorías y unidades para dar de alta un material. */

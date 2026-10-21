@@ -41,7 +41,9 @@ export function EncabezadoPagina({
                   {miga.titulo}
                 </Link>
               ) : (
-                <span className="text-texto">{miga.titulo}</span>
+                // Solo la última es la pantalla actual; una miga sin enlace en
+                // medio («Recursos Humanos») es el nombre del área y va suave.
+                <span className={i === migas.length - 1 ? 'text-texto' : undefined}>{miga.titulo}</span>
               )}
             </span>
           ))}

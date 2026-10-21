@@ -45,7 +45,10 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
             <Entrada id="pl-excel" name="archivo" type="file" accept=".xlsx" required />
           </Campo>
           {leer.error && <p role="alert" className="text-sm text-peligro">{leer.error}</p>}
-          <Boton type="submit" cargando={leer.enviando}>Leer y comprobar</Boton>
+          <div className="flex justify-end gap-2 pt-1">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>Cancelar</Boton>
+            <Boton type="submit" cargando={leer.enviando}>Leer y comprobar</Boton>
+          </div>
         </form>
       ) : (
         <form onSubmit={(e) => confirmar.alEnviar(e)} className="space-y-4">

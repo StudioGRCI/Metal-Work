@@ -5,6 +5,7 @@ import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
+import { paginaQueExiste } from '@/lib/dominio/paginas'
 
 export type FilaKardex = Pick<Vistas<'v_kardex_almacen'>,
   'id' | 'fecha' | 'material_id' | 'material_codigo' | 'material' | 'unidad_medida' | 'movimiento' | 'origen'
@@ -81,7 +82,7 @@ function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: O
  * que filtrar por fecha o por unidad no lo altera: cada fila sigue diciendo
  * cuánto quedó en almacén en ese momento.
  */
-export async function cargarKardex(filtros: FiltrosKardex) {
+export async function cargarKardex(filtros: FiltrosKardex): Promise<{ filas: FilaKardex[]; total: number; cronologico: boolean; pagina: number }> {
   const db = await createClient()
   const cronologico = Boolean(filtros.material)
   const desde = (filtros.pagina - 1) * FILAS_POR_PAGINA
@@ -89,10 +90,13 @@ export async function cargarKardex(filtros: FiltrosKardex) {
     .order('fecha', { ascending: false })
     .order('id', { ascending: false })
     .range(desde, desde + FILAS_POR_PAGINA - 1)
+  // Una página que ya no existe se cambia por la última que sí hay.
+  const otra = await paginaQueExiste(filtros.pagina, FILAS_POR_PAGINA, { error, count, filas: data?.length ?? 0 }, async () => (await cargarKardex({ ...filtros, pagina: 1 })).total)
+  if (otra) return cargarKardex({ ...filtros, pagina: otra })
   if (error) throw new Error(`No se pudo cargar el kardex: ${error.message}`)
 
   const filas: FilaKardex[] = data ?? []
-  return { filas: cronologico ? [...filas].reverse() : filas, total: count ?? 0, cronologico }
+  return { filas: cronologico ? [...filas].reverse() : filas, total: count ?? 0, cronologico, pagina: filtros.pagina }
 }
 
 /**

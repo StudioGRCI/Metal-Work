@@ -185,8 +185,11 @@ export function FilaMaterial({
       </TD>
       <TD className="hidden text-xs text-texto-suave sm:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (
-        <TD>
-          <div className="flex items-center justify-end gap-1">
+        // En el teléfono los dos botones van uno sobre otro y la celda pierde su
+        // margen: lado a lado ocupaban 112 px y la descripción quedaba en 121,
+        // donde se partían a la mitad palabras como «TRONZADORA» (producción).
+        <TD className="px-1 sm:px-3">
+          <div className="flex flex-col items-center justify-end gap-1 sm:flex-row">
             <Boton
               type="button"
               variante="fantasma"
