@@ -15,17 +15,21 @@
  *      el egreso queda anulado.
  *   3b. La OC con boleta de antes sale «Pago fuera del sistema» y no está en
  *      Cuentas por pagar; Tesorería la pasa con «No se pagó» (tres toques, un
- *      cambio en la auditoría) y ya pide su pago. Con un pago directo vigente,
- *      Contabilidad no le liga una factura. Tras «No se pagó» la fila dice lo
- *      que pasó y el foco queda en ese aviso.
+ *      cambio en la auditoría) y ya pide su pago. Tras «No se pagó» la fila dice lo
+ *      que pasó y el foco queda en ese aviso. Con un pago directo vigente,
+ *      Contabilidad le liga una factura y, registrada, la factura toma ese
+ *      pago (décima vuelta).
  *   3c. La OC con boleta cuyo proveedor entregó factura (Logística la anexó):
  *      Cuentas por pagar dice «Llegó factura», muestra esa factura y no ofrece
  *      el pago directo; Adquisiciones la da por esperar su factura.
- *   3d. La OC con boleta que Tesorería pagó entera y a la que después llega
- *      factura: a Tesorería le llega el aviso, la tarjeta sale arriba (no en
- *      «pagadas») pidiendo anular el pago, Adquisiciones dice «Pago por
- *      anular» y lleva a anularlo; al anularlo, el aviso dice que se paga por
- *      la factura y no ofrece pagarla aquí. Gerencia lee quién lo hace.
+ *   3d. (décima vuelta) La OC con boleta que Tesorería pagó entera y a la que
+ *      después llega factura: no se anula nada. Mientras Contabilidad no la
+ *      registra, la tarjeta dice que la factura quedará pagada con ese pago, y
+ *      Gerencia lo lee sin botones. Registrada por menos, la factura toma lo
+ *      que le cabe: Tesorería recibe «Compra pagada de más», la tarjeta sale
+ *      primero y pide la devolución. Al anular el pago de la boleta, la
+ *      ventana y el aviso dicen que la factura vuelve a deber, y el aviso de
+ *      lo pagado de más se da por leído.
  *   3e. Contabilidad registra a mano, con ceros y en minúsculas, la factura que
  *      Logística anexó: entra una vez, ligada sola a su OC y al anexo, y el
  *      desplegable ya no la ofrece.
@@ -406,7 +410,7 @@ let pagoId
   comprobar((await pagina.locator(`article#compra-${oc[2]} [data-pagar-compra]`).count()) === 1, 'y en Cuentas por pagar ya pide su pago')
   await contexto.close()
 
-  // El otro camino: con un pago directo vigente, Contabilidad no le liga una factura.
+  // El otro camino: con un pago directo vigente, Contabilidad le liga una factura y, registrada, toma ese pago.
   await como('tesoreria')
   const [{ id: pagoDirecto }] = await consulta('select gen_random_uuid() as id')
   const voucher = await subir('pagos-compras', `${oc[2]}/${pagoDirecto}.pdf`, 'tesoreria')
@@ -421,8 +425,12 @@ let pagoId
   const rechazo = await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [otra, oc[2]])
     .then(() => '')
     .catch((e) => e.message)
-  comprobar(rechazo.includes('Tesorería ya le pagó'), `y Contabilidad no le liga una factura encima («${rechazo.slice(0, 120)}»)`)
+  comprobar(rechazo === '', `Contabilidad le liga la factura aunque Tesorería ya le pagó directo${rechazo ? ` («${rechazo.slice(0, 120)}»)` : ''}`)
+  await subir('comprobantes-financieros', `adquisiciones/${otra}/comprobante.pdf`, 'contabilidad')
+  await consulta(`update adquisiciones set ruta_storage = $2, estado = 'REGISTRADA' where id = $1`, [otra, `adquisiciones/${otra}/comprobante.pdf`])
   await como(null)
+  const tomado = await consulta(`select monto::float as monto from pagos_adquisicion where adquisicion_id = $1 and pago_orden_compra_id = $2 and anulado_en is null`, [otra, pagoDirecto])
+  comprobar(tomado.length === 1 && tomado[0].monto === 50, 'registrada, la factura toma los S/ 50 que ya se pagaron por la boleta')
 }
 
 // ---------------------------------------------------------------- 3c. La OC con boleta cuyo proveedor entregó factura
@@ -459,11 +467,8 @@ let pagoId
     [facturaTarde, oc[4], `compra/${oc[4]}/${facturaTarde}.pdf`, PDF.length, ids[CUENTAS.logistica], `F010-${SUFIJO}`, hoy],
   )
   await como(null)
-  const [{ n: avisos }] = await consulta(
-    `select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = $2 and titulo like 'Llegó factura de una OC pagada: %'`,
-    [ids[CUENTAS.tesoreria], oc[4]],
-  )
-  comprobar(avisos === 1, `a Tesorería le llega el aviso de anular su pago (${avisos})`)
+  const [{ n: avisos }] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = $2`, [ids[CUENTAS.tesoreria], oc[4]])
+  comprobar(avisos === 0, `a Tesorería no se le pide nada mientras la factura no se registra (${avisos} avisos)`)
 
   const { pagina, contexto } = await entrar('tesoreria')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
@@ -471,86 +476,69 @@ let pagoId
   comprobar((await fila.count()) === 1 && (await fila.isVisible()), `la ${nombre(oc[4])} sale a la vista, no escondida entre las pagadas`)
   comprobar((await pagina.locator('details', { has: fila }).count()) === 0, 'fuera del desplegable de pagadas')
   const texto = limpio(await fila.textContent().catch(() => ''))
-  comprobar(texto.includes('Pago por anular') && texto.includes(`factura F010-${SUFIJO}`) && texto.includes('Anula el pago de aquí'),
-    `pide anular el pago para que se registre la factura: «${texto.slice(0, 260)}»`)
-  comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'y no ofrece pagarla otra vez')
-  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGO_POR_ANULAR', 'Adquisiciones la da por «pago por anular»')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
-  const enAdq = limpio(await pagina.locator(`tbody tr[data-orden="${nombre(oc[4])}"]`).textContent().catch(() => ''))
-  comprobar(enAdq.includes('Pago por anular') && enAdq.includes('Anular el pago en Cuentas por pagar') && !enAdq.includes('Pagar en Cuentas por pagar'),
-    `y la fila lleva a anularlo, no a pagar: «${enAdq.slice(0, 220)}»`)
-
-  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
-  await pagina.locator(`[data-anular-pago-compra="${pagoEntero}"]`).click()
-  const v = pagina.locator('[role="dialog"]')
-  await v.waitFor()
-  await v.locator('textarea[name="motivo"]').fill('El proveedor entregó factura: se paga por ella')
-  await v.getByRole('button', { name: 'Anular' }).click()
-  const error = await esperarVentana(pagina)
-  comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
-  const aviso = await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => Boolean(t), 5000)
-  comprobar(limpio(aviso).includes(`se paga por su comprobante F010-${SUFIJO}`), `el aviso dice que se paga por la factura, no que vuelve a pagarse aquí: «${limpio(aviso)}»`)
-  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
-  const despues = pagina.locator(`article#compra-${oc[4]}`)
-  comprobar((await despues.locator('[data-pagar-compra]').count()) === 0 && limpio(await despues.textContent()).includes('Llegó factura'),
-    'la tarjeta sigue sin pagar directo y dice que llegó factura')
+  comprobar(texto.includes('Llegó factura') && texto.includes(`factura F010-${SUFIJO}`) && texto.includes('queda pagada con lo que ya se pagó por la boleta'),
+    `dice que, registrada, la factura queda pagada con ese pago: «${texto.slice(0, 300)}»`)
+  comprobar(!texto.includes('Anula el pago'), 'y no pide anular el pago')
+  comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'ni ofrece pagarla otra vez')
+  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA', 'Adquisiciones la da por pagada')
   await contexto.close()
 
-  // Gerencia lee quién lo hace, no una orden que no puede cumplir.
-  await como('tesoreria')
-  const [{ id: otroPago }] = await consulta('select gen_random_uuid() as id')
-  await como(null)
-  await consulta('begin')
-  await consulta('set local session_replication_role = replica')
-  await consulta(
-    `insert into pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
-     values ($1, $2, $3::date, 'PEN', 10, false, $4, 'application/pdf', $5, $6)`,
-    [otroPago, oc[4], hoy, `${oc[4]}/${otroPago}.pdf`, PDF.length, ids[CUENTAS.tesoreria]],
-  )
-  await consulta('commit')
+  // Gerencia lee lo mismo, sin botones.
   const g = await entrar('gerencia')
   await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
-  const paraGerencia = limpio(await g.pagina.locator(`article#compra-${oc[4]}`).textContent().catch(() => ''))
-  comprobar(paraGerencia.includes('Tesorería tiene que anular') && !paraGerencia.includes('Anula el pago de aquí'),
-    `a Gerencia le dice quién anula: «${paraGerencia.slice(0, 220)}»`)
+  const tarjetaGerencia = g.pagina.locator(`article#compra-${oc[4]}`)
+  const paraGerencia = limpio(await tarjetaGerencia.textContent().catch(() => ''))
+  comprobar(paraGerencia.includes('queda pagada con lo que ya se pagó por la boleta') && (await tarjetaGerencia.locator('[data-anular-pago-compra]').count()) === 0,
+    `Gerencia lee lo mismo y no puede anular: «${paraGerencia.slice(0, 220)}»`)
   await g.contexto.close()
 
-  // Con dos pagos directos vigentes, anular uno no basta: la ventana y el aviso lo dicen.
-  const [{ id: tercerPago }] = await consulta('select gen_random_uuid() as id')
-  await consulta('begin')
-  await consulta('set local session_replication_role = replica')
+  // Contabilidad la registra por menos: la factura toma lo que le cabe y el resto se pagó de más.
+  const totalFactura = Math.round((total5 - 61.5) * 100) / 100
+  const [{ id: registrada }] = await consulta('select gen_random_uuid() as id')
+  await como('contabilidad')
   await consulta(
-    `insert into pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
-     values ($1, $2, $3::date, 'PEN', 5, false, $4, 'application/pdf', $5, $6)`,
-    [tercerPago, oc[4], hoy, `${oc[4]}/${tercerPago}.pdf`, PDF.length, ids[CUENTAS.tesoreria]],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7)`,
+    [registrada, PROVEEDOR, `F010-${SUFIJO}`, hoy, totalFactura, oc[4], facturaTarde],
   )
-  await consulta('commit')
+  await consulta(`update adquisiciones set estado = 'REGISTRADA' where id = $1`, [registrada])
+  await como(null)
+  const [{ cuerpo } = {}] = await consulta(`select cuerpo from notificaciones where usuario_id = $1 and origen_id = $2 and titulo = $3 and leida_en is null`, [
+    ids[CUENTAS.tesoreria],
+    oc[4],
+    `Compra pagada de más: ${nombre(oc[4])}`,
+  ])
+  comprobar(Boolean(cuerpo?.includes('es por menos') && cuerpo.includes('S/ 61.50 de más')), `a Tesorería le llega «Compra pagada de más» con lo pagado de más: «${limpio(cuerpo).slice(0, 200)}»`)
+  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA_DE_MAS', 'Adquisiciones la da por pagada de más')
+
   const t = await entrar('tesoreria')
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   // Lo que pide algo a Tesorería va primero.
   const tarjetas = (await t.pagina.locator('#compras-con-boleta article').allTextContents()).map(limpio)
-  const porAnular = tarjetas.map((x, i) => (x.includes('Pago por anular') ? i : -1)).filter((i) => i >= 0)
-  const resto = tarjetas.map((x, i) => (x.includes('Pago por anular') ? -1 : i)).filter((i) => i >= 0)
-  comprobar(porAnular.length > 0 && (resto.length === 0 || Math.max(...porAnular) < Math.min(...resto)),
-    `las OC con pago por anular salen antes que las demás (${porAnular.join(', ')} de ${tarjetas.length})`)
+  const deMas = tarjetas.map((x, i) => (x.includes('Pagada de más') ? i : -1)).filter((i) => i >= 0)
+  const resto = tarjetas.map((x, i) => (x.includes('Pagada de más') ? -1 : i)).filter((i) => i >= 0)
+  comprobar(deMas.length > 0 && (resto.length === 0 || Math.max(...deMas) < Math.min(...resto)),
+    `las OC pagadas de más salen antes que las demás (${deMas.join(', ')} de ${tarjetas.length})`)
   const tarjeta = t.pagina.locator(`article#compra-${oc[4]}`)
-  comprobar(limpio(await tarjeta.textContent()).includes('Total S/') && !limpio(await tarjeta.textContent()).includes('Saldo'),
-    'la pagada con factura muestra su total, no un saldo')
-  await t.pagina.locator(`[data-anular-pago-compra="${otroPago}"]`).click()
+  const textoDeMas = limpio(await tarjeta.textContent())
+  comprobar(textoDeMas.includes('Pagada de más') && textoDeMas.includes('Pagado de más S/ 61.50') && textoDeMas.includes('Total S/') && !textoDeMas.includes('Saldo'),
+    `la tarjeta dice lo pagado de más, con su total y sin saldo: «${textoDeMas.slice(0, 260)}»`)
+  await t.pagina.locator(`[data-anular-pago-compra="${pagoEntero}"]`).click()
   const vt = t.pagina.locator('[role="dialog"]')
   await vt.waitFor()
   const descripcion = limpio(await vt.textContent())
-  comprobar(descripcion.includes(`se paga por su comprobante F010-${SUFIJO}`) && descripcion.includes('queda otro pago directo vigente: anúlalo también'),
-    `la ventana dice que queda otro pago por anular: «${descripcion.slice(0, 260)}»`)
-  await vt.locator('textarea[name="motivo"]').fill('Se registró dos veces el mismo voucher')
+  comprobar(descripcion.includes(`Su factura F010-${SUFIJO} deja de tomar este pago y le faltan S/ ${totalFactura.toFixed(2)}`) && descripcion.includes('Ya no queda nada pagado de más'),
+    `la ventana dice que la factura vuelve a deber y que ya no queda nada de más: «${descripcion.slice(0, 300)}»`)
+  await vt.locator('textarea[name="motivo"]').fill('El proveedor devolvió el pago de la boleta')
   await vt.getByRole('button', { name: 'Anular' }).click()
-  const errorUno = await esperarVentana(t.pagina)
-  comprobar(!errorUno, `anula uno de los dos${errorUno ? ` (dijo «${errorUno}»)` : ''}`)
-  const avisoUno = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => Boolean(x), 5000))
-  comprobar(avisoUno.includes('queda otro pago directo vigente de esta OC') && avisoUno.includes(`registre su comprobante F010-${SUFIJO}`),
-    `y el aviso no lo da por terminado: «${avisoUno}»`)
-  const [{ n: vigentes }] = await consulta(`select count(*)::int as n from pagos_orden_compra where orden_compra_id = $1 and anulado_en is null`, [oc[4]])
-  comprobar(vigentes === 1, `en la base queda un pago vigente (${vigentes})`)
+  const error = await esperarVentana(t.pagina)
+  comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
+  const aviso = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => Boolean(x), 5000))
+  comprobar(aviso.includes(`su factura F010-${SUFIJO} ya no toma ese pago y le faltan S/ ${totalFactura.toFixed(2)}`), `y el aviso de después lo mismo: «${aviso}»`)
+  const [{ n: sinLeer }] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = $2 and leida_en is null`, [ids[CUENTAS.tesoreria], oc[4]])
+  comprobar(sinLeer === 0, 'el aviso de lo pagado de más se da por leído')
+  const [{ n: tomado }] = await consulta(`select count(*)::int as n from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [registrada])
+  comprobar(tomado === 0, 'y la factura ya no toma nada')
   await t.contexto.close()
 }
 

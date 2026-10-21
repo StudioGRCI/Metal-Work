@@ -158,17 +158,20 @@ export function pagoQueCancela(
 export function bloqueoDelAnexo(
   oc: { con_factura: boolean | null; pagos: unknown[] },
   anexo: { tipo: string; factura?: { numero: string; estado: string; alcanza: boolean; pagado: number } | null },
+  /** Si esa factura tomó algo de lo que se pagó por la boleta de esta OC. */
+  tomoDeLaBoleta: boolean,
 ): string | null {
   const factura = anexo.factura
   if (anexo.tipo !== 'FACTURA' || oc.con_factura !== false || !factura?.alcanza) return null
   if (factura.pagado <= 0 && oc.pagos.length === 0) return null
-  // En el orden de la base: la registrada que tomó el pago por la boleta, la que tiene pagos y el borrador que lo tomaría.
-  const motivo =
-    oc.pagos.length > 0 && factura.estado === 'REGISTRADA'
-      ? `la factura ${factura.numero} tomó lo que Tesorería pagó por la boleta`
-      : factura.pagado > 0
-        ? `la factura ${factura.numero} ya tiene pagos`
-        : `la OC ya se pagó por su boleta y la factura ${factura.numero}, al registrarla, toma ese pago`
+  // En el orden de la base: la que tomó el pago por la boleta, la que tiene pagos, el borrador que lo tomaría y la de otra moneda.
+  const motivo = tomoDeLaBoleta
+    ? `la factura ${factura.numero} tomó lo que Tesorería pagó por la boleta`
+    : factura.pagado > 0
+      ? `la factura ${factura.numero} ya tiene pagos`
+      : factura.estado === 'BORRADOR'
+        ? `la OC ya se pagó por su boleta y la factura ${factura.numero}, al registrarla, toma ese pago`
+        : `la OC ya se pagó por su boleta y la factura ${factura.numero} ya está registrada`
   return `No se anula: ${motivo}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
 }
 

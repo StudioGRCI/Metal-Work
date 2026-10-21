@@ -286,20 +286,22 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
       )
     }
     const deMas = Number(b.de_mas ?? 0)
+    const aplicado = Number(b.aplicado ?? 0)
     if (deMas > 0) {
       return (
         <>
-          Su factura {factura}, que llegó después, ya tenía pagos o es por menos: tomó {monto(Number(b.aplicado ?? 0))} de lo pagado por la boleta y se
-          pagaron {monto(deMas)} de más. {paga ? 'Pide' : 'Tesorería pide'} al proveedor la devolución; cuando la devuelva,{' '}
-          {paga ? 'anula' : 'se anula'} el pago que devolvió: el de la boleta, aquí, o el de la factura, en «Facturas por pagar».
+          Su factura {factura}, que llegó después, ya tenía pagos o es por menos:{' '}
+          {aplicado > 0 ? <>tomó {monto(aplicado)} de lo pagado por la boleta y se pagaron</> : <>no tomó nada de lo pagado por la boleta, y se pagaron</>}{' '}
+          {monto(deMas)} de más. {paga ? 'Pide' : 'Tesorería pide'} al proveedor la devolución; cuando la devuelva, {paga ? 'anula' : 'se anula'} el pago
+          que devolvió: el de la boleta, aquí, o el de la factura, en «Facturas por pagar».
         </>
       )
     }
     const falta = Number(b.factura_saldo ?? 0)
     return falta > 0 ? (
       <>
-        Contabilidad registró su factura {factura}: tomó lo pagado por la boleta, {monto(Number(b.aplicado ?? 0))}, y le faltan {monto(falta)}, que se
-        pagan por ella en «Facturas por pagar».
+        Contabilidad registró su factura {factura}: tomó lo pagado por la boleta, {monto(aplicado)}, y le faltan {monto(falta)}, que se pagan por
+        ella en «Facturas por pagar».
       </>
     ) : (
       <>Pagada por su factura {factura}, que tomó lo pagado por la boleta.</>

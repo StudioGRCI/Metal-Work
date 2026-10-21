@@ -579,7 +579,9 @@ type Documento = CompraTrazada['documentos'][number]
  */
 function AnulaElAnexo({ f, d, acceso }: { f: CompraTrazada; d: Documento; acceso: Acceso }) {
   if (!acceso.anulaAnexo || f.tipo !== 'OC' || (d.tipo !== 'FACTURA' && d.tipo !== 'COMPROBANTE')) return null
-  const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo(f, d)
+  // Lo que esa factura tomó del pago por la boleta, como lo cuenta la base al anular.
+  const tomo = Boolean(d.factura && f.facturas.find((x) => x.id === d.factura?.id)?.pagos.some((p) => p.boleta))
+  const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo(f, d, tomo)
   if (bloqueo) return <span className="basis-full text-texto-suave">{bloqueo}</span>
   // La factura registrada que no alcanza para esta OC: si no es de esta OC, el que está mal es el anexo.
   const porRevisar = d.factura ? anexoPorRevisarAlAnular({ nombre: nombreDe(f), pagos: f.pagos }, d.factura) : null

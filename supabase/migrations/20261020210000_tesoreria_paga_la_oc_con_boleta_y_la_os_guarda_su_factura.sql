@@ -749,6 +749,7 @@ declare
   v_antes   boolean;
   v_queda   boolean;
   v_pagos   integer;
+  v_tomado  numeric;
   v_motivo  text := btrim(coalesce(p_motivo, ''));
 begin
   if not (public.es_admin() or public.tiene_permiso('compras.crear')) then
@@ -777,6 +778,11 @@ begin
   v_numero := coalesce(v_doc.numero_documento, v_doc.nombre_archivo);
   select * into v_factura from public.factura_del_anexo(p_id);
   select count(*) into v_pagos from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
+  -- Lo que esa factura tomó de los pagos por la boleta de esta OC (sección 6).
+  select coalesce(sum(x.monto), 0) into v_tomado
+    from public.pagos_adquisicion x
+    join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id and p.orden_compra_id = v_oc.id
+   where x.adquisicion_id = v_factura.adquisicion_id and x.anulado_en is null;
   v_antes := exists (select 1 from public.comprobante_en_camino(v_oc.id))
              or exists (select 1 from public.facturas_de_la_compra(v_oc.id));
 
@@ -784,7 +790,7 @@ begin
      and v_factura.alcanza and (v_factura.pagado > 0 or v_pagos > 0)
      and not public.es_admin() then
     raise exception '%', case
-      when v_pagos > 0 and v_factura.estado = 'REGISTRADA' then
+      when v_tomado > 0 then
         'No se anula: la factura ' || v_factura.numero || ' de este anexo ya está registrada'
         || case when v_factura.cubre_su_oc then ' para la ' || v_nombre else '' end
         || ' y tomó lo que Tesorería pagó por la boleta de la ' || v_nombre
@@ -795,9 +801,13 @@ begin
         || ' y Tesorería le pagó '
         || case when v_factura.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_factura.pagado, 'FM999G999G990D00')
         || '; anulado el anexo, la ' || v_nombre || ' se podría pagar otra vez por su boleta.'
-      else
+      when v_factura.estado = 'BORRADOR' then
         'No se anula: Tesorería ya pagó la ' || v_nombre || ' por su boleta y la factura ' || v_factura.numero
         || ' de este anexo está en borrador en Adquisiciones: registrada, toma ese pago; anulado el anexo, se pagaría también la factura.'
+      else
+        -- La registrada en otra moneda: no toma el pago, y sin el anexo se pagaría también.
+        'No se anula: Tesorería ya pagó la ' || v_nombre || ' por su boleta y la factura ' || v_factura.numero
+        || ' de este anexo ya está registrada; anulado el anexo, se pagaría también la factura.'
       end
       || ' Si el número está mal escrito, Contabilidad corrige la factura: sigue siendo la de este anexo. Si de verdad no es de esta OC, que lo anule el administrador del sistema.'
       using errcode = 'check_violation';

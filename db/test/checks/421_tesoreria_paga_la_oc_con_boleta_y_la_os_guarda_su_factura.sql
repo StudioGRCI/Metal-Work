@@ -673,6 +673,13 @@ begin
                          and (select cuerpo like '%y también por su factura F001-4218, que Tesorería ya había pagado: se pagaron S/ 100.00 de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago que te devolvió (el de la factura, en «Facturas por pagar», o el de la boleta, en «OC con boleta») y la cuenta se rehace.'
                                 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and titulo like 'Compra pagada de más: %'),
       'a Tesorería le llega que se pagó dos veces y que anule el pago que le devuelvan');
+    -- La factura no tomó nada de la boleta: Logística lee que Tesorería le pagó a la factura, no que tomó el pago.
+    perform pg_temp.como('comprador');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_documento_compra(pg_temp.id('dc'), 'Era la factura de otra compra del mismo proveedor') $q$,
+      'Logística no anula el anexo de la factura pagada aparte, y lee por qué',
+      'No se anula: la factura F001-4218 de este anexo ya está registrada y Tesorería le pagó S/ 361.50');
+    reset role;
     perform pg_temp.como('tesoreria');
     set local role authenticated;
     perform public.anular_pago_factura(pg_temp.id('pfc'), 'El proveedor devolvió el pago de la factura');

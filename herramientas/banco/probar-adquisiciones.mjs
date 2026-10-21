@@ -400,9 +400,20 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
     const rq = limpio(await pagina.locator('main').textContent())
     comprobar(rq.includes(`Solo el ${rq1.numero}`) && !rq.includes(rq2.numero), 'el RQ abre solo ese RQ')
   }
-  await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
-  const sinFactura = limpio(await pagina.locator('table').textContent())
-  comprobar(sinFactura.includes('OC que esperan su factura') && !sinFactura.includes(FA), '«Esperan su factura» deja solo las OC que esperan su factura')
+  {
+    // Las OC sembradas ya tienen su factura: las que esperan son las que dejó el resto del banco, si quedó alguna.
+    await como('tesoreria')
+    const esperan = (await consulta(`select numero from public.compras_sin_factura()`)).map((o) => o.numero)
+    await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
+    const sinFactura = limpio(await pagina.locator('table').textContent())
+    comprobar(
+      !sinFactura.includes(FA) && !sinFactura.includes(FB) &&
+        (esperan.length > 0
+          ? sinFactura.includes('OC que esperan su factura') && esperan.every((n) => sinFactura.includes(n))
+          : sinFactura.includes('Ninguna OC espera su factura')),
+      `«Esperan su factura» deja solo las OC que esperan su factura (${esperan.length} en el banco)`,
+    )
+  }
   await pagina.goto(`${BASE}/adquisiciones?vista=no-calzan`, { waitUntil: 'networkidle' })
   const noCalzan = limpio(await pagina.locator('table').textContent())
   comprobar(noCalzan.includes(FB) && !noCalzan.includes(FA), '«No calzan» deja solo la que no calza')

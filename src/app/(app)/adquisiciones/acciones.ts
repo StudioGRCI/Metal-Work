@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -166,15 +167,39 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const tomo = await loQueTomoDeLaBoleta(supabase, id, v.moneda)
   // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
   // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
   if (ordenes.length === 0 && registrado.orden_compra_id) {
     const oc = registrado.oc ? (registrado.oc.numero ?? `OC ${registrado.oc.referencia}`) : 'OC con boleta'
-    return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado y ligado a la ${oc}, a la que Logística lo anexó: se paga por él en Cuentas por pagar.` }
+    return {
+      ok: true,
+      mensaje: `Comprobante ${v.numero_documento} registrado y ligado a la ${oc}, a la que Logística lo anexó${tomo ?? ': se paga por él en Cuentas por pagar.'}`,
+    }
   }
   const cuantas = ordenes.length
   const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
-  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}.` }
+  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}${tomo ?? '.'}` }
+}
+
+/**
+ * Si la factura que se acaba de registrar tomó lo que Tesorería ya pagó por la
+ * boleta de su OC (migración 20261020210000), cómo lo dice el aviso: queda
+ * pagada con eso y lo que falta se paga en Cuentas por pagar. `null` si no tomó
+ * nada o no se pudo leer: no se adivina.
+ */
+async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createClient>>, id: string, codigo: 'PEN' | 'USD') {
+  const [tomado, cuenta] = await Promise.all([
+    supabase.from('pagos_adquisicion').select('monto').eq('adquisicion_id', id).not('pago_orden_compra_id', 'is', null).is('anulado_en', null),
+    supabase.from('v_cuentas_pagar').select('saldo').eq('id', id).maybeSingle(),
+  ])
+  if (tomado.error || cuenta.error || !cuenta.data) return null
+  const monto = (tomado.data ?? []).reduce((suma, p) => suma + Number(p.monto), 0)
+  if (monto <= 0) return null
+  const saldo = Number(cuenta.data.saldo ?? 0)
+  return `: queda pagado con lo que Tesorería ya pagó por la boleta, ${moneda(monto, codigo)}${
+    saldo > 0 ? `, y lo que falta, ${moneda(saldo, codigo)}, se paga en Cuentas por pagar.` : '.'
+  }`
 }
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -189,7 +214,7 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (String.fromCharCode(...bytes.slice(0, 5)) !== '%PDF-') return { ok: false, error: 'El archivo no es un PDF válido.' }
   const db = await createClient()
   const { data: borrador, error: errorLectura } = await db.from('adquisiciones')
-    .select('id, registrado_por, estado').eq('id', id.data).maybeSingle()
+    .select('id, registrado_por, estado, moneda').eq('id', id.data).maybeSingle()
   if (errorLectura) return { ok: false, error: mensajeDeError(errorLectura) }
   if (!borrador || borrador.registrado_por !== perfil.id || borrador.estado !== 'BORRADOR') {
     return { ok: false, error: 'Solo quien creó este borrador puede completarlo.' }
@@ -213,7 +238,8 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
-  return { ok: true, mensaje: 'Comprobante completado y registrado.' }
+  const tomo = await loQueTomoDeLaBoleta(db, id.data, borrador.moneda === 'USD' ? 'USD' : 'PEN')
+  return { ok: true, mensaje: `Comprobante completado y registrado${tomo ?? '.'}` }
 }
 
 /**
