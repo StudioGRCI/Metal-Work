@@ -31,6 +31,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -176,7 +178,7 @@ async function registrar(pagina, cuenta, { tipo, descripcion, monto, codigoInter
   await v.locator('select[name="tipo"]').selectOption(tipo)
   await v.locator('input[name="descripcion"]').fill(descripcion)
   await v.locator('input[name="monto"]').fill(monto)
-  if (codigoInterno) await v.locator('input[name="codigo_interno"]').fill(codigoInterno)
+  if (codigoInterno) await escribirCodigo(v.locator('input[name="codigo_interno"]'), codigoInterno)
   if (operacion) await v.locator('input[name="operacion"]').fill(operacion)
   await v.getByRole('button', { name: 'Registrar', exact: true }).click()
   return esperarVentana(pagina)

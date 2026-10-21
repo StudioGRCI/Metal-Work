@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -32,6 +34,19 @@ export type LineaRequerimiento = {
   en_stock: number | null
   /** Lo que falta y se compra: lo pedido menos lo que tenía Almacén. Vacío mientras no lo revisa. */
   por_comprar: number | null
+  /**
+   * Lo que ya salió del almacén para este insumo, menos lo devuelto
+   * (`entregado_de_requerimientos`). `null` si no se pidió con `conEntregado`:
+   * un 0 diría «nada entregado» y lo ya llevado saldría para recoger.
+   */
+  entregado: number | null
+  /**
+   * De lo que se compró para este insumo, cuánto entró ya al kardex, aunque el
+   * proveedor haya traído solo una parte (`entregado_de_requerimientos`).
+   * `null` si el insumo no está enlazado a una línea de OC o no se pidió con
+   * `conEntregado`: entonces cuenta la etapa.
+   */
+  llegado: number | null
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -86,10 +101,18 @@ const SELECT_RQ =
  * que la bandeja de atención muestra. Con `tipo`, solo los de operación o solo
  * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
  * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
- * `codigo`, los de ese código interno.
+ * `codigo`, los de ese código interno. Con `conEntregado`, también lo que ya
+ * salió del almacén de cada insumo: lo pinta la lista de RQ, no la bandeja.
  */
 export async function cargarRequerimientos(
-  opciones: { soloAbiertos?: boolean; tipo?: 'OPERACION' | 'ADMINISTRACION'; id?: string; area?: string; codigo?: string } = {},
+  opciones: {
+    soloAbiertos?: boolean
+    tipo?: 'OPERACION' | 'ADMINISTRACION'
+    id?: string
+    area?: string
+    codigo?: string
+    conEntregado?: boolean
+  } = {},
 ): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
@@ -104,13 +127,28 @@ export async function cargarRequerimientos(
   // también el número de la OC, que Supervisión y Requerimientos no leen de la
   // tabla de compras.
   const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
+  // Lo que ya salió del almacén para cada insumo y lo que llegó de su compra:
+  // Supervisión no lee el kardex, así que también lo da la base (migración 20261020191000).
+  const entregados = new Map<string, { entregado: number; llegado: number | null }>()
   if (data && data.length > 0) {
-    const avance = await supabase.rpc('avance_de_requerimientos', { p_ids: data.map((r) => r.id) })
+    const ids = data.map((r) => r.id)
+    const [avance, entregado] = await Promise.all([
+      supabase.rpc('avance_de_requerimientos', { p_ids: ids }),
+      // Una fila por insumo: con 300 RQ pasa de mil, y Supabase corta en mil sin avisar.
+      opciones.conEntregado
+        ? todasLasFilas(() => supabase.rpc('entregado_de_requerimientos', { p_ids: ids }), ['requerimiento_id', 'item'])
+        : null,
+    ])
     if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
+    if (entregado?.error) throw new Error(`No se pudo leer lo entregado de los requerimientos: ${entregado.error.message}`)
     for (const a of avance.data ?? []) {
       if (!a.requerimiento_id || a.porcentaje == null || !a.etapa) continue
       const lineas = (a.lineas as LineaDeAvance[] | null) ?? []
       avances.set(a.requerimiento_id, { porcentaje: a.porcentaje, etapa: a.etapa, lineas: new Map(lineas.map((l) => [l.item, l])) })
+    }
+    for (const e of entregado?.data ?? []) {
+      if (!e.requerimiento_id || e.item == null) continue
+      entregados.set(`${e.requerimiento_id}:${e.item}`, { entregado: Number(e.entregado ?? 0), llegado: e.llegado == null ? null : Number(e.llegado) })
     }
   }
   return (data ?? []).map((r) => {
@@ -154,6 +192,8 @@ export async function cargarRequerimientos(
             etapa_desde: deLinea?.desde ?? null,
             en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),
             por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
+            entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
+            llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
           }
         })
         .sort((a, b) => a.item - b.item),
@@ -220,7 +260,7 @@ export async function catalogoParaRequerimiento(): Promise<MaterialParaRequerimi
  */
 export async function catalogosDelRequerimiento() {
   const supabase = await createClient()
-  const [areas, unidades, categorias, materiales] = await Promise.all([
+  const [areas, unidades, categorias, materiales, codigos] = await Promise.all([
     supabase.from('areas').select('id, codigo, nombre, requerimiento').eq('activo', true).not('requerimiento', 'is', null).order('nombre'),
     supabase.from('unidades_medida').select('id, codigo, nombre').eq('activo', true).order('codigo'),
     supabase
@@ -231,6 +271,7 @@ export async function catalogosDelRequerimiento() {
       .neq('codigo', 'ALM_POR_CLASIFICAR')
       .order('nombre'),
     materialesParaRequerimiento(supabase),
+    codigosParaElegir(supabase),
   ])
   if (areas.error || unidades.error || categorias.error) {
     throw new Error('No se pudieron leer las áreas, unidades o categorías para el requerimiento.')
@@ -245,5 +286,6 @@ export async function catalogosDelRequerimiento() {
     unidades: unidades.data ?? [],
     categorias: deAlmacen.length > 0 ? deAlmacen : todas,
     materiales,
+    codigos,
   }
 }

@@ -3,10 +3,12 @@
 import { Ban, Clock } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
 import { HORAS_DEL_MES } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
@@ -20,7 +22,7 @@ export type PersonaTareo = { id: string; nombre: string; cargo: string | null; c
  * La ventana se queda abierta después de cada carga, con el mismo día y el
  * mismo código, porque un parte trae a varios en la misma unidad.
  */
-export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo[]; codigos: string[]; hoy: string }) {
+export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo[]; codigos: CodigoParaElegir[] | null; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [ultimo, setUltimo] = useState({ fecha: hoy, codigo: '' })
@@ -74,7 +76,7 @@ function FormularioHoras({
   alTerminar,
 }: {
   personal: PersonaTareo[]
-  codigos: string[]
+  codigos: CodigoParaElegir[] | null
   hoy: string
   fecha: string
   codigo: string
@@ -85,6 +87,7 @@ function FormularioHoras({
   const [id] = useState(() => crypto.randomUUID())
   const [persona, setPersona] = useState('')
   const [horas, setHoras] = useState('')
+  const [codigoEscrito, setCodigoEscrito] = useState(codigo)
   // El día y el código que se mandaron, para dejarlos puestos en la carga siguiente.
   const enviado = useRef({ fecha, codigo })
   const { alEnviar, enviando, error } = useEnvio(registrarTareo, (r) =>
@@ -134,23 +137,17 @@ function FormularioHoras({
         <Campo etiqueta="Día trabajado" htmlFor={`tareo-fecha-${id}`} requerido>
           <Entrada id={`tareo-fecha-${id}`} name="fecha" type="date" required max={hoy} defaultValue={fecha} />
         </Campo>
-        <Campo etiqueta="Código interno" htmlFor={`tareo-codigo-${id}`} requerido ayuda="El de la unidad, o PLANTA.">
-          <Entrada
+        <Campo etiqueta="Código interno" htmlFor={`tareo-codigo-${id}`} requerido ayuda="El de la unidad, o PLANTA. Búscalo por el código, la placa o la marca.">
+          <EntradaCodigoInterno
             id={`tareo-codigo-${id}`}
             name="codigo_interno"
-            required
-            minLength={2}
-            maxLength={60}
-            list={`tareo-codigos-${id}`}
-            defaultValue={codigo}
-            autoComplete="off"
-            className="uppercase"
+            requerido
+            valor={codigoEscrito}
+            onChange={setCodigoEscrito}
+            aceptadoInicial={codigo}
+            codigos={codigos}
+            fijos={[CODIGO_FIJO_PLANTA]}
           />
-          <datalist id={`tareo-codigos-${id}`}>
-            {codigos.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
         </Campo>
         <Campo etiqueta="Horas" htmlFor={`tareo-horas-${id}`} requerido>
           <Entrada

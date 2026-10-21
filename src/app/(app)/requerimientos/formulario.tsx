@@ -3,13 +3,14 @@
 import { PackagePlus, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS } from '@/lib/dominio/codigos-internos'
-import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { CODIGOS_FIJOS_DEL_RQ, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
@@ -21,6 +22,8 @@ type Catalogos = {
   categorias: OpcionCatalogo[]
   /** El catálogo de Almacén: cada insumo se pide con uno de estos nombres. */
   materiales: MaterialParaRequerimiento[]
+  /** Los códigos internos que se ofrecen, con su unidad; `null` si no se pudieron leer. */
+  codigos: CodigoParaElegir[] | null
   /** Los requerimientos que esta persona registra: el de operación, el de Administración o los dos. */
   tipos: TipoRequerimiento[]
 }
@@ -91,6 +94,7 @@ function FormularioRequerimiento({
   unidades,
   categorias,
   materiales,
+  codigos,
   tipos,
   alTerminar,
 }: Catalogos & { alTerminar: (mensaje: string) => void }) {
@@ -199,19 +203,18 @@ function FormularioRequerimiento({
             requerido
             ayuda={
               tipo === 'ADMINISTRACION'
-                ? 'El de la unidad, si es para una. Si es para la oficina, escribe OFICINA.'
-                : 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28. Si no es para una unidad, escribe PLANTA.'
+                ? 'Elige el de la unidad, si es para una; si es para la oficina, OFICINA. Busca por el código, la placa o la marca.'
+                : 'Elige el de la unidad; si no es para una, PLANTA. Busca por el código, la placa o la marca.'
             }
           >
-            <Entrada
+            <EntradaCodigoInterno
               id="rq-codigo"
               name="codigo_interno"
-              required
-              minLength={2}
-              maxLength={60}
-              autoComplete="off"
-              defaultValue={codigoEscrito}
-              onChange={(e) => setCodigoEscrito(e.target.value)}
+              requerido
+              valor={codigoEscrito}
+              onChange={setCodigoEscrito}
+              codigos={codigos}
+              fijos={CODIGOS_FIJOS_DEL_RQ[tipo]}
             />
           </Campo>
         )}

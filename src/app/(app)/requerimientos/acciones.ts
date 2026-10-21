@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -88,8 +89,10 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
       codigo_interno: z
         .string()
         .trim()
-        .min(2, 'Escribe el código interno de la unidad. Si no es para una unidad, escribe PLANTA u OFICINA.')
-        .max(60, 'El código interno pasa de 60 caracteres.'),
+        .min(2, 'Elige el código interno de la unidad. Si no es para una unidad, PLANTA u OFICINA.')
+        .max(60, 'El código interno pasa de 60 caracteres.')
+        // Como lo guarda el costeo (`normalizar_codigo_interno`): «pla_sr_04» escrito a mano es PLA_SR_04.
+        .transform(normalizarCodigo),
       justificacion: z
         .string()
         .trim()
@@ -166,7 +169,13 @@ export async function anularRequerimiento(_previo: unknown, formulario: FormData
 }
 
 const CAMBIOS_RQ = z.object({
-  codigo_interno: z.string().trim().min(2, 'El código interno va de 2 a 60 caracteres.').max(60, 'El código interno va de 2 a 60 caracteres.').optional(),
+  codigo_interno: z
+    .string()
+    .trim()
+    .min(2, 'El código interno va de 2 a 60 caracteres.')
+    .max(60, 'El código interno va de 2 a 60 caracteres.')
+    .transform(normalizarCodigo)
+    .optional(),
   justificacion: z.string().trim().min(10, 'La justificación va de 10 a 1000 caracteres.').max(1000, 'La justificación va de 10 a 1000 caracteres.').optional(),
   fecha_requerida: z.union([z.iso.date({ message: 'Revisa la fecha en que se necesita.' }), z.literal('')]).optional(),
   lineas: z

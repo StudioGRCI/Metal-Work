@@ -13,6 +13,8 @@
  */
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -103,7 +105,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await pagina.getByRole('button', { name: 'Nuevo requerimiento' }).click()
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.locator('#rq-area').selectOption({ label: 'Maestranza' })
-  await ventana.locator('#rq-codigo').fill(codigo)
+  await escribirCodigo(ventana.locator('#rq-codigo'), codigo)
   await ventana.locator('#rq-justificacion').fill('Armado del chasis de la plataforma; no hay planchas en almacén.')
   await ventana.locator('input[name="descripcion"]').first().fill('Plancha LAF 2 mm 4x8')
   await ventana.locator('input[name="cantidad"]').first().fill('3')

@@ -3,12 +3,15 @@
 import { Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
+import { CODIGO_TODOS_LOS_ACTIVOS, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGOS_FIJOS_DEL_RQ, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
@@ -22,7 +25,15 @@ type Linea = { item: number; cantidad: string; material_id: string }
  * cantidad, mientras el insumo no va en una OC ni salió del almacén. La base lo
  * vuelve a comprobar y deja la corrección en el historial.
  */
-export function CorregirRequerimiento({ rq, materiales }: { rq: RequerimientoListado; materiales: MaterialParaRequerimiento[] }) {
+export function CorregirRequerimiento({
+  rq,
+  materiales,
+  codigos,
+}: {
+  rq: RequerimientoListado
+  materiales: MaterialParaRequerimiento[]
+  codigos: CodigoParaElegir[] | null
+}) {
   const [abierta, setAbierta] = useState(false)
   return (
     <>
@@ -37,13 +48,23 @@ export function CorregirRequerimiento({ rq, materiales }: { rq: RequerimientoLis
         descripcion="Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante."
         ancho="lg"
       >
-        {abierta && <Formulario rq={rq} materiales={materiales} alTerminar={() => setAbierta(false)} />}
+        {abierta && <Formulario rq={rq} materiales={materiales} codigos={codigos} alTerminar={() => setAbierta(false)} />}
       </Ventana>
     </>
   )
 }
 
-function Formulario({ rq, materiales, alTerminar }: { rq: RequerimientoListado; materiales: MaterialParaRequerimiento[]; alTerminar: () => void }) {
+function Formulario({
+  rq,
+  materiales,
+  codigos,
+  alTerminar,
+}: {
+  rq: RequerimientoListado
+  materiales: MaterialParaRequerimiento[]
+  codigos: CodigoParaElegir[] | null
+  alTerminar: () => void
+}) {
   const [codigo, setCodigo] = useState(rq.codigo_interno)
   const [justificacion, setJustificacion] = useState(rq.justificacion)
   const [fechaRequerida, setFechaRequerida] = useState(rq.fecha_requerida ?? '')
@@ -71,9 +92,16 @@ function Formulario({ rq, materiales, alTerminar }: { rq: RequerimientoListado; 
     return Boolean(l?.orden_compra && !l.compra_rechazada)
   }
 
+  // El RQA cargado a todos los activos se corrige a un código, o vuelve a todos.
+  const tipo = tipoDeRequerimiento(rq)
+  const fijos =
+    tipo === 'ADMINISTRACION'
+      ? [...CODIGOS_FIJOS_DEL_RQ.ADMINISTRACION, { codigo: CODIGO_TODOS_LOS_ACTIVOS, detalle: 'Partes iguales entre los códigos que trabajaron ese mes' }]
+      : CODIGOS_FIJOS_DEL_RQ[tipo]
+
   // Solo viaja lo que cambió: la base anota antes y después.
   const cambios: Record<string, unknown> = {}
-  if (codigo.trim() !== rq.codigo_interno) cambios.codigo_interno = codigo.trim()
+  if (normalizarCodigo(codigo) !== normalizarCodigo(rq.codigo_interno)) cambios.codigo_interno = normalizarCodigo(codigo)
   if (justificacion.trim() !== rq.justificacion) cambios.justificacion = justificacion.trim()
   if (fechaRequerida !== (rq.fecha_requerida ?? '')) cambios.fecha_requerida = fechaRequerida
   const lineasCambiadas = lineas.flatMap((l) => {
@@ -92,15 +120,15 @@ function Formulario({ rq, materiales, alTerminar }: { rq: RequerimientoListado; 
       <input type="hidden" name="id" value={rq.id} />
       <input type="hidden" name="cambios" value={JSON.stringify(cambios)} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Código interno" htmlFor={`rq-corr-codigo-${rq.id}`} requerido>
-          <Entrada
+        <Campo etiqueta="Código interno" htmlFor={`rq-corr-codigo-${rq.id}`} requerido ayuda="Busca por el código, la placa o la marca.">
+          <EntradaCodigoInterno
             id={`rq-corr-codigo-${rq.id}`}
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
-            required
-            minLength={2}
-            maxLength={60}
-            autoComplete="off"
+            requerido
+            valor={codigo}
+            onChange={setCodigo}
+            aceptadoInicial={rq.codigo_interno}
+            codigos={codigos}
+            fijos={fijos}
           />
         </Campo>
         <Campo etiqueta="Se necesita el" htmlFor={`rq-corr-fecha-${rq.id}`}>
