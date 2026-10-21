@@ -184,7 +184,7 @@ function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado
           Garantía {estado.garantia_ot} ·{' '}
           {estado.garantia_estado === 'TERMINADA'
             ? estado.falta_para_salir ? 'terminada, falta Tesorería' : 'terminada'
-            : 'por terminar'}
+            : estado.garantia_estado === 'ANULADA' ? 'OT anulada' : 'por terminar'}
         </span>
       )}
       {estado?.exige && !estado.garantia_ot && (

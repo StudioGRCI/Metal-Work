@@ -92,7 +92,10 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             {estado?.exige && estado.garantia_ot && (
               <Dato titulo="OT de garantía">
                 <span data-garantia-salida={estado.garantia_estado ?? ''}>
-                  {estado.garantia_ot} · {estado.garantia_estado === 'TERMINADA' ? 'Terminada' : 'Por terminar'}
+                  {estado.garantia_ot} ·{' '}
+                  {estado.garantia_estado === 'TERMINADA'
+                    ? 'garantía terminada'
+                    : estado.garantia_estado === 'ANULADA' ? 'OT anulada' : 'garantía por terminar'}
                 </span>
               </Dato>
             )}
@@ -275,9 +278,11 @@ function RevisionDeTesoreria({
         {puedePedir && !esperando && !revisada && (estado?.falta_para_pedir ? (
           // El porqué ya está arriba, junto al avance: aquí no se repite.
           <p className="text-sm text-texto-suave">
-            {estado.garantia_ot
-              ? 'Se pide cuando Administración dé por terminada la garantía.'
-              : 'Se pide cuando el código llegue al 100 % del avance.'}
+            {!estado.garantia_ot
+              ? 'Se pide cuando el código llegue al 100 % del avance.'
+              : estado.garantia_estado === 'ANULADA'
+                ? 'Con su OT de garantía anulada no se pide: arriba dice qué hacer.'
+                : 'Se pide cuando Administración dé por terminada la garantía.'}
           </p>
         ) : lista ? (
           <PedirRevision registro={registro} solicitud={crypto.randomUUID()} />

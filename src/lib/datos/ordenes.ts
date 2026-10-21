@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 
 import { ESTADO_ETAPA, ESTADO_OT, TIPO_EVENTO_BITACORA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
 import { puesto } from '@/lib/format'
@@ -368,7 +369,7 @@ export async function fechasClaveDeOrden(ordenId: string) {
  * 20261021120000): es lo que espera la salida del vehículo que entró por
  * garantía. Va aparte del estado de la OT, que en una garantía no se mueve.
  */
-export async function garantiaTerminada(ordenId: string) {
+export const garantiaTerminada = cache(async (ordenId: string) => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('ot_garantia_terminada')
@@ -377,7 +378,7 @@ export async function garantiaTerminada(ordenId: string) {
     .maybeSingle()
   if (error) throw new Error(`No se pudo leer si la garantía está terminada: ${error.message}`)
   return data as unknown as { terminada_en: string; nota: string | null; quien: { puesto: string | null } | null } | null
-}
+})
 
 /** Las tres compuertas de salida: papeles, tesorería y portería. */
 export async function estadoDeSalida(ordenId: string) {

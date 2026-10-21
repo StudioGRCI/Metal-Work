@@ -14,7 +14,7 @@ import { fecha, hoyLima, numero as fmtNumero } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 
 import { AccionesEstado } from './acciones-estado'
-import { GarantiaDeOrden } from './garantia-de-orden'
+import { GarantiaDeOrden, InsigniaDeGarantia } from './garantia-de-orden'
 import { Pestanas } from './pestanas'
 
 /** Estados en los que la orden ya no corre plazo: no puede estar atrasada. */
@@ -89,6 +89,7 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
           <span className="flex flex-wrap items-center gap-3">
             {orden.numero}
             <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+            <InsigniaDeGarantia orden={orden} />
             {/* «Normal» es lo de casi todas: decirlo en cada orden es ruido.
                 Se dice cuando se sale de lo normal. */}
             {orden.prioridad !== 'NORMAL' && (

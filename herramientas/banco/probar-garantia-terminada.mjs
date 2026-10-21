@@ -185,7 +185,7 @@ let registroId = null
 
   await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
   const dato = limpio(await pagina.locator('[data-garantia-salida]').innerText().catch(() => ''))
-  comprobar(dato.includes(NUMERO) && dato.includes('Por terminar'), `el detalle dice «${dato}»`)
+  comprobar(dato.includes(NUMERO) && dato.includes('garantía por terminar'), `el detalle dice «${dato}»`)
   comprobar((await pagina.locator('[data-avance-salida]').count()) === 0, 'y no muestra el avance del código')
   comprobar(errores.length === 0, `Requerimientos sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
@@ -195,6 +195,8 @@ let registroId = null
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
   await pagina.goto(`${BASE}/ordenes/${orden.id}`, { waitUntil: 'networkidle' })
+  const insignia = await pagina.locator('h1').getByText('Garantía por terminar', { exact: true }).count()
+  comprobar(insignia === 1, 'el título lleva la insignia «Garantía por terminar» junto al estado')
   const aviso = limpio(await pagina.getByText('Garantía por terminar.').locator('..').innerText().catch(() => ''))
   comprobar(aviso.includes('Administración la da por terminada'), `Gerencia ve que la garantía está por terminar: «${aviso}»`)
   comprobar((await pagina.getByRole('button', { name: 'Dar por terminada la garantía' }).count()) === 0, 'y no tiene el botón')
@@ -220,6 +222,7 @@ let registroId = null
   const hecho = limpio(await pagina.locator('p[role="status"]', { hasText: 'Garantía terminada' }).innerText().catch(() => ''))
   comprobar(hecho.includes('Compuerta cambiada, avisó Maestranza') && hecho.includes('el vehículo sale'), `la OT dice «${hecho}»`)
   comprobar((await pagina.getByRole('button', { name: 'Dar por terminada la garantía' }).count()) === 0, 'y el botón ya no está')
+  comprobar((await pagina.locator('h1').getByText('Garantía terminada', { exact: true }).count()) === 1, 'y el título dice «Garantía terminada»')
   await pagina.screenshot({ path: join(CAPTURAS, 'garantia-3-ot-terminada.png'), fullPage: true })
 
   const marcas = await consulta(`select terminada_por, nota from public.ot_garantia_terminada where orden_id = $1`, [orden.id])
@@ -247,7 +250,7 @@ let registroId = null
   comprobar(await fila.getByRole('button', { name: 'Marcar salida' }).isDisabled(), 'sin el visto de Tesorería sigue sin salir')
   await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
   const dato = limpio(await pagina.locator('[data-garantia-salida]').innerText().catch(() => ''))
-  comprobar(dato.includes('Terminada'), `el detalle dice «${dato}»`)
+  comprobar(dato.includes('garantía terminada'), `el detalle dice «${dato}»`)
   const revision = limpio(await pagina.locator('#revision-salida').innerText().catch(() => ''))
   comprobar(!revision.includes('100 %') && !revision.includes('dé por terminada'),
     `la revisión de Tesorería ya no espera el avance ni la garantía: «${revision.slice(0, 160)}»`)

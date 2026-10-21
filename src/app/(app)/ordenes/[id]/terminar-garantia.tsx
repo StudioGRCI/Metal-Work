@@ -49,8 +49,8 @@ function VentanaGarantia({ ordenId, numero, abierta, alCerrar }: {
     <Ventana
       abierta={abierta}
       alCerrar={alCerrar}
-      titulo={`Terminar la garantía de la OT ${numero}`}
-      descripcion="Hazlo cuando el taller avise que terminó. La OT no cambia de estado; Requerimientos recibe el aviso y el vehículo sale con el visto de Tesorería. No se deshace."
+      titulo="Terminar la garantía"
+      descripcion={`OT ${numero}. Hazlo cuando el taller avise que terminó. La OT no cambia de estado; si el vehículo está en la planta, a Requerimientos le llega el aviso, y sale con el visto de Tesorería. No se deshace.`}
       ancho="sm"
     >
       <form onSubmit={alEnviar} className="space-y-3">

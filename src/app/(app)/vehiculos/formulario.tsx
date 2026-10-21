@@ -189,13 +189,13 @@ function FormularioIngreso({
               />
             )}
           </Campo>
-          {libres.length === 0 && (
+          {/* Si los códigos están en la planta, no falta ninguna OT: no se pide otra. */}
+          {libres.length === 0 && enPlanta === 0 && (
             <p className="text-sm text-texto-suave">
               {porGarantia
-                ? 'Por garantía entra el código con su OT de garantía: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía. '
-                : ''}
-              Un vehículo entra a trabajo solo con su código interno y su OT, y el código nace cuando Gerencia aprueba la cotización con su OT. Si
-              solo se guarda, elige «Cochera».
+                ? 'Por garantía entra el código con su OT de garantía: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía.'
+                : 'Un vehículo entra a trabajo solo con su código interno y su OT, y el código nace cuando Gerencia aprueba la cotización con su OT.'}{' '}
+              Si solo se guarda, elige «Cochera».
             </p>
           )}
           {elegido && (

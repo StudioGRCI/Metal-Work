@@ -154,7 +154,12 @@ begin
   end if;
   select * into v_orden from public.ordenes_trabajo where id = v_reg.orden_id;
   if v_orden.tipo_trabajo = 'GARANTIA' then
-    if v_orden.estado = 'BORRADOR' then
+    -- Anulada con el vehículo adentro: ya no hay garantía que terminar, y
+    -- decir que espera a Administración la dejaría esperando para siempre.
+    if v_orden.estado = 'ANULADA' then
+      return format('La OT de garantía %s está anulada: anula este ingreso y regístralo con la OT que corresponda.',
+                    v_orden.numero);
+    elsif v_orden.estado = 'BORRADOR' then
       return format('La OT de garantía %s espera la aprobación de Gerencia; después, Administración la da por terminada cuando el taller avise.',
                     v_orden.numero);
     elsif not public.orden_garantia_terminada(v_orden.id) then
@@ -245,7 +250,7 @@ begin
     if p_motivo = 'GARANTIA' then
       v_orden := public.vehiculo_ot_de_garantia_abierta(v_unidad.id);
       if v_orden is null then
-        raise exception 'El código interno % no tiene una OT de garantía abierta: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía.',
+        raise exception 'El código interno % no tiene una OT de garantía abierta: Administración la registra en Órdenes de trabajo, sin cotización, de tipo Garantía y con la unidad de este código.',
           v_codigo using errcode = 'check_violation';
       end if;
     end if;

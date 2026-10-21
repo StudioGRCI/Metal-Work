@@ -133,7 +133,6 @@ select test.afirmar(pg_temp.estado('g') ->> 'falta_para_pedir'
 select test.debe_fallar(pg_temp.salida_sql('g'), 'con su garantía sin terminar no sale', 'garantía de la OT 9416-2026');
 select test.debe_fallar(format($q$select public.solicitar_revision_salida(%L, %L, 'Revisar el pago')$q$, pg_temp.txt('rev'), pg_temp.txt('g')),
   'ni se le pide la revisión a Tesorería', 'Tesorería revisa la salida de un vehículo terminado');
-reset role;
 
 -- Quién no la termina: Requerimientos y Ventas no tienen `ordenes.editar`.
 select test.debe_fallar(format($q$select public.dar_por_terminada_la_garantia(%L, null)$q$, pg_temp.txt('garantia_g')),
@@ -224,6 +223,26 @@ select public.registrar_ingreso_vehiculo(pg_temp.id('f'), null, null, 'CHK416_F_
 select test.afirmar(pg_temp.estado('f') ->> 'garantia_ot' is null and (pg_temp.estado('f') ->> 'avance')::integer = 0
                     and pg_temp.estado('f') ->> 'falta_para_salir' like 'El código CHK416_F_26/54 va en 0 %%',
   'la fabricación sigue esperando el 100 % del avance de su código');
+reset role;
+
+-- Si la OT de garantía se anula con el vehículo adentro, se dice qué hacer en
+-- vez de esperar a Administración para siempre.
+select pg_temp.unidad('CHK416_N_26/55') as unidad_n \gset
+select pg_temp.orden('9422-2026', :'unidad_n', 'GARANTIA') as garantia_n \gset
+select set_config('prueba.n', gen_random_uuid()::text, true);
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select public.registrar_ingreso_vehiculo(pg_temp.id('n'), null, null, 'CHK416_N_26/55', '', '', 'GARANTIA', null, null,
+  pg_temp.foto('n', 'ingreso'));
+reset role;
+select test.como_usuario(:'admin_id');
+update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se registró en otra OT (prueba 416)' where id = :'garantia_n';
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select test.afirmar(pg_temp.estado('n') ->> 'garantia_estado' = 'ANULADA'
+                    and pg_temp.estado('n') ->> 'falta_para_salir'
+                        = 'La OT de garantía 9422-2026 está anulada: anula este ingreso y regístralo con la OT que corresponda.',
+  format('con su OT de garantía anulada, dice qué hacer: %s', pg_temp.estado('n') ->> 'falta_para_salir'));
 reset role;
 
 -- La función interna no la llama nadie desde la API.

@@ -1,3 +1,4 @@
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { garantiaTerminada } from '@/lib/datos/ordenes'
 import { fechaHora, puesto } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
@@ -7,6 +8,19 @@ import { TerminarGarantia } from './terminar-garantia'
 /** Estados en los que la OT de garantía ya cuenta como terminada sin la marca. */
 const YA_TERMINADA = ['TERMINADA', 'ENTREGADA', 'FACTURADA']
 
+type OrdenDeGarantia = { id: string; numero: string; estado: string; tipo_trabajo: string }
+
+/**
+ * Junto al estado en el título: en una garantía la OT se queda «Aprobada», y
+ * lo que de verdad dice dónde está es si ya se terminó la garantía.
+ */
+export async function InsigniaDeGarantia({ orden }: { orden: OrdenDeGarantia }) {
+  if (orden.tipo_trabajo !== 'GARANTIA' || orden.estado === 'BORRADOR' || orden.estado === 'ANULADA') return null
+  if (YA_TERMINADA.includes(orden.estado)) return null
+  const marca = await garantiaTerminada(orden.id)
+  return marca ? <Insignia tono="exito">Garantía terminada</Insignia> : <Insignia tono="aviso">Garantía por terminar</Insignia>
+}
+
 /**
  * La garantía terminada, en la cabecera de la OT de garantía (migración
  * 20261021120000). La da por terminada Administración cuando el taller avisa,
@@ -14,10 +28,7 @@ const YA_TERMINADA = ['TERMINADA', 'ENTREGADA', 'FACTURADA']
  * junto con el visto de Tesorería. Antes de la aprobación de Gerencia, o
  * anulada, no hay nada que decir.
  */
-export async function GarantiaDeOrden({ orden, perfil }: {
-  orden: { id: string; numero: string; estado: string; tipo_trabajo: string }
-  perfil: PerfilSesion
-}) {
+export async function GarantiaDeOrden({ orden, perfil }: { orden: OrdenDeGarantia; perfil: PerfilSesion }) {
   if (orden.tipo_trabajo !== 'GARANTIA' || orden.estado === 'BORRADOR' || orden.estado === 'ANULADA') return null
 
   const marca = await garantiaTerminada(orden.id)
@@ -37,7 +48,7 @@ export async function GarantiaDeOrden({ orden, perfil }: {
       <p>
         <strong>Garantía por terminar.</strong>{' '}
         {puede(perfil, 'ordenes.editar')
-          ? 'Cuando el taller avise que terminó, dala por terminada: el vehículo sale con el visto de Tesorería.'
+          ? 'Cuando el taller avise que terminó, dala por terminada: después, el vehículo sale con el visto de Tesorería.'
           : 'Administración la da por terminada cuando el taller avise; hasta entonces el vehículo no sale.'}
       </p>
       {puede(perfil, 'ordenes.editar') && <TerminarGarantia ordenId={orden.id} numero={orden.numero} />}
