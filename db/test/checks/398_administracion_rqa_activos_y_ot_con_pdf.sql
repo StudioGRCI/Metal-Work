@@ -282,7 +282,7 @@ begin
 end $$;
 
 create or replace function pg_temp.registrar(p_orden text, p_ruta text) returns text language sql as $$
-  select format($q$select public.registrar_orden_sin_cotizacion('%s', '%s', null, '%s', null, 'REPARACION', 'ALTA',
+  select format($q$select public.registrar_orden_sin_cotizacion('%s', '8398', '%s', null, '%s', null, 'REPARACION', 'ALTA',
     'Reparación del furgón de prueba 398', null, null, null, null, null, null, %s, 'OT 398.pdf', 125000)$q$,
     current_setting('prueba.' || p_orden), current_setting('prueba.cliente'), current_setting('prueba.sede'), coalesce(quote_literal(p_ruta), 'null'));
 $$;

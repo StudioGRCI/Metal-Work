@@ -38,6 +38,14 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [ordenId] = useState(() => crypto.randomUUID())
   const [archivo, setArchivo] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // El rechazo del número va junto a su campo, no en el aviso de abajo: en la
+  // misma tarjeta también puede fallar el PDF.
+  const [errorNumero, setErrorNumero] = useState<string | null>(null)
+  const campoNumero = useRef<HTMLInputElement>(null)
+  // El número no se corrige después (un documento numerado no se toca): antes
+  // de registrar se ve cómo va a quedar.
+  const [numeroEscrito, setNumeroEscrito] = useState('')
+  const numeroFinal = comoQuedaElNumero(numeroEscrito)
   const [pendiente, iniciar] = useTransition()
   const router = useRouter()
   const enCurso = useRef(false)
@@ -144,6 +152,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
     enCurso.current = true
     setError(null)
+    setErrorNumero(null)
     iniciar(async () => {
       const supabase = createClient()
       // El PDF viaja a la carpeta de la orden antes de que exista; la base
@@ -172,7 +181,12 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           // lo subió lo ve y lo borra mientras ninguna fila lo nombre (migración
           // 20261017402000).
           await supabase.storage.from('adjuntos-ot').remove([ruta])
-          setError(r.error)
+          if (/número de la (OT|orden)|^Ya hay una orden de trabajo/.test(r.error)) {
+            setErrorNumero(r.error)
+            campoNumero.current?.focus()
+          } else {
+            setError(r.error)
+          }
           return
         }
         // Registrada: el formulario queda trabado hasta que se abre la orden.
@@ -390,10 +404,43 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
       <Tarjeta>
         <TarjetaCabecera
-          titulo="PDF de la orden"
-          ayuda="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
+          titulo="La orden en papel"
+          ayuda="Su número y su PDF: la orden de trabajo firmada, la misma que se imprime. Sin los dos la orden no se registra."
         />
-        <TarjetaCuerpo>
+        <TarjetaCuerpo className="space-y-4">
+          {/* El número lo trae el papel, como en la OT de una cotización
+              (migración 20261021110000): la orden en la mano y la de la
+              pantalla son la misma. */}
+          <Campo
+            etiqueta="N.º de la OT"
+            htmlFor="numero"
+            ayuda={
+              numeroFinal
+                ? `Se registrará como la OT ${numeroFinal}: revisa que sea la de su PDF`
+                : 'El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año'
+            }
+            error={errorNumero ?? undefined}
+            requerido
+          >
+            <Entrada
+              ref={campoNumero}
+              id="numero"
+              name="numero"
+              autoComplete="off"
+              // Texto y no `numeric`: el teclado de cifras del iPhone no trae el guion del año.
+              inputMode="text"
+              required
+              maxLength={11}
+              pattern={'\\d{1,6}(-\\d{4})?'}
+              title="El número de la OT, como 2922 o 2922-2026"
+              placeholder="2922"
+              className="sm:max-w-48"
+              onChange={(e) => {
+                setErrorNumero(null)
+                setNumeroEscrito(e.target.value)
+              }}
+            />
+          </Campo>
           <label
             className={cn(
               'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2',
@@ -436,4 +483,14 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       </div>
     </form>
   )
+}
+
+/** Cómo guarda la base el número del papel (migración 20261021110000); `null` si todavía no es un número. */
+function comoQuedaElNumero(escrito: string): string | null {
+  const m = /^(\d{1,6})(?:-(\d{4}))?$/.exec(escrito.trim())
+  if (!m) return null
+  const cifras = m[1].replace(/^0+/, '')
+  if (!cifras) return null
+  const anio = m[2] ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
+  return `${cifras.padStart(4, '0')}-${anio}`
 }

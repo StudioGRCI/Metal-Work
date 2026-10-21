@@ -9,8 +9,8 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
-import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
+import { leerListaDeCodigos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
+import type { CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import {
   costoDelCodigo,
   dondeAparece,
@@ -67,7 +67,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const filtro = typeof params.ver === 'string' && Object.hasOwn(FILTROS, params.ver) ? params.ver : null
   const estado = typeof params.costeo === 'string' && Object.hasOwn(ESTADOS, params.costeo) ? params.costeo : null
 
-  const [conDocumentos, deDiseno, avances] = await Promise.all([listarCodigosInternos(), codigosDeDiseno(), avanceDeLosCodigos()])
+  const { codigos: conDocumentos, diseno: deDiseno, avances } = await leerListaDeCodigos()
   // Un código puede tener planos o etapas de Diseño antes que cualquier documento.
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
   const diseno = new Map(deDiseno.map((d) => [d.codigo, d]))

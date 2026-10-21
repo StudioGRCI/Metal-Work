@@ -3,6 +3,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { paginaQueExiste } from '@/lib/dominio/paginas'
 
 export type Cliente = Tablas<'clientes'>
 export type Unidad = Tablas<'unidades'>
@@ -29,6 +30,9 @@ export async function listarClientes(filtros: { busqueda?: string; pagina?: numb
   const { data, error, count } = await consulta
     .range(desde, desde + CLIENTES_POR_PAGINA - 1)
 
+  // Una página que ya no existe se cambia por la última que sí hay.
+  const otra = await paginaQueExiste(pagina, CLIENTES_POR_PAGINA, { error, count, filas: data?.length ?? 0 }, async () => (await listarClientes({ ...filtros, pagina: 1 })).total)
+  if (otra) return listarClientes({ ...filtros, pagina: otra })
   if (error) throw new Error(`No se pudieron listar los clientes: ${error.message}`)
 
   return {

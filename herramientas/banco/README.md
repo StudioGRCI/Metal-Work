@@ -103,6 +103,7 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `recorrer-puestos.mjs` | Lo mismo con la cuenta de cada puesto: cada pantalla de su menú en monitor y en teléfono (sin permiso, error, consola, 5xx, tiempo, desborde) y las pantallas fuera de su menú que le dejan entrar. |
 | `probar-reporte-diario.mjs` | El reporte diario de supervisión con la cuenta de cada puesto: el supervisor lo sube desde el celular con fotos que se achican, el tope de 16 horas, RR. HH. ve las horas en el costeo y las que esperan su costo, Gerencia consulta y la portería no entra. Crea su propio personal inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 | `probar-planilla-diaria.mjs` | Del reporte diario a la planilla diaria, con la cuenta de cada puesto: Gerencia y RR. HH. validan (cada una solo con su botón), Gerencia observa y el supervisor corrige y sube de nuevo, RR. HH. paga o reserva las horas que pasan de 8 y usa el saldo, manda la planilla, Tesorería ve las cuentas, paga en lote con comprobante y adjunta boletas, RR. HH. las entrega; Gerencia consulta sin cuentas y el supervisor y la portería no entran. Crea su propio personal inventado. |
+| `probar-reimportar-planilla.mjs` | RR. HH. importa el Excel de la planilla y vuelve a cargar en la misma planilla el libro corregido, con las filas corridas: la persona nueva cae en la fila que ya tenía otra de la primera carga y entra igual; las de antes salen como «ya está». Crea su propia planilla en un mes de 2090 en adelante. |
 | `probar-subcontratos.mjs` | Un subcontrato de punta a punta, con la cuenta de cada puesto: Administración da de alta al subcontratista (un RUC de empresa no entra), registra el subcontrato con su código interno y sube un recibo por honorarios con la retención del 8 %; Tesorería lo paga desde el teléfono con su voucher; Administración ve el pago; Contabilidad y Gerencia consultan sin botones y Logística no entra. Crea su propio subcontratista inventado; las cuentas `*.local@metalwork.test` se crean aparte. |
 | `probar-pagos-mueven-la-caja.mjs` | Los pagos y cobros que mueven la caja diaria, con la cuenta de Tesorería: cada pago (factura de compra, orden de servicio, recibo por honorarios, planilla diaria) y el cobro de una factura de venta piden la cuenta, dejan un solo movimiento aunque se toque tres veces, piden lo que salió de la cuenta si es de otra moneda, y al anular el pago se anula su egreso; la caja los muestra con dónde se anulan y Gerencia no paga. Arma sus documentos y dos cuentas de prueba. |
 | `probar-archivos-con-politicas.mjs` | Los archivos piden lo mismo que en Supabase Storage: quien subió una foto la firma y la descarga, una ficha falsa o de otro archivo no abre nada, Ventas no firma, descarga, sube ni quita lo que su política le tapa, y sin sesión no sale nada. Usa archivos que el banco ya tiene. |
@@ -126,6 +127,12 @@ ficha, que no abre otro archivo. Hasta el 2026-10-20 el banco firmaba y servía
 cualquier archivo sin preguntar: una pantalla podía abrir un PDF que Supabase
 habría rechazado. Lo que no imita es el tamaño máximo y los tipos permitidos
 de cada cubeta, ni las transformaciones de imagen.
+
+**Las funciones devuelven lo mismo que en Supabase.** Una `returns table
+(codigo text)` sale como `[{"codigo": "…"}]`, y una `returns setof text`, sin
+columnas con nombre, como `["…"]`. Hasta el 2026-10-21 el banco entregaba las
+dos como objetos; hoy ninguna función es de la segunda forma, pero la primera que
+lo fuera habría salido bien en el banco y rota en producción.
 
 **Falla en voz alta.** Ante cualquier cosa que no sepa traducir responde 501 con
 el motivo, nunca una lista vacía. Una pantalla vacía se parece demasiado a una

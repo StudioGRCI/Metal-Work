@@ -16,7 +16,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha as formatearFecha } from '@/lib/format'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { SIN_RESPUESTA, useAccion, useEnvio } from '@/lib/envio'
 import type {
   AreaMaterial,
   CompraMaterialPendiente,
@@ -564,6 +564,7 @@ function FormularioDespacho({
     const archivo=datos.get('foto')
     if(!(archivo instanceof File)||archivo.size===0||archivo.size>10485760||!['image/jpeg','image/png','image/webp'].includes(archivo.type)) return {ok:false,error:'Selecciona una foto JPG, PNG o WebP de hasta 10 MB.'}
     const db=createClient();const {data,error}=await db.auth.getUser()
+    if(error?.name==='AuthRetryableFetchError')return {ok:false,error:SIN_RESPUESTA}
     if(error||!data.user)return {ok:false,error:'Tu sesión terminó. Ingresa de nuevo.'}
     const extension=archivo.type==='image/jpeg'?'jpg':archivo.type==='image/png'?'png':'webp'
     const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension

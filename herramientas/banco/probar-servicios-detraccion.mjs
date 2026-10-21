@@ -14,7 +14,7 @@
  *   5. Un supervisor no abre la pantalla.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
- * cuenta si no son `*@local.test`.
+ * cuenta si no son las `*.local@metalwork.test` que siembra `preparar.sh`.
  */
 import { mkdirSync } from 'node:fs'
 
@@ -27,10 +27,10 @@ const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const CUENTAS = {
-  logistica: process.env.LOGISTICA ?? 'comprador@local.test',
-  gerencia: process.env.GERENCIA ?? 'gerente@local.test',
-  contabilidad: process.env.CONTABILIDAD ?? 'contabilidad@local.test',
-  supervisor: process.env.SUPERVISOR ?? 'supervisor@local.test',
+  logistica: process.env.LOGISTICA ?? 'logistica.local@metalwork.test',
+  gerencia: process.env.GERENCIA ?? 'gerencia.local@metalwork.test',
+  contabilidad: process.env.CONTABILIDAD ?? 'contabilidad.local@metalwork.test',
+  supervisor: process.env.SUPERVISOR ?? 'sup.mtz.local@metalwork.test',
 }
 const CODIGO = 'PLA_SR_O4_1_26/28'
 if (!CLAVE) {

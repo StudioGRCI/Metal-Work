@@ -13,6 +13,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
+import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Clientes' }
 
@@ -24,7 +25,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
   const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const { clientes, total, pagina, paginas } = await listarClientes({
     busqueda,
-    pagina: Number(params.pagina) || 1,
+    pagina: paginaPedida(params.pagina),
     incluirInactivos: params.estado === 'inactivas',
   })
   const incluirInactivos = params.estado === 'inactivas'

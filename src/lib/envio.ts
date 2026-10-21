@@ -1,9 +1,35 @@
-import { useRouter } from 'next/navigation'
+import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import type { ResultadoAccion } from '@/lib/acciones'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
+
+/**
+ * Lo que se dice cuando la acción no contesta: se cortó la señal, o el
+ * servidor cayó a medio camino. La escritura pudo entrar igual, así que se pide
+ * mirar antes de repetirla.
+ */
+export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira si quedó guardado antes de volver a intentar.'
+
+/**
+ * Qué decir cuando la llamada a una acción de servidor lanza en vez de
+ * devolver su resultado. Sin esto la excepción llegaba al límite de error: la
+ * pantalla entera caía en «Esta pantalla no se pudo abrir» y se perdía lo
+ * escrito (producción, 2026-10-21). La redirección de una acción también llega
+ * como excepción, y esa sigue su camino. No todo es la señal: una pestaña de
+ * antes del último despliegue o un fallo del servidor no se arreglan
+ * reintentando.
+ */
+export function explicarFallo(e: unknown): string {
+  unstable_rethrow(e)
+  console.error(e)
+  if (unstable_isUnrecognizedActionError(e)) {
+    return 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
+  }
+  if (e instanceof TypeError || (typeof navigator !== 'undefined' && !navigator.onLine)) return SIN_RESPUESTA
+  return 'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
+}
 
 type Opciones = {
   /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
@@ -37,8 +63,24 @@ export function useAccion<T = never>(
     setResultado(null)
 
     iniciar(async () => {
+      // Mientras Next navega por la redirección de la acción, el botón sigue
+      // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
+      let soltar = true
       try {
-        const salida = await accion(null, datos)
+        let salida: ResultadoAccion<T>
+        try {
+          salida = await accion(null, datos)
+        } catch (e) {
+          let mensaje: string
+          try {
+            mensaje = explicarFallo(e)
+          } catch (deNext) {
+            soltar = false
+            throw deNext
+          }
+          setResultado({ ok: false, error: mensaje })
+          return
+        }
         // Una acción que redirige (abrir la orden desde la cotización) no
         // devuelve nada: Next ya está navegando a la pantalla nueva.
         if (!salida) return
@@ -48,7 +90,7 @@ export function useAccion<T = never>(
         alTerminar?.(salida)
         if (refrescar) iniciar(() => router.refresh())
       } finally {
-        enCurso.current = false
+        if (soltar) enCurso.current = false
       }
     })
   }

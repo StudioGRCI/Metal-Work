@@ -634,7 +634,8 @@ export function AprobarConOt({
               id="eo-numero"
               name="numero"
               autoComplete="off"
-              inputMode="numeric"
+              // Texto y no `numeric`: el teclado de cifras del iPhone no trae el guion del año.
+              inputMode="text"
               required
               maxLength={11}
               value={numeroOrden}

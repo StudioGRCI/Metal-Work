@@ -11,8 +11,9 @@
  *      reparte en el costeo de los códigos que trabajaron este mes.
  *   3. Ve Códigos internos en lectura: la lista, el costeo con la parte de cada
  *      uno, y sin el botón de cerrar el costeo.
- *   4. La orden sin cotización no se registra sin su PDF; con él, nace en
- *      borrador y ella ve su PDF en la orden.
+ *   4. La orden sin cotización no se registra sin su PDF ni con el número de
+ *      otra orden; con los dos, nace en borrador con el número de su papel
+ *      (migración 20261021110000) y ella ve su PDF en la orden.
  *   5. Gerencia abre la orden y no ve el PDF, pero sabe que lo tiene; Diseño sí lo ve.
  *
  * Arma sus propios datos ficticios (QA_ADM_…) y las cuentas `*.adm@banco.test`
@@ -286,6 +287,10 @@ let ordenId = ''
   await pagina.locator('[role="option"]').first().click()
   await pagina.locator('#tipo_trabajo').selectOption('REPARACION')
   await pagina.locator('#descripcion').fill(`Reparación de la tolva de banco ${sello}`)
+  // El número es el del papel (migración 20261021110000): primero uno que ya
+  // tiene otra orden, después el bueno.
+  const repetido = (await uno(`select numero from public.ordenes_trabajo order by creado_en limit 1`))?.numero ?? ''
+  await pagina.locator('#numero').fill(repetido)
   await pagina.getByRole('button', { name: 'Registrar orden' }).click()
   await pagina.locator('[role="alert"]').first().waitFor({ timeout: 10000 })
   comprobar(/Elige el PDF de la orden/.test(await pagina.locator('[role="alert"]').first().innerText()), 'sin el PDF no se registra')
@@ -297,6 +302,30 @@ let ordenId = ''
   await pagina.getByText(`OT-banco-${sello}.pdf`).waitFor({ timeout: 5000 })
   comprobar(await pagina.getByText('Listo · toca para cambiarlo').isVisible(), 'el PDF elegido se distingue de la zona vacía')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-con-pdf.png`, fullPage: true })
+  if (repetido) {
+    const antesDelRepetido = new Date()
+    await pagina.getByRole('button', { name: 'Registrar orden' }).click()
+    await pagina.getByText(`Ya hay una orden de trabajo ${repetido}`).waitFor({ timeout: 30000 }).catch(() => {})
+    comprobar(limpio(await pagina.locator('main').innerText()).includes(`Ya hay una orden de trabajo ${repetido}`),
+      `con el número ${repetido}, que ya es de otra orden, no se registra y lo dice`)
+    comprobar((await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
+              && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero',
+      'el rechazo queda en el campo del número, con el cursor ahí')
+    // El de su campo también es `role="alert"`: se cuentan los que lo dicen.
+    comprobar((await pagina.locator('[role="alert"]', { hasText: 'Ya hay una orden de trabajo' }).count()) === 1,
+      'y no se repite en el aviso de abajo')
+    comprobar((await uno(`select count(*)::int as n from public.ordenes_trabajo where descripcion like $1`, [`%banco ${sello}`])).n === 0,
+      'y no dejó ninguna orden')
+    await pagina.waitForTimeout(1500)
+    comprobar((await uno(`select count(*)::int as n from storage.objects o where o.bucket_id = 'adjuntos-ot' and o.created_at > $1
+                            and not exists (select 1 from public.ot_adjuntos a where a.ruta_storage = o.name)`, [antesDelRepetido])).n === 0,
+      'ni su PDF suelto en Storage')
+  }
+  // Sin ceros adelante: la base los quita («016992» queda 16992).
+  const numeroPapel = String(Number(sello) || 1)
+  await pagina.locator('#numero').fill(numeroPapel)
+  comprobar(limpio(await pagina.locator('main').innerText()).includes(`Se registrará como la OT ${numeroPapel.padStart(4, '0')}-`),
+    'antes de registrar, dice cómo va a quedar el número')
   await Promise.all([
     pagina.waitForURL(/\/ordenes\/[0-9a-f-]{36}/, { timeout: 30000 }),
     pagina.getByRole('button', { name: 'Registrar orden' }).click(),
@@ -308,6 +337,8 @@ let ordenId = ''
   const orden = await uno(`select o.estado::text, o.numero, a.ruta_storage, a.nombre_archivo from public.ordenes_trabajo o
                             join public.ot_adjuntos a on a.orden_id = o.id and a.tipo = 'ORDEN' where o.id = $1`, [ordenId])
   comprobar(orden?.estado === 'BORRADOR' && Boolean(orden?.ruta_storage), `la orden ${orden?.numero ?? ''} nace en borrador con su PDF`)
+  const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
+  comprobar(orden?.numero === `${numeroPapel.padStart(4, '0')}-${anio}`, `y con el número de su papel: ${orden?.numero ?? ''}`)
   let guardado = false
   try {
     guardado = statSync(join(ARCHIVOS, 'adjuntos-ot', orden?.ruta_storage ?? 'x')).size > 0

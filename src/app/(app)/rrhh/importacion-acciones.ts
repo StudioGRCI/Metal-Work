@@ -23,6 +23,8 @@ export type LecturaPlanilla = {
   conPagos: boolean
   /** Las que ya están en alguna planilla de este mes, por su clave de nombre. */
   yaEn: Record<string, string>
+  /** Las que entraron del Excel a ESTA planilla, para ver cuáles ya no figuran en el libro. */
+  importadas: string[]
 }
 
 /**
@@ -81,17 +83,21 @@ export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Prom
 
     // Quién ya está en alguna planilla de este mes, para no ofrecerlo dos veces.
     const yaEn: Record<string, string> = {}
+    const importadas: string[] = []
     const delPeriodo = await db.from('planillas').select('id,tipo').eq('periodo', planilla.data.periodo)
     if (delPeriodo.error) return { ok: false, error: mensajeDeError(delPeriodo.error) }
     const ids = (delPeriodo.data ?? []).map((p) => p.id)
     if (ids.length) {
-      const personas = await db.from('planilla_personas').select('nombre,planilla_id').in('planilla_id', ids).limit(2000)
+      const personas = await db.from('planilla_personas').select('nombre,planilla_id,origen_hoja').in('planilla_id', ids).limit(2000)
       if (personas.error) return { ok: false, error: mensajeDeError(personas.error) }
       const tipoDe = new Map((delPeriodo.data ?? []).map((p) => [p.id, definir(TIPO_PLANILLA, p.tipo).etiqueta]))
-      for (const p of personas.data ?? []) yaEn[claveNombre(p.nombre)] = tipoDe.get(p.planilla_id) ?? 'otra planilla'
+      for (const p of personas.data ?? []) {
+        yaEn[claveNombre(p.nombre)] = tipoDe.get(p.planilla_id) ?? 'otra planilla'
+        if (p.planilla_id === planillaId.data && p.origen_hoja) importadas.push(p.nombre)
+      }
     }
 
-    return { ok: true, datos: { empresas, errores, hojas: delMes.map((h) => h.sheet.trim()), omitidas, conPagos: Boolean(pagos), yaEn } }
+    return { ok: true, datos: { empresas, errores, hojas: delMes.map((h) => h.sheet.trim()), omitidas, conPagos: Boolean(pagos), yaEn, importadas } }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'No se pudo leer el Excel de la planilla.' }
   }
