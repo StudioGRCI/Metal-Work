@@ -129,5 +129,9 @@ select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(curr
   'cerrada, el reparto ya no cambia', 'cerrada');
 
 reset role;
+-- Dos cargas a la vez en planillas distintas del mismo mes no se prueban en una
+-- transacción: se comprueba que la carga bloquea el mes (migración 20261021160000).
+select test.afirmar(pg_get_functiondef('public.importar_planilla_excel(uuid, uuid, jsonb)'::regprocedure) ~ 'pg_advisory_xact_lock\(hashtextextended\(''planilla-periodo:''',
+  'la carga bloquea el mes entero: dos a la vez no dejan a la misma persona en dos planillas');
 select 'OK: planilla desde varias hojas con su empresa, sin duplicados en el mes y con reparto en partes iguales. Ensayo revertido.' as comprobacion;
 rollback;
