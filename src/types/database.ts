@@ -10841,9 +10841,7 @@ export type Database = {
       }
       anexos_de_la_factura: {
         Args: {
-          p_documento: string | null
-          p_numero: string | null
-          p_proveedor: string | null
+          p_factura: string | null
         }
         Returns: {
           documento_id: string | null
@@ -12792,7 +12790,7 @@ export type Database = {
       }
       factura_alcanza_para: {
         Args: {
-          p_adquisicion: string | null
+          p_factura: string | null
           p_compra: string | null
         }
         Returns: boolean
@@ -14879,6 +14877,7 @@ export type Database = {
           cancelada: boolean | null
           saldo: number | null
           moneda: string | null
+          en_camino_saldo: number | null
         }[]
       }
       solicitar_revision_salida: {

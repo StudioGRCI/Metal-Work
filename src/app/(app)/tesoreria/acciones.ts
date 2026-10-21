@@ -316,21 +316,27 @@ async function situacionDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof cr
 function queQuedaTrasAnular(s: SituacionDePago | null): string {
   if (!s) return 'Pago anulado.'
   const n = s.pagos_vigentes ?? 0
+  const m = s.moneda === 'USD' ? 'USD' : 'PEN'
   // La factura que Logística anexó es de otras OC y no alcanza para esta: la OC
   // se sigue pagando por su boleta hasta que se anule ese anexo.
   if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false) {
     return `Pago anulado. Ojo: la factura ${s.en_camino} anexada a esta OC es de otras compras y no alcanza para ella; la OC se paga por su boleta cuando Logística anule ese anexo.`
   }
-  // La factura ya estaba pagada: con este pago, la compra queda pagada una vez.
-  if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && Number(s.pagada_dos_veces ?? 0) > 0) {
-    return n > 0
-      ? `Pago anulado, pero ${n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`} de esta OC, que ya se pagó por su factura ${s.en_camino}: ${n === 1 ? 'anúlalo' : 'anúlalos'} cuando el proveedor devuelva lo que se le pagó de más.`
-      : `Pago anulado: la OC queda pagada una vez, por su factura ${s.en_camino}.`
+  // Con otro pago directo vigente y la factura ya pagada, la compra sigue pagada dos veces.
+  if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && n > 0 && Number(s.pagada_dos_veces ?? 0) > 0) {
+    return `Pago anulado, pero ${n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`} de esta OC, que también se pagó por su factura ${s.en_camino}: ${n === 1 ? 'anúlalo' : 'anúlalos'} cuando el proveedor devuelva los ${moneda(Number(s.pagada_dos_veces), m)} que se le pagaron de más.`
   }
   // Contabilidad ya registró la factura de la OC sin ligarla: Tesorería la paga cuando no quede pago directo.
   if (s.en_camino && s.en_camino_origen === 'REGISTRADA') {
-    return n > 0
-      ? `Pago anulado, pero ${n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`} de esta OC: ${n === 1 ? 'anúlalo' : 'anúlalos'} también para pagar su factura ${s.en_camino}, que Contabilidad ya registró.`
+    if (n > 0) {
+      return `Pago anulado, pero ${n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`} de esta OC: ${n === 1 ? 'anúlalo' : 'anúlalos'} también para pagar su factura ${s.en_camino}, que Contabilidad ya registró.`
+    }
+    // Lo que le falta a esa factura: si ya está pagada, no queda nada por pagar (la base no da el saldo en otra moneda).
+    if (s.en_camino_saldo !== null && Number(s.en_camino_saldo) <= 0) {
+      return `Pago anulado: la OC queda pagada una vez, por su factura ${s.en_camino}, que ya está pagada.`
+    }
+    return s.en_camino_saldo !== null
+      ? `Pago anulado: la OC se paga por su factura ${s.en_camino}, que Contabilidad ya registró. En «Facturas por pagar» págale lo que le falta, ${moneda(Number(s.en_camino_saldo), m)}, con el mismo voucher: el dinero ya salió.`
       : `Pago anulado: la OC se paga por su factura ${s.en_camino}, que Contabilidad ya registró, en «Facturas por pagar».`
   }
   if (s.en_camino && n > 0) {
@@ -344,7 +350,7 @@ function queQuedaTrasAnular(s: SituacionDePago | null): string {
       ? 'Pago anulado. La OC sigue pagada: sus otros pagos cubren el total.'
       : 'Pago anulado. La OC sigue pagada: otro de sus pagos la dio por cancelada.'
   }
-  return `Pago anulado: a la OC le quedan ${moneda(Number(s.saldo ?? 0), s.moneda === 'USD' ? 'USD' : 'PEN')} por pagar.`
+  return `Pago anulado: a la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'

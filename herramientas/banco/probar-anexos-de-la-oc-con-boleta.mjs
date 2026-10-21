@@ -6,13 +6,17 @@
  *
  *   1. Pagada dos veces: Tesorería pagó la OC A por su boleta y también la
  *      factura que Contabilidad registró sin OC; Logística la anexa a la OC A.
- *      Tesorería recibe el aviso y la tarjeta dice «Pagada dos veces», con lo
- *      que se pagó de más, sin botón de pagar. Logística intenta anular ese
- *      anexo desde Adquisiciones: la ventana dice por qué no y el anexo sigue.
+ *      Tesorería recibe el aviso; el encabezado la cuenta como «pagada dos
+ *      veces» (no «por anular») y la tarjeta lo dice, con lo que se pagó de
+ *      más, sin botón de pagar. En Adquisiciones sale «Pagada dos veces», con
+ *      el voucher de la boleta y el de la factura rotulados, y el anexo en la
+ *      línea de su factura: a Logística no se le ofrece anularlo (la base lo
+ *      rechazaría) y la línea dice por qué y quién lo corrige.
  *   2. Anexo por revisar: Logística anexa a la OC B (boleta) una factura que
  *      Contabilidad registró para la OC C y no alcanza para las dos. Tesorería
  *      ve «Anexo por revisar» sin botón de pagar; Adquisiciones dice lo mismo.
- *      Logística anula el anexo (tres toques, una anulación con su motivo),
+ *      La ventana de Logística dice que el anexo es el que está mal, y lo
+ *      anula (tres toques, una anulación con su motivo),
  *      Contabilidad recibe el aviso y la OC B vuelve a pagarse por su boleta.
  *   3. La OC que ya tiene su factura: Contabilidad registró la de la OC D
  *      eligiéndola del desplegable y Logística le anexa otra (el mismo número
@@ -268,15 +272,16 @@ async function tresToques(boton) {
   await boton.click({ timeout: 1000 }).catch(() => {})
   await boton.click({ timeout: 1000 }).catch(() => {})
 }
-/** Abre «Anular» del anexo en la fila de su OC y lo intenta con su motivo; devuelve el error, si lo hubo. */
+/** Abre «Anular» del anexo en la fila de su OC y lo intenta con su motivo; devuelve el texto de la ventana y el error, si lo hubo. */
 async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   await pagina.locator(`tr[data-orden="${nombre(orden)}"]`).getByRole('button', { name: `Anular la factura ${numero} de la ${nombre(orden)}` }).click()
   const v = pagina.locator('[role="dialog"]')
   await v.locator('textarea[name="motivo"]').fill(motivo)
+  const ventana = limpio(await v.innerText())
   const boton = v.getByRole('button', { name: 'Anular', exact: true })
   if (toques === 3) await tresToques(boton)
   else await boton.click()
-  return esperarVentana(pagina)
+  return { ventana, error: await esperarVentana(pagina) }
 }
 
 // ---------------------------------------------------------------- 1. Pagada dos veces
@@ -286,28 +291,41 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
     [ids[CUENTAS.tesoreria], oc.A, `Compra pagada dos veces: ${nombre(oc.A)}`],
   )
   comprobar(Boolean(aviso?.cuerpo?.includes('de más')), `a Tesorería le llegó «Compra pagada dos veces»: ${limpio(aviso?.cuerpo).slice(0, 160)}`)
-  comprobar((await pagoSegunAdquisiciones(oc.A)) === 'PAGO_POR_ANULAR', 'Adquisiciones dice que la OC A tiene un pago por anular')
+  comprobar((await pagoSegunAdquisiciones(oc.A)) === 'PAGADA_DOS_VECES', 'Adquisiciones dice que la OC A está pagada dos veces')
+  const deMas = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(total)
 
   const { pagina, contexto } = await entrar('tesoreria')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const encabezado = limpio(await pagina.locator('main').first().innerText().catch(() => '')).slice(0, 800)
+  const cuenta = encabezado.match(/(una OC pagada|\d+ OC pagadas) dos veces/)?.[0]
+  comprobar(Boolean(cuenta), `el encabezado cuenta las pagadas dos veces aparte: ${cuenta ?? encabezado.slice(0, 200)}`)
   const tarjeta = pagina.locator(`article#compra-${oc.A}`)
   const texto = limpio(await tarjeta.innerText().catch(() => ''))
-  console.log(`       la tarjeta de la A: ${texto.slice(0, 400)}`)
+  console.log(`       la tarjeta de la A: ${texto.slice(0, 500)}`)
   comprobar(texto.includes('Pagada dos veces') && texto.includes('se pagó dos veces') && texto.includes(FX), 'la tarjeta dice «Pagada dos veces», por su boleta y por la factura')
-  comprobar(texto.includes('Pide al proveedor la devolución'), 'y pide la devolución, no anular para pagar la factura')
+  comprobar(texto.includes(`Pide al proveedor la devolución de S/ ${deMas}`), 'y pide la devolución de lo pagado de más, con el monto')
+  comprobar(texto.includes(`Pagado de más S/ ${deMas}`) && texto.includes('Pagada también por su factura'), 'muestra lo pagado de más, y que la factura ya está pagada')
   comprobar((await tarjeta.locator('[data-pagar-compra]').count()) === 0, 'sin botón de pagar')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-1-tesoreria.png`, fullPage: true })
+  await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(nombre(oc.A))}`, { waitUntil: 'networkidle' })
+  const fila = limpio(await pagina.locator(`tr[data-orden="${nombre(oc.A)}"]`).innerText().catch(() => ''))
+  console.log(`       la fila de la A para Tesorería: ${fila.slice(0, 500)}`)
+  comprobar(fila.includes('Pagada dos veces') && fila.includes('Pedir la devolución en Cuentas por pagar'), 'Adquisiciones dice «Pagada dos veces» y lleva a pedir la devolución')
+  comprobar(fila.includes('Voucher de la boleta') && fila.includes('Voucher de la factura'), 'cada voucher dice si es de la boleta o de la factura')
   await contexto.close()
 }
 {
   const { pagina, contexto } = await entrar('logistica')
-  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
-  const error = await anularAnexo(pagina, oc.A, FX, 'Era la factura de otra compra del mismo proveedor')
-  console.log(`       el error: ${error}`)
-  comprobar(error.includes('No se anula') && error.includes('Tesorería le pagó'), 'la ventana dice que no se anula la factura ya pagada')
-  comprobar(error.includes('Contabilidad corrige la factura'), 'y quién lo resuelve')
+  await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(nombre(oc.A))}`, { waitUntil: 'networkidle' })
+  const fila = pagina.locator(`tr[data-orden="${nombre(oc.A)}"]`)
+  const texto = limpio(await fila.innerText().catch(() => ''))
+  console.log(`       la fila de la A para Logística: ${texto.slice(0, 500)}`)
+  comprobar((await fila.getByRole('button', { name: `Anular la factura ${FX} de la ${nombre(oc.A)}` }).count()) === 0, 'a Logística no se le ofrece anular el anexo de la factura ya pagada')
+  comprobar(texto.includes(`No se anula: la factura ${FX} ya se pagó`) && texto.includes('Contabilidad corrige la factura'), 'la línea dice por qué y quién lo corrige')
+  comprobar(texto.split(`Factura ${FX}`).length - 1 === 1 && texto.includes('por el anexo de Logística'), 'el anexo va en la línea de su factura, una sola vez')
+  comprobar(texto.includes('Tesorería pide al proveedor la devolución'), 'y Logística lee a quién espera la devolución')
   comprobar(!(await anulado(anexoX))?.anulado_en, 'el anexo sigue vigente en la base')
-  await pagina.keyboard.press('Escape')
+  await pagina.screenshot({ path: `${CAPTURAS}/anexos-1-logistica.png`, fullPage: true })
   await contexto.close()
 }
 
@@ -330,7 +348,8 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
 {
   const { pagina, contexto } = await entrar('logistica')
   await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
-  const error = await anularAnexo(pagina, oc.B, FY, 'Era la factura de la otra OC del mismo proveedor', 3)
+  const { ventana, error } = await anularAnexo(pagina, oc.B, FY, 'Era la factura de la otra OC del mismo proveedor', 3)
+  comprobar(ventana.includes('este anexo es el que está mal') && ventana.includes(FY), 'la ventana dice que el anexo es el que está mal')
   comprobar(error === '', `la ventana se cerró sin error${error ? `: ${error}` : ''}`)
   const fila = await hasta(() => anulado(anexoY), (f) => f?.anulado_en)
   comprobar(Boolean(fila?.anulado_en) && fila.anulado_por === ids[CUENTAS.logistica] && fila.motivo_anulacion?.startsWith('Era la factura'), 'el anexo queda anulado, con quién y su motivo')

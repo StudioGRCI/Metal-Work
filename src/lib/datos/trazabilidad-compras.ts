@@ -64,6 +64,16 @@ const esquemaDocumento = z.object({
   // La factura o la boleta que Logística anuló: queda como evidencia (migración 20261020210000).
   anulado_en: texto.optional().default(null),
   motivo_anulacion: texto.optional().default(null),
+  /**
+   * De la factura que Logística anexó a una OC con boleta, la que es la suya en
+   * Adquisiciones: si alcanza para esta OC y lo pagado. Con ella se sabe si el
+   * anexo se puede anular, como lo decide `anular_documento_compra`.
+   */
+  factura: z
+    .object({ id: z.guid(), numero: z.string(), estado: z.string(), alcanza: z.boolean(), pagado: numero })
+    .nullable()
+    .optional()
+    .default(null),
 })
 const esquemaGuia = z.object({ id: z.guid(), numero: z.string(), fecha: z.string(), nombre: z.string(), cargada_en: z.string() })
 

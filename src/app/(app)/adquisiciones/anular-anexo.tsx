@@ -13,11 +13,25 @@ import { anularDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-
  * Logística anula la factura o la boleta que anexó por error a una OC, con su
  * motivo (migración 20261020210000). No se borra: queda tachada en la fila como
  * evidencia y deja de contar para el pago. Si la OC iba con boleta y esa
- * factura la sacaba del pago directo, vuelve a pagarse por su boleta. La base no
- * deja anular la factura que ya se pagó por un camino y quedaría libre para el
- * otro: lo dice en el error, con quién lo resuelve.
+ * factura la sacaba del pago directo, vuelve a pagarse por su boleta. La factura
+ * que ya se pagó por un camino y quedaría libre para el otro no se anula: la
+ * fila no ofrece el botón (`bloqueoDelAnexo`, en `lib/dominio/adquisiciones`) y la base lo rechaza igual.
+ * `porRevisar` es la factura que Contabilidad registró para otras OC y no
+ * alcanza para esta: ahí el error es el anexo, y la ventana lo dice.
  */
-export function AnularAnexo({ id, etiqueta, oc, factura }: { id: string; etiqueta: string; oc: string; factura: boolean }) {
+export function AnularAnexo({
+  id,
+  etiqueta,
+  oc,
+  factura,
+  porRevisar = null,
+}: {
+  id: string
+  etiqueta: string
+  oc: string
+  factura: boolean
+  porRevisar?: string | null
+}) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(anularDocumentoCompra, () => setAbierta(false))
   return (
@@ -31,9 +45,11 @@ export function AnularAnexo({ id, etiqueta, oc, factura }: { id: string; etiquet
         alCerrar={() => setAbierta(false)}
         titulo={`Anular ${etiqueta}`}
         descripcion={
-          factura
-            ? `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo, y deja de contar para su pago. Si era de otra OC, después la anexas a la buena. Tesorería y Contabilidad reciben el aviso si les cambia algo. Si esa factura o la OC ya se pagaron, no se anula: se corrige la factura.`
-            : `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo. Después anexas la buena.`
+          porRevisar
+            ? `Contabilidad registró la ${porRevisar} para otras OC y no alcanza para esta: este anexo es el que está mal. No se borra: queda tachado en la ${oc} con su PDF, el motivo, quién y cuándo, y la OC vuelve a pagarse por su boleta. Si es de otra OC, después la anexas a la buena.`
+            : factura
+              ? `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo, y deja de contar para su pago. Si era de otra OC, después la anexas a la buena. Tesorería y Contabilidad reciben el aviso si les cambia algo.`
+              : `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo. Después anexas la buena.`
         }
         ancho="sm"
       >

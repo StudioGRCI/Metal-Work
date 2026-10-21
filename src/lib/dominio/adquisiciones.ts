@@ -19,6 +19,13 @@ export const ESTADO_PAGO: Record<string, Def> = {
     descripcion:
       'Tesorería la pagó directo por su boleta y el proveedor entregó factura: Tesorería anula ese pago para que Contabilidad la registre, y se paga por la factura.',
   },
+  // La OC con boleta que Tesorería pagó directo y también por la factura que llegó después: no se anula, se pide la devolución.
+  PAGADA_DOS_VECES: {
+    etiqueta: 'Pagada dos veces',
+    tono: 'peligro',
+    descripcion:
+      'Tesorería la pagó directo por su boleta y también pagó la factura que el proveedor entregó después: pide al proveedor la devolución de lo pagado de más, y el pago directo se anula cuando la devuelva.',
+  },
   // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza para esta.
   ANEXO_POR_REVISAR: {
     etiqueta: 'Anexo por revisar',
@@ -116,7 +123,7 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
     case 'por-pagar':
       return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR' || f.pago === 'ANEXO_POR_REVISAR'
     case 'pagadas':
-      return f.pago === 'PAGADA'
+      return f.pago === 'PAGADA' || f.pago === 'PAGADA_DOS_VECES'
     case 'guia':
       return guiaPorCargar(f)
     case 'no-se-pagan':
@@ -143,4 +150,21 @@ export function pagoQueCancela(
     if (acumulado >= total) return p.id
   }
   return null
+}
+
+/**
+ * Por qué Adquisiciones no ofrece «Anular» la factura que Logística anexó a una
+ * OC con boleta, con la misma regla de `anular_documento_compra` (migración
+ * 20261020210000): la factura que alcanza para esa OC, si ya se pagó ella o la
+ * OC directo. Anulado el anexo, nada ataba los dos caminos y la compra se pagaba
+ * otra vez. Al administrador del sistema no se le aplica.
+ */
+export function bloqueoDelAnexo(
+  oc: { con_factura: boolean | null; pagos: unknown[] },
+  anexo: { tipo: string; factura?: { numero: string; alcanza: boolean; pagado: number } | null },
+): string | null {
+  const factura = anexo.factura
+  if (anexo.tipo !== 'FACTURA' || oc.con_factura !== false || !factura?.alcanza) return null
+  if (factura.pagado <= 0 && oc.pagos.length === 0) return null
+  return `No se anula: ${factura.pagado > 0 ? `la factura ${factura.numero} ya se pagó` : 'la OC ya se pagó por su boleta'}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
 }

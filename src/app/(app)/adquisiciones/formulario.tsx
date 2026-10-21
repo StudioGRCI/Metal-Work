@@ -204,6 +204,8 @@ function Formulario({
           required
           value={proveedor}
           readOnly={Boolean(elegida?.proveedor)}
+          // Sale de la OC del anexo y no se escribe: que no parezca un campo abierto.
+          className="read-only:cursor-default read-only:bg-superficie-2"
           onChange={(e) => setProveedor(e.target.value)}
         />
       </Campo>

@@ -154,7 +154,7 @@ export async function registrarDocumentoCompra(
     mensaje: errorSituacion || !s
       ? `Factura ${numeroFactura} adjuntada a la compra.`
       : registrada && s.en_camino_alcanza === false
-        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza para esta: revisa el número. Si no es de esta OC, anula el anexo${pagos > 0 ? '; el pago por su boleta no se toca' : ' y la OC se paga por su boleta'}.`
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza para esta: revisa el número. Si no es de esta OC, anula el anexo en Adquisiciones › OC y OS, en la fila de la OC${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
       : pagos > 0 && registrada && Number(s.pagada_dos_veces ?? 0) > 0
         ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada y pagada: la compra se pagó dos veces. Tesorería recibió el aviso para pedir la devolución al proveedor.`
         : pagos > 0 && registrada
