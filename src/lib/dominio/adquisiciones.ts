@@ -12,6 +12,13 @@ type Def = { etiqueta: string; tono: Tono; descripcion: string }
 export const ESTADO_PAGO: Record<string, Def> = {
   PAGADA: { etiqueta: 'Pagada', tono: 'exito', descripcion: 'Tesorería pagó todo lo facturado.' },
   PAGO_PARCIAL: { etiqueta: 'Pagada en parte', tono: 'info', descripcion: 'Hay un pago, pero falta pagar o facturar otra parte.' },
+  // La OC con boleta que Tesorería pagó directo y a la que después llegó su comprobante (migración 20261020210000).
+  PAGO_POR_ANULAR: {
+    etiqueta: 'Pago por anular',
+    tono: 'aviso',
+    descripcion:
+      'Tesorería la pagó directo por su boleta y el proveedor entregó factura: Tesorería anula ese pago para que Contabilidad la registre, y se paga por la factura.',
+  },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
   // La OC con boleta de antes de que Tesorería registrara esos pagos (migración 20261020210000).
@@ -96,7 +103,7 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
       // Como `compras_sin_factura()`: aprobada, con factura y sin una que la complete.
       return f.tipo === 'OC' && f.con_factura === true && (f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA') && !f.facturada_entera
     case 'por-pagar':
-      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL'
+      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR'
     case 'pagadas':
       return f.pago === 'PAGADA'
     case 'guia':

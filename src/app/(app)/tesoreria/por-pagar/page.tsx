@@ -69,15 +69,18 @@ export default async function PaginaPorPagar() {
   ])
   const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
-  const boletasPorPagar = boletas.filter((b) => !b.cancelada)
-  const boletasPagadas = boletas.filter((b) => b.cancelada)
+  // La pagada a la que después llegó su comprobante pide algo (anular su pago): va arriba, no en las pagadas.
+  const boletasPorPagar = boletas.filter((b) => !b.cancelada || b.comprobante_en_camino)
+  const boletasPagadas = boletas.filter((b) => b.cancelada && !b.comprobante_en_camino)
+  // La que espera su comprobante se paga por él: no suma al «Por pagar» ni a lo vencido.
+  const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino)
   const vencidas =
     porPagar.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
-    boletasPorPagar.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length
+    pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length
   const resumen = resumenPorMoneda(
     [
       ...porPagar.map((c) => ({ moneda: c.moneda, monto: Number(c.saldo) })),
-      ...boletasPorPagar.map((b) => ({ moneda: b.moneda, monto: saldoDeLaBoleta(b) })),
+      ...pagables.map((b) => ({ moneda: b.moneda, monto: saldoDeLaBoleta(b) })),
     ],
     ['documento', 'documentos'],
   )
@@ -115,7 +118,7 @@ export default async function PaginaPorPagar() {
       <Tarjeta id="compras-con-boleta" className="mt-5 scroll-mt-20">
         <TarjetaCabecera
           titulo="OC con boleta por pagar"
-          ayuda="Las OC que van con boleta, nota de venta o recibo: no pasan por Contabilidad y Tesorería las paga directo, sin IGV. Las que se emitieron antes de que Tesorería las pagara aquí se pagaron fuera del sistema y no salen."
+          ayuda="Las OC que van con boleta, nota de venta o recibo: no pasan por Contabilidad y Tesorería las paga directo, sin IGV. Si el proveedor entrega factura después, se paga por ella en «Facturas por pagar» y la tarjeta dice qué falta. Las que se emitieron antes de que Tesorería las pagara aquí se pagaron fuera del sistema y no salen."
         />
         <TarjetaCuerpo className="space-y-3">
           {boletasPorPagar.length === 0 ? (
@@ -207,6 +210,35 @@ export default async function PaginaPorPagar() {
       )}
     </AvisoDeLaCaja>
   )
+}
+
+/** Cómo se nombra cada documento de la OC con boleta en la tarjeta y en la ventana del pago. */
+function etiquetaDelComprobante(d: CompraConBoleta['comprobantes'][number]) {
+  if (!d.numero) return d.nombre
+  if (d.tipo === 'BORRADOR') return `Comprobante ${d.numero} (en borrador)`
+  return `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}`
+}
+
+/**
+ * Lo que dice la tarjeta cuando el proveedor ya entregó su comprobante: se paga
+ * por él en «Facturas por pagar». Si la OC ya tenía un pago directo, Contabilidad
+ * no lo registra hasta que Tesorería lo anule; a quien no paga se le dice
+ * quién lo hace, no se le pide.
+ */
+function avisoDelComprobante(b: CompraConBoleta, vigentes: number, paga: boolean): string | null {
+  const numero = b.comprobante_en_camino
+  if (!numero) return null
+  const deLogistica = b.comprobante_en_camino_origen === 'LOGISTICA'
+  const lo = deLogistica ? 'la' : 'lo'
+  const llego = deLogistica
+    ? `El proveedor entregó la factura ${numero} y Logística la anexó a la OC`
+    : `Contabilidad tiene en borrador el comprobante ${numero} de esta OC`
+  if (vigentes === 0) return `${llego}: cuando Contabilidad ${lo} registre, se paga en «Facturas por pagar».`
+  const pagos = vigentes === 1 ? 'el pago' : 'los pagos'
+  const sigue = paga
+    ? `Anula ${pagos} de aquí y, cuando Contabilidad ${lo} registre, págal${deLogistica ? 'a' : 'o'} en «Facturas por pagar» con ${vigentes === 1 ? 'el mismo voucher' : 'los mismos vouchers'}.`
+    : `Tesorería tiene que anular ${pagos} de aquí para que Contabilidad ${lo} registre; después se paga en «Facturas por pagar».`
+  return `${llego}, pero esta OC ya tiene ${vigentes === 1 ? 'un pago directo' : 'pagos directos'}: Contabilidad no ${lo} registra mientras ${vigentes === 1 ? 'siga vigente' : 'sigan vigentes'}. ${sigue}`
 }
 
 /** Lo que le falta pagar a una OC con boleta; una cancelada «a cuenta» ya no debe nada. */
@@ -385,16 +417,15 @@ function CompraConBoletaFila({
   const nombre = b.numero ?? `OC ${b.referencia}`
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(b.id), descarga: true }] : []),
-    ...b.comprobantes.map((d) => ({
-      clave: d.id,
-      etiqueta: d.numero ? `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}` : d.nombre,
-      url: d.url,
-    })),
+    ...b.comprobantes.map((d) => ({ clave: d.id, etiqueta: etiquetaDelComprobante(d), url: d.url })),
   ]
   const sinBoleta = !b.comprobantes.some((d) => d.tipo === 'COMPROBANTE')
-  // El proveedor entregó factura: se paga por ella en «Facturas por pagar», no aquí.
-  const conFactura = b.factura_en_camino
-  const conPagoVigente = b.pagos.some((p) => !p.anulado_en)
+  // El proveedor entregó su comprobante: se paga por él en «Facturas por pagar», no aquí.
+  const enCamino = Boolean(b.comprobante_en_camino)
+  const vigentes = b.pagos.filter((p) => !p.anulado_en).length
+  const conPagoVigente = vigentes > 0
+  const aviso = avisoDelComprobante(b, vigentes, paga)
+  const cobra = saldo > 0 && !enCamino
   const condicion = b.condicion_pago === 'CREDITO' ? `crédito a ${b.dias_credito ?? 0} días` : 'contado'
   return (
     <article id={`compra-${b.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
@@ -407,18 +438,19 @@ function CompraConBoletaFila({
             {b.cancelada && <Insignia tono="exito">Pagada</Insignia>}
             {!b.cancelada && pagado > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {b.sin_precio && <Insignia tono="aviso">Líneas sin precio</Insignia>}
-            {conFactura && <Insignia tono="aviso">Llegó factura</Insignia>}
+            {enCamino && (
+              <Insignia tono="aviso">
+                {conPagoVigente ? 'Pago por anular' : b.comprobante_en_camino_origen === 'LOGISTICA' ? 'Llegó factura' : 'En Contabilidad'}
+              </Insignia>
+            )}
           </p>
           <p className="text-xs text-texto-suave">
             Boleta · {condicion}
-            {b.codigo_interno && ` · ${b.codigo_interno}`} · {b.cancelada ? `Pagada el ${fecha(b.ultimo_pago)}` : <Vencimiento dia={b.vence} saldo={saldo} />}
+            {b.codigo_interno && ` · ${b.codigo_interno}`}
+            {b.cancelada ? ` · Pagada el ${fecha(b.ultimo_pago)}` : !enCamino && <> · <Vencimiento dia={b.vence} saldo={saldo} /></>}
           </p>
-          {conFactura ? (
-            <p className="text-xs text-aviso">
-              {conPagoVigente
-                ? `El proveedor entregó la factura ${conFactura}: Contabilidad no la registra mientras el pago de aquí siga vigente. Anúlalo y, cuando ella la registre, paga la factura en «Facturas por pagar» con el mismo voucher.`
-                : `El proveedor entregó la factura ${conFactura}: la registra Contabilidad y se paga en «Facturas por pagar».`}
-            </p>
+          {aviso ? (
+            <p className="text-xs text-aviso">{aviso}</p>
           ) : (
             sinBoleta &&
             !b.cancelada && <p className="text-xs text-texto-suave">Falta la boleta: Logística la adjunta en la OC cuando el proveedor la entregue.</p>
@@ -442,11 +474,11 @@ function CompraConBoletaFila({
       <div className="mt-2 space-y-2">
         <ParaPagar
           documentos={documentos}
-          cuentas={saldo > 0 ? b.cuentasProveedor : []}
+          cuentas={cobra ? b.cuentasProveedor : []}
           monedaDocumento={m}
-          sinCuentas={saldo > 0 ? sinCuentas(verCuentas, true) : null}
+          sinCuentas={cobra ? sinCuentas(verCuentas, true) : null}
         />
-        {paga && saldo > 0 && !b.sin_precio && !conFactura && (
+        {paga && cobra && !b.sin_precio && (
           <PagarCompra
             ordenCompraId={b.id}
             numero={nombre}

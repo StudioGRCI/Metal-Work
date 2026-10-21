@@ -276,6 +276,8 @@ export type DocumentoDeServicio = {
   creado_en: string
   /** Null si la firma falló o la política de quien mira no lo deja abrir: el documento se lista igual. */
   url: string | null
+  /** Storage firmó la tanda y este archivo no estaba: hay que anularlo y adjuntarlo de nuevo. */
+  faltaArchivo: boolean
 }
 
 /**
@@ -302,15 +304,28 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
   )
   const filas = leidas.flat()
   const urls = new Map<string, string>()
+  const faltan = new Set<string>()
   if (filas.length > 0) {
     const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_SERVICIO).createSignedUrls([...new Set(filas.map((f) => f.ruta_storage))], 600)
-    // Sin enlace el documento se lista igual: se ve qué hay aunque no se abra.
+    // Sin enlace el documento se lista igual: se ve qué hay aunque no se abra. Si
+    // falló la tanda entera, no se sabe qué archivo falta y no se dice que falte.
     if (error) console.error('No se pudieron firmar los documentos de las órdenes de servicio:', error.message)
-    for (const e of data ?? []) if (e.path && e.signedUrl) urls.set(e.path, e.signedUrl)
+    for (const e of data ?? []) {
+      if (e.path && e.signedUrl) urls.set(e.path, e.signedUrl)
+      else if (e.path && e.error) faltan.add(e.path)
+    }
   }
   for (const f of filas) {
     const lista = mapa.get(f.orden_servicio_id) ?? []
-    lista.push({ id: f.id, tipo: f.tipo, numero: f.numero, nombre: f.nombre_archivo, creado_en: f.creado_en, url: urls.get(f.ruta_storage) ?? null })
+    lista.push({
+      id: f.id,
+      tipo: f.tipo,
+      numero: f.numero,
+      nombre: f.nombre_archivo,
+      creado_en: f.creado_en,
+      url: urls.get(f.ruta_storage) ?? null,
+      faltaArchivo: faltan.has(f.ruta_storage),
+    })
     mapa.set(f.orden_servicio_id, lista)
   }
   return mapa

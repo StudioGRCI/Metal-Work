@@ -283,9 +283,28 @@ export async function anularPagoCompra(_previo: unknown, formulario: FormData): 
   const { data, error } = await supabase.rpc('anular_pago_compra', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
-  const caja = await cajaTrasAnular('PAGO_ORDEN_COMPRA', analisis.data.id, 'pago')
+  const [caja, comprobante] = await Promise.all([
+    cajaTrasAnular('PAGO_ORDEN_COMPRA', analisis.data.id, 'pago'),
+    comprobanteDeLaCompraDelPago(supabase, analisis.data.id),
+  ])
   repintarPagosDeCompra()
-  return { ok: true, mensaje: `Pago anulado: la OC vuelve a quedar por pagar. ${caja}`.trim() }
+  // Si a la OC le llegó su comprobante, ya no vuelve a pagarse aquí; si no se pudo leer, no se adivina.
+  const queda =
+    comprobante === undefined
+      ? 'Pago anulado.'
+      : comprobante
+        ? `Pago anulado: la OC se paga por su comprobante ${comprobante} en «Facturas por pagar» cuando Contabilidad lo registre.`
+        : 'Pago anulado: la OC vuelve a quedar por pagar.'
+  return { ok: true, mensaje: `${queda} ${caja}`.trim() }
+}
+
+/** El comprobante en camino de la OC de ese pago, `null` si no hay, `undefined` si no se pudo leer. */
+async function comprobanteDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string) {
+  const { data: pago, error } = await supabase.from('pagos_orden_compra').select('orden_compra_id').eq('id', pagoId).maybeSingle()
+  if (error || !pago) return undefined
+  const { data: lista, error: errorLista } = await supabase.rpc('compras_con_boleta_por_pagar')
+  if (errorLista) return undefined
+  return lista?.find((f) => f.id === pago.orden_compra_id)?.comprobante_en_camino ?? null
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'

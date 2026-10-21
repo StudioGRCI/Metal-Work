@@ -501,10 +501,17 @@ type PagoCompraFila = Pick<
   | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
 >
 /**
- * La boleta, nota de venta o recibo que Logística adjuntó a la OC, o la factura
- * que el proveedor entregó después y que la saca del pago directo.
+ * La boleta, nota de venta o recibo que Logística adjuntó a la OC, o el
+ * comprobante que el proveedor entregó después y que la saca del pago directo:
+ * la factura que anexó Logística o el que Contabilidad tiene en borrador.
  */
-export type ComprobanteDeCompra = { id: string; tipo: 'COMPROBANTE' | 'FACTURA'; nombre: string; numero: string | null; url: string | null }
+export type ComprobanteDeCompra = {
+  id: string
+  tipo: 'COMPROBANTE' | 'FACTURA' | 'BORRADOR'
+  nombre: string
+  numero: string | null
+  url: string | null
+}
 export type CompraConBoleta = CompraConBoletaFila & {
   pagos: (PagoCompraFila & { url: string | null })[]
   comprobantes: ComprobanteDeCompra[]
@@ -514,7 +521,8 @@ export type CompraConBoleta = CompraConBoletaFila & {
 /**
  * Las OC con boleta que Tesorería paga directo, como la OS (migración
  * 20261020210000): con lo pagado y cada voucher, la boleta que adjuntó
- * Logística (o la factura que llegó después) y las cuentas del proveedor.
+ * Logística (o el comprobante que llegó después, también el borrador de
+ * Contabilidad con su PDF) y las cuentas del proveedor.
  */
 export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<CompraConBoleta[]> {
   const supabase = await createClient()
@@ -545,22 +553,43 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
     }),
     cuentasDeProveedores(filas.flatMap((f) => (f.proveedor_id ? [f.proveedor_id] : [])), verCuentas),
   ])
-  const [vouchers, pdfs] = await Promise.all([
+  // El borrador de Contabilidad: su PDF está en su bucket o es la factura que anexó Logística.
+  const borrador = (f: CompraConBoletaFila, bucket: string) =>
+    f.comprobante_en_camino_origen === 'BORRADOR' && f.comprobante_en_camino_bucket === bucket ? f.comprobante_en_camino_ruta : null
+  const [vouchers, pdfs, borradores] = await Promise.all([
     enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.archivo_ruta)),
-    enlaces('documentos-compras', comprobantes.map((b) => b.ruta_storage)),
+    enlaces('documentos-compras', [...comprobantes.map((b) => b.ruta_storage), ...filas.map((f) => borrador(f, 'documentos-compras'))]),
+    enlaces('comprobantes-financieros', filas.map((f) => borrador(f, 'comprobantes-financieros'))),
   ])
-  return filas.map((f) => ({
-    ...f,
-    pagos: pagos.filter((p) => p.orden_compra_id === f.id).map((p) => ({ ...p, url: vouchers.get(p.archivo_ruta) ?? null })),
-    comprobantes: comprobantes
-      .filter((b) => b.orden_compra_id === f.id)
-      .map((b) => ({
-        id: b.id,
-        tipo: b.tipo === 'FACTURA' ? ('FACTURA' as const) : ('COMPROBANTE' as const),
-        nombre: b.nombre_archivo,
-        numero: b.numero_documento,
-        url: pdfs.get(b.ruta_storage) ?? null,
-      })),
-    cuentasProveedor: (f.proveedor_id && cuentas.get(f.proveedor_id)) || [],
-  }))
+  return filas.map((f) => {
+    const propios = comprobantes.filter((b) => b.orden_compra_id === f.id)
+    const rutaBorrador = f.comprobante_en_camino_origen === 'BORRADOR' ? f.comprobante_en_camino_ruta : null
+    const enBorrador: ComprobanteDeCompra[] =
+      f.comprobante_en_camino_origen === 'BORRADOR' && !propios.some((b) => b.ruta_storage === rutaBorrador)
+        ? [
+            {
+              id: `borrador-${f.id}`,
+              tipo: 'BORRADOR',
+              nombre: 'Comprobante en borrador',
+              numero: f.comprobante_en_camino,
+              url: (rutaBorrador && (f.comprobante_en_camino_bucket === 'comprobantes-financieros' ? borradores : pdfs).get(rutaBorrador)) || null,
+            },
+          ]
+        : []
+    return {
+      ...f,
+      pagos: pagos.filter((p) => p.orden_compra_id === f.id).map((p) => ({ ...p, url: vouchers.get(p.archivo_ruta) ?? null })),
+      comprobantes: [
+        ...propios.map((b) => ({
+          id: b.id,
+          tipo: b.tipo === 'FACTURA' ? ('FACTURA' as const) : ('COMPROBANTE' as const),
+          nombre: b.nombre_archivo,
+          numero: b.numero_documento,
+          url: pdfs.get(b.ruta_storage) ?? null,
+        })),
+        ...enBorrador,
+      ],
+      cuentasProveedor: (f.proveedor_id && cuentas.get(f.proveedor_id)) || [],
+    }
+  })
 }

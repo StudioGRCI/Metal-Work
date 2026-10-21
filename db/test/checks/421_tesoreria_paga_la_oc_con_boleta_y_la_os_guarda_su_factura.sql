@@ -395,6 +395,13 @@ select test.debe_fallar($$ update public.orden_compra_material_detalles set cant
   'ni su cantidad', 'su total no cambia');
 select test.debe_fallar($$ delete from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc1') $$,
   'ni pierde líneas', 'su total no cambia');
+select test.debe_fallar($$ insert into public.orden_compra_material_detalles (orden_compra_id, material_id, cantidad, precio_unitario)
+                           values (pg_temp.id('oc1'), current_setting('prueba.mat')::uuid, 1, 10) $$,
+  'ni gana líneas', 'su total no cambia');
+select test.debe_fallar($$ update public.orden_compra_material_detalles set orden_compra_id = pg_temp.id('oc1') where orden_compra_id = pg_temp.id('oc4') $$,
+  'ni recibe una línea que viene de otra OC', 'su total no cambia');
+select test.debe_fallar($$ update public.orden_compra_material_detalles set orden_compra_id = pg_temp.id('oc4') where orden_compra_id = pg_temp.id('oc1') $$,
+  'ni se la pasa a otra', 'su total no cambia');
 update public.orden_compra_material_detalles set precio_unitario = precio_unitario where orden_compra_id = pg_temp.id('oc1');
 select test.afirmar(public.total_orden_compra(pg_temp.id('oc1')) = 361.50, 'y lo que no cambia el total pasa');
 -- El proveedor entregó factura y Logística la anexó a la OC: ya no se paga directo.
@@ -411,9 +418,53 @@ set local role authenticated;
 select set_config('prueba.v6', pg_temp.subir('pagos-compras', 'oc1'), true);
 select test.debe_fallar($$ select pg_temp.pagar('pv', 'oc1', 10, false, current_setting('prueba.v6')) $$,
   'con la factura que anexó Logística, Tesorería no la paga directo', 'Logística anexó');
-select test.afirmar((select factura_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
-  'y su lista dice qué factura entregó el proveedor');
+select test.afirmar((select comprobante_en_camino = 'F009-421' and comprobante_en_camino_origen = 'LOGISTICA'
+                       and comprobante_en_camino_bucket = 'documentos-compras' and not cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'y su lista dice qué factura entregó el proveedor y quién la trajo');
+select test.afirmar(pg_temp.pago('oc1') = 'PAGO_POR_ANULAR',
+  'Adquisiciones dice que hay un pago directo que anular, no «pagada en parte»');
 reset role;
+select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 1
+    and pg_temp.avisos('comprador', 'Llegó factura de una OC pagada: ') = 0,
+  'a Tesorería le llega el aviso de anular su pago; a quien la anexó, no');
+-- Si esa factura se registra para otra OC del mismo proveedor, no era de esta:
+-- la OC vuelve a pagarse directo, en vez de quedar sin camino.
+select pg_temp.como('contabilidad');
+select set_config('prueba.fx', gen_random_uuid()::text, true);
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('fx'), 'FACTURA_COMPRA', 'proveedor de prueba 421 ', 'F009-421', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO');
+insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (pg_temp.id('fx'), pg_temp.id('oc2'));
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino is null from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la factura anexada que es de otra OC ya no le cierra el pago directo');
+select test.afirmar(pg_temp.pago('oc1') = 'PAGO_PARCIAL', 'y Adquisiciones la vuelve a dar por pagada en parte');
+reset role;
+-- La factura de otra OC sale de esta prueba: el resto del check no la espera.
+set local session_replication_role = replica;
+update public.adquisiciones set numero_documento = 'F009-421X' where id = pg_temp.id('fx');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'con el número de otra factura, la anexada vuelve a contar');
+reset role;
+-- Pagada entera y con la factura después: sale una vez y en la parte de la
+-- lista que no se corta en las 60 últimas canceladas.
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela = true where id = pg_temp.id('p1');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select count(*) = 1 and bool_and(cancelada and comprobante_en_camino = 'F009-421')
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la OC pagada a la que llegó factura sale una vez, con su factura en camino');
+reset role;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela = false where id = pg_temp.id('p1');
+set local session_replication_role = origin;
 
 -- ============================================ 8. La OC con boleta de antes que no se pagó
 -- La 3 se marcó como de antes: Tesorería la pasa a su lista; nadie más, y una
@@ -480,8 +531,10 @@ set local role authenticated;
 select set_config('prueba.v5', pg_temp.subir('pagos-compras', 'oc3'), true);
 select test.debe_fallar($$ select pg_temp.pagar('p4', 'oc3', 50, false, current_setting('prueba.v5')) $$,
   'con la factura en borrador, Tesorería ya no la paga directo', 'en borrador');
-select test.afirmar((select factura_en_camino = 'F001-4213' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3')),
-  'su lista dice qué factura tiene Contabilidad en borrador');
+select test.afirmar((select comprobante_en_camino = 'F001-4213' and comprobante_en_camino_origen = 'BORRADOR'
+                              and comprobante_en_camino_ruta is null
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3')),
+  'su lista dice qué comprobante tiene Contabilidad en borrador (todavía sin PDF)');
 select test.afirmar(pg_temp.pago('oc3') = 'POR_FACTURAR', 'y Adquisiciones la da por esperar su factura, no por pagar directo');
 reset role;
 -- La de antes que trae factura tampoco se da por pagada fuera: se paga por ella.
@@ -496,6 +549,16 @@ reset role;
 set local session_replication_role = replica;
 update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = pg_temp.id('oc3');
 set local session_replication_role = origin;
+-- Con su PDF ya subido, el borrador se ve entre los documentos de Tesorería.
+select pg_temp.como('contabilidad');
+update public.adquisiciones set ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f3');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino_bucket = 'comprobantes-financieros'
+                              and comprobante_en_camino_ruta = 'adquisiciones/' || pg_temp.id('f3') || '/comprobante.pdf'
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc3')),
+  'el borrador con su PDF dice dónde abrirlo');
+reset role;
 -- Un pago directo de antes de la guarda, puesto con los disparadores apagados:
 -- el borrador ya no se registra mientras siga vigente.
 set local session_replication_role = replica;

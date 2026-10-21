@@ -134,10 +134,19 @@ export async function registrarDocumentoCompra(
   revalidatePath('/compras')
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
+  // La OC con boleta que Tesorería ya pagó directo: Contabilidad no la registra hasta que se anule ese pago.
+  const { count: pagosDirectos, error: errorPagos } = await supabase
+    .from('pagos_orden_compra')
+    .select('id', { count: 'exact', head: true })
+    .eq('orden_compra_id', datos.data.orden_compra_id)
+    .is('anulado_en', null)
   return {
     ok: true,
-    mensaje: numeroFactura
-      ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`
-      : 'Documento adjuntado a la compra y disponible para Tesorería.',
+    mensaje:
+      !errorPagos && (pagosDirectos ?? 0) > 0
+        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ese pago.`
+        : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
   }
 }

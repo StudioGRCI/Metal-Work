@@ -560,6 +560,12 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}
+      {/* Llegó su comprobante a una OC ya pagada directo: lo que falta es anular ese pago, no pagar. */}
+      {f.tipo === 'OC' && f.pago === 'PAGO_POR_ANULAR' && acceso.porPagar && (
+        <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
+          {acceso.porPagar === 'pagar' ? 'Anular el pago en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
+        </Link>
+      )}
     </div>
   )
 }

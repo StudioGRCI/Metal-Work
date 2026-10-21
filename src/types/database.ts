@@ -11948,7 +11948,10 @@ export type Database = {
           pagado: number | null
           cancelada: boolean | null
           ultimo_pago: string | null
-          factura_en_camino: string | null
+          comprobante_en_camino: string | null
+          comprobante_en_camino_origen: string | null
+          comprobante_en_camino_bucket: string | null
+          comprobante_en_camino_ruta: string | null
           estuvo_en_factura: string | null
         }[]
       }
@@ -12062,6 +12065,18 @@ export type Database = {
           creado_en: string | null
           en_borrador: boolean | null
           orden_id: string | null
+        }[]
+      }
+      comprobante_en_camino: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          numero: string | null
+          origen: string | null
+          bucket: string | null
+          ruta: string | null
+          documento_id: string | null
         }[]
       }
       confirmar_igv_cotizacion: {

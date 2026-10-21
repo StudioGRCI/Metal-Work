@@ -40,9 +40,14 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
               <span className="tabular truncate">{etiquetaDocumentoServicio(d)}</span>
             </span>
           )}
+          {/* Antes del «Anular» que recomienda: el archivo que ya no está no vuelve recargando. */}
+          {!d.url &&
+            (d.faltaArchivo ? (
+              <span className="block w-full text-aviso">{anula ? 'Sin archivo: anúlalo y vuelve a adjuntarlo.' : 'Sin archivo.'}</span>
+            ) : (
+              <span className="block w-full text-texto-suave">No se pudo abrir: recarga la pantalla.</span>
+            ))}
           {anula && <AnularDocumentoServicio documentoId={d.id} tipo={d.tipo} etiqueta={etiquetaDocumentoServicio(d)} />}
-          {/* Sin enlace firmado, casi siempre porque el archivo ya no está: recargar no lo trae. */}
-          {!d.url && <span className="block w-full text-texto-suave">{anula ? 'Sin archivo: anúlalo y vuelve a adjuntarlo.' : 'Sin archivo.'}</span>}
         </li>
       ))}
     </ul>

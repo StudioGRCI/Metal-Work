@@ -21,6 +21,11 @@
  *   3c. La OC con boleta cuyo proveedor entregó factura (Logística la anexó):
  *      Cuentas por pagar dice «Llegó factura», muestra esa factura y no ofrece
  *      el pago directo; Adquisiciones la da por esperar su factura.
+ *   3d. La OC con boleta que Tesorería pagó entera y a la que después llega
+ *      factura: a Tesorería le llega el aviso, la tarjeta sale arriba (no en
+ *      «pagadas») pidiendo anular el pago, Adquisiciones dice «Pago por
+ *      anular» y lleva a anularlo; al anularlo, el aviso dice que se paga por
+ *      la factura y no ofrece pagarla aquí. Gerencia lee quién lo hace.
  *   4. Logística adjunta a la OS su factura (tres toques, un documento, con el
  *      número en mayúsculas) y su contrato, y el archivo queda en
  *      storage.objects. Emite otra OS con su contrato desde «Nueva orden de
@@ -89,7 +94,8 @@ writeFileSync(join(archivos, 'factura-os.pdf'), PDF)
 writeFileSync(join(archivos, 'contrato-os.pdf'), PDF)
 
 // ---------------------------------------------------------------- siembra
-const SUFIJO = Date.now().toString().slice(-6)
+// Sin cero adelante: la base normaliza «F001-012345» a «F001-12345» y el número no se encontraría.
+const SUFIJO = String(100000 + (Date.now() % 900000))
 const PROVEEDOR = `PROVEEDOR BOLETA ${SUFIJO}`
 const CUENTA_PROVEEDOR = `1910${SUFIJO}0077`
 const CAJA = `Banco boleta ${SUFIJO}`
@@ -151,7 +157,7 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 4) n))`,
+        from generate_series(1, 5) n))`,
   [rq, area, `Prueba de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
@@ -159,9 +165,10 @@ await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [
 // La 1 va con boleta y la 2 con factura: la de factura no entra en la lista de boletas.
 // La 3, con boleta, se marca después como de antes de la migración: se dio por pagada fuera.
 // La 4, con boleta, recibe después la factura del proveedor: se paga por ella.
+// La 5, con boleta, se paga entera y después llega su factura (3d).
 await como('logistica')
 const oc = []
-for (const n of [1, 2, 3, 4]) {
+for (const n of [1, 2, 3, 4, 5]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -216,7 +223,7 @@ const numeros = Object.fromEntries((await consulta(`select id, numero from orden
 const nombre = (id) => numeros[id] ?? 'OC sin número'
 const NUMERO_OS = `QA-OS-${SUFIJO}`
 const [{ total }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[0]])
-console.log(`Sembrado ${SUFIJO}: ${nombre(oc[0])} con boleta (S/ ${total}), ${nombre(oc[1])} con factura, ${nombre(oc[2])} con boleta de antes, ${nombre(oc[3])} con boleta y factura anexada y ${NUMERO_OS}`)
+console.log(`Sembrado ${SUFIJO}: ${nombre(oc[0])} con boleta (S/ ${total}), ${nombre(oc[1])} con factura, ${nombre(oc[2])} con boleta de antes, ${nombre(oc[3])} con boleta y factura anexada, ${nombre(oc[4])} con boleta que se paga y después trae factura y ${NUMERO_OS}`)
 
 /** Lo que Adquisiciones dice del pago de esa orden, leído con la sesión de Tesorería. */
 async function pagoSegunAdquisiciones(id) {
@@ -426,6 +433,79 @@ let pagoId
   comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'y no ofrece el pago directo')
   comprobar((await pagoSegunAdquisiciones(oc[3])) === 'POR_FACTURAR', 'Adquisiciones la da por esperar su factura')
   await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3d. Pagada entera, y después llega su factura
+{
+  await como('tesoreria')
+  const [{ id: pagoEntero }] = await consulta('select gen_random_uuid() as id')
+  const [{ total: total5 }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[4]])
+  const voucher = await subir('pagos-compras', `${oc[4]}/${pagoEntero}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`, [pagoEntero, oc[4], hoy, total5, voucher, caja])
+  await como('logistica')
+  const [{ id: facturaTarde }] = await consulta(`select gen_random_uuid() as id`)
+  await subir('documentos-compras', `compra/${oc[4]}/${facturaTarde}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+     values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+    [facturaTarde, oc[4], `compra/${oc[4]}/${facturaTarde}.pdf`, PDF.length, ids[CUENTAS.logistica], `F010-${SUFIJO}`, hoy],
+  )
+  await como(null)
+  const [{ n: avisos }] = await consulta(
+    `select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = $2 and titulo like 'Llegó factura de una OC pagada: %'`,
+    [ids[CUENTAS.tesoreria], oc[4]],
+  )
+  comprobar(avisos === 1, `a Tesorería le llega el aviso de anular su pago (${avisos})`)
+
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const fila = pagina.locator(`article#compra-${oc[4]}`)
+  comprobar((await fila.count()) === 1 && (await fila.isVisible()), `la ${nombre(oc[4])} sale a la vista, no escondida entre las pagadas`)
+  comprobar((await pagina.locator('details', { has: fila }).count()) === 0, 'fuera del desplegable de pagadas')
+  const texto = limpio(await fila.textContent().catch(() => ''))
+  comprobar(texto.includes('Pago por anular') && texto.includes(`factura F010-${SUFIJO}`) && texto.includes('Anula el pago de aquí'),
+    `pide anular el pago para que se registre la factura: «${texto.slice(0, 260)}»`)
+  comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'y no ofrece pagarla otra vez')
+  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGO_POR_ANULAR', 'Adquisiciones la da por «pago por anular»')
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const enAdq = limpio(await pagina.locator(`tbody tr[data-orden="${nombre(oc[4])}"]`).textContent().catch(() => ''))
+  comprobar(enAdq.includes('Pago por anular') && enAdq.includes('Anular el pago en Cuentas por pagar') && !enAdq.includes('Pagar en Cuentas por pagar'),
+    `y la fila lleva a anularlo, no a pagar: «${enAdq.slice(0, 220)}»`)
+
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await pagina.locator(`[data-anular-pago-compra="${pagoEntero}"]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('textarea[name="motivo"]').fill('El proveedor entregó factura: se paga por ella')
+  await v.getByRole('button', { name: 'Anular' }).click()
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
+  const aviso = await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => Boolean(t), 5000)
+  comprobar(limpio(aviso).includes(`se paga por su comprobante F010-${SUFIJO}`), `el aviso dice que se paga por la factura, no que vuelve a pagarse aquí: «${limpio(aviso)}»`)
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const despues = pagina.locator(`article#compra-${oc[4]}`)
+  comprobar((await despues.locator('[data-pagar-compra]').count()) === 0 && limpio(await despues.textContent()).includes('Llegó factura'),
+    'la tarjeta sigue sin pagar directo y dice que llegó factura')
+  await contexto.close()
+
+  // Gerencia lee quién lo hace, no una orden que no puede cumplir.
+  await como('tesoreria')
+  const [{ id: otroPago }] = await consulta('select gen_random_uuid() as id')
+  await como(null)
+  await consulta('begin')
+  await consulta('set local session_replication_role = replica')
+  await consulta(
+    `insert into pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+     values ($1, $2, $3::date, 'PEN', 10, false, $4, 'application/pdf', $5, $6)`,
+    [otroPago, oc[4], hoy, `${oc[4]}/${otroPago}.pdf`, PDF.length, ids[CUENTAS.tesoreria]],
+  )
+  await consulta('commit')
+  const g = await entrar('gerencia')
+  await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const paraGerencia = limpio(await g.pagina.locator(`article#compra-${oc[4]}`).textContent().catch(() => ''))
+  comprobar(paraGerencia.includes('Tesorería tiene que anular') && !paraGerencia.includes('Anula el pago de aquí'),
+    `a Gerencia le dice quién anula: «${paraGerencia.slice(0, 220)}»`)
+  await g.contexto.close()
 }
 
 // ---------------------------------------------------------------- 4. Logística adjunta la factura y el contrato de la OS
