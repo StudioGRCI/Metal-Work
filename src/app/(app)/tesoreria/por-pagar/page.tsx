@@ -769,7 +769,9 @@ function CompraConBoletaFila({
                     Voucher
                   </a>
                 )}
-                {paga && !p.anulado_en && <AnularPagoCompra pagoId={p.id} queQueda={queQuedaAlAnular(b, p.id, m)} />}
+                {paga && !p.anulado_en && (
+                  <AnularPagoCompra pagoId={p.id} etiqueta={`el pago del ${fecha(p.fecha_pago)} por ${moneda(p.monto, m)}`} queQueda={queQuedaAlAnular(b, p.id, m)} />
+                )}
               </span>
             </li>
           ))}

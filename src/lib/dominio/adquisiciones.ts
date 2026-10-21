@@ -197,7 +197,7 @@ export function anexoPorRevisarAlAnular(
   const queda = oc.pagos.length > 0 ? 'la OC sigue con su pago directo' : 'la OC se paga por su boleta'
   const base = `La factura ${factura.numero}, que Contabilidad registró para otras OC, no alcanza para esta: lo más probable es que el anexo esté mal. Anúlalo y ${queda}. No se borra: queda tachado en la ${oc.nombre} con su PDF, el motivo, quién y cuándo.`
   if (factura.pagado > 0) {
-    return `${base} Si la factura sí incluía esta OC, anúlalo igual y avisa a Tesorería: la base no liga una OC con boleta a una factura ya registrada, así que Tesorería paga por la boleta solo lo que la factura no cubrió, o pide la devolución si ya la pagó.`
+    return `${base} Si la factura sí incluía esta OC, anúlalo igual: Tesorería recibe el aviso, paga por la boleta solo lo que la factura no cubrió o pide la devolución si ya la pagó. El sistema no deja ligar una OC con boleta a una factura ya registrada.`
   }
   return `${base} Si es de otra OC, después la anexas a la buena; si Contabilidad escribió mal su total, que lo corrija y el anexo deja de estar por revisar.`
 }

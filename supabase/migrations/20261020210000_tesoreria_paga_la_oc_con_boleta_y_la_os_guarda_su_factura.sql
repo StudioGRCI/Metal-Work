@@ -789,6 +789,15 @@ begin
                      || case when v_factura.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_factura.pagado, 'FM999G999G990D00')
                      || case when v_pagos > 0 then '; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución.'
                              else '; si esta OC era parte de ella (Contabilidad lo ve en la factura), paga por su boleta solo lo que la factura no cubrió.' end
+                -- Sin pagos todavía, la factura de otras OC también puede incluir esta
+                -- (un descuento que no le deja su parte): que nadie la pague dos veces.
+                when v_factura.estado = 'REGISTRADA' and not v_factura.cubre_su_oc
+                     and exists (select 1 from public.adquisiciones a
+                                  where a.id = v_factura.adquisicion_id
+                                    and (a.orden_compra_id <> v_oc.id
+                                         or exists (select 1 from public.adquisiciones_ordenes_compra l
+                                                     where l.adquisicion_id = a.id and l.quitada_en is null and l.orden_compra_id <> v_oc.id)))
+                then ' Ojo: la factura ' || v_factura.numero || ' está registrada para otras OC; si esta OC era parte de ella (Contabilidad lo ve en la factura), no la pagues dos veces: pregúntale a Contabilidad antes de pagarla por su boleta.'
                 else '' end,
       '/tesoreria/por-pagar#compra-' || v_oc.id, 'documentos_compra_material', p_id, public.usuario_actual());
   end if;

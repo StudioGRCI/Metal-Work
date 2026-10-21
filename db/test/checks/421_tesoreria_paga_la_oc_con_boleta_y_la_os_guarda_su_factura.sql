@@ -494,17 +494,33 @@ select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada
 -- ella, a otra OC o a ninguna; la misma factura se reconoce escrita de otra
 -- forma y no entra dos veces; registrada sin OC se liga sola a la OC que la
 -- puede llevar; y el anexo equivocado lo anula Logística.
+-- El PDF se sube como superusuario (Storage tiene su política aparte, probada
+-- arriba); el anexo entra con el rol real de Logística, como lo deja «Adjuntar»:
+-- como superusuario, los checks pasaban mientras Logística no podía anexar.
 create or replace function pg_temp.anexar(p_doc text, p_oc text, p_numero text) returns uuid language plpgsql as $$
-declare v_ruta text := 'compra/' || pg_temp.id(p_oc) || '/' || pg_temp.id(p_doc) || '.pdf';
+declare
+  v_doc uuid := pg_temp.id(p_doc);
+  v_oc uuid := pg_temp.id(p_oc);
+  v_comprador uuid := pg_temp.id('comprador');
+  v_hoy date := current_setting('prueba.hoy')::date;
+  v_ruta text := 'compra/' || pg_temp.id(p_oc) || '/' || pg_temp.id(p_doc) || '.pdf';
+  -- Quien estaba en la sesión vuelve al terminar: el anexo no cambia el usuario de lo que sigue.
+  v_sub text := current_setting('request.jwt.claim.sub', true);
+  v_rol text := current_setting('request.jwt.claim.role', true);
+  v_claims text := current_setting('request.jwt.claims', true);
 begin
   insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
-  values ('documentos-compras', v_ruta, pg_temp.id('comprador'), pg_temp.id('comprador')::text,
-          jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+  values ('documentos-compras', v_ruta, v_comprador, v_comprador::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+  perform pg_temp.como('comprador');
+  set local role authenticated;
   insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por,
                                                  numero_documento, fecha_emision)
-  values (pg_temp.id(p_doc), pg_temp.id(p_oc), 'FACTURA', 'factura-' || p_numero || '.pdf', v_ruta, 'application/pdf', 2048,
-          pg_temp.id('comprador'), p_numero, current_setting('prueba.hoy')::date);
-  return pg_temp.id(p_doc);
+  values (v_doc, v_oc, 'FACTURA', 'factura-' || p_numero || '.pdf', v_ruta, 'application/pdf', 2048, v_comprador, p_numero, v_hoy);
+  reset role;
+  perform set_config('request.jwt.claim.sub', coalesce(v_sub, ''), true),
+          set_config('request.jwt.claim.role', coalesce(v_rol, ''), true),
+          set_config('request.jwt.claims', coalesce(v_claims, ''), true);
+  return v_doc;
 end $$;
 create or replace function pg_temp.alta(p_clave text, p_proveedor text, p_numero text, p_condicion text default 'CONTADO')
 returns uuid language sql as $$

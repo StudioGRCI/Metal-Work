@@ -41,7 +41,7 @@ export type OrdenCompraListada = {
   /** Compra insumos de RQ línea por línea: su código es el de cada insumo y se corrige en el RQ. */
   codigo_por_insumo: boolean
   /** Las facturas que Logística le anexó, con su número y su fecha; una OC puede ir en varias. */
-  facturas: { numero: string; fecha: string | null }[]
+  facturas: { id: string; numero: string; fecha: string | null }[]
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
 }
@@ -86,13 +86,13 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   // borrarla); se leen aparte, de a tandas para no alargar la URL.
   const ids = (data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id))
   const datosCompra = new Map<string, { con_factura: boolean; codigo_interno: string | null }>()
-  const facturasDe = new Map<string, { numero: string; fecha: string | null }[]>()
+  const facturasDe = new Map<string, { id: string; numero: string; fecha: string | null }[]>()
   for (let i = 0; i < ids.length; i += 150) {
     const [tanda, facturas] = await Promise.all([
       supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150)),
       supabase
         .from('documentos_compra_material')
-        .select('orden_compra_id, numero_documento, fecha_emision')
+        .select('id, orden_compra_id, numero_documento, fecha_emision')
         .eq('tipo', 'FACTURA')
         .not('numero_documento', 'is', null)
         .is('anulado_en', null)
@@ -104,7 +104,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
     for (const f of facturas.data ?? []) {
       if (!f.numero_documento) continue
-      facturasDe.set(f.orden_compra_id, [...(facturasDe.get(f.orden_compra_id) ?? []), { numero: f.numero_documento, fecha: f.fecha_emision }])
+      facturasDe.set(f.orden_compra_id, [...(facturasDe.get(f.orden_compra_id) ?? []), { id: f.id, numero: f.numero_documento, fecha: f.fecha_emision }])
     }
   }
   // Qué RQ atiende cada compra y con qué código interno: la OC que junta

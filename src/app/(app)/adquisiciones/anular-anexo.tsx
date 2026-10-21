@@ -27,12 +27,15 @@ export function AnularAnexo({
   oc,
   factura,
   porRevisar = null,
+  borrador = null,
 }: {
   id: string
   etiqueta: string
   oc: string
   factura: boolean
   porRevisar?: string | null
+  /** El número del borrador de Contabilidad que eligió este anexo: anulado, sigue con la OC y la OC lo sigue esperando. */
+  borrador?: string | null
 }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(anularDocumentoCompra, () => setAbierta(false))
@@ -49,6 +52,8 @@ export function AnularAnexo({
         descripcion={
           porRevisar
             ? porRevisar
+            : borrador
+              ? `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo. Contabilidad tiene en borrador la factura ${borrador} con este anexo: el borrador sigue con la ${oc}, y la OC lo espera hasta que Contabilidad lo complete con su PDF o le quite la OC (recibe el aviso). Si era de otra OC, después la anexas a la buena.`
             : factura
               ? `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo, y deja de contar para su pago. Si era de otra OC, después la anexas a la buena. Tesorería y Contabilidad reciben el aviso si les cambia algo.`
               : `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo. Después anexas la buena.`

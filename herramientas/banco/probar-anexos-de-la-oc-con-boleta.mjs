@@ -410,6 +410,12 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
     FY,
   ])
   comprobar(avisos >= 1, `Contabilidad recibió el aviso de la anulación (${avisos})`)
+  // FY es de la OC C y no tiene pagos: si la B era parte de ella, que Tesorería no la pague dos veces.
+  const [ojo] = await consulta(`select cuerpo from notificaciones where usuario_id = $1 and origen_id = $2 and titulo like 'La OC vuelve a pagarse por su boleta: %'`, [
+    ids[CUENTAS.tesoreria],
+    anexoY,
+  ])
+  comprobar(Boolean(ojo?.cuerpo?.includes(`Ojo: la factura ${FY} está registrada para otras OC`)), `Tesorería recibe el «Ojo» de la factura de otras OC: «${ojo?.cuerpo ?? ''}»`)
   comprobar((await pagoSegunAdquisiciones(oc.B)) === 'POR_PAGAR', 'la OC B vuelve a estar por pagar')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-2-logistica.png`, fullPage: true })
   await contexto.close()
@@ -454,8 +460,9 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   const boton = pagina.getByRole('button', { name: 'Registrar comprobante' })
   await hasta(() => boton.isDisabled(), (d) => d, 5000)
   const avisoG = limpio(await formulario.innerText())
-  comprobar(avisoG.includes('la base no registra esta factura, ni en borrador, hasta que Tesorería anule'), 'al elegirlo dice por qué la base no la registra')
+  comprobar(avisoG.includes('el sistema no registra esta factura, ni en borrador, hasta que Tesorería anule'), 'al elegirlo dice por qué la base no la registra')
   comprobar(await boton.isDisabled(), '«Registrar comprobante» queda desactivado')
+  comprobar((await boton.getAttribute('aria-describedby')) === 'adq-pagada-directo', 'y el lector de pantalla lee por qué')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-3-contabilidad.png`, fullPage: true })
   await contexto.close()
 }

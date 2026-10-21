@@ -690,8 +690,11 @@ export function PagarCompra({
  * qué pasa con la OC: si le llegó su comprobante, ya no se paga aquí, sino por
  * él; y si le queda otro pago directo vigente, ese también se anula antes.
  */
-/** `queQueda` lo arma la página con los pagos que se ven: lo mismo que dirá el aviso de después. */
-export function AnularPagoCompra({ pagoId, queQueda }: { pagoId: string; queQueda: string }) {
+/**
+ * `queQueda` lo arma la página con los pagos que se ven: lo mismo que dirá el aviso de después.
+ * `etiqueta` dice cuál pago anula: con dos, el lector de pantalla leía «Anular» dos veces.
+ */
+export function AnularPagoCompra({ pagoId, etiqueta, queQueda }: { pagoId: string; etiqueta: string; queQueda: string }) {
   const [abierta, setAbierta] = useState(false)
   const avisar = useAvisoDeLaCaja()
   const { alEnviar, enviando, error } = useEnvio(anularPagoCompra, (r) => {
@@ -700,7 +703,7 @@ export function AnularPagoCompra({ pagoId, queQueda }: { pagoId: string; queQued
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-compra={pagoId}>
+      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-compra={pagoId} aria-label={`Anular ${etiqueta}`}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

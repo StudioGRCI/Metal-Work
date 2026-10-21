@@ -388,8 +388,8 @@ function Formulario({
         )}
         {/* La OC con boleta ya pagada directo: la base no registra su factura hasta que Tesorería anule ese pago. */}
         {elegida?.pagadaDirecto && (
-          <p className="text-xs text-aviso">
-            Tesorería ya pagó la {elegida.oc} directo, por su boleta: la base no registra esta factura, ni en borrador, hasta que Tesorería anule
+          <p id="adq-pagada-directo" className="text-xs text-aviso">
+            Tesorería ya pagó la {elegida.oc} directo, por su boleta: el sistema no registra esta factura, ni en borrador, hasta que Tesorería anule
             ese pago.
           </p>
         )}
@@ -431,7 +431,12 @@ function Formulario({
       </Campo>
       <div className="space-y-2 sm:col-span-2 xl:col-span-3">
         {/* La base no registra la factura de una OC con boleta ya pagada directo, ni en borrador: el botón no lo ofrece. */}
-        <Boton type="submit" cargando={enviando} disabled={Boolean(elegida?.pagadaDirecto)}>
+        <Boton
+          type="submit"
+          cargando={enviando}
+          disabled={Boolean(elegida?.pagadaDirecto)}
+          aria-describedby={elegida?.pagadaDirecto ? 'adq-pagada-directo' : undefined}
+        >
           Registrar comprobante
         </Boton>
         {error && (

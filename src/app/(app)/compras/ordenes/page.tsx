@@ -175,7 +175,8 @@ function FilaCompra({
         {c.facturas.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
             {c.facturas.map((f) => (
-              <li key={f.numero} className="tabular whitespace-nowrap">
+              // El mismo número puede ir anexado dos veces a la OC: la clave es el anexo.
+              <li key={f.id} className="tabular whitespace-nowrap">
                 {f.numero}
                 {f.fecha && <span className="text-texto-suave"> · {fecha(f.fecha)}</span>}
               </li>

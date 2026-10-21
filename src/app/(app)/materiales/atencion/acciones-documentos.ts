@@ -152,17 +152,20 @@ export async function registrarDocumentoCompra(
   const registrada = s?.en_camino_origen === 'REGISTRADA'
   const revisar = Boolean(s && registrada && s.en_camino_alcanza === false)
   const dosVeces = Boolean(s && !revisar && pagos > 0 && registrada && Number(s.pagada_dos_veces ?? 0) > 0)
+  // Administración también anexa, pero no entra a Adquisiciones: el anexo lo anula Logística.
+  const anulaQuien = puede(perfil, 'adquisiciones.ver') ? 'anula el anexo en Adquisiciones › OC y OS, en la fila de la OC' : 'pide a Logística que anule el anexo en Adquisiciones'
+  const vouchers = pagos === 1 ? 'el mismo voucher' : 'los mismos vouchers'
   return {
     ok: true,
     datos: { revisar, dosVeces },
     mensaje: errorSituacion || !s
       ? `Factura ${numeroFactura} adjuntada a la compra.`
       : revisar
-        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, anula el anexo en Adquisiciones › OC y OS, en la fila de la OC${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
       : dosVeces
         ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada y pagada: la compra se pagó dos veces. Tesorería recibió el aviso para pedir la devolución al proveedor.`
         : pagos > 0 && registrada
-          ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada: Tesorería anula ${esePago} y paga la factura; con el mismo voucher va lo que ya salió.`
+          ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada: Tesorería anula ${esePago} y paga la factura; con ${vouchers} va lo que ya salió.`
           : pagos > 0 && s.en_camino
             ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ${esePago}.`
             : registrada

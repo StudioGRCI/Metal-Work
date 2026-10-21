@@ -590,6 +590,7 @@ function AnulaElAnexo({ f, d, acceso }: { f: CompraTrazada; d: Documento; acceso
       oc={nombreDe(f)}
       factura={d.tipo === 'FACTURA'}
       porRevisar={porRevisar}
+      borrador={d.factura?.estado === 'BORRADOR' ? d.factura.numero : null}
     />
   )
 }
