@@ -187,7 +187,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     {puedeEditar && (
                       <TD>
-                        <div className="flex flex-col items-start gap-2 xl:flex-row xl:items-center">
+                        <div className="flex flex-col items-start gap-2 min-[1440px]:flex-row min-[1440px]:items-center">
                           {/* Una unidad del taller todavía no tiene cliente: se edita
                               desde su orden, cuando Administración le pone uno. */}
                           {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}

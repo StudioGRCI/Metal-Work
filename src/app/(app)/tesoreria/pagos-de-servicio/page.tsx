@@ -5,6 +5,7 @@ import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { ParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
@@ -83,14 +84,13 @@ export default async function PaginaPagosDeServicio() {
       </Tarjeta>
 
       {pagados.length > 0 && (
-        <details className="mt-5 rounded-[var(--radius-base)] border border-borde bg-superficie">
-          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-sm font-medium text-texto">Pagados ({pagados.length})</summary>
-          <div className="space-y-3 border-t border-borde p-4">
+        <SeccionDesplegable titulo={`Pagados (${pagados.length})`} className="mt-5">
+          <div className="space-y-3">
             {pagados.map((s) => (
               <Servicio key={s.id} servicio={s} paga={paga} adjunta={adjunta} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
-        </details>
+        </SeccionDesplegable>
       )}
     </AvisoDeLaCaja>
   )

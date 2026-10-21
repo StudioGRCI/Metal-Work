@@ -144,14 +144,15 @@ function FormularioServicio({
     })
     if (adjunto.ok) return { ok: true, mensaje: `${emitida.mensaje ?? 'Orden de servicio emitida.'} Su contrato quedó adjunto.` }
     // La ventana ya se cerró: el aviso no pide «vuelve a intentar», dice dónde adjuntarlo.
-    const motivo = adjunto.error.startsWith('No se pudo subir')
-      ? 'El contrato no subió (revisa la señal).'
-      : `El contrato no se adjuntó: ${adjunto.error.charAt(0).toLowerCase()}${adjunto.error.slice(1).replace(/ Vuelve a intentar\.$/, '')}`
-    return {
-      ok: true,
-      mensaje: emitida.mensaje,
-      datos: { faltaContrato: `${motivo} Adjúntalo desde la fila de la orden, con «Adjuntar documento».` },
-    }
+    // Sin respuesta, el contrato pudo quedar: primero se mira (`subirArchivoFinanzas`).
+    const faltaContrato = adjunto.error.startsWith('No llegó la respuesta')
+      ? 'No llegó la respuesta al adjuntar el contrato: recarga la pantalla y mira en la fila de la orden si quedó; si no, adjúntalo con «Adjuntar documento».'
+      : `${
+          adjunto.error.startsWith('No se pudo subir')
+            ? 'El contrato no subió (revisa la señal).'
+            : `El contrato no se adjuntó: ${adjunto.error.charAt(0).toLowerCase()}${adjunto.error.slice(1).replace(/ Vuelve a intentar\.$/, '')}`
+        } Adjúntalo desde la fila de la orden, con «Adjuntar documento».`
+    return { ok: true, mensaje: emitida.mensaje, datos: { faltaContrato } }
   }
   const { alEnviar, enviando, error } = useEnvio(emitir, (r) =>
     alTerminar(r.mensaje ?? 'Orden de servicio emitida.', r.datos?.faltaContrato ?? null),

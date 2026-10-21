@@ -44,6 +44,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/diseno/evaluaciones/\\[id\\]/pdf': ['./public/marca/logo-metal-work.png'],
     '/diseno/informe-semanal/descargar': ['./public/marca/logo-metal-work.png'],
+    '/compras/\\[id\\]/pdf': ['./public/marca/logo-metal-work.png'],
+    '/ordenes/\\[id\\]/control-vehicular/pdf': ['./public/marca/logo-metal-work.png'],
+    '/vehiculos/\\[id\\]/ficha/pdf': ['./public/marca/logo-metal-work.png'],
   },
   // Sin esto la respuesta anuncia «Next.js» a cualquiera que mire las cabeceras.
   poweredByHeader: false,

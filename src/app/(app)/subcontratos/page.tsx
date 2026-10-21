@@ -174,6 +174,16 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
             {fecha(s.fecha_inicio)} → {fecha(s.fecha_fin)}
           </p>
         )}
+        {s.inicio_real && (
+          <p className="text-[11px] text-texto-suave" data-fechas-reales>
+            Real: {fecha(s.inicio_real)} → {s.fin_real ? fecha(s.fin_real) : 'todavía no termina'}
+          </p>
+        )}
+        {s.fin_real && s.estado === 'VIGENTE' && (
+          <p className="mt-1" data-termino-segun-supervisor>
+            <Insignia tono="aviso">Terminó según el supervisor</Insignia>
+          </p>
+        )}
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {s.motivo_anulacion}</p>}
         <p className="tabular mt-1 text-[11px] font-medium text-texto md:hidden" data-codigo>
           {s.codigo_interno} · <Area codigo={s.area_codigo} />

@@ -29,6 +29,13 @@ SUPABASE_SERVICE_ROLE_KEY=<la que imprimió> \
 npx next dev -p 3111
 ```
 
+Con `next start` en vez de `next dev`, antes va `next build` con las mismas
+variables: `next start` sirve el último build, no el código. El 2026-10-20 un
+`next start` que sobrevivió a un cambio de rama sirvió un build de horas antes
+y los recorridos dieron por buenas pantallas que ya no existían así. Y si el
+banco viene de otra rama, `preparar.sh` otra vez: una base sin las últimas
+migraciones hace caer pantallas que en producción abren.
+
 Y para el recorrido automático de todas las pantallas:
 
 ```bash
@@ -100,6 +107,7 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `probar-pagos-mueven-la-caja.mjs` | Los pagos y cobros que mueven la caja diaria, con la cuenta de Tesorería: cada pago (factura de compra, orden de servicio, recibo por honorarios, planilla diaria) y el cobro de una factura de venta piden la cuenta, dejan un solo movimiento aunque se toque tres veces, piden lo que salió de la cuenta si es de otra moneda, y al anular el pago se anula su egreso; la caja los muestra con dónde se anulan y Gerencia no paga. Arma sus documentos y dos cuentas de prueba. |
 | `probar-archivos-con-politicas.mjs` | Los archivos piden lo mismo que en Supabase Storage: quien subió una foto la firma y la descarga, una ficha falsa o de otro archivo no abre nada, Ventas no firma, descarga, sube ni quita lo que su política le tapa, y sin sesión no sale nada. Usa archivos que el banco ya tiene. |
 | `probar-captura-del-saldo.mjs` | La captura del saldo con que se abre cada cuenta de la caja, y los menús que DKS ordenó el 2026-10-20, con las cuentas de Tesorería, Contabilidad y Gerencia: un banco nuevo no entra sin su captura, la cuenta la nombra y «Ver la captura del saldo» la abre; la caja chica la adjunta después; con movimientos ya no se cambia. Contabilidad registra el tipo de cambio y no entra a los requerimientos; Tesorería ya no entra al tipo de cambio. Mira `storage.objects` después de cada clic. |
+| `probar-gerencia-consulta-y-no-registra.mjs` | Gerencia consulta y no registra (decisión del 2026-10-20): el almacén y Logística ven sus botones en el kardex y en las compras, Gerencia abre las mismas pantallas sin ninguno, aprueba un trabajo sin orden pero no registra uno, sigue con «Anular» en una OT, y el catálogo de materiales, la gestión de recojos y el alta de un trabajo sin orden la mandan a «sin permiso». |
 | `caja-de-prueba.mjs` | Ayudante de las pruebas que pagan o cobran: da de alta una cuenta de prueba y la elige en la ventana, porque desde la migración `20261019100000` cada pago pide su cuenta. |
 
 ## Lo que respeta y lo que no

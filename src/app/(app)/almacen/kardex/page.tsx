@@ -1,10 +1,12 @@
-import { Download } from 'lucide-react'
+import { Download, X } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -208,10 +210,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               <Entrada id="k-unidad" name="unidad" type="search" defaultValue={filtros.unidad ?? ''} placeholder="Placa o código interno" autoComplete="off" />
             </Campo>
             <div className="flex items-center gap-3">
-              <button type="submit" className="inline-flex min-h-11 items-center rounded-[var(--radius-base)] bg-acento px-4 text-sm font-medium text-acento-texto hover:opacity-90 sm:min-h-9">
-                Ver
-              </button>
-              {hayFiltros && <Link href="/almacen/kardex" className="text-sm text-acento hover:underline">Limpiar</Link>}
+              <Boton type="submit">Ver</Boton>
+              {hayFiltros && (
+                <EnlaceBoton href="/almacen/kardex" variante="fantasma" className="px-3">
+                  <X aria-hidden className="size-3.5" />
+                  Limpiar
+                </EnlaceBoton>
+              )}
             </div>
           </form>
           <PastillaFiltro

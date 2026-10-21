@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import type { PlanoDeCodigo, RevisionDePlano } from '@/lib/datos/diseno-codigos'
 import { tamanoArchivo } from '@/lib/dominio/diseno-codigos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
@@ -55,11 +56,8 @@ export function ListaPlanos({
         )
       })}
       {anulados.length > 0 && (
-        <details className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
-          <summary className="cursor-pointer text-texto-suave">
-            {anulados.length} {anulados.length === 1 ? 'plano anulado' : 'planos anulados'}
-          </summary>
-          <ul className="mt-2 space-y-2">
+        <Pliegue titulo={`${anulados.length} ${anulados.length === 1 ? 'plano anulado' : 'planos anulados'}`} enCaja className="text-sm">
+          <ul className="space-y-2">
             {anulados.map((p) => (
               <li key={p.id} data-plano={p.id}>
                 <p className="text-texto line-through">
@@ -71,7 +69,7 @@ export function ListaPlanos({
               </li>
             ))}
           </ul>
-        </details>
+        </Pliegue>
       )}
     </div>
   )

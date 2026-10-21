@@ -34,6 +34,11 @@ export async function listarCatalogoMateriales(
       { count: 'exact' },
     )
     .order('descripcion')
+    // Desempate: hay materiales con la misma descripción (once esmeriles en
+    // producción), y sin él cada página los ordenaba distinto; uno salía en dos
+    // páginas y otro en ninguna (2026-10-20).
+    .order('codigo')
+    .order('id')
     .range((pagina - 1) * TAMANO_PAGINA, pagina * TAMANO_PAGINA - 1)
 
   if (!filtros.inactivos) consulta = consulta.eq('activo', true)

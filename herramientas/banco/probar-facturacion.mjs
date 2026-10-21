@@ -98,7 +98,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
+    // ERR_CONNECTION_RESET es la señal que el cobro corta a propósito.
+    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket') && !m.text().includes('ERR_CONNECTION_RESET')) {
+      errores.push(`${correo}: ${m.text().slice(0, 300)}`)
+    }
   })
   await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', correo)
@@ -416,9 +419,27 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   await v.locator('input[name="operacion"]').fill('OP-000123')
   await v.locator('input[name="archivo"]').setInputFiles(PDF_VOUCHER)
   await elegirCuenta(v, cajaDolares)
+  // La señal se corta justo cuando vuelve la respuesta: el servidor anota el
+  // cobro, pero el navegador no se entera. El voucher no se toca, porque la
+  // fila pudo entrar y quedaría nombrando un archivo que no existe.
+  let cortada = false
+  await pagina.route('**/*', async (r) => {
+    if (!cortada && r.request().method() === 'POST' && r.request().headers()['next-action']) {
+      cortada = true
+      await r.fetch().catch(() => {})
+      return r.abort('connectionreset')
+    }
+    return r.continue()
+  })
   await v.getByRole('button', { name: 'Registrar el cobro' }).click()
   const e1 = await esperarVentana(pagina)
-  comprobar(e1 === '', `el cobro a cuenta entra con su voucher${e1 ? ` (dijo: ${e1})` : ''}`)
+  await pagina.unroute('**/*')
+  comprobar(cortada && e1.includes('No llegó la respuesta'), `sin respuesta, pide mirar antes de reintentar${e1 ? ` («${e1}»)` : ''}`)
+  const [cobro] = await consulta(
+    `select exists (select 1 from storage.objects o where o.bucket_id = 'cobros-venta' and o.name = c.archivo_ruta) as archivo
+       from cobros_factura_venta c join facturas_venta f on f.id = c.factura_id where f.numero = $1`, [FACTURA])
+  comprobar(cobro?.archivo === true, 'el cobro entró y su voucher sigue en el almacenamiento')
+  await ir(pagina, pagina.url())
   await factura.getByText('Cobro a cuenta').waitFor({ timeout: 30000 }).catch(() => {})
   const [s] = await consulta(`select saldo, cobrado from v_facturas_venta where numero = $1`, [FACTURA])
   comprobar(Number(s?.saldo) === 19500 && Number(s?.cobrado) === 10000, 'el cobro baja el saldo a 19 500')

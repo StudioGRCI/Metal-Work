@@ -49,7 +49,7 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
               autoComplete="off"
               defaultValue={cliente?.numero_documento ?? ''}
               className="tabular"
-              placeholder="20512345678"
+              placeholder="20XXXXXXXXX"
             />
           </Campo>
 

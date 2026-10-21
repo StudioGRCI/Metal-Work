@@ -1,13 +1,15 @@
 import { notFound } from 'next/navigation'
 
+import { AdjuntarContrato, ContratoVigente } from '@/components/estructura/contrato-adjunto'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosParaSubcontratos, subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
-import { ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
+import { BUCKET_SUBCONTRATOS, ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
 import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { adjuntarContratoSubcontrato } from '../acciones'
 import { EnlaceArchivo } from '../enlace-archivo'
 import { AnularConMotivo, CambiarEstado, CorregirSubcontrato, SubirRecibo } from './controles'
 
@@ -15,10 +17,12 @@ export const metadata = { title: 'Subcontrato' }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export default async function PaginaSubcontrato({ params }: PageProps<'/subcontratos/[id]'>) {
+export default async function PaginaSubcontrato({ params, searchParams }: PageProps<'/subcontratos/[id]'>) {
   const perfil = await exigirPermiso(['subcontratos.gestionar', 'subcontratos.ver', 'subcontratos.pagar'])
   const gestiona = puede(perfil, 'subcontratos.gestionar')
   const { id } = await params
+  // Al registrar con contrato, si el subcontrato entró y el contrato no, llega aquí con ?contrato=pendiente.
+  const contratoPendiente = (await searchParams).contrato === 'pendiente'
   if (!GUID.test(id)) notFound()
   const [s, codigos] = await Promise.all([subcontratoDetalle(id), gestiona ? codigosParaSubcontratos() : Promise.resolve([])])
   if (!s) notFound()
@@ -70,6 +74,15 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
         <p className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-sin-area>
           Este subcontrato es de antes de que se eligiera el área: ni Producción ni Acabados lo ven.
           {gestiona && (vigente ? ' Elige para cuál va con «Corregir».' : ' Reábrelo y elige el área con «Corregir».')}
+        </p>
+      )}
+      {contratoPendiente && !anulado && s.contratos.length === 0 && (
+        <p role="alert" className="mb-4 rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-contrato-pendiente>
+          El subcontrato quedó registrado, pero el contrato no se subió.{' '}
+          <a href="#contrato" className="font-medium text-acento underline">
+            Adjúntalo aquí
+          </a>
+          .
         </p>
       )}
       {estado === 'TERMINADO' && (
@@ -125,6 +138,31 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
           )}
         </Tarjeta>
 
+        <Tarjeta id="contrato" className="scroll-mt-20">
+          <TarjetaCabecera
+            titulo="Contrato"
+            ayuda="El contrato firmado con el subcontratista. Si llega otra versión (una adenda, el firmado que reemplaza al borrador), se adjunta encima y la anterior queda como evidencia. El supervisor del área no lo ve: lleva el monto."
+            acciones={
+              gestiona &&
+              !anulado && (
+                <AdjuntarContrato
+                  bucket={BUCKET_SUBCONTRATOS}
+                  carpeta={s.id}
+                  numero={s.numero}
+                  hay={s.contratos.length > 0}
+                  adjuntar={adjuntarContratoSubcontrato.bind(null, s.id)}
+                />
+              )
+            }
+          />
+          <TarjetaCuerpo>
+            <ContratoVigente
+              contratos={s.contratos}
+              sinContrato={gestiona && !anulado ? 'Adjúntalo con «Adjuntar contrato» cuando lo tengas.' : 'Lo adjunta Administración.'}
+            />
+          </TarjetaCuerpo>
+        </Tarjeta>
+
         <Tarjeta>
           <TarjetaCabecera titulo="Datos del subcontrato" />
           <TarjetaCuerpo>
@@ -145,9 +183,25 @@ export default async function PaginaSubcontrato({ params }: PageProps<'/subcontr
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-texto-suave">Fechas</dt>
+                <dt className="text-xs text-texto-suave">Fechas del contrato</dt>
                 <dd className="text-texto">
                   {s.fecha_inicio || s.fecha_fin ? `${fecha(s.fecha_inicio)} → ${fecha(s.fecha_fin)}` : 'Sin fechas'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-texto-suave">Fechas reales (referenciales)</dt>
+                <dd className="text-texto" data-fechas-reales>
+                  {s.inicio_real ? (
+                    <>
+                      {`Empezó el ${fecha(s.inicio_real)}${s.fin_real ? ` · terminó el ${fecha(s.fin_real)}` : ' · todavía no termina'}`}
+                      <span className="block text-xs text-texto-suave">
+                        Las marcó {s.fechas_reales_por ?? 'el supervisor del área'}
+                        {s.fechas_reales_en && ` el ${fecha(s.fechas_reales_en)}`}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-texto-suave">El supervisor del área todavía no las marca.</span>
+                  )}
                 </dd>
               </div>
               <div>
