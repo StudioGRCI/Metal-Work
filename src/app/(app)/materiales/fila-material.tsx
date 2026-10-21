@@ -150,7 +150,9 @@ export function FilaMaterial({
 
   return (
     <TR className={material.activo ? undefined : 'opacity-60'}>
-      <TD>
+      {/* Una palabra larga sin espacios («(355MMX2,8MMX25,4MM)DEWALT») empujaba
+          la tabla fuera del teléfono: se parte donde haga falta. */}
+      <TD className="[overflow-wrap:anywhere]">
         <p className="text-sm font-medium text-texto">{material.descripcion}</p>
         <p className="text-[11px] text-texto-suave">
           {material.codigo_almacen_origen ?? material.codigo}
