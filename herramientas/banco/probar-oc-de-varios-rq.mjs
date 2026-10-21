@@ -296,7 +296,8 @@ let ocNumero
   comprobar(enlazados?.n === 2, 'los dos insumos quedan anexados a la línea de la OC')
   const doc = await uno(`select numero_documento, fecha_emision::text as fecha_emision from public.documentos_compra_material where orden_compra_id = $1 and tipo = 'FACTURA'`, [ocId])
   comprobar(doc?.numero_documento === `${serie}-71` && doc?.fecha_emision === hoy, `la factura quedó con su número sin ceros (${doc?.numero_documento}) y su fecha`)
-  await pagina.waitForTimeout(800)
+  // La lista se repinta después del aviso: se espera a que la plancha salga, no un tiempo fijo.
+  await pagina.waitForFunction((texto) => !document.querySelector('main')?.innerText.includes(texto), plancha, { timeout: 15000 }).catch(() => {})
   const despues = limpio(await pagina.locator('main').innerText())
   comprobar(!despues.includes(plancha), 'lo que ya va en la orden sale de «Por comprar»')
   await pagina.screenshot({ path: `${CAPTURAS}/vrq-1-por-comprar.png`, fullPage: true })

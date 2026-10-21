@@ -12096,6 +12096,8 @@ export type Database = {
           comprobante_en_camino_alcanza: boolean | null
           pagada_dos_veces: number | null
           estuvo_en_factura: string | null
+          salio_por_boleta: number | null
+          comprobante_en_camino_saldo: number | null
         }[]
       }
       compras_en_gestion: {
@@ -12222,6 +12224,8 @@ export type Database = {
           documento_id: string | null
           alcanza: boolean | null
           pagado_dos_veces: number | null
+          salio_por_boleta: number | null
+          saldo: number | null
         }[]
       }
       confirmar_igv_cotizacion: {
@@ -14879,6 +14883,7 @@ export type Database = {
           saldo: number | null
           moneda: string | null
           en_camino_saldo: number | null
+          en_camino_salio: number | null
         }[]
       }
       solicitar_revision_salida: {

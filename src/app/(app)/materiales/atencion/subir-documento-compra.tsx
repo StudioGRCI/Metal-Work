@@ -29,24 +29,29 @@ const TIPOS = [
   ['OTRO', 'Otro documento'],
 ] as const
 
-export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden }: {
+export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden, verAdquisiciones = false }: {
   ordenCompraId: string
   solicitudId: string
   /** El que pide la compra: FACTURA, o COMPROBANTE si es sin factura. */
   tipoInicial?: 'FACTURA' | 'COMPROBANTE'
   /** El número, el total con IGV y la moneda de la orden: el detector compara la factura con ellos. */
   orden?: { numero: string; total: number; moneda: string }
+  /** Si quien anexa entra a Adquisiciones (`adquisiciones.ver`): sin él, el enlace a la OC lo dejaría en la puerta. */
+  verAdquisiciones?: boolean
 }) {
   const [id, setId] = useState(solicitudId)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
   const detector = useDetectorDeFactura()
   const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
-  // La factura no alcanza para la OC: el mensaje pide revisar el anexo, no dice que todo salió bien.
+  // La factura no alcanza para la OC, o la OC quedó pagada dos veces: el mensaje
+  // pide algo, no dice que todo salió bien.
   const [revisar, setRevisar] = useState(false)
+  const [dosVeces, setDosVeces] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
     setRevisar(false)
+    setDosVeces(false)
     const archivo = datos.get('archivo')
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
@@ -63,6 +68,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setRevisar(r.datos?.revisar ?? false)
+    setDosVeces(r.datos?.dosVeces ?? false)
     setId(crypto.randomUUID())
     factura.vaciar()
     void detector.leer(undefined)
@@ -96,9 +102,9 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     {mensaje && (
-      <p role="status" className={`text-xs sm:col-span-3 ${revisar ? 'text-aviso' : 'text-exito'}`}>
+      <p role="status" className={`text-xs sm:col-span-3 ${revisar || dosVeces ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}
-        {revisar && (
+        {revisar && verAdquisiciones && (
           <>
             {' '}
             <Link href={`/adquisiciones${orden?.numero ? `?q=${encodeURIComponent(orden.numero)}` : ''}`} className="font-medium underline">

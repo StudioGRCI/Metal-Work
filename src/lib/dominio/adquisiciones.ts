@@ -26,12 +26,13 @@ export const ESTADO_PAGO: Record<string, Def> = {
     descripcion:
       'Tesorería la pagó directo por su boleta y también pagó la factura que el proveedor entregó después: pide al proveedor la devolución de lo pagado de más, y el pago directo se anula cuando la devuelva.',
   },
-  // La OC con boleta a la que Logística anexó una factura registrada que no alcanza para esta (es de otras OC o es por menos).
+  // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza también para esta.
+  // La base no liga una OC con boleta a una factura ya registrada: la salida es anular el anexo o corregir el total.
   ANEXO_POR_REVISAR: {
     etiqueta: 'Anexo por revisar',
     tono: 'aviso',
     descripcion:
-      'Logística le anexó una factura que Contabilidad registró y que no alcanza para esta OC (es de otras OC o es por menos): no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija la factura.',
+      'Logística le anexó una factura que Contabilidad registró para otras OC y que no alcanza para esta: no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija el total de la factura, si lo escribió mal.',
   },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
@@ -178,12 +179,15 @@ export function bloqueoDelAnexo(
 
 /**
  * Lo que dice la ventana «Anular» del anexo por revisar: la factura registrada
- * no alcanza para esta OC (es de otras OC o es por menos), así que, si no es de
- * esta OC, el anexo es el que está mal. Si la factura ya tiene pagos, puede que
- * la OC fuera parte de ella (un descuento grande, una factura parcial): no se
- * afirma que el anexo está mal, se manda a revisarlo con Contabilidad. Anulado,
- * la OC con pagos directos sigue con ellos; la que no tiene, se paga por su
- * boleta (no «vuelve a pagarse»: se leía como pagarla otra vez).
+ * es de otras OC y no alcanza también para esta, así que lo más
+ * probable es que el anexo esté mal. No se manda a nadie a «ligar» la OC a la
+ * factura: `corregir_factura_compra` no acepta una OC con boleta, y el anexo por
+ * revisar no se paga por ningún lado mientras siga. Si la factura ya tiene
+ * pagos y sí incluía esta OC (un descuento grande, una factura parcial), se
+ * anula igual y Tesorería paga por la boleta solo lo que la factura no cubrió,
+ * o pide la devolución si ya la pagó (octava auditoría). Anulado, la OC con
+ * pagos directos sigue con ellos; la que no tiene, se paga por su boleta (no
+ * «vuelve a pagarse»: se leía como pagarla otra vez).
  */
 export function anexoPorRevisarAlAnular(
   oc: { nombre: string; pagos: unknown[] },
@@ -191,9 +195,9 @@ export function anexoPorRevisarAlAnular(
 ): string | null {
   if (factura.estado !== 'REGISTRADA' || factura.alcanza) return null
   const queda = oc.pagos.length > 0 ? 'la OC sigue con su pago directo' : 'la OC se paga por su boleta'
-  const tachado = `No se borra: queda tachado en la ${oc.nombre} con su PDF, el motivo, quién y cuándo, y ${queda}.`
+  const base = `La factura ${factura.numero}, que Contabilidad registró para otras OC, no alcanza para esta: lo más probable es que el anexo esté mal. Anúlalo y ${queda}. No se borra: queda tachado en la ${oc.nombre} con su PDF, el motivo, quién y cuándo.`
   if (factura.pagado > 0) {
-    return `Contabilidad registró la factura ${factura.numero} y no alcanza para esta OC, pero ya tiene pagos: si esta OC es parte de ella, no anules el anexo; pide a Contabilidad que la corrija y la ligue a esta OC. Anúlalo solo si la factura no es de esta OC. ${tachado}`
+    return `${base} Si la factura sí incluía esta OC, anúlalo igual y avisa a Tesorería: la base no liga una OC con boleta a una factura ya registrada, así que Tesorería paga por la boleta solo lo que la factura no cubrió, o pide la devolución si ya la pagó.`
   }
-  return `Contabilidad registró la factura ${factura.numero} y no alcanza para esta OC: es de otras OC o es por menos. Si no es de esta OC, este anexo es el que está mal. ${tachado} Si es de otra OC, después la anexas a la buena.`
+  return `${base} Si es de otra OC, después la anexas a la buena; si Contabilidad escribió mal su total, que lo corrija y el anexo deja de estar por revisar.`
 }

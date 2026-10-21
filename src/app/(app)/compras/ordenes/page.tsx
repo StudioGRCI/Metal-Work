@@ -28,6 +28,7 @@ function divisa(codigo: string) {
 export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
   const emite = puede(perfil, 'compras.crear')
+  const verAdquisiciones = puede(perfil, 'adquisiciones.ver')
   const [compras, proveedores, materiales, codigos] = await Promise.all([
     cargarOrdenesCompra(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
@@ -92,7 +93,7 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} correcciones={correcciones.get(c.id)} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -104,10 +105,12 @@ export default async function PaginaOrdenesCompra() {
 function FilaCompra({
   compra: c,
   emite,
+  verAdquisiciones,
   correcciones,
 }: {
   compra: OrdenCompraListada
   emite: boolean
+  verAdquisiciones: boolean
   correcciones: CorreccionVista[] | undefined
 }) {
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
@@ -206,6 +209,7 @@ function FilaCompra({
               entregada={Boolean(c.entregado_almacen_en)}
               total={c.con_factura ? Math.round((c.monto + igvCompra(c.monto)) * 100) / 100 : c.monto}
               moneda={c.moneda}
+              verAdquisiciones={verAdquisiciones}
             />
           )}
         </div>

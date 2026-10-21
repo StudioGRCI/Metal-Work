@@ -430,7 +430,8 @@ function Formulario({
         <AreaTexto id="adq-nota" name="observacion" maxLength={1000} />
       </Campo>
       <div className="space-y-2 sm:col-span-2 xl:col-span-3">
-        <Boton type="submit" cargando={enviando}>
+        {/* La base no registra la factura de una OC con boleta ya pagada directo, ni en borrador: el botón no lo ofrece. */}
+        <Boton type="submit" cargando={enviando} disabled={Boolean(elegida?.pagadaDirecto)}>
           Registrar comprobante
         </Boton>
         {error && (

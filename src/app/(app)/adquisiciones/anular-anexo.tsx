@@ -13,12 +13,13 @@ import { anularDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-
  * Logística anula la factura o la boleta que anexó por error a una OC, con su
  * motivo (migración 20261020210000). No se borra: queda tachada en la fila como
  * evidencia y deja de contar para el pago. Si la OC iba con boleta y esa
- * factura la sacaba del pago directo, vuelve a pagarse por su boleta. La factura
+ * factura la sacaba del pago directo, se paga por su boleta. La factura
  * que ya se pagó por un camino y quedaría libre para el otro no se anula: la
  * fila no ofrece el botón (`bloqueoDelAnexo`, en `lib/dominio/adquisiciones`) y la base lo rechaza igual.
  * `porRevisar` es lo que dice la ventana cuando la factura que Contabilidad
  * registró no alcanza para esta OC (`anexoPorRevisarAlAnular`): si no es de
- * esta OC, el error es el anexo; si ya tiene pagos, primero se revisa.
+ * esta OC, el error es el anexo; si ya tiene pagos, se anula igual y se avisa a
+ * Tesorería, que paga por la boleta solo lo que la factura no cubrió.
  */
 export function AnularAnexo({
   id,

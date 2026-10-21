@@ -15,19 +15,23 @@
  *   2. Anexo por revisar: Logística anexa a la OC B (boleta) una factura que
  *      Contabilidad registró para la OC C y no alcanza para las dos. Tesorería
  *      ve «Anexo por revisar» sin botón de pagar; Adquisiciones dice lo mismo.
- *      La ventana de Logística dice que el anexo es el que está mal, y lo
- *      anula (tres toques, una anulación con su motivo),
- *      Contabilidad recibe el aviso y la OC B vuelve a pagarse por su boleta.
+ *      La ventana de Logística dice que lo más probable es que el anexo esté
+ *      mal (sin mandar a ligar la factura, que no se puede), y lo anula (tres
+ *      toques, una anulación con su motivo), Contabilidad recibe el aviso y la
+ *      OC B se paga por su boleta.
  *   3. La OC que ya tiene su factura: Contabilidad registró la de la OC D
  *      eligiéndola del desplegable y Logística le anexa otra (el mismo número
  *      mal escrito). El desplegable la ofrece diciendo que la OC ya tiene la
  *      suya, avisa al elegirla, y registrarla da el error de la base sin dejar
- *      una factura más.
- *   4. (séptima vuelta) Con el mismo voucher, lo que llevaba el pago: la OC E
- *      tiene S/ 100 a cuenta y Logística le anexa la factura FE, que
- *      Contabilidad ya registró. La tarjeta, la ventana «Anular» y el aviso de
- *      después dicen que con ese voucher van los S/ 100, y que lo que le falta a
- *      la factura es un pago nuevo (decía que se pagara toda la factura con él).
+ *      una factura más. (novena vuelta) El anexo FG de la OC G, ya pagada
+ *      directo: el desplegable lo marca y, al elegirlo, «Registrar
+ *      comprobante» queda desactivado.
+ *   4. (séptima vuelta) Con el mismo voucher, lo que ya salió: la OC E tiene
+ *      S/ 100 a cuenta y Logística le anexa la factura FE, que Contabilidad ya
+ *      registró. La tarjeta, la ventana «Anular» y el aviso de después dicen
+ *      que con ese voucher van los S/ 100 que ya salieron, y que lo que le
+ *      falta a la factura es un pago nuevo (decía que se pagara toda la factura
+ *      con él).
  *   5. (séptima vuelta) El borrador que eligió un anexo que Logística anula no
  *      queda sin salida: Contabilidad registró la factura de la OC F eligiendo
  *      su anexo y el registro quedó en borrador (se cayó el último paso);
@@ -96,6 +100,7 @@ const FZ = `F073-${SUFIJO}`
 const FZ_MAL = `F073-${SUFIJO}9`
 const FE = `F074-${SUFIJO}`
 const FF = `F075-${SUFIJO}`
+const FG = `F076-${SUFIJO}`
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
@@ -155,15 +160,15 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 6) n))`,
+        from generate_series(1, 7) n))`,
   [rq, area, `Prueba de los anexos de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
 await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
-// A, B, D, E y F van con boleta; C, con factura.
+// A, B, D, E, F y G van con boleta; C, con factura.
 await como('logistica')
 const oc = {}
-for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false]]) {
+for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false], ['G', 7, false]]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -233,6 +238,12 @@ const voucherE = await subir('pagos-compras', `${oc.E}/${pagoE}.pdf`, 'tesoreria
 await consulta(`select public.registrar_pago_compra($1, $2, $3::date, 100, false, null, null, $4, $5, null)`, [pagoE, oc.E, hoy, voucherE, caja])
 await registrar(FE, [])
 await anexar(oc.E, FE)
+// 3b. La OC G ya se pagó entera por su boleta y Logística le anexa FG, que nadie registró.
+const pagoG = await nuevoId()
+await como('tesoreria')
+const voucherG = await subir('pagos-compras', `${oc.G}/${pagoG}.pdf`, 'tesoreria')
+await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`, [pagoG, oc.G, hoy, total, voucherG, caja])
+await anexar(oc.G, FG)
 // 5. Contabilidad eligió el anexo FF de la OC F y el registro quedó en borrador.
 const anexoF = await anexar(oc.F, FF)
 const borradorF = await nuevoId()
@@ -378,8 +389,8 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   const { pagina, contexto } = await entrar('logistica')
   await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
   const { ventana, error } = await anularAnexo(pagina, oc.B, FY, 'Era la factura de la otra OC del mismo proveedor', 3)
-  comprobar(ventana.includes('Si no es de esta OC, este anexo es el que está mal') && ventana.includes(FY) && ventana.includes('la OC se paga por su boleta') && !ventana.includes('vuelve a pagarse'),
-    'la ventana dice que, si la factura no es de esta OC, el anexo es el que está mal, y que la OC se paga por su boleta')
+  comprobar(ventana.includes('lo más probable es que el anexo esté mal') && ventana.includes(FY) && ventana.includes('la OC se paga por su boleta') && !ventana.includes('vuelve a pagarse') && !ventana.includes('ligue'),
+    'la ventana dice que lo más probable es que el anexo esté mal, que la OC se paga por su boleta, y no manda a ligar la factura')
   comprobar(error === '', `la ventana se cerró sin error${error ? `: ${error}` : ''}`)
   const fila = await hasta(() => anulado(anexoY), (f) => f?.anulado_en)
   comprobar(Boolean(fila?.anulado_en) && fila.anulado_por === ids[CUENTAS.logistica] && fila.motivo_anulacion?.startsWith('Era la factura'), 'el anexo queda anulado, con quién y su motivo')
@@ -436,6 +447,15 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   comprobar(error.includes('ya tiene su factura') && error.includes(FZ), 'registrarlo da el error de la base, con la factura que ya tiene')
   const [{ n }] = await consulta(`select count(*)::int as n from adquisiciones where numero_documento = $1`, [FZ_MAL])
   comprobar(n === 0, 'y no deja una factura más')
+  // 3b. El anexo de una OC ya pagada directo: la base no lo registra, ni en borrador, y el botón no lo ofrece.
+  const opcionG = opciones.find((o) => o.includes(FG))
+  comprobar(Boolean(opcionG?.includes('la OC tiene pago directo: espera a Tesorería')), `el desplegable marca el anexo de la OC pagada directo: «${opcionG}»`)
+  await pagina.locator('#adq-documento').selectOption(await pagina.locator('#adq-documento option', { hasText: FG }).getAttribute('value'))
+  const boton = pagina.getByRole('button', { name: 'Registrar comprobante' })
+  await hasta(() => boton.isDisabled(), (d) => d, 5000)
+  const avisoG = limpio(await formulario.innerText())
+  comprobar(avisoG.includes('la base no registra esta factura, ni en borrador, hasta que Tesorería anule'), 'al elegirlo dice por qué la base no la registra')
+  comprobar(await boton.isDisabled(), '«Registrar comprobante» queda desactivado')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-3-contabilidad.png`, fullPage: true })
   await contexto.close()
 }
@@ -456,14 +476,14 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   const v = pagina.locator('[role="dialog"]')
   await v.waitFor()
   const ventana = limpio(await v.innerText())
-  comprobar(ventana.includes('van con el mismo voucher los S/ 100.00 de este pago'), `la ventana dice lo mismo: «${ventana.slice(0, 300)}»`)
+  comprobar(ventana.includes('van con el mismo voucher los S/ 100.00 que ya salieron') && ventana.includes(`los S/ ${resto} que le faltan después son un pago nuevo`), `la ventana dice lo mismo: «${ventana.slice(0, 300)}»`)
   await v.locator('textarea[name="motivo"]').fill('El proveedor entregó factura: se paga por ella')
   await v.getByRole('button', { name: 'Anular' }).click()
   const error = await esperarVentana(pagina)
   comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
   const aviso = limpio(await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => Boolean(t), 5000))
   console.log(`       el aviso: ${aviso.slice(0, 300)}`)
-  comprobar(aviso.includes('paga con el mismo voucher lo que llevaba este pago, S/ 100.00') && aviso.includes(`Los S/ ${resto} que le faltan después son un pago nuevo`),
+  comprobar(aviso.includes('paga con el mismo voucher los S/ 100.00 que ya salieron') && aviso.includes(`Los S/ ${resto} que le faltan después son un pago nuevo`),
     'el aviso de después manda a pagar con ese voucher S/ 100.00, no la factura entera, y dice cuánto es pago nuevo')
   const [{ n }] = await consulta(`select count(*)::int as n from pagos_orden_compra where id = $1 and anulado_en is not null`, [pagoE])
   comprobar(n === 1, 'el pago quedó anulado en la base')
