@@ -13,7 +13,9 @@
  *   4. En el monitor, donde la lista cabe, abre sin mover nada.
  *
  * Necesita más de un puñado de vehículos activos para que la lista sea larga;
- * si el banco trae menos de 30, siembra los que faltan (códigos `PRB_…`).
+ * si el banco trae menos de 30, siembra los que faltan (códigos `PRB_…`). Y
+ * el filtro del kardex necesita materiales con movimiento: si hay menos de 20,
+ * les da un ingreso a los que faltan («Banco de la lista al fondo»).
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
 import { mkdirSync } from 'node:fs'
@@ -46,6 +48,17 @@ if (activas < 30) {
     select 'Z' || lpad(n::text, 2, '0') || '-' || (100 + n), 'VOLVO', 'FMX', 'PRB_' || lpad(n::text, 3, '0')
       from generate_series(1, $1::int) n
      where not exists (select 1 from public.unidades u where u.codigo_interno = 'PRB_' || lpad(n::text, 3, '0'))`, [30 - activas])
+}
+// El filtro del kardex lista los materiales con movimiento; en un banco recién
+// preparado no hay ninguno y su lista sale vacía, sin nada que medir.
+const { rows: [{ conMovimiento }] } = await base.query('select count(*)::int as "conMovimiento" from public.v_existencias_materiales')
+if (conMovimiento < 20) {
+  await base.query(`insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, precio_unitario, moneda)
+    select gen_random_uuid(), 'INGRESO', m.id, 5, 'INGRESO_GENERAL', 'Banco de la lista al fondo',
+           (select id from auth.users where email = $1), 10, 'PEN'
+      from public.materiales m
+     where m.activo and not exists (select 1 from public.movimientos_materiales x where x.material_id = m.id)
+     order by m.codigo limit $2::int`, [CORREO, 20 - conMovimiento])
 }
 await base.end()
 
@@ -156,6 +169,7 @@ const medir = (pagina, idLista) =>
     document.body.style.paddingBottom = '600px'
     window.scrollBy(0, campo.getBoundingClientRect().bottom - window.innerHeight + 4 + Math.min(sobra, 0))
   })
+  const antes = await pagina.locator('#k-material').evaluate((b) => Math.round(b.getBoundingClientRect().top))
   await pagina.locator('#k-material').click()
   await pagina.locator('#k-material-lista').waitFor()
   await pagina.waitForTimeout(400)
@@ -164,6 +178,7 @@ const medir = (pagina, idLista) =>
   const m = await medir(pagina, 'k-material-lista')
   await pagina.screenshot({ path: join(CAPTURAS, 'lista-al-fondo-3-pagina.png') })
   console.log(`     barra hasta ${barra} px, campo desde ${campo}; lista de ${m.arriba} a ${m.abajo}, lo visible llega a ${m.alto}`)
+  comprobar(campo < antes, `el campo sube para dar sitio a la lista (de ${antes} a ${campo} px)`)
   comprobar(campo >= barra, 'el campo subido queda debajo de la barra de arriba')
   comprobar(m.abajo <= m.alto && m.vistas >= 1, `la lista se ve dentro de la pantalla (${m.vistas} a la vista)`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
