@@ -13670,6 +13670,7 @@ export type Database = {
       registrar_orden_sin_cotizacion: {
         Args: {
           p_orden: string | null
+          p_numero: string | null
           p_cliente: string | null
           p_unidad: string | null
           p_sede: string | null

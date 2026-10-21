@@ -61,6 +61,7 @@ begin
 
   perform public.registrar_orden_sin_cotizacion(
     current_setting('prueba.orden')::uuid,
+    '8130',
     current_setting('prueba.cliente')::uuid,
     current_setting('prueba.unidad')::uuid,
     current_setting('prueba.sede')::uuid,
@@ -71,8 +72,8 @@ begin
   select numero into v_numero from public.ordenes_trabajo
    where id = current_setting('prueba.orden')::uuid;
 
-  perform test.afirmar(v_numero ~ '^\d+-\d{4}$',
-    format('Administración abre la orden y el sistema numera: %s', v_numero));
+  perform test.afirmar(v_numero = '8130-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY'),
+    format('Administración abre la orden con el número de su papel: %s', v_numero));
 end $$;
 
 reset role;

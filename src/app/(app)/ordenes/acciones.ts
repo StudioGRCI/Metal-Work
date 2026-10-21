@@ -8,6 +8,9 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 
 const esquemaNuevaOrden = z.object({
+  // El número lo trae el papel, como el de la OT de una cotización (migración
+  // 20261021110000): 2922 o 2922-2026. La base lo normaliza y lo valida.
+  numero: z.string().trim().min(1, 'Escribe el número de la OT, el que trae su papel.').max(11, 'El número de la OT es como 2922 o 2922-2026.'),
   cliente_id: z.guid('Selecciona un cliente'),
   unidad_id: z.guid().optional().or(z.literal('')),
   sede_id: z.guid('Selecciona la sede o taller'),
@@ -51,6 +54,7 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
 
   const { data, error } = await supabase.rpc('registrar_orden_sin_cotizacion', {
     p_orden: v.orden_id,
+    p_numero: v.numero,
     p_cliente: v.cliente_id,
     p_unidad: opcional(v.unidad_id ?? null),
     p_sede: v.sede_id,
