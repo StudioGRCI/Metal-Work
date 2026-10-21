@@ -9,6 +9,13 @@ import type { CodigoMoneda } from '@/lib/format'
 
 export const TIPO_CUENTA: Record<string, string> = { BANCO: 'Banco', EFECTIVO: 'Efectivo' }
 
+/**
+ * Lo que mueve una cuenta de la caja desde un formulario: un pago sale, un cobro
+ * entra y la devolución del proveedor de una OC con boleta también entra
+ * (migración 20261020210000).
+ */
+export type TipoDeLaCaja = 'pago' | 'cobro' | 'devolucion'
+
 /** De dónde viene cada movimiento. Los del sistema los deja su pago o su cobro (migración 20261019100000). */
 export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   MANUAL: 'Registrado en la caja',
@@ -19,6 +26,7 @@ export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   PAGO_RECIBO_HONORARIOS: 'Pago de recibo por honorarios',
   PAGO_PLANILLA_DIARIA: 'Pago de planilla diaria',
   COBRO_FACTURA_VENTA: 'Cobro de factura de venta',
+  DEVOLUCION_ORDEN_COMPRA: 'Devolución de proveedor (OC con boleta)',
 }
 
 /**
@@ -33,16 +41,28 @@ export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string 
   PAGO_RECIBO_HONORARIOS: { ruta: '/tesoreria/recibos-por-honorarios?ver=pagados', nombre: 'Recibos por honorarios' },
   PAGO_PLANILLA_DIARIA: { ruta: '/planilla-diaria', nombre: 'Planilla diaria' },
   COBRO_FACTURA_VENTA: { ruta: '/tesoreria/por-cobrar', nombre: 'Cuentas por cobrar' },
+  // La devolución del proveedor se registra y se anula en la tarjeta de su OC con boleta.
+  DEVOLUCION_ORDEN_COMPRA: { ruta: '/tesoreria/por-pagar#compras-con-boleta', nombre: 'Cuentas por pagar' },
+}
+
+/** Los orígenes que entran a la caja; los demás salen. */
+const TIPO_PROPIO_DEL_ORIGEN: Record<string, 'INGRESO' | 'EGRESO'> = {
+  COBRO_FACTURA_VENTA: 'INGRESO',
+  DEVOLUCION_ORDEN_COMPRA: 'INGRESO',
+}
+
+/** El tipo del movimiento que deja cada origen: el cobro y la devolución del proveedor entran, el pago sale. */
+export function tipoPropioDelOrigen(origen: string): 'INGRESO' | 'EGRESO' {
+  return TIPO_PROPIO_DEL_ORIGEN[origen] ?? 'EGRESO'
 }
 
 /**
- * El movimiento que deja cada pago es un egreso y el de cada cobro un ingreso.
- * Uno del otro tipo con el mismo origen es la devolución que entra hoy al anular
- * un pago o un cobro cuyo día ya estaba cerrado.
+ * Uno del otro tipo con el mismo origen es el extorno que entra o sale hoy al
+ * anular un pago, un cobro o una devolución cuyo día ya estaba cerrado.
  */
-export function esDevolucion(origen: string, tipo: 'INGRESO' | 'EGRESO') {
+export function esExtorno(origen: string, tipo: 'INGRESO' | 'EGRESO') {
   if (!PANTALLA_DEL_ORIGEN[origen]) return false
-  return tipo !== (origen === 'COBRO_FACTURA_VENTA' ? 'INGRESO' : 'EGRESO')
+  return tipo !== tipoPropioDelOrigen(origen)
 }
 
 /**

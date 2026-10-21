@@ -13,12 +13,13 @@ export const ESTADO_PAGO: Record<string, Def> = {
   PAGADA: { etiqueta: 'Pagada', tono: 'exito', descripcion: 'Tesorería pagó todo lo facturado.' },
   PAGO_PARCIAL: { etiqueta: 'Pagada en parte', tono: 'info', descripcion: 'Hay un pago, pero falta pagar o facturar otra parte.' },
   // La OC con boleta que Tesorería pagó directo y cuya factura, que llegó después, no tomó todo ese pago:
-  // ya estaba pagada o es por menos (migración 20261020210000). No se anula nada: se pide la devolución.
+  // ya estaba pagada o es por menos (migración 20261020210000). No se anula nada: se pide la devolución y se
+  // registra, o se descuenta de otra factura.
   PAGADA_DE_MAS: {
     etiqueta: 'Pagada de más',
     tono: 'peligro',
     descripcion:
-      'Tesorería la pagó por su boleta y la factura que el proveedor entregó después ya estaba pagada o es por menos: se pagó de más. Tesorería pide al proveedor la devolución y, cuando la devuelve, anula el pago que le devolvió.',
+      'Tesorería la pagó por su boleta y la factura que el proveedor entregó después ya estaba pagada o es por menos: se pagó de más. Tesorería pide al proveedor la devolución y la registra cuando entra, o la descuenta de otra factura suya. No se anula ningún pago.',
   },
   // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza también para esta.
   // La base no liga una OC con boleta a una factura ya registrada: la salida es anular el anexo o corregir el total.
@@ -153,17 +154,19 @@ export function pagoQueCancela(
  * OC con boleta, con la misma regla de `anular_documento_compra` (migración
  * 20261020210000): la factura que alcanza para esa OC, si ya se pagó ella o la
  * OC directo. Anulado el anexo, nada ataba los dos caminos y la compra se pagaba
- * otra vez. Al administrador del sistema no se le aplica.
+ * otra vez. `neto` es lo pagado por la boleta menos lo que el proveedor
+ * devolvió: devuelto todo, la boleta no aportó nada. Al administrador del
+ * sistema no se le aplica.
  */
 export function bloqueoDelAnexo(
-  oc: { con_factura: boolean | null; pagos: unknown[] },
+  oc: { con_factura: boolean | null; neto: number },
   anexo: { tipo: string; factura?: { numero: string; estado: string; alcanza: boolean; pagado: number } | null },
   /** Si esa factura tomó algo de lo que se pagó por la boleta de esta OC. */
   tomoDeLaBoleta: boolean,
 ): string | null {
   const factura = anexo.factura
   if (anexo.tipo !== 'FACTURA' || oc.con_factura !== false || !factura?.alcanza) return null
-  if (factura.pagado <= 0 && oc.pagos.length === 0) return null
+  if (factura.pagado <= 0 && oc.neto <= 0) return null
   // En el orden de la base: la que tomó el pago por la boleta, la que tiene pagos, el borrador que lo tomaría y la de otra moneda.
   const motivo = tomoDeLaBoleta
     ? `la factura ${factura.numero} tomó lo que Tesorería pagó por la boleta`

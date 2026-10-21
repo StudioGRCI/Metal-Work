@@ -509,8 +509,8 @@ const movimiento = async (origen, documento, campo) =>
   const lineaCierre = limpio(await pagina.locator('article', { hasText: N.adqCierre }).textContent().catch(() => ''))
   comprobar(lineaCierre.includes(`salió de ${SOLES}`) && lineaCierre.includes('y volvió el'), `la línea del pago dice que salió y volvió («${lineaCierre}»)`)
   await pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
-  const filaDevolucion = limpio(await pagina.locator('tr', { hasText: `Anulación del pago` }).filter({ hasText: N.adqCierre }).textContent().catch(() => ''))
-  comprobar(filaDevolucion.includes('devolución de uno anulado'), `la caja de hoy muestra la devolución y por qué («${filaDevolucion}»)`)
+  const filaExtorno = limpio(await pagina.locator('tr', { hasText: `Anulación del pago` }).filter({ hasText: N.adqCierre }).textContent().catch(() => ''))
+  comprobar(filaExtorno.includes('extorno de uno anulado'), `la caja de hoy muestra el extorno y por qué («${filaExtorno}»)`)
 
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
   await contexto.close()

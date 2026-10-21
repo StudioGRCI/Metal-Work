@@ -149,6 +149,8 @@ export type FacturaDeLogistica = {
    * 20261020210000). Contabilidad lo sabe antes de registrarla.
    */
   pagadaDirecto: boolean
+  /** La moneda de su OC: si la factura va en otra, no toma sola lo pagado por la boleta. */
+  monedaOc: string
 }
 
 /**
@@ -160,7 +162,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, nombre_archivo, numero_documento, fecha_emision, oc:ordenes_compra_materiales(numero, referencia, proveedor)')
+    .select('id, orden_compra_id, nombre_archivo, numero_documento, fecha_emision, oc:ordenes_compra_materiales(numero, referencia, proveedor, moneda)')
     .eq('tipo', 'FACTURA')
     .is('anulado_en', null)
     .order('creado_en', { ascending: false })
@@ -185,6 +187,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     mismoNumero: situacionDe.get(d.id)?.mismo_numero ?? null,
     facturaDeLaOc: situacionDe.get(d.id)?.factura_de_la_oc ?? null,
     pagadaDirecto: situacionDe.get(d.id)?.pagada_directo ?? false,
+    monedaOc: d.oc?.moneda ?? 'PEN',
   }))
 }
 
@@ -267,13 +270,18 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
   return filas
 }
 
-/** Los pagos de una factura, con el pago por la boleta del que salió el que tomó del pago directo. */
+/**
+ * Los pagos de una factura, con el pago por la boleta del que salió el que tomó
+ * del pago directo. `monto_de_la_boleta` va en el que Tesorería le pasó a mano
+ * (al cambio, o descontado de lo pagado de más): lo que salió de la boleta, en
+ * la moneda de la OC.
+ */
 const COLUMNAS_PAGO_FACTURA =
-  'id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta)'
+  'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda)'
 
 /** El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago. */
 async function conVouchers(
-  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string } | null })[],
+  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string; moneda: string } | null })[],
 ): Promise<PagoDeFactura[]> {
   const [propios, deLaBoleta] = await Promise.all([
     enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
@@ -283,6 +291,7 @@ async function conVouchers(
     ...p,
     url: (p.archivo_ruta ? propios.get(p.archivo_ruta) : boleta && deLaBoleta.get(boleta.archivo_ruta)) || null,
     ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
+    monedaDeLaBoleta: boleta?.moneda ?? null,
   }))
 }
 
@@ -404,14 +413,15 @@ type CuentaPagarFila = Pick<
 >
 type PagoFacturaFila = Pick<
   Tablas<'pagos_adquisicion'>,
-  'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion' | 'pago_orden_compra_id'
+  | 'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'monto_de_la_boleta' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+  | 'pago_orden_compra_id'
 >
 /**
  * Un pago de la factura con su voucher. El que la factura tomó del pago por la
  * boleta de su OC (`pago_orden_compra_id`) lo anota el sistema: su voucher es el
  * de ese pago, y no se anula en la factura sino en la OC (migración 20261020210000).
  */
-export type PagoDeFactura = PagoFacturaFila & { url: string | null; ordenCompraDeLaBoleta: string | null }
+export type PagoDeFactura = PagoFacturaFila & { url: string | null; ordenCompraDeLaBoleta: string | null; monedaDeLaBoleta: string | null }
 /** Una cuenta activa del proveedor, para que Tesorería sepa a dónde transferir. */
 export type CuentaDelProveedor = Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>
 export type CuentaPorPagar = CuentaPagarFila & {
@@ -540,15 +550,39 @@ export type ComprobanteDeCompra = {
   /** El borrador al que Contabilidad todavía no le subió su PDF. */
   sinPdf?: boolean
 }
+/**
+ * Una factura que tomó parte de un pago por la boleta: la de la compra, sola o
+ * al cambio, o otra factura del proveedor en que se descontó lo pagado de más
+ * (undécima vuelta). `monto` va en la moneda de la factura; `deLaBoleta`, en la
+ * de la OC.
+ */
+export type TomaDelPago = {
+  id: string
+  facturaId: string
+  factura: string
+  moneda: string
+  monto: number
+  deLaBoleta: number
+  aMano: boolean
+  /** La factura es de la compra (sola o al cambio); si no, otra del proveedor en que se descontó. */
+  deLaCompra: boolean
+}
+type DevolucionFila = Pick<
+  Tablas<'devoluciones_orden_compra'>,
+  'id' | 'orden_compra_id' | 'fecha' | 'moneda' | 'monto' | 'operacion' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+>
 export type CompraConBoleta = CompraConBoletaFila & {
-  pagos: (PagoCompraFila & { url: string | null })[]
+  pagos: (PagoCompraFila & { url: string | null; tomas: TomaDelPago[] })[]
+  /** Lo que el proveedor devolvió de lo pagado por la boleta, con su constancia; las anuladas también. */
+  devoluciones: (DevolucionFila & { url: string | null })[]
   comprobantes: ComprobanteDeCompra[]
   cuentasProveedor: CuentaDelProveedor[]
 }
 
 /**
  * Las OC con boleta que Tesorería paga directo, como la OS (migración
- * 20261020210000): con lo pagado y cada voucher, la boleta que adjuntó
+ * 20261020210000): con lo pagado y cada voucher, las facturas que tomaron cada
+ * pago, lo que el proveedor devolvió con su constancia, la boleta que adjuntó
  * Logística (o el comprobante que llegó después, también el borrador de
  * Contabilidad con su PDF) y las cuentas del proveedor.
  */
@@ -558,7 +592,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
   if (error) throw new Error(`No se pudieron leer las OC con boleta: ${error.message}`)
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const [pagos, comprobantes, cuentas] = await Promise.all([
+  const [pagos, devoluciones, comprobantes, cuentas] = await Promise.all([
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_orden_compra')
@@ -567,6 +601,16 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
         .order('fecha_pago')
         .order('creado_en')
       if (r.error) throw new Error(`No se pudieron leer los pagos de las OC: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('devoluciones_orden_compra')
+        .select('id, orden_compra_id, fecha, moneda, monto, operacion, archivo_ruta, anulado_en, motivo_anulacion')
+        .in('orden_compra_id', tanda)
+        .order('fecha')
+        .order('creado_en')
+      if (r.error) throw new Error(`No se pudieron leer las devoluciones de los proveedores: ${r.error.message}`)
       return r.data ?? []
     }),
     enTandas(ids, async (tanda) => {
@@ -586,8 +630,20 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
   // El borrador de Contabilidad: su PDF está en su bucket o es la factura que anexó Logística.
   const borrador = (f: CompraConBoletaFila, bucket: string) =>
     f.comprobante_en_camino_origen === 'BORRADOR' && f.comprobante_en_camino_bucket === bucket ? f.comprobante_en_camino_ruta : null
+  // Las facturas que tomaron cada pago vigente, sola o a mano.
+  const vigentes = pagos.flatMap((p) => (p.anulado_en ? [] : [p.id]))
+  const tomas = await enTandas(vigentes, async (tanda) => {
+    const r = await supabase
+      .from('pagos_adquisicion')
+      .select('id, adquisicion_id, pago_orden_compra_id, monto, monto_de_la_boleta, referencia, factura:adquisiciones!pagos_adquisicion_adquisicion_id_fkey(numero_documento, moneda)')
+      .in('pago_orden_compra_id', tanda)
+      .is('anulado_en', null)
+      .order('creado_en')
+    if (r.error) throw new Error(`No se pudo leer qué facturas tomaron los pagos de las OC: ${r.error.message}`)
+    return r.data ?? []
+  })
   const [vouchers, pdfs, borradores] = await Promise.all([
-    enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.archivo_ruta)),
+    enlaces(BUCKET_PAGOS_COMPRAS, [...pagos.map((p) => p.archivo_ruta), ...devoluciones.map((d) => d.archivo_ruta)]),
     enlaces('documentos-compras', [...comprobantes.map((b) => b.ruta_storage), ...filas.map((f) => borrador(f, 'documentos-compras'))]),
     enlaces('comprobantes-financieros', filas.map((f) => borrador(f, 'comprobantes-financieros'))),
   ])
@@ -609,7 +665,26 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
         : []
     return {
       ...f,
-      pagos: pagos.filter((p) => p.orden_compra_id === f.id).map((p) => ({ ...p, url: vouchers.get(p.archivo_ruta) ?? null })),
+      pagos: pagos
+        .filter((p) => p.orden_compra_id === f.id)
+        .map((p) => ({
+          ...p,
+          url: vouchers.get(p.archivo_ruta) ?? null,
+          tomas: tomas
+            .filter((x) => x.pago_orden_compra_id === p.id)
+            .map((x) => ({
+              id: x.id,
+              facturaId: x.adquisicion_id,
+              factura: x.factura?.numero_documento ?? 'su factura',
+              moneda: x.factura?.moneda ?? f.moneda ?? 'PEN',
+              monto: Number(x.monto),
+              deLaBoleta: Number(x.monto_de_la_boleta ?? x.monto),
+              aMano: x.monto_de_la_boleta !== null,
+              // La toma a mano lleva en la referencia si fue al cambio o descontada (`tomar_pago_de_la_boleta`).
+              deLaCompra: x.monto_de_la_boleta === null || (x.referencia ?? '').startsWith('Tomado al cambio'),
+            })),
+        })),
+      devoluciones: devoluciones.filter((d) => d.orden_compra_id === f.id).map((d) => ({ ...d, url: vouchers.get(d.archivo_ruta) ?? null })),
       comprobantes: [
         ...propios.map((b) => ({
           id: b.id,

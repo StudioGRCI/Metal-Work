@@ -141,17 +141,17 @@ export async function registrarDocumentoCompra(
   if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
   // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
   // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se
-  // pagó de más, y si va en otra moneda no lo toma: a Tesorería le llega el
-  // aviso. Lo dice la base con la misma regla; si no se pudo leer, no se afirma
+  // pagó de más, y si va en otra moneda no lo toma sola: a Tesorería le llega el
+  // aviso. Cuenta lo neto: un pago que el proveedor devolvió entero no es pago. Lo dice la base con la misma regla; si no se pudo leer, no se afirma
   // el paso siguiente.
   const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
   if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
   const s = situacion?.[0]
-  const pagos = s?.pagos_vigentes ?? 0
+  const pagado = Number(s?.neto ?? 0) > 0
   const revisar = Boolean(s && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false)
   const deMas = Number(s?.de_mas ?? 0)
   const m = s?.moneda === 'USD' ? 'USD' : 'PEN'
-  const avisaTesoreria = Boolean(s && !revisar && pagos > 0 && s.factura && (deMas > 0 || s.otra_moneda))
+  const avisaTesoreria = Boolean(s && !revisar && pagado && s.factura && (deMas > 0 || s.otra_moneda))
   // Administración también anexa, pero no entra a Adquisiciones: el anexo lo anula Logística.
   const anulaQuien = puede(perfil, 'adquisiciones.ver') ? 'anula el anexo en Adquisiciones › OC y OS, en la fila de la OC' : 'pide a Logística que anule el anexo en Adquisiciones'
   const falta = Number(s?.factura_saldo ?? 0)
@@ -161,15 +161,15 @@ export async function registrarDocumentoCompra(
     mensaje: errorSituacion || !s
       ? `Factura ${numeroFactura} adjuntada a la compra.`
       : revisar
-        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
-      : pagos > 0 && s.factura && s.otra_moneda
-        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura va en otra moneda: no toma ese pago. Tesorería recibió el aviso.`
-      : pagos > 0 && s.factura && deMas > 0
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagado ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
+      : pagado && s.factura && s.otra_moneda
+        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura va en otra moneda: no toma ese pago sola. Tesorería recibió el aviso para pasarlo al cambio o registrar la devolución.`
+      : pagado && s.factura && deMas > 0
         ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura ya estaba pagada o es por menos: se pagaron ${moneda(deMas, m)} de más. Tesorería recibió el aviso para pedir la devolución.`
-      : pagos > 0 && s.factura
-        ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya la tenía registrada: queda pagada con lo que Tesorería pagó por la boleta${falta > 0 ? `, y lo que falta (${moneda(falta, m)}) se paga por ella` : ''}.`
-      : pagos > 0
-        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: cuando Contabilidad registre la factura, queda pagada con ese pago y solo se paga lo que falte.`
+      : pagado && s.factura
+        ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya la tenía registrada: toma lo que Tesorería pagó por la boleta${falta > 0 ? `, y lo que falta (${moneda(falta, m)}) se paga por ella` : ''}.`
+      : pagado
+        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: cuando Contabilidad registre la factura, toma ese pago y solo se paga lo que falte.`
       : s.factura
         ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad ya la tenía registrada, y la OC se paga por ella en Cuentas por pagar.`
         : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,

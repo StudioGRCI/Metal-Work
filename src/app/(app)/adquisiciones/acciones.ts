@@ -184,22 +184,42 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
 
 /**
  * Si la factura que se acaba de registrar tomó lo que Tesorería ya pagó por la
- * boleta de su OC (migración 20261020210000), cómo lo dice el aviso: queda
- * pagada con eso y lo que falta se paga en Cuentas por pagar. `null` si no tomó
- * nada o no se pudo leer: no se adivina.
+ * boleta de su OC (migración 20261020210000), cómo lo dice el aviso: lo que tomó,
+ * lo que le falta (que paga Tesorería), lo pagado de más o, si va en otra
+ * moneda, que no lo toma sola. Lo lee de `pago_directo_de_la_factura`, que
+ * Contabilidad puede llamar. `null` si no hay pago por la boleta que tomar; si
+ * no se pudo leer, lo dice y no adivina.
  */
 async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createClient>>, id: string, codigo: 'PEN' | 'USD') {
-  const [tomado, cuenta] = await Promise.all([
-    supabase.from('pagos_adquisicion').select('monto').eq('adquisicion_id', id).not('pago_orden_compra_id', 'is', null).is('anulado_en', null),
-    supabase.from('v_cuentas_pagar').select('saldo').eq('id', id).maybeSingle(),
-  ])
-  if (tomado.error || cuenta.error || !cuenta.data) return null
-  const monto = (tomado.data ?? []).reduce((suma, p) => suma + Number(p.monto), 0)
-  if (monto <= 0) return null
-  const saldo = Number(cuenta.data.saldo ?? 0)
-  return `: queda pagado con lo que Tesorería ya pagó por la boleta, ${moneda(monto, codigo)}${
-    saldo > 0 ? `, y lo que falta, ${moneda(saldo, codigo)}, se paga en Cuentas por pagar.` : '.'
-  }`
+  const { data, error } = await supabase.rpc('pago_directo_de_la_factura', { p_factura: id })
+  if (error) {
+    console.error('No se pudo leer si la factura tomó lo pagado por la boleta', error)
+    return '. No se pudo leer si tomó lo que Tesorería pagó por la boleta: mírala en Cuentas por pagar.'
+  }
+  const filas = data ?? []
+  if (filas.length === 0) return null
+  // Con una OC la nombra; con varias, las suma.
+  const oc = filas.length === 1 ? `la ${filas[0].compra}` : 'sus OC con boleta'
+  const otra = filas.find((f) => f.otra_moneda)
+  if (otra) {
+    return `. Va en otra moneda que la ${otra.compra}, que Tesorería ya pagó por su boleta: no toma ese pago sola; Tesorería lo pasa al cambio o registra la devolución antes de pagar lo que falte.`
+  }
+  // `tomado` y `falta` van en la moneda de la factura; lo pagado de más, en la de cada OC.
+  const tomado = filas.reduce((suma, f) => suma + Number(f.tomado ?? 0), 0)
+  const falta = Number(filas[0].falta ?? 0)
+  const deMas = filas
+    .filter((f) => Number(f.de_mas ?? 0) > 0)
+    .map((f) => moneda(Number(f.de_mas), f.moneda === 'USD' ? 'USD' : 'PEN'))
+    .join(' y ')
+  if (tomado > 0) {
+    if (falta > 0) return `: tomó lo que Tesorería pagó por la boleta de ${oc}, ${moneda(tomado, codigo)}; le faltan ${moneda(falta, codigo)}, que Tesorería paga en Cuentas por pagar.`
+    if (deMas) return `: tomó ${moneda(tomado, codigo)} de lo que Tesorería pagó por la boleta de ${oc} y no le falta nada; se pagaron ${deMas} de más, y Tesorería pide la devolución.`
+    return `: tomó lo que Tesorería pagó por la boleta de ${oc}, ${moneda(tomado, codigo)}, y no le falta nada.`
+  }
+  if (deMas) {
+    return `. Tesorería ya la había pagado y también pagó ${filas.length === 1 ? `${oc} por su boleta` : oc}: se pagaron ${deMas} de más, y Tesorería pide la devolución.`
+  }
+  return null
 }
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {

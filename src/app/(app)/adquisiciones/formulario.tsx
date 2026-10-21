@@ -5,6 +5,7 @@ import { useId, useRef, useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
 import { fecha as dia, moneda as dinero } from '@/lib/format'
@@ -386,11 +387,12 @@ function Formulario({
             corrige la {elegida.facturaDeLaOc}; si este anexo no es de esa OC, Logística lo anula.
           </p>
         )}
-        {/* La OC con boleta ya pagada directo: registrada, la factura toma ese pago (migración 20261020210000). */}
+        {/* La OC con boleta ya pagada directo: registrada, la factura toma ese pago (migración 20261020210000); en otra moneda, no sola. */}
         {elegida?.pagadaDirecto && (
           <p className="text-xs text-texto-suave">
-            Tesorería ya pagó la {elegida.oc} por su boleta: al registrarla, la factura queda pagada con ese pago y Tesorería solo paga lo que falte.
-            Si es por menos, el sistema le avisa lo pagado de más.
+            {monedaFactura === elegida.monedaOc
+              ? `Tesorería ya pagó la ${elegida.oc} por su boleta: al registrarla, la factura toma ese pago y Tesorería solo paga lo que falte. Si es por menos, el sistema le avisa lo pagado de más.`
+              : `Tesorería ya pagó la ${elegida.oc} por su boleta en ${nombreMoneda(elegida.monedaOc)} y esta factura va en ${nombreMoneda(monedaFactura)}: no toma ese pago sola; Tesorería lo pasa al cambio antes de pagar lo que falte.`}
           </p>
         )}
         {elegida?.mismoNumero && (

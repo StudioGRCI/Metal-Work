@@ -18,6 +18,9 @@ const numero = z.coerce.number()
 
 // `boleta`: el que la factura tomó del pago por la boleta de su OC, con el voucher de
 // ese pago (migración 20261020210000); `bucket` falta en las filas de antes.
+// `a_mano`: Tesorería se lo pasó a mano, al cambio o descontado de lo pagado de
+// más; `de_la_boleta` es lo que salió de la boleta, en la moneda de la OC, y
+// `compra`, la OC de ese pago.
 const esquemaPagoFactura = z.object({
   id: z.guid(),
   fecha: z.string(),
@@ -26,6 +29,9 @@ const esquemaPagoFactura = z.object({
   ruta: texto,
   bucket: z.string().optional(),
   boleta: z.boolean().default(false),
+  de_la_boleta: numero.nullable().optional().default(null),
+  a_mano: z.boolean().default(false),
+  compra: z.guid().nullable().optional().default(null),
 })
 const esquemaFactura = z.object({
   id: z.guid(),
@@ -43,11 +49,28 @@ const esquemaFactura = z.object({
    * registró sin ligarla: la OC se paga por ella igual (migración 20261020210000).
    */
   anexada: z.boolean().default(false),
+  /**
+   * La factura en otra moneda de la OC con boleta, con lo pagado por la boleta
+   * sin pasar a ella: no lo toma sola, Tesorería se lo pasa al cambio antes de
+   * pagarla (undécima vuelta).
+   */
+  espera_boleta: z.boolean().default(false),
   ruta: texto,
   bucket: texto,
   pagado: numero,
   saldo: numero,
   pagos: z.array(esquemaPagoFactura),
+})
+// Una factura que tomó parte del pago por la boleta: la de la compra, sola o al
+// cambio, o la otra factura del proveedor en que se descontó lo pagado de más.
+const esquemaToma = z.object({
+  factura_id: z.guid(),
+  numero: z.string(),
+  moneda: z.string(),
+  monto: numero,
+  de_la_boleta: numero,
+  a_mano: z.boolean(),
+  de_la_compra: z.boolean(),
 })
 // El pago de la OS y, desde la migración 20261020210000, el de la OC con boleta.
 // `bucket` dice dónde está cada archivo; falta en las filas de antes de esa migración.
@@ -62,6 +85,7 @@ const esquemaPagoServicio = z.object({
   comprobante: texto,
   ruta: texto,
   bucket: z.string().optional(),
+  tomas: z.array(esquemaToma).default([]),
 })
 const esquemaDocumento = z.object({
   id: z.guid(),
@@ -131,6 +155,43 @@ const esquemaFila = z.object({
 
 export type CompraTrazada = z.infer<typeof esquemaFila>
 export type FacturaTrazada = z.infer<typeof esquemaFactura>
+export type TomaDeLaBoleta = z.infer<typeof esquemaToma>
+
+/**
+ * Lo que el proveedor devolvió de lo pagado por la boleta de una OC (undécima
+ * vuelta): con su constancia, en el bucket de los vouchers. Las anuladas
+ * también, tachadas, como evidencia.
+ */
+export type DevolucionDeCompra = {
+  id: string
+  orden_compra_id: string
+  fecha: string
+  moneda: string
+  monto: number
+  operacion: string | null
+  archivo_ruta: string
+  anulado_en: string | null
+  motivo_anulacion: string | null
+}
+
+/** Las devoluciones de esas OC con boleta, de la más vieja a la más nueva. La tabla la leen los que leen los pagos de la OC. */
+export async function devolucionesDeCompras(ids: string[]): Promise<DevolucionDeCompra[]> {
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const filas: DevolucionDeCompra[] = []
+  // En tandas de 150, como los pagos: la URL no se alarga sin fin.
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await supabase
+      .from('devoluciones_orden_compra')
+      .select('id, orden_compra_id, fecha, moneda, monto, operacion, archivo_ruta, anulado_en, motivo_anulacion')
+      .in('orden_compra_id', ids.slice(i, i + 150))
+      .order('fecha')
+      .order('creado_en')
+    if (error) throw new Error(`No se pudieron leer las devoluciones de los proveedores: ${error.message}`)
+    filas.push(...(data ?? []).map((d) => ({ ...d, monto: Number(d.monto) })))
+  }
+  return filas
+}
 
 /** El bucket de un documento de la fila: el de la OS, o el de los PDF de Logística en la OC. */
 export const bucketDelDocumento = (f: Pick<CompraTrazada, 'tipo'>, d: { bucket?: string }) =>
@@ -152,8 +213,8 @@ export const claveDeArchivo = (bucket: string, ruta: string) => `${bucket}:${rut
 
 /**
  * Los enlaces de los archivos de esas filas: los PDF de Logística, los de la OS,
- * el de cada factura, el voucher de cada pago de factura y el de cada pago de la
- * OS o de la OC con boleta. El
+ * el de cada factura, el voucher de cada pago de factura, el de cada pago de la
+ * OS o de la OC con boleta y la constancia de cada devolución. El
  * que la política de quien mira no deja abrir no sale, y su fila lo dice sin
  * enlace. La guía de remisión se abre por su ruta propia (`/compras/guia/…`).
  * Si falla la firma de un bucket, sus documentos salen sin enlace y `sinFirmar`
@@ -161,7 +222,10 @@ export const claveDeArchivo = (bucket: string, ruta: string) => `${bucket}:${rut
  * que nadie se entere, y tumbar la página entera por eso dejaría a Contabilidad
  * sin la tabla.
  */
-export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<{ urls: Map<string, string>; sinFirmar: boolean }> {
+export async function enlacesDeCompras(
+  filas: CompraTrazada[],
+  devoluciones: DevolucionDeCompra[] = [],
+): Promise<{ urls: Map<string, string>; sinFirmar: boolean }> {
   const porBucket = new Map<string, string[]>()
   const sumar = (bucket: string | null, ruta: string | null) => {
     if (!bucket || !ruta) return
@@ -175,6 +239,8 @@ export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<{ urls: 
     }
     for (const p of f.pagos) sumar(bucketDelPago(f, p), p.ruta)
   }
+  // La constancia de cada devolución va con los vouchers de la boleta.
+  for (const d of devoluciones) sumar(BUCKET_PAGOS_COMPRAS, d.archivo_ruta)
   const supabase = await createClient()
   const firmados = await Promise.all(
     [...porBucket].map(async ([bucket, rutas]) => {

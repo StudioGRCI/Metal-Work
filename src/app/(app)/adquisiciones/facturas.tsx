@@ -682,15 +682,19 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
         <ul className="space-y-0.5">
           {f.pagos.map((p, i) => (
             <li key={p.id}>
+              {/* Lo que tomó de lo pagado por la boleta de una OC lleva el voucher de ese pago; el que Tesorería pasó a mano dice cómo. */}
               {p.url ? (
                 <a href={p.url} target="_blank" rel="noreferrer" className={enlace}>
-                  Voucher{f.pagos.length > 1 ? ` ${i + 1}` : ''}
+                  {p.pago_orden_compra_id ? 'Voucher de la boleta' : 'Voucher'}
+                  {f.pagos.length > 1 ? ` ${i + 1}` : ''}
                 </a>
               ) : (
                 'Sin voucher'
               )}{' '}
               <span className="tabular text-texto-suave">
                 {fecha(p.fecha)} · {moneda(p.monto, m)}
+                {/* La referencia la escribe la base al pasarlo: «Tomado al cambio…» o «Descontado…». */}
+                {p.monto_de_la_boleta !== null && (p.referencia?.startsWith('Tomado al cambio') ? ' (al cambio)' : ' (descontado)')}
               </span>
             </li>
           ))}

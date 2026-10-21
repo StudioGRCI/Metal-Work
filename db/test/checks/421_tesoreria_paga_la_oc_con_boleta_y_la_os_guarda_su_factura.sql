@@ -3,7 +3,10 @@
 -- paga Tesorería directo, con su voucher y la caja, como una OS; la de antes
 -- quedó pagada fuera del sistema; la OS guarda su factura, boleta, recibo o
 -- contrato, que adjuntan Logística o Tesorería. La factura que llega después de
--- pagar por la boleta toma ese pago, y lo que no toma queda pagado de más (7b).
+-- pagar por la boleta toma ese pago, y lo que no toma queda pagado de más (7b):
+-- el proveedor lo devuelve y Tesorería registra la devolución, o lo descuenta de
+-- otra factura suya; la factura en otra moneda lo toma al cambio (7b y 7g). Nada
+-- le pide a Tesorería anular un pago bien hecho.
 -- Cada paso con el rol que lo da
 -- —Tesorería, Logística, Contabilidad, Gerencia, Almacén y Ventas; ADMIN solo
 -- para lo que es suyo por diseño: anular el anexo que la base le niega a
@@ -89,6 +92,23 @@ create or replace function pg_temp.avisos(p_clave text, p_titulo text) returns i
   select count(*)::integer from public.notificaciones
    where usuario_id = pg_temp.id(p_clave) and titulo like p_titulo || '%';
 $$;
+-- Lo que el proveedor devolvió de lo pagado por la boleta, con su constancia, a la cuenta de la prueba.
+create or replace function pg_temp.devolver(p_dev text, p_oc text, p_monto numeric, p_ruta text, p_dia date default null,
+                                            p_op text default 'DEV-421')
+returns uuid language sql as $$
+  select public.registrar_devolucion_compra(pg_temp.id(p_dev), pg_temp.id(p_oc), coalesce(p_dia, current_setting('prueba.hoy')::date),
+    p_monto, p_op, p_ruta, current_setting('prueba.caja')::uuid, null);
+$$;
+-- El ingreso vigente de esa devolución en la caja.
+create or replace function pg_temp.ingresos(p_dev text) returns integer language sql as $$
+  select count(*)::integer from public.movimientos_caja
+   where origen = 'DEVOLUCION_ORDEN_COMPRA' and origen_id = pg_temp.id(p_dev) and tipo = 'INGRESO' and anulado_en is null;
+$$;
+-- Los avisos sin leer de esa OC con ese título.
+create or replace function pg_temp.sin_leer(p_clave text, p_oc text, p_titulo text) returns integer language sql as $$
+  select count(*)::integer from public.notificaciones
+   where usuario_id = pg_temp.id(p_clave) and origen_id = pg_temp.id(p_oc) and titulo like p_titulo || '%' and leida_en is null;
+$$;
 
 -- ============================================ 0. Puertas
 do $$
@@ -143,6 +163,40 @@ begin
                          where r.codigo = 'TESORERIA' and rp.permiso_codigo in ('tesoreria.registrar_pagos', 'tesoreria.caja',
                                                                                'tesoreria.pagar_servicios', 'compras.ver')) = 4,
                        'Tesorería tiene los permisos que piden pagar, adjuntar y abrir la OC en papel');
+end $$;
+
+-- Undécima vuelta: la devolución del proveedor, lo que Tesorería pasa a mano a una factura y sus ayudantes.
+do $$
+declare f text;
+begin
+  foreach f in array array['public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric)',
+                           'public.anular_devolucion_compra(uuid, text)',
+                           'public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric)',
+                           'public.soltar_pago_de_la_boleta(uuid, uuid, text)',
+                           'public.facturas_para_descontar(uuid)', 'public.pago_directo_de_la_factura(uuid)'] loop
+    perform test.afirmar(not has_function_privilege('anon', f, 'execute') and has_function_privilege('authenticated', f, 'execute'),
+                         'anon no llama ' || f || '; una sesión sí');
+  end loop;
+  perform test.afirmar(not has_function_privilege('authenticated', 'public.compras_del_cierre(uuid[])', 'execute')
+                       and not has_function_privilege('authenticated', 'public.bloquear_cierre(uuid[], uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.libre_de_los_pagos_de_compra(uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_devolucion_compra_guardia()', 'execute')
+                       and not has_function_privilege('authenticated',
+                             'public.caja_mover_por_pago(text, uuid, text, uuid, date, numeric, text, numeric, text, text, text)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.caja_anular_por_pago(text, uuid, text, text)', 'execute'),
+                       'los ayudantes del cierre, la guardia de la devolución y los que mueven la caja los llama el sistema');
+  perform test.afirmar((select relrowsecurity from pg_class where oid = 'public.devoluciones_orden_compra'::regclass)
+                       and not has_table_privilege('authenticated', 'public.devoluciones_orden_compra', 'insert')
+                       and not has_table_privilege('authenticated', 'public.devoluciones_orden_compra', 'update')
+                       and not has_table_privilege('authenticated', 'public.devoluciones_orden_compra', 'delete')
+                       and not has_table_privilege('anon', 'public.devoluciones_orden_compra', 'select'),
+                       'la devolución tiene RLS, solo entra por su función y no se borra');
+  perform test.afirmar((select pg_get_constraintdef(oid) like '%DEVOLUCION_ORDEN_COMPRA%' from pg_constraint
+                         where conname = 'ck_movimiento_caja_origen'),
+                       'la caja conoce el origen de la devolución');
+  perform test.afirmar((select pg_get_constraintdef(oid) like '%pago_orden_compra_id IS NOT NULL%' from pg_constraint
+                         where conname = 'ck_pago_adquisicion_de_la_boleta'),
+                       'lo que una factura tomó a mano de la boleta lleva el pago de la boleta del que sale');
 end $$;
 
 -- ============================================ 1. Un RQ con cinco OC
@@ -493,7 +547,8 @@ do $$
 declare v text;
 begin
   foreach v in array array['fx', 'fy', 'fa1', 'f12', 'd12', 'd5', 'f5', 'd15a', 'd15b', 'f15', 'd3x', 'f3x',
-                           'fe1', 'fe2', 'fe3', 'fe4', 'fe5', 'fy5', 'fz', 'dz', 'fc', 'dc', 'pfc', 'fd', 'c9', 'f9'] loop
+                           'fe1', 'fe2', 'fe3', 'fe4', 'fe5', 'fy5', 'fz', 'dz', 'fc', 'dc', 'pfc', 'fd', 'c9', 'f9',
+                           'fh', 'dh', 'dv1', 'dv2', 'dv3', 'pt', 'dd', 'c7i1', 'c7i2', 'c7i3', 'c7i4', 'f4216', 'fo', 'tj'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -616,10 +671,11 @@ begin
       'y la factura no se paga encima', 'supera el saldo');
     reset role;
     perform test.afirmar(pg_temp.avisos('tesoreria', 'Compra pagada de más: ') = 1
-                         and (select cuerpo like '%y su factura F001-4219, que llegó después, es por menos: la factura tomó S/ 80.00 de ese pago y se pagaron S/ 20.00 de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago de la boleta en «OC con boleta» y paga la factura con ese mismo voucher por S/ 80.00.'
+                         and (select cuerpo like '%y su factura F001-4219, que llegó después, es por menos: la factura tomó S/ 80.00 de ese pago y se pagaron S/ 20.00 de más. Pide al proveedor la devolución y, cuando la devuelva, regístrala en «OC con boleta» con «Registrar devolución».%'
+                                     and cuerpo not like '%anula%'
                                 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and titulo like 'Compra pagada de más: %')
                          and pg_temp.avisos('comprador', 'Compra pagada de más: ') = 0,
-      'a Tesorería le llega el aviso, con lo pagado de más y cómo se resuelve; a Logística, no');
+      'a Tesorería le llega el aviso, con lo pagado de más y cómo se resuelve sin anular nada; a Logística, no');
     perform pg_temp.como('contabilidad');
     set local role authenticated;
     insert into storage.objects (bucket_id, name, owner_id, metadata)
@@ -640,10 +696,179 @@ begin
   end;
 end $$;
 
+-- La devolución (undécima vuelta): la F001-4229 de S/ 80 de la OC 1 toma S/ 80
+-- de los S/ 100 pagados por la boleta, y los otros 20 quedan pagados de más. El
+-- proveedor devuelve 5 y después 15: Tesorería los registra con su constancia y
+-- la cuenta a la que entraron, y la caja tiene su ingreso. Nada se anula. Antes
+-- el aviso pedía anular el pago de la boleta, que estaba bien hecho, y pagar la
+-- factura «con el mismo voucher» (lo cobró la décima auditoría).
+do $$
+declare v text;
+begin
+  begin
+    perform pg_temp.con_pdf('fh');
+    perform pg_temp.como('contabilidad');
+    set local role authenticated;
+    insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                      condicion_pago, orden_compra_id)
+    values (pg_temp.id('fh'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4229', current_setting('prueba.hoy')::date,
+            current_setting('prueba.hoy')::date, 'PEN', 80, 'CONTADO', pg_temp.id('oc1'));
+    update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+     where id = pg_temp.id('fh');
+    reset role;
+    perform test.afirmar(pg_temp.tomado('fh') = 80 and pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 1,
+      'la factura de S/ 80 toma S/ 80 de los S/ 100 de la boleta, y a Tesorería le llega lo pagado de más');
+
+    -- Quién la registra.
+    foreach v in array array['gerente', 'contabilidad', 'comprador', 'almacenero'] loop
+      perform pg_temp.como(v);
+      set local role authenticated;
+      perform test.debe_fallar(format($q$ select public.registrar_devolucion_compra(gen_random_uuid(), %L, %L, 5, null, 'x', %L, null) $q$,
+                                      pg_temp.id('oc1'), current_setting('prueba.hoy'), current_setting('prueba.caja')),
+        v || ' no registra la devolución: la registra Tesorería', 'tesoreria.registrar_pagos');
+      reset role;
+    end loop;
+
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform set_config('prueba.vh1', pg_temp.subir('pagos-compras', 'oc1'), true);
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 100.01, current_setting('prueba.vh1')) $q$,
+      'no se devuelve más de lo que queda pagado por la boleta (S/ 100), aunque lo pagado de más sea S/ 20',
+      'pasa de lo que queda pagado por la boleta');
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), current_setting('prueba.hoy')::date - 1) $q$,
+      'ni con un día de antes del primer pago', 'desde el primer pago');
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), current_setting('prueba.hoy')::date + 1) $q$,
+      'ni de mañana', 'desde el primer pago');
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.v1')) $q$,
+      'la constancia de la devolución no es el voucher de un pago', 'ya es el voucher de un pago');
+    perform test.afirmar(pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), null, 'DEV-4219') = pg_temp.id('dv1'),
+      'Tesorería registra los S/ 5 que devolvió el proveedor, con su constancia');
+    -- En otra sentencia: la que llama a la función no ve la fila que la función inserta.
+    perform pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), null, 'DEV-4219');
+    reset role;
+    perform test.afirmar((select count(*) from public.devoluciones_orden_compra where orden_compra_id = pg_temp.id('oc1')) = 1
+                         and pg_temp.ingresos('dv1') = 1,
+      'el reintento con el mismo id no registra otra devolución ni otro ingreso');
+    perform test.afirmar((select tipo = 'INGRESO' and monto = 5 and caja_id = current_setting('prueba.caja')::uuid and operacion = 'DEV-4219'
+                                 and descripcion like 'Devolución del proveedor por la %'
+                            from public.movimientos_caja where origen = 'DEVOLUCION_ORDEN_COMPRA' and origen_id = pg_temp.id('dv1')),
+      'y lo devuelto entra a la cuenta de la caja');
+    perform test.afirmar((select monto = 5 and moneda = 'PEN' and registrado_por = pg_temp.id('tesoreria') and archivo_mime = 'application/pdf'
+                            from public.devoluciones_orden_compra where id = pg_temp.id('dv1')),
+      'la devolución queda con su monto, quién la registró y su constancia');
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform test.afirmar((select pagado = 95 and devuelto = 5 and aplicado = 80 and de_mas = 15 and factura_saldo = 0
+                            from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                         and (select neto = 95 and devuelto = 5 and devoluciones_vigentes = 1 and de_mas = 15
+                                from public.situacion_de_pago_de_compra(pg_temp.id('oc1'))),
+      'la OC dice lo neto que pagó la boleta (S/ 95), lo devuelto, lo que tomó la factura y los S/ 15 que quedan de más');
+    reset role;
+    perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 1
+                         and (select cuerpo like '%(S/ 95.00, después de los S/ 5.00 que el proveedor ya devolvió)%'
+                                     and cuerpo like '%se pagaron S/ 15.00 de más%'
+                                from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('oc1')
+                                 and titulo like 'Compra pagada de más: %' and leida_en is null)
+                         and exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('oc1')
+                                      and titulo like 'Compra pagada de más: %' and leida_en is not null and cuerpo like '%S/ 20.00 de más%'),
+      'el aviso de los S/ 20 se da por leído y entra el de los S/ 15, que dice lo que ya devolvió el proveedor (también a quien la registró)');
+
+    -- La que ya se anotó a mano en la caja no se cuenta dos veces.
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform public.registrar_movimiento_caja(gen_random_uuid(), current_setting('prueba.caja')::uuid, current_setting('prueba.hoy')::date,
+              'INGRESO', 15, 'Devolución del proveedor, anotada a mano', null, 'DEV-4219B', null);
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv2', 'oc1', 15, pg_temp.subir('pagos-compras', 'oc1'), null, 'DEV-4219B') $q$,
+      'la devolución ya anotada a mano en la caja no entra otra vez', 'es esta misma devolución');
+    perform pg_temp.devolver('dv2', 'oc1', 15, pg_temp.subir('pagos-compras', 'oc1'), null, null);
+    perform test.afirmar((select de_mas = 0 and cancelada and pagado = 80 and devuelto = 20 and aplicado = 80
+                            from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                         and pg_temp.pago('oc1') = 'PAGADA',
+      'devueltos los S/ 15 que faltaban (sin operación: en efectivo), la OC queda pagada: S/ 80 por la boleta, que tomó la factura');
+    reset role;
+    perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 0 and pg_temp.ingresos('dv2') = 1,
+      'el aviso de lo pagado de más se da por leído y los S/ 15 entran a la caja');
+    perform pg_temp.anexar('dh', 'oc1', 'F001-4229');
+    perform pg_temp.como('contabilidad');
+    set local role authenticated;
+    perform test.afirmar((select pagada_directo from public.situacion_de_facturas_anexadas(array[pg_temp.id('dh')])),
+      'Contabilidad sigue leyendo que la OC se pagó por su boleta: lo neto son S/ 80');
+    reset role;
+
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_pago_compra(pg_temp.id('p1'), 'El pago no salió del banco, se registró por error') $q$,
+      'con devoluciones registradas, el pago de la boleta no se anula: lo devuelto ya está contado', 'tiene registradas 2 devoluciones');
+    reset role;
+
+    -- La devolución mal registrada se anula con su motivo.
+    perform pg_temp.como('gerente');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_devolucion_compra(pg_temp.id('dv2'), 'Se registró en la OC que no era') $q$,
+      'Gerencia no anula devoluciones', 'tesoreria.registrar_pagos');
+    reset role;
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_devolucion_compra(pg_temp.id('dv2'), 'corto') $q$,
+      'sin motivo no se anula', '10 a 500');
+    perform public.anular_devolucion_compra(pg_temp.id('dv2'), 'Se registró dos veces: era la que ya estaba en la caja');
+    perform test.afirmar((select de_mas = 15 and devuelto = 5
+                            from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+      'anulada la devolución de S/ 15, vuelven a quedar S/ 15 pagados de más');
+    reset role;
+    perform test.afirmar(pg_temp.ingresos('dv2') = 0
+                         and (select anulado_en is not null and anulado_por = pg_temp.id('tesoreria') and motivo_anulacion like 'Se registró dos veces%'
+                                from public.devoluciones_orden_compra where id = pg_temp.id('dv2'))
+                         and pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 1,
+      'su ingreso sale de la caja, queda como evidencia y el aviso vuelve');
+    perform test.debe_fallar($q$ update public.devoluciones_orden_compra set monto = 1 where id = pg_temp.id('dv1') $q$,
+      'la devolución no se corrige', 'no se corrige');
+    perform test.debe_fallar($q$ delete from public.devoluciones_orden_compra where id = pg_temp.id('dv1') $q$,
+      'ni se borra', 'no se borra');
+
+    -- Quién la ve: la tabla y su copia en la auditoría, con lo mismo que su política.
+    perform pg_temp.como('gerente');
+    set local role authenticated;
+    perform test.afirmar((select count(*) from public.audit_log where tabla = 'devoluciones_orden_compra') >= 1,
+      'Gerencia lee la devolución en la auditoría');
+    reset role;
+    foreach v in array array['supervisor_general', 'almacenero', 'vendedor'] loop
+      perform pg_temp.como(v);
+      set local role authenticated;
+      perform test.afirmar((select count(*) from public.devoluciones_orden_compra) = 0
+                           and (select count(*) from public.audit_log where tabla = 'devoluciones_orden_compra') = 0,
+        v || ' no ve las devoluciones, ni su copia en la auditoría');
+      reset role;
+    end loop;
+    foreach v in array array['comprador', 'contabilidad', 'tesoreria'] loop
+      perform pg_temp.como(v);
+      set local role authenticated;
+      perform test.afirmar((select count(*) from public.devoluciones_orden_compra where orden_compra_id = pg_temp.id('oc1')) = 2
+                           and (select count(*) from storage.objects where bucket_id = 'pagos-compras' and name = current_setting('prueba.vh1')) = 1,
+        v || ' ve las devoluciones de la OC y su constancia');
+      reset role;
+    end loop;
+    perform pg_temp.como('contabilidad');
+    set local role authenticated;
+    perform test.afirmar((select tomado = 80 and de_mas = 15 and falta = 0 and not otra_moneda
+                            from public.pago_directo_de_la_factura(pg_temp.id('fh'))),
+      'Contabilidad, en la factura, lee lo que tomó de la boleta y lo pagado de más');
+    reset role;
+    perform pg_temp.como('almacenero');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select * from public.pago_directo_de_la_factura(pg_temp.id('fh')) $q$,
+      'Almacén no', 'Adquisiciones la ven');
+    reset role;
+    raise exception using errcode = 'Q4210', message = 'deshacer';
+  exception when sqlstate 'Q4210' then null;
+  end;
+end $$;
+
 -- Ya pagada: Contabilidad registró la F001-4218 sin OC, Tesorería la pagó
 -- entera y después Logística la anexa a la OC 1. La factura no tiene nada que
--- tomar: los S/ 100 de la boleta quedan pagados de más. Devuelto lo de la
--- factura, Tesorería anula ese pago y la factura toma el de la boleta.
+-- tomar: los S/ 100 de la boleta quedan pagados de más. Si el proveedor los
+-- descuenta de otra factura suya, Tesorería se los pasa a esa factura; si los
+-- devuelve, registra la devolución. Ningún pago se anula.
 do $$
 begin
   begin
@@ -670,9 +895,10 @@ begin
       'y los S/ 100 de la boleta quedan pagados de más');
     reset role;
     perform test.afirmar(pg_temp.avisos('tesoreria', 'Compra pagada de más: ') = 1
-                         and (select cuerpo like '%y también por su factura F001-4218, que Tesorería ya había pagado: se pagaron S/ 100.00 de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago que te devolvió (el de la factura, en «Facturas por pagar», o el de la boleta, en «OC con boleta») y la cuenta se rehace.'
+                         and (select cuerpo like '%y también por su factura F001-4218, que Tesorería ya había pagado: se pagaron S/ 100.00 de más. Pide al proveedor la devolución y, cuando la devuelva, regístrala%'
+                                     and cuerpo like '%«Lo descuenta de otra factura»%' and cuerpo not like '%anula%'
                                 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and titulo like 'Compra pagada de más: %'),
-      'a Tesorería le llega que se pagó dos veces y que anule el pago que le devuelvan');
+      'a Tesorería le llega que se pagó dos veces: que registre la devolución, o el descuento en otra factura; no que anule nada');
     -- La factura no tomó nada de la boleta: Logística lee que Tesorería le pagó a la factura, no que tomó el pago.
     perform pg_temp.como('comprador');
     set local role authenticated;
@@ -680,23 +906,88 @@ begin
       'Logística no anula el anexo de la factura pagada aparte, y lee por qué',
       'No se anula: la factura F001-4218 de este anexo ya está registrada y Tesorería le pagó S/ 361.50');
     reset role;
+    -- Si el proveedor no los devuelve y los descuenta de otra factura suya, Tesorería se los pasa a esa factura.
+    begin
+      perform pg_temp.como('contabilidad');
+      set local role authenticated;
+      perform pg_temp.alta('f4216', 'Proveedor de prueba 421', 'F001-4216', 'CONTADO', 150);
+      perform pg_temp.alta('fo', 'Otro proveedor 421 S.A.C.', 'F001-4215', 'CONTADO', 150);
+      reset role;
+      perform pg_temp.con_pdf('f4216');
+      perform pg_temp.con_pdf('fo');
+      perform pg_temp.como('contabilidad');
+      set local role authenticated;
+      update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+       where id in (pg_temp.id('f4216'), pg_temp.id('fo'));
+      reset role;
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform test.afirmar((select 'F001-4216' = any (array_agg(numero)) and not ('F001-4218' = any (array_agg(numero)))
+                                   and not ('F001-4215' = any (array_agg(numero)))
+                              from public.facturas_para_descontar(pg_temp.id('oc1'))),
+        'para descontar lo pagado de más, Tesorería ve las facturas del proveedor con saldo: no la de la OC, ni la de otro proveedor');
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fo'), 10, 10) $q$,
+        'no se descuenta en la factura de otro proveedor', 'es de otro proveedor');
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 90) $q$,
+        'en la misma moneda, lo que sale de la boleta es lo que toma la factura', 'En la misma moneda');
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100.01, 100.01) $q$,
+        'ni más de lo pagado de más', 'no se descuenta más');
+      perform public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100);
+      perform test.afirmar((select de_mas = 0 and a_otras = 100 and a_otras_facturas = 'F001-4216' and aplicado = 0 and cancelada
+                              from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                           and pg_temp.pago('oc1') = 'PAGADA',
+        'descontados los S/ 100 de la F001-4216, la OC ya no tiene nada pagado de más');
+      reset role;
+      perform test.afirmar(pg_temp.saldo('f4216') = 50 and pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 0
+                           and (select referencia like 'Descontado de lo pagado de más por la boleta de la %' and monto_de_la_boleta = 100
+                                  from public.pagos_adquisicion where id = pg_temp.id('tj')),
+        'esa factura debe S/ 50, la toma dice de dónde sale y el aviso se da por leído');
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform public.soltar_pago_de_la_boleta(pg_temp.id('oc1'), pg_temp.id('f4216'), 'El proveedor al final prefiere devolverlo');
+      perform test.afirmar((select de_mas = 100 and a_otras = 0 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+        'deshecho el descuento, la OC vuelve a tener S/ 100 pagados de más');
+      reset role;
+      perform test.afirmar(pg_temp.saldo('f4216') = 150, 'y la factura vuelve a deberlos');
+      raise exception using errcode = 'Q4211', message = 'deshacer';
+    exception when sqlstate 'Q4211' then null;
+    end;
+    -- El proveedor devuelve los S/ 100: Tesorería registra la devolución. Nada se anula.
     perform pg_temp.como('tesoreria');
     set local role authenticated;
-    perform public.anular_pago_factura(pg_temp.id('pfc'), 'El proveedor devolvió el pago de la factura');
+    perform pg_temp.devolver('dv3', 'oc1', 100, pg_temp.subir('pagos-compras', 'oc1'), null, 'DEV-4218');
+    perform test.afirmar((select de_mas = 0 and cancelada and pagado = 0 and devuelto = 100
+                            from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                         and pg_temp.pago('oc1') = 'PAGADA',
+      'devueltos los S/ 100, la OC queda pagada por su factura, y nada se anuló');
+    perform test.debe_fallar($q$ select public.anular_pago_factura(pg_temp.id('pfc'), 'El proveedor devolvió el pago de la factura') $q$,
+      'el pago de la factura no se anula encima de la devolución: la factura volvería a deber y se pagaría otra vez',
+      'tiene registrada una devolución del proveedor');
     reset role;
-    perform test.afirmar(pg_temp.tomado('fc') = 100 and pg_temp.saldo('fc') = 261.50
-                         and not exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria')
-                                          and titulo like 'Compra pagada de más: %' and leida_en is null),
-      'anulado el pago que devolvió el proveedor, la factura toma el de la boleta, debe lo que le falta y el aviso se da por leído');
+    perform test.afirmar(pg_temp.ingresos('dv3') = 1 and pg_temp.saldo('fc') = 0 and pg_temp.tomado('fc') = 0
+                         and pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 0,
+      'lo devuelto entra a la caja, la factura sigue pagada y el aviso se da por leído');
+    perform pg_temp.como('comprador');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_documento_compra(pg_temp.id('dc'), 'Era la factura de otra compra del mismo proveedor') $q$,
+      'Logística sigue sin anular el anexo de la factura pagada aparte', 'Tesorería le pagó S/ 361.50');
+    reset role;
     raise exception using errcode = 'Q4210', message = 'deshacer';
   exception when sqlstate 'Q4210' then null;
   end;
 end $$;
 
--- En otra moneda: la factura en dólares de la OC 1, pagada en soles, no toma
--- nada (el sistema no convierte) y no se paga encima mientras el pago de la
--- boleta siga vigente. Anulado ese pago, se paga.
+-- En otra moneda (undécima vuelta): la F001-4217 de US$ 97 de la OC 1, pagada
+-- en soles, no toma sola el pago (el sistema no convierte) y no se paga encima
+-- mientras quede algo de ese pago sin pasarle. Tesorería se lo pasa al cambio
+-- que dice el proveedor («La factura lo toma al cambio»), sin mover la caja, y
+-- paga lo que falte. Antes había que anular el pago de la boleta, que estaba
+-- bien hecho (lo cobró la décima auditoría).
 do $$
+declare
+  v     text;
+  v_mov integer;
+  v_x   public.pagos_adquisicion%rowtype;
 begin
   begin
     perform pg_temp.con_pdf('fd');
@@ -709,30 +1000,151 @@ begin
     update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
      where id = pg_temp.id('fd');
     reset role;
-    perform test.afirmar(pg_temp.tomado('fd') = 0, 'la factura en dólares no toma el pago en soles');
+    perform test.afirmar(pg_temp.tomado('fd') = 0, 'la factura en dólares no toma sola el pago en soles');
     perform pg_temp.como('tesoreria');
     set local role authenticated;
-    perform test.afirmar((select factura = 'F001-4217' and otra_moneda and aplicado = 0 and de_mas = 0 and not cancelada
+    perform test.afirmar((select otra_factura = 'F001-4217' and otra_factura_id = pg_temp.id('fd') and otra_moneda and sin_tomar = 100
+                                 and otra_saldo = 97 and aplicado = 0 and de_mas = 0 and not cancelada
                             from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
-                         and pg_temp.pago('oc1') = 'PAGO_PARCIAL',
-      'Tesorería la ve en otra moneda; la OC sigue pagada en parte por su boleta');
+                         and pg_temp.pago('oc1') = 'PAGO_PARCIAL'
+                         and (select bool_and((f->>'espera_boleta')::boolean)
+                                from public.trazabilidad_de_compras() t, jsonb_array_elements(t.facturas) f
+                               where t.id = pg_temp.id('oc1') and f->>'numero' = 'F001-4217'),
+      'Tesorería la ve en otra moneda, con los S/ 100 sin pasar y los US$ 97 que debe; Adquisiciones, pagada en parte y esperando');
     reset role;
-    perform test.afirmar(pg_temp.avisos('tesoreria', 'Factura en otra moneda: ') = 1,
-      'y le llega el aviso');
+    perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Factura en otra moneda: ') = 1
+                         and (select cuerpo like '%«La factura lo toma al cambio»%' and cuerpo not like '%anula%'
+                                from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('oc1')
+                                 and titulo like 'Factura en otra moneda: %' and leida_en is null),
+      'a Tesorería le llega el aviso: que se lo pase al cambio, no que anule nada');
     perform pg_temp.como('tesoreria');
     perform test.debe_fallar(format($q$ insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
                                         values (%L, %L, 10, 'OP-4217', %L) $q$,
                                     pg_temp.id('fd'), current_setting('prueba.hoy'), pg_temp.id('tesoreria')),
-      'la factura en otra moneda no se paga encima del pago de la boleta', 'en otra moneda que esta factura');
+      'la factura en otra moneda no se paga encima de lo que falta pasarle', 'en otra moneda que esta factura');
+    perform test.debe_fallar(format($q$ insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
+                                        values (%L, %L, 10, 'OP-4217', %L) $q$,
+                                    pg_temp.id('fd'), current_setting('prueba.hoy'), pg_temp.id('tesoreria')),
+      'y dice cómo se resuelve', '«La factura lo toma al cambio»');
+
+    foreach v in array array['gerente', 'contabilidad', 'comprador'] loop
+      perform pg_temp.como(v);
+      set local role authenticated;
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 27.03) $q$,
+        v || ' no le pasa a la factura lo pagado por la boleta: lo hace Tesorería', 'tesoreria.registrar_pagos');
+      reset role;
+    end loop;
+    perform pg_temp.como('tesoreria');
     set local role authenticated;
-    perform public.anular_pago_compra(pg_temp.id('p1'), 'La factura en dólares reemplaza a la boleta');
+    perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 10) $q$,
+      'un cambio imposible es un monto mal escrito', 'el dólar sale a S/ 10');
+    perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 100.01, 27.03) $q$,
+      'no se pasa más de lo pagado por la boleta', 'sin pasar a ninguna factura');
+    perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 97.01) $q$,
+      'ni más de lo que debe la factura', 'debe');
     reset role;
-    insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
-    values (pg_temp.id('fd'), current_setting('prueba.hoy')::date, 10, 'OP-4217', pg_temp.id('tesoreria'));
-    perform test.afirmar(pg_temp.saldo('fd') = 87
-                         and not exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria')
-                                          and titulo like 'Factura en otra moneda: %' and leida_en is null),
-      'anulado el pago de la boleta, la factura se paga y el aviso se da por leído');
+    select count(*) into v_mov from public.movimientos_caja;
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform public.tomar_pago_de_la_boleta(pg_temp.id('pt'), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 27.03);
+    perform public.tomar_pago_de_la_boleta(pg_temp.id('pt'), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 27.03);
+    reset role;
+    select * into v_x from public.pagos_adquisicion where id = pg_temp.id('pt');
+    perform test.afirmar(pg_temp.tomado('fd') = 27.03 and pg_temp.saldo('fd') = 69.97
+                         and v_x.monto_de_la_boleta = 100 and v_x.pago_orden_compra_id = pg_temp.id('p1') and v_x.anulado_en is null
+                         and v_x.referencia like 'Tomado al cambio del pago por la boleta de la %'
+                         and (select count(*) from public.pagos_adquisicion where adquisicion_id = pg_temp.id('fd') and anulado_en is null) = 1
+                         and (select count(*) from public.movimientos_caja) = v_mov,
+      'Tesorería le pasa los S/ 100 a la factura al cambio del proveedor (US$ 27.03): una vez, aunque lo pida dos, y sin mover la caja');
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform test.afirmar((select not otra_moneda and sin_tomar = 0 and aplicado = 100 and a_mano = 100 and otra_saldo = 69.97
+                                 and de_mas = 0 and not cancelada
+                            from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+      'ya no queda nada sin pasar, y la factura debe US$ 69.97: la OC sigue pendiente');
+    reset role;
+    perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Factura en otra moneda: ') = 0, 'y el aviso se da por leído');
+
+    -- Deshecha la toma, la factura vuelve a deber. Contabilidad la corrige a
+    -- soles y la toma sola: los S/ 3 que sobran quedan a la vista, nada se olvida.
+    begin
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform test.debe_fallar($q$ select public.soltar_pago_de_la_boleta(pg_temp.id('oc1'), pg_temp.id('fd'), 'corto') $q$,
+        'sin motivo no se deshace', '10 a 500');
+      perform public.soltar_pago_de_la_boleta(pg_temp.id('oc1'), pg_temp.id('fd'), 'El proveedor dijo otro tipo de cambio');
+      reset role;
+      perform test.afirmar((select anulado_en is not null and anulado_por = pg_temp.id('tesoreria')
+                                   and motivo_anulacion = 'Tesorería deshizo la toma: «El proveedor dijo otro tipo de cambio»'
+                              from public.pagos_adquisicion where id = pg_temp.id('pt'))
+                           and pg_temp.tomado('fd') = 0 and pg_temp.saldo('fd') = 97
+                           and pg_temp.sin_leer('tesoreria', 'oc1', 'Factura en otra moneda: ') = 1,
+        'deshecha la toma, queda anulada con su motivo, la factura vuelve a deber US$ 97 y el aviso vuelve');
+      perform pg_temp.como('contabilidad');
+      set local role authenticated;
+      insert into storage.objects (bucket_id, name, owner_id, metadata)
+      values ('justificantes-correccion', pg_temp.id('fd') || '/' || pg_temp.id('c7i4') || '.pdf', pg_temp.id('contabilidad')::text,
+              '{"mimetype": "application/pdf", "size": 3072}');
+      perform public.corregir_factura_compra(pg_temp.id('c7i4'), pg_temp.id('fd'), 'La factura es en soles: se leyó mal la moneda',
+                pg_temp.id('fd') || '/' || pg_temp.id('c7i4') || '.pdf', 'factura.pdf', '{"moneda": "PEN"}'::jsonb);
+      reset role;
+      perform test.afirmar(pg_temp.tomado('fd') = 97 and pg_temp.saldo('fd') = 0,
+        'corregida a soles, la factura toma sola S/ 97 de la boleta');
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform test.afirmar((select de_mas = 3 and not otra_moneda and aplicado = 97 and sin_tomar = 3
+                              from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+        'y los S/ 3 que sobran quedan pagados de más, a la vista');
+      perform test.debe_fallar(format($q$ select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 1, 'OP-4217', %L, %L, null) $q$,
+                                      pg_temp.id('fd'), current_setting('prueba.hoy'), pg_temp.subir('pagos-facturas', 'fd'),
+                                      current_setting('prueba.caja')),
+        'y la factura no se paga encima', 'supera el saldo');
+      reset role;
+      raise exception using errcode = 'Q4211', message = 'deshacer';
+    exception when sqlstate 'Q4211' then null;
+    end;
+
+    -- Con la toma vigente, Logística no anula el anexo de la factura y Contabilidad no le cambia la moneda ni le baja el total.
+    perform pg_temp.anexar('dd', 'oc1', 'F001-4217');
+    perform pg_temp.como('comprador');
+    set local role authenticated;
+    perform test.debe_fallar($q$ select public.anular_documento_compra(pg_temp.id('dd'), 'Era la factura de otra compra del mismo proveedor') $q$,
+      'Logística no anula el anexo de la factura que tomó al cambio lo pagado por la boleta', 'tomó lo que Tesorería pagó por la boleta');
+    reset role;
+    perform pg_temp.como('contabilidad');
+    set local role authenticated;
+    foreach v in array array['c7i1', 'c7i2', 'c7i3'] loop
+      insert into storage.objects (bucket_id, name, owner_id, metadata)
+      values ('justificantes-correccion', pg_temp.id('fd') || '/' || pg_temp.id(v) || '.pdf', pg_temp.id('contabilidad')::text,
+              '{"mimetype": "application/pdf", "size": 3072}');
+    end loop;
+    perform test.debe_fallar(format($q$ select public.corregir_factura_compra(%L, %L, 'La factura es en soles: se leyó mal la moneda',
+                                                                              %L, 'factura.pdf', '{"moneda": "PEN"}'::jsonb) $q$,
+                                    pg_temp.id('c7i1'), pg_temp.id('fd'), pg_temp.id('fd') || '/' || pg_temp.id('c7i1') || '.pdf'),
+      'con lo que tomó a mano, la factura no cambia de moneda: Tesorería deshace antes la toma', 'Deshacer');
+    perform test.debe_fallar(format($q$ select public.corregir_factura_compra(%L, %L, 'El total de la factura se leyó mal',
+                                                                              %L, 'factura.pdf', '{"total": 20}'::jsonb) $q$,
+                                    pg_temp.id('c7i2'), pg_temp.id('fd'), pg_temp.id('fd') || '/' || pg_temp.id('c7i2') || '.pdf'),
+      'ni baja su total por debajo de lo que tomó', 'no puede quedar por debajo');
+    perform public.corregir_factura_compra(pg_temp.id('c7i3'), pg_temp.id('fd'), 'Se agrega la observación del proveedor',
+              pg_temp.id('fd') || '/' || pg_temp.id('c7i3') || '.pdf', 'factura.pdf', '{"observacion": "Cambio del proveedor: S/ 3.70"}'::jsonb);
+    reset role;
+    perform test.afirmar((select anulado_en is null from public.pagos_adquisicion where id = pg_temp.id('pt')) and pg_temp.tomado('fd') = 27.03,
+      'la corrección que no toca la moneda ni el total deja la toma como estaba: la misma fila');
+
+    -- Lo que falta se paga por la factura, desde la cuenta en soles con lo que salió de ella.
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform public.registrar_pago_factura(gen_random_uuid(), pg_temp.id('fd'), current_setting('prueba.hoy')::date, 69.97, 'OP-4217',
+              pg_temp.subir('pagos-facturas', 'fd'), current_setting('prueba.caja')::uuid, 258.89);
+    reset role;
+    perform test.afirmar(pg_temp.saldo('fd') = 0, 'Tesorería paga los US$ 69.97 que faltan');
+    perform pg_temp.como('tesoreria');
+    set local role authenticated;
+    perform test.afirmar((select cancelada from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                         and pg_temp.pago('oc1') = 'PAGADA',
+      'y la OC queda pagada: S/ 100 por la boleta, pasados al cambio, y US$ 69.97 por la factura');
+    reset role;
     raise exception using errcode = 'Q4210', message = 'deshacer';
   exception when sqlstate 'Q4210' then null;
   end;
@@ -1667,7 +2079,7 @@ select test.afirmar(public.anular_documento_compra(pg_temp.id('d7c'), 'Era la fa
 reset role;
 select test.afirmar((select count(*) from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('d7c')
                        and titulo like 'La OC vuelve a pagarse por su boleta: %') = 0
-    and (select count(*) = 1 and bool_and(cuerpo like '%Ojo: la factura F713-1 ya tiene pagos de S/ 426.57; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución.')
+    and (select count(*) = 1 and bool_and(cuerpo like '%Ojo: la factura F713-1 ya tiene pagos de S/ 426.57; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución y regístrala en «OC con boleta».')
            from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('d7c')
             and titulo like 'La OC queda pagada por su boleta: %')
     and not exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('o7c')
@@ -1768,8 +2180,8 @@ reset role;
 -- La factura sin OC por menos que la OC sigue siendo la suya (con el 90 % de la
 -- OC, la de S/ 80 se pagaba y la caja quedaba con 361.50 + 80 por una compra):
 -- toma S/ 80 del pago directo y los otros 281.50 quedan pagados de más. Cuando
--- el proveedor los devuelve, Tesorería anula el pago de la boleta y paga la
--- factura con el mismo voucher por lo que vale.
+-- el proveedor los devuelve, Tesorería registra la devolución: el pago de la
+-- boleta, que estuvo bien hecho, no se anula.
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select pg_temp.pagar('p7g', 'o7g', 361.50, true, pg_temp.subir('pagos-compras', 'o7g'));
@@ -1800,18 +2212,22 @@ select test.afirmar((select count(*) = 1 and bool_and(cuerpo like '%es por menos
                        from public.notificaciones
                       where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('o7g') and titulo like 'Compra pagada de más: %'),
   'a Tesorería le llega lo pagado de más');
+select set_config('prueba.v7gd', gen_random_uuid()::text, true);
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select public.anular_pago_compra(pg_temp.id('p7g'), 'El proveedor devolvió lo pagado de más; la factura se paga aparte');
-select public.registrar_pago_factura(gen_random_uuid(), pg_temp.id('f7g'), current_setting('prueba.hoy')::date, 80, 'OP-4276',
-         current_setting('prueba.v7g'), current_setting('prueba.caja')::uuid, null);
+select pg_temp.devolver('v7gd', 'o7g', 281.50, pg_temp.subir('pagos-compras', 'o7g'), null, 'DEV-4276');
 select test.afirmar(pg_temp.pago('o7g') = 'PAGADA'
-                    and not exists (select 1 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o7g')),
-  'devuelto lo de más, anulado el pago de la boleta y pagada la factura con el mismo voucher: la OC queda pagada por su factura');
+                    and (select de_mas = 0 and cancelada and pagado = 80 and aplicado = 80 and devuelto = 281.50
+                           from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o7g')),
+  'devueltos los 281.50, Tesorería registra la devolución y la OC queda pagada: S/ 80 por la boleta, que tomó la factura');
+select test.debe_fallar($$ select public.registrar_pago_factura(gen_random_uuid(), pg_temp.id('f7g'), current_setting('prueba.hoy')::date, 80,
+                             'OP-4276', current_setting('prueba.v7g'), current_setting('prueba.caja')::uuid, null) $$,
+  'la factura sigue sin pagarse encima', 'supera el saldo');
+select test.debe_fallar($$ select public.anular_pago_compra(pg_temp.id('p7g'), 'El proveedor devolvió lo pagado de más') $$,
+  'ni se anula el pago de la boleta, que estuvo bien hecho', 'tiene registrada la devolución');
 reset role;
-select test.afirmar(not exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('o7g')
-                                  and titulo like 'Compra pagada de más: %' and leida_en is null),
-  'y el aviso de lo pagado de más se da por leído');
+select test.afirmar(pg_temp.ingresos('v7gd') = 1 and pg_temp.sin_leer('tesoreria', 'o7g', 'Compra pagada de más: ') = 0,
+  'los 281.50 entran a la caja y el aviso de lo pagado de más se da por leído');
 
 -- Con dos pagos a cuenta, la factura toma los dos (S/ 30 y S/ 40) y debe lo
 -- demás. Anulado uno, deja de tomarlo y vuelve a deber esa parte: antes, anulado
@@ -1847,6 +2263,230 @@ select test.afirmar(pg_temp.pago('o7h') = 'PAGADA'
                     and (select cancelada and factura_saldo = 0 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o7h')),
   'y pagado por la factura lo que falta, la OC queda pagada: S/ 40 por la boleta y S/ 321.50 por la factura');
 reset role;
+
+-- ============================================ 7g. Lo que encontró la décima auditoría
+-- Undécima vuelta: nada le pide a Tesorería anular un pago bien hecho. Un RQ
+-- aparte con diez OC con boleta del mismo proveedor, de 361.50 cada una.
+do $$
+declare v text;
+begin
+  foreach v in array array['rq11', 'o11a', 'o11b', 'o11c', 'o11d', 'o11e', 'o11f', 'o11g', 'o11h', 'o11i', 'o11j',
+                           'q11a', 'q11a2', 'q11b', 'q11c', 'q11d', 'q11e', 'q11f', 'q11g', 'q11h', 'q11i1', 'q11i2', 'q11j',
+                           'v11a', 'v11b', 'v11c', 'v11j', 'g11b', 'g11c', 'g11de', 'g11f', 'g11g', 'g11h', 'g11i',
+                           'e11b', 'e11c'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+end $$;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rq11'), pg_temp.id('area_mtz'),
+  'PLA_SR_O4_1_26/21', 'Lo que encontró la décima auditoría', null,
+  (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3,
+          'unidad_medida_id', current_setting('prueba.und'), 'categoria_id', current_setting('prueba.cat')))
+     from generate_series(1, 10) n));
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.rq_marcar_sin_stock(pg_temp.id('rq11'), 'No hay nada de esto');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.emitir_compra_del_requerimiento(pg_temp.id('o11' || x.letra), pg_temp.id('rq11'), array[x.n::smallint], pg_temp.id('proveedor'), null,
+         jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat'), 'cantidad', 3, 'precio', 120.50)),
+         null, 'CONTADO', 0, 'PEN', false)
+  from unnest(array['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']) with ordinality x(letra, n);
+set constraints all immediate;
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(pg_temp.id('o11' || x)) from unnest(array['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']) x;
+reset role;
+update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id('tesoreria');
+
+-- La OC sin factura, pagada a cuenta: lo devuelto se registra aunque no haya
+-- factura, y lo que debe es el total menos lo neto.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11a', 'o11a', 100, false, pg_temp.subir('pagos-compras', 'o11a'));
+select set_config('prueba.r11a', pg_temp.subir('pagos-compras', 'o11a'), true);
+select test.afirmar(pg_temp.devolver('v11a', 'o11a', 40, current_setting('prueba.r11a')) = pg_temp.id('v11a'),
+  'la OC sin factura, pagada a cuenta, registra lo que devolvió el proveedor');
+select test.afirmar((select saldo = 301.50 and neto = 60 and devuelto = 40 and devoluciones_vigentes = 1 and not cancelada
+                       from public.situacion_de_pago_de_compra(pg_temp.id('o11a'))),
+  'y debe el total menos lo neto: S/ 301.50');
+select test.debe_fallar($$ select pg_temp.pagar('q11a2', 'o11a', 10, false, current_setting('prueba.r11a')) $$,
+  'la constancia de una devolución no es el voucher de un pago', 'es la de una devolución');
+select test.debe_fallar($$ select pg_temp.pagar('q11a2', 'o11a', 301.51, false, pg_temp.subir('pagos-compras', 'o11a')) $$,
+  'no se paga más que el total menos lo neto', 'pasaría de su total');
+select pg_temp.pagar('q11a2', 'o11a', 301.50, false, pg_temp.subir('pagos-compras', 'o11a'));
+select test.afirmar((select cancelada and pagado = 361.50 and devuelto = 40 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11a'))
+                    and pg_temp.pago('o11a') = 'PAGADA',
+  'pagado el resto, la OC queda pagada con lo neto');
+select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'Se registró en la OC que no era') $$,
+  'la devolución no se anula si con eso lo pagado pasa del total: la correcta se registra primero', 'pasaría de su total (S/ 361.50)');
+reset role;
+
+-- Antes de la factura: la OC pagada con S/ 100 y el proveedor devuelve 30; la
+-- factura de S/ 100 que llega después toma solo lo neto y debe el resto.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11b', 'o11b', 100, false, pg_temp.subir('pagos-compras', 'o11b'));
+reset role;
+select pg_temp.como('comprador');
+select pg_temp.anexar('e11b', 'o11b', 'F111-1');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.devolver('v11b', 'o11b', 30, pg_temp.subir('pagos-compras', 'o11b'));
+reset role;
+select pg_temp.como('contabilidad');
+select pg_temp.con_pdf('g11b');
+set local role authenticated;
+select pg_temp.alta('g11b', 'Proveedor de prueba 421', 'F111-1', 'CONTADO', 100);
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('g11b');
+reset role;
+select test.afirmar(pg_temp.tomado('g11b') = 70 and pg_temp.saldo('g11b') = 30,
+  'registrada después de la devolución, la factura toma solo lo neto (S/ 70) y debe S/ 30');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select factura = 'F111-1' and aplicado = 70 and factura_saldo = 30 and de_mas = 0 and not cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11b')),
+  'y la OC queda pendiente: su factura debe S/ 30');
+reset role;
+
+-- Todo devuelto: la factura de S/ 80 que tomó S/ 80 deja de tomarlo, vuelve a
+-- deber, y Logística ya puede anular su anexo (nada quedó pagado por la boleta).
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11c', 'o11c', 100, false, pg_temp.subir('pagos-compras', 'o11c'));
+reset role;
+select pg_temp.como('comprador');
+select pg_temp.anexar('e11c', 'o11c', 'F112-1');
+select pg_temp.como('contabilidad');
+select pg_temp.con_pdf('g11c');
+set local role authenticated;
+select pg_temp.alta('g11c', 'Proveedor de prueba 421', 'F112-1', 'CONTADO', 80);
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('g11c');
+reset role;
+select test.afirmar(pg_temp.tomado('g11c') = 80, 'la factura de S/ 80 toma S/ 80 de la boleta');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.devolver('v11c', 'o11c', 100, pg_temp.subir('pagos-compras', 'o11c'));
+select test.afirmar((select not cancelada and pagado = 0 and devuelto = 100 and factura_saldo = 80
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11c'))
+                    and pg_temp.pago('o11c') = 'POR_PAGAR',
+  'devuelto todo, la OC sigue en la lista sin cancelar: se paga por su factura');
+reset role;
+select test.afirmar(pg_temp.tomado('g11c') = 0 and pg_temp.saldo('g11c') = 80
+                    and (select count(*) from public.pagos_adquisicion
+                          where adquisicion_id = pg_temp.id('g11c') and anulado_en is not null
+                            and motivo_anulacion like '%el proveedor devolvió S/ 100.00%') = 1,
+  'la factura deja de tomar lo pagado por la boleta, con el motivo, y vuelve a deber S/ 80');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(not (select pagada_directo from public.situacion_de_facturas_anexadas(array[pg_temp.id('e11c')])),
+  'Contabilidad ya no lee que la OC se pagó por su boleta');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(public.anular_documento_compra(pg_temp.id('e11c'), 'Era la factura de otra compra del mismo proveedor') = pg_temp.id('e11c'),
+  'y Logística puede anular el anexo: no queda nada pagado por la boleta que la factura tome');
+reset role;
+
+-- La OC hermana: una factura de S/ 500 de dos OC pagadas enteras. La que se
+-- pagó primero toma primero; anulado su pago, que no salió, la factura le toma
+-- todo a la otra y lo pagado de más se acaba. Antes la conciliación miraba solo
+-- la OC del pago anulado y la otra seguía pagada de más (lo cobró la revisión).
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11d', 'o11d', 361.50, true, pg_temp.subir('pagos-compras', 'o11d'), current_setting('prueba.hoy')::date - 1);
+select pg_temp.pagar('q11e', 'o11e', 361.50, true, pg_temp.subir('pagos-compras', 'o11e'));
+reset role;
+select pg_temp.como('contabilidad');
+select pg_temp.con_pdf('g11de');
+set local role authenticated;
+select pg_temp.alta('g11de', 'Proveedor de prueba 421', 'F113-1', 'CONTADO', 500);
+insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id)
+values (pg_temp.id('g11de'), pg_temp.id('o11d')), (pg_temp.id('g11de'), pg_temp.id('o11e'));
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('g11de');
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select sum(aplicado) = 500 and sum(de_mas) = 223 from public.compras_con_boleta_por_pagar()
+                      where id in (pg_temp.id('o11d'), pg_temp.id('o11e')))
+                    and (select aplicado = 361.50 and de_mas = 0 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11d')),
+  'la factura de las dos toma S/ 500: primero la OC que se pagó primero, y los S/ 223 que sobran quedan pagados de más en la otra');
+select public.anular_pago_compra(pg_temp.id('q11d'), 'El pago no salió: el banco rechazó la transferencia');
+select test.afirmar((select aplicado = 361.50 and de_mas = 0 and factura_saldo = 138.50 and not cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11e')),
+  'anulado el pago de la primera, la factura le toma todo a la otra: ya nada está pagado de más, y la otra sigue a la vista mientras su factura deba lo de la primera');
+reset role;
+select test.afirmar(pg_temp.saldo('g11de') = 138.50 and pg_temp.sin_leer('tesoreria', 'o11e', 'Compra pagada de más: ') = 0
+                    and exists (select 1 from public.notificaciones where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('o11e')
+                                 and titulo like 'Compra pagada de más: %'),
+  'la factura debe lo de la OC que no se pagó, y el aviso de la otra se da por leído');
+
+-- «Pagada por su factura» solo si la factura no debe nada; y por debajo de
+-- S/ 1 lo que sobra no es «pagado de más».
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11f', 'o11f', 361.50, true, pg_temp.subir('pagos-compras', 'o11f'));
+select pg_temp.pagar('q11g', 'o11g', 300, true, pg_temp.subir('pagos-compras', 'o11g'));
+select pg_temp.pagar('q11h', 'o11h', 361.50, true, pg_temp.subir('pagos-compras', 'o11h'));
+select public.registrar_pago_compra(pg_temp.id(x), pg_temp.id('o11i'), current_setting('prueba.hoy')::date, 100, false, repeat('9', 60),
+         'b001-421', pg_temp.subir('pagos-compras', 'o11i'), current_setting('prueba.caja')::uuid, null)
+  from unnest(array['q11i1', 'q11i2']) x;
+reset role;
+select pg_temp.como('contabilidad');
+select pg_temp.con_pdf(x) from unnest(array['g11f', 'g11g', 'g11h', 'g11i']) x;
+set local role authenticated;
+select pg_temp.alta(x.clave, 'Proveedor de prueba 421', x.numero, 'CONTADO', x.total)
+  from (values ('g11f', 'F115-1', 379.50), ('g11g', 'F116-1', 361.50), ('g11h', 'F117-1', 361.49), ('g11i', 'F118-1', 361.50))
+       x(clave, numero, total);
+insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id)
+select pg_temp.id(x.f), pg_temp.id(x.o)
+  from (values ('g11f', 'o11f'), ('g11g', 'o11g'), ('g11h', 'o11h'), ('g11i', 'o11i')) x(f, o);
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+ where id in (pg_temp.id('g11f'), pg_temp.id('g11g'), pg_temp.id('g11h'), pg_temp.id('g11i'));
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select aplicado = 361.50 and factura_saldo = 18 and de_mas = 0 and not cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11f'))
+                    and pg_temp.pago('o11f') = 'PAGO_PARCIAL',
+  'pagada entera por su boleta, con una factura por más, la OC queda pendiente hasta que se paguen los S/ 18 de la factura');
+select test.afirmar((select aplicado = 300 and factura_saldo = 61.50 and not cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11g')),
+  'la que Tesorería dio por pagada con S/ 300 también: su factura de 361.50 debe 61.50');
+select test.afirmar((select aplicado = 361.49 and sin_tomar = 0.01 and de_mas = 0 and cancelada
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11h'))
+                    and pg_temp.pago('o11h') = 'PAGADA',
+  'con un céntimo de diferencia no hay nada pagado de más: la OC queda pagada');
+reset role;
+select test.afirmar((select count(*) from public.notificaciones where origen_id = pg_temp.id('o11h') and titulo like 'Compra pagada de más: %') = 0,
+  'ni le llega a Tesorería un aviso por un céntimo');
+select test.afirmar((select count(*) = 2 and count(distinct referencia) = 2 and bool_and(char_length(referencia) <= 120)
+                            and count(*) filter (where referencia like '% · ' || left(pago_orden_compra_id::text, 8)) = 1
+                       from public.pagos_adquisicion where adquisicion_id = pg_temp.id('g11i') and anulado_en is null),
+  'dos pagos del mismo día con la misma operación larga: la factura toma los dos y sus referencias caben');
+
+-- La devolución que entró en un día que ya cuadró con el banco: anulada, ese
+-- día no se toca y el extorno sale hoy.
+select set_config('prueba.c11', test.crear_caja('PEN')::text, true);
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar('q11j', 'o11j', 361.50, true, pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.hoy')::date - 2);
+select public.registrar_devolucion_compra(pg_temp.id('v11j'), pg_temp.id('o11j'), current_setting('prueba.hoy')::date - 1, 50, null,
+         pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.c11')::uuid, null);
+select public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.c11')::uuid, current_setting('prueba.hoy')::date - 1, 50, null);
+select public.anular_devolucion_compra(pg_temp.id('v11j'), 'La devolución era de otra OC del proveedor');
+reset role;
+select test.afirmar((select count(*) = 2
+                            and count(*) filter (where tipo = 'INGRESO' and fecha = current_setting('prueba.hoy')::date - 1) = 1
+                            and count(*) filter (where tipo = 'EGRESO' and fecha = current_setting('prueba.hoy')::date
+                                                   and descripcion like 'Anulación de la devolución del %') = 1
+                       from public.movimientos_caja
+                      where origen = 'DEVOLUCION_ORDEN_COMPRA' and origen_id = pg_temp.id('v11j') and anulado_en is null),
+  'anulada la devolución de un día cerrado, ese día no se toca y su extorno sale hoy');
 
 -- ============================================ 8. La OC con boleta de antes que no se pagó
 -- La 3 se marcó como de antes: Tesorería la pasa a su lista; nadie más, y una

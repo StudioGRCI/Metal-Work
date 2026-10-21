@@ -1,0 +1,618 @@
+'use client'
+
+import { ArrowLeftRight, Ban, HandCoins, Undo2 } from 'lucide-react'
+import { useEffect, useEffectEvent, useState } from 'react'
+
+import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
+import { Boton } from '@/components/ui/boton'
+import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
+import type { ResultadoAccion } from '@/lib/acciones'
+import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
+import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { BUCKET_PAGOS_COMPRAS, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
+import { queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
+import { useEnvio } from '@/lib/envio'
+import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
+
+import { anularDevolucionCompra, registrarDevolucionCompra, soltarPagoDeLaBoleta, tomarPagoDeLaBoleta } from './acciones'
+
+/*
+ * Lo que Tesorería hace con lo pagado por la boleta de una OC cuando el
+ * proveedor entrega factura después y no cuadra (undécima vuelta, migración
+ * 20261020210000): registrar lo que el proveedor devolvió, pasarlo al cambio a
+ * su factura en otra moneda, descontarlo de otra factura suya o deshacer esa
+ * toma. Nada de eso anula un pago bien hecho: el dinero salió una vez.
+ */
+
+const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
+const ABRIR = 'metalwork:abrir-ventana-de-la-boleta'
+type VentanaDeLaBoleta = 'devolucion' | 'al-cambio'
+
+/**
+ * La ventana «Anular el pago» no anula lo que el proveedor devolvió: cierra y
+ * abre la de la devolución (o la del cambio) de la misma OC, que vive en otra
+ * parte de la tarjeta.
+ */
+export function abrirVentanaDeLaBoleta(ventana: VentanaDeLaBoleta, compraId: string) {
+  window.dispatchEvent(new CustomEvent(ABRIR, { detail: { ventana, compraId } }))
+}
+
+function useAbrirDesdeOtraVentana(ventana: VentanaDeLaBoleta, compraId: string, abrir: () => void) {
+  const alPedirlo = useEffectEvent((e: Event) => {
+    const pedido = (e as CustomEvent<{ ventana: string; compraId: string }>).detail
+    if (pedido?.ventana === ventana && pedido.compraId === compraId) abrir()
+  })
+  useEffect(() => {
+    window.addEventListener(ABRIR, alPedirlo)
+    return () => window.removeEventListener(ABRIR, alPedirlo)
+  }, [])
+}
+
+/** El proveedor como frase: «S.A.C.» ya trae su punto y no lleva otro. */
+function conPunto(proveedor: string) {
+  const texto = proveedor.trim()
+  return texto.endsWith('.') ? texto : `${texto}.`
+}
+
+const leerMonto = (texto: string) => {
+  const n = Number(texto.replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null
+}
+
+/**
+ * Tesorería registra lo que el proveedor devolvió de lo pagado por la boleta:
+ * el día que entró, cuánto, la operación, la cuenta de la caja a la que entró
+ * —la caja diaria se mueve sola— y la constancia, que sube primero a
+ * `pagos-compras/{oc}/…`. Mientras se escribe el monto dice cómo queda la OC.
+ * El id se decide al abrir la ventana: un reintento no registra otra.
+ */
+export function RegistrarDevolucion({
+  ordenCompraId,
+  numero,
+  proveedor,
+  hoy,
+  desde,
+  boleta,
+  codigoMoneda,
+  cuentas,
+  principal,
+}: {
+  ordenCompraId: string
+  numero: string
+  proveedor: string
+  hoy: string
+  /** El día del primer pago vigente: la devolución no entra antes. */
+  desde: string | null
+  boleta: BoletaParaDevolver
+  codigoMoneda: CodigoMoneda
+  cuentas: CuentaParaPagar[]
+  /** Con algo pagado de más es lo que la tarjeta le pide a Tesorería: va como botón principal. */
+  principal: boolean
+}) {
+  const [devolucionId, setDevolucionId] = useState<string | null>(null)
+  const [dia, setDia] = useState(hoy)
+  const [monto, setMonto] = useState('')
+  const avisar = useAvisoDeLaCaja()
+  const tope = topeDeLaDevolucion(boleta)
+  const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
+
+  function abrir() {
+    avisar(null)
+    setDia(hoy)
+    setMonto(sugerido)
+    setDevolucionId(crypto.randomUUID())
+  }
+  useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
+
+  async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+    const archivo = datos.get('archivo')
+    datos.delete('archivo')
+    if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
+    if (!devolucionId) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    return subirArchivoFinanzas(BUCKET_PAGOS_COMPRAS, ordenCompraId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+      datos.set('ruta', ruta)
+      return registrarDevolucionCompra(null, datos)
+    })
+  }
+  const { alEnviar, enviando, error } = useEnvio(registrar, (r) => {
+    setDevolucionId(null)
+    avisar(r.mensaje ?? null)
+  })
+  const campo = (nombre: string) => `${nombre}-devolucion-${ordenCompraId}`
+  const escrito = leerMonto(monto)
+  const enVivo = escrito && escrito <= tope ? queQuedaTrasLaDevolucion(boleta, -escrito, codigoMoneda) : null
+
+  return (
+    <>
+      <Boton type="button" tamano="sm" variante={principal ? 'primario' : 'contorno'} onClick={abrir} data-registrar-devolucion={numero}>
+        <HandCoins aria-hidden className="size-4" />
+        Registrar devolución
+      </Boton>
+      <Ventana
+        abierta={devolucionId !== null}
+        alCerrar={() => setDevolucionId(null)}
+        titulo={`Devolución de la ${numero}`}
+        descripcion={`${conPunto(proveedor)} Lo que el proveedor te devolvió de lo pagado por la boleta: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(tope, codigoMoneda)}.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
+          <p className="text-sm text-texto-suave">
+            Regístrala aquí el día que entra, no en Caja diaria: la caja la toma sola. Si ya la anotaste a mano, anula antes ese movimiento.
+          </p>
+          <input type="hidden" name="id" value={devolucionId ?? ''} />
+          <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Día en que entró" htmlFor={campo('fecha')} requerido>
+              <Entrada
+                id={campo('fecha')}
+                name="fecha"
+                type="date"
+                required
+                value={dia}
+                onChange={(e) => setDia(e.target.value)}
+                min={desde ?? undefined}
+                max={hoy}
+              />
+            </Campo>
+            <Campo etiqueta={`Importe devuelto (${nombreMoneda(codigoMoneda)})`} htmlFor={campo('monto')} requerido>
+              <Entrada
+                id={campo('monto')}
+                name="monto"
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                max={tope.toFixed(2)}
+                step="0.01"
+                required
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                className="tabular"
+              />
+            </Campo>
+            <Campo
+              etiqueta="N.º de operación"
+              htmlFor={campo('operacion')}
+              ayuda="El del abono en el estado de cuenta; si te la devolvieron en efectivo, déjalo vacío."
+            >
+              <Entrada id={campo('operacion')} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
+            </Campo>
+            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="devolucion" dia={dia} prefijo={`devolucion-${ordenCompraId}`} />
+          </div>
+          <Campo
+            etiqueta="Constancia de la devolución"
+            htmlFor={campo('archivo')}
+            requerido
+            ayuda={`La transferencia, la captura de Yape o Plin, el voucher del depósito o la foto del recibo firmado. PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}
+          >
+            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+          </Campo>
+          <p role="status" aria-live="polite" className="text-sm text-texto">
+            {enVivo}
+          </p>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setDevolucionId(null)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
+              Registrar la devolución
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/**
+ * Anular con su motivo una devolución mal registrada. `queQueda` lo arma la
+ * página con la misma cuenta que la ventana de registrarla, con el monto de
+ * vuelta. `etiqueta` dice cuál: con dos, el lector de pantalla leía «Anular» dos veces.
+ */
+export function AnularDevolucion({ devolucionId, etiqueta, queQueda }: { devolucionId: string; etiqueta: string; queQueda: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(anularDevolucionCompra, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
+  return (
+    <>
+      <Boton
+        type="button"
+        variante="contornoPeligro"
+        tamano="sm"
+        onClick={() => setAbierta(true)}
+        data-anular-devolucion={devolucionId}
+        aria-label={`Anular ${etiqueta}`}
+      >
+        <Ban aria-hidden className="size-4" />
+        Anular
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Anular la devolución"
+        descripcion={`Queda en el historial con su motivo y su constancia, y la caja diaria anula su ingreso. ${queQueda}`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={devolucionId} />
+          <Campo etiqueta="Motivo" htmlFor={`anular-devolucion-${devolucionId}`} requerido>
+            <AreaTexto id={`anular-devolucion-${devolucionId}`} name="motivo" required minLength={10} maxLength={500} />
+          </Campo>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" variante="peligro" cargando={enviando}>
+              Anular
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/** Soles por dólar con los dos montos: la boleta en una moneda y la factura en la otra. */
+function solesPorDolar(deLaBoleta: number, enLaFactura: number, monedaFactura: CodigoMoneda) {
+  return monedaFactura === 'USD' ? deLaBoleta / enLaFactura : enLaFactura / deLaBoleta
+}
+
+/**
+ * La factura en otra moneda no toma sola lo pagado por la boleta: el sistema no
+ * convierte. Si el proveedor lo tomó a cuenta de ella, Tesorería escribe los dos
+ * montos que él reconoce y la factura los toma, sin mover la caja. Propone el
+ * cambio de venta del día del último pago; sin él, pide los dos montos.
+ */
+export function TomarAlCambio({
+  ordenCompraId,
+  numero,
+  proveedor,
+  factura,
+  sinTomar,
+  monedaOc,
+  cambio,
+  diaDelCambio,
+}: {
+  ordenCompraId: string
+  numero: string
+  proveedor: string
+  factura: { id: string; numero: string; moneda: CodigoMoneda; saldo: number }
+  /** Lo pagado por la boleta que no tomó ninguna factura, en la moneda de la OC. */
+  sinTomar: number
+  monedaOc: CodigoMoneda
+  /** El cambio de venta del día del último pago; null si no está cargado. */
+  cambio: number | null
+  diaDelCambio: string | null
+}) {
+  const [tomaId, setTomaId] = useState<string | null>(null)
+  const sugeridoFactura = (() => {
+    if (!cambio) return ''
+    const enFactura = factura.moneda === 'USD' ? sinTomar / cambio : sinTomar * cambio
+    return Math.min(Math.round(enFactura * 100) / 100, factura.saldo).toFixed(2)
+  })()
+  const [deLaBoleta, setDeLaBoleta] = useState(sinTomar.toFixed(2))
+  const [enLaFactura, setEnLaFactura] = useState(sugeridoFactura)
+  const avisar = useAvisoDeLaCaja()
+
+  function abrir() {
+    avisar(null)
+    setDeLaBoleta(sinTomar.toFixed(2))
+    setEnLaFactura(sugeridoFactura)
+    setTomaId(crypto.randomUUID())
+  }
+  useAbrirDesdeOtraVentana('al-cambio', ordenCompraId, abrir)
+
+  const { alEnviar, enviando, error } = useEnvio(tomarPagoDeLaBoleta, (r) => {
+    setTomaId(null)
+    avisar(r.mensaje ?? null)
+  })
+  const campo = (nombre: string) => `${nombre}-al-cambio-${ordenCompraId}`
+  const boleta = leerMonto(deLaBoleta)
+  const enFactura = leerMonto(enLaFactura)
+  const tipo = boleta && enFactura ? solesPorDolar(boleta, enFactura, factura.moneda) : null
+  const fueraDeRango = tipo !== null && (tipo < 2 || tipo > 6)
+  const faltaElCambio = !cambio && diaDelCambio !== null
+  const ejemplo = `Escribe lo que el proveedor te reconoce en la factura: si te dice «los ${
+    monedaOc === 'USD' ? 'US$ 97.70 son S/ 361.50' : 'S/ 361.50 son US$ 97.70'
+  }», escribe esos dos montos.`
+
+  return (
+    <>
+      <Boton type="button" tamano="sm" onClick={abrir} data-tomar-al-cambio={numero}>
+        <ArrowLeftRight aria-hidden className="size-4" />
+        La factura lo toma al cambio
+      </Boton>
+      <Ventana
+        abierta={tomaId !== null}
+        alCerrar={() => setTomaId(null)}
+        titulo={`La factura ${factura.numero} toma lo pagado por la boleta`}
+        descripcion={`${conPunto(proveedor)} Lo que el proveedor tomó de lo pagado por la boleta de la ${numero}, a su cambio, a cuenta de la factura ${factura.numero} en ${nombreMoneda(factura.moneda)}. No mueve la caja: el dinero ya salió con el pago de la boleta.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
+          <input type="hidden" name="factura_id" value={factura.id} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo etiqueta={`De lo pagado por la boleta (${nombreMoneda(monedaOc)})`} htmlFor={campo('boleta')} requerido>
+              <Entrada
+                id={campo('boleta')}
+                name="monto_boleta"
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                max={sinTomar.toFixed(2)}
+                step="0.01"
+                required
+                value={deLaBoleta}
+                onChange={(e) => setDeLaBoleta(e.target.value)}
+                className="tabular"
+              />
+            </Campo>
+            <Campo
+              etiqueta={`En la factura (${nombreMoneda(factura.moneda)})`}
+              htmlFor={campo('factura')}
+              requerido
+              ayuda={faltaElCambio && diaDelCambio ? `Falta el tipo de cambio del ${fecha(diaDelCambio).slice(0, 5)}: escribe el que te dio el proveedor.` : ejemplo}
+              ayudaEnIcono={faltaElCambio ? false : undefined}
+            >
+              <Entrada
+                id={campo('factura')}
+                name="monto_factura"
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                max={factura.saldo.toFixed(2)}
+                step="0.01"
+                required
+                value={enLaFactura}
+                onChange={(e) => setEnLaFactura(e.target.value)}
+                className="tabular"
+              />
+            </Campo>
+          </div>
+          <p role="status" aria-live="polite" className={`text-sm ${fueraDeRango ? 'text-aviso' : 'text-texto'}`}>
+            {tipo !== null &&
+              enFactura !== null &&
+              (fueraDeRango
+                ? `Con esos montos el dólar sale a S/ ${tipo.toFixed(3)}: revisa los dos montos.`
+                : `Sale a S/ ${tipo.toFixed(3)} por dólar. La factura queda debiendo ${moneda(Math.max(factura.saldo - enFactura, 0), factura.moneda)}.`)}
+          </p>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Pasar a la factura
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/** Una factura del proveedor con saldo, para descontar en ella lo pagado de más. */
+export type FacturaParaDescontar = { id: string; numero: string; moneda: CodigoMoneda; fecha: string | null; saldo: number }
+
+/**
+ * El proveedor no devuelve lo pagado de más: lo descuenta de otra factura suya.
+ * Tesorería elige esa factura y la factura lo toma como pagado, sin mover la
+ * caja. En otra moneda pide también lo que toma la factura; en la misma, es lo mismo.
+ */
+export function DescontarDeOtraFactura({
+  ordenCompraId,
+  numero,
+  proveedor,
+  deMas,
+  monedaOc,
+  facturas,
+}: {
+  ordenCompraId: string
+  numero: string
+  proveedor: string
+  deMas: number
+  monedaOc: CodigoMoneda
+  facturas: FacturaParaDescontar[]
+}) {
+  const [tomaId, setTomaId] = useState<string | null>(null)
+  const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
+  const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(tomarPagoDeLaBoleta, (r) => {
+    setTomaId(null)
+    avisar(r.mensaje ?? null)
+  })
+  const factura = facturas.find((f) => f.id === elegida)
+  const otraMoneda = !!factura && factura.moneda !== monedaOc
+  const campo = (nombre: string) => `${nombre}-descontar-${ordenCompraId}`
+
+  return (
+    <>
+      <Boton
+        type="button"
+        tamano="sm"
+        variante="contorno"
+        onClick={() => {
+          avisar(null)
+          setDeLaBoleta(deMas.toFixed(2))
+          setTomaId(crypto.randomUUID())
+        }}
+        data-descontar-de-otra={numero}
+      >
+        <Undo2 aria-hidden className="size-4" />
+        Lo descuenta de otra factura
+      </Boton>
+      <Ventana
+        abierta={tomaId !== null}
+        alCerrar={() => setTomaId(null)}
+        titulo={`Lo pagado de más de la ${numero}, a otra factura`}
+        descripcion={`${conPunto(proveedor)} El proveedor no devuelve los ${moneda(deMas, monedaOc)}: los descuenta de otra factura suya. Esa factura los toma como pagados, sin mover la caja.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
+          {facturas.length === 0 ? (
+            <p role="status" className="text-sm text-aviso">
+              El proveedor no tiene otra factura registrada con saldo: cuando Contabilidad la registre, vuelve aquí.
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Factura" htmlFor={campo('factura')} requerido className="sm:col-span-2">
+                <Seleccion id={campo('factura')} name="factura_id" value={elegida} onChange={(e) => setElegida(e.target.value)} required>
+                  <option value="" disabled>
+                    Elige la factura…
+                  </option>
+                  {facturas.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.numero}
+                      {f.fecha ? ` · ${fecha(f.fecha)}` : ''} · saldo {moneda(f.saldo, f.moneda)}
+                    </option>
+                  ))}
+                </Seleccion>
+              </Campo>
+              <Campo etiqueta={`De lo pagado de más (${nombreMoneda(monedaOc)})`} htmlFor={campo('boleta')} requerido>
+                <Entrada
+                  id={campo('boleta')}
+                  name="monto_boleta"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  max={deMas.toFixed(2)}
+                  step="0.01"
+                  required
+                  value={deLaBoleta}
+                  onChange={(e) => setDeLaBoleta(e.target.value)}
+                  className="tabular"
+                />
+              </Campo>
+              {otraMoneda && factura ? (
+                <Campo etiqueta={`En la factura (${nombreMoneda(factura.moneda)})`} htmlFor={campo('factura-monto')} requerido>
+                  <Entrada
+                    id={campo('factura-monto')}
+                    name="monto_factura"
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    max={factura.saldo.toFixed(2)}
+                    step="0.01"
+                    required
+                    className="tabular"
+                  />
+                </Campo>
+              ) : (
+                // En la misma moneda, lo que toma la factura es lo mismo que sale de lo pagado de más.
+                <input type="hidden" name="monto_factura" value={deLaBoleta} />
+              )}
+            </div>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando} disabled={facturas.length === 0}>
+              Descontar
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/**
+ * Deshacer lo que Tesorería pasó a mano a una factura de lo pagado por la
+ * boleta (al cambio, o descontado): la factura vuelve a deberlo y lo pagado por
+ * la boleta queda sin pasar a ninguna. Con su motivo, como toda corrección.
+ */
+export function SoltarToma({
+  ordenCompraId,
+  facturaId,
+  factura,
+  oc,
+  monto,
+}: {
+  ordenCompraId: string
+  facturaId: string
+  factura: string
+  oc: string
+  /** Lo que la factura tomó a mano, ya escrito con su moneda. */
+  monto: string
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const avisar = useAvisoDeLaCaja()
+  const { alEnviar, enviando, error } = useEnvio(soltarPagoDeLaBoleta, (r) => {
+    setAbierta(false)
+    avisar(r.mensaje ?? null)
+  })
+  const id = `soltar-${facturaId}-${ordenCompraId}`
+  return (
+    <>
+      <Boton
+        type="button"
+        variante="contornoPeligro"
+        tamano="sm"
+        onClick={() => setAbierta(true)}
+        data-soltar-toma={`${factura}|${oc}`}
+        aria-label={`Deshacer lo que la factura ${factura} tomó de la boleta de la ${oc}`}
+      >
+        <Undo2 aria-hidden className="size-4" />
+        Deshacer
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Deshacer la toma"
+        descripcion={`La factura ${factura} deja de tomar ${monto} de lo pagado por la boleta de la ${oc} y vuelve a deberlos. Lo pagado por la boleta vuelve a quedar sin pasar a ninguna factura. No mueve la caja.`}
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
+          <input type="hidden" name="factura_id" value={facturaId} />
+          <Campo etiqueta="Motivo" htmlFor={id} requerido>
+            <AreaTexto id={id} name="motivo" required minLength={10} maxLength={500} />
+          </Campo>
+          {error && (
+            <p role="alert" className="text-sm text-peligro">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" variante="peligro" cargando={enviando}>
+              Deshacer
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}

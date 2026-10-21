@@ -10,7 +10,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDelDia, type CajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
-import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esDevolucion, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
+import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esExtorno, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
@@ -483,8 +483,8 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
         {!transferencia && mov.origen !== 'MANUAL' && (
           <span className="block text-xs text-texto-suave">
             {ORIGEN_MOVIMIENTO[mov.origen] ?? mov.origen}
-            {esDevolucion(mov.origen, mov.tipo) ? (
-              ' · devolución de uno anulado, cuyo día ya estaba cerrado'
+            {esExtorno(mov.origen, mov.tipo) ? (
+              ' · extorno de uno anulado, cuyo día ya estaba cerrado'
             ) : (
               !anulado &&
               PANTALLA_DEL_ORIGEN[mov.origen] && (

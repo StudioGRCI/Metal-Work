@@ -24,7 +24,10 @@
 -- Tesorería ya pagó directo, la factura toma ese pago: el dinero salió una vez
 -- y nadie anula un pago bien hecho. Si la factura es por más, se paga la
 -- diferencia; si es por menos, o ya estaba pagada, lo pagado de más queda a la
--- vista hasta que el proveedor lo devuelva. Con un pago vigente, la OC tampoco
+-- vista hasta que el proveedor lo devuelva (Tesorería registra la devolución,
+-- que entra a la caja) o lo descuente de otra factura suya. La factura en otra
+-- moneda toma ese pago a mano, al cambio que dice el proveedor: el sistema no
+-- convierte. Con un pago vigente, la OC tampoco
 -- cambia su total. La misma factura se reconoce aunque se escriba de otra forma («S.A.C.» o
 -- «SAC», «F001-000123» o «F001 123»; «S.A.C.» y «E.I.R.L.» son dos empresas), no
 -- entra dos veces a Adquisiciones y, registrada sin OC, se liga sola a la OC con
@@ -152,6 +155,82 @@ end $$;
 revoke all on public.pagos_orden_compra from public, anon, authenticated;
 grant select on public.pagos_orden_compra to authenticated;
 
+-- Lo que el proveedor devuelve de lo pagado por la boleta (undécima vuelta). Si
+-- la factura que llegó después es por menos, o ya estaba pagada, lo pagado de
+-- más no se resuelve anulando un pago bien hecho: el dinero salió y salió. Lo
+-- que el proveedor devuelve entra a la cuenta que Tesorería elige, con su
+-- constancia, y achica lo que la boleta aportó (sección 6). Como el pago: no se
+-- borra ni se corrige, se anula con su motivo.
+create table if not exists public.devoluciones_orden_compra (
+  id                uuid primary key default gen_random_uuid(),
+  orden_compra_id   uuid not null references public.ordenes_compra_materiales(id) on delete restrict,
+  fecha             date not null,
+  moneda            text not null,
+  monto             numeric(14, 2) not null,
+  operacion         text,
+  archivo_ruta      text not null,
+  archivo_mime      text not null,
+  archivo_tamano    integer not null,
+  registrado_por    uuid not null default public.usuario_actual() references public.usuarios(id) on delete restrict,
+  anulado_por       uuid references public.usuarios(id) on delete restrict,
+  anulado_en        timestamptz,
+  motivo_anulacion  text,
+  creado_en         timestamptz not null default now(),
+  actualizado_en    timestamptz not null default now(),
+  constraint uq_devolucion_compra_archivo unique (archivo_ruta),
+  constraint ck_devolucion_compra_valores check (
+    moneda in ('PEN', 'USD') and monto > 0 and monto <= 999999999
+    and (operacion is null or char_length(btrim(operacion)) between 1 and 60)
+    and archivo_mime in ('application/pdf', 'image/jpeg', 'image/png', 'image/webp')
+    and archivo_tamano between 1 and 10485760),
+  constraint ck_devolucion_compra_anulada check (
+    anulado_en is null
+    or (anulado_por is not null and char_length(btrim(coalesce(motivo_anulacion, ''))) between 10 and 500))
+);
+comment on table public.devoluciones_orden_compra is
+  'Lo que el proveedor de una OC con boleta le devolvió a Tesorería de lo pagado por la boleta, con su constancia y la cuenta a la que entró. No se borra: se anula.';
+-- (b) Cuentas por pagar y Adquisiciones suman las devoluciones de cada OC.
+create index if not exists ix_devoluciones_orden_compra_oc on public.devoluciones_orden_compra (orden_compra_id);
+select public.activar_timestamps('devoluciones_orden_compra');
+select public.activar_auditoria('devoluciones_orden_compra');
+select public.activar_registro_de_prueba('devoluciones_orden_compra');
+
+create or replace function public.fn_devolucion_compra_guardia()
+returns trigger language plpgsql set search_path to 'public' as $$
+declare
+  v_cambian constant text[] := array['anulado_por', 'anulado_en', 'motivo_anulacion', 'actualizado_en'];
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'Una devolución no se borra: se anula con su motivo.' using errcode = 'check_violation';
+  end if;
+  if old.anulado_en is not null then
+    raise exception 'Esa devolución está anulada: queda como evidencia.' using errcode = 'check_violation';
+  end if;
+  if (to_jsonb(new) - v_cambian) is distinct from (to_jsonb(old) - v_cambian) then
+    raise exception 'Lo que dice la devolución no se corrige: anúlala con su motivo y regístrala de nuevo.' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_devolucion_compra_guardia() from public, anon, authenticated;
+create or replace trigger trg_devolucion_compra_guardia
+  before update or delete on public.devoluciones_orden_compra
+  for each row execute function public.fn_devolucion_compra_guardia();
+
+-- La ven los mismos que ven los pagos de la OC.
+alter table public.devoluciones_orden_compra enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'devoluciones_orden_compra' and policyname = 'ver_devoluciones_orden_compra') then
+    create policy ver_devoluciones_orden_compra on public.devoluciones_orden_compra for select to authenticated
+      using ((select public.es_admin()) or (select public.tiene_permiso('tesoreria.registrar_pagos'))
+             or (select public.tiene_permiso('tesoreria.ver_documentos'))
+             or (select public.tiene_permiso('compras.crear'))
+             or (select public.tiene_permiso('adquisiciones.ver')));
+  end if;
+end $$;
+revoke all on public.devoluciones_orden_compra from public, anon, authenticated;
+grant select on public.devoluciones_orden_compra to authenticated;
+
 -- El voucher: privado, hasta 10 MB, PDF o foto, en `pagos-compras/{OC}/…`. Lo
 -- sube quien paga (el mismo permiso que pide `registrar_pago_compra`); lo ven
 -- quien lo subió y quien ve el pago que lo nombra; uno suelto lo retira su dueño.
@@ -177,6 +256,18 @@ do $$ begin
       and not exists (select 1 from public.pagos_orden_compra p where p.archivo_ruta = objects.name));
   end if;
 end $$;
+-- La constancia de una devolución va en el mismo bucket, con la misma ruta: la
+-- ven quienes ven la devolución y no se quita mientras una la nombre. Después de
+-- crearlas, para que la base que ya las tenía las deje al día.
+alter policy pagos_compras_ver on storage.objects using (
+  bucket_id = 'pagos-compras'
+  and (owner_id = (select auth.uid())::text
+       or exists (select 1 from public.pagos_orden_compra p where p.archivo_ruta = objects.name)
+       or exists (select 1 from public.devoluciones_orden_compra d where d.archivo_ruta = objects.name)));
+alter policy pagos_compras_quitar_suelto on storage.objects using (
+  bucket_id = 'pagos-compras' and owner_id = (select auth.uid())::text
+  and not exists (select 1 from public.pagos_orden_compra p where p.archivo_ruta = objects.name)
+  and not exists (select 1 from public.devoluciones_orden_compra d where d.archivo_ruta = objects.name));
 
 -- Si el proveedor entrega factura después, la factura toma este pago (sección 6):
 -- un pago de la factura que es este mismo, sin caja propia, porque el dinero
@@ -188,6 +279,19 @@ create index if not exists ix_pagos_adquisicion_pago_orden_compra
   on public.pagos_adquisicion (pago_orden_compra_id) where pago_orden_compra_id is not null;
 comment on column public.pagos_adquisicion.pago_orden_compra_id is
   'El pago directo de la OC con boleta que esta factura tomó (migración 20261020210000): no movió la caja, la movió ese pago. Lo pone y lo anula el sistema.';
+
+-- La factura en otra moneda no toma sola el pago de la boleta (el sistema no
+-- convierte): Tesorería se lo pasa a mano, al cambio que dice el proveedor, y lo
+-- mismo cuando lo pagado de más se descuenta de otra factura suya (sección 6).
+-- Esa toma a mano consume de la boleta lo que dice esta columna, en la moneda
+-- de la OC; en `monto` va lo que toma la factura, en la suya.
+alter table public.pagos_adquisicion add column if not exists monto_de_la_boleta numeric(14, 2);
+alter table public.pagos_adquisicion
+  drop constraint if exists ck_pago_adquisicion_de_la_boleta,
+  add constraint ck_pago_adquisicion_de_la_boleta check (
+    monto_de_la_boleta is null or (pago_orden_compra_id is not null and monto_de_la_boleta > 0));
+comment on column public.pagos_adquisicion.monto_de_la_boleta is
+  'Solo en la toma a mano: lo que consume del pago por la boleta, en la moneda de la OC (en `monto` va lo que toma la factura, en la suya). En null, la toma la puso la conciliación y consume `monto`.';
 
 -- Con un pago vigente, la OC ya no cambia de boleta a factura ni de moneda: el
 -- pago quedaría colgado de una OC que se paga por otro camino. Y quién registra
@@ -248,16 +352,19 @@ create or replace trigger trg_compra_pagada_total_fijo
   before insert or update or delete on public.orden_compra_material_detalles
   for each row execute function public.fn_compra_pagada_total_fijo();
 
--- 3. La caja conoce el origen nuevo ------------------------------------------------------
+-- 3. La caja conoce los orígenes nuevos ------------------------------------------------------
+-- El pago de la OC con boleta sale de la cuenta (EGRESO) y lo que el proveedor
+-- devuelve de ese pago entra a la cuenta que Tesorería elige (INGRESO).
 alter table public.movimientos_caja
   drop constraint if exists ck_movimiento_caja_origen,
   add constraint ck_movimiento_caja_origen check (
     origen in ('MANUAL', 'TRANSFERENCIA', 'PAGO_ADQUISICION', 'PAGO_ORDEN_SERVICIO', 'PAGO_ORDEN_COMPRA',
-               'PAGO_RECIBO_HONORARIOS', 'PAGO_PLANILLA_DIARIA', 'COBRO_FACTURA_VENTA')
+               'PAGO_RECIBO_HONORARIOS', 'PAGO_PLANILLA_DIARIA', 'COBRO_FACTURA_VENTA', 'DEVOLUCION_ORDEN_COMPRA')
     and ((origen = 'MANUAL') = (origen_id is null)));
 
--- El mismo cuerpo de la 20261019100000, con el nombre del pago nuevo: si no, el
--- egreso anotado a mano igual a un pago de OC decía «cobro de una factura de venta».
+-- El mismo cuerpo de la 20261019100000, con los nombres de los orígenes nuevos:
+-- si no, el egreso anotado a mano igual a un pago de OC decía «cobro de una
+-- factura de venta», y el ingreso igual a una devolución, «este mismo pago».
 create or replace function public.fn_caja_sin_contar_dos_veces()
 returns trigger language plpgsql set search_path to 'public' as $$
 declare v_otro record;
@@ -278,7 +385,12 @@ begin
                          when 'PAGO_ORDEN_COMPRA' then 'pago de una OC con boleta'
                          when 'PAGO_RECIBO_HONORARIOS' then 'pago de un recibo por honorarios'
                          when 'PAGO_PLANILLA_DIARIA' then 'pago de la planilla diaria'
+                         when 'DEVOLUCION_ORDEN_COMPRA' then 'devolución del proveedor de una OC con boleta'
                          else 'cobro de una factura de venta' end,
+      btrim(new.operacion), public.caja_texto_fecha(v_otro.fecha) using errcode = 'check_violation';
+  end if;
+  if new.origen = 'DEVOLUCION_ORDEN_COMPRA' then
+    raise exception 'En esa cuenta ya está anotado a mano un ingreso del mismo monto con la operación % el %: es esta misma devolución. Anúlalo en Caja diaria y vuelve a registrarla aquí, que la caja la toma sola.',
       btrim(new.operacion), public.caja_texto_fecha(v_otro.fecha) using errcode = 'check_violation';
   end if;
   raise exception 'En esa cuenta ya está anotado a mano un % del mismo monto con la operación % el %: es este mismo %. Anúlalo en Caja diaria y vuelve a registrarlo aquí, que la caja lo toma sola.',
@@ -287,6 +399,139 @@ begin
 end;
 $$;
 revoke all on function public.fn_caja_sin_contar_dos_veces() from public, anon, authenticated;
+
+-- El movimiento que deja un pago, un cobro o una devolución: el cuerpo de la
+-- 20261019100000, con la misma firma y los mismos permisos. Solo cambia cómo
+-- nombra lo que mueve: «la devolución», que entra, junto al pago y al cobro.
+create or replace function public.caja_mover_por_pago(
+  p_origen text, p_origen_id uuid, p_tipo text, p_caja uuid, p_fecha date,
+  p_monto numeric, p_moneda text, p_monto_cuenta numeric,
+  p_descripcion text, p_codigo text, p_operacion text
+) returns uuid language plpgsql set search_path to 'public' as $$
+declare
+  v_caja    public.cajas%rowtype;
+  v_monto   numeric;
+  v_cambio  numeric;
+  v_id      uuid;
+  v_cobro   boolean := p_tipo = 'INGRESO';
+  v_cosa    text := case p_origen when 'COBRO_FACTURA_VENTA' then 'el cobro'
+                                  when 'DEVOLUCION_ORDEN_COMPRA' then 'la devolución' else 'el pago' end;
+  v_cierre  date;
+begin
+  -- Quien paga desde una cuenta tiene que poder verla: hoy los dos permisos
+  -- son de Tesorería, y si mañana otro puesto paga, no mueve a ciegas la caja.
+  perform public.exigir_permiso('tesoreria.caja');
+  if p_caja is null then
+    raise exception '%', case when v_cobro then 'Elige la cuenta a la que entró ' || v_cosa || '.'
+                              else 'Elige la cuenta de la que salió ' || v_cosa || '.' end
+      using errcode = 'check_violation';
+  end if;
+  select * into v_caja from public.cajas where id = p_caja for update;
+  if not found then
+    raise exception 'Esa cuenta no existe: vuelve a cargar la pantalla.' using errcode = 'check_violation';
+  end if;
+  if not v_caja.activa then
+    raise exception 'La cuenta % está desactivada: elige otra.', v_caja.nombre using errcode = 'check_violation';
+  end if;
+
+  -- Antes del saldo inicial: ese dinero ya está en el saldo con que empezó la cuenta.
+  if p_fecha < v_caja.fecha_inicio then return null; end if;
+
+  -- Un día cerrado ya cuadró con el banco: el pago va con un día posterior.
+  select max(fecha) into v_cierre from public.cierres_caja where caja_id = p_caja and anulado_en is null;
+  if v_cierre is not null and p_fecha <= v_cierre then
+    raise exception 'La cuenta % está cerrada hasta el %: registra % con un día posterior, o reabre ese cierre en Caja diaria.',
+      v_caja.nombre, public.caja_texto_fecha(v_cierre), v_cosa
+      using errcode = 'check_violation';
+  end if;
+
+  -- El día tiene que estar abierto (y no ser futuro).
+  v_caja := public.caja_dia_abierto(p_caja, p_fecha);
+
+  if v_caja.moneda = p_moneda then
+    v_monto := p_monto;
+  else
+    if p_monto_cuenta is null or p_monto_cuenta <= 0 or p_monto_cuenta > 999999999
+       or p_monto_cuenta <> round(p_monto_cuenta, 2) then
+      raise exception 'La cuenta % es en %: escribe cuánto % en %, como dice el estado de cuenta.',
+        v_caja.nombre, case when v_caja.moneda = 'USD' then 'dólares' else 'soles' end,
+        case when v_cobro then 'entró' else 'salió' end,
+        case when v_caja.moneda = 'USD' then 'dólares' else 'soles' end using errcode = 'check_violation';
+    end if;
+    v_monto := p_monto_cuenta;
+    v_cambio := round(case when v_caja.moneda = 'PEN' then p_monto_cuenta / p_monto else p_monto / p_monto_cuenta end, 4);
+    -- Un dólar fuera de S/ 2 a S/ 6 es un monto mal escrito, no un cambio.
+    if v_cambio not between 2 and 6 then
+      raise exception 'Con esos montos el dólar sale a S/ %: revisa cuánto % la cuenta.', round(v_cambio, 3),
+        case when v_cobro then 'entró a' else 'salió de' end using errcode = 'check_violation';
+    end if;
+  end if;
+
+  insert into public.movimientos_caja (caja_id, fecha, tipo, monto, descripcion, codigo_interno, operacion,
+                                       tipo_cambio, origen, origen_id)
+  values (p_caja, p_fecha, p_tipo, v_monto,
+          left(regexp_replace(btrim(p_descripcion), '\s+', ' ', 'g'), 300),
+          left(public.normalizar_codigo_interno(p_codigo), 60),
+          nullif(left(btrim(coalesce(p_operacion, '')), 60), ''),
+          v_cambio, p_origen, p_origen_id)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+comment on function public.caja_mover_por_pago(text, uuid, text, uuid, date, numeric, text, numeric, text, text, text) is
+  'Deja en la cuenta elegida el movimiento de un pago, un cobro o una devolución del sistema. La llaman las funciones de pago, cobro y devolución, no la gente.';
+revoke all on function public.caja_mover_por_pago(text, uuid, text, uuid, date, numeric, text, numeric, text, text, text)
+  from public, anon, authenticated;
+
+-- Anular el pago, el cobro o la devolución anula su movimiento: el cuerpo de la
+-- 20261019100000. El movimiento propio de la devolución es el ingreso, como el
+-- del cobro; el extorno que entra abajo es del otro tipo y no se vuelve a tocar.
+create or replace function public.caja_anular_por_pago(p_origen text, p_origen_id uuid, p_motivo text, p_que text)
+returns void language plpgsql set search_path to 'public' as $$
+declare
+  v_mov     public.movimientos_caja%rowtype;
+  v_caja    public.cajas%rowtype;
+  v_cierre  date;
+  v_hoy     date := (now() at time zone 'America/Lima')::date;
+  v_este    text := case when p_que = 'devolución' then 'Esta devolución' else 'Este ' || p_que end;
+  v_del     text := case when p_que = 'devolución' then 'de la devolución' else 'del ' || p_que end;
+begin
+  for v_mov in
+    select m.* from public.movimientos_caja m
+     where m.origen = p_origen and m.origen_id = p_origen_id and m.anulado_en is null
+       and m.tipo = case when p_origen in ('COBRO_FACTURA_VENTA', 'DEVOLUCION_ORDEN_COMPRA') then 'INGRESO' else 'EGRESO' end
+     order by m.caja_id
+  loop
+    -- El mismo permiso que pide moverla: quien no lleva la caja no la toca, ni al anular.
+    perform public.exigir_permiso('tesoreria.caja');
+    select * into v_caja from public.cajas where id = v_mov.caja_id for update;
+    if not v_caja.activa then
+      raise exception '% está en la cuenta %, que está desactivada: actívala para anularlo.', v_este, v_caja.nombre
+        using errcode = 'check_violation';
+    end if;
+    select max(fecha) into v_cierre from public.cierres_caja where caja_id = v_mov.caja_id and anulado_en is null;
+    if v_cierre is null or v_mov.fecha > v_cierre then
+      update public.movimientos_caja
+         set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
+       where id = v_mov.id;
+    else
+      -- Su día ya cuadró con el banco y no se toca: el extorno entra hoy.
+      if v_hoy <= v_cierre then
+        raise exception '% está en la cuenta % el %, y la cuenta ya está cerrada hasta hoy: reabre el cierre de hoy para anularlo.',
+          v_este, v_caja.nombre, public.caja_texto_fecha(v_mov.fecha) using errcode = 'check_violation';
+      end if;
+      insert into public.movimientos_caja (caja_id, fecha, tipo, monto, descripcion, codigo_interno, operacion,
+                                           tipo_cambio, origen, origen_id)
+      values (v_mov.caja_id, v_hoy, case when v_mov.tipo = 'EGRESO' then 'INGRESO' else 'EGRESO' end, v_mov.monto,
+              left('Anulación ' || v_del || ' del ' || public.caja_texto_fecha(v_mov.fecha) || ': ' || v_mov.descripcion, 300),
+              v_mov.codigo_interno, null, v_mov.tipo_cambio, v_mov.origen, v_mov.origen_id);
+    end if;
+  end loop;
+end;
+$$;
+comment on function public.caja_anular_por_pago(text, uuid, text, text) is
+  'Anula, con el motivo del pago, del cobro o de la devolución, su movimiento de caja; si su día ya se cerró, deja hoy el extorno. La llaman las funciones de anular.';
+revoke all on function public.caja_anular_por_pago(text, uuid, text, text) from public, anon, authenticated;
 
 -- 4. Las OC con boleta que Tesorería paga ---------------------------------------------------
 -- Si el proveedor de una OC con boleta entrega factura, Logística la anexa a la
@@ -567,15 +812,30 @@ comment on function public.facturas_de_la_compra(uuid) is
   'Las facturas registradas de una OC con boleta: en su cabecera, ligadas (y si la cubren en parte) o la de su anexo que alcanza para ella. Ayudante interno.';
 revoke all on function public.facturas_de_la_compra(uuid) from public, anon, authenticated;
 
--- El pago directo de una OC con boleta frente a sus facturas (sección 6): la
--- primera factura registrada (para nombrarla y saltar a ella), lo que les falta
--- a las de su moneda, cuánto de los pagos directos tomaron y lo pagado de más:
--- lo que no tomaron, si alguna la cubre entera (si todas la cubren en parte,
--- falta la otra factura, no sobra). Si hay una en otra moneda: esa no toma
--- nada, el sistema no convierte. Y si alguna la cubre entera.
+-- El pago directo de una OC con boleta frente a sus facturas (sección 6), todo
+-- en la moneda de la OC salvo lo que dice otra cosa:
+--   · pagado y devuelto: sus pagos y las devoluciones del proveedor, vigentes;
+--     lo neto es lo que la boleta aportó de verdad.
+--   · aplicado: lo que tomaron de esos pagos sus facturas; a_otras, lo que se
+--     descontó en otras facturas del proveedor; a_mano, lo que se pasó a mano
+--     (al cambio, o descontado), de todo eso.
+--   · sin_tomar: lo neto que no tomó ninguna factura.
+--   · factura_saldo: lo que les falta a sus facturas de su moneda; otra_saldo,
+--     a las de otra moneda, en esa moneda.
+--   · otra_moneda: queda algo sin tomar y una factura en otra moneda tiene
+--     saldo; esa no lo toma sola (el sistema no convierte), Tesorería se lo pasa
+--     al cambio o registra la devolución.
+--   · de_mas: lo que queda sin tomar, si alguna factura la cubre entera (si
+--     todas la cubren en parte, falta la otra factura, no sobra).
+-- Por debajo de S/ 1.00 (o US$ 1.00), lo que queda sin tomar no se marca ni se
+-- pide: es la holgura de un sol de «alcanza», y un céntimo de diferencia dejaba
+-- la compra «pagada de más» para siempre. Se puede devolver igual.
+-- La primera factura registrada, para nombrarla y saltar a ella, y la primera
+-- en otra moneda con saldo.
 create or replace function public.pago_directo_de_la_compra(p_compra uuid)
 returns table (factura_id uuid, factura text, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean,
-               entera boolean)
+               entera boolean, pagado numeric, devuelto numeric, a_mano numeric, a_otras numeric, sin_tomar numeric,
+               otra_factura_id uuid, otra_factura text, otra_saldo numeric)
 language sql stable security definer rows 1 set search_path to 'public' as $$
   with f as (
     select a.id, a.numero_documento, a.moneda, a.fecha_emision, a.creado_en, x.parcial,
@@ -584,25 +844,41 @@ language sql stable security definer rows 1 set search_path to 'public' as $$
       from public.facturas_de_la_compra(p_compra) x
       join public.adquisiciones a on a.id = x.adquisicion_id
   ),
-  d as (select coalesce(sum(p.monto), 0) as pagado, count(*) as n
+  d as (select coalesce(sum(p.monto), 0) as pagado
           from public.pagos_orden_compra p where p.orden_compra_id = p_compra and p.anulado_en is null),
-  t as (select coalesce(sum(x.monto), 0) as aplicado
+  v as (select coalesce(sum(x.monto), 0) as devuelto
+          from public.devoluciones_orden_compra x where x.orden_compra_id = p_compra and x.anulado_en is null),
+  t as (select coalesce(sum(coalesce(x.monto_de_la_boleta, x.monto)) filter (where fx.id is not null), 0) as aplicado,
+               coalesce(sum(coalesce(x.monto_de_la_boleta, x.monto)) filter (where fx.id is null), 0) as a_otras,
+               coalesce(sum(x.monto_de_la_boleta), 0) as a_mano
           from public.pagos_orden_compra p
           join public.pagos_adquisicion x on x.pago_orden_compra_id = p.id and x.anulado_en is null
+          left join f fx on fx.id = x.adquisicion_id
          where p.orden_compra_id = p_compra)
   select (select f.id from f order by f.fecha_emision, f.creado_en, f.id limit 1),
          (select f.numero_documento from f order by f.fecha_emision, f.creado_en, f.id limit 1),
          (select sum(greatest(f.saldo, 0)) from f where f.moneda = c.moneda)::numeric(14, 2),
          t.aplicado::numeric(14, 2),
-         case when exists (select 1 from f where f.moneda = c.moneda and not f.parcial)
-              then greatest(d.pagado - t.aplicado, 0) else 0 end::numeric(14, 2),
-         d.n > 0 and exists (select 1 from f where f.moneda <> c.moneda),
-         exists (select 1 from f where not f.parcial)
-    from public.ordenes_compra_materiales c cross join d cross join t
+         case when s.sin_tomar >= 1 and not s.otra_moneda and exists (select 1 from f where not f.parcial)
+              then s.sin_tomar else 0 end::numeric(14, 2),
+         s.otra_moneda,
+         exists (select 1 from f where not f.parcial),
+         d.pagado::numeric(14, 2), v.devuelto::numeric(14, 2), t.a_mano::numeric(14, 2), t.a_otras::numeric(14, 2),
+         s.sin_tomar::numeric(14, 2),
+         (select f.id from f where f.moneda <> c.moneda and f.saldo > 0 order by f.fecha_emision, f.creado_en, f.id limit 1),
+         (select f.numero_documento from f where f.moneda <> c.moneda and f.saldo > 0
+           order by f.fecha_emision, f.creado_en, f.id limit 1),
+         s.otra_saldo::numeric(14, 2)
+    from public.ordenes_compra_materiales c cross join d cross join v cross join t
+    cross join lateral (
+      select greatest(d.pagado - v.devuelto - t.aplicado - t.a_otras, 0) as sin_tomar,
+             coalesce((select sum(greatest(f.saldo, 0)) from f where f.moneda <> c.moneda), 0) as otra_saldo
+    ) b
+    cross join lateral (select b.sin_tomar, b.otra_saldo, b.sin_tomar >= 1 and b.otra_saldo > 0 as otra_moneda) s
    where c.id = p_compra and not c.con_factura;
 $$;
 comment on function public.pago_directo_de_la_compra(uuid) is
-  'De una OC con boleta: su primera factura registrada, lo que les falta a las de su moneda, cuánto del pago directo tomaron, lo pagado de más (si alguna la cubre entera), si alguna va en otra moneda y si alguna la cubre entera. Ayudante interno.';
+  'De una OC con boleta: lo pagado, lo devuelto, lo que tomaron sus facturas (y a mano, y en otras facturas), lo que queda sin tomar, lo que les falta a sus facturas de su moneda y de otra, lo pagado de más (si alguna la cubre entera) y si queda algo para la factura en otra moneda. Por debajo de un sol no hay pagado de más. Ayudante interno.';
 revoke all on function public.pago_directo_de_la_compra(uuid) from public, anon, authenticated;
 
 -- El desplegable «Factura que anexó Logística» de Adquisiciones: de cada anexo,
@@ -641,16 +917,22 @@ begin
             join public.adquisiciones a on a.id = l.adquisicion_id and a.estado = 'REGISTRADA' and a.tipo <> 'OTRO'
            where d.id = x.id and a.documento_compra_id is distinct from d.id
            order by a.creado_en limit 1),
-         exists (select 1
-                   from public.documentos_compra_material d
-                   join public.ordenes_compra_materiales c on c.id = d.orden_compra_id and not c.con_factura
-                   join public.pagos_orden_compra p on p.orden_compra_id = c.id and p.anulado_en is null
-                  where d.id = x.id)
+         -- Lo neto: si el proveedor devolvió todo, la factura no tiene nada que tomar.
+         coalesce((select sum(p.monto)
+                     from public.documentos_compra_material d
+                     join public.ordenes_compra_materiales c on c.id = d.orden_compra_id and not c.con_factura
+                     join public.pagos_orden_compra p on p.orden_compra_id = c.id and p.anulado_en is null
+                    where d.id = x.id), 0)
+         - coalesce((select sum(v.monto)
+                       from public.documentos_compra_material d
+                       join public.ordenes_compra_materiales c on c.id = d.orden_compra_id and not c.con_factura
+                       join public.devoluciones_orden_compra v on v.orden_compra_id = c.id and v.anulado_en is null
+                      where d.id = x.id), 0) > 0
     from unnest(p_documentos) as x(id);
 end;
 $$;
 comment on function public.situacion_de_facturas_anexadas(uuid[]) is
-  'Para el desplegable de Contabilidad: de cada factura anexada, si ya tiene factura en Adquisiciones, la factura completa que ya tiene su OC con boleta, el proveedor de otra con su mismo número y si su OC con boleta tiene un pago directo vigente (la factura lo toma al registrarla). Exige adquisiciones.ver.';
+  'Para el desplegable de Contabilidad: de cada factura anexada, si ya tiene factura en Adquisiciones, la factura completa que ya tiene su OC con boleta, el proveedor de otra con su mismo número y si su OC con boleta tiene pagado algo neto por su boleta (la factura lo toma al registrarla). Exige adquisiciones.ver.';
 revoke all on function public.situacion_de_facturas_anexadas(uuid[]) from public, anon;
 grant execute on function public.situacion_de_facturas_anexadas(uuid[]) to authenticated;
 
@@ -716,8 +998,9 @@ revoke all on function public.comprobante_en_camino(uuid) from public, anon, aut
 -- avisos que ya no corren) lo rehace la sección 6 al anularse el documento.
 -- No se anula el anexo de la factura que ya se pagó por un camino y quedaría
 -- libre para pagarse por el otro: la que alcanza para esta OC, ligada a ella o
--- no, si Tesorería ya le pagó algo a esa factura o le pagó directo a la OC (la
--- factura registrada toma ese pago; la que está en borrador, al registrarla).
+-- no, si Tesorería ya le pagó algo a esa factura o le pagó directo a la OC algo
+-- que el proveedor no le devolvió (la factura registrada toma ese pago; la que
+-- está en borrador, al registrarla).
 -- Anulado el anexo, nada los relacionaba: la OC se pagaba por su boleta encima de
 -- la factura, o la factura encima del pago directo (lo cobró la revisión de la
 -- sexta vuelta). Y la ligada, porque sin el anexo la corrección ya le podía
@@ -749,6 +1032,7 @@ declare
   v_antes   boolean;
   v_queda   boolean;
   v_pagos   integer;
+  v_neto    numeric;
   v_tomado  numeric;
   v_motivo  text := btrim(coalesce(p_motivo, ''));
 begin
@@ -762,7 +1046,8 @@ begin
   if not found then raise exception 'Ese documento no existe.' using errcode = 'check_violation'; end if;
   select * into v_oc from public.ordenes_compra_materiales where id = v_doc.orden_compra_id;
   perform 1 from public.adquisiciones where documento_compra_id = p_id and estado = 'BORRADOR' order by id for update;
-  perform public.bloquear_facturas_de_las_compras(array[v_doc.orden_compra_id]);
+  -- Las facturas de su cierre: las de las OC con boleta que comparten factura con esta (sección 6).
+  perform public.bloquear_facturas_de_las_compras(public.compras_del_cierre(array[v_doc.orden_compra_id]));
   if public.clave_numero_comprobante(v_doc.numero_documento) is not null and public.clave_proveedor(v_oc.proveedor) is not null then
     perform pg_advisory_xact_lock(hashtextextended('adquisicion|' || public.clave_numero_comprobante(v_doc.numero_documento)
                                                    || '|' || public.clave_proveedor(v_oc.proveedor), 0));
@@ -777,7 +1062,11 @@ begin
   v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
   v_numero := coalesce(v_doc.numero_documento, v_doc.nombre_archivo);
   select * into v_factura from public.factura_del_anexo(p_id);
-  select count(*) into v_pagos from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
+  select count(*), coalesce(sum(p.monto), 0) into v_pagos, v_neto
+    from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
+  -- Lo neto: lo que el proveedor devolvió ya no está pagado por la boleta.
+  v_neto := v_neto - coalesce((select sum(v.monto) from public.devoluciones_orden_compra v
+                                 where v.orden_compra_id = v_oc.id and v.anulado_en is null), 0);
   -- Lo que esa factura tomó de los pagos por la boleta de esta OC (sección 6).
   select coalesce(sum(x.monto), 0) into v_tomado
     from public.pagos_adquisicion x
@@ -787,7 +1076,7 @@ begin
              or exists (select 1 from public.facturas_de_la_compra(v_oc.id));
 
   if v_doc.tipo = 'FACTURA' and not v_oc.con_factura and v_factura.adquisicion_id is not null
-     and v_factura.alcanza and (v_factura.pagado > 0 or v_pagos > 0)
+     and v_factura.alcanza and (v_factura.pagado > 0 or v_neto > 0)
      and not public.es_admin() then
     raise exception '%', case
       when v_tomado > 0 then
@@ -838,15 +1127,17 @@ begin
   -- antes de pagarla por su boleta.
   if v_doc.tipo = 'FACTURA' and not v_oc.con_factura and v_oc.pago_en_tesoreria and v_antes and not v_queda then
     perform public.notificar_a_permiso('tesoreria.registrar_pagos',
-      case when v_pagos > 0 then 'La OC queda pagada por su boleta: ' else 'La OC vuelve a pagarse por su boleta: ' end || v_nombre,
+      case when v_neto > 0 then 'La OC queda pagada por su boleta: ' else 'La OC vuelve a pagarse por su boleta: ' end || v_nombre,
       'Logística anuló la factura ' || v_numero || ' que había anexado a la ' || v_nombre || ': «' || v_motivo || '».'
-        || case when v_pagos > 0 and v_factura.estado = 'REGISTRADA' and v_factura.alcanza
+        || case when v_neto > 0 and v_factura.estado = 'REGISTRADA' and v_factura.alcanza
                 then ' La factura ' || v_factura.numero || ' ya no toma lo que pagaste por la boleta y vuelve a deber lo que tomaba: si sí era de esta OC, no la pagues dos veces.'
+                when v_pagos > 0 and v_neto <= 0
+                then ' El proveedor ya devolvió todo lo que se pagó por su boleta: págala de nuevo solo si te la vuelve a cobrar.'
                 when v_factura.alcanza then ''
                 when v_factura.pagado > 0 and not v_factura.cubre_su_oc
                 then ' Ojo: la factura ' || v_factura.numero || ' ya tiene pagos de '
                      || case when v_factura.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_factura.pagado, 'FM999G999G990D00')
-                     || case when v_pagos > 0 then '; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución.'
+                     || case when v_neto > 0 then '; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución y regístrala en «OC con boleta».'
                              else '; si esta OC era parte de ella (Contabilidad lo ve en la factura), paga por su boleta solo lo que la factura no cubrió.' end
                 -- Sin pagos todavía, la factura de otras OC también puede incluir esta
                 -- (un descuento que no le deja su parte): que nadie la pague dos veces.
@@ -864,7 +1155,7 @@ begin
 end;
 $$;
 comment on function public.anular_documento_compra(uuid, text) is
-  'Logística anula, con su motivo, la factura o la boleta que anexó por error a una OC: queda como evidencia y deja de contar para su pago. No la factura ya pagada por un camino que quedaría libre para el otro, salvo el administrador. Exige compras.crear.';
+  'Logística anula, con su motivo, la factura o la boleta que anexó por error a una OC: queda como evidencia y deja de contar para su pago. No la factura ya pagada por un camino que quedaría libre para el otro (lo que el proveedor devolvió no cuenta como pagado), salvo el administrador. Exige compras.crear.';
 revoke all on function public.anular_documento_compra(uuid, text) from public, anon;
 grant execute on function public.anular_documento_compra(uuid, text) to authenticated;
 
@@ -956,11 +1247,18 @@ end $$;
 -- cuánto de lo pagado directo tomó, lo que le falta (se paga en «Facturas por
 -- pagar») y lo pagado de más (sección 6). La que se paga por su factura sin
 -- pagos directos no sale: está en las facturas. Primero lo que le pide algo a
--- Tesorería: lo pagado de más (pedir la devolución) y la factura en otra moneda,
--- que no toma el pago. La que Logística anexó a una factura registrada para
--- otras OC que no alcanza para ella se queda a la vista: no se paga por esa
--- factura, y alguien tiene que revisar el anexo.
--- Cancelada: sus pagos directos la cubren, o su factura entera ya no debe nada.
+-- Tesorería: lo pagado de más (pedir la devolución y registrarla, o descontarlo
+-- de otra factura) y lo que espera la factura en otra moneda (pasárselo al
+-- cambio). La que Logística anexó a una factura registrada para otras OC que no
+-- alcanza para ella se queda a la vista: no se paga por esa factura, y alguien
+-- tiene que revisar el anexo.
+-- `pagado` es lo neto: los pagos vigentes menos lo que el proveedor devolvió.
+-- Cancelada quiere decir que ni la OC ni sus facturas deben nada: sin factura,
+-- que sus pagos netos la cubren; con factura, que sus facturas no deben nada en
+-- ninguna moneda, no queda nada para la de otra moneda y alguna la cubre entera
+-- (o, si todas la cubren en parte, que sus pagos la cubren). Si Tesorería la dio
+-- por cancelada con menos y la factura llega por el total, no está cancelada: o
+-- se paga la diferencia o el proveedor emite la nota de crédito.
 create or replace function public.compras_con_boleta_por_pagar()
 returns table (
   id uuid, numero text, referencia text, proveedor_id uuid, proveedor text, proveedor_documento text,
@@ -968,7 +1266,9 @@ returns table (
   creado_en timestamptz, vence date, recojo text, pagado numeric, cancelada boolean, ultimo_pago date,
   comprobante_en_camino text, comprobante_en_camino_origen text, comprobante_en_camino_bucket text,
   comprobante_en_camino_ruta text, comprobante_en_camino_alcanza boolean, estuvo_en_factura text,
-  factura text, factura_id uuid, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean
+  factura text, factura_id uuid, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean,
+  devuelto numeric, sin_tomar numeric, otra_factura_id uuid, otra_factura text, otra_saldo numeric,
+  a_mano numeric, a_otras numeric, a_otras_facturas text
 ) language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -982,11 +1282,12 @@ begin
            exists (select 1 from public.orden_compra_material_detalles d where d.orden_compra_id = c.id and d.precio_unitario is null) as sin_precio,
            c.condicion_pago, c.dias_credito, c.creado_en,
            ((c.creado_en at time zone 'America/Lima')::date + coalesce(c.dias_credito, 0)) as vence,
-           c.recojo, coalesce(g.n, 0) as n, coalesce(g.pagado, 0)::numeric(14, 2) as pagado,
-           -- Pagos directos que la cubren (sección 2), o su factura entera ya pagada.
-           coalesce(g.n > 0 and (g.sin_completar or g.pagado >= t.total), false)
-             or (pd.factura is not null and pd.entera and not pd.otra_moneda and coalesce(pd.factura_saldo, 0) <= 0) as cancelada,
-           g.ultimo,
+           c.recojo, coalesce(g.n, 0) as n, nt.neto::numeric(14, 2) as pagado,
+           case when pd.factura is null then nt.base
+                -- Con factura: ni ella ni las demás de la compra deben nada, en ninguna moneda (sección 6).
+                else coalesce(pd.factura_saldo, 0) + coalesce(pd.otra_saldo, 0) <= 0 and not coalesce(pd.otra_moneda, false)
+                     and (pd.entera or nt.base) end as cancelada,
+           greatest(g.ultimo, dv.ultimo) as ultimo,
            e.numero as en_camino, e.origen as en_camino_origen, e.bucket as en_camino_bucket, e.ruta as en_camino_ruta,
            e.alcanza as en_camino_alcanza,
            -- Una factura ya pagada la cubría y una corrección se la quitó: que Tesorería lo vea antes de pagarla.
@@ -997,7 +1298,19 @@ begin
                and not exists (select 1 from public.facturas_de_la_compra(c.id) y where y.adquisicion_id = a.id)
              order by a.fecha_emision desc limit 1) as estuvo_en,
            pd.factura, pd.factura_id, pd.factura_saldo, coalesce(pd.aplicado, 0)::numeric(14, 2) as aplicado,
-           coalesce(pd.de_mas, 0)::numeric(14, 2) as de_mas, coalesce(pd.otra_moneda, false) as otra_moneda
+           coalesce(pd.de_mas, 0)::numeric(14, 2) as de_mas, coalesce(pd.otra_moneda, false) as otra_moneda,
+           coalesce(dv.devuelto, 0)::numeric(14, 2) as devuelto, coalesce(pd.sin_tomar, 0)::numeric(14, 2) as sin_tomar,
+           pd.otra_factura_id, pd.otra_factura, coalesce(pd.otra_saldo, 0)::numeric(14, 2) as otra_saldo,
+           coalesce(pd.a_mano, 0)::numeric(14, 2) as a_mano, coalesce(pd.a_otras, 0)::numeric(14, 2) as a_otras,
+           -- Las otras facturas del proveedor en las que se descontó lo pagado de más.
+           case when coalesce(pd.a_otras, 0) > 0 then
+             (select string_agg(distinct a.numero_documento, ', ')
+                from public.pagos_orden_compra y
+                join public.pagos_adquisicion x on x.pago_orden_compra_id = y.id and x.anulado_en is null
+                join public.adquisiciones a on a.id = x.adquisicion_id
+               where y.orden_compra_id = c.id
+                 and not exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = a.id))
+           end as a_otras_facturas
       from public.ordenes_compra_materiales c
       left join public.proveedores p on p.id = c.proveedor_id
       cross join lateral (select public.total_orden_compra(c.id) as total) t
@@ -1006,6 +1319,16 @@ begin
                max(x.fecha_pago) as ultimo
           from public.pagos_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
       ) g on true
+      left join lateral (
+        select sum(x.monto) as devuelto, max(x.fecha) as ultimo
+          from public.devoluciones_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
+      ) dv on true
+      -- Pagos netos que la cubren (sección 2): lo que suman, o uno vigente que la dio por cancelada.
+      cross join lateral (
+        select coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) as neto,
+               coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) > 0
+               and (coalesce(g.sin_completar, false) or coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) >= t.total) as base
+      ) nt
       left join lateral public.comprobante_en_camino(c.id) e on true
       left join lateral public.pago_directo_de_la_compra(c.id) pd on true
      where not c.con_factura and c.pago_en_tesoreria and c.aprobacion in ('APROBADA', 'NO_REQUERIDA')
@@ -1020,23 +1343,25 @@ begin
     select f.id, f.numero, f.referencia, f.proveedor_id, f.proveedor, f.ruc, f.codigo_interno, f.moneda, f.total, f.sin_precio,
            f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
            f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
-           f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda
+           f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda,
+           f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas
       from pendientes f where f.pide
     union all
     (select f.id, f.numero, f.referencia, f.proveedor_id, f.proveedor, f.ruc, f.codigo_interno, f.moneda, f.total, f.sin_precio,
             f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
             f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
-            f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda
+            f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda,
+            f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas
        from pendientes f where not f.pide order by f.ultimo desc nulls last, f.creado_en desc limit 60)
   ) x
-  -- Primero lo que le pide algo a Tesorería: lo pagado de más y la factura en
-  -- otra moneda. El anexo por revisar no le pide nada (lo revisa Logística) y va
-  -- con las demás.
+  -- Primero lo que le pide algo a Tesorería: lo pagado de más y lo que espera la
+  -- factura en otra moneda. El anexo por revisar no le pide nada (lo revisa
+  -- Logística) y va con las demás.
   order by (x.de_mas > 0 or x.otra_moneda) desc, x.cancelada, x.vence, x.creado_en;
 end;
 $$;
 comment on function public.compras_con_boleta_por_pagar() is
-  'Las OC con boleta aprobadas que Tesorería paga: las que faltan o piden algo y las 60 últimas canceladas, con el comprobante que el proveedor ya entregó y todavía no es su factura, su factura registrada (cuánto del pago directo tomó, lo que le falta y lo pagado de más) y la factura pagada que la cubría antes de una corrección. Exige tesoreria.registrar_pagos o tesoreria.ver_documentos.';
+  'Las OC con boleta aprobadas que Tesorería paga: las que faltan o piden algo y las 60 últimas canceladas (ni la OC ni sus facturas deben nada), con lo pagado neto de devoluciones, el comprobante que el proveedor ya entregó y todavía no es su factura, su factura registrada (cuánto del pago directo tomó, lo que le falta, lo pagado de más, lo que espera la de otra moneda y lo descontado en otras facturas) y la factura pagada que la cubría antes de una corrección. Por debajo de un sol no hay pagado de más. Exige tesoreria.registrar_pagos o tesoreria.ver_documentos.';
 revoke all on function public.compras_con_boleta_por_pagar() from public, anon;
 grant execute on function public.compras_con_boleta_por_pagar() to authenticated;
 
@@ -1103,11 +1428,15 @@ begin
     raise exception 'Logística anexó a la % la factura % del proveedor: Contabilidad la registra y se paga por ella en Cuentas por pagar.', v_nombre, v_fact
       using errcode = 'check_violation';
   end if;
-  -- Pagada: sus pagos vigentes suman el total, o uno vigente la dio por cancelada (sección 2).
+  -- Pagada: sus pagos vigentes, menos lo que el proveedor devolvió, suman el
+  -- total, o uno vigente la dio por cancelada (sección 2). Lo devuelto se puede
+  -- volver a pagar: el tope es lo neto.
   v_total := public.total_orden_compra(p_orden_compra);
   select coalesce(sum(monto), 0), coalesce(bool_or(cancela_sin_completar), false) into v_pagado, v_sin_completar
     from public.pagos_orden_compra
    where orden_compra_id = p_orden_compra and anulado_en is null;
+  v_pagado := v_pagado - coalesce((select sum(monto) from public.devoluciones_orden_compra
+                                    where orden_compra_id = p_orden_compra and anulado_en is null), 0);
   if v_sin_completar or (v_pagado > 0 and v_pagado >= v_total) then
     raise exception 'La % ya está pagada.', v_nombre using errcode = 'check_violation';
   end if;
@@ -1128,6 +1457,9 @@ begin
   end if;
   if v_comp is not null and char_length(v_comp) not between 3 and 30 then
     raise exception 'El número de la boleta, nota de venta o recibo va de 3 a 30 caracteres.' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from public.devoluciones_orden_compra where archivo_ruta = p_ruta) then
+    raise exception 'Esa constancia es la de una devolución: adjunta el voucher del pago.' using errcode = 'check_violation';
   end if;
   v_obj := public.archivo_subido_por_mi('pagos-compras', p_ruta, p_orden_compra,
                                         array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
@@ -1154,15 +1486,24 @@ comment on function public.registrar_pago_compra(uuid, uuid, date, numeric, bool
 revoke all on function public.registrar_pago_compra(uuid, uuid, date, numeric, boolean, text, text, text, uuid, numeric) from public, anon;
 grant execute on function public.registrar_pago_compra(uuid, uuid, date, numeric, boolean, text, text, text, uuid, numeric) to authenticated;
 
--- Tesorería anula el pago directo que estuvo mal, o el que el proveedor le
--- devolvió. Si la factura que llegó después lo había tomado, deja de tomarlo y
--- vuelve a deber lo que no cubren los demás (sección 6). Los candados, en el
--- orden de Adquisiciones: las facturas de la OC, la OC y el pago; con el pago
+-- Tesorería anula el pago directo que no salió, o que se registró mal (de otra
+-- cuenta, por otro monto, en la OC que no era). Lo que el proveedor devuelve no
+-- se resuelve anulando el pago: se registra como devolución. Si la factura que
+-- llegó después lo había tomado, deja de tomarlo y vuelve a deber lo que no
+-- cubren los demás (sección 6). Mientras la OC tenga una devolución vigente, su
+-- pago no se anula: lo devuelto ya está contado, y el pago anulado encima lo
+-- contaba dos veces (primero se anula la devolución). Los candados, en el orden
+-- de Adquisiciones: las facturas del cierre, las OC y el pago; con el pago
 -- primero, Contabilidad registrando la factura a la vez y esta anulación se
 -- esperaban la una a la otra.
 create or replace function public.anular_pago_compra(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
-declare v_pago public.pagos_orden_compra%rowtype;
+declare
+  v_pago   public.pagos_orden_compra%rowtype;
+  v_cierre uuid[];
+  v_nombre text;
+  v_n      integer;
+  v_dev    record;
 begin
   perform public.exigir_permiso('tesoreria.registrar_pagos');
   if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
@@ -1170,34 +1511,61 @@ begin
   end if;
   select * into v_pago from public.pagos_orden_compra where id = p_id;
   if not found then raise exception 'Ese pago no existe.' using errcode = 'check_violation'; end if;
-  perform public.bloquear_facturas_de_las_compras(array[v_pago.orden_compra_id]);
-  perform 1 from public.ordenes_compra_materiales where id = v_pago.orden_compra_id for no key update;
+  v_cierre := public.bloquear_cierre(array[v_pago.orden_compra_id]);
   select * into v_pago from public.pagos_orden_compra where id = p_id for update;
   if v_pago.anulado_en is not null then return p_id; end if;
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+    from public.ordenes_compra_materiales c where c.id = v_pago.orden_compra_id;
+  select count(*) into v_n from public.devoluciones_orden_compra
+   where orden_compra_id = v_pago.orden_compra_id and anulado_en is null;
+  if v_n > 0 then
+    select d.monto, d.moneda, d.fecha, d.operacion into v_dev
+      from public.devoluciones_orden_compra d
+     where d.orden_compra_id = v_pago.orden_compra_id and d.anulado_en is null
+     order by d.fecha desc, d.creado_en desc limit 1;
+    raise exception '%', 'La ' || v_nombre
+      || case when v_n = 1
+              then ' tiene registrada la devolución de ' || case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end
+                   || to_char(v_dev.monto, 'FM999G999G990D00') || ' del ' || to_char(v_dev.fecha, 'DD/MM/YYYY')
+                   || coalesce(' (op. ' || v_dev.operacion || ')', '')
+              else ' tiene registradas ' || v_n || ' devoluciones del proveedor (la última, de '
+                   || case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end
+                   || to_char(v_dev.monto, 'FM999G999G990D00') || ' del ' || to_char(v_dev.fecha, 'DD/MM/YYYY') || ')' end
+      || ': lo que el proveedor devolvió ya está contado. Si este pago además no salió, anula antes '
+      || case when v_n = 1 then 'la devolución' else 'las devoluciones' end || ' en «OC con boleta» y después este pago.'
+      using errcode = 'check_violation';
+  end if;
   perform public.caja_anular_por_pago('PAGO_ORDEN_COMPRA', p_id, p_motivo, 'pago');
   update public.pagos_orden_compra
      set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
    where id = p_id;
-  perform public.conciliar_pago_directo(array[v_pago.orden_compra_id]);
+  perform set_config('metalwork.conciliacion_por', 'se anuló un pago por la boleta de la ' || v_nombre, true);
+  perform public.conciliar_pago_directo(v_cierre);
+  perform set_config('metalwork.conciliacion_por', '', true);
   return p_id;
 end;
 $$;
 comment on function public.anular_pago_compra(uuid, text) is
-  'Tesorería anula, con su motivo, un pago directo de una OC con boleta: su egreso sale de la caja y, si una factura lo había tomado, deja de tomarlo. Exige tesoreria.registrar_pagos.';
+  'Tesorería anula, con su motivo, un pago directo de una OC con boleta que no salió o que se registró mal: su egreso sale de la caja y, si una factura lo había tomado, deja de tomarlo. No mientras la OC tenga una devolución vigente. Exige tesoreria.registrar_pagos.';
 revoke all on function public.anular_pago_compra(uuid, text) from public, anon;
 grant execute on function public.anular_pago_compra(uuid, text) to authenticated;
 
--- Cómo queda el pago de una OC después de anular uno de sus pagos o de anexarle
--- su factura: el comprobante en camino, cuántos pagos directos siguen vigentes,
--- si están completos y lo que le falta, y su factura registrada: cuánto de esos
--- pagos tomó, lo que le falta y lo pagado de más (sección 6). Con ella el aviso
--- que lee Tesorería, o Logística, dice lo que la base va a dejar hacer (sin
--- traer la lista entera). La ven quien paga, quien consulta Tesorería y
--- Logística, que emitió la OC: los mismos que leen sus pagos.
+-- Cómo queda el pago de una OC después de anular uno de sus pagos, de registrar
+-- o anular una devolución, o de anexarle su factura: el comprobante en camino,
+-- cuántos pagos directos y cuántas devoluciones siguen vigentes, lo neto, si la
+-- cubre y lo que le falta, y su factura registrada: cuánto de esos pagos tomó, lo
+-- que le falta, lo pagado de más y lo que espera la de otra moneda (sección 6).
+-- Con ella el aviso que lee Tesorería, o Logística, dice lo que la base va a
+-- dejar hacer (sin traer la lista entera). Aquí `cancelada` quiere decir que los
+-- pagos netos por la boleta la cubren; en `compras_con_boleta_por_pagar`, que ni
+-- la OC ni sus facturas deben nada. La ven quien paga, quien consulta Tesorería
+-- y Logística, que emitió la OC: los mismos que leen sus pagos.
 create or replace function public.situacion_de_pago_de_compra(p_compra uuid)
 returns table (en_camino text, en_camino_origen text, en_camino_alcanza boolean,
                pagos_vigentes integer, cancelada boolean, saldo numeric, moneda text,
-               factura text, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean)
+               factura text, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean,
+               neto numeric, devuelto numeric, devoluciones_vigentes integer, sin_tomar numeric,
+               otra_factura text, otra_saldo numeric, a_mano numeric, a_otras numeric)
 language plpgsql stable security definer rows 1 set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -1207,23 +1575,31 @@ begin
   end if;
   return query
   select e.numero, e.origen, e.alcanza, g.n::integer,
-         coalesce(g.n > 0 and (g.sin_completar or g.pagado >= t.total), false),
-         greatest(t.total - coalesce(g.pagado, 0), 0)::numeric(14, 2), c.moneda,
+         coalesce(nt.neto > 0 and (g.sin_completar or nt.neto >= t.total), false),
+         greatest(t.total - nt.neto, 0)::numeric(14, 2), c.moneda,
          pd.factura, pd.factura_saldo, coalesce(pd.aplicado, 0)::numeric(14, 2), coalesce(pd.de_mas, 0)::numeric(14, 2),
-         coalesce(pd.otra_moneda, false)
+         coalesce(pd.otra_moneda, false),
+         nt.neto::numeric(14, 2), coalesce(dv.devuelto, 0)::numeric(14, 2), dv.n::integer, coalesce(pd.sin_tomar, 0)::numeric(14, 2),
+         pd.otra_factura, coalesce(pd.otra_saldo, 0)::numeric(14, 2), coalesce(pd.a_mano, 0)::numeric(14, 2),
+         coalesce(pd.a_otras, 0)::numeric(14, 2)
     from public.ordenes_compra_materiales c
     cross join lateral (select public.total_orden_compra(c.id) as total) t
     cross join lateral (
       select count(*) as n, sum(x.monto) as pagado, coalesce(bool_or(x.cancela_sin_completar), false) as sin_completar
         from public.pagos_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
     ) g
+    cross join lateral (
+      select count(*) as n, sum(x.monto) as devuelto
+        from public.devoluciones_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
+    ) dv
+    cross join lateral (select coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) as neto) nt
     left join lateral public.comprobante_en_camino(c.id) e on true
     left join lateral public.pago_directo_de_la_compra(c.id) pd on true
    where c.id = p_compra;
 end;
 $$;
 comment on function public.situacion_de_pago_de_compra(uuid) is
-  'El pago de una OC: su comprobante en camino (y si es un anexo por revisar), los pagos directos vigentes, si la cubren y su saldo, y su factura registrada: cuánto del pago directo tomó, lo que le falta, lo pagado de más y si va en otra moneda. Exige tesoreria.registrar_pagos, tesoreria.ver_documentos o compras.crear.';
+  'El pago de una OC: su comprobante en camino (y si es un anexo por revisar), los pagos directos y las devoluciones vigentes, lo neto, si la cubre y su saldo, y su factura registrada: cuánto del pago directo tomó, lo que le falta, lo pagado de más y lo que espera la de otra moneda. Exige tesoreria.registrar_pagos, tesoreria.ver_documentos o compras.crear.';
 revoke all on function public.situacion_de_pago_de_compra(uuid) from public, anon;
 grant execute on function public.situacion_de_pago_de_compra(uuid) to authenticated;
 
@@ -1466,15 +1842,22 @@ grant execute on function public.anular_documento_servicio(uuid, text) to authen
 --     toma queda como pagado de más (`pago_directo_de_la_compra`, sección 4).
 --   · Se rehace sola cada vez que cambia algo de lo que la sostiene: la factura
 --     se registra o se corrige, se liga o se quita una OC, Logística anexa o
---     anula la factura, Tesorería anula un pago directo o un pago de la factura.
---     Lo que ya no corresponde se anula con su motivo (queda como evidencia) y
---     lo que falta se agrega.
---   · Solo el sistema la pone y la quita: el permiso de pagar no basta, y no se
---     anula a mano en la factura (se anula el pago de la boleta).
---   · La factura en otra moneda no toma nada (el sistema no convierte): no se
---     paga encima mientras el pago de la boleta siga vigente.
--- Lo pagado de más se resuelve anulando el pago que el proveedor devolvió: el de
--- la factura, si la pagaron también, o el de la boleta; la cuenta se rehace.
+--     anula la factura, Tesorería anula un pago directo o un pago de la factura,
+--     o registra o anula una devolución. Lo que ya no corresponde se anula con
+--     su motivo (queda como evidencia) y lo que falta se agrega. Se rehace junto
+--     con las OC con boleta que comparten facturas con ella (su cierre): una
+--     factura de dos OC reparte lo suyo entre las dos, y si una deja de tomarla,
+--     la otra toma lo que queda libre.
+--   · Solo el sistema pone y quita lo que la factura toma sola: el permiso de
+--     pagar no basta, y no se anula a mano en la factura.
+--   · La factura en otra moneda no toma sola (el sistema no convierte):
+--     Tesorería se lo pasa a mano, al cambio que dice el proveedor, y no se paga
+--     encima mientras quede algo sin pasar.
+-- Lo pagado de más no se resuelve anulando nada: lo que el proveedor devuelve se
+-- registra como devolución (entra a la caja), o se descuenta de otra factura
+-- suya. Solo se anula el pago que no salió o que se registró mal (lo cobró la
+-- décima auditoría: entre anular el pago bien hecho y volver a pagar, la OC
+-- desaparecía de la lista y quedaba abierta otra vez para pagarse).
 
 -- Las facturas que la conciliación va a tocar, «for update» y en orden: las
 -- registradas de cada OC y las que tienen tomado un pago directo suyo. Se toman
@@ -1518,6 +1901,117 @@ $$;
 comment on function public.compras_de_la_factura(public.adquisiciones) is
   'Las OC que esa factura puede estar pagando: cabecera, vínculos, anexos de los que es la factura y las que le dieron un pago directo. Ayudante interno.';
 revoke all on function public.compras_de_la_factura(public.adquisiciones) from public, anon, authenticated;
+-- El cierre de unas OC con boleta: ellas y las OC con boleta que comparten
+-- facturas con ellas, hasta que no se agregue ninguna. Las facturas de una OC
+-- son las de la compra y las que tomaron algo de sus pagos (al cambio, o un
+-- descuento). Una factura de dos OC las reparte juntas: conciliar una sola
+-- dejaba a la otra con lo que tomaba antes (lo cobró la revisión de la undécima
+-- vuelta).
+create or replace function public.compras_del_cierre(p_compras uuid[])
+returns uuid[] language plpgsql stable security definer set search_path to 'public' as $$
+declare
+  v_cierre uuid[];
+  v_nuevas uuid[];
+begin
+  v_cierre := array(select distinct c.id from public.ordenes_compra_materiales c
+                     where c.id = any(p_compras) and not c.con_factura);
+  v_nuevas := v_cierre;
+  while cardinality(v_nuevas) > 0 loop
+    v_nuevas := array(
+      select distinct c.id
+        from unnest(v_nuevas) n(id)
+        cross join lateral (select f.adquisicion_id as id from public.facturas_de_la_compra(n.id) f
+                            union
+                            select x.adquisicion_id from public.pagos_adquisicion x
+                              join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+                             where p.orden_compra_id = n.id and x.anulado_en is null) fx
+        join public.adquisiciones a on a.id = fx.id
+        cross join lateral unnest(public.compras_de_la_factura(a)) o(id)
+        join public.ordenes_compra_materiales c on c.id = o.id and not c.con_factura
+       where not (c.id = any(v_cierre)));
+    v_cierre := v_cierre || v_nuevas;
+    if cardinality(v_cierre) > 200 then
+      raise exception 'Estas OC con boleta comparten facturas con más de 200 OC: avisa al administrador del sistema.'
+        using errcode = 'check_violation';
+    end if;
+  end loop;
+  return array(select x from unnest(v_cierre) x order by 1);
+end;
+$$;
+comment on function public.compras_del_cierre(uuid[]) is
+  'Las OC con boleta que comparten facturas con estas (por las facturas de la compra y las que tomaron algo de sus pagos), hasta que no se agregue ninguna. Ayudante interno.';
+revoke all on function public.compras_del_cierre(uuid[]) from public, anon, authenticated;
+
+-- El cierre de estas OC (y de la factura, si viene), con sus candados en el
+-- orden de Adquisiciones: primero las facturas «for update», en orden de id;
+-- después las OC «for no key update», en orden. Así no espera a quien le anexa
+-- un documento a la OC (que la toma «for key share»). Se puede llamar dos veces
+-- en la misma transacción.
+create or replace function public.bloquear_cierre(p_compras uuid[], p_factura uuid default null)
+returns uuid[] language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_cierre uuid[];
+  v_adq    public.adquisiciones%rowtype;
+begin
+  if p_factura is not null then
+    select * into v_adq from public.adquisiciones where id = p_factura;
+  end if;
+  v_cierre := public.compras_del_cierre(coalesce(p_compras, '{}')
+                                        || case when v_adq.id is not null then public.compras_de_la_factura(v_adq) else '{}'::uuid[] end);
+  perform 1 from public.adquisiciones a
+   where a.id = p_factura
+      or a.id in (select f.adquisicion_id from unnest(v_cierre) c(id) cross join lateral public.facturas_de_la_compra(c.id) f
+                  union
+                  select x.adquisicion_id from public.pagos_adquisicion x
+                    join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+                   where p.orden_compra_id = any(v_cierre) and x.anulado_en is null)
+   order by a.id
+     for update;
+  perform 1 from public.ordenes_compra_materiales c where c.id = any(v_cierre) order by c.id for no key update;
+  return v_cierre;
+end;
+$$;
+comment on function public.bloquear_cierre(uuid[], uuid) is
+  'Toma los candados del cierre de esas OC con boleta (y de la factura, si viene): sus facturas «for update» y las OC «for no key update», en orden. Devuelve el cierre. Ayudante interno.';
+revoke all on function public.bloquear_cierre(uuid[], uuid) from public, anon, authenticated;
+
+-- De cada pago vigente de la OC, del primero al último: su monto, lo que
+-- tomaron de él a mano, lo devuelto que le toca, lo que queda para repartir y lo
+-- que ya tomaron las facturas solas. Lo devuelto se carga del último pago hacia
+-- atrás, sobre lo que no se tomó a mano: el proveedor devuelve lo último que
+-- recibió, y lo que la factura en otra moneda tomó al cambio ya no está.
+create or replace function public.libre_de_los_pagos_de_compra(p_compra uuid)
+returns table (pago_id uuid, orden integer, fecha date, monto numeric, a_mano numeric, devuelto numeric,
+               para_repartir numeric, tomado_solo numeric)
+language sql stable security definer rows 4 set search_path to 'public' as $$
+  with p as (
+    select p.id, p.fecha_pago, p.creado_en, p.monto,
+           coalesce((select sum(x.monto_de_la_boleta) from public.pagos_adquisicion x
+                      where x.pago_orden_compra_id = p.id and x.anulado_en is null and x.monto_de_la_boleta is not null), 0) as a_mano,
+           coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                      where x.pago_orden_compra_id = p.id and x.anulado_en is null and x.monto_de_la_boleta is null), 0) as tomado_solo
+      from public.pagos_orden_compra p
+     where p.orden_compra_id = p_compra and p.anulado_en is null
+  ),
+  d as (select coalesce(sum(x.monto), 0) as total from public.devoluciones_orden_compra x
+         where x.orden_compra_id = p_compra and x.anulado_en is null),
+  q as (
+    select p.*,
+           row_number() over (order by p.fecha_pago, p.creado_en, p.id)::integer as orden,
+           coalesce(sum(p.monto - p.a_mano) over (order by p.fecha_pago desc, p.creado_en desc, p.id desc
+                                                  rows between unbounded preceding and 1 preceding), 0) as despues
+      from p
+  ),
+  r as (
+    select q.*, least(q.monto - q.a_mano, greatest(d.total - q.despues, 0)) as devuelto from q cross join d
+  )
+  select r.id, r.orden, r.fecha_pago, r.monto, r.a_mano, r.devuelto, r.monto - r.a_mano - r.devuelto, r.tomado_solo
+    from r
+   order by r.orden;
+$$;
+comment on function public.libre_de_los_pagos_de_compra(uuid) is
+  'De cada pago vigente de una OC con boleta, en orden: su monto, lo tomado a mano, lo devuelto que le toca (del último hacia atrás), lo que queda para que lo tomen sus facturas y lo que ya tomaron solas. Ayudante interno.';
+revoke all on function public.libre_de_los_pagos_de_compra(uuid) from public, anon, authenticated;
 
 -- El pago de una factura lo registra quien paga, hasta su saldo (la de la
 -- 20261015122000). El pago de la boleta que la factura toma lo pone la
@@ -1545,8 +2039,9 @@ $$;
 revoke all on function public.fn_validar_pago_adquisicion() from public, anon, authenticated;
 
 -- El pago no se borra ni se corrige (la de la 20261015122000), y el que es el
--- de la boleta lo anula solo la conciliación: si el pago de la boleta estuvo
--- mal, o el proveedor lo devolvió, se anula ese, y la factura deja de tomarlo.
+-- de la boleta lo anula solo el sistema: la conciliación, o Tesorería al
+-- deshacer lo que pasó a mano («Deshacer»). Si el pago de la boleta no salió, se
+-- anula ese; si el proveedor lo devolvió, se registra la devolución.
 create or replace function public.fn_pago_adquisicion_guardia()
 returns trigger language plpgsql set search_path to 'public' as $$
 declare
@@ -1563,7 +2058,7 @@ begin
   end if;
   if old.pago_orden_compra_id is not null
      and current_setting('metalwork.aplica_pago_directo', true) is distinct from old.pago_orden_compra_id::text then
-    raise exception 'Ese es el pago que se hizo por la boleta de la OC, y la factura lo tomó: no se anula aquí. Si estuvo mal, o el proveedor lo devolvió, Tesorería lo anula en «OC con boleta» y la factura vuelve a deber.'
+    raise exception 'Ese pago es el que se hizo por la boleta de la OC, y la factura lo tomó: no se anula aquí. Si se tomó a mano, se deshace con «Deshacer» en la factura; si el pago no salió, se anula en «OC con boleta»; si el proveedor lo devolvió, ahí se registra la devolución.'
       using errcode = 'check_violation';
   end if;
   return new;
@@ -1571,82 +2066,111 @@ end;
 $$;
 revoke all on function public.fn_pago_adquisicion_guardia() from public, anon, authenticated;
 
--- La conciliación: para cada OC con boleta, qué toma cada una de sus facturas
--- de sus pagos directos. Los pagos, del primero al último; las facturas de su
--- moneda, de la más antigua a la más nueva, cada una con lo que le queda libre
--- (su total menos lo pagado que no es un pago directo de esta OC: sus pagos
--- propios y lo que tomó de otras OC). Cada pago llena lo que puede y lo que
--- sobra pasa a la siguiente. Lo tomado que ya no calza (el pago se anuló, la
--- factura cambió o dejó de ser la de la OC) se anula con su motivo, y lo que
--- falta se agrega, con la fecha del pago de la boleta y quien lo registró. Las
--- facturas y la OC se toman antes de mirar nada: dos conciliaciones de la misma
--- OC no se cruzan, y un pago que esté entrando termina antes. La OC «for no key
--- update»: así no espera a quien le está anexando un documento (que la toma
--- «for key share»), que puede estar esperando esta misma factura.
+-- La conciliación: para el cierre de estas OC con boleta (las que comparten
+-- facturas), qué toma cada factura de sus pagos directos. Un solo pozo por
+-- factura: lo que le queda libre es su total menos lo pagado que no es una toma
+-- sola de este cierre (sus pagos propios y lo que tomó a mano). Las OC, de la
+-- que se pagó primero a la última; de cada una, sus pagos con lo que les queda
+-- para repartir (sin lo devuelto ni lo tomado a mano), del primero al último,
+-- contra sus facturas de su moneda, de la más antigua a la más nueva: cada pago
+-- llena lo que puede y lo que sobra pasa a la siguiente. Lo tomado solo que ya
+-- no calza (el pago se anuló, el proveedor devolvió, la factura cambió o dejó de
+-- ser de la OC) se anula con su motivo; lo tomado a mano se queda mientras su
+-- pago siga vigente y su factura registrada. Después se agrega lo que falta,
+-- con la fecha del pago de la boleta y quien lo registró: primero se anula todo
+-- y después se inserta, para que el saldo de una factura no rechace lo nuevo
+-- mientras siga vigente lo viejo de otra OC. Las facturas y las OC se toman
+-- antes de mirar nada (`bloquear_cierre`): dos conciliaciones del mismo cierre
+-- no se cruzan, y un pago que esté entrando termina antes.
 create or replace function public.conciliar_pago_directo(p_compras uuid[])
 returns void language plpgsql security definer set search_path to 'public' as $$
 declare
-  v_compras  uuid[] := array(select distinct x from unnest(p_compras) x where x is not null order by 1);
+  v_cierre   uuid[];
   v_oc       record;
-  v_pagos    uuid[];
-  v_montos   numeric[];
+  v_p        record;
+  v_x        record;
   v_facturas uuid[];
   v_libres   numeric[];
-  v_d_pago   uuid[];
-  v_d_fact   uuid[];
-  v_d_monto  numeric[];
+  v_suyas    uuid[];
+  v_f        uuid;
+  v_d_pago   uuid[] := '{}';
+  v_d_fact   uuid[] := '{}';
+  v_d_monto  numeric[] := '{}';
+  v_resto    numeric;
   v_toma     numeric;
   v_hay      boolean;
-  v_x        record;
   v_pago     public.pagos_orden_compra%rowtype;
+  v_nombre   text;
   v_ref      text;
-  i          integer;
+  v_por      text := nullif(btrim(coalesce(current_setting('metalwork.conciliacion_por', true), '')), '');
   j          integer;
   k          integer;
 begin
-  if cardinality(v_compras) = 0 then return; end if;
-  perform public.bloquear_facturas_de_las_compras(v_compras);
-  for v_oc in select c.id, coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda
+  v_cierre := public.bloquear_cierre(array(select distinct x from unnest(p_compras) x where x is not null));
+  if cardinality(v_cierre) = 0 then return; end if;
+
+  -- El pozo: las facturas de la compra de cada OC del cierre, en la moneda de esa OC.
+  select coalesce(array_agg(a.id order by a.id), '{}'),
+         coalesce(array_agg(a.total - coalesce((
+                    select sum(x.monto) from public.pagos_adquisicion x
+                     where x.adquisicion_id = a.id and x.anulado_en is null
+                       and (x.pago_orden_compra_id is null
+                            or exists (select 1 from public.pagos_orden_compra p
+                                        where p.id = x.pago_orden_compra_id and p.anulado_en is null
+                                          and (x.monto_de_la_boleta is not null or not (p.orden_compra_id = any(v_cierre)))))), 0)
+                  order by a.id), '{}')
+    into v_facturas, v_libres
+    from public.adquisiciones a
+   where a.id in (select f.adquisicion_id
+                    from unnest(v_cierre) c(id)
+                    join public.ordenes_compra_materiales oc on oc.id = c.id
+                    cross join lateral public.facturas_de_la_compra(c.id) f
+                    join public.adquisiciones b on b.id = f.adquisicion_id and b.moneda = oc.moneda);
+
+  -- El reparto: la OC que se pagó primero toma primero.
+  for v_oc in select c.id, c.moneda
                 from public.ordenes_compra_materiales c
-               where c.id = any(v_compras) and not c.con_factura
-               order by c.id
-                 for no key update loop
-    select coalesce(array_agg(p.id order by p.fecha_pago, p.creado_en, p.id), '{}'),
-           coalesce(array_agg(p.monto order by p.fecha_pago, p.creado_en, p.id), '{}')
-      into v_pagos, v_montos
-      from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
-    select coalesce(array_agg(a.id order by a.fecha_emision, a.creado_en, a.id), '{}'),
-           coalesce(array_agg(a.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
-                                                    where x.adquisicion_id = a.id and x.anulado_en is null
-                                                      and not exists (select 1 from public.pagos_orden_compra p
-                                                                       where p.id = x.pago_orden_compra_id
-                                                                         and p.orden_compra_id = v_oc.id)), 0)
-                              order by a.fecha_emision, a.creado_en, a.id), '{}')
-      into v_facturas, v_libres
-      from public.facturas_de_la_compra(v_oc.id) f
-      join public.adquisiciones a on a.id = f.adquisicion_id
-     where a.moneda = v_oc.moneda;
-
-    v_d_pago := '{}'; v_d_fact := '{}'; v_d_monto := '{}';
-    i := 1; j := 1;
-    while i <= cardinality(v_pagos) and j <= cardinality(v_facturas) loop
-      if v_libres[j] <= 0 then j := j + 1; continue; end if;
-      v_toma := least(v_montos[i], v_libres[j]);
-      v_d_pago := v_d_pago || v_pagos[i];
-      v_d_fact := v_d_fact || v_facturas[j];
-      v_d_monto := v_d_monto || v_toma;
-      v_montos[i] := v_montos[i] - v_toma;
-      v_libres[j] := v_libres[j] - v_toma;
-      if v_montos[i] <= 0 then i := i + 1; end if;
+                left join lateral (select p.fecha_pago, p.creado_en from public.pagos_orden_compra p
+                                    where p.orden_compra_id = c.id and p.anulado_en is null
+                                    order by p.fecha_pago, p.creado_en limit 1) pp on true
+               where c.id = any(v_cierre)
+               order by pp.fecha_pago nulls last, pp.creado_en nulls last, c.id loop
+    v_suyas := array(select a.id from public.facturas_de_la_compra(v_oc.id) f
+                       join public.adquisiciones a on a.id = f.adquisicion_id
+                      where a.moneda = v_oc.moneda
+                      order by a.fecha_emision, a.creado_en, a.id);
+    continue when cardinality(v_suyas) = 0;
+    for v_p in select l.pago_id, l.para_repartir from public.libre_de_los_pagos_de_compra(v_oc.id) l
+                where l.para_repartir > 0 order by l.orden loop
+      v_resto := v_p.para_repartir;
+      foreach v_f in array v_suyas loop
+        exit when v_resto <= 0;
+        j := array_position(v_facturas, v_f);
+        continue when j is null or v_libres[j] <= 0;
+        v_toma := least(v_resto, v_libres[j]);
+        v_d_pago := v_d_pago || v_p.pago_id;
+        v_d_fact := v_d_fact || v_f;
+        v_d_monto := v_d_monto || v_toma;
+        v_resto := v_resto - v_toma;
+        v_libres[j] := v_libres[j] - v_toma;
+      end loop;
     end loop;
+  end loop;
 
-    -- Lo que ya está tomado y calza se queda; lo demás se anula.
-    for v_x in select x.id, x.pago_orden_compra_id, x.adquisicion_id, x.monto, x.registrado_por,
-                      p.anulado_en as pago_anulado, p.motivo_anulacion as motivo_pago
-                 from public.pagos_adquisicion x
-                 join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
-                where p.orden_compra_id = v_oc.id and x.anulado_en is null
-                order by x.creado_en, x.id loop
+  -- Lo que ya está tomado y calza se queda; lo demás se anula, en todo el cierre.
+  for v_x in select x.id, x.pago_orden_compra_id, x.adquisicion_id, x.monto, x.monto_de_la_boleta, x.registrado_por,
+                    p.anulado_en as pago_anulado, p.motivo_anulacion as motivo_pago, a.estado as estado_factura,
+                    coalesce(c.numero, 'OC ' || c.referencia) as nombre
+               from public.pagos_adquisicion x
+               join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+               join public.ordenes_compra_materiales c on c.id = p.orden_compra_id
+               join public.adquisiciones a on a.id = x.adquisicion_id
+              where p.orden_compra_id = any(v_cierre) and x.anulado_en is null
+              order by x.creado_en, x.id loop
+    if v_x.monto_de_la_boleta is not null then
+      -- Lo que Tesorería pasó a mano se queda mientras su pago siga y su factura esté registrada.
+      continue when v_x.pago_anulado is null and v_x.estado_factura = 'REGISTRADA';
+    else
       v_hay := false;
       for k in 1 .. cardinality(v_d_pago) loop
         if v_d_monto[k] is not null and v_d_pago[k] = v_x.pago_orden_compra_id
@@ -1657,59 +2181,63 @@ begin
         end if;
       end loop;
       continue when v_hay;
-      perform set_config('metalwork.aplica_pago_directo', v_x.pago_orden_compra_id::text, true);
-      update public.pagos_adquisicion
-         set anulado_en = now(), anulado_por = coalesce(public.usuario_actual(), v_x.registrado_por),
-             motivo_anulacion = left(case when v_x.pago_anulado is not null
-                                          then 'Se anuló el pago de la boleta de la ' || v_oc.nombre || ': «' || coalesce(v_x.motivo_pago, '') || '»'
-                                          else 'La factura ya no toma así el pago de la boleta de la ' || v_oc.nombre
-                                               || ': cambió la factura, su anexo o sus pagos.' end, 500)
-       where id = v_x.id;
-    end loop;
-
-    -- Lo que falta tomar.
-    for k in 1 .. cardinality(v_d_pago) loop
-      continue when v_d_monto[k] is null;
-      select * into v_pago from public.pagos_orden_compra where id = v_d_pago[k];
-      v_ref := left('Pago por la boleta de la ' || v_oc.nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
-                    || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 110);
-      if exists (select 1 from public.pagos_adquisicion x
-                  where x.adquisicion_id = v_d_fact[k] and x.anulado_en is null and x.referencia = v_ref) then
-        v_ref := v_ref || ' · ' || left(v_pago.id::text, 8);
-      end if;
-      perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
-      insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por, pago_orden_compra_id)
-      values (v_d_fact[k], v_pago.fecha_pago, v_d_monto[k], v_ref, v_pago.registrado_por, v_pago.id);
-    end loop;
-    perform set_config('metalwork.aplica_pago_directo', '', true);
+    end if;
+    perform set_config('metalwork.aplica_pago_directo', v_x.pago_orden_compra_id::text, true);
+    update public.pagos_adquisicion
+       set anulado_en = now(), anulado_por = coalesce(public.usuario_actual(), v_x.registrado_por),
+           motivo_anulacion = left(case when v_x.pago_anulado is not null
+                                        then 'Se anuló el pago de la boleta de la ' || v_x.nombre || ': «' || coalesce(v_x.motivo_pago, '') || '»'
+                                        when v_x.estado_factura <> 'REGISTRADA'
+                                        then 'La factura ya no está registrada: deja de tomar lo pagado por la boleta de la ' || v_x.nombre || '.'
+                                        else 'La factura ya no toma así el pago de la boleta de la ' || v_x.nombre || ': '
+                                             || coalesce(v_por, 'cambió la factura, su anexo o sus pagos') || '.' end, 500)
+     where id = v_x.id;
   end loop;
-  perform public.avisar_pago_directo(v_compras);
+
+  -- Lo que falta tomar.
+  for k in 1 .. cardinality(v_d_pago) loop
+    continue when v_d_monto[k] is null;
+    select * into v_pago from public.pagos_orden_compra where id = v_d_pago[k];
+    select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+      from public.ordenes_compra_materiales c where c.id = v_pago.orden_compra_id;
+    -- Con el sufijo cabe en los 120 de la referencia.
+    v_ref := left('Pago por la boleta de la ' || v_nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
+                  || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);
+    if exists (select 1 from public.pagos_adquisicion x
+                where x.adquisicion_id = v_d_fact[k] and x.anulado_en is null and x.referencia = v_ref) then
+      v_ref := v_ref || ' · ' || left(v_pago.id::text, 8);
+    end if;
+    perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
+    insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por, pago_orden_compra_id)
+    values (v_d_fact[k], v_pago.fecha_pago, v_d_monto[k], v_ref, v_pago.registrado_por, v_pago.id);
+  end loop;
+  perform set_config('metalwork.aplica_pago_directo', '', true);
+  perform public.avisar_pago_directo(v_cierre);
 end;
 $$;
 comment on function public.conciliar_pago_directo(uuid[]) is
-  'Rehace, para cada OC con boleta, qué toman sus facturas registradas de sus pagos directos: anula con su motivo lo que ya no calza, agrega lo que falta y avisa a Tesorería. La llaman los disparadores y las funciones que cambian la factura, el anexo o los pagos. Ayudante interno.';
+  'Rehace, para el cierre de esas OC con boleta (las que comparten facturas), qué toman sus facturas registradas de sus pagos directos, netos de devoluciones y de lo tomado a mano: anula con su motivo lo que ya no calza, agrega lo que falta y avisa a Tesorería. La llaman los disparadores y las funciones que cambian la factura, el anexo, los pagos o las devoluciones. Ayudante interno.';
 revoke all on function public.conciliar_pago_directo(uuid[]) from public, anon, authenticated;
 
 -- Lo que Tesorería tiene que saber de cada OC con boleta pagada directo, sin
 -- repetirlo (uno por persona mientras no lo lea), y dando por leído lo que ya no
--- corre:
+-- corre o cambió de monto (entra el nuevo):
 --   · Pagada de más: la factura que llegó después ya estaba pagada, o es por
---     menos. Se pide la devolución; devuelta, se anula el pago que el proveedor
---     devolvió (el de la factura o el de la boleta) y la cuenta se rehace. Si la
---     factura es por menos, se anula el de la boleta y la factura se paga con
---     ese mismo voucher por lo que tomaba.
+--     menos. Se pide la devolución y se registra cuando entra, o se descuenta
+--     de otra factura del proveedor. Nada se anula.
 --   · El anexo por revisar: Logística le anexó una factura que Contabilidad
 --     registró para otras OC y que no alcanza para esta. La factura no toma el
 --     pago; si la OC sí era parte de ella, que no se pague dos veces.
---   · La factura en otra moneda: no toma el pago, y no se paga encima.
+--   · La factura en otra moneda: no toma sola el pago (el sistema no convierte),
+--     y no se paga encima mientras quede algo sin pasarle. Tesorería se lo pasa
+--     al cambio, o registra la devolución.
 create or replace function public.avisar_pago_directo(p_compras uuid[])
 returns void language plpgsql security definer set search_path to 'public' as $$
 declare
   v_oc     record;
   v_pd     record;
   v_e      record;
-  v_n      integer;
-  v_monto  numeric;
+  v_neto   numeric;
   v_propio numeric;
   v_s      text;
   v_titulo text;
@@ -1718,81 +2246,93 @@ begin
   for v_oc in select c.id, coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda
                 from public.ordenes_compra_materiales c
                where c.id = any(p_compras) and not c.con_factura loop
-    select count(*), coalesce(sum(p.monto), 0) into v_n, v_monto
-      from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
     select * into v_pd from public.pago_directo_de_la_compra(v_oc.id);
     select e.numero, e.origen into v_e from public.comprobante_en_camino(v_oc.id) e;
+    v_neto := coalesce(v_pd.pagado, 0) - coalesce(v_pd.devuelto, 0);
     v_s := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
     v_titulo := null;
-    if v_n > 0 and coalesce(v_pd.de_mas, 0) > 0 then
+    v_cuerpo := null;
+    if coalesce(v_pd.de_mas, 0) > 0 then
       -- Lo que Tesorería le pagó a la factura misma, no lo que tomó de las boletas.
       select coalesce(sum(x.monto), 0) into v_propio
         from public.facturas_de_la_compra(v_oc.id) f
         join public.pagos_adquisicion x on x.adquisicion_id = f.adquisicion_id
        where x.anulado_en is null and x.pago_orden_compra_id is null;
       v_titulo := 'Compra pagada de más: ' || v_oc.nombre;
-      v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta (' || v_s || to_char(v_monto, 'FM999G999G990D00') || ')'
+      v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta (' || v_s || to_char(v_neto, 'FM999G999G990D00')
+               || case when coalesce(v_pd.devuelto, 0) > 0
+                       then ', después de los ' || v_s || to_char(v_pd.devuelto, 'FM999G999G990D00') || ' que el proveedor ya devolvió'
+                       else '' end || ')'
                || case when v_propio > 0
                        then ' y también por su factura ' || v_pd.factura || ', que Tesorería ya había pagado: se pagaron '
-                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago que te devolvió (el de la factura, en «Facturas por pagar», o el de la boleta, en «OC con boleta») y la cuenta se rehace.'
+                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más.'
                        else ' y su factura ' || v_pd.factura || ', que llegó después, es por menos: la factura tomó '
                             || v_s || to_char(v_pd.aplicado, 'FM999G999G990D00') || ' de ese pago y se pagaron '
-                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago de la boleta en «OC con boleta» y paga la factura con ese mismo voucher por '
-                            || v_s || to_char(v_pd.aplicado, 'FM999G999G990D00') || '.' end;
-    elsif v_n > 0 and v_e.origen = 'REGISTRADA' then
+                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más.' end
+               || ' Pide al proveedor la devolución y, cuando la devuelva, regístrala en «OC con boleta» con «Registrar devolución». Si te la descuenta en otra factura suya, usa «Lo descuenta de otra factura».';
+    elsif v_neto > 0 and v_e.origen = 'REGISTRADA' then
       v_titulo := 'Factura anexada por revisar: ' || v_oc.nombre;
       v_cuerpo := 'Logística anexó a la ' || v_oc.nombre || ', que pagaste por su boleta, la factura ' || v_e.numero
                || ', que Contabilidad registró para otras OC y que no alcanza para esta: la factura no toma ese pago. Si el anexo fue por error, que Logística lo anule. Si la OC sí era parte de esa factura, no la pagues dos veces: pregúntale a Contabilidad.';
-    elsif v_n > 0 and coalesce(v_pd.otra_moneda, false) then
+    elsif coalesce(v_pd.otra_moneda, false) then
       v_titulo := 'Factura en otra moneda: ' || v_oc.nombre;
       v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta en ' || case when v_oc.moneda = 'USD' then 'dólares' else 'soles' end
-               || ' y su factura ' || v_pd.factura || ' va en ' || case when v_oc.moneda = 'USD' then 'soles' else 'dólares' end
-               || ': el sistema no la da por pagada con ese pago, y no se paga encima. Si la factura reemplaza a la boleta, anula ese pago en «OC con boleta» y paga la factura con el mismo voucher.';
+               || ' y su factura ' || v_pd.otra_factura || ' va en ' || case when v_oc.moneda = 'USD' then 'soles' else 'dólares' end
+               || ': no toma ese pago sola, porque el sistema no convierte, y no se paga encima mientras queden '
+               || v_s || to_char(v_pd.sin_tomar, 'FM999G999G990D00')
+               || ' sin pasar a ella. Si el proveedor tomó ese pago a cuenta de la factura, en «OC con boleta» usa «La factura lo toma al cambio» y paga solo lo que falte; si te lo devolvió, usa «Registrar devolución».';
     end if;
+    -- El que ya no corre, o cambió de monto, se da por leído; el nuevo entra abajo.
     update public.notificaciones set leida_en = now()
      where origen_id = v_oc.id and leida_en is null
        and titulo in ('Compra pagada de más: ' || v_oc.nombre, 'Factura anexada por revisar: ' || v_oc.nombre,
                       'Factura en otra moneda: ' || v_oc.nombre)
-       and titulo is distinct from v_titulo;
+       and (titulo is distinct from v_titulo or cuerpo is distinct from v_cuerpo);
     continue when v_titulo is null;
     insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
     select u.id, v_titulo, v_cuerpo, '/tesoreria/por-pagar#compra-' || v_oc.id, 'ordenes_compra_materiales', v_oc.id
       from public.usuarios u
       join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'tesoreria.registrar_pagos'
-     where u.activo and u.id is distinct from public.usuario_actual()
+     -- También a quien hizo el cambio: es lo que queda por hacer, no la noticia de lo que hizo. Si
+     -- Tesorería registra una devolución en parte, el aviso de antes se da por leído y entra el del resto.
+     where u.activo
        and not exists (select 1 from public.notificaciones n
                         where n.usuario_id = u.id and n.origen_id = v_oc.id and n.titulo = v_titulo and n.leida_en is null);
   end loop;
 end;
 $$;
 comment on function public.avisar_pago_directo(uuid[]) is
-  'Avisa a Tesorería de cada OC con boleta pagada directo cuya factura la dejó pagada de más, cuyo anexo está por revisar o cuya factura va en otra moneda, y da por leídos los avisos de esa OC que ya no corren. Ayudante interno de la conciliación.';
+  'Avisa a Tesorería de cada OC con boleta pagada directo cuya factura la dejó pagada de más, cuyo anexo está por revisar o cuya factura en otra moneda espera lo pagado por la boleta, y da por leídos los avisos de esa OC que ya no corren o cambiaron de monto. Ayudante interno de la conciliación.';
 revoke all on function public.avisar_pago_directo(uuid[]) from public, anon, authenticated;
 
--- La factura en otra moneda que la OC con boleta que Tesorería ya pagó directo
--- no toma ese pago (el sistema no convierte): no se paga encima mientras ese
--- pago siga vigente. Las demás facturas de una OC pagada directo ya lo tomaron y
--- solo deben lo que les falta: basta la validación de su saldo.
+-- La factura en otra moneda de una OC con boleta que Tesorería ya pagó directo
+-- no toma sola ese pago (el sistema no convierte): no se paga encima mientras
+-- quede algo de ese pago sin pasarle. Primero Tesorería se lo pasa al cambio (o
+-- registra la devolución); después se paga lo que falte. Las demás facturas de
+-- una OC pagada directo ya lo tomaron y solo deben lo que les falta: basta la
+-- validación de su saldo.
 create or replace function public.fn_factura_sin_pago_directo()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare
   v_adq    public.adquisiciones%rowtype;
-  v_nombre text;
+  v_oc     record;
 begin
   if tg_table_name <> 'pagos_adquisicion' or new.anulado_en is not null or new.pago_orden_compra_id is not null then
     return new;
   end if;
   select * into v_adq from public.adquisiciones where id = new.adquisicion_id;
-  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+  select coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda, pd.sin_tomar into v_oc
     from public.ordenes_compra_materiales c
+    cross join lateral public.pago_directo_de_la_compra(c.id) pd
    where c.id = any(public.compras_de_la_factura(v_adq)) and not c.con_factura and c.moneda <> v_adq.moneda
      and exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = v_adq.id)
-     and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
+     and pd.sin_tomar >= 1
    order by c.numero
    limit 1;
-  if v_nombre is not null then
-    raise exception 'Tesorería ya pagó la % directo, por su boleta, en otra moneda que esta factura: el sistema no la da por pagada con ese pago, y no se paga encima. Si la factura reemplaza a la boleta, primero se anula ese pago en «OC con boleta» y después se paga aquí con el mismo voucher.',
-      v_nombre using errcode = 'check_violation';
+  if found then
+    raise exception 'Tesorería ya pagó la % por su boleta en otra moneda que esta factura, y quedan % de ese pago sin pasar a ella: el sistema no convierte. Primero, en «OC con boleta», «La factura lo toma al cambio» (o «Registrar devolución», si el proveedor lo devolvió); después se paga aquí lo que falte.',
+      v_oc.nombre, case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_oc.sin_tomar, 'FM999G999G990D00')
+      using errcode = 'check_violation';
   end if;
   return new;
 end;
@@ -1819,6 +2359,462 @@ revoke all on function public.fn_conciliar_por_pago_de_factura() from public, an
 create or replace trigger trg_conciliar_por_pago_de_factura
   after update on public.pagos_adquisicion
   for each row execute function public.fn_conciliar_por_pago_de_factura();
+-- Anular el pago propio de una factura (la de la 20261019100000), salvo si la
+-- factura es de una OC con boleta con una devolución vigente del proveedor: lo
+-- devuelto ya está contado ahí, y con el pago anulado la factura volvía a deber
+-- y se pagaba otra vez. Si además el pago estuvo mal, primero se anula la
+-- devolución. Lo que la factura tomó de la boleta no se anula aquí (lo dice su
+-- guardia).
+create or replace function public.anular_pago_factura(p_id uuid, p_motivo text)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_pago public.pagos_adquisicion%rowtype;
+  v_adq  public.adquisiciones%rowtype;
+  v_dev  record;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
+    raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
+  end if;
+  select * into v_pago from public.pagos_adquisicion where id = p_id for update;
+  if not found then raise exception 'Ese pago no existe.' using errcode = 'check_violation'; end if;
+  if v_pago.anulado_en is not null then return p_id; end if;
+  if v_pago.pago_orden_compra_id is null then
+    select * into v_adq from public.adquisiciones where id = v_pago.adquisicion_id;
+    select coalesce(c.numero, 'OC ' || c.referencia) as nombre, d.monto, d.moneda, d.fecha into v_dev
+      from public.ordenes_compra_materiales c
+      join public.devoluciones_orden_compra d on d.orden_compra_id = c.id and d.anulado_en is null
+     where c.id = any(public.compras_de_la_factura(v_adq)) and not c.con_factura
+     order by d.fecha desc, d.creado_en desc
+     limit 1;
+    if found then
+      raise exception 'La factura % es de la %, que tiene registrada una devolución del proveedor (% del %): lo devuelto ya está contado ahí, y con este pago anulado la factura volvería a deber y se pagaría otra vez. Si este pago además estuvo mal, anula antes la devolución en «OC con boleta».',
+        v_adq.numero_documento, v_dev.nombre,
+        case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_dev.monto, 'FM999G999G990D00'),
+        to_char(v_dev.fecha, 'DD/MM/YYYY') using errcode = 'check_violation';
+    end if;
+  end if;
+  perform public.caja_anular_por_pago('PAGO_ADQUISICION', p_id, p_motivo, 'pago');
+  update public.pagos_adquisicion
+     set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
+   where id = p_id;
+  return p_id;
+end;
+$$;
+comment on function public.anular_pago_factura(uuid, text) is
+  'Tesorería anula, con su motivo, un pago de una factura de compra: su egreso sale de la caja. No si la factura es de una OC con boleta con una devolución vigente. Exige tesoreria.registrar_pagos.';
+revoke all on function public.anular_pago_factura(uuid, text) from public, anon;
+grant execute on function public.anular_pago_factura(uuid, text) to authenticated;
+
+-- Lo que el proveedor de una OC con boleta devolvió de lo pagado por la boleta:
+-- entra a la cuenta que Tesorería elige, con su constancia, y achica lo que la
+-- boleta aportó. Si la factura que llegó después tomaba ese dinero, deja de
+-- tomarlo; si sobraba, ya no sobra. Se registra en cualquier momento, aunque la
+-- factura no haya llegado o vaya en otra moneda: como mucho, lo que queda pagado
+-- por la boleta y no se pasó a mano a una factura. La operación es opcional (la
+-- devolución en efectivo no tiene), la constancia no, y no es el voucher de un
+-- pago. Idempotente por `p_id`.
+create or replace function public.registrar_devolucion_compra(
+  p_id uuid, p_orden_compra uuid, p_fecha date, p_monto numeric, p_operacion text, p_ruta text,
+  p_caja uuid, p_monto_cuenta numeric
+) returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_yo     uuid := public.usuario_actual();
+  v_hoy    date := (now() at time zone 'America/Lima')::date;
+  v_cierre uuid[];
+  v_oc     public.ordenes_compra_materiales%rowtype;
+  v_nombre text;
+  v_pd     record;
+  v_tope   numeric;
+  v_desde  date;
+  v_op     text := nullif(btrim(coalesce(p_operacion, '')), '');
+  v_obj    storage.objects%rowtype;
+  v_mon    text;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if p_id is null then raise exception 'Vuelve a abrir el formulario de la devolución.' using errcode = 'check_violation'; end if;
+  if exists (select 1 from public.devoluciones_orden_compra where id = p_id) then return p_id; end if;
+  v_cierre := public.bloquear_cierre(array[p_orden_compra]);
+  if exists (select 1 from public.devoluciones_orden_compra where id = p_id) then return p_id; end if;
+  select * into v_oc from public.ordenes_compra_materiales where id = p_orden_compra;
+  if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
+  v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
+  if v_oc.con_factura then
+    raise exception 'La % va con factura: aquí se registra lo devuelto de lo pagado por la boleta.', v_nombre using errcode = 'check_violation';
+  end if;
+  v_mon := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+  select * into v_pd from public.pago_directo_de_la_compra(p_orden_compra);
+  v_tope := coalesce(v_pd.pagado, 0) - coalesce(v_pd.devuelto, 0) - coalesce(v_pd.a_mano, 0);
+  if v_tope <= 0 then
+    if coalesce(v_pd.a_mano, 0) > 0 then
+      raise exception 'Lo que queda pagado por la boleta de la % lo tomó a mano una factura: deshaz esa toma en «Facturas por pagar» antes de registrar la devolución.', v_nombre
+        using errcode = 'check_violation';
+    end if;
+    raise exception 'La % no tiene pagos vigentes por su boleta: no hay nada que devolver.', v_nombre using errcode = 'check_violation';
+  end if;
+  select min(fecha_pago) into v_desde from public.pagos_orden_compra where orden_compra_id = p_orden_compra and anulado_en is null;
+  if p_fecha is null or p_fecha > v_hoy or p_fecha < v_desde then
+    raise exception 'Elige el día en que entró la devolución: desde el primer pago (%) hasta hoy.', to_char(v_desde, 'DD/MM/YYYY')
+      using errcode = 'check_violation';
+  end if;
+  if p_monto is null or p_monto <= 0 or p_monto > 999999999 or p_monto <> round(p_monto, 2) then
+    raise exception 'Escribe lo que devolvió el proveedor, en dos decimales.' using errcode = 'check_violation';
+  end if;
+  if p_monto > v_tope then
+    raise exception 'La devolución pasa de lo que queda pagado por la boleta de la %: como mucho, %.', v_nombre,
+      v_mon || to_char(v_tope, 'FM999G999G990D00') using errcode = 'check_violation';
+  end if;
+  if v_op is not null and char_length(v_op) > 60 then
+    raise exception 'El número de operación pasa de 60 caracteres.' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from public.pagos_orden_compra where archivo_ruta = p_ruta) then
+    raise exception 'Esa constancia ya es el voucher de un pago: adjunta la de la devolución.' using errcode = 'check_violation';
+  end if;
+  v_obj := public.archivo_subido_por_mi('pagos-compras', p_ruta, p_orden_compra,
+                                        array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+
+  insert into public.devoluciones_orden_compra (id, orden_compra_id, fecha, moneda, monto, operacion,
+                                                archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+  values (p_id, p_orden_compra, p_fecha, v_oc.moneda, p_monto, v_op,
+          p_ruta, v_obj.metadata->>'mimetype', (v_obj.metadata->>'size')::integer, v_yo);
+
+  perform public.caja_mover_por_pago('DEVOLUCION_ORDEN_COMPRA', p_id, 'INGRESO', p_caja, p_fecha, p_monto, v_oc.moneda, p_monto_cuenta,
+    'Devolución del proveedor por la ' || v_nombre || ' · ' || v_oc.proveedor, v_oc.codigo_interno, v_op);
+
+  perform set_config('metalwork.conciliacion_por', 'el proveedor devolvió ' || v_mon || to_char(p_monto, 'FM999G999G990D00')
+                                                   || ' el ' || to_char(p_fecha, 'DD/MM/YYYY'), true);
+  perform public.conciliar_pago_directo(v_cierre);
+  perform set_config('metalwork.conciliacion_por', '', true);
+  return p_id;
+end;
+$$;
+comment on function public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric) is
+  'Tesorería registra lo que el proveedor de una OC con boleta le devolvió de lo pagado por la boleta, con su constancia y la cuenta a la que entró: deja su ingreso en la caja y la factura deja de tomarlo. Exige tesoreria.registrar_pagos (y tesoreria.caja, que mueve la caja).';
+revoke all on function public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric) from public, anon;
+grant execute on function public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric) to authenticated;
+
+-- La devolución que se registró mal se anula con su motivo: su ingreso sale de
+-- la caja y la factura vuelve a tomar ese dinero. No si con eso lo pagado por la
+-- boleta pasaría del total de la OC: la correcta se registra primero.
+create or replace function public.anular_devolucion_compra(p_id uuid, p_motivo text)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_dev    public.devoluciones_orden_compra%rowtype;
+  v_cierre uuid[];
+  v_nombre text;
+  v_total  numeric;
+  v_neto   numeric;
+  v_mon    text;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
+    raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
+  end if;
+  select * into v_dev from public.devoluciones_orden_compra where id = p_id;
+  if not found then raise exception 'Esa devolución no existe.' using errcode = 'check_violation'; end if;
+  v_cierre := public.bloquear_cierre(array[v_dev.orden_compra_id]);
+  select * into v_dev from public.devoluciones_orden_compra where id = p_id for update;
+  if v_dev.anulado_en is not null then return p_id; end if;
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+    from public.ordenes_compra_materiales c where c.id = v_dev.orden_compra_id;
+  v_total := public.total_orden_compra(v_dev.orden_compra_id);
+  v_neto := coalesce((select sum(monto) from public.pagos_orden_compra where orden_compra_id = v_dev.orden_compra_id and anulado_en is null), 0)
+          - coalesce((select sum(monto) from public.devoluciones_orden_compra
+                       where orden_compra_id = v_dev.orden_compra_id and anulado_en is null and id <> p_id), 0);
+  v_mon := case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+  if v_neto > v_total then
+    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal, registra primero la correcta y después anula esta.',
+      v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00')
+      using errcode = 'check_violation';
+  end if;
+  perform public.caja_anular_por_pago('DEVOLUCION_ORDEN_COMPRA', p_id, p_motivo, 'devolución');
+  update public.devoluciones_orden_compra
+     set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
+   where id = p_id;
+  perform set_config('metalwork.conciliacion_por', 'se anuló la devolución de ' || v_mon || to_char(v_dev.monto, 'FM999G999G990D00')
+                                                   || ' del ' || to_char(v_dev.fecha, 'DD/MM/YYYY'), true);
+  perform public.conciliar_pago_directo(v_cierre);
+  perform set_config('metalwork.conciliacion_por', '', true);
+  return p_id;
+end;
+$$;
+comment on function public.anular_devolucion_compra(uuid, text) is
+  'Tesorería anula, con su motivo, la devolución de una OC con boleta que se registró mal: su ingreso sale de la caja. No si lo pagado pasaría del total de la OC. Exige tesoreria.registrar_pagos (y tesoreria.caja).';
+revoke all on function public.anular_devolucion_compra(uuid, text) from public, anon;
+grant execute on function public.anular_devolucion_compra(uuid, text) to authenticated;
+
+-- Tesorería pasa a mano a una factura lo pagado por la boleta, sin mover la caja
+-- (el dinero ya salió con el pago de la boleta):
+--   · «La factura lo toma al cambio»: la factura de la compra en otra moneda,
+--     que no lo toma sola porque el sistema no convierte. Como mucho, lo que
+--     queda sin tomar, al cambio que dice el proveedor (de S/ 2 a S/ 6).
+--   · «Lo descuenta de otra factura»: lo pagado de más, que el proveedor no
+--     devuelve y descuenta de otra factura suya con saldo.
+-- Toma de los pagos del último hacia atrás, de lo que no tomó ninguna factura,
+-- y deja una fila por pago con lo que consume de la boleta (`monto_de_la_boleta`)
+-- y lo que toma la factura. La conciliación la conserva mientras su pago siga y
+-- su factura esté registrada; se deshace con `soltar_pago_de_la_boleta`.
+-- Idempotente por `p_id`, que es el id de la primera fila.
+create or replace function public.tomar_pago_de_la_boleta(
+  p_id uuid, p_compra uuid, p_factura uuid, p_monto_boleta numeric, p_monto_factura numeric
+) returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_cierre  uuid[];
+  v_oc      public.ordenes_compra_materiales%rowtype;
+  v_adq     public.adquisiciones%rowtype;
+  v_nombre  text;
+  v_pd      record;
+  v_suya    boolean;
+  v_saldo   numeric;
+  v_cambio  numeric;
+  v_resto   numeric;
+  v_resto_f numeric;
+  v_parte   numeric;
+  v_monto   numeric;
+  v_p       record;
+  v_pago    public.pagos_orden_compra%rowtype;
+  v_ref     text;
+  v_primera boolean := true;
+  v_s_oc    text;
+  v_s_f     text;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if p_id is null then raise exception 'Vuelve a abrir la ventana.' using errcode = 'check_violation'; end if;
+  if exists (select 1 from public.pagos_adquisicion where id = p_id) then return p_id; end if;
+  v_cierre := public.bloquear_cierre(array[p_compra], p_factura);
+  if exists (select 1 from public.pagos_adquisicion where id = p_id) then return p_id; end if;
+  select * into v_oc from public.ordenes_compra_materiales where id = p_compra;
+  if not found or v_oc.con_factura then
+    raise exception 'Esa OC con boleta no existe.' using errcode = 'check_violation';
+  end if;
+  v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
+  select * into v_adq from public.adquisiciones where id = p_factura;
+  if not found or v_adq.estado <> 'REGISTRADA' or v_adq.tipo = 'OTRO' then
+    raise exception 'Elige una factura registrada.' using errcode = 'check_violation';
+  end if;
+  v_s_oc := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+  v_s_f := case when v_adq.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+  if p_monto_boleta is null or p_monto_factura is null or p_monto_boleta <= 0 or p_monto_factura <= 0
+     or p_monto_boleta > 999999999 or p_monto_factura > 999999999
+     or p_monto_boleta <> round(p_monto_boleta, 2) or p_monto_factura <> round(p_monto_factura, 2) then
+    raise exception 'Escribe los dos montos, en dos decimales.' using errcode = 'check_violation';
+  end if;
+  select * into v_pd from public.pago_directo_de_la_compra(p_compra);
+  v_suya := exists (select 1 from public.facturas_de_la_compra(p_compra) f where f.adquisicion_id = p_factura);
+  if v_suya then
+    if v_adq.moneda = v_oc.moneda then
+      raise exception 'La factura % va en la misma moneda que la %: toma lo pagado por la boleta sola.', v_adq.numero_documento, v_nombre
+        using errcode = 'check_violation';
+    end if;
+    if p_monto_boleta > coalesce(v_pd.sin_tomar, 0) then
+      raise exception 'Quedan % de lo pagado por la boleta sin pasar a ninguna factura: no toma más.',
+        v_s_oc || to_char(coalesce(v_pd.sin_tomar, 0), 'FM999G999G990D00') using errcode = 'check_violation';
+    end if;
+  else
+    if not coalesce(public.mismo_proveedor(v_adq.proveedor, v_oc.proveedor), false) then
+      raise exception 'La factura % es de otro proveedor.', v_adq.numero_documento using errcode = 'check_violation';
+    end if;
+    if coalesce(v_pd.de_mas, 0) <= 0 then
+      raise exception 'La % no tiene nada pagado de más que descontar.', v_nombre using errcode = 'check_violation';
+    end if;
+    if p_monto_boleta > v_pd.de_mas then
+      raise exception 'Lo pagado de más de la % es %: no se descuenta más.', v_nombre,
+        v_s_oc || to_char(v_pd.de_mas, 'FM999G999G990D00') using errcode = 'check_violation';
+    end if;
+  end if;
+  v_saldo := v_adq.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                                      where x.adquisicion_id = p_factura and x.anulado_en is null), 0);
+  if p_monto_factura > v_saldo then
+    raise exception 'La factura % debe %: no toma más.', v_adq.numero_documento,
+      v_s_f || to_char(greatest(v_saldo, 0), 'FM999G999G990D00') using errcode = 'check_violation';
+  end if;
+  if v_adq.moneda = v_oc.moneda then
+    if p_monto_factura <> p_monto_boleta then
+      raise exception 'En la misma moneda, lo que toma la factura es lo mismo que sale de la boleta.' using errcode = 'check_violation';
+    end if;
+  else
+    v_cambio := case when v_oc.moneda = 'PEN' then p_monto_boleta / p_monto_factura else p_monto_factura / p_monto_boleta end;
+    if v_cambio not between 2 and 6 then
+      raise exception 'Con esos montos el dólar sale a S/ %: revisa los dos montos.', round(v_cambio, 3) using errcode = 'check_violation';
+    end if;
+  end if;
+
+  -- Del último pago hacia atrás, de lo que ninguna factura tomó.
+  v_resto := p_monto_boleta;
+  v_resto_f := p_monto_factura;
+  for v_p in select l.pago_id, greatest(l.para_repartir - l.tomado_solo, 0) as libre
+               from public.libre_de_los_pagos_de_compra(p_compra) l
+              order by l.orden desc loop
+    exit when v_resto <= 0;
+    continue when v_p.libre <= 0;
+    v_parte := least(v_p.libre, v_resto);
+    v_resto := v_resto - v_parte;
+    v_monto := case when v_resto <= 0 then v_resto_f else round(p_monto_factura * v_parte / p_monto_boleta, 2) end;
+    if v_monto <= 0 then
+      raise exception 'Con esos montos no se puede repartir lo que toma la factura entre los pagos de la boleta: revisa los dos montos.'
+        using errcode = 'check_violation';
+    end if;
+    v_resto_f := v_resto_f - v_monto;
+    select * into v_pago from public.pagos_orden_compra where id = v_p.pago_id;
+    v_ref := left(case when v_suya then 'Tomado al cambio del pago por la boleta de la '
+                       else 'Descontado de lo pagado de más por la boleta de la ' end
+                  || v_nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
+                  || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);
+    if exists (select 1 from public.pagos_adquisicion x
+                where x.adquisicion_id = p_factura and x.anulado_en is null and x.referencia = v_ref) then
+      v_ref := v_ref || ' · ' || left(v_pago.id::text, 8);
+    end if;
+    perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
+    insert into public.pagos_adquisicion (id, adquisicion_id, fecha, monto, referencia, registrado_por,
+                                          pago_orden_compra_id, monto_de_la_boleta)
+    values (case when v_primera then p_id else gen_random_uuid() end, p_factura, v_pago.fecha_pago, v_monto, v_ref,
+            public.usuario_actual(), v_pago.id, v_parte);
+    v_primera := false;
+  end loop;
+  perform set_config('metalwork.aplica_pago_directo', '', true);
+  if v_resto > 0 then
+    raise exception 'Quedan % de lo pagado por la boleta sin pasar a ninguna factura: no toma más.',
+      v_s_oc || to_char(p_monto_boleta - v_resto, 'FM999G999G990D00') using errcode = 'check_violation';
+  end if;
+
+  perform set_config('metalwork.conciliacion_por', 'Tesorería pasó lo pagado por la boleta a la factura ' || v_adq.numero_documento, true);
+  perform public.conciliar_pago_directo(v_cierre);
+  perform set_config('metalwork.conciliacion_por', '', true);
+  return p_id;
+end;
+$$;
+comment on function public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric) is
+  'Tesorería pasa a mano a una factura lo pagado por la boleta de una OC, sin mover la caja: a su factura en otra moneda, al cambio, o lo pagado de más a otra factura del mismo proveedor. Exige tesoreria.registrar_pagos.';
+revoke all on function public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric) from public, anon;
+grant execute on function public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric) to authenticated;
+
+-- Deshacer lo que Tesorería pasó a mano a una factura: la factura vuelve a deber
+-- y lo pagado por la boleta queda sin pasar a ninguna factura. Con su motivo, y
+-- solo lo de esa OC en esa factura.
+create or replace function public.soltar_pago_de_la_boleta(p_compra uuid, p_factura uuid, p_motivo text)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_cierre uuid[];
+  v_x      record;
+  v_n      integer := 0;
+  v_nombre text;
+  v_numero text;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
+    raise exception 'Cuenta por qué se deshace, en 10 a 500 caracteres.' using errcode = 'check_violation';
+  end if;
+  v_cierre := public.bloquear_cierre(array[p_compra], p_factura);
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre from public.ordenes_compra_materiales c where c.id = p_compra;
+  select a.numero_documento into v_numero from public.adquisiciones a where a.id = p_factura;
+  for v_x in select x.id, x.pago_orden_compra_id
+               from public.pagos_adquisicion x
+               join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+              where p.orden_compra_id = p_compra and x.adquisicion_id = p_factura
+                and x.monto_de_la_boleta is not null and x.anulado_en is null
+              order by x.creado_en, x.id loop
+    perform set_config('metalwork.aplica_pago_directo', v_x.pago_orden_compra_id::text, true);
+    update public.pagos_adquisicion
+       set anulado_en = now(), anulado_por = public.usuario_actual(),
+           motivo_anulacion = left('Tesorería deshizo la toma: «' || btrim(p_motivo) || '»', 500)
+     where id = v_x.id;
+    v_n := v_n + 1;
+  end loop;
+  perform set_config('metalwork.aplica_pago_directo', '', true);
+  if v_n = 0 then
+    -- Un segundo clic: ya estaba deshecha.
+    if exists (select 1 from public.pagos_adquisicion x
+                 join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+                where p.orden_compra_id = p_compra and x.adquisicion_id = p_factura and x.monto_de_la_boleta is not null) then
+      return p_factura;
+    end if;
+    raise exception 'Esa factura no tomó a mano nada de lo pagado por la boleta de la %.', coalesce(v_nombre, 'OC')
+      using errcode = 'check_violation';
+  end if;
+  perform set_config('metalwork.conciliacion_por', 'Tesorería deshizo la toma de la factura ' || coalesce(v_numero, ''), true);
+  perform public.conciliar_pago_directo(v_cierre);
+  perform set_config('metalwork.conciliacion_por', '', true);
+  return p_factura;
+end;
+$$;
+comment on function public.soltar_pago_de_la_boleta(uuid, uuid, text) is
+  'Tesorería deshace, con su motivo, lo que pasó a mano a una factura de lo pagado por la boleta de una OC: la factura vuelve a deberlo. Exige tesoreria.registrar_pagos.';
+revoke all on function public.soltar_pago_de_la_boleta(uuid, uuid, text) from public, anon;
+grant execute on function public.soltar_pago_de_la_boleta(uuid, uuid, text) to authenticated;
+
+-- Las facturas del mismo proveedor en las que se puede descontar lo pagado de
+-- más de una OC con boleta: registradas, con saldo y que no son de esa OC.
+create or replace function public.facturas_para_descontar(p_compra uuid)
+returns table (id uuid, numero text, moneda text, fecha_emision date, total numeric, saldo numeric)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+begin
+  if not (public.es_admin() or public.tiene_permiso('tesoreria.registrar_pagos')) then
+    raise exception 'Lo pagado de más lo descuenta Tesorería.' using errcode = 'insufficient_privilege';
+  end if;
+  return query
+  select a.id, a.numero_documento, a.moneda, a.fecha_emision, a.total,
+         (a.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                               where x.adquisicion_id = a.id and x.anulado_en is null), 0))::numeric(14, 2)
+    from public.ordenes_compra_materiales c
+    join public.adquisiciones a on a.estado = 'REGISTRADA' and a.tipo <> 'OTRO'
+                               and public.clave_proveedor(a.proveedor) = public.clave_proveedor(c.proveedor)
+                               and public.mismo_proveedor(a.proveedor, c.proveedor)
+   where c.id = p_compra and not c.con_factura
+     and not exists (select 1 from public.facturas_de_la_compra(p_compra) f where f.adquisicion_id = a.id)
+     and a.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                              where x.adquisicion_id = a.id and x.anulado_en is null), 0) > 0
+   order by a.fecha_emision desc, a.creado_en desc
+   limit 30;
+end;
+$$;
+comment on function public.facturas_para_descontar(uuid) is
+  'Las facturas registradas del mismo proveedor de una OC con boleta, con saldo y que no son de esa OC: donde se puede descontar lo pagado de más. Exige tesoreria.registrar_pagos.';
+revoke all on function public.facturas_para_descontar(uuid) from public, anon;
+grant execute on function public.facturas_para_descontar(uuid) to authenticated;
+
+-- Para Contabilidad, al registrar o completar una factura: de cada OC con boleta
+-- de la que es la factura (o de cuyos pagos tomó algo), lo que tomó de lo que
+-- Tesorería pagó por la boleta (en la moneda de la factura; y a mano), lo que le
+-- falta, lo pagado de más y si espera que Tesorería se lo pase al cambio. Sin
+-- los permisos de Tesorería.
+create or replace function public.pago_directo_de_la_factura(p_factura uuid)
+returns table (compra_id uuid, compra text, moneda text, tomado numeric, tomado_a_mano numeric,
+               falta numeric, de_mas numeric, otra_moneda boolean, sin_tomar numeric)
+language plpgsql stable security definer set search_path to 'public' as $$
+#variable_conflict use_column
+declare v_adq public.adquisiciones%rowtype;
+begin
+  if not (public.es_admin() or public.tiene_permiso('adquisiciones.ver') or public.tiene_permiso('adquisiciones.registrar')) then
+    raise exception 'Adquisiciones la ven Contabilidad, Tesorería, Logística y Gerencia.' using errcode = 'insufficient_privilege';
+  end if;
+  select * into v_adq from public.adquisiciones where id = p_factura;
+  if not found then return; end if;
+  return query
+  select c.id, coalesce(c.numero, 'OC ' || c.referencia), c.moneda,
+         coalesce(t.tomado, 0)::numeric(14, 2), coalesce(t.a_mano, 0)::numeric(14, 2),
+         greatest(v_adq.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                                           where x.adquisicion_id = p_factura and x.anulado_en is null), 0), 0)::numeric(14, 2),
+         coalesce(pd.de_mas, 0)::numeric(14, 2), coalesce(pd.otra_moneda, false), coalesce(pd.sin_tomar, 0)::numeric(14, 2)
+    from unnest(public.compras_de_la_factura(v_adq)) o(id)
+    join public.ordenes_compra_materiales c on c.id = o.id and not c.con_factura
+    left join lateral (
+      select sum(x.monto) as tomado, sum(x.monto) filter (where x.monto_de_la_boleta is not null) as a_mano
+        from public.pagos_adquisicion x
+        join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+       where x.adquisicion_id = p_factura and x.anulado_en is null and p.orden_compra_id = c.id
+    ) t on true
+    left join lateral public.pago_directo_de_la_compra(c.id) pd on true
+   where coalesce(t.tomado, 0) > 0
+      or (coalesce(pd.pagado, 0) > 0
+          and exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = p_factura))
+   order by c.numero;
+end;
+$$;
+comment on function public.pago_directo_de_la_factura(uuid) is
+  'De cada OC con boleta pagada directo de la que esa factura es la factura (o de cuyos pagos tomó algo): lo que tomó, lo que le falta, lo pagado de más y si espera lo pagado por la boleta en otra moneda. Exige adquisiciones.ver o adquisiciones.registrar.';
+revoke all on function public.pago_directo_de_la_factura(uuid) from public, anon;
+grant execute on function public.pago_directo_de_la_factura(uuid) to authenticated;
 
 -- La OC con boleta de antes que no se pagó: Tesorería la pasa a su lista y se
 -- paga como las de ahora. Solo de falso a verdadero, y no la que ya tiene
@@ -2173,6 +3169,8 @@ declare
   v_doc_oc    uuid;
   v_lectura   jsonb;
   v_compras   uuid[];
+  v_a_mano    text;
+  v_quitada   text;
 begin
   perform public.exigir_permiso('adquisiciones.registrar');
   select * into v_adq from public.adquisiciones where id = p_id for update;
@@ -2187,9 +3185,17 @@ begin
   if p_cambios is null or jsonb_typeof(p_cambios) <> 'object' then
     raise exception 'Vuelve a cargar la pantalla.' using errcode = 'check_violation';
   end if;
-  -- Lo que Tesorería le pagó: el pago de la boleta que tomó no cuenta, se rehace al final.
+  -- Lo que Tesorería le pagó y lo que le pasó a mano de una boleta: lo que tomó
+  -- sola de la boleta no cuenta, se rehace al final.
   select coalesce(sum(monto), 0) into v_pagado from public.pagos_adquisicion
-   where adquisicion_id = p_id and anulado_en is null and pago_orden_compra_id is null;
+   where adquisicion_id = p_id and anulado_en is null and (pago_orden_compra_id is null or monto_de_la_boleta is not null);
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_a_mano
+    from public.pagos_adquisicion x
+    join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+    join public.ordenes_compra_materiales c on c.id = p.orden_compra_id
+   where x.adquisicion_id = p_id and x.anulado_en is null and x.monto_de_la_boleta is not null
+   order by x.creado_en
+   limit 1;
   v_compras := public.compras_de_la_factura(v_adq);
   v_actuales := array(select l.orden_compra_id from public.adquisiciones_ordenes_compra l
                        where l.adquisicion_id = p_id and l.quitada_en is null order by l.creado_en);
@@ -2223,10 +3229,30 @@ begin
     raise exception 'El total va con IGV, mayor que cero, con hasta dos decimales.' using errcode = 'check_violation';
   end if;
   if v_nueva.total < v_pagado then
-    raise exception 'Tesorería ya pagó % de esta factura: el total no puede quedar por debajo.', v_pagado using errcode = 'check_violation';
+    raise exception 'Tesorería ya pagó % de esta factura: el total no puede quedar por debajo%.', v_pagado,
+      case when v_a_mano is not null
+           then ' (con lo que tomó a mano de la boleta de la ' || v_a_mano || ': si el cambio estaba mal, Tesorería la deshace primero)'
+           else '' end using errcode = 'check_violation';
   end if;
   if v_nueva.moneda is distinct from v_adq.moneda and v_pagado > 0 then
+    if v_a_mano is not null then
+      raise exception 'La factura tomó a mano lo pagado por la boleta de la %: su moneda no cambia mientras tanto. Tesorería deshace primero esa toma («Deshacer», en «Facturas por pagar»).', v_a_mano
+        using errcode = 'check_violation';
+    end if;
     raise exception 'La factura ya tiene pagos: su moneda no cambia. Anula primero los pagos.' using errcode = 'check_violation';
+  end if;
+  -- La OC de cuyos pagos tomó a mano no se le quita: la toma seguiría sin ser de ella.
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_quitada
+    from public.pagos_adquisicion x
+    join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+    join public.ordenes_compra_materiales c on c.id = p.orden_compra_id
+   where x.adquisicion_id = p_id and x.anulado_en is null and x.monto_de_la_boleta is not null
+     and (c.id = any (v_actuales) or c.id is not distinct from v_adq.orden_compra_id)
+     and not (c.id = any (v_ordenes))
+   limit 1;
+  if v_quitada is not null then
+    raise exception 'La factura tomó a mano lo pagado por la boleta de la %: no se le quita esa OC mientras tanto. Tesorería deshace primero esa toma («Deshacer», en «Facturas por pagar»).', v_quitada
+      using errcode = 'check_violation';
   end if;
   if v_nueva.condicion_pago = 'CONTADO' and v_nueva.fecha_vencimiento <> v_nueva.fecha_emision then
     v_nueva.fecha_vencimiento := v_nueva.fecha_emision;
@@ -2349,6 +3375,13 @@ grant execute on function public.corregir_factura_compra(uuid, uuid, text, text,
 --     anexada trae la factura registrada que es la suya (número, si alcanza y
 --     lo pagado), para que Adquisiciones diga si el anexo se puede anular y no
 --     la muestre dos veces.
+--   · (undécima vuelta) la OC con boleta se mide con lo neto de sus pagos (sin
+--     lo que el proveedor devolvió): con todo devuelto vuelve a POR_PAGAR, o sale
+--     como se paga su factura. Sale PAGADA_DE_MAS solo con algo sin tomar de S/ 1
+--     o más, y PAGO_PARCIAL mientras su factura en otra moneda espere que
+--     Tesorería le pase el pago al cambio (`espera_boleta`, en esa factura). Cada
+--     pago de una factura dice si se tomó a mano y de qué OC, y cada pago de la
+--     boleta, qué facturas lo tomaron.
 create or replace function public.trazabilidad_de_compras()
 returns table (
   tipo text, id uuid, numero text, referencia text, descripcion text, creado_en timestamptz, emitido_por text,
@@ -2430,7 +3463,10 @@ begin
                                             -- El pago de la boleta que la factura tomó (sección 6) lleva el voucher de ese pago.
                                             'ruta', coalesce(x.archivo_ruta, po.archivo_ruta),
                                             'bucket', case when x.pago_orden_compra_id is not null then 'pagos-compras' else 'pagos-facturas' end,
-                                            'boleta', x.pago_orden_compra_id is not null)
+                                            'boleta', x.pago_orden_compra_id is not null,
+                                            -- Lo que consumió de la boleta (en la moneda de la OC) y si Tesorería lo pasó a mano.
+                                            'de_la_boleta', x.monto_de_la_boleta, 'a_mano', x.monto_de_la_boleta is not null,
+                                            'compra', po.orden_compra_id)
                          order by x.fecha, x.creado_en) as pagos
           from public.pagos_adquisicion x
           left join public.pagos_orden_compra po on po.id = x.pago_orden_compra_id
@@ -2453,7 +3489,12 @@ begin
          null::text, c.recojo, c.entregado_almacen_en, ig.ingreso,
          null::timestamptz, null::text,
          fd.facturado, coalesce(fd.completa or fd.facturado >= fd.total - 1, false),
-         coalesce(fa.facturas, '[]'::jsonb), coalesce(pb.pagos, '[]'::jsonb), coalesce(dc.documentos, '[]'::jsonb),
+         -- La factura de la compra en otra moneda espera que Tesorería le pase al cambio lo pagado por la boleta.
+         coalesce((select jsonb_agg(e || jsonb_build_object('espera_boleta', not c.con_factura and coalesce(pd.sin_tomar, 0) >= 1
+                                                              and e->>'estado' = 'REGISTRADA' and e->>'moneda' <> c.moneda)
+                                    order by ord)
+                     from jsonb_array_elements(fa.facturas) with ordinality t(e, ord)), '[]'::jsonb),
+         coalesce(pb.pagos, '[]'::jsonb), coalesce(dc.documentos, '[]'::jsonb),
          case when v_recojo then pr.peso_kg end, v_recojo and pr.posicion is not null,
          case when g.id is not null then jsonb_build_object('id', g.id, 'numero', g.numero, 'fecha', g.fecha_emision,
                                                              'nombre', g.nombre_archivo, 'cargada_en', g.cargada_en) end,
@@ -2465,16 +3506,19 @@ begin
            when not c.con_factura and fe.origen = 'REGISTRADA' then 'ANEXO_POR_REVISAR'
            -- La de antes se pagó fuera, salvo que el proveedor entregara factura: esa se paga por ella.
            when not c.con_factura and not c.pago_en_tesoreria and coalesce(fa.registradas, 0) = 0 and fe.origen is null then 'SIN_FACTURA'
-           -- Pagada directo y su factura, que llegó después, no tomó todo lo pagado: se pide la devolución.
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and coalesce(pd.de_mas, 0) > 0 then 'PAGADA_DE_MAS'
-           -- Sin factura registrada que tome sus pagos directos (o con una en otra
-           -- moneda, que no toma nada): pagada si suman el total o uno vigente la dio
-           -- por cancelada (sección 2), y si no, pagada en parte; lo que falta, por su
+           -- Pagada directo y su factura, que llegó después, no tomó todo lo pagado
+           -- (de S/ 1 para arriba): se pide la devolución, o se descuenta de otra factura.
+           when not c.con_factura and coalesce(pd.de_mas, 0) > 0 then 'PAGADA_DE_MAS'
+           -- Su factura en otra moneda no toma sola lo pagado: espera que Tesorería se lo pase al cambio.
+           when not c.con_factura and coalesce(pd.otra_moneda, false) then 'PAGO_PARCIAL'
+           -- Sin factura registrada que tome sus pagos directos: pagada si lo neto
+           -- (sin lo que el proveedor devolvió) suma el total o uno vigente la dio por
+           -- cancelada (sección 2), y si no, pagada en parte; lo que falta, por su
            -- boleta o por la factura que llegue. Con factura, la que tomó el pago,
            -- sale como se paga esa factura (abajo): si es por más, le falta algo.
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and (coalesce(fa.registradas, 0) = 0 or coalesce(pd.otra_moneda, false))
-                and (pb.sin_completar or pb.pagado >= tt.total) then 'PAGADA'
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and (coalesce(fa.registradas, 0) = 0 or coalesce(pd.otra_moneda, false)) then 'PAGO_PARCIAL'
+           when not c.con_factura and coalesce(pd.neto, 0) > 0 and coalesce(fa.registradas, 0) = 0
+                and (pb.sin_completar or pd.neto >= tt.total) then 'PAGADA'
+           when not c.con_factura and coalesce(pd.neto, 0) > 0 and coalesce(fa.registradas, 0) = 0 then 'PAGO_PARCIAL'
            -- La boleta que Contabilidad registró como comprobante se paga por ahí (y
            -- `registrar_pago_compra` ya no la deja pagar directo): sigue como factura.
            -- La que trae factura (en borrador o anexada por Logística) espera que Contabilidad la registre.
@@ -2503,7 +3547,8 @@ begin
     -- su pago directo frente a su factura (sección 4). Solo la OC con boleta: la
     -- condición va afuera de la función y la de factura no la llama.
     left join lateral (select e.origen, e.alcanza from public.comprobante_en_camino(c.id) e where not c.con_factura) fe on true
-    left join lateral (select x.de_mas, x.otra_moneda from public.pago_directo_de_la_compra(c.id) x where not c.con_factura) pd on true
+    left join lateral (select x.de_mas, x.otra_moneda, x.sin_tomar, x.pagado - x.devuelto as neto
+                         from public.pago_directo_de_la_compra(c.id) x where not c.con_factura) pd on true
     -- El RQ nuevo (RQ-0001-2026): la OC lo atiende con alguna de sus líneas.
     left join lateral (
       select jsonb_agg(jsonb_build_object('id', x.id, 'numero', x.numero) order by x.numero) as lista,
@@ -2541,7 +3586,18 @@ begin
                                           'cancela', case when y.ultimo_sin_completar is not null then y.creado_en = y.ultimo_sin_completar and y.cancela_sin_completar
                                                           else y.acumulado >= tt.total and y.acumulado - y.monto < tt.total end,
                                           'operacion', y.operacion,
-                                          'comprobante', y.comprobante_proveedor, 'ruta', y.archivo_ruta, 'bucket', 'pagos-compras')
+                                          'comprobante', y.comprobante_proveedor, 'ruta', y.archivo_ruta, 'bucket', 'pagos-compras',
+                                          -- Las facturas que tomaron este pago: solas, al cambio o descontado.
+                                          'tomas', (select coalesce(jsonb_agg(jsonb_build_object(
+                                                             'factura_id', a.id, 'numero', a.numero_documento, 'moneda', a.moneda,
+                                                             'monto', t.monto, 'de_la_boleta', coalesce(t.monto_de_la_boleta, t.monto),
+                                                             'a_mano', t.monto_de_la_boleta is not null,
+                                                             'de_la_compra', exists (select 1 from public.facturas_de_la_compra(c.id) f
+                                                                                      where f.adquisicion_id = a.id))
+                                                           order by t.creado_en, t.id), '[]'::jsonb)
+                                                      from public.pagos_adquisicion t
+                                                      join public.adquisiciones a on a.id = t.adquisicion_id
+                                                     where t.pago_orden_compra_id = y.id and t.anulado_en is null))
                        order by y.fecha_pago, y.creado_en) as pagos
         from (select x.*, sum(x.monto) over (order by x.fecha_pago, x.creado_en, x.id) as acumulado,
                      max(x.creado_en) filter (where x.cancela_sin_completar) over () as ultimo_sin_completar
@@ -2605,7 +3661,7 @@ grant execute on function public.trazabilidad_de_compras() to authenticated;
 -- sin esto, Supervisión general leería ahí cuánto se le pagó a cada proveedor, que
 -- su política de `pagos_orden_compra` le esconde. Cada tabla, con lo mismo que su
 -- política. Es la de 20261020171000 (que conserva la de 20261020165000) más estas
--- dos: quien vuelva a escribir esta política tiene que conservarlas.
+-- tres: quien vuelva a escribir esta política tiene que conservarlas.
 alter policy ver_audit_log on public.audit_log using (
   public.es_admin() or (
     public.tiene_permiso('auditoria.ver')
@@ -2644,6 +3700,9 @@ alter policy ver_audit_log on public.audit_log using (
     and (tabla <> 'programacion_recojo'
          or public.tiene_permiso('compras.programar_recojo') or public.tiene_permiso('compras.recojo'))
     and (tabla <> 'pagos_orden_compra'
+         or public.tiene_permiso('tesoreria.registrar_pagos') or public.tiene_permiso('tesoreria.ver_documentos')
+         or public.tiene_permiso('compras.crear') or public.tiene_permiso('adquisiciones.ver'))
+    and (tabla <> 'devoluciones_orden_compra'
          or public.tiene_permiso('tesoreria.registrar_pagos') or public.tiene_permiso('tesoreria.ver_documentos')
          or public.tiene_permiso('compras.crear') or public.tiene_permiso('adquisiciones.ver'))
     and (tabla <> 'documentos_orden_servicio'

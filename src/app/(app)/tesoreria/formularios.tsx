@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, HandCoins, Undo2, Wallet } from 'lucide-react'
+import { ArrowLeftRight, Ban, HandCoins, Undo2, Wallet } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
@@ -26,6 +26,7 @@ import {
   registrarPagoFactura,
   registrarPagoServicio,
 } from './acciones'
+import { abrirVentanaDeLaBoleta } from './formularios-boleta'
 
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
@@ -689,48 +690,134 @@ export function PagarCompra({
  * Anular con su motivo un pago de OC con boleta mal registrado. La ventana dice
  * qué pasa con la OC: si le llegó su comprobante, ya no se paga aquí, sino por
  * él; y si le queda otro pago directo vigente, ese también se anula antes.
- */
-/**
+ *
  * `queQueda` lo arma la página con los pagos que se ven: lo mismo que dirá el aviso de después.
  * `etiqueta` dice cuál pago anula: con dos, el lector de pantalla leía «Anular» dos veces.
+ *
+ * Primero pregunta qué pasó (undécima vuelta): un pago bien hecho no se anula.
+ * Si el proveedor lo devolvió, se registra la devolución; si lo tomó a cuenta
+ * de su factura en otra moneda, se pasa al cambio. Solo «no salió» deja anular.
  */
-export function AnularPagoCompra({ pagoId, etiqueta, queQueda }: { pagoId: string; etiqueta: string; queQueda: string }) {
+export function AnularPagoCompra({
+  pagoId,
+  compraId,
+  etiqueta,
+  queQueda,
+  puedeDevolver,
+  alCambio,
+}: {
+  pagoId: string
+  compraId: string
+  etiqueta: string
+  queQueda: string
+  /** Quien mira lleva la caja y a la OC le queda algo que el proveedor pueda devolver. */
+  puedeDevolver: boolean
+  /** Lo pagado por la boleta espera a su factura en otra moneda. */
+  alCambio: { factura: string; moneda: string } | null
+}) {
   const [abierta, setAbierta] = useState(false)
+  const [quePaso, setQuePaso] = useState<'no_salio' | 'devolvio' | 'al_cambio' | null>(null)
   const avisar = useAvisoDeLaCaja()
   const { alEnviar, enviando, error } = useEnvio(anularPagoCompra, (r) => {
     setAbierta(false)
     avisar(r.mensaje ?? null)
   })
+  const opciones = [
+    { valor: 'no_salio' as const, texto: 'No salió, o salió de otra cuenta o por otro monto: lo anulo y, si hace falta, lo registro bien.' },
+    { valor: 'devolvio' as const, texto: 'El proveedor me lo devolvió, todo o en parte.' },
+    ...(alCambio ? [{ valor: 'al_cambio' as const, texto: `El proveedor lo tomó a cuenta de su factura en ${alCambio.moneda}.` }] : []),
+  ]
+  // Cierra esta y abre la ventana de la OC que corresponde: la devolución o el cambio no se anotan anulando.
+  const irA = (ventana: 'devolucion' | 'al-cambio') => {
+    setAbierta(false)
+    abrirVentanaDeLaBoleta(ventana, compraId)
+  }
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-compra={pagoId} aria-label={`Anular ${etiqueta}`}>
+      <Boton
+        type="button"
+        variante="contornoPeligro"
+        tamano="sm"
+        onClick={() => {
+          setQuePaso(null)
+          setAbierta(true)
+        }}
+        data-anular-pago-compra={pagoId}
+        aria-label={`Anular ${etiqueta}`}
+      >
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>
-      <Ventana
-        abierta={abierta}
-        alCerrar={() => setAbierta(false)}
-        titulo="Anular el pago"
-        descripcion={`Queda en el historial con su motivo y su voucher, y la caja diaria anula su egreso. ${queQueda}`}
-        ancho="md"
-      >
+      <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo="Anular el pago" ancho="md">
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={pagoId} />
-          <Campo etiqueta="Motivo" htmlFor={`anular-pago-compra-${pagoId}`} requerido>
-            <AreaTexto id={`anular-pago-compra-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
-          </Campo>
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium text-texto">¿Qué pasó con este pago?</legend>
+            {opciones.map((o) => (
+              <label
+                key={o.valor}
+                className="flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto has-[:checked]:border-acento has-[:checked]:bg-acento-suave"
+              >
+                <input
+                  type="radio"
+                  name="que_paso"
+                  value={o.valor}
+                  required
+                  checked={quePaso === o.valor}
+                  onChange={() => setQuePaso(o.valor)}
+                  className="mt-0.5 size-4 shrink-0 accent-[var(--acento)]"
+                />
+                <span>{o.texto}</span>
+              </label>
+            ))}
+          </fieldset>
+          {quePaso === 'no_salio' && (
+            <>
+              <p className="text-sm text-texto-suave">Queda en el historial con su motivo y su voucher, y la caja diaria anula su egreso. {queQueda}</p>
+              <Campo etiqueta="Motivo" htmlFor={`anular-pago-compra-${pagoId}`} requerido>
+                <AreaTexto id={`anular-pago-compra-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
+              </Campo>
+            </>
+          )}
+          {quePaso === 'devolvio' && (
+            <p role="status" className="text-sm text-texto">
+              No se anula: lo que salió, salió.{' '}
+              {puedeDevolver
+                ? 'Registra lo que entró con «Registrar devolución»; la OC y su factura se rehacen solas.'
+                : 'Lo que entró se registra con «Registrar devolución», y lo hace quien lleva la caja; la OC y su factura se rehacen solas.'}
+            </p>
+          )}
+          {quePaso === 'al_cambio' && alCambio && (
+            <p role="status" className="text-sm text-texto">
+              No se anula: usa «La factura lo toma al cambio», y la factura {alCambio.factura} lo toma.
+            </p>
+          )}
           {error && (
             <p role="alert" className="text-sm text-peligro">
               {error}
             </p>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
+            {quePaso === 'devolvio' && puedeDevolver && (
+              <Boton type="button" onClick={() => irA('devolucion')} data-ir-a-devolucion={pagoId}>
+                <HandCoins aria-hidden className="size-4" />
+                Registrar devolución
+              </Boton>
+            )}
+            {quePaso === 'al_cambio' && alCambio && (
+              <Boton type="button" onClick={() => irA('al-cambio')} data-ir-al-cambio={pagoId}>
+                <ArrowLeftRight aria-hidden className="size-4" />
+                La factura lo toma al cambio
+              </Boton>
+            )}
+            {quePaso === 'no_salio' && (
+              <Boton type="submit" variante="peligro" cargando={enviando}>
+                Anular
+              </Boton>
+            )}
           </div>
         </form>
       </Ventana>

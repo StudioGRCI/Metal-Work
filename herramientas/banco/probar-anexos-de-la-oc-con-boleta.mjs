@@ -39,6 +39,14 @@
  *      su anexo y el registro quedó en borrador (se cayó el último paso);
  *      Logística anula el anexo con clic, y Contabilidad completa el borrador
  *      con su PDF (antes la base lo rechazaba, y no había otra salida).
+ *   6. (undécima vuelta) La factura en otra moneda toma el pago al cambio: la
+ *      OC H se pagó entera en soles y su factura FH llegó en dólares. La OC
+ *      dice «Factura en otra moneda» y la factura espera, sin botón de pagar.
+ *      Tesorería escribe los dos montos que reconoce el proveedor y la factura
+ *      los toma, sin mover la caja; lo deshace con su motivo y lo vuelve a
+ *      tomar por menos, y paga el resto desde la cuenta en dólares. Gerencia
+ *      no ve esos botones. En la 1, Tesorería ve «Registrar devolución» y «Lo
+ *      descuenta de otra factura»; Gerencia, no.
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
@@ -103,6 +111,7 @@ const FZ_MAL = `F073-${SUFIJO}9`
 const FE = `F074-${SUFIJO}`
 const FF = `F075-${SUFIJO}`
 const FG = `F076-${SUFIJO}`
+const FH = `F077-${SUFIJO}`
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
@@ -150,6 +159,13 @@ const [{ id: caja }] = await consulta(
    values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $2::date - 30, $3) returning id`,
   [`Banco anexos ${SUFIJO}`, hoy, ids[CUENTAS.tesoreria]],
 )
+// La cuenta en dólares, de la que se paga lo que le falta a la factura en dólares (6).
+const CAJA_USD = `Dólares anexos ${SUFIJO}`
+await consulta(
+  `insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+   values ($1, 'BANCO', 'BANCO DE PRUEBA', 'USD', 5000, $2::date - 30, $3)`,
+  [CAJA_USD, hoy, ids[CUENTAS.tesoreria]],
+)
 const [{ id: area }] = await consulta(`select id from areas where codigo = 'MTZ'`)
 const [{ id: und }] = await consulta(`select id from unidades_medida where codigo = 'UND'`)
 const [{ id: cat }] = await consulta(`select id from categorias_material where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1`)
@@ -162,15 +178,15 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 7) n))`,
+        from generate_series(1, 8) n))`,
   [rq, area, `Prueba de los anexos de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
 await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
-// A, B, D, E, F y G van con boleta; C, con factura.
+// A, B, D, E, F, G y H van con boleta; C, con factura.
 await como('logistica')
 const oc = {}
-for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false], ['G', 7, false]]) {
+for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false], ['G', 7, false], ['H', 8, false]]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -189,13 +205,13 @@ const [{ total }] = await consulta(`select public.total_orden_compra($1)::float 
  * eligió; como `registrarAdquisicion`: la primera OC va en la factura y las
  * demás se ligan aparte.
  */
-async function registrar(numero, [principal = null, ...resto], { documento = null } = {}) {
+async function registrar(numero, [principal = null, ...resto], { documento = null, moneda = 'PEN', monto = total } = {}) {
   const id = await nuevoId()
   await como('contabilidad')
   await consulta(
     `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7)`,
-    [id, PROVEEDOR, numero, hoy, total, principal, documento],
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, $8, $5, 'CONTADO', $6, $7)`,
+    [id, PROVEEDOR, numero, hoy, monto, principal, documento, moneda],
   )
   for (const o of resto) await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [id, o])
   const ruta = documento ? null : await subir('comprobantes-financieros', `adquisiciones/${id}/comprobante.pdf`, 'contabilidad')
@@ -246,6 +262,12 @@ await como('tesoreria')
 const voucherG = await subir('pagos-compras', `${oc.G}/${pagoG}.pdf`, 'tesoreria')
 await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`, [pagoG, oc.G, hoy, total, voucherG, caja])
 await anexar(oc.G, FG)
+// 6. La OC H se pagó entera en soles; su factura FH llegó en dólares y Contabilidad la registró con la OC.
+const pagoH = await nuevoId()
+await como('tesoreria')
+const voucherH = await subir('pagos-compras', `${oc.H}/${pagoH}.pdf`, 'tesoreria')
+await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`, [pagoH, oc.H, hoy, total, voucherH, caja])
+const facturaH = await registrar(FH, [oc.H], { moneda: 'USD', monto: 97.7 })
 // 5. Contabilidad eligió el anexo FF de la OC F y el registro quedó en borrador.
 const anexoF = await anexar(oc.F, FF)
 const borradorF = await nuevoId()
@@ -351,6 +373,8 @@ const cifra = (n) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, 
   comprobar(texto.includes('Pide al proveedor la devolución'), 'y pide la devolución')
   comprobar(texto.includes(`Pagado de más S/ ${deMas}`) && texto.includes('Pagada por su factura'), 'muestra lo pagado de más, y que la factura ya está pagada')
   comprobar((await tarjeta.locator('[data-pagar-compra]').count()) === 0, 'sin botón de pagar')
+  comprobar((await tarjeta.locator('[data-registrar-devolucion]').count()) === 1 && (await tarjeta.locator('[data-descontar-de-otra]').count()) === 1,
+    'ofrece «Registrar devolución» y «Lo descuenta de otra factura» (undécima vuelta)')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-1-tesoreria.png`, fullPage: true })
   await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(nombre(oc.A))}`, { waitUntil: 'networkidle' })
   const fila = limpio(await pagina.locator(`tr[data-orden="${nombre(oc.A)}"]`).innerText().catch(() => ''))
@@ -359,6 +383,16 @@ const cifra = (n) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, 
   comprobar(fila.includes('Voucher de la boleta') && fila.includes('Voucher de la factura'), 'cada voucher dice si es de la boleta o de la factura')
   comprobar(!fila.includes('Pagar en Cuentas por pagar'), 'y no manda a pagar su factura, que ya está pagada')
   await contexto.close()
+  // Gerencia lee lo pagado de más sin los botones de Tesorería.
+  const g = await entrar('gerencia')
+  await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjetaG = g.pagina.locator(`article#compra-${oc.A}`)
+  comprobar(
+    limpio(await tarjetaG.innerText().catch(() => '')).includes('Tesorería pide al proveedor la devolución') &&
+      (await tarjetaG.locator('[data-registrar-devolucion], [data-descontar-de-otra]').count()) === 0,
+    'Gerencia lee quién pide la devolución y no ve sus botones',
+  )
+  await g.contexto.close()
 }
 {
   const { pagina, contexto } = await entrar('logistica')
@@ -467,7 +501,7 @@ const cifra = (n) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, 
   await pagina.locator('#adq-documento').selectOption(await pagina.locator('#adq-documento option', { hasText: FG }).getAttribute('value'))
   await pagina.waitForTimeout(800)
   const avisoG = limpio(await formularioG.innerText())
-  comprobar(avisoG.includes('al registrarla, la factura queda pagada con ese pago y Tesorería solo paga lo que falte'), 'al elegirlo dice que la factura queda pagada con ese pago')
+  comprobar(avisoG.includes('al registrarla, la factura toma ese pago y Tesorería solo paga lo que falte'), 'al elegirlo dice que la factura toma ese pago')
   const boton = pagina.getByRole('button', { name: 'Registrar comprobante' })
   comprobar(!(await boton.isDisabled()), '«Registrar comprobante» sigue disponible')
   await formularioG.getByText('Leyendo la factura…').waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
@@ -482,7 +516,8 @@ const cifra = (n) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, 
   const estadoG = limpio(await pagina.locator('p[role="status"]', { hasText: FG }).first().textContent().catch(() => ''))
   console.log(`       al registrar la ${FG}: ${estadoG || errorG}`)
   comprobar(!errorG, `Contabilidad la registra${errorG ? ` (dijo «${errorG}»)` : ''}`)
-  comprobar(estadoG.includes(`queda pagado con lo que Tesorería ya pagó por la boleta, S/ ${cifra(total)}`), 'y el aviso dice que queda pagada con lo que Tesorería pagó por la boleta')
+  comprobar(estadoG.includes(`tomó lo que Tesorería pagó por la boleta de la ${nombre(oc.G)}, S/ ${cifra(total)}, y no le falta nada`),
+    'y el aviso dice que tomó lo que Tesorería pagó por la boleta y no le falta nada')
   const facturasG = await hasta(
     () => consulta(`select id, estado from adquisiciones where numero_documento = $1`, [FG]),
     (f) => f.length > 0 && f[0].estado === 'REGISTRADA',
@@ -510,7 +545,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   const tarjeta = pagina.locator(`article#compra-${oc.E}`)
   const texto = limpio(await tarjeta.innerText().catch(() => ''))
   console.log(`       la tarjeta de la E: ${texto.slice(0, 400)}`)
-  comprobar(texto.includes('Se paga por su factura') && texto.includes(`tomó lo pagado por la boleta, S/ 100.00, y le faltan S/ ${resto}`),
+  comprobar(texto.includes('Se paga por su factura') && texto.includes(`tomó S/ 100.00 de lo pagado por la boleta y le faltan S/ ${resto}`),
     'la tarjeta de la OC dice que su factura tomó los S/ 100.00 y cuánto le falta')
   comprobar((await tarjeta.locator('[data-pagar-compra]').count()) === 0, 'y no ofrece pagarla por la boleta')
   const factura = pagina.locator(`article#factura-${facturaE.id}`)
@@ -518,7 +553,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   console.log(`       la tarjeta de la ${FE}: ${textoFactura.slice(0, 400)}`)
   comprobar(textoFactura.includes(`Saldo S/ ${resto}`) && textoFactura.includes(`Pago por la boleta de la ${nombre(oc.E)}`) && textoFactura.includes('Voucher de la boleta'),
     'la factura debe el resto y muestra el pago de la boleta con su voucher')
-  comprobar(textoFactura.includes('Se anula en su OC con boleta') && (await factura.locator('[data-anular-pago-factura]').count()) === 0,
+  comprobar(textoFactura.includes('Lo pagó su OC con boleta') && (await factura.locator('[data-anular-pago-factura]').count()) === 0,
     'ese pago no se anula en la factura: lleva a su OC')
   const voucher = await factura.getByRole('link', { name: 'Voucher de la boleta' }).getAttribute('href').catch(() => null)
   const respuesta = voucher ? await contexto.request.get(voucher).catch(() => null) : null
@@ -526,9 +561,11 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   await pagina.locator(`[data-anular-pago-compra="${pagoE}"]`).click()
   const v = pagina.locator('[role="dialog"]')
   await v.waitFor()
+  // El pago no salió: es lo único que deja anular (undécima vuelta).
+  await v.locator('input[name="que_paso"][value="no_salio"]').check()
   const ventana = limpio(await v.innerText())
   comprobar(ventana.includes(`Su factura ${FE} deja de tomar este pago y le faltan S/ ${cifra(total)}`), `la ventana dice que la factura vuelve a deber todo: «${ventana.slice(0, 300)}»`)
-  await v.locator('textarea[name="motivo"]').fill('El proveedor devolvió el pago de la boleta')
+  await v.locator('textarea[name="motivo"]').fill('El pago no salió: el banco lo rechazó')
   await v.getByRole('button', { name: 'Anular' }).click()
   const error = await esperarVentana(pagina)
   comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
@@ -578,6 +615,90 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   comprobar(n === 1, 'el PDF está en el almacenamiento')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-5-contabilidad.png`, fullPage: true })
   await contexto.close()
+}
+
+// ---------------------------------------------------------------- 6. La factura en otra moneda toma el pago al cambio
+{
+  const movimientos = async () => (await consulta(`select count(*)::int as n from movimientos_caja where caja_id in (select id from cajas where nombre = any($1))`, [[`Banco anexos ${SUFIJO}`, CAJA_USD]]))[0].n
+  const antes = await movimientos()
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator(`article#compra-${oc.H}`)
+  const texto = limpio(await tarjeta.innerText().catch(() => ''))
+  console.log(`       la tarjeta de la H: ${texto.slice(0, 400)}`)
+  comprobar(texto.includes('Factura en otra moneda') && texto.includes(`Quedan S/ ${cifra(total)} por pasar a su factura`), 'la OC dice «Factura en otra moneda» y lo que queda por pasarle')
+  comprobar((await tarjeta.locator('[data-tomar-al-cambio]').count()) === 1 && (await tarjeta.locator('[data-pagar-compra]').count()) === 0,
+    'ofrece «La factura lo toma al cambio» y no pagar la OC')
+  const factura = pagina.locator(`article#factura-${facturaH}`)
+  comprobar(limpio(await factura.innerText().catch(() => '')).includes('Espera lo pagado por la boleta') && (await factura.locator('[data-pagar-factura]').count()) === 0,
+    'la factura espera lo pagado por la boleta, sin botón de pagar')
+
+  // Al cambio, por lo que reconoce el proveedor.
+  const tomar = async (enDolares) => {
+    await pagina.locator(`article#compra-${oc.H} [data-tomar-al-cambio]`).click()
+    const v = pagina.locator('[role="dialog"]')
+    await v.waitFor()
+    comprobar(Number(await v.locator('input[name="monto_boleta"]').inputValue()) === total, `trae lo pagado por la boleta: S/ ${cifra(total)}`)
+    await v.locator('input[name="monto_factura"]').fill(enDolares)
+    const enVivo = limpio(await v.locator('p[role="status"]').first().textContent().catch(() => ''))
+    await tresToques(v.getByRole('button', { name: 'Pasar a la factura' }))
+    const error = await esperarVentana(pagina)
+    comprobar(!error, `la factura lo toma${error ? ` (dijo «${error}»)` : ''}`)
+    const aviso = limpio(await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => t.includes('toma'), 5000))
+    return { enVivo, aviso }
+  }
+  const primera = await tomar('97.70')
+  comprobar(primera.enVivo.includes('Sale a S/ 3.700 por dólar'), `dice el cambio mientras se escribe: «${primera.enVivo}»`)
+  comprobar(primera.aviso.includes('toma US$ 97.70') && primera.aviso.includes('Queda pagada'), `el aviso dice lo que tomó y que queda pagada: «${primera.aviso}»`)
+  const tomas = await consulta(`select monto::float as monto, monto_de_la_boleta::float as boleta from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [facturaH])
+  comprobar(tomas.length === 1 && tomas[0].monto === 97.7 && tomas[0].boleta === total, `tres toques, una toma de US$ 97.70 por S/ ${cifra(total)} (${tomas.length})`)
+  comprobar((await movimientos()) === antes, 'sin mover la caja')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tomada = limpio(await pagina.locator(`article#compra-${oc.H}`).textContent().catch(() => ''))
+  comprobar(tomada.includes('Pagada por su factura') && tomada.includes('tomó al cambio'), `la OC queda «Pagada por su factura», que la tomó al cambio: «${tomada.slice(0, 260)}»`)
+  const enFactura = pagina.locator(`article#factura-${facturaH}`)
+  comprobar(limpio(await enFactura.textContent().catch(() => '')).includes('Tomado al cambio del pago por la boleta') && (await enFactura.locator('[data-soltar-toma]').count()) === 1,
+    'la factura muestra la toma al cambio, con «Deshacer»')
+
+  // Deshacer, con su motivo: vuelve a esperar.
+  const detalles = pagina.locator('details', { has: enFactura })
+  if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
+  await enFactura.locator('[data-soltar-toma]').click()
+  const vs = pagina.locator('[role="dialog"]')
+  await vs.locator('textarea[name="motivo"]').fill('El proveedor reconoce otro cambio')
+  await vs.getByRole('button', { name: 'Deshacer' }).click()
+  const errorSoltar = await esperarVentana(pagina)
+  comprobar(!errorSoltar, `deshace la toma${errorSoltar ? ` (dijo «${errorSoltar}»)` : ''}`)
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  comprobar(limpio(await pagina.locator(`article#compra-${oc.H}`).innerText().catch(() => '')).includes('Factura en otra moneda'), 'la OC vuelve a «Factura en otra moneda»')
+
+  // Por menos: la factura debe el resto y se paga desde la cuenta en dólares.
+  await tomar('95.00')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const debe = pagina.locator(`article#factura-${facturaH}`)
+  comprobar(limpio(await debe.innerText().catch(() => '')).includes('Saldo US$ 2.70') && (await debe.locator('[data-pagar-factura]').count()) === 1,
+    'tomada por US$ 95.00, la factura debe US$ 2.70 y ya se paga')
+  await debe.locator('[data-pagar-factura]').click()
+  const vp = pagina.locator('[role="dialog"]')
+  await vp.waitFor()
+  comprobar(Number(await vp.locator('input[name="monto"]').inputValue()) === 2.7, 'propone pagar los US$ 2.70')
+  await vp.locator('input[name="referencia"]').fill(`OP-H-${SUFIJO}`)
+  await vp.locator('select[name="caja_id"]').selectOption(await vp.locator('select[name="caja_id"] option', { hasText: CAJA_USD }).getAttribute('value'))
+  await vp.locator('input[name="archivo"]').setInputFiles({ name: 'voucher.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await vp.getByRole('button', { name: 'Registrar el pago' }).click()
+  const errorPago = await esperarVentana(pagina)
+  comprobar(!errorPago, `paga lo que falta${errorPago ? ` (dijo «${errorPago}»)` : ''}`)
+  const [{ saldo }] = await hasta(() => consulta(`select saldo::float as saldo from v_cuentas_pagar where id = $1`, [facturaH]), (r) => r[0]?.saldo === 0)
+  comprobar(saldo === 0, 'la factura queda pagada')
+  comprobar((await pagoSegunAdquisiciones(oc.H)) === 'PAGADA', 'y Adquisiciones da por pagada la OC H')
+  await pagina.screenshot({ path: `${CAPTURAS}/anexos-6-tesoreria.png`, fullPage: true })
+  await contexto.close()
+
+  // Gerencia no pasa nada al cambio ni lo deshace.
+  const g = await entrar('gerencia')
+  await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  comprobar((await g.pagina.locator('[data-tomar-al-cambio], [data-soltar-toma]').count()) === 0, 'Gerencia no ve «La factura lo toma al cambio» ni «Deshacer»')
+  await g.contexto.close()
 }
 
 comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)

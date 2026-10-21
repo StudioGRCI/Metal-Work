@@ -12,9 +12,11 @@ import {
   bucketDelDocumento,
   bucketDelPago,
   claveDeArchivo,
+  devolucionesDeCompras,
   enlacesDeCompras,
   trazabilidadDeCompras,
   type CompraTrazada,
+  type DevolucionDeCompra,
 } from '@/lib/datos/trazabilidad-compras'
 import {
   ESTADO_PAGO,
@@ -28,7 +30,7 @@ import {
 } from '@/lib/dominio/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
-import { BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
+import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
@@ -47,6 +49,9 @@ const toque = 'inline-flex min-h-11 items-center sm:min-h-0'
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 type Params = Record<string, string | string[] | undefined>
+
+/** La fila con lo que el proveedor devolvió de lo pagado por la boleta, que se lee aparte (undécima vuelta). */
+type Fila = CompraTrazada & { devoluciones: DevolucionDeCompra[] }
 
 /** A qué puede ir quien mira: cada enlace solo sale si su pantalla o su archivo lo deja entrar. */
 type Acceso = {
@@ -139,8 +144,11 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
 
   const paginas = Math.max(1, Math.ceil(filas.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Number.parseInt(texto(params.pagina), 10) || 1), paginas)
-  const visibles = filas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
-  const { urls, sinFirmar } = await enlacesDeCompras(visibles)
+  const deLaPagina = filas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
+  // Las devoluciones del proveedor, solo de las OC con boleta de la página.
+  const devoluciones = await devolucionesDeCompras(deLaPagina.flatMap((f) => (f.tipo === 'OC' && f.con_factura === false ? [f.id] : [])))
+  const visibles: Fila[] = deLaPagina.map((f) => ({ ...f, devoluciones: devoluciones.filter((d) => d.orden_compra_id === f.id) }))
+  const { urls, sinFirmar } = await enlacesDeCompras(visibles, devoluciones)
   const hayFiltros = Boolean(busqueda || tipo || situacion)
   const vacio =
     todas.length === 0
@@ -448,7 +456,7 @@ function Archivo({ url, children }: { url: string | undefined; children: ReactNo
  * remisión y, de la OS, su factura y su contrato, y el número del comprobante
  * que Tesorería anotó al pagar si nadie adjuntó ese comprobante.
  */
-function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>; acceso: Acceso }) {
+function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
   // La factura que Contabilidad registró sobre el PDF que anexó Logística es un solo archivo.
   const deFacturas = new Set(f.facturas.flatMap((x) => (x.bucket === 'documentos-compras' && x.ruta ? [x.ruta] : [])))
   // La factura o la boleta que Logística anuló ya no cuenta: sale tachada, al final, con su motivo.
@@ -577,11 +585,13 @@ type Documento = CompraTrazada['documentos'][number]
  * otro), por qué no y quién lo corrige: el botón no se ofrece para fallar
  * después de escribir el motivo.
  */
-function AnulaElAnexo({ f, d, acceso }: { f: CompraTrazada; d: Documento; acceso: Acceso }) {
+function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso }) {
   if (!acceso.anulaAnexo || f.tipo !== 'OC' || (d.tipo !== 'FACTURA' && d.tipo !== 'COMPROBANTE')) return null
   // Lo que esa factura tomó del pago por la boleta, como lo cuenta la base al anular.
   const tomo = Boolean(d.factura && f.facturas.find((x) => x.id === d.factura?.id)?.pagos.some((p) => p.boleta))
-  const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo(f, d, tomo)
+  // Lo que la boleta aportó de verdad: lo pagado menos lo que el proveedor devolvió.
+  const neto = f.pagos.reduce((suma, p) => suma + p.monto, 0) - f.devoluciones.filter((x) => !x.anulado_en).reduce((suma, x) => suma + x.monto, 0)
+  const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo({ con_factura: f.con_factura, neto }, d, tomo)
   if (bloqueo) return <span className="basis-full text-texto-suave">{bloqueo}</span>
   // La factura registrada que no alcanza para esta OC: si no es de esta OC, el que está mal es el anexo.
   const porRevisar = d.factura ? anexoPorRevisarAlAnular({ nombre: nombreDe(f), pagos: f.pagos }, d.factura) : null
@@ -598,11 +608,17 @@ function AnulaElAnexo({ f, d, acceso }: { f: CompraTrazada; d: Documento; acceso
 }
 
 /** Si ya se pagó: el estado, lo que falta y cada voucher; Tesorería salta a pagarla. */
-function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>; acceso: Acceso }) {
+function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
   const estado = definir(ESTADO_PAGO, f.pago)
   const registradas = f.facturas.filter((x) => x.estado === 'REGISTRADA')
   // La OC con boleta puede tener vouchers de su boleta y de su factura: cada uno dice de cuál es.
   const conBoleta = f.tipo === 'OC' && f.con_factura === false
+  const mOc = codigo(f.moneda)
+  // Lo pagado de más de la boleta que el proveedor descontó de otra factura suya, por factura.
+  const descontado = new Map<string, number>()
+  for (const t of f.pagos.flatMap((p) => p.tomas)) {
+    if (!t.de_la_compra) descontado.set(t.numero, (descontado.get(t.numero) ?? 0) + t.de_la_boleta)
+  }
   return (
     <div className="space-y-1.5 text-xs">
       <Insignia tono={estado.tono} title={ESTADO_PAGO[f.pago]?.descripcion}>
@@ -610,8 +626,14 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
       </Insignia>
       {registradas.map((x) => {
         const m = codigo(x.moneda)
-        // Lo que la factura tomó del pago por la boleta: su voucher ya sale abajo, como el de la boleta.
-        const tomado = x.pagos.filter((p) => p.boleta).reduce((suma, p) => suma + p.monto, 0)
+        // Lo que la factura tomó sola del pago por la boleta: su voucher ya sale abajo, como el de la boleta.
+        const tomado = x.pagos.filter((p) => p.boleta && !p.a_mano).reduce((suma, p) => suma + p.monto, 0)
+        // Lo que Tesorería le pasó al cambio de la boleta de esta OC: en su moneda y lo que salió de la boleta.
+        const alCambio = x.pagos.filter((p) => p.boleta && p.a_mano && p.compra === f.id)
+        const enSuMoneda = alCambio.reduce((suma, p) => suma + p.monto, 0)
+        const deLaBoleta = alCambio.reduce((suma, p) => suma + (p.de_la_boleta ?? 0), 0)
+        // Y lo que se le descontó de lo pagado de más por la boleta de otra OC del proveedor.
+        const deOtra = x.pagos.filter((p) => p.boleta && p.a_mano && p.compra !== f.id).reduce((suma, p) => suma + p.monto, 0)
         return (
           <div key={x.id} className="space-y-0.5">
             {registradas.length > 1 && <p className="tabular text-texto-suave">{x.numero}</p>}
@@ -625,23 +647,63 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
                 Tomó <span className="whitespace-nowrap">{moneda(tomado, m)}</span> del pago por la boleta
               </p>
             )}
+            {enSuMoneda > 0 && (
+              <p className="tabular text-texto-suave">
+                Tomó al cambio <span className="whitespace-nowrap">{moneda(enSuMoneda, m)}</span> (
+                <span className="whitespace-nowrap">{moneda(deLaBoleta, mOc)}</span>) del pago por la boleta
+              </p>
+            )}
+            {deOtra > 0 && (
+              <p className="tabular text-texto-suave">
+                Se le descontaron <span className="whitespace-nowrap">{moneda(deOtra, m)}</span> de lo pagado de más por la boleta de otra OC
+              </p>
+            )}
             <Vouchers
               pagos={x.pagos.filter((p) => !p.boleta).map((p) => ({ ...p, moneda: x.moneda }))}
               bucket={() => BUCKET_PAGOS_FACTURAS}
               urls={urls}
               rotulo={conBoleta ? 'Voucher de la factura' : 'Voucher'}
             />
-            {/* La factura en otra moneda que la OC pagada por su boleta no toma ese pago ni se paga encima mientras siga. */}
-            {acceso.porPagar && x.saldo > 0 && !(conBoleta && f.pagos.length > 0 && x.moneda !== f.moneda) && (
-              <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
-                {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
-              </Link>
+            {/* La factura en otra moneda no toma sola lo pagado por la boleta ni se paga encima: Tesorería se lo pasa al cambio antes. */}
+            {x.espera_boleta ? (
+              <p className="text-texto-suave">
+                Va en {x.moneda === 'USD' ? 'dólares' : 'soles'}: no toma sola lo pagado por la boleta; Tesorería lo pasa al cambio antes de pagarla.
+              </p>
+            ) : (
+              acceso.porPagar &&
+              x.saldo > 0 && (
+                <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
+                  {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
+                </Link>
+              )
             )}
           </div>
         )
       })}
       {/* La OS y, desde la migración 20261020210000, la OC con boleta: Tesorería las paga sin factura registrada. */}
       <Vouchers pagos={f.pagos} bucket={(p) => bucketDelPago(f, p)} urls={urls} rotulo={conBoleta ? 'Voucher de la boleta' : 'Voucher'} />
+      {[...descontado].map(([numero, monto]) => (
+        <p key={numero} className="tabular text-texto-suave">
+          <span className="whitespace-nowrap">{moneda(monto, mOc)}</span> de lo pagado de más se descontaron de la factura{' '}
+          <span className="whitespace-nowrap">{numero}</span>.
+        </p>
+      ))}
+      {/* Lo que el proveedor devolvió, con su constancia; la anulada, tachada. */}
+      {f.devoluciones.length > 0 && (
+        <ul className="space-y-0.5">
+          {f.devoluciones.map((d) => (
+            <li key={d.id} className={d.anulado_en ? 'text-texto-tenue' : undefined}>
+              <span className={d.anulado_en ? 'line-through' : undefined}>
+                <span className="tabular">
+                  Devolución del {fecha(d.fecha)} · <span className="whitespace-nowrap">{moneda(d.monto, codigo(d.moneda))}</span>
+                </span>{' '}
+                <Archivo url={urls.get(claveDeArchivo(BUCKET_PAGOS_COMPRAS, d.archivo_ruta))}>Constancia de la devolución</Archivo>
+              </span>
+              {d.anulado_en && <span> · anulada{d.motivo_anulacion ? `: ${d.motivo_anulacion}` : ''}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
       {f.tipo === 'OS' && acceso.pagosServicio && (f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL') && (
         <Link href="/tesoreria/pagos-de-servicio" className={`${toque} ${enlace}`}>
           {acceso.pagosServicio === 'pagar' ? 'Pagar en Pagos de servicio' : 'Ver en Pagos de servicio'}

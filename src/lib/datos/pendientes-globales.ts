@@ -734,8 +734,10 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     // la que tiene líneas sin precio espera a Logística, y la que trae su
     // comprobante o ya tiene su factura registrada se paga por ella, en las
     // facturas: ninguna se paga aquí. La que se pagó por su boleta y cuya
-    // factura la dejó pagada de más (o va en otra moneda y no toma ese pago)
-    // espera a Tesorería, que pide la devolución: va aparte.
+    // factura la dejó pagada de más (o va en otra moneda y no toma ese pago
+    // sola) espera a Tesorería, que pide la devolución, la registra o la
+    // descuenta de otra factura, o pasa la factura en otra moneda al cambio:
+    // va aparte.
     let boletas: Promise<{ porPagar: number; deMas: number }> | null = null
     const conBoleta = () =>
       (boletas ??= (async () => {

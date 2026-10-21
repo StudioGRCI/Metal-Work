@@ -27,9 +27,13 @@
  *      registra, la tarjeta dice que la factura quedará pagada con ese pago, y
  *      Gerencia lo lee sin botones. Registrada por menos, la factura toma lo
  *      que le cabe: Tesorería recibe «Compra pagada de más», la tarjeta sale
- *      primero y pide la devolución. Al anular el pago de la boleta, la
- *      ventana y el aviso dicen que la factura vuelve a deber, y el aviso de
- *      lo pagado de más se da por leído.
+ *      primero y pide la devolución. (undécima vuelta) «Anular» pregunta qué
+ *      pasó: si el proveedor lo devolvió, no se anula, se registra la
+ *      devolución con su constancia (tres toques, una devolución y su ingreso
+ *      en la caja); la OC queda pagada por su factura, el aviso de lo pagado
+ *      de más se da por leído y el pago ya no se anula mientras la devolución
+ *      siga. Gerencia la ve sin botones. Anulada la devolución, vuelve lo
+ *      pagado de más y su ingreso se anula.
  *   3e. Contabilidad registra a mano, con ceros y en minúsculas, la factura que
  *      Logística anexó: entra una vez, ligada sola a su OC y al anexo, y el
  *      desplegable ya no la ofrece.
@@ -48,7 +52,7 @@
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
  * BANCO_ARCHIVOS y el correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import pg from 'pg'
@@ -357,6 +361,11 @@ let pagoId
   const detalles = pagina.locator('details', { has: pagina.locator(`article#compra-${oc[0]}`) })
   if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
   await pagina.locator(`[data-anular-pago-compra="${pagoId}"]`).click()
+  await v.waitFor()
+  // Primero pregunta qué pasó (undécima vuelta): el motivo sale solo con «No salió».
+  comprobar((await v.locator('textarea[name="motivo"]').count()) === 0, 'la ventana «Anular el pago» pregunta primero qué pasó, sin pedir el motivo')
+  await v.locator('input[name="que_paso"][value="no_salio"]').check()
+  comprobar((await v.locator('textarea[name="motivo"]').count()) === 1, 'con «No salió» pide el motivo')
   await v.locator('textarea[name="motivo"]').fill('Se registró con el voucher de otra compra')
   await v.getByRole('button', { name: 'Anular' }).click()
   const errorAnular = await esperarVentana(pagina)
@@ -476,8 +485,8 @@ let pagoId
   comprobar((await fila.count()) === 1 && (await fila.isVisible()), `la ${nombre(oc[4])} sale a la vista, no escondida entre las pagadas`)
   comprobar((await pagina.locator('details', { has: fila }).count()) === 0, 'fuera del desplegable de pagadas')
   const texto = limpio(await fila.textContent().catch(() => ''))
-  comprobar(texto.includes('Llegó factura') && texto.includes(`factura F010-${SUFIJO}`) && texto.includes('queda pagada con lo que ya se pagó por la boleta'),
-    `dice que, registrada, la factura queda pagada con ese pago: «${texto.slice(0, 300)}»`)
+  comprobar(texto.includes('Llegó factura') && texto.includes(`factura F010-${SUFIJO}`) && texto.includes('toma lo que ya se pagó por la boleta'),
+    `dice que, registrada, la factura toma ese pago: «${texto.slice(0, 300)}»`)
   comprobar(!texto.includes('Anula el pago'), 'y no pide anular el pago')
   comprobar((await fila.locator('[data-pagar-compra]').count()) === 0, 'ni ofrece pagarla otra vez')
   comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA', 'Adquisiciones la da por pagada')
@@ -488,7 +497,7 @@ let pagoId
   await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const tarjetaGerencia = g.pagina.locator(`article#compra-${oc[4]}`)
   const paraGerencia = limpio(await tarjetaGerencia.textContent().catch(() => ''))
-  comprobar(paraGerencia.includes('queda pagada con lo que ya se pagó por la boleta') && (await tarjetaGerencia.locator('[data-anular-pago-compra]').count()) === 0,
+  comprobar(paraGerencia.includes('toma lo que ya se pagó por la boleta') && (await tarjetaGerencia.locator('[data-anular-pago-compra]').count()) === 0,
     `Gerencia lee lo mismo y no puede anular: «${paraGerencia.slice(0, 220)}»`)
   await g.contexto.close()
 
@@ -515,31 +524,123 @@ let pagoId
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   // Lo que pide algo a Tesorería va primero.
   const tarjetas = (await t.pagina.locator('#compras-con-boleta article').allTextContents()).map(limpio)
-  const deMas = tarjetas.map((x, i) => (x.includes('Pagada de más') ? i : -1)).filter((i) => i >= 0)
-  const resto = tarjetas.map((x, i) => (x.includes('Pagada de más') ? -1 : i)).filter((i) => i >= 0)
-  comprobar(deMas.length > 0 && (resto.length === 0 || Math.max(...deMas) < Math.min(...resto)),
-    `las OC pagadas de más salen antes que las demás (${deMas.join(', ')} de ${tarjetas.length})`)
+  // También pide algo la que espera que se le pase al cambio a su factura en otra moneda.
+  const pide = (x) => x.includes('Pagada de más') || x.includes('Factura en otra moneda')
+  const deMas = tarjetas.map((x, i) => (pide(x) ? i : -1)).filter((i) => i >= 0)
+  const resto = tarjetas.map((x, i) => (pide(x) ? -1 : i)).filter((i) => i >= 0)
+  comprobar(tarjetas.some((x) => x.includes('Pagada de más')) && (resto.length === 0 || Math.max(...deMas) < Math.min(...resto)),
+    `las OC pagadas de más o en otra moneda salen antes que las demás (${deMas.join(', ')} de ${tarjetas.length})`)
   const tarjeta = t.pagina.locator(`article#compra-${oc[4]}`)
   const textoDeMas = limpio(await tarjeta.textContent())
   comprobar(textoDeMas.includes('Pagada de más') && textoDeMas.includes('Pagado de más S/ 61.50') && textoDeMas.includes('Total S/') && !textoDeMas.includes('Saldo'),
     `la tarjeta dice lo pagado de más, con su total y sin saldo: «${textoDeMas.slice(0, 260)}»`)
-  await t.pagina.locator(`[data-anular-pago-compra="${pagoEntero}"]`).click()
+  // Lo pagado de más no se resuelve anulando (undécima vuelta): se registra la devolución o se descuenta de otra factura.
+  comprobar(
+    (await tarjeta.locator('[data-registrar-devolucion]').count()) === 1 &&
+      (await tarjeta.locator('[data-descontar-de-otra]').count()) === 1 &&
+      (await tarjeta.locator('[data-tomar-al-cambio]').count()) === 0,
+    'ofrece «Registrar devolución» y «Lo descuenta de otra factura», y no el cambio',
+  )
+  await tarjeta.locator(`[data-anular-pago-compra="${pagoEntero}"]`).click()
   const vt = t.pagina.locator('[role="dialog"]')
   await vt.waitFor()
-  const descripcion = limpio(await vt.textContent())
-  comprobar(descripcion.includes(`Su factura F010-${SUFIJO} deja de tomar este pago y le faltan S/ ${totalFactura.toFixed(2)}`) && descripcion.includes('Ya no queda nada pagado de más'),
-    `la ventana dice que la factura vuelve a deber y que ya no queda nada de más: «${descripcion.slice(0, 300)}»`)
-  await vt.locator('textarea[name="motivo"]').fill('El proveedor devolvió el pago de la boleta')
-  await vt.getByRole('button', { name: 'Anular' }).click()
-  const error = await esperarVentana(t.pagina)
-  comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
-  const aviso = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => Boolean(x), 5000))
-  comprobar(aviso.includes(`su factura F010-${SUFIJO} ya no toma ese pago y le faltan S/ ${totalFactura.toFixed(2)}`), `y el aviso de después lo mismo: «${aviso}»`)
+  await vt.locator('input[name="que_paso"][value="devolvio"]').check()
+  const devolvio = limpio(await vt.textContent())
+  comprobar((await vt.locator('textarea[name="motivo"]').count()) === 0 && devolvio.includes('No se anula: lo que salió, salió'),
+    `si el proveedor lo devolvió, no pide motivo ni anula: «${devolvio.slice(0, 220)}»`)
+  // Su botón cierra esta ventana y abre la de la devolución.
+  await vt.getByRole('button', { name: 'Registrar devolución' }).click()
+  const vd = t.pagina.locator('[role="dialog"]')
+  const enDevolucion = limpio(await hasta(() => vd.textContent().catch(() => ''), (x) => limpio(x).includes(`Devolución de la ${nombre(oc[4])}`), 5000))
+  comprobar(enDevolucion.includes(`Devolución de la ${nombre(oc[4])}`), `abre la ventana de la devolución: «${enDevolucion.slice(0, 160)}»`)
+  comprobar(enDevolucion.includes(`Como mucho, S/ ${total5.toFixed(2)}`), 'dice lo más que se puede registrar')
+  comprobar(Number(await vd.locator('input[name="monto"]').inputValue()) === 61.5 && enDevolucion.includes('Ya no queda nada pagado de más'),
+    'trae lo pagado de más y dice que ya no queda nada de más')
+  await vd.locator('input[name="operacion"]').fill(`DEV-${SUFIJO}`)
+  const cajaDev = await vd.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await vd.locator('select[name="caja_id"]').selectOption(cajaDev)
+  await vd.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  await tresToques(vd.getByRole('button', { name: 'Registrar la devolución' }))
+  const errorDev = await esperarVentana(t.pagina)
+  comprobar(!errorDev, `registra la devolución${errorDev ? ` (dijo «${errorDev}»)` : ''}`)
+  const avisoDev = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => Boolean(x), 5000))
+  comprobar(avisoDev.includes('Devolución registrada.') && avisoDev.includes('Ya no queda nada pagado de más.') && avisoDev.includes(`Entró a ${CAJA}`),
+    `el aviso dice que ya no queda nada de más y a qué cuenta entró: «${avisoDev}»`)
+  const devoluciones = await hasta(
+    () => consulta(`select id, monto::float as monto, operacion, archivo_ruta from devoluciones_orden_compra where orden_compra_id = $1`, [oc[4]]),
+    (r) => r.length > 0,
+  )
+  const devolucionId = devoluciones[0]?.id
+  comprobar(devoluciones.length === 1 && devoluciones[0].monto === 61.5 && devoluciones[0].operacion === `DEV-${SUFIJO}`,
+    `tres toques dejan una devolución de S/ 61.50 (${devoluciones.length})`)
+  const ingresos = await consulta(`select tipo, monto::float as monto, caja_id from movimientos_caja where origen = 'DEVOLUCION_ORDEN_COMPRA' and origen_id = $1`, [devolucionId])
+  comprobar(ingresos.length === 1 && ingresos[0].tipo === 'INGRESO' && ingresos[0].monto === 61.5 && ingresos[0].caja_id === caja,
+    'y un ingreso de S/ 61.50 en la cuenta elegida')
+  comprobar((await objeto('pagos-compras', devoluciones[0]?.archivo_ruta)) === 1 && existsSync(join(ARCHIVOS, 'pagos-compras', devoluciones[0]?.archivo_ruta ?? '-')),
+    'la constancia está en storage.objects y en el disco del banco')
+
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjetaDev = t.pagina.locator(`article#compra-${oc[4]}`)
+  // Ya no pide nada: puede ir al desplegable de las pagadas, cerrado; textContent lee lo que no se ve.
+  const textoDev = limpio(await tarjetaDev.textContent().catch(() => ''))
+  comprobar(textoDev.includes('Pagada por su factura') && !textoDev.includes('Pagada de más'), `la OC queda «Pagada por su factura»: «${textoDev.slice(0, 220)}»`)
+  comprobar(textoDev.includes('Devolución del') && textoDev.includes('S/ 61.50') && textoDev.includes(`op. DEV-${SUFIJO}`) && textoDev.includes(`entró a ${CAJA}`),
+    'con la línea de la devolución y la cuenta a la que entró')
+  const hrefConstancia = await tarjetaDev.locator('a', { hasText: 'Constancia' }).first().getAttribute('href').catch(() => null)
+  const respuesta = hrefConstancia ? await t.pagina.request.get(hrefConstancia) : null
+  comprobar(respuesta?.status() === 200, `el enlace «Constancia» abre (${respuesta?.status() ?? 'sin enlace'})`)
+  comprobar((await tarjetaDev.locator(`[data-anular-pago-compra="${pagoEntero}"]`).count()) === 0 && textoDev.includes('Para anularlo, anula antes la devolución'),
+    'el pago ya no se anula mientras la devolución siga')
   const [{ n: sinLeer }] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = $2 and leida_en is null`, [ids[CUENTAS.tesoreria], oc[4]])
-  comprobar(sinLeer === 0, 'el aviso de lo pagado de más se da por leído')
-  const [{ n: tomado }] = await consulta(`select count(*)::int as n from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [registrada])
-  comprobar(tomado === 0, 'y la factura ya no toma nada')
+  comprobar(sinLeer === 0, `el aviso de lo pagado de más se da por leído (${sinLeer})`)
+  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA', 'Adquisiciones la da por pagada')
+  await t.pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  const filaAdq = limpio(await t.pagina.locator(`tbody tr[data-orden="${nombre(oc[4])}"]`).textContent().catch(() => ''))
+  comprobar(filaAdq.includes('Devolución del') && filaAdq.includes('Constancia de la devolución'), `y su fila muestra la devolución con su constancia: «${filaAdq.slice(0, 260)}»`)
+  // En la caja diaria, el ingreso dice de dónde viene y no es un extorno.
+  await t.pagina.goto(`${BASE}/tesoreria/caja-diaria`, { waitUntil: 'networkidle' })
+  const filaCaja = limpio(await t.pagina.locator('tr', { hasText: 'Devolución de proveedor (OC con boleta)' }).first().textContent().catch(() => ''))
+  comprobar(filaCaja.includes('Devolución de proveedor (OC con boleta)') && !filaCaja.includes('extorno'), `la caja diaria muestra el ingreso de la devolución: «${filaCaja.slice(0, 200)}»`)
+
+  // Gerencia la ve, sin botones.
+  const gd = await entrar('gerencia')
+  await gd.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjetaGd = gd.pagina.locator(`article#compra-${oc[4]}`)
+  comprobar(
+    limpio(await tarjetaGd.textContent().catch(() => '')).includes('Devolución del') &&
+      (await tarjetaGd.locator('[data-registrar-devolucion]').count()) === 0 &&
+      (await tarjetaGd.locator('[data-anular-devolucion]').count()) === 0,
+    'Gerencia ve la devolución, sin registrar ni anular',
+  )
+  await gd.contexto.close()
+
+  // Anular la devolución mal registrada: vuelve lo pagado de más, y su ingreso se anula.
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const detalles = t.pagina.locator('details', { has: t.pagina.locator(`article#compra-${oc[4]}`) })
+  if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
+  await t.pagina.locator(`[data-anular-devolucion="${devolucionId}"]`).click()
+  const va = t.pagina.locator('[role="dialog"]')
+  await va.waitFor()
+  await va.locator('textarea[name="motivo"]').fill('Se registró con la constancia de otra compra')
+  await va.getByRole('button', { name: 'Anular' }).click()
+  const errorAnular = await esperarVentana(t.pagina)
+  comprobar(!errorAnular, `anula la devolución${errorAnular ? ` (dijo «${errorAnular}»)` : ''}`)
+  const avisoAnular = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => x.includes('Devolución anulada'), 5000))
+  comprobar(avisoAnular.includes('Devolución anulada.') && avisoAnular.includes('Quedan S/ 61.50 pagados de más.') && avisoAnular.includes('Su ingreso en la caja diaria también quedó anulado.'),
+    `el aviso dice que vuelve lo pagado de más y que su ingreso se anuló: «${avisoAnular}»`)
+  const [ingreso] = await consulta(`select anulado_en from movimientos_caja where origen = 'DEVOLUCION_ORDEN_COMPRA' and origen_id = $1`, [devolucionId])
+  comprobar(Boolean(ingreso?.anulado_en), 'el ingreso queda anulado')
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  comprobar(limpio(await t.pagina.locator(`article#compra-${oc[4]}`).textContent().catch(() => '')).includes('Pagada de más'), 'la tarjeta vuelve a «Pagada de más»')
   await t.contexto.close()
+
+  // Se registra otra vez, para dejar la OC pagada como estaba.
+  const [{ id: otraDevolucion }] = await consulta('select gen_random_uuid() as id')
+  await como('tesoreria')
+  const constancia = await subir('pagos-compras', `${oc[4]}/${otraDevolucion}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_devolucion_compra($1, $2, $3::date, 61.5, $4, $5, $6, null)`, [otraDevolucion, oc[4], hoy, `DEV2-${SUFIJO}`, constancia, caja])
+  await como(null)
+  comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA', 'registrada otra vez, Adquisiciones la vuelve a dar por pagada')
 }
 
 // ---------------------------------------------------------------- 3e. Contabilidad la registra a mano y queda en su OC
