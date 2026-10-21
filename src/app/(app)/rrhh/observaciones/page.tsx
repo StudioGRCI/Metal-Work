@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarObservaciones, listarTrabajadores, type Observacion } from '@/lib/datos/rrhh'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
 import { AnularObservacion, RegistrarObservacion } from './formulario'
 
@@ -38,7 +38,6 @@ function resumir(observaciones: Observacion[]): Resumen[] {
 export default async function PaginaObservaciones({ searchParams }: PageProps<'/rrhh/observaciones'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
   const registra = editaComoRrhh(perfil, 'rrhh.personal')
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
   const mesActual = mesDeLima(hoy)
@@ -60,7 +59,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
         titulo={persona ? `Historial de ${persona.nombres} ${persona.apellidos}` : 'Observaciones y amonestaciones'}
         ayuda="Lo que se le observa a cada persona: observaciones, amonestaciones verbales y escritas, y suspensiones, con su motivo. No se borran: se anulan con su motivo y quedan como evidencia."
         migas={[
-          { titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined },
+          { titulo: 'Recursos Humanos' },
           { titulo: 'Observaciones', ruta: persona ? `/rrhh/observaciones?mes=${mes}` : undefined },
           ...(persona ? [{ titulo: `${persona.nombres} ${persona.apellidos}` }] : []),
         ]}

@@ -193,7 +193,27 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
       )}
 
       <Tarjeta className={filas.length > 0 ? 'mt-4 hidden overflow-hidden sm:block' : 'mt-4 overflow-hidden'}>
-        <Tabla>
+        {/* Sin órdenes no hay tabla: con su cabecera, el aviso se centraba en el
+            ancho de las columnas y en el teléfono salía cortado. */}
+        {ordenes.length === 0 ? (
+          <SinDatos
+            enTabla={false}
+            titulo={hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
+            descripcion={
+              hayFiltros
+                ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
+                : 'La OT llega cuando Gerencia aprueba la cotización con su código interno.'
+            }
+            accion={
+              hayFiltros && (
+                <EnlaceBoton href="/ordenes" variante="secundario" tamano="sm">
+                  Quitar los filtros
+                </EnlaceBoton>
+              )
+            }
+          />
+        ) : (
+          <Tabla>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
@@ -209,25 +229,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
             </tr>
           </TablaCabecera>
           <tbody>
-            {ordenes.length === 0 ? (
-              <SinDatos
-                colSpan={8}
-                titulo={hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
-                descripcion={
-                  hayFiltros
-                    ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
-                    : 'La OT llega cuando Gerencia aprueba la cotización con su código interno.'
-                }
-                accion={
-                  hayFiltros && (
-                    <EnlaceBoton href="/ordenes" variante="secundario" tamano="sm">
-                      Quitar los filtros
-                    </EnlaceBoton>
-                  )
-                }
-              />
-            ) : (
-              filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => {
+            {filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => {
                 return (
                   <TR key={orden.id}>
                     <TD className="whitespace-nowrap">
@@ -298,10 +300,10 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     </TD>
                   </TR>
                 )
-              })
-            )}
+              })}
           </tbody>
-        </Tabla>
+          </Tabla>
+        )}
       </Tarjeta>
 
       <Paginacion

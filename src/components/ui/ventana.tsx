@@ -91,9 +91,12 @@ export function Ventana({
     const rodadoPrevio = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
-    const primero =
-      contenido.current?.querySelector<HTMLElement>(ENFOCABLES) ??
-      caja.current?.querySelector<HTMLElement>(ENFOCABLES)
+    // El foco va al primer campo, no a la «i» de su ayuda: con el foco en la
+    // «i» el texto de ayuda se abría solo y tapaba el campo («Importar del
+    // Excel», 2026-10-20).
+    const primerCampo = (raiz: HTMLElement | null) =>
+      [...(raiz?.querySelectorAll<HTMLElement>(ENFOCABLES) ?? [])].find((e) => !e.hasAttribute('data-ayuda'))
+    const primero = primerCampo(contenido.current) ?? primerCampo(caja.current)
     ;(primero ?? caja.current)?.focus()
 
     return () => {
