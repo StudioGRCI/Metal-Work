@@ -1,9 +1,16 @@
-import { useRouter } from 'next/navigation'
+import { unstable_rethrow, useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import type { ResultadoAccion } from '@/lib/acciones'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
+
+/**
+ * Lo que se dice cuando la acción no contesta: se cortó la señal, o el
+ * servidor cayó a medio camino. La escritura pudo entrar igual, así que se pide
+ * mirar antes de repetirla.
+ */
+export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira si quedó guardado antes de volver a intentar.'
 
 type Opciones = {
   /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
@@ -38,7 +45,18 @@ export function useAccion<T = never>(
 
     iniciar(async () => {
       try {
-        const salida = await accion(null, datos)
+        let salida: ResultadoAccion<T>
+        try {
+          salida = await accion(null, datos)
+        } catch (e) {
+          // Sin este catch, un «Failed to fetch» llegaba al límite de error: la
+          // pantalla entera caía en «Esta pantalla no se pudo abrir» y se
+          // perdía lo escrito (producción, 2026-10-21). La redirección de una
+          // acción también llega como excepción, y esa sigue su camino.
+          unstable_rethrow(e)
+          setResultado({ ok: false, error: SIN_RESPUESTA })
+          return
+        }
         // Una acción que redirige (abrir la orden desde la cotización) no
         // devuelve nada: Next ya está navegando a la pantalla nueva.
         if (!salida) return
