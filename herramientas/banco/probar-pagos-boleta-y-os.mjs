@@ -26,6 +26,9 @@
  *      «pagadas») pidiendo anular el pago, Adquisiciones dice «Pago por
  *      anular» y lleva a anularlo; al anularlo, el aviso dice que se paga por
  *      la factura y no ofrece pagarla aquí. Gerencia lee quién lo hace.
+ *   3e. Contabilidad registra a mano, con ceros y en minúsculas, la factura que
+ *      Logística anexó: entra una vez, ligada sola a su OC y al anexo, y el
+ *      desplegable ya no la ofrece.
  *   4. Logística adjunta a la OS su factura (tres toques, un documento, con el
  *      número en mayúsculas) y su contrato, y el archivo queda en
  *      storage.objects. Emite otra OS con su contrato desde «Nueva orden de
@@ -551,9 +554,11 @@ let pagoId
   await t.contexto.close()
 }
 
-// ---------------------------------------------------------------- 3e. Contabilidad no la registra a mano sin su OC
+// ---------------------------------------------------------------- 3e. Contabilidad la registra a mano y queda en su OC
 // La cuarta auditoría: registrada con su número y su proveedor, sin elegirla en
 // «Factura que anexó Logística», quedaba sin OC y la compra se pagaba dos veces.
+// Desde la quinta vuelta no se rechaza: la base la reconoce por sus claves aunque
+// venga con ceros y en minúsculas, y la liga sola a la OC y al anexo.
 {
   const { pagina, contexto } = await entrar('contabilidad')
   await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
@@ -566,13 +571,17 @@ let pagoId
   await pagina.locator('#adq-vencimiento').fill(hoy)
   await pagina.locator('#adq-pdf').setInputFiles(join(archivos, 'voucher.pdf'))
   await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
-  const error = limpio(await hasta(() => pagina.locator('form [role="alert"]').first().textContent({ timeout: 500 }).catch(() => ''), (x) => Boolean(x), 20000))
-  comprobar(error.includes('elígela en «Factura que anexó Logística»') && error.includes(`F009-${SUFIJO}`),
-    `escrita a mano, con ceros y en minúsculas, no entra y le dice dónde elegirla: «${error}»`)
-  const [{ n: altas }] = await consulta(
-    `select count(*)::int as n from adquisiciones where public.normalizar_numero_factura(numero_documento) = $1`, [`F009-${SUFIJO}`])
-  comprobar(altas === 0, `y no deja ni un borrador (${altas})`)
-  comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1, 'la factura sigue en el desplegable')
+  const altas = await hasta(
+    () => consulta(`select orden_compra_id, documento_compra_id from adquisiciones where public.clave_numero_comprobante(numero_documento) = $1`, [`F009-${SUFIJO}`]),
+    (r) => r.length > 0,
+    20000,
+  )
+  const error = limpio(await pagina.locator('form [role="alert"]').first().textContent({ timeout: 500 }).catch(() => ''))
+  comprobar(altas.length === 1 && !error, `escrita a mano, con ceros y en minúsculas, entra una vez${error ? `: «${error}»` : ''}`)
+  comprobar(altas[0]?.orden_compra_id === oc[3] && altas[0]?.documento_compra_id === facturaAnexada,
+    `y queda ligada a la ${nombre(oc[3])} y a la factura que anexó Logística`)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 0, 'el desplegable ya no la ofrece')
   await contexto.close()
 }
 

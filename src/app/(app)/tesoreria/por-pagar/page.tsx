@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { FileText, Receipt, ShoppingCart } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -21,7 +22,8 @@ import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
-import { fecha, hoyLima, moneda, periodo } from '@/lib/format'
+import { pagoQueCancela } from '@/lib/dominio/adquisiciones'
+import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -75,6 +77,9 @@ export default async function PaginaPorPagar() {
   const boletasPagadas = boletas.filter((b) => b.cancelada && !b.comprobante_en_camino)
   // La que espera su comprobante se paga por él: no suma al «Por pagar» ni a lo vencido.
   const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino)
+  // Lo único de la página que pide deshacer un pago: el encabezado lo cuenta y lleva a su tarjeta.
+  // El anexo por revisar no lo pide: ese pago no se toca.
+  const porAnular = boletasPorPagar.filter((b) => b.comprobante_en_camino && !anexoPorRevisar(b) && b.pagos.some((p) => !p.anulado_en)).length
   const vencidas =
     porPagar.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
     pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length
@@ -92,7 +97,20 @@ export default async function PaginaPorPagar() {
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por pagar"
-        descripcion={resumen && `Por pagar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'uno vencido' : `${vencidas} vencidos`}` : ''}.`}
+        descripcion={
+          (resumen || porAnular > 0) && (
+            <>
+              {resumen && `Por pagar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'uno vencido' : `${vencidas} vencidos`}` : ''}`}
+              {resumen && porAnular > 0 && ' · '}
+              {porAnular > 0 && (
+                <a href="#compras-con-boleta" className="font-medium text-peligro underline-offset-2 hover:underline">
+                  {porAnular === 1 ? 'una OC con pago por anular' : `${porAnular} OC con pago por anular`}
+                </a>
+              )}
+              .
+            </>
+          )
+        }
         ayuda="Las facturas de compra que registró Contabilidad, al contado o a crédito, y las OC con boleta, que se pagan directo. Van de la que vence antes a la que vence después; cada pago va con su voucher. Al pagar se ven la OC, su factura o boleta y las cuentas del proveedor."
       />
 
@@ -223,23 +241,125 @@ function etiquetaDelComprobante(d: CompraConBoleta['comprobantes'][number]) {
 /**
  * Lo que dice la tarjeta cuando el proveedor ya entregó su comprobante: se paga
  * por él en «Facturas por pagar». Si la OC ya tenía un pago directo, Contabilidad
- * no lo registra hasta que Tesorería lo anule; a quien no paga se le dice
- * quién lo hace, no se le pide.
+ * no lo registra (o Tesorería no paga la factura que Contabilidad registró sin
+ * ligar) hasta que Tesorería lo anule: el dinero ya salió, y la factura se paga
+ * con el mismo voucher. Si esa factura ya estaba pagada, la compra se pagó dos
+ * veces y lo que toca es pedir la devolución. A quien no paga se le dice quién lo
+ * hace, no se le pide. El número no se parte en el teléfono.
  */
-function avisoDelComprobante(b: CompraConBoleta, vigentes: number, paga: boolean): string | null {
-  const numero = b.comprobante_en_camino
-  if (!numero) return null
+function avisoDelComprobante(b: CompraConBoleta, vigentes: number, paga: boolean): ReactNode {
+  if (!b.comprobante_en_camino) return null
+  const numero = <span className="whitespace-nowrap">{b.comprobante_en_camino}</span>
+  const pagos = vigentes === 1 ? 'el pago' : 'los pagos'
+  const tiene = vigentes === 1 ? 'un pago directo' : 'pagos directos'
+  const mientras = vigentes === 1 ? 'siga vigente' : 'sigan vigentes'
+  const vouchers = vigentes === 1 ? 'el mismo voucher' : 'los mismos vouchers'
+  if (anexoPorRevisar(b)) {
+    // La factura es de otras OC y no alcanza para esta: el que está mal es el anexo.
+    const factura = <>Logística anexó a esta OC la factura {numero}, que Contabilidad registró para otras OC y no alcanza para esta</>
+    return vigentes > 0 ? (
+      <>
+        {factura}: no se paga por ella, y {vigentes === 1 ? 'el pago directo de aquí no se anula' : 'los pagos directos de aquí no se anulan'}. Si el anexo
+        fue por error, Logística lo anula en Adquisiciones.
+      </>
+    ) : (
+      <>
+        {factura}: no se paga por ella ni por su boleta mientras el anexo siga. Si fue por error, Logística lo anula en Adquisiciones y la OC se paga aquí.
+      </>
+    )
+  }
+  if (b.comprobante_en_camino_origen === 'REGISTRADA') {
+    // Contabilidad ya registró la factura que anexó Logística, sin ligarla: la OC se paga por ella.
+    if (vigentes === 0) return <>Contabilidad registró la factura {numero} que Logística anexó a esta OC: se paga por ella en «Facturas por pagar».</>
+    if (pagadaDosVeces(b)) {
+      return (
+        <>
+          Esta OC se pagó dos veces: por su boleta, aquí, y por la factura {numero}, que Contabilidad registró y se pagó antes de que Logística la anexara.{' '}
+          {paga
+            ? `Pide al proveedor la devolución y, cuando la devuelva, anula ${pagos} de aquí.`
+            : `Tesorería pide al proveedor la devolución y, cuando la devuelva, anula ${pagos} de aquí.`}
+        </>
+      )
+    }
+    return (
+      <>
+        Contabilidad registró la factura {numero} que Logística anexó a esta OC, y la OC ya tiene {tiene}: la factura no se paga mientras {mientras}.{' '}
+        {paga
+          ? `Anula ${pagos} de aquí y paga la factura en «Facturas por pagar» con ${vouchers}: el dinero ya salió.`
+          : `Tesorería tiene que anular ${pagos} de aquí; después se paga la factura en «Facturas por pagar».`}
+      </>
+    )
+  }
   const deLogistica = b.comprobante_en_camino_origen === 'LOGISTICA'
   const lo = deLogistica ? 'la' : 'lo'
-  const llego = deLogistica
-    ? `El proveedor entregó la factura ${numero} y Logística la anexó a la OC`
-    : `Contabilidad tiene en borrador el comprobante ${numero} de esta OC`
-  if (vigentes === 0) return `${llego}: cuando ${deLogistica ? 'Contabilidad la' : 'lo'} registre, se paga en «Facturas por pagar».`
-  const pagos = vigentes === 1 ? 'el pago' : 'los pagos'
-  const sigue = paga
-    ? `Anula ${pagos} de aquí y, cuando Contabilidad ${lo} registre, págal${deLogistica ? 'a' : 'o'} en «Facturas por pagar» con ${vigentes === 1 ? 'el mismo voucher' : 'los mismos vouchers'}.`
-    : `Tesorería tiene que anular ${pagos} de aquí para que Contabilidad ${lo} registre; después se paga en «Facturas por pagar».`
-  return `${llego}, pero esta OC ya tiene ${vigentes === 1 ? 'un pago directo' : 'pagos directos'}: Contabilidad no ${lo} registra mientras ${vigentes === 1 ? 'siga vigente' : 'sigan vigentes'}. ${sigue}`
+  const llego = deLogistica ? (
+    <>El proveedor entregó la factura {numero} y Logística la anexó a la OC</>
+  ) : (
+    <>Contabilidad tiene en borrador el comprobante {numero} de esta OC</>
+  )
+  if (vigentes === 0) return <>{llego}: cuando {deLogistica ? 'Contabilidad la' : 'lo'} registre, se paga en «Facturas por pagar».</>
+  return (
+    <>
+      {llego}, pero esta OC ya tiene {tiene}: Contabilidad no {lo} registra mientras {mientras}.{' '}
+      {paga
+        ? `Anula ${pagos} de aquí y, cuando Contabilidad ${lo} registre, págal${deLogistica ? 'a' : 'o'} en «Facturas por pagar» con ${vouchers}: el dinero ya salió.`
+        : `Tesorería tiene que anular ${pagos} de aquí para que Contabilidad ${lo} registre; después se paga en «Facturas por pagar».`}
+    </>
+  )
+}
+
+/**
+ * Lo que dice la ventana «Anular el pago» de la OC con boleta, con los pagos que
+ * se ven: lo mismo que dirá el aviso de después (`queQuedaTrasAnular`). Con un
+ * pago vigente que la dio por cancelada, o que con los demás llega al total, la
+ * OC sigue pagada; si no, vuelve a deber lo que no cubren los otros.
+ */
+function queQuedaAlAnular(b: CompraConBoleta, pagoId: string, m: CodigoMoneda): string {
+  const otros = b.pagos.filter((p) => !p.anulado_en && p.id !== pagoId)
+  const numero = b.comprobante_en_camino
+  if (numero) {
+    const queda =
+      otros.length === 0
+        ? null
+        : otros.length === 1
+          ? 'queda otro pago directo vigente: anúlalo también'
+          : `quedan ${otros.length} pagos directos vigentes: anúlalos también`
+    if (anexoPorRevisar(b)) {
+      return `La factura ${numero} anexada a esta OC es de otras compras y no alcanza para ella: la OC vuelve a deber, y se paga por su boleta cuando Logística anule ese anexo. Anúlalo solo si el pago estuvo mal.`
+    }
+    if (b.comprobante_en_camino_origen === 'REGISTRADA' && pagadaDosVeces(b)) {
+      return queda
+        ? `La compra queda pagada una vez, por la factura ${numero}, pero ${queda}. Anúlalo solo si el proveedor ya devolvió lo que se le pagó por la boleta.`
+        : `La compra queda pagada una vez, por la factura ${numero}. Anúlalo solo si el proveedor ya devolvió lo que se le pagó por la boleta.`
+    }
+    if (b.comprobante_en_camino_origen === 'REGISTRADA') {
+      return queda
+        ? `La OC se paga por la factura ${numero}, que Contabilidad ya registró, pero ${queda} para pagarla.`
+        : `La OC se paga por la factura ${numero}, que Contabilidad ya registró, en «Facturas por pagar».`
+    }
+    return queda
+      ? `La OC se paga por su comprobante ${numero}, pero ${queda} para que Contabilidad lo registre.`
+      : `La OC se paga por su comprobante ${numero} en «Facturas por pagar» cuando Contabilidad lo registre.`
+  }
+  if (otros.some((p) => p.cancela_sin_completar)) return 'La OC sigue pagada: otro de sus pagos la dio por cancelada.'
+  const total = Number(b.total ?? 0)
+  const cubren = otros.reduce((suma, p) => suma + Number(p.monto), 0)
+  if (cubren >= total) return 'La OC sigue pagada: sus otros pagos cubren el total.'
+  return `La OC vuelve a deber ${moneda(total - cubren, m)}.`
+}
+
+/**
+ * La factura por la que se paga la OC ya tiene pagos, y la OC también los tiene
+ * directo: lo que la base dice que se pagó de más (el pago directo que la factura
+ * ya no debía).
+ */
+function pagadaDosVeces(b: CompraConBoleta) {
+  return b.comprobante_en_camino_origen === 'REGISTRADA' && Number(b.pagada_dos_veces ?? 0) > 0 && b.pagos.some((p) => !p.anulado_en)
+}
+
+/** Logística le anexó una factura que Contabilidad registró para otras OC y no alcanza para esta: ni se paga ni se anula su pago. */
+function anexoPorRevisar(b: CompraConBoleta) {
+  return b.comprobante_en_camino_origen === 'REGISTRADA' && b.comprobante_en_camino_alcanza === false
 }
 
 /** Lo que le falta pagar a una OC con boleta; una cancelada «a cuenta» ya no debe nada. */
@@ -428,6 +548,8 @@ function CompraConBoletaFila({
   const conPagoVigente = vigentes > 0
   const aviso = avisoDelComprobante(b, vigentes, paga)
   const cobra = saldo > 0 && !enCamino
+  // Solo uno de sus pagos la canceló; con su comprobante en camino, ninguno la cancela.
+  const cancela = b.cancelada && !enCamino ? pagoQueCancela(b.pagos, Number(b.total ?? 0)) : null
   const condicion = b.condicion_pago === 'CREDITO' ? `crédito a ${b.dias_credito ?? 0} días` : 'contado'
   return (
     <article id={`compra-${b.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
@@ -437,19 +559,30 @@ function CompraConBoletaFila({
             <span className="font-medium text-texto">
               {b.proveedor} · <span className="tabular whitespace-nowrap">{nombre}</span>
             </span>
-            {b.cancelada && <Insignia tono="exito">Pagada</Insignia>}
-            {!b.cancelada && pagado > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
+            {/* Con su comprobante en camino, lo pagado directo se anula: no está «Pagada». */}
+            {!enCamino && b.cancelada && <Insignia tono="exito">Pagada</Insignia>}
+            {!enCamino && !b.cancelada && pagado > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {b.sin_precio && <Insignia tono="aviso">Líneas sin precio</Insignia>}
             {enCamino && (
-              <Insignia tono="aviso">
-                {conPagoVigente ? 'Pago por anular' : b.comprobante_en_camino_origen === 'LOGISTICA' ? 'Llegó factura' : 'En Contabilidad'}
+              <Insignia tono={conPagoVigente && !anexoPorRevisar(b) ? 'peligro' : 'aviso'}>
+                {anexoPorRevisar(b)
+                  ? 'Anexo por revisar'
+                  : pagadaDosVeces(b)
+                  ? 'Pagada dos veces'
+                  : conPagoVigente
+                    ? 'Pago por anular'
+                    : b.comprobante_en_camino_origen === 'LOGISTICA'
+                      ? 'Llegó factura'
+                      : b.comprobante_en_camino_origen === 'REGISTRADA'
+                        ? 'Factura registrada'
+                        : 'En Contabilidad'}
               </Insignia>
             )}
           </p>
           <p className="text-xs text-texto-suave">
-            {b.comprobante_en_camino_origen === 'LOGISTICA' ? 'Iba con boleta' : 'Boleta'} · {condicion}
+            {enCamino ? 'Iba con boleta' : 'Boleta'} · {condicion}
             {b.codigo_interno && ` · ${b.codigo_interno}`}
-            {b.cancelada ? ` · Pagada el ${fecha(b.ultimo_pago)}` : !enCamino && <> · <Vencimiento dia={b.vence} saldo={saldo} /></>}
+            {!enCamino && (b.cancelada ? ` · Pagada el ${fecha(b.ultimo_pago)}` : <> · <Vencimiento dia={b.vence} saldo={saldo} /></>)}
           </p>
           {aviso ? (
             <p className="text-xs text-aviso">{aviso}</p>
@@ -468,18 +601,33 @@ function CompraConBoletaFila({
         <div className="sm:text-right">
           {enCamino ? (
             <>
-              <p className="tabular text-sm font-semibold text-texto">Total {moneda(b.total ?? 0, m)}</p>
+              <p className="tabular text-sm font-semibold text-texto">
+                Total <span className="whitespace-nowrap">{moneda(b.total ?? 0, m)}</span>
+              </p>
               <p className="tabular text-xs text-texto-suave">
-                Se paga por su comprobante
-                {pagado > 0 && ` · pagado directo ${moneda(pagado, m)}`}
+                {anexoPorRevisar(b) ? 'No se paga hasta revisar el anexo' : 'Se paga por su comprobante'}
+                {pagado > 0 && (
+                  <>
+                    {' · pagado directo '}
+                    <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                  </>
+                )}
               </p>
             </>
           ) : (
             <>
-              <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : moneda(b.total ?? 0, m)}</p>
+              <p className="tabular text-sm font-semibold text-texto">
+                {saldo > 0 && 'Saldo '}
+                <span className="whitespace-nowrap">{moneda(saldo > 0 ? saldo : (b.total ?? 0), m)}</span>
+              </p>
               <p className="tabular text-xs text-texto-suave">
-                Total {moneda(b.total ?? 0, m)}
-                {pagado > 0 && saldo > 0 && ` · pagado ${moneda(pagado, m)}`}
+                Total <span className="whitespace-nowrap">{moneda(b.total ?? 0, m)}</span>
+                {pagado > 0 && saldo > 0 && (
+                  <>
+                    {' · pagado '}
+                    <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                  </>
+                )}
               </p>
             </>
           )}
@@ -515,8 +663,8 @@ function CompraConBoletaFila({
                   Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span>
                   {p.operacion && ` · op. ${p.operacion}`}
                   {p.comprobante_proveedor && ` · boleta ${p.comprobante_proveedor}`}
-                  {/* Si se anuló otro pago y ya no llega al total, este no la cancela. */}
-                  {p.cancela && !p.anulado_en && b.cancelada && ' · cancela la OC'}
+                  {/* El que la canceló, y solo ese: con dos que «cancelan», uno llegó primero. */}
+                  {p.id === cancela && ' · cancela la OC'}
                 </span>
                 {/* Fuera del tachado: que su egreso también se anuló es lo que se tiene que leer. */}
                 <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={m} />
@@ -529,7 +677,7 @@ function CompraConBoletaFila({
                     Voucher
                   </a>
                 )}
-                {paga && !p.anulado_en && <AnularPagoCompra pagoId={p.id} enCamino={b.comprobante_en_camino} otrosVigentes={vigentes - 1} />}
+                {paga && !p.anulado_en && <AnularPagoCompra pagoId={p.id} queQueda={queQuedaAlAnular(b, p.id, m)} />}
               </span>
             </li>
           ))}

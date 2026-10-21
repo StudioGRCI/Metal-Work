@@ -160,11 +160,18 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
-    .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
+    .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id)
+    .select('id, orden_compra_id, oc:ordenes_compra_materiales!adquisiciones_orden_compra_id_fkey(numero, referencia)').maybeSingle()
   if (errorRegistro) return { ok: false, error: `Comprobante en borrador: ${mensajeDeError(errorRegistro)}` }
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
+  // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
+  if (ordenes.length === 0 && registrado.orden_compra_id) {
+    const oc = registrado.oc ? (registrado.oc.numero ?? `OC ${registrado.oc.referencia}`) : 'OC con boleta'
+    return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado y ligado a la ${oc}, a la que Logística lo anexó: se paga por él en Cuentas por pagar.` }
+  }
   const cuantas = ordenes.length
   const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
   return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}.` }

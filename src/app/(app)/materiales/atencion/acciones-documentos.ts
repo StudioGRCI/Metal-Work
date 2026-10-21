@@ -90,6 +90,8 @@ export async function registrarDocumentoCompra(
     .eq('nombre_archivo', datos.data.nombre_archivo)
     .eq('tamano_bytes', archivo.size)
     .eq('tipo', datos.data.tipo)
+    // El que Logística anuló por un número mal escrito se vuelve a anexar bien.
+    .is('anulado_en', null)
     .limit(1)
     .maybeSingle()
   if (errorIgual) return { ok: false, error: mensajeDeError(errorIgual) }
@@ -136,22 +138,58 @@ export async function registrarDocumentoCompra(
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
   if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
-  // La OC con boleta que Tesorería ya pagó directo: Contabilidad no registra la
-  // factura hasta que se anule ese pago, salvo que ya la registrara para otra OC.
-  // Lo dice la base con la misma regla del aviso a Tesorería; si no se pudo leer,
-  // no se afirma el paso siguiente.
+  // La OC con boleta que Tesorería ya pagó directo: Contabilidad no registra ni
+  // paga la factura hasta que se anule ese pago; si Contabilidad ya la tenía
+  // registrada y pagada, la compra se pagó dos veces. Lo dice la base con la
+  // misma regla del aviso a Tesorería; si no se pudo leer, no se afirma el paso
+  // siguiente.
   const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
   if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
   const s = situacion?.[0]
   const pagos = s?.pagos_vigentes ?? 0
+  const esePago = pagos === 1 ? 'ese pago' : 'esos pagos'
+  const registrada = s?.en_camino_origen === 'REGISTRADA'
   return {
     ok: true,
     mensaje: errorSituacion || !s
       ? `Factura ${numeroFactura} adjuntada a la compra.`
-      : pagos > 0 && s.en_camino
-        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ${pagos === 1 ? 'ese pago' : 'esos pagos'}.`
-        : pagos > 0
-          ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya registró esa factura para otra OC: el pago de esta OC no cambia.`
-          : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
+      : registrada && s.en_camino_alcanza === false
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza para esta: revisa el número. Si no es de esta OC, anula el anexo${pagos > 0 ? '; el pago por su boleta no se toca' : ' y la OC se paga por su boleta'}.`
+      : pagos > 0 && registrada && Number(s.pagada_dos_veces ?? 0) > 0
+        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada y pagada: la compra se pagó dos veces. Tesorería recibió el aviso para pedir la devolución al proveedor.`
+        : pagos > 0 && registrada
+          ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada: Tesorería anula ${esePago} y paga la factura con el mismo voucher.`
+          : pagos > 0 && s.en_camino
+            ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: Contabilidad registra la factura cuando Tesorería anule ${esePago}.`
+            : registrada
+              ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad ya la tenía registrada, y la OC se paga por ella en Cuentas por pagar.`
+              : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
   }
+}
+
+const ANULACION = z.object({
+  id: z.guid(),
+  motivo: z.string().trim().min(10, 'Cuenta por qué se anula, en 10 a 500 caracteres.').max(500, 'El motivo va en 10 a 500 caracteres.'),
+})
+
+/**
+ * Logística anula la factura o la boleta que anexó por error a una OC, con su
+ * motivo (migración 20261020210000): queda tachada como evidencia y deja de
+ * contar para el pago. Mismo permiso que la anexa (`compras.crear`); la base
+ * avisa a Tesorería y a Contabilidad si les cambia algo.
+ */
+export async function anularDocumentoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Anular un documento de compra corresponde a Logística.' }
+  const datos = ANULACION.safeParse({ id: formulario.get('id'), motivo: formulario.get('motivo') })
+  if (!datos.success) return { ok: false, error: datos.error.issues[0]?.message ?? 'Cuenta por qué se anula.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_documento_compra', { p_id: datos.data.id, p_motivo: datos.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó la anulación. Recarga la pantalla antes de volver a intentar.' }
+  revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/compras')
+  revalidatePath('/ordenes/[id]', 'page')
+  return { ok: true, mensaje: 'Documento anulado: queda tachado con su motivo y ya no cuenta para el pago de la OC.' }
 }

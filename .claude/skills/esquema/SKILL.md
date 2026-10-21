@@ -233,3 +233,29 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   factura ya registrada (2026-10-21, lo cazó `probar-oc-de-varios-rq.mjs`). Se
   escribe `returns table (documento uuid)` y se lee `fila.documento`, como
   `rrhh_codigos_internos`: igual en los dos.
+
+- **Una función que va en un índice se escribe distinto que las demás.** En la
+  `20261020210000` las claves `clave_proveedor` y `clave_numero_comprobante` van
+  en índices de expresión, y la revisión de la sexta vuelta cazó dos fallos que
+  ningún check veía:
+  - Se les quitó el `execute` a `authenticated`, como a todo ayudante interno, y
+    Postgres evalúa la expresión del índice **con el rol que escribe**: Logística
+    no podía anexar una factura ni Contabilidad dar de alta un comprobante
+    («permission denied for function»). Los checks que escribían sin `set local
+    role authenticated` pasaban. A esas funciones (y a las que ellas llaman) no
+    se les revoca el `execute` del rol que escribe en la tabla.
+  - Son `immutable`, y Postgres guarda en el índice lo que devolvían al
+    escribirse cada fila: si otra migración les cambia el cuerpo con `create or
+    replace`, el índice sigue con los valores viejos y la búsqueda por la clave
+    no encuentra la fila, sin error. La migración que cambia el cuerpo hace
+    `reindex index` de cada índice que la usa.
+
+- **Un `check … not valid` no perdona a las filas viejas: se vuelve a mirar en
+  cada `update`.** `not valid` solo se salta la comprobación al crearlo; la
+  primera vez que una fila de antes se toca, tiene que cumplirla. En la
+  `20261020210000` la factura anexada antes de pedir número no se podía anular
+  (el `update` que pone `anulado_en` caía en la regla del número). Al poner una
+  regla nueva sobre filas que ya existen, preguntarse qué `update` legítimo les
+  queda (anular, corregir) y dejarlo fuera de la regla en la misma expresión
+  (`anulado_en is not null or …`), con su prueba en el check sobre una fila
+  insertada como era antes.

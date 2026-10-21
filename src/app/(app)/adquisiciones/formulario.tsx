@@ -75,6 +75,8 @@ function Formulario({
   const [marcadas, setMarcadas] = useState<string[]>([])
   const [parciales, setParciales] = useState<string[]>([])
   const [proveedor, setProveedor] = useState('')
+  // La factura que anexó Logística, si se eligió: su OC pone el proveedor.
+  const [elegida, setElegida] = useState<FacturaDeLogistica | null>(null)
   const [condicion, setCondicion] = useState('CONTADO')
   const [monedaFactura, setMonedaFactura] = useState('PEN')
   const [total, setTotal] = useState('')
@@ -151,11 +153,19 @@ function Formulario({
     setMarcadas((m) => (m.includes(c.orden_compra_id) ? m : [...m, c.orden_compra_id]))
   }
 
-  /** La factura de Logística trae su número, su fecha y su OC: se llenan si están vacíos. */
+  /**
+   * La factura de Logística trae su número, su fecha, su OC y el proveedor de su
+   * OC: el número y la fecha se llenan si están vacíos; el proveedor es el de su
+   * OC y no se cambia, porque con él la base reconoce la misma factura
+   * (migración 20261020210000). La OC con boleta no está entre las que esperan
+   * factura, así que el proveedor no llega marcándola.
+   */
   function elegirDeLogistica(id: string) {
-    const d = documentos.find((x) => x.id === id)
+    const d = documentos.find((x) => x.id === id) ?? null
+    setElegida(d)
     if (d?.numero) setNumero((n) => n || d.numero!)
     if (d?.fecha) setEmision((e) => e || d.fecha!)
+    if (d?.proveedor) setProveedor(d.proveedor)
     const c = d && compras.find((x) => x.orden_compra_id === d.orden_compra_id)
     if (c && !marcadas.includes(c.orden_compra_id) && encaja(c)) marcar(c, true)
     void detectar(
@@ -180,8 +190,22 @@ function Formulario({
           <option value="OTRO">Otro comprobante</option>
         </Seleccion>
       </Campo>
-      <Campo etiqueta="Proveedor o emisor" htmlFor="adq-proveedor" requerido>
-        <Entrada id="adq-proveedor" name="proveedor" minLength={2} maxLength={160} required value={proveedor} onChange={(e) => setProveedor(e.target.value)} />
+      <Campo
+        etiqueta="Proveedor o emisor"
+        htmlFor="adq-proveedor"
+        requerido
+        ayuda={elegida?.proveedor ? `El de la ${elegida.oc}, a la que Logística anexó la factura.` : undefined}
+      >
+        <Entrada
+          id="adq-proveedor"
+          name="proveedor"
+          minLength={2}
+          maxLength={160}
+          required
+          value={proveedor}
+          readOnly={Boolean(elegida?.proveedor)}
+          onChange={(e) => setProveedor(e.target.value)}
+        />
       </Campo>
       <Campo etiqueta="Número de comprobante" htmlFor="adq-numero" requerido>
         <Entrada
@@ -338,10 +362,32 @@ function Formulario({
           <option value="">Ninguna; subiré un PDF</option>
           {documentos.map((d) => (
             <option key={d.id} value={d.id}>
-              {[d.numero ?? d.nombre_archivo, d.fecha ? dia(d.fecha) : null, d.oc, d.proveedor].filter(Boolean).join(' · ')}
+              {[
+                d.numero ?? d.nombre_archivo,
+                d.fecha ? dia(d.fecha) : null,
+                d.oc,
+                d.proveedor,
+                d.facturaDeLaOc ? `la OC ya tiene la ${d.facturaDeLaOc}` : null,
+                d.mismoNumero ? `¿ya registrada de ${d.mismoNumero}?` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </option>
           ))}
         </Seleccion>
+        {/* La clave no reconoce un proveedor escrito con otro nombre: que lo mire una persona. */}
+        {/* La OC con boleta ya tiene su factura completa: la base no deja registrar otra. */}
+        {elegida?.facturaDeLaOc && (
+          <p className="text-xs text-aviso">
+            La {elegida.oc} ya tiene registrada la factura {elegida.facturaDeLaOc}, y no se le registra otra. Si es la misma con el número mal escrito,
+            corrige la {elegida.facturaDeLaOc}; si este anexo no es de esa OC, Logística lo anula.
+          </p>
+        )}
+        {elegida?.mismoNumero && (
+          <p className="text-xs text-aviso">
+            En Adquisiciones ya hay una factura {elegida.numero} de «{elegida.mismoNumero}». Si es la misma, no la registres otra vez.
+          </p>
+        )}
       </Campo>
       <Campo etiqueta="PDF del comprobante" htmlFor="adq-pdf" ayuda="Obligatorio si no eliges una factura de Logística.">
         <Entrada

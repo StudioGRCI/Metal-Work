@@ -3,8 +3,10 @@
 -- paga Tesorería directo, con su voucher y la caja, como una OS; la de antes
 -- quedó pagada fuera del sistema; la OS guarda su factura, boleta, recibo o
 -- contrato, que adjuntan Logística o Tesorería. Cada paso con el rol que lo da
--- —Tesorería, Logística, Contabilidad, Gerencia, Almacén y Ventas; nunca ADMIN—
--- y `set local role authenticated`, con las políticas de Storage encendidas.
+-- —Tesorería, Logística, Contabilidad, Gerencia, Almacén y Ventas; ADMIN solo
+-- para lo que es suyo por diseño: anular el anexo que la base le niega a
+-- Logística— y `set local role authenticated`, con las políticas de Storage
+-- encendidas.
 -- Termina en rollback.
 begin;
 
@@ -98,7 +100,9 @@ begin
                            'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text)',
                            'public.anular_documento_servicio(uuid, text)', 'public.pasar_compra_a_tesoreria(uuid)',
                            'public.puede_adjuntar_documento_servicio()', 'public.situacion_de_pago_de_compra(uuid)',
-                           'public.factura_anexada_registrada(uuid)', 'public.facturas_anexadas_registradas(uuid[])'] loop
+                           'public.situacion_de_facturas_anexadas(uuid[])', 'public.anular_documento_compra(uuid, text)',
+                           'public.clave_proveedor(text)', 'public.clave_numero_comprobante(text)',
+                           'public.sufijo_societario(text)', 'public.mismo_proveedor(text, text)'] loop
     perform test.afirmar(not has_function_privilege('anon', f, 'execute') and has_function_privilege('authenticated', f, 'execute'),
                          'anon no llama ' || f || '; una sesión sí');
   end loop;
@@ -110,7 +114,11 @@ begin
                        and not has_function_privilege('authenticated', 'public.comprobante_en_camino(uuid)', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_aviso_factura_de_compra_pagada()', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_compra_pagada_total_fijo()', 'execute')
-                       and not has_function_privilege('authenticated', 'public.fn_factura_anexada_con_su_oc()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_adquisicion_factura_unica()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.factura_del_anexo(uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.anexos_de_la_factura(uuid, text, text)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.factura_alcanza_para(uuid, uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.fn_vinculo_con_anexo()', 'execute')
                        and not has_function_privilege('authenticated', 'public.avisar_pago_por_anular(uuid[])', 'execute'),
                        'los disparadores y sus ayudantes los llama el sistema, no la gente');
   perform test.afirmar((select bool_and(c.relrowsecurity) from pg_class c
@@ -463,7 +471,7 @@ values ('documentos-compras', 'compra/' || pg_temp.id('oc1') || '/' || pg_temp.i
         pg_temp.id('comprador')::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
 insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
 values (pg_temp.id('dfac'), pg_temp.id('oc1'), 'FACTURA', 'factura.pdf', 'compra/' || pg_temp.id('oc1') || '/' || pg_temp.id('dfac') || '.pdf',
-        'application/pdf', 2048, pg_temp.id('comprador'), 'F009-421', current_date);
+        'application/pdf', 2048, pg_temp.id('comprador'), 'F009-421', current_setting('prueba.hoy')::date);
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select set_config('prueba.v6', pg_temp.subir('pagos-compras', 'oc1'), true);
@@ -479,10 +487,76 @@ reset role;
 select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 1
     and pg_temp.avisos('comprador', 'Llegó factura de una OC pagada: ') = 0,
   'a Tesorería le llega el aviso de anular su pago; a quien la anexó, no');
--- Si esa factura se registra para otra OC del mismo proveedor, no era de esta:
--- la OC vuelve a pagarse directo, en vez de quedar sin camino.
+-- ============================================ 7c. La factura que anexó Logística es la de la OC
+-- Sexta vuelta (migración 20261020210000): la factura que Logística anexó a una
+-- OC con boleta le cierra el pago directo la registre Contabilidad ligada a
+-- ella, a otra OC o a ninguna; la misma factura se reconoce escrita de otra
+-- forma y no entra dos veces; registrada sin OC se liga sola a la OC que la
+-- puede llevar; y el anexo equivocado lo anula Logística.
+create or replace function pg_temp.anexar(p_doc text, p_oc text, p_numero text) returns uuid language plpgsql as $$
+declare v_ruta text := 'compra/' || pg_temp.id(p_oc) || '/' || pg_temp.id(p_doc) || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+  values ('documentos-compras', v_ruta, pg_temp.id('comprador'), pg_temp.id('comprador')::text,
+          jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+  insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por,
+                                                 numero_documento, fecha_emision)
+  values (pg_temp.id(p_doc), pg_temp.id(p_oc), 'FACTURA', 'factura-' || p_numero || '.pdf', v_ruta, 'application/pdf', 2048,
+          pg_temp.id('comprador'), p_numero, current_setting('prueba.hoy')::date);
+  return pg_temp.id(p_doc);
+end $$;
+create or replace function pg_temp.alta(p_clave text, p_proveedor text, p_numero text, p_condicion text default 'CONTADO')
+returns uuid language sql as $$
+  insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+  values (pg_temp.id(p_clave), 'FACTURA_COMPRA', p_proveedor, p_numero, current_setting('prueba.hoy')::date,
+          case when p_condicion = 'CREDITO' then current_setting('prueba.hoy')::date + 30 else current_setting('prueba.hoy')::date end,
+          'PEN', 361.50, p_condicion)
+  returning id;
+$$;
+create or replace function pg_temp.con_pdf(p_clave text) returns text language plpgsql as $$
+declare v_ruta text := 'adquisiciones/' || pg_temp.id(p_clave) || '/comprobante.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+  values ('comprobantes-financieros', v_ruta, pg_temp.id('contabilidad'), pg_temp.id('contabilidad')::text,
+          jsonb_build_object('mimetype', 'application/pdf', 'size', 2048));
+  return v_ruta;
+end $$;
+do $$
+declare v text;
+begin
+  foreach v in array array['fx', 'fy', 'fa1', 'f12', 'd12', 'd5', 'f5', 'd15a', 'd15b', 'f15', 'd3x', 'f3x',
+                           'fe1', 'fe2', 'fe3', 'fe4', 'fe5', 'fy5', 'fz', 'dz'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+end $$;
+
+-- Las dos claves: la misma factura escrita de dos formas da lo mismo; «LA CASA»
+-- no pierde su «SA», y la eñe no depende de la intercalación de la base.
+select test.afirmar(public.clave_proveedor('Ferretería El Perno S.A.C.') = public.clave_proveedor(' FERRETERIA EL PERNO SAC')
+                    and public.clave_proveedor('LA CASA') = 'LACASA' and public.clave_proveedor('La Casa S. A. C.') = 'LACASA'
+                    and public.clave_proveedor('Peña E.I.R.L.') = 'PENA' and public.clave_proveedor('PEÑA') = 'PENA'
+                    and public.clave_proveedor('ARTESA') = 'ARTESA' and public.clave_proveedor('Arte S.A.') = 'ARTE'
+                    and public.clave_proveedor('Comercial Sociedad Anónima Cerrada') = 'COMERCIAL'
+                    and public.clave_proveedor(' . ') is null,
+  'la clave del proveedor quita tildes, signos y el tipo de sociedad solo al final');
+select test.afirmar(public.clave_numero_comprobante('F001-000123') = 'F001-123' and public.clave_numero_comprobante('f001 123') = 'F001-123'
+                    and public.clave_numero_comprobante('F001123') = 'F001-123' and public.clave_numero_comprobante('F001--0123') = 'F001-123'
+                    and public.clave_numero_comprobante('001-0045') = '1-45' and public.clave_numero_comprobante('E001-12') = 'E001-12'
+                    and public.clave_numero_comprobante('F001-0') = 'F001-0' and public.clave_numero_comprobante(' - ') = '-'
+                    and public.clave_numero_comprobante('') is null,
+  'la clave del número junta serie y correlativo sin ceros, con o sin guion');
+select test.afirmar(public.mismo_proveedor('Ferretería El Perno S.A.C.', ' FERRETERIA EL PERNO SAC')
+                    and not public.mismo_proveedor('Ferretería El Perno S.A.C.', 'Ferreteria El Perno E.I.R.L.')
+                    and public.mismo_proveedor('Ferretería El Perno S.A.C.', 'Ferreteria el perno')
+                    and public.sufijo_societario('Comercial Sociedad Anónima Cerrada') = 'SAC'
+                    and public.sufijo_societario('La Casa S. A. C.') = 'SAC' and public.sufijo_societario('LA CASA') is null
+                    and public.clave_proveedor('深圳市 五金') = '深圳市五金',
+  'S.A.C. y E.I.R.L. son dos empresas; el que no dice su tipo de sociedad se toma por la misma; un nombre sin letras latinas tiene clave');
+
+-- Contabilidad pone la factura que Logística anexó a la OC 1 en otra OC: le
+-- sigue cerrando el pago directo, porque es la misma factura. Antes se lo abría,
+-- y la factura que cubría las dos se pagaba entera encima.
 select pg_temp.como('contabilidad');
-select set_config('prueba.fx', gen_random_uuid()::text, true);
 -- Con la OC en la cabecera, como la da de alta la aplicación (la base la enlaza sola).
 insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago,
                                   orden_compra_id)
@@ -490,55 +564,375 @@ values (pg_temp.id('fx'), 'FACTURA_COMPRA', 'proveedor de prueba 421 ', 'F009-04
         current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO', pg_temp.id('oc2'));
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select comprobante_en_camino is null from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
-  'la factura anexada que es de otra OC, aunque se escriba con ceros, ya no le cierra el pago directo');
-select test.afirmar(pg_temp.pago('oc1') = 'PAGO_PARCIAL', 'y Adquisiciones la vuelve a dar por pagada en parte');
+select test.afirmar((select comprobante_en_camino = 'F009-421' and comprobante_en_camino_origen = 'LOGISTICA'
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la factura que Logística anexó le sigue cerrando el pago directo a la OC 1 aunque Contabilidad la ponga en otra OC');
+select test.afirmar(pg_temp.pago('oc1') = 'PAGO_POR_ANULAR', 'y Adquisiciones sigue pidiendo anular su pago directo');
 reset role;
+select pg_temp.como('contabilidad');
+select pg_temp.con_pdf('fx');
+select test.debe_fallar($$ update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+                           where id = pg_temp.id('fx') $$,
+  'y no se registra mientras la OC 1 tenga su pago directo: dos caminos son dos pagos', 'Tesorería ya le pagó la');
+
+-- La misma factura no entra dos veces, aunque se escriba de otra forma. El
+-- mensaje dice de quién es el borrador o desde cuándo está registrada.
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.alta('fy', 'PROVEEDOR DE PRUEBA 421 S.A.C.', 'F009 421') $$,
+  'la factura en borrador no se da de alta otra vez escrita de otra forma', 'Ya tienes en borrador el comprobante F009-0421');
+select test.debe_fallar($$ select pg_temp.alta('fy', 'Proveedor de Prueba 421 SAC', 'F001-0421') $$,
+  'ni la registrada', 'ya está registrado en Adquisiciones desde el');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.alta('fy', 'Proveedor de prueba 421', 'F009-421') $$,
+  'Logística no da de alta comprobantes: la rechaza la seguridad de la tabla, no la guarda de duplicados', 'row-level security');
+reset role;
+-- Otra empresa con el mismo número no es la misma factura.
 select pg_temp.como('contabilidad');
 set local role authenticated;
-select test.afirmar((select array_agg(documento) from public.facturas_anexadas_registradas(array[pg_temp.id('dfac'), gen_random_uuid()]))
-                      = array[pg_temp.id('dfac')],
-  'y el desplegable de Contabilidad ya no la ofrece: la da por registrada, por su columna «documento»');
+select pg_temp.alta('fy', 'Proveedor de prueba 4210', 'F009-421');
 reset role;
--- Contabilidad corrige el número de la factura de la otra OC: la anexada vuelve
--- a contar, la OC vuelve a «Pago por anular» y a Tesorería le llega el aviso
--- otra vez (el de antes ya lo leyó). La factura de otra OC sale así de la prueba.
-update public.notificaciones set leida_en = now()
- where usuario_id = pg_temp.id('tesoreria') and titulo like 'Llegó factura de una OC pagada: %';
+select test.afirmar((select orden_compra_id is null from public.adquisiciones where id = pg_temp.id('fy')),
+  'la factura de otra empresa con el mismo número entra, y no se liga a la OC del anexo');
+-- La factura de otra OC sale de la prueba: su número cambia mientras es borrador.
+update public.adquisiciones set numero_documento = 'F009-42199' where id = pg_temp.id('fx');
+-- La misma razón social con otro tipo de sociedad es otra empresa; el «S/N» no
+-- es un número y no choca con otro «S/N».
 select pg_temp.como('contabilidad');
-update public.adquisiciones set numero_documento = 'F009-4219' where id = pg_temp.id('fx');
+set local role authenticated;
+select pg_temp.alta('fe1', 'Empresa 421 S.A.C.', 'F777-1');
+select pg_temp.alta('fe2', 'Empresa 421 E.I.R.L.', 'F777-1');
+select test.debe_fallar($$ select pg_temp.alta('fe3', 'EMPRESA 421 SAC', 'F777-0001') $$,
+  'pero la misma con su S.A.C. escrito de otra forma sí es la misma factura', 'Ya tienes en borrador el comprobante F777-1');
+select pg_temp.alta('fe4', 'Empresa 421 S.A.C.', 'S/N');
+select pg_temp.alta('fe5', 'EMPRESA 421 SAC', 'S/N');
+reset role;
+select test.afirmar((select count(*) from public.adquisiciones where id in (pg_temp.id('fe1'), pg_temp.id('fe2'), pg_temp.id('fe4'), pg_temp.id('fe5'))) = 4,
+  'entran la de la E.I.R.L. y los dos «S/N»');
+
+-- Registrada a mano, sin OC, la factura que Logística anexó a una OC pagada
+-- directo no se liga a ella (no la puede llevar) y no se registra hasta que
+-- Tesorería anule su pago.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select pg_temp.alta('fa1', ' PROVEEDOR DE PRUEBA 421', 'f009-00421');
+reset role;
+select test.afirmar((select orden_compra_id is null and documento_compra_id is null from public.adquisiciones where id = pg_temp.id('fa1')),
+  'a mano y sin OC, no se liga a la OC 1, que tiene un pago directo vigente');
+select pg_temp.con_pdf('fa1');
+select test.debe_fallar($$ update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+                           where id = pg_temp.id('fa1') $$,
+  'y no se registra mientras la OC del anexo tenga su pago directo', 'Tesorería ya le pagó la');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar((select registrada and mismo_numero = 'Proveedor de prueba 4210'
+                       from public.situacion_de_facturas_anexadas(array[pg_temp.id('dfac')])),
+  'el desplegable ya no la ofrece (tiene su borrador) y avisa de otra factura con su número de otro proveedor');
+select test.afirmar((select count(*) = 1 and bool_and(not registrada and mismo_numero is null)
+                       from public.situacion_de_facturas_anexadas(array[gen_random_uuid()])),
+  'un documento que no existe no sale como registrado');
+reset role;
+select pg_temp.como('vendedor');
+set local role authenticated;
+select test.debe_fallar($$ select * from public.situacion_de_facturas_anexadas(array[pg_temp.id('dfac')]) $$,
+  'el desplegable es de quien ve Adquisiciones', 'Adquisiciones la ven');
+reset role;
+
+-- Pagada dos veces: la factura se registró y se pagó sin anexo, Tesorería pagó
+-- la OC por su boleta, y después Logística anexa esa factura a la OC. La lista
+-- y el aviso lo dicen: se pide la devolución de lo que se pagó de más (lo
+-- directo por encima del saldo de la factura), no se paga otra vez.
+select pg_temp.como('contabilidad');
+select pg_temp.alta('f12', 'Proveedor de prueba 421', 'F012-88');
+select pg_temp.con_pdf('f12');
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f12');
+set local session_replication_role = replica;
+insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
+values (pg_temp.id('f12'), current_setting('prueba.hoy')::date, 300, 'OP-4212', pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id('tesoreria');
+select pg_temp.como('comprador');
+select pg_temp.anexar('d12', 'oc1', 'F012-88');
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select comprobante_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
-  'con el número de otra factura, la anexada vuelve a contar');
-select test.afirmar(pg_temp.pago('oc1') = 'PAGO_POR_ANULAR', 'y la OC vuelve a tener un pago que anular');
+-- La OC 1 tiene 100 pagados directo; a la F012-88 (361.50) le quedan 61.50: se pagaron 38.50 de más.
+select test.afirmar((select comprobante_en_camino = 'F012-88' and comprobante_en_camino_origen = 'REGISTRADA'
+                            and comprobante_en_camino_alcanza and pagada_dos_veces = 38.50
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la OC pagada directo cuya factura ya estaba pagada dice cuánto se pagó de más');
+select test.afirmar((select en_camino_origen = 'REGISTRADA' and en_camino_alcanza and pagada_dos_veces = 38.50 and pagos_vigentes = 1
+                       from public.situacion_de_pago_de_compra(pg_temp.id('oc1'))),
+  'y su situación de pago también');
+select test.afirmar((select pago = 'PAGO_POR_ANULAR'
+                            and exists (select 1 from jsonb_array_elements(facturas) x where x->>'numero' = 'F012-88' and (x->>'anexada')::boolean)
+                       from public.trazabilidad_de_compras() where id = pg_temp.id('oc1')),
+  'Adquisiciones la muestra entre sus facturas, por el anexo de Logística');
 reset role;
-select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 2
-    and (select cuerpo like '%Anula ese pago%' from public.notificaciones
-          where usuario_id = pg_temp.id('tesoreria') and titulo like 'Llegó factura de una OC pagada: %' and leida_en is null),
-  'a Tesorería le llega otra vez el aviso de anular su pago');
-select pg_temp.como('contabilidad');
-update public.adquisiciones set numero_documento = 'F009-42199' where id = pg_temp.id('fx');
-select test.afirmar(pg_temp.avisos('tesoreria', 'Llegó factura de una OC pagada: ') = 2,
-  'y no se le repite mientras no lo lea');
+select test.afirmar(pg_temp.avisos('tesoreria', 'Compra pagada dos veces: ') = 1
+    and (select cuerpo like '%se pagaron S/ 38.50 de más. Pide al proveedor la devolución%' from public.notificaciones
+          where usuario_id = pg_temp.id('tesoreria') and titulo like 'Compra pagada dos veces: %'),
+  'a Tesorería le llega el aviso de que la compra se pagó dos veces, con lo que se pagó de más y la devolución');
+select test.debe_fallar($$ insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por)
+                           values (pg_temp.id('f12'), current_setting('prueba.hoy')::date, 1, 'OP-4213', pg_temp.id('tesoreria')) $$,
+  'la factura de la OC con pago directo no se paga otra vez, aunque esté registrada sin ligarla', 'no se paga encima');
+-- Si el saldo de la factura cubre lo pagado directo, no hubo doble pago: lo
+-- pagado de la factura pudo ser la parte de otra OC. Se mueve el voucher.
+set local session_replication_role = replica;
+update public.pagos_adquisicion set monto = 200 where adquisicion_id = pg_temp.id('f12');
+set local session_replication_role = origin;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino_origen = 'REGISTRADA' and pagada_dos_veces = 0
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'con 161.50 de saldo para 100 pagados directo, no se pagó dos veces: no se pide devolución');
+reset role;
+set local session_replication_role = replica;
+update public.pagos_adquisicion set monto = 300 where adquisicion_id = pg_temp.id('f12');
+set local session_replication_role = origin;
 
--- Registrada a mano con su número y su proveedor, la factura anexada quedaba
--- sin OC y la compra se pagaba dos veces (cuarta auditoría): no se da de alta así.
+-- Logística no anula el anexo de una factura ya pagada que alcanza para la OC:
+-- anulado, la OC se pagaba otra vez por su boleta. Tampoco el de la factura en
+-- borrador de la OC que Tesorería ya pagó directo: se pagaba también la factura.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('d12'), 'No era de esta OC, era de otra') $$,
+  'Tesorería no anula lo que anexa Logística', 'corresponde a Logística');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('d12'), 'corto') $$,
+  'sin motivo no se anula', 'Cuenta por qué se anula');
+select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('d12'), 'Era la factura de otra compra del mismo proveedor') $$,
+  'Logística no anula el anexo de la factura que ya se pagó', 'No se anula: la factura F012-88 de este anexo ya está registrada y Tesorería le pagó S/ 300.00');
+select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('dfac'), 'Era la factura de otra compra del mismo proveedor') $$,
+  'ni el de la factura en borrador de la OC que Tesorería pagó directo', 'No se anula: Tesorería ya pagó la');
+reset role;
+select test.afirmar((select anulado_en is null from public.documentos_compra_material where id = pg_temp.id('d12')),
+  'el anexo sigue vigente');
+-- Si de verdad no es de esa OC, lo anula el administrador del sistema.
+do $$
+declare v_id uuid := gen_random_uuid();
+begin
+  insert into auth.users (id, email) values (v_id, 'admin.421@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
+  select v_id, 'ADMIN', 'Check 421', 'admin.421@prueba.local', r.id from public.roles r where r.codigo = 'ADMIN';
+  perform set_config('prueba.admin', v_id::text, true);
+end $$;
+select pg_temp.como('admin');
+set local role authenticated;
+select test.afirmar(public.anular_documento_compra(pg_temp.id('d12'), 'Era la factura de otra compra del mismo proveedor') = pg_temp.id('d12'),
+  'el administrador anula la factura que Logística anexó por error');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(public.anular_documento_compra(pg_temp.id('d12'), 'Otra vez, por si no llegó') = pg_temp.id('d12'),
+  'un segundo toque no cambia nada');
+select test.debe_fallar($$ update public.documentos_compra_material set anulado_en = null where id = pg_temp.id('d12') $$,
+  'y nadie la desanula por la API', 'permission denied');
+reset role;
+select test.afirmar((select anulado_en is not null and anulado_por = pg_temp.id('admin') and motivo_anulacion = 'Era la factura de otra compra del mismo proveedor'
+                       from public.documentos_compra_material where id = pg_temp.id('d12')),
+  'queda con quién, cuándo y el primer motivo');
+select test.afirmar(pg_temp.avisos('contabilidad', 'Logística anuló una factura que anexó: ') = 1,
+  'a Contabilidad, que la tenía registrada, le llega el aviso');
+select test.afirmar(pg_temp.avisos('tesoreria', 'La OC vuelve a pagarse por su boleta: ') = 0,
+  'a Tesorería no: la OC 1 sigue esperando la otra factura que le anexó Logística');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino = 'F009-421' and comprobante_en_camino_origen = 'LOGISTICA'
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'anulado ese anexo, la OC 1 vuelve a esperar la factura que sí es suya');
+select test.afirmar((select d->>'anulado_en' is not null and d->>'motivo_anulacion' like 'Era la factura%'
+                       from public.trazabilidad_de_compras() t, jsonb_array_elements(t.documentos) d
+                      where t.id = pg_temp.id('oc1') and d->>'id' = pg_temp.id('d12')::text),
+  'y Adquisiciones lo sigue mostrando, anulado y con su motivo');
+reset role;
+
+-- La factura de otra OC que Logística anexa por error: Contabilidad la registró
+-- con la OC 2 por su total exacto, así que no alcanza para la OC 1. No la da
+-- por pagada ni manda a anular el pago directo: el anexo queda por revisar, y
+-- ese sí lo anula Logística.
+select pg_temp.como('contabilidad');
+insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago,
+                                  orden_compra_id)
+values (pg_temp.id('fz'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F020-1', current_setting('prueba.hoy')::date,
+        current_setting('prueba.hoy')::date, 'PEN', current_setting('prueba.total1')::numeric, 'CONTADO', pg_temp.id('oc2'));
+select pg_temp.con_pdf('fz');
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('fz');
+update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id('tesoreria');
+select pg_temp.como('comprador');
+select pg_temp.anexar('dz', 'oc1', 'F020-1');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino = 'F020-1' and comprobante_en_camino_origen = 'REGISTRADA'
+                            and not comprobante_en_camino_alcanza and pagada_dos_veces = 0
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la factura de la OC 2 que Logística anexó a la OC 1 no alcanza para ella');
+select test.afirmar(pg_temp.pago('oc1') = 'ANEXO_POR_REVISAR'
+                    and not exists (select 1 from public.trazabilidad_de_compras() t, jsonb_array_elements(t.facturas) x
+                                     where t.id = pg_temp.id('oc1') and x->>'numero' = 'F020-1'),
+  'Adquisiciones no la da por pagada con esa factura: el anexo está por revisar');
+select set_config('prueba.vz', pg_temp.subir('pagos-compras', 'oc1'), true);
+select test.debe_fallar($$ select pg_temp.pagar('pv', 'oc1', 10, false, current_setting('prueba.vz')) $$,
+  'y Tesorería no la paga directo hasta que se revise', 'no alcanza para esta');
+reset role;
+select test.afirmar(pg_temp.avisos('tesoreria', 'Factura anexada por revisar: ') = 1
+    and (select count(*) from public.notificaciones where usuario_id = pg_temp.id('tesoreria')
+          and titulo like 'Llegó factura de una OC pagada: %' and leida_en is null) = 0
+    and (select cuerpo like '%No anules ese pago de la boleta%' from public.notificaciones
+          where usuario_id = pg_temp.id('tesoreria') and titulo like 'Factura anexada por revisar: %'),
+  'a Tesorería le llega que el anexo está por revisar, no que anule su pago');
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(public.anular_documento_compra(pg_temp.id('dz'), 'Era la factura de la OC 2, no de esta') = pg_temp.id('dz'),
+  'Logística anula el anexo de la factura que no alcanza para la OC');
+reset role;
+select test.afirmar(pg_temp.avisos('contabilidad', 'Logística anuló una factura que anexó: ') = 2,
+  'y a Contabilidad, que tiene registrada esa factura, le llega el aviso');
+select test.afirmar((select bool_and(leida_en is not null) from public.notificaciones
+                      where usuario_id = pg_temp.id('tesoreria') and titulo like 'Factura anexada por revisar: %'),
+  'y el aviso del anexo por revisar se da por leído');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select comprobante_en_camino = 'F009-421' and comprobante_en_camino_origen = 'LOGISTICA'
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'la OC 1 vuelve a esperar la F009-421');
+reset role;
+
+-- La OC 5, con boleta y sin pagos: Contabilidad registra a mano la factura que
+-- Logística le anexó, con el proveedor y el número escritos de otra forma. Se
+-- liga sola a la OC y Tesorería ya no la paga directo: se paga por la factura.
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(pg_temp.id('oc5'));
+reset role;
+select pg_temp.como('comprador');
+select pg_temp.anexar('d5', 'oc5', 'F010-55');
 select pg_temp.como('contabilidad');
 set local role authenticated;
-select test.debe_fallar($$ insert into public.adquisiciones (tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-                           values ('FACTURA_COMPRA', 'Proveedor de prueba 421', 'F009-421', current_setting('prueba.hoy')::date,
-                                   current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO') $$,
-  'Contabilidad no registra sin OC la factura que Logística anexó a una OC con boleta', 'elígela en «Factura que anexó Logística»');
-select test.debe_fallar($$ insert into public.adquisiciones (tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-                           values ('FACTURA_COMPRA', ' PROVEEDOR DE PRUEBA 421', 'f009-00421', current_setting('prueba.hoy')::date,
-                                   current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO') $$,
-  'tampoco escrita con ceros o en otras mayúsculas', 'elígela en «Factura que anexó Logística»');
-select test.afirmar((select count(*) from public.facturas_anexadas_registradas(array[pg_temp.id('dfac')])) = 0,
-  'y en su desplegable la factura sigue por registrar');
+select pg_temp.alta('f5', 'PROVEEDOR DE PRUEBA 421 SAC', 'F010-0055');
 reset role;
--- La que ya estaba registrada sin OC (de antes, o registrada antes de que
--- Logística la anexara) no le abre el pago directo: la OC sigue esperándola.
+select test.afirmar((select orden_compra_id = pg_temp.id('oc5') and documento_compra_id = pg_temp.id('d5') and proveedor = 'PROVEEDOR DE PRUEBA 421 SAC'
+                       from public.adquisiciones where id = pg_temp.id('f5'))
+                    and exists (select 1 from public.adquisiciones_ordenes_compra
+                                 where adquisicion_id = pg_temp.id('f5') and orden_compra_id = pg_temp.id('oc5') and quitada_en is null),
+  'registrada a mano sin OC, la factura anexada se liga sola a su OC con boleta, con su vínculo');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.adquisiciones set estado = 'REGISTRADA' where id = pg_temp.id('f5');
+reset role;
+select test.afirmar((select estado = 'REGISTRADA' from public.adquisiciones where id = pg_temp.id('f5')),
+  'y se registra con el PDF que anexó Logística');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select count(*) from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc5')) = 0,
+  'la OC 5 deja la lista de boletas: se paga por su factura');
+select set_config('prueba.v7', pg_temp.subir('pagos-compras', 'oc5'), true);
+select test.debe_fallar($$ select pg_temp.pagar('pv', 'oc5', 10, false, current_setting('prueba.v7')) $$,
+  'y Tesorería no la paga directo', 'ya registró el comprobante');
+select test.afirmar(pg_temp.pago('oc5') = 'POR_PAGAR', 'Adquisiciones la da por pagar, por su factura');
+reset role;
+-- La corrección no rompe el lazo con el anexo. La que eligió el anexo se corrige
+-- de número (el PDF es ese) y el número que deja libre no entra otra vez; a
+-- ninguna se le quita la OC que tiene anexada esa factura.
+select pg_temp.como('contabilidad');
+do $$ begin
+  perform set_config('metalwork.corrigiendo', 'factura', true);
+  update public.adquisiciones set numero_documento = 'F010-56' where id = pg_temp.id('f5');
+  perform set_config('metalwork.corrigiendo', '', true);
+end $$;
+select test.afirmar((select numero_documento = 'F010-56' and documento_compra_id = pg_temp.id('d5') from public.adquisiciones where id = pg_temp.id('f5')),
+  'la factura que eligió el anexo se corrige de número: sigue siendo la de ese PDF');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.alta('fy5', 'Proveedor de prueba 421', 'F010-55') $$,
+  'y el número que deja libre no se da de alta otra vez: la OC ya tiene su factura', 'que ya tiene su factura F010-56');
+reset role;
+do $$ begin
+  perform set_config('metalwork.corrigiendo', 'factura', true);
+  update public.adquisiciones set proveedor = 'Proveedor de prueba 421 S.A.C.' where id = pg_temp.id('f5');
+  perform set_config('metalwork.corrigiendo', '', true);
+end $$;
+select test.afirmar((select proveedor = 'Proveedor de prueba 421 S.A.C.' from public.adquisiciones where id = pg_temp.id('f5')),
+  'escribir el mismo proveedor de otra forma sí se corrige');
+select test.debe_fallar($$ do $x$ begin
+                             perform set_config('metalwork.corrigiendo', 'factura', true);
+                             update public.adquisiciones set orden_compra_id = null where id = pg_temp.id('f5');
+                           end $x$ $$,
+  'una corrección no le quita la OC 5, que tiene anexada esa factura', 'tiene anexada esta factura');
+select test.debe_fallar($$ do $x$ begin
+                             perform set_config('metalwork.corrigiendo', 'factura', true);
+                             update public.adquisiciones_ordenes_compra set quitada_en = now(), quitada_por = pg_temp.id('contabilidad')
+                              where adquisicion_id = pg_temp.id('f5') and orden_compra_id = pg_temp.id('oc5');
+                           end $x$ $$,
+  'ni su vínculo', 'tiene anexada esta factura');
+-- Logística anula ese anexo (la factura cubre la OC 5 por su vínculo: la OC no
+-- vuelve al pago directo) y a Tesorería no le llega nada.
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.anular_documento_compra(pg_temp.id('d5'), 'El número de la factura estaba mal escrito');
+reset role;
+select test.afirmar(pg_temp.avisos('contabilidad', 'Logística anuló una factura que anexó: ') = 3
+    and pg_temp.avisos('tesoreria', 'La OC vuelve a pagarse por su boleta: ') = 0,
+  'a Contabilidad le llega el aviso; a Tesorería no, la OC sigue con su factura');
+select pg_temp.como('contabilidad');
+select test.debe_fallar($$ insert into public.adquisiciones (tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                                         condicion_pago, orden_compra_id, documento_compra_id)
+                           values ('FACTURA_COMPRA', 'Proveedor de prueba 421', 'F010-57', current_setting('prueba.hoy')::date,
+                                   current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO', pg_temp.id('oc5'), pg_temp.id('d5')) $$,
+  'la factura que Logística anuló no se elige en el desplegable', 'Logística anuló la factura');
+
+-- Una factura anexada a la OC 5, que ya tiene su factura completa: no entra
+-- (es la misma con otro número, o el anexo está mal) y el desplegable lo dice.
+-- Anulado ese anexo, la que queda es de la OC 1, que tiene pago directo: no se
+-- liga y no se registra.
+select pg_temp.como('comprador');
+select pg_temp.anexar('d15a', 'oc1', 'F015-3');
+select pg_temp.anexar('d15b', 'oc5', 'F015-3');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar((select factura_de_la_oc = 'F010-56' from public.situacion_de_facturas_anexadas(array[pg_temp.id('d15b')])),
+  'el desplegable dice que la OC 5 ya tiene su factura');
+select test.debe_fallar($$ select pg_temp.alta('f15', 'Proveedor de prueba 421', 'F015-3') $$,
+  'y no entra otra para ella', 'que ya tiene su factura F010-56');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.anular_documento_compra(pg_temp.id('d15b'), 'La OC 5 ya tiene su factura, esta no es suya');
+reset role;
+select pg_temp.como('contabilidad');
+select pg_temp.alta('f15', 'Proveedor de prueba 421', 'F015-3');
+select test.afirmar((select orden_compra_id is null from public.adquisiciones where id = pg_temp.id('f15')),
+  'la factura no se liga sola a la OC 1, que tiene pago directo');
+select pg_temp.con_pdf('f15');
+select test.debe_fallar($$ update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f15') $$,
+  'y no se registra mientras la OC 1 tenga pago directo', 'Tesorería ya le pagó la');
+
+-- Al elegir en el desplegable la factura que anexó Logística, el proveedor es el
+-- de su OC: así la clave reconoce la misma factura. Se prueba y se deshace.
+do $$
+declare v_proveedor text;
+begin
+  begin
+    perform pg_temp.como('comprador');
+    perform pg_temp.anexar('d3x', 'oc3', 'F016-1');
+    perform pg_temp.como('contabilidad');
+    insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago,
+                                      orden_compra_id, documento_compra_id)
+    values (pg_temp.id('f3x'), 'FACTURA_COMPRA', 'Nombre comercial cualquiera', 'F016-1', current_setting('prueba.hoy')::date,
+            current_setting('prueba.hoy')::date, 'PEN', 100, 'CONTADO', pg_temp.id('oc3'), pg_temp.id('d3x'))
+    returning proveedor into v_proveedor;
+    raise exception using errcode = 'Q4210', message = 'deshacer';
+  exception when sqlstate 'Q4210' then null;
+  end;
+  perform test.afirmar(v_proveedor = (select proveedor from public.ordenes_compra_materiales where id = pg_temp.id('oc3')),
+                       'la factura elegida del desplegable lleva el proveedor de su OC');
+end $$;
+
+-- La que ya estaba registrada sin OC antes de esta guarda, con el número de la
+-- factura anexada: la OC 1 se paga por ella, no directo. Solo el número la liga
+-- al anexo: cambiarlo soltaría la OC 1, y no se corrige.
 select set_config('prueba.fsin', gen_random_uuid()::text, true);
 set local session_replication_role = replica;
 insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado,
@@ -548,13 +942,48 @@ values (pg_temp.id('fsin'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F009-4
 set local session_replication_role = origin;
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select comprobante_en_camino = 'F009-421' from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
-  'registrada sin OC, la factura anexada sigue en camino: la OC no se paga directo');
+select test.afirmar((select comprobante_en_camino = 'F009-421' and comprobante_en_camino_origen = 'REGISTRADA' and pagada_dos_veces = 0
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1')),
+  'registrada sin OC, la factura anexada es la de la OC 1: sigue sin pagarse directo');
 reset role;
-select test.afirmar(not public.factura_anexada_registrada(pg_temp.id('dfac')), 'ni cuenta como registrada');
+select pg_temp.como('contabilidad');
+select test.debe_fallar($$ do $x$ begin
+                             perform set_config('metalwork.corrigiendo', 'factura', true);
+                             update public.adquisiciones set numero_documento = 'F009-422' where id = pg_temp.id('fsin');
+                           end $x$ $$,
+  'la factura que solo su número liga al anexo no se corrige de número', 'que Logística anexe primero');
 set local session_replication_role = replica;
 update public.adquisiciones set numero_documento = 'F009-42198' where id = pg_temp.id('fsin');
 set local session_replication_role = origin;
+
+-- La factura que Logística anexó antes de que se pidiera su número y su fecha
+-- (la regla de 20261016702000 es NOT VALID) se anula igual: antes chocaba con
+-- esa regla al anularla, y la OC esperaba para siempre. Se crea como entonces,
+-- sin la regla, y la regla vuelve tal cual.
+do $$
+declare v_regla text;
+begin
+  select pg_get_constraintdef(oid) into v_regla from pg_constraint
+   where conname = 'ck_documento_compra_factura_con_numero' and conrelid = 'public.documentos_compra_material'::regclass;
+  alter table public.documentos_compra_material drop constraint ck_documento_compra_factura_con_numero;
+  perform set_config('prueba.dvieja', gen_random_uuid()::text, true);
+  set local session_replication_role = replica;
+  insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+  values (pg_temp.id('dvieja'), pg_temp.id('oc3'), 'FACTURA', 'factura-vieja.pdf', pg_temp.id('oc3') || '/factura-vieja.pdf',
+          'application/pdf', 2048, pg_temp.id('comprador'));
+  set local session_replication_role = origin;
+  execute 'alter table public.documentos_compra_material add constraint ck_documento_compra_factura_con_numero ' || v_regla;
+end $$;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(public.anular_documento_compra(pg_temp.id('dvieja'), 'Factura de antes, sin número: no es de esta OC') = pg_temp.id('dvieja'),
+  'Logística anula la factura que anexó antes de que se pidiera su número');
+reset role;
+select test.afirmar((select anulado_en is not null from public.documentos_compra_material where id = pg_temp.id('dvieja'))
+                    and (select not public.compra_tiene_comprobante(c) from public.ordenes_compra_materiales c where c.id = pg_temp.id('oc3'))
+                    and (select not convalidated from pg_constraint where conname = 'ck_documento_compra_factura_con_numero'),
+  'queda anulada, la OC ya no cuenta con ella como comprobante, y la regla sigue sin revisar las viejas');
+
 -- Pagada entera y con la factura después: sale una vez y en la parte de la
 -- lista que no se corta en las 60 últimas canceladas.
 set local session_replication_role = replica;

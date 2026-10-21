@@ -2181,6 +2181,9 @@ export type Database = {
           actualizado_en: string
           numero_documento: string | null
           fecha_emision: string | null
+          anulado_en: string | null
+          anulado_por: string | null
+          motivo_anulacion: string | null
         }
         Insert: {
           id?: string
@@ -2195,6 +2198,9 @@ export type Database = {
           actualizado_en?: string
           numero_documento?: string | null
           fecha_emision?: string | null
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
         }
         Update: {
           id?: string
@@ -2209,8 +2215,18 @@ export type Database = {
           actualizado_en?: string
           numero_documento?: string | null
           fecha_emision?: string | null
+          anulado_en?: string | null
+          anulado_por?: string | null
+          motivo_anulacion?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "documentos_compra_material_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documentos_compra_material_orden_compra_id_fkey"
             columns: ["orden_compra_id"]
@@ -10823,6 +10839,17 @@ export type Database = {
         }
         Returns: string
       }
+      anexos_de_la_factura: {
+        Args: {
+          p_documento: string | null
+          p_numero: string | null
+          p_proveedor: string | null
+        }
+        Returns: {
+          documento_id: string | null
+          orden_compra_id: string | null
+        }[]
+      }
       anular_asistencia: {
         Args: {
           p_id: string | null
@@ -10831,6 +10858,13 @@ export type Database = {
         Returns: string
       }
       anular_cobro_factura: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_documento_compra: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -11295,6 +11329,18 @@ export type Database = {
       clave_nombre_planilla: {
         Args: {
           p_nombre: string | null
+        }
+        Returns: string
+      }
+      clave_numero_comprobante: {
+        Args: {
+          p_numero: string | null
+        }
+        Returns: string
+      }
+      clave_proveedor: {
+        Args: {
+          p_texto: string | null
         }
         Returns: string
       }
@@ -12049,6 +12095,8 @@ export type Database = {
           comprobante_en_camino_origen: string | null
           comprobante_en_camino_bucket: string | null
           comprobante_en_camino_ruta: string | null
+          comprobante_en_camino_alcanza: boolean | null
+          pagada_dos_veces: number | null
           estuvo_en_factura: string | null
         }[]
       }
@@ -12174,6 +12222,8 @@ export type Database = {
           bucket: string | null
           ruta: string | null
           documento_id: string | null
+          alcanza: boolean | null
+          pagado_dos_veces: number | null
         }[]
       }
       confirmar_igv_cotizacion: {
@@ -12740,11 +12790,29 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: null
       }
-      factura_anexada_registrada: {
+      factura_alcanza_para: {
+        Args: {
+          p_adquisicion: string | null
+          p_compra: string | null
+        }
+        Returns: boolean
+      }
+      factura_del_anexo: {
         Args: {
           p_documento: string | null
         }
-        Returns: boolean
+        Returns: {
+          adquisicion_id: string | null
+          estado: string | null
+          cubre_su_oc: boolean | null
+          numero: string | null
+          bucket: string | null
+          ruta: string | null
+          pagado: number | null
+          saldo: number | null
+          moneda: string | null
+          alcanza: boolean | null
+        }[]
       }
       facturacion_pendientes: {
         Args: Record<PropertyKey, never>
@@ -12763,14 +12831,6 @@ export type Database = {
           facturado: number | null
           completa: boolean | null
           facturas: Json | null
-        }[]
-      }
-      facturas_anexadas_registradas: {
-        Args: {
-          p_documentos: string[] | null
-        }
-        Returns: {
-          documento: string | null
         }[]
       }
       fijar_condicion_pago_compra: {
@@ -13218,6 +13278,13 @@ export type Database = {
       mi_usuario: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      mismo_proveedor: {
+        Args: {
+          p_uno: string | null
+          p_otro: string | null
+        }
+        Returns: boolean
       }
       mover_etapa_codigo: {
         Args: {
@@ -14788,6 +14855,17 @@ export type Database = {
         }
         Returns: string
       }
+      situacion_de_facturas_anexadas: {
+        Args: {
+          p_documentos: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          registrada: boolean | null
+          mismo_numero: string | null
+          factura_de_la_oc: string | null
+        }[]
+      }
       situacion_de_pago_de_compra: {
         Args: {
           p_compra: string | null
@@ -14795,6 +14873,8 @@ export type Database = {
         Returns: {
           en_camino: string | null
           en_camino_origen: string | null
+          en_camino_alcanza: boolean | null
+          pagada_dos_veces: number | null
           pagos_vigentes: number | null
           cancelada: boolean | null
           saldo: number | null
@@ -14943,6 +15023,12 @@ export type Database = {
           monto: number | null
           sin_pago: number | null
         }[]
+      }
+      sufijo_societario: {
+        Args: {
+          p_texto: string | null
+        }
+        Returns: string
       }
       sumar_dias_habiles: {
         Args: {

@@ -45,7 +45,7 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
             (d.faltaArchivo ? (
               <span className="block w-full text-aviso">
                 {/* Nombra su botón: a la misma altura está el «Anular» de la OS entera. */}
-                {anula ? `Sin archivo: anúlalo con «Anular ${(TIPO_DOCUMENTO_SERVICIO[d.tipo] ?? 'documento').toLowerCase()}» y vuelve a adjuntarlo.` : 'Sin archivo.'}
+                {anula ? `Sin archivo: anúlalo con «Anular ${queAnula(d.tipo)}» y vuelve a adjuntarlo.` : 'Sin archivo.'}
               </span>
             ) : (
               <span className="block w-full text-texto-suave">No se pudo abrir: recarga la pantalla.</span>
@@ -145,6 +145,11 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
   )
 }
 
+/** Lo que dice el botón: «Anular otro documento» se leía como anular uno distinto. */
+function queAnula(tipo: string) {
+  return tipo === 'OTRO' ? 'documento' : (TIPO_DOCUMENTO_SERVICIO[tipo] ?? 'documento').toLowerCase()
+}
+
 /**
  * Anular con su motivo un documento adjunto por error: queda en el historial.
  * El botón dice qué anula: en la fila de la OS está a la altura del «Anular» de la orden.
@@ -162,7 +167,7 @@ function AnularDocumentoServicio({ documentoId, tipo, etiqueta }: { documentoId:
         data-anular-documento-servicio={documentoId}
       >
         <Ban aria-hidden className="size-3.5" />
-        Anular {(TIPO_DOCUMENTO_SERVICIO[tipo] ?? 'documento').toLowerCase()}
+        Anular {queAnula(tipo)}
       </button>
       <Ventana
         abierta={abierta}

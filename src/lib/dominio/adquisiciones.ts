@@ -19,6 +19,13 @@ export const ESTADO_PAGO: Record<string, Def> = {
     descripcion:
       'Tesorería la pagó directo por su boleta y el proveedor entregó factura: Tesorería anula ese pago para que Contabilidad la registre, y se paga por la factura.',
   },
+  // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza para esta.
+  ANEXO_POR_REVISAR: {
+    etiqueta: 'Anexo por revisar',
+    tono: 'aviso',
+    descripcion:
+      'Logística le anexó una factura que Contabilidad registró para otras OC y no alcanza para esta: no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija la factura.',
+  },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
   // La OC con boleta de antes de que Tesorería registrara esos pagos (migración 20261020210000).
@@ -107,7 +114,7 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
         (f.tipo === 'OC' && f.con_factura === false && f.pago === 'POR_FACTURAR')
       )
     case 'por-pagar':
-      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR'
+      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR' || f.pago === 'ANEXO_POR_REVISAR'
     case 'pagadas':
       return f.pago === 'PAGADA'
     case 'guia':
@@ -115,4 +122,25 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
     case 'no-se-pagan':
       return f.pago === 'NO_SE_PAGA'
   }
+}
+
+/**
+ * El pago vigente que cancela la OC con boleta, como `trazabilidad_de_compras`:
+ * el que Tesorería dio por cancelado sin llegar al total o, si no hay, el que
+ * llegó al total (migración 20261020210000). Los pagos vienen en el orden en que
+ * se hicieron. Con dos pagos que «cancelan», solo uno la canceló.
+ */
+export function pagoQueCancela(
+  pagos: { id: string; monto: number; anulado_en: string | null; cancela_sin_completar: boolean }[],
+  total: number,
+): string | null {
+  const vigentes = pagos.filter((p) => !p.anulado_en)
+  const sinCompletar = vigentes.filter((p) => p.cancela_sin_completar).at(-1)
+  if (sinCompletar) return sinCompletar.id
+  let acumulado = 0
+  for (const p of vigentes) {
+    acumulado += Number(p.monto)
+    if (acumulado >= total) return p.id
+  }
+  return null
 }

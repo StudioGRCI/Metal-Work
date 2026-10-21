@@ -95,6 +95,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
         .select('orden_compra_id, numero_documento, fecha_emision')
         .eq('tipo', 'FACTURA')
         .not('numero_documento', 'is', null)
+        .is('anulado_en', null)
         .in('orden_compra_id', ids.slice(i, i + 150))
         .order('fecha_emision'),
     ])

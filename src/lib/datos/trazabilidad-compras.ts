@@ -28,6 +28,11 @@ const esquemaFactura = z.object({
   moneda: z.string(),
   estado: z.string(),
   parcial: z.boolean(),
+  /**
+   * La factura que Logística anexó a esta OC con boleta y que Contabilidad
+   * registró sin ligarla: la OC se paga por ella igual (migración 20261020210000).
+   */
+  anexada: z.boolean().default(false),
   ruta: texto,
   bucket: texto,
   pagado: numero,
@@ -41,7 +46,8 @@ const esquemaPagoServicio = z.object({
   fecha: z.string(),
   monto: numero,
   moneda: z.string(),
-  cancela: z.boolean(),
+  // En la OC con boleta, si este pago fue el que la canceló; null si la OC no tiene total.
+  cancela: z.boolean().nullable(),
   operacion: texto,
   comprobante: texto,
   ruta: texto,
@@ -55,6 +61,9 @@ const esquemaDocumento = z.object({
   numero: texto,
   creado_en: z.string(),
   bucket: z.string().optional(),
+  // La factura o la boleta que Logística anuló: queda como evidencia (migración 20261020210000).
+  anulado_en: texto.optional().default(null),
+  motivo_anulacion: texto.optional().default(null),
 })
 const esquemaGuia = z.object({ id: z.guid(), numero: z.string(), fecha: z.string(), nombre: z.string(), cargada_en: z.string() })
 

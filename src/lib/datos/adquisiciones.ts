@@ -129,11 +129,20 @@ export type FacturaDeLogistica = {
   numero: string | null
   fecha: string | null
   /**
-   * Contabilidad ya la registró: la eligió, o registró con su número —con o sin
-   * ceros— y el mismo proveedor una factura ligada a alguna OC
-   * (`factura_anexada_registrada`). La que registró sin OC no cuenta.
+   * Ya tiene su factura en Adquisiciones, registrada o en borrador: la eligió, o
+   * tiene su número y el proveedor de su OC aunque se escribieran de otra forma
+   * (`situacion_de_facturas_anexadas`, migración 20261020210000). No se ofrece:
+   * se registraría dos veces.
    */
   registrada: boolean
+  /** El proveedor de otra factura de Adquisiciones con su mismo número: que Contabilidad mire antes de registrarla. */
+  mismoNumero: string | null
+  /**
+   * La factura completa que su OC con boleta ya tiene registrada, de otro anexo:
+   * la base no deja registrar una segunda (casi siempre es la misma con el número
+   * mal escrito, y se corrige esa).
+   */
+  facturaDeLaOc: string | null
 }
 
 /**
@@ -147,16 +156,17 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     .from('documentos_compra_material')
     .select('id, orden_compra_id, nombre_archivo, numero_documento, fecha_emision, oc:ordenes_compra_materiales(numero, referencia, proveedor)')
     .eq('tipo', 'FACTURA')
+    .is('anulado_en', null)
     .order('creado_en', { ascending: false })
     .limit(300)
   if (error) throw new Error(`No se pudieron leer las facturas que anexó Logística: ${error.message}`)
   const documentos = data ?? []
   // La regla vive en la base: es la misma que cierra el pago directo de la OC con boleta.
-  const { data: registradas, error: errorRegistradas } = documentos.length
-    ? await supabase.rpc('facturas_anexadas_registradas', { p_documentos: documentos.map((d) => d.id) })
+  const { data: situacion, error: errorSituacion } = documentos.length
+    ? await supabase.rpc('situacion_de_facturas_anexadas', { p_documentos: documentos.map((d) => d.id) })
     : { data: [], error: null }
-  if (errorRegistradas) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${errorRegistradas.message}`)
-  const usadas = new Set((registradas ?? []).map((r) => r.documento))
+  if (errorSituacion) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${errorSituacion.message}`)
+  const situacionDe = new Map((situacion ?? []).flatMap((r) => (r.documento ? [[r.documento, r] as const] : [])))
   return documentos.map((d) => ({
     id: d.id,
     orden_compra_id: d.orden_compra_id,
@@ -165,7 +175,9 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     nombre_archivo: d.nombre_archivo,
     numero: d.numero_documento,
     fecha: d.fecha_emision,
-    registrada: usadas.has(d.id),
+    registrada: situacionDe.get(d.id)?.registrada ?? false,
+    mismoNumero: situacionDe.get(d.id)?.mismo_numero ?? null,
+    facturaDeLaOc: situacionDe.get(d.id)?.factura_de_la_oc ?? null,
   }))
 }
 
@@ -487,8 +499,8 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
 type CompraConBoletaFila = Funciones<'compras_con_boleta_por_pagar'>['Returns'][number]
 type PagoCompraFila = Pick<
   Tablas<'pagos_orden_compra'>,
-  | 'id' | 'orden_compra_id' | 'fecha_pago' | 'moneda' | 'monto' | 'cancela' | 'operacion' | 'comprobante_proveedor'
-  | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+  | 'id' | 'orden_compra_id' | 'fecha_pago' | 'moneda' | 'monto' | 'cancela' | 'cancela_sin_completar' | 'operacion'
+  | 'comprobante_proveedor' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
 >
 /**
  * La boleta, nota de venta o recibo que Logística adjuntó a la OC, o el
@@ -526,7 +538,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_orden_compra')
-        .select('id, orden_compra_id, fecha_pago, moneda, monto, cancela, operacion, comprobante_proveedor, archivo_ruta, anulado_en, motivo_anulacion')
+        .select('id, orden_compra_id, fecha_pago, moneda, monto, cancela, cancela_sin_completar, operacion, comprobante_proveedor, archivo_ruta, anulado_en, motivo_anulacion')
         .in('orden_compra_id', tanda)
         .order('fecha_pago')
         .order('creado_en')
@@ -539,6 +551,8 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
         .select('id, orden_compra_id, tipo, nombre_archivo, numero_documento, ruta_storage')
         .in('orden_compra_id', tanda)
         .in('tipo', ['COMPROBANTE', 'FACTURA'])
+        // El que Logística anuló ya no cuenta para el pago (migración 20261020210000).
+        .is('anulado_en', null)
         .order('creado_en')
       if (r.error) throw new Error(`No se pudieron leer las boletas de las OC: ${r.error.message}`)
       return r.data ?? []

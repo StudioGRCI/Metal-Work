@@ -26,6 +26,7 @@ import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
+import { AnularAnexo } from './anular-anexo'
 import { AnularGuia, CargarGuia } from './guia-remision'
 
 const POR_PAGINA = 50
@@ -49,6 +50,8 @@ type Acceso = {
   pagosServicio: 'pagar' | 'ver' | null
   /** Contabilidad carga y anula la guía de remisión aquí (migración 20261020171000). */
   cargaGuia: boolean
+  /** Logística, que anexa la factura o la boleta de la OC, la anula si se equivocó (migración 20261020210000). */
+  anulaAnexo: boolean
   hoy: string
 }
 
@@ -102,6 +105,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
           ? 'ver'
           : null,
     cargaGuia: puede(perfil, 'compras.guia_remision'),
+    anulaAnexo: puede(perfil, 'compras.crear'),
     hoy: hoyLima(),
   }
   const busqueda = texto(params.q)
@@ -372,7 +376,10 @@ function Total({ f }: { f: CompraTrazada }) {
       </p>
       <p className="text-[11px] whitespace-nowrap text-texto-suave">
         {condicionDePago(f.condicion_pago, f.dias_credito)}
-        {f.tipo === 'OC' && f.con_factura === false && ' · sin factura'}
+        {/* La que iba con boleta y el proveedor entregó factura ya no es «sin factura». */}
+        {f.tipo === 'OC' &&
+          f.con_factura === false &&
+          (f.facturas.length > 0 || f.documentos.some((d) => d.tipo === 'FACTURA' && !d.anulado_en) ? ' · iba con boleta' : ' · sin factura')}
       </p>
     </div>
   )
@@ -433,6 +440,8 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
   // La factura que Contabilidad registró sobre el PDF que anexó Logística es un solo archivo.
   const deFacturas = new Set(f.facturas.flatMap((x) => (x.bucket === 'documentos-compras' && x.ruta ? [x.ruta] : [])))
   const adjuntos = f.documentos.filter((d) => !deFacturas.has(d.ruta))
+  // La factura o la boleta que Logística anuló ya no cuenta: sale tachada, al final, con su motivo.
+  const vigentes = f.documentos.filter((d) => !d.anulado_en)
   const aprobada = f.aprobacion === 'APROBADA' || f.aprobacion === 'NO_REQUERIDA'
   // La boleta falta solo si tampoco llegó factura: el proveedor pudo entregar factura en vez de boleta.
   // La de antes, que se dio por pagada fuera del sistema, no la pide.
@@ -442,7 +451,7 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
     aprobada &&
     f.pago !== 'SIN_FACTURA' &&
     f.facturas.length === 0 &&
-    !f.documentos.some((d) => d.tipo === 'COMPROBANTE' || d.tipo === 'FACTURA')
+    !vigentes.some((d) => d.tipo === 'COMPROBANTE' || d.tipo === 'FACTURA')
   const faltaFacturar =
     f.tipo === 'OC' && f.con_factura && aprobada && f.facturas.some((x) => x.estado === 'REGISTRADA') && !f.facturada_entera && f.total !== null
   const adjuntados = new Set(f.documentos.flatMap((d) => (d.numero ? [d.numero] : [])))
@@ -462,6 +471,8 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
           </Archivo>
           {x.fecha && <span className="tabular text-texto-suave"> · {fecha(x.fecha)}</span>}
           {x.parcial && <span className="text-texto-suave"> · en parte</span>}
+          {/* Registrada sin ligarla a esta OC, pero es la que Logística le anexó: la OC se paga por ella. */}
+          {x.anexada && <span className="text-texto-suave"> · por el anexo de Logística</span>}
           {x.estado === 'BORRADOR' && (
             <Insignia tono="aviso" className="ml-1">
               En borrador
@@ -472,15 +483,27 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
       {faltaFacturar && f.total !== null && (
         <li className="text-aviso">Falta facturar {moneda(Math.max(f.total - (f.facturado ?? 0), 0), codigo(f.moneda))}</li>
       )}
-      {adjuntos.map((d) => (
-        <li key={d.id} title={d.nombre}>
-          <Archivo url={urls.get(claveDeArchivo(bucketDelDocumento(f, d), d.ruta))}>
-            {tipos[d.tipo] ?? d.tipo}
-            {d.numero && <span className="tabular"> {d.numero}</span>}
-          </Archivo>
-          <span className="tabular text-texto-suave"> · {fecha(d.creado_en)}</span>
-        </li>
-      ))}
+      {adjuntos
+        .filter((d) => !d.anulado_en)
+        .map((d) => (
+          <li key={d.id} title={d.nombre} className="flex flex-wrap items-center gap-x-2">
+            <span>
+              <Archivo url={urls.get(claveDeArchivo(bucketDelDocumento(f, d), d.ruta))}>
+                {tipos[d.tipo] ?? d.tipo}
+                {d.numero && <span className="tabular"> {d.numero}</span>}
+              </Archivo>
+              <span className="tabular text-texto-suave"> · {fecha(d.creado_en)}</span>
+            </span>
+            {acceso.anulaAnexo && f.tipo === 'OC' && (d.tipo === 'FACTURA' || d.tipo === 'COMPROBANTE') && (
+              <AnularAnexo
+                id={d.id}
+                etiqueta={`${d.tipo === 'FACTURA' ? 'la factura' : 'la boleta'}${d.numero ? ` ${d.numero}` : ''}`}
+                oc={nombreDe(f)}
+                factura={d.tipo === 'FACTURA'}
+              />
+            )}
+          </li>
+        ))}
       {sinComprobante && <li className="text-aviso">Falta la boleta, nota de venta o recibo</li>}
       {comprobantesOs.map((c, i) => (
         <li key={`${c}-${i}`} className="text-texto">
@@ -507,6 +530,20 @@ function Documentos({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, s
           )}
         </li>
       )}
+      {adjuntos
+        .filter((d) => d.anulado_en)
+        .map((d) => (
+          <li key={d.id} title={d.nombre} className="text-texto-tenue">
+            <span className="line-through">
+              <Archivo url={urls.get(claveDeArchivo(bucketDelDocumento(f, d), d.ruta))}>
+                {tipos[d.tipo] ?? d.tipo}
+                {d.numero && <span className="tabular"> {d.numero}</span>}
+              </Archivo>
+            </span>
+            <span> · anulada el {fecha(d.anulado_en)}</span>
+            {d.motivo_anulacion && <span>: {d.motivo_anulacion}</span>}
+          </li>
+        ))}
       {f.guias_anuladas > 0 && (
         <li className="text-texto-tenue">
           {f.guias_anuladas === 1 ? 'Una guía anulada' : `${f.guias_anuladas} guías anuladas`}
@@ -569,6 +606,10 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
         // Quien no ve Cuentas por pagar (Contabilidad, que la registrará) lee a la vista a quién espera.
         <p className="text-xs text-texto-suave">Espera que Tesorería anule su pago directo.</p>
       ))}
+      {/* La factura anexada es de otras OC: el que está mal es el anexo, y lo anula Logística en Documentos. */}
+      {f.tipo === 'OC' && f.pago === 'ANEXO_POR_REVISAR' && (
+        <p className="text-xs text-texto-suave">Logística revisa la factura que anexó: si no es de esta OC, la anula en sus documentos.</p>
+      )}
     </div>
   )
 }
@@ -578,7 +619,7 @@ function Vouchers({
   bucket,
   urls,
 }: {
-  pagos: { id: string; fecha: string; monto: number; moneda: string; ruta: string | null; cancela?: boolean; bucket?: string }[]
+  pagos: { id: string; fecha: string; monto: number; moneda: string; ruta: string | null; cancela?: boolean | null; bucket?: string }[]
   bucket: (pago: { bucket?: string }) => string
   urls: Map<string, string>
 }) {
