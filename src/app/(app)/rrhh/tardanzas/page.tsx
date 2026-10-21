@@ -19,9 +19,6 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
   // El monto sale de la remuneración, que solo ve RR. HH. (la misma regla que
   // aplica `rrhh_tardanzas_del_mes`). Gerencia y Administración ven el porcentaje.
   const veSueldo = puede(perfil, ['rrhh.personal', 'planilla_diaria.preparar'])
-  // La miga lleva a las planillas solo a quien las abre: Gerencia y
-  // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
@@ -39,7 +36,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
         titulo="Tardanzas"
         descripcion={`Cada ${cada} tardanzas del mes se descuenta el ${porcentajeCorto(pct)} de la remuneración mensual`}
         ayuda="Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. El mes siguiente empieza de cero."
-        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Tardanzas' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tardanzas' }]}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

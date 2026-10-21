@@ -23,9 +23,6 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
   const ve = puede(perfil, 'rrhh.personal')
   const gestiona = editaComoRrhh(perfil, 'rrhh.personal')
   const hoy = hoyLima()
-  // La miga lleva a las planillas solo a quien las abre: Gerencia y
-  // Administración consultan esto con `asistencia.ver` y ahí las rebotaban.
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const filtro = params.estado === 'todos' ? 'todos' : 'activos'
   // Los periodos de quien volvió a entrar y el DNI solo los lee RR. HH.
@@ -40,7 +37,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
       <EncabezadoPagina
         titulo="Personal"
         ayuda="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que gana y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno."
-        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Personal' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
 

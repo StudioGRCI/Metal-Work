@@ -135,6 +135,7 @@ function AyudaEnIcono({ id, etiqueta }: { id: string; etiqueta: string }) {
       // texto. Un `title` de HTML se lo habría comido el táctil.
       aria-label={`Qué es «${etiqueta}»`}
       aria-describedby={id}
+      data-ayuda
       className="flex size-4 shrink-0 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
     >
       i

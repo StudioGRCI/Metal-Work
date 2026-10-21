@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarPermisos, listarTrabajadores, type Permiso } from '@/lib/datos/rrhh'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
 import { AnularPermiso, JustificarPermiso, RegistrarPermiso } from './controles'
 
@@ -17,7 +17,6 @@ export const metadata = { title: 'Permisos del personal' }
 export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/permisos'>) {
   const perfil = await exigirPermiso(['rrhh.permisos', 'asistencia.ver'])
   const gestiona = editaComoRrhh(perfil, 'rrhh.permisos')
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
   const mesActual = mesDeLima(hoy)
@@ -37,7 +36,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
       <EncabezadoPagina
         titulo="Permisos"
         ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes. Mientras le falten horas, el permiso queda por justificar."
-        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Permisos' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Permisos' }]}
         acciones={
           gestiona && (
             <RegistrarPermiso hoy={hoy} personal={personal.map((p) => ({ id: p.id, nombre: `${p.nombres} ${p.apellidos}`, cargo: p.cargo }))} />

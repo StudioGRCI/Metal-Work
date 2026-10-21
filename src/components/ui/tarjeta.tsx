@@ -55,7 +55,9 @@ export function TarjetaCabecera({
           </>
         )}
       </div>
-      {acciones && <div className="flex shrink-0 items-center gap-2">{acciones}</div>}
+      {/* Y si ni en su propia línea caben, se parten dentro de la tarjeta: los
+          botones de un plano en el teléfono quedaban 100 px fuera. */}
+      {acciones && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{acciones}</div>}
     </div>
   )
 }
