@@ -94,6 +94,16 @@ select test.debe_fallar($$select public.importar_planilla_excel(gen_random_uuid(
      "detalle": {"puesto": "", "dias": 30, "horas": 240, "horas_extras": 0, "ingresos": 1000, "descuentos": 0, "aporte_empleador": 90, "neto": 1000, "conceptos": []}}]'::jsonb)$$,
   'la misma persona dos veces en un envío no entra', 'aparece dos veces');
 
+-- El Excel corregido con las filas corridas: la persona nueva cae en la fila 8
+-- de la hoja MWP, la que tenía Rosa Elena en la primera carga. Entra igual.
+select public.importar_planilla_excel(gen_random_uuid(), current_setting('prueba.p.taller')::uuid,
+  '[{"nombre": "Torres Lazo, Julio", "hoja": "RESUMEN AGOSTO MWP - 2099", "fila": 8, "empresa": "METAL WORK PERU S.A.C.",
+     "detalle": {"puesto": "Soldador QA", "dias": 30, "horas": 240, "horas_extras": 0, "ingresos": 1800, "descuentos": 234, "aporte_empleador": 162, "neto": 1566, "conceptos": []}}]'::jsonb);
+select test.afirmar(
+  (select count(*) = 2 from public.planilla_personas
+    where planilla_id = current_setting('prueba.p.taller')::uuid and origen_hoja = 'RESUMEN AGOSTO MWP - 2099' and fila_origen = 8),
+  'el Excel corregido con las filas corridas se vuelve a cargar: dos personas de dos cargas en la misma fila');
+
 -- Reparto en partes iguales y cierre.
 select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(current_setting('prueba.p.taller')::uuid,
   array(select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid),
