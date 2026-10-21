@@ -10,6 +10,10 @@ import { claveNombre, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
 import { leerExcelPlanilla, confirmarImportacion, type LecturaPlanilla } from './importacion-acciones'
 
 const id = (l: LineaPlanilla) => `${l.hoja}#${l.fila}`
+// Las palabras que distinguen un nombre: sin «DE», «LA», «DEL», «LOS»…, que
+// comparten muchos apellidos peruanos que no tienen nada que ver.
+const PARTICULAS = new Set(['DEL', 'LAS', 'LOS'])
+const palabras = (nombre: string) => claveNombre(nombre).split(' ').filter((p) => p.length > 2 && !PARTICULAS.has(p))
 const costo = (l: LineaPlanilla) => l.detalle.ingresos + l.detalle.aporte_empleador
 
 /**
@@ -38,8 +42,8 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
   // faltan es, casi seguro, la misma con el nombre corregido: se marca en su fila
   // y «Elegir las N» no la mete; se puede elegir a mano si de verdad es otra.
   const pareceA = (l: LineaPlanilla) => {
-    const propias = new Set(claveNombre(l.nombre).split(' '))
-    return faltan.find((n) => claveNombre(n).split(' ').filter((p) => propias.has(p)).length >= 2)
+    const propias = new Set(palabras(l.nombre))
+    return faltan.find((n) => palabras(n).filter((p) => propias.has(p)).length >= 2)
   }
   // Al cerrar se olvida el error de la vez anterior: volvía a salir con la
   // ventana vacía, sin ningún archivo elegido.

@@ -2,17 +2,18 @@
  * Recursos Humanos vuelve a cargar el Excel corregido de la planilla, con clic
  * real y su propia cuenta (nunca ADMIN):
  *
- *   1. Importa el libro de agosto con dos personas, en las filas 1 y 16 de la
- *      hoja RESUMEN.
- *   2. Corrige el libro: suma a una tercera persona arriba, y las otras dos se
- *      corren a las filas 16 y 31. Lo vuelve a cargar en la MISMA planilla:
- *      las dos de antes salen como «ya está», elige a la nueva —que cae en la
- *      fila 1, la que tenía otra en la primera carga— y entra. Antes de la
- *      migración 20261021150000 caía con «Ya existe un registro con esos datos.».
- *   3. Corrige en el libro el nombre de una que ya entró y lo vuelve a cargar:
- *      la versión corregida sale para elegir —por el nombre no es la misma—,
- *      pero la ventana avisa que la de antes ya está y no figura en el Excel.
- *   4. En la planilla quedan las tres, cada una con la hoja y fila de su carga.
+ *   1. Importa el libro del mes con tres personas, en las filas 1, 16 y 31 de
+ *      la hoja RESUMEN.
+ *   2. Corrige el libro: suma a una cuarta persona arriba, y las otras se
+ *      corren quince filas. Lo vuelve a cargar en la MISMA planilla: las de
+ *      antes salen como «ya está», elige a la nueva —que cae en la fila 1, la
+ *      que tenía otra en la primera carga— y entra. Antes de la migración
+ *      20261021150000 caía con «Ya existe un registro con esos datos.».
+ *   3. Corrige en el libro el nombre de una que ya entró, quita a otra y suma a
+ *      alguien que solo comparte «DE LA» con la quitada. La ventana avisa que
+ *      las de antes ya están y no figuran en el Excel; la del nombre corregido
+ *      lo dice en su fila y «Elegir las N» no la mete; la nueva no se marca.
+ *   4. En la planilla quedan las cuatro, cada una con la hoja y fila de su carga.
  *
  * Variables: BANCO_CLAVE (la clave local de las cuentas), BASE
  * (http://localhost:3111). La planilla es de un mes lejano (2090 en adelante)
@@ -87,6 +88,9 @@ const ANA = `QUISPE ROJAS ANA ${sello}`
 const JORGE = `RAMOS TELLO JORGE ${sello}`
 const NUEVA = `TORRES LAZO JULIA ${sello}`
 const ANA_CORREGIDA = `QUISPE ROJAS ANA LUCIA ${sello}`
+// Comparten «DE LA» y nada más: no son la misma persona.
+const MARIA = `PEREZ DE LA TORRE MARIA ${sello}`
+const PEDRO = `GARCIA DE LA CRUZ PEDRO ${sello}`
 
 /** Una boleta de quince filas, con la forma de la del Excel de RR. HH. */
 function boleta(nombre, sueldo) {
@@ -115,9 +119,9 @@ async function libro(archivo, personas) {
   await l.xlsx.writeFile(ruta)
   return ruta
 }
-const primero = await libro(`planilla-${sello}-primera.xlsx`, [[ANA, 2000], [JORGE, 2400]])
-const corregido = await libro(`planilla-${sello}-corregida.xlsx`, [[NUEVA, 1800], [ANA, 2000], [JORGE, 2400]])
-const renombrado = await libro(`planilla-${sello}-nombre-corregido.xlsx`, [[NUEVA, 1800], [ANA_CORREGIDA, 2000], [JORGE, 2400]])
+const primero = await libro(`planilla-${sello}-primera.xlsx`, [[ANA, 2000], [JORGE, 2400], [MARIA, 1500]])
+const corregido = await libro(`planilla-${sello}-corregida.xlsx`, [[NUEVA, 1800], [ANA, 2000], [JORGE, 2400], [MARIA, 1500]])
+const renombrado = await libro(`planilla-${sello}-nombre-corregido.xlsx`, [[NUEVA, 1800], [ANA_CORREGIDA, 2000], [JORGE, 2400], [PEDRO, 1500]])
 
 // ------------------------------------------------- RR. HH. con clic real
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -163,7 +167,7 @@ try {
   }
 
   // 1. La primera carga.
-  let v = await cargar(primero, [ANA, JORGE])
+  let v = await cargar(primero, [ANA, JORGE, MARIA])
   let error = await importar(v)
   comprobar(!error, `la primera carga entra${error ? `: ${error}` : ''}`)
 
@@ -182,7 +186,7 @@ try {
   comprobar(aviso.startsWith('1 persona importada'), `dice cuántas entraron (${aviso.slice(0, 60)})`)
   await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
   const resumen = limpio(await pagina.getByText(`Planilla de taller · ${titulo}`).locator('xpath=..').textContent())
-  comprobar(resumen.includes('3 personas'), `la planilla dice que tiene tres personas (${resumen.slice(0, 80)})`)
+  comprobar(resumen.includes('4 personas'), `la planilla dice que tiene cuatro personas (${resumen.slice(0, 80)})`)
   comprobar(await pagina.getByText(NUEVA).first().isVisible(), 'la persona nueva se ve en la planilla')
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-importado.png`, fullPage: false, caret: 'initial' })
 
@@ -192,13 +196,15 @@ try {
   comprobar(avisoNombre.includes(ANA) && avisoNombre.includes('nombre'), `avisa que ${ANA} ya está y no figura en el Excel (${avisoNombre.slice(0, 140)})`)
   const filaCorregida = limpio(await v.locator('label', { hasText: ANA_CORREGIDA }).textContent())
   comprobar(filaCorregida.includes(`¿Es ${ANA} con el nombre corregido?`), 'la fila con el nombre corregido lo dice en la propia fila')
-  comprobar(!(await v.getByRole('button', { name: /^Elegir las/ }).count()), '«Elegir las N» no la cuenta: es la única nueva y no sale el botón')
+  const filaPedro = limpio(await v.locator('label', { hasText: PEDRO }).textContent())
+  comprobar(!filaPedro.includes('¿Es'), 'quien solo comparte «DE LA» con otra no sale como nombre corregido')
+  comprobar((await v.getByRole('button', { name: 'Elegir las 1' }).count()) === 1, '«Elegir las N» cuenta a la persona nueva y no a la del nombre corregido')
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-nombre-corregido-aviso.png`, fullPage: false, caret: 'initial' })
   await v.getByRole('button', { name: 'Cancelar' }).click()
 
   // 4. Lo que quedó en la base.
   const personas = await consulta(`select nombre, fila_origen from planilla_personas where planilla_id = $1 order by fila_origen, nombre`, [planillaId])
-  comprobar(personas.length === 3, `en la planilla quedan las tres personas (${personas.length})`)
+  comprobar(personas.length === 4, `en la planilla quedan las cuatro personas (${personas.length})`)
   comprobar(personas.filter((p) => p.fila_origen === 1).length === 2, 'dos de dos cargas distintas comparten la fila 1, cada una de su libro')
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
 } finally {
