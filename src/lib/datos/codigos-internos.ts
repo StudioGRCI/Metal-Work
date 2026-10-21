@@ -13,7 +13,7 @@ import type { Database } from '@/types/database'
  * cada persona. Nada se lee de las tablas: el tareo es solo de RR. HH.
  */
 
-/** Un código en la lista: dónde aparece y su costeo. Su avance sale aparte, de `avanceDeLosCodigos`. */
+/** Un código en la lista: dónde aparece y su costeo. Su avance sale aparte, en `avances` de `leerListaDeCodigos`. */
 export type ResumenCodigo = {
   codigo: string
   requerimientos: number
@@ -152,10 +152,9 @@ export const SIN_COSTO_COMPLETO: CostoCompleto = {
 }
 
 /**
- * El costo completo de cada código (o de uno), por código. Lo llaman Gerencia
- * (`codigos_internos.ver`) y quien ve el costo de las OT (`costos.ver`, el
- * Dashboard de Administración); el precio y el margen llegan solo a quien ve
- * el precio de venta.
+ * El costo completo de cada código, por código, de lo que devuelve
+ * `codigos_internos_costo`: el precio y el margen llegan solo a quien ve el
+ * precio de venta.
  */
 function mapaDeCosto(filas: Fila<'codigos_internos_costo'>[]): Map<string, CostoCompleto> {
   return new Map(
@@ -232,7 +231,12 @@ export const leerListaDeCodigos = cache(async (): Promise<ListaDeCodigos> => {
   const { data, error } = await supabase.rpc('codigos_internos_lista')
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
   const lista = (data ?? {}) as Partial<Record<keyof FilasDeLaLista, unknown>>
-  const filas = <K extends keyof FilasDeLaLista>(clave: K) => (Array.isArray(lista[clave]) ? lista[clave] : []) as FilasDeLaLista[K]
+  // Una parte que no llega no es una lista vacía: la pantalla diría «sin costo» sin serlo.
+  const filas = <K extends keyof FilasDeLaLista>(clave: K) => {
+    const parte = lista[clave]
+    if (!Array.isArray(parte)) throw new Error(`No se pudieron leer los códigos internos: falta «${clave}» en la respuesta.`)
+    return parte as FilasDeLaLista[K]
+  }
   return {
     codigos: armarLista(filas('resumen'), filas('servicios'), filas('subcontratos'), mapaDeCosto(filas('costo'))),
     diseno: filas('diseno').flatMap(codigoDeDiseno),
@@ -334,14 +338,7 @@ export type AvanceDeCodigo = {
   ultimo_reporte: string | null
 }
 
-/** El avance de todos los códigos, o de uno, por código. */
-export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, AvanceDeCodigo>> {
-  const supabase = await createClient()
-  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_avance', codigo ? { p_codigo: codigo } : {}), ['codigo'])
-  if (error) throw new Error(`No se pudo leer el avance de los códigos: ${error.message}`)
-  return mapaDeAvance(data ?? [])
-}
-
+/** El avance de cada código, por código, de lo que devuelve `codigos_internos_avance`. */
 function mapaDeAvance(filas: Fila<'codigos_internos_avance'>[]): Map<string, AvanceDeCodigo> {
   return new Map(
     filas.flatMap((f) =>

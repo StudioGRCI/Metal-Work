@@ -4,6 +4,8 @@
 -- los códigos: canceling statement due to statement timeout» (25 veces, 4
 -- personas, en una tarde). No es el volumen: en producción hay 7 unidades y 69
 -- movimientos. La misma lectura que se cortaba a los 8 s tardó 16 ms otras veces.
+-- Tampoco es la compilación JIT, que en producción está apagada (ninguna
+-- consulta compiló una sola función).
 --
 -- Lo que cuesta es arrancar. La lista pedía cuatro lecturas a la vez (el resumen,
 -- las órdenes de servicio, los subcontratos y el costo completo), y la página dos
@@ -22,6 +24,12 @@
 -- ya con todo cargado por el resumen (en la máquina de pruebas, 35 ms en frío y
 -- 16 ms después). Cada función sigue exigiendo su propio permiso: esta no salta
 -- ninguno, por eso no es security definer.
+--
+-- A tener presente: lo que eran seis sentencias es ahora una, bajo el mismo
+-- límite de 8 s. Con 23 000 horas cargadas (en pruebas) tarda 1,5 s; hoy no hay
+-- ninguna. Si el tareo crece mucho, lo que sigue es armar las líneas del costeo
+-- una sola vez para el resumen y el costo: hoy las horas de cada mes se cuentan
+-- seis veces por lectura.
 
 create or replace function public.codigos_internos_lista()
 returns jsonb
