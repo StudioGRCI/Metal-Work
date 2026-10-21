@@ -102,7 +102,10 @@ export function SeleccionBuscable({
       const visible = pie && pie.height > 0 ? Math.min(pantalla, pie.top) : pantalla
       ul.style.maxHeight = ''
       if (ul.getBoundingClientRect().bottom > visible) {
-        campo.style.scrollMarginTop = suelta ? '5rem' : ''
+        // Medida y no fija: con la app instalada en el iPhone, la barra suma
+        // el borde de arriba del teléfono y pasa de los 56 px.
+        const barra = suelta ? document.querySelector('header')?.getBoundingClientRect().height ?? 0 : 0
+        campo.style.scrollMarginTop = suelta ? `${Math.ceil(barra) + 24}px` : ''
         campo.scrollIntoView({ block: 'start' })
       }
       const lista = ul.getBoundingClientRect()
@@ -135,12 +138,13 @@ export function SeleccionBuscable({
   }
 
   function teclas(e: React.KeyboardEvent) {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      setResaltado((i) => Math.min(i + 1, visibles.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setResaltado((i) => Math.max(i - 1, 0))
+      const siguiente = e.key === 'ArrowDown' ? Math.min(resaltado + 1, visibles.length - 1) : Math.max(resaltado - 1, 0)
+      setResaltado(siguiente)
+      // La resaltada se trae a la vista, como en `ElegirCodigo`: con la lista
+      // acortada sobre el teclado caben dos opciones y Enter elegía una que no se veía.
+      requestAnimationFrame(() => listaRef.current?.querySelectorAll('[role="option"]')[siguiente]?.scrollIntoView({ block: 'nearest' }))
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const opcion = visibles[resaltado]

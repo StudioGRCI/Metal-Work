@@ -112,13 +112,25 @@ const medir = (pagina, idLista) =>
   comprobar(m.vistas >= 3, 'se ven al menos tres vehículos enteros')
 
   // El teclado del teléfono achica lo visible: se simula con una ventana más baja.
-  await pagina.setViewportSize({ width: 390, height: 520 })
+  await pagina.setViewportSize({ width: 390, height: 360 })
   await pagina.waitForTimeout(400)
   m = await medir(pagina, 'sal-unidad-lista')
   await pagina.screenshot({ path: join(CAPTURAS, 'lista-al-fondo-2-con-teclado.png') })
   console.log(`     con teclado: lista de ${m.arriba} a ${m.abajo} px, lo visible llega a ${m.alto}; ${m.vistas} a la vista`)
   comprobar(m.abajo <= m.alto, 'con el teclado abierto, la lista se acorta y sigue dentro')
   comprobar(m.vistas >= 1, 'con el teclado abierto se sigue viendo al menos un vehículo')
+  comprobar(m.abajo - m.arriba < 256, 'y la lista sí se acortó')
+
+  // Con las flechas, la resaltada se trae a la vista aunque la lista sea corta.
+  for (let i = 0; i < 8; i++) await pagina.keyboard.press('ArrowDown')
+  await pagina.waitForTimeout(200)
+  const resaltadaVisible = await pagina.evaluate(() => {
+    const ul = document.getElementById('sal-unidad-lista')
+    const o = ul.querySelectorAll('[role="option"]')[8].getBoundingClientRect()
+    const c = ul.getBoundingClientRect()
+    return o.top >= c.top - 1 && o.bottom <= c.bottom + 1
+  })
+  comprobar(resaltadaVisible, 'la novena opción, resaltada con flechas, se ve dentro de la lista')
 
   const opcion = pagina.locator('#sal-unidad-lista [role="option"]').nth(1)
   const nombre = (await opcion.locator('.line-clamp-2').innerText()).trim()
