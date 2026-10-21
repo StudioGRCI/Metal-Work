@@ -14862,6 +14862,7 @@ export type Database = {
           registrada: boolean | null
           mismo_numero: string | null
           factura_de_la_oc: string | null
+          pagada_directo: boolean | null
         }[]
       }
       situacion_de_pago_de_compra: {

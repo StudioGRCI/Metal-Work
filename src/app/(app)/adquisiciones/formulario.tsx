@@ -370,6 +370,7 @@ function Formulario({
                 d.oc,
                 d.proveedor,
                 d.facturaDeLaOc ? `la OC ya tiene la ${d.facturaDeLaOc}` : null,
+                d.pagadaDirecto ? 'la OC tiene pago directo: espera a Tesorería' : null,
                 d.mismoNumero ? `¿ya registrada de ${d.mismoNumero}?` : null,
               ]
                 .filter(Boolean)
@@ -383,6 +384,13 @@ function Formulario({
           <p className="text-xs text-aviso">
             La {elegida.oc} ya tiene registrada la factura {elegida.facturaDeLaOc}, y no se le registra otra. Si es la misma con el número mal escrito,
             corrige la {elegida.facturaDeLaOc}; si este anexo no es de esa OC, Logística lo anula.
+          </p>
+        )}
+        {/* La OC con boleta ya pagada directo: la base no registra su factura hasta que Tesorería anule ese pago. */}
+        {elegida?.pagadaDirecto && (
+          <p className="text-xs text-aviso">
+            Tesorería ya pagó la {elegida.oc} directo, por su boleta: la base no registra esta factura, ni en borrador, hasta que Tesorería anule
+            ese pago.
           </p>
         )}
         {elegida?.mismoNumero && (

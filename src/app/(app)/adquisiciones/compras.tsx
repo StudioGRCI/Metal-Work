@@ -21,6 +21,7 @@ import {
   SITUACIONES,
   TIPO_DOCUMENTO_COMPRA,
   TIPO_DOCUMENTO_SERVICIO,
+  anexoPorRevisarAlAnular,
   bloqueoDelAnexo,
   enSituacion,
   guiaPorCargar,
@@ -580,8 +581,8 @@ function AnulaElAnexo({ f, d, acceso }: { f: CompraTrazada; d: Documento; acceso
   if (!acceso.anulaAnexo || f.tipo !== 'OC' || (d.tipo !== 'FACTURA' && d.tipo !== 'COMPROBANTE')) return null
   const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo(f, d)
   if (bloqueo) return <span className="basis-full text-texto-suave">{bloqueo}</span>
-  // La factura registrada para otras OC que no alcanza para esta: el que está mal es el anexo.
-  const porRevisar = d.factura && d.factura.estado === 'REGISTRADA' && !d.factura.alcanza ? `factura ${d.factura.numero}` : null
+  // La factura registrada que no alcanza para esta OC: si no es de esta OC, el que está mal es el anexo.
+  const porRevisar = d.factura ? anexoPorRevisarAlAnular({ nombre: nombreDe(f), pagos: f.pagos }, d.factura) : null
   return (
     <AnularAnexo
       id={d.id}
@@ -620,7 +621,8 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
               urls={urls}
               rotulo={conBoleta ? 'Voucher de la factura' : 'Voucher'}
             />
-            {acceso.porPagar && x.saldo > 0 && (
+            {/* Con un pago directo vigente de la OC con boleta, la factura no se paga: primero se anula ese pago o se pide la devolución (enlaces de abajo). */}
+            {acceso.porPagar && x.saldo > 0 && !(conBoleta && f.pagos.length > 0) && (
               <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
                 {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
               </Link>
@@ -660,7 +662,7 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
       ) : (
         <p className="text-xs text-texto-suave">Tesorería pide al proveedor la devolución de lo pagado de más.</p>
       ))}
-      {/* La factura anexada es de otras OC: el que está mal es el anexo, y lo anula Logística en Documentos. */}
+      {/* La factura anexada no alcanza para esta OC: si no es suya, el que está mal es el anexo, y lo anula Logística en Documentos. */}
       {f.tipo === 'OC' && f.pago === 'ANEXO_POR_REVISAR' && (
         <p className="text-xs text-texto-suave">Logística revisa la factura que anexó: si no es de esta OC, la anula en sus documentos.</p>
       )}

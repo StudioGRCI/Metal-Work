@@ -26,12 +26,12 @@ export const ESTADO_PAGO: Record<string, Def> = {
     descripcion:
       'Tesorería la pagó directo por su boleta y también pagó la factura que el proveedor entregó después: pide al proveedor la devolución de lo pagado de más, y el pago directo se anula cuando la devuelva.',
   },
-  // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza para esta.
+  // La OC con boleta a la que Logística anexó una factura registrada que no alcanza para esta (es de otras OC o es por menos).
   ANEXO_POR_REVISAR: {
     etiqueta: 'Anexo por revisar',
     tono: 'aviso',
     descripcion:
-      'Logística le anexó una factura que Contabilidad registró para otras OC y no alcanza para esta: no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija la factura.',
+      'Logística le anexó una factura que Contabilidad registró y que no alcanza para esta OC (es de otras OC o es por menos): no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija la factura.',
   },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
@@ -121,7 +121,14 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
         (f.tipo === 'OC' && f.con_factura === false && f.pago === 'POR_FACTURAR')
       )
     case 'por-pagar':
-      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'PAGO_POR_ANULAR' || f.pago === 'ANEXO_POR_REVISAR'
+      // La pagada dos veces también: Tesorería pide la devolución y su factura puede deber todavía.
+      return (
+        f.pago === 'POR_PAGAR' ||
+        f.pago === 'PAGO_PARCIAL' ||
+        f.pago === 'PAGO_POR_ANULAR' ||
+        f.pago === 'ANEXO_POR_REVISAR' ||
+        f.pago === 'PAGADA_DOS_VECES'
+      )
     case 'pagadas':
       return f.pago === 'PAGADA' || f.pago === 'PAGADA_DOS_VECES'
     case 'guia':
@@ -166,5 +173,27 @@ export function bloqueoDelAnexo(
   const factura = anexo.factura
   if (anexo.tipo !== 'FACTURA' || oc.con_factura !== false || !factura?.alcanza) return null
   if (factura.pagado <= 0 && oc.pagos.length === 0) return null
-  return `No se anula: ${factura.pagado > 0 ? `la factura ${factura.numero} ya se pagó` : 'la OC ya se pagó por su boleta'}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
+  return `No se anula: ${factura.pagado > 0 ? `la factura ${factura.numero} ya tiene pagos` : 'la OC ya tiene pagos por su boleta'}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
+}
+
+/**
+ * Lo que dice la ventana «Anular» del anexo por revisar: la factura registrada
+ * no alcanza para esta OC (es de otras OC o es por menos), así que, si no es de
+ * esta OC, el anexo es el que está mal. Si la factura ya tiene pagos, puede que
+ * la OC fuera parte de ella (un descuento grande, una factura parcial): no se
+ * afirma que el anexo está mal, se manda a revisarlo con Contabilidad. Anulado,
+ * la OC con pagos directos sigue con ellos; la que no tiene, se paga por su
+ * boleta (no «vuelve a pagarse»: se leía como pagarla otra vez).
+ */
+export function anexoPorRevisarAlAnular(
+  oc: { nombre: string; pagos: unknown[] },
+  factura: { numero: string; estado: string; alcanza: boolean; pagado: number },
+): string | null {
+  if (factura.estado !== 'REGISTRADA' || factura.alcanza) return null
+  const queda = oc.pagos.length > 0 ? 'la OC sigue con su pago directo' : 'la OC se paga por su boleta'
+  const tachado = `No se borra: queda tachado en la ${oc.nombre} con su PDF, el motivo, quién y cuándo, y ${queda}.`
+  if (factura.pagado > 0) {
+    return `Contabilidad registró la factura ${factura.numero} y no alcanza para esta OC, pero ya tiene pagos: si esta OC es parte de ella, no anules el anexo; pide a Contabilidad que la corrija y la ligue a esta OC. Anúlalo solo si la factura no es de esta OC. ${tachado}`
+  }
+  return `Contabilidad registró la factura ${factura.numero} y no alcanza para esta OC: es de otras OC o es por menos. Si no es de esta OC, este anexo es el que está mal. ${tachado} Si es de otra OC, después la anexas a la buena.`
 }

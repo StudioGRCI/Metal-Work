@@ -29,6 +29,17 @@ import {
 
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
+/** El proveedor como frase: «S.A.C.» ya trae su punto y no lleva otro. */
+function conPunto(proveedor: string) {
+  const texto = proveedor.trim()
+  return texto.endsWith('.') ? texto : `${texto}.`
+}
+
+/** El monto en una sola línea: el espacio después de «S/» no se parte en el teléfono. */
+function montoEntero(valor: number, codigoMoneda: CodigoMoneda) {
+  return moneda(valor, codigoMoneda).replace(' ', '\u00a0')
+}
+
 /**
  * Tesorería registra un cobro de una factura de venta: el día, lo cobrado, si
  * con él la factura queda cancelada, el número de operación, la cuenta de la
@@ -272,7 +283,7 @@ export function PagarServicio({
         abierta={pagoId !== null}
         alCerrar={() => setPagoId(null)}
         titulo={`Pago de la ${numero}`}
-        descripcion={`${proveedor}. Falta pagar ${moneda(saldo, codigoMoneda)} del monto aprobado.`}
+        descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)} del monto aprobado.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -446,7 +457,7 @@ export function PagarFactura({
         abierta={pagoId !== null}
         alCerrar={() => setPagoId(null)}
         titulo={`Pago de la factura ${numero}`}
-        descripcion={`${proveedor}. Falta pagar ${moneda(saldo, codigoMoneda)}.`}
+        descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -612,7 +623,7 @@ export function PagarCompra({
         abierta={pagoId !== null}
         alCerrar={() => setPagoId(null)}
         titulo={`Pago de la ${numero}`}
-        descripcion={`${proveedor}. Falta pagar ${moneda(saldo, codigoMoneda)}; va con boleta, sin IGV.`}
+        descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}; va con boleta, sin IGV.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

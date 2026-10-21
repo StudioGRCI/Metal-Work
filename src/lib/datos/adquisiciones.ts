@@ -143,6 +143,12 @@ export type FacturaDeLogistica = {
    * mal escrito, y se corrige esa).
    */
   facturaDeLaOc: string | null
+  /**
+   * Su OC con boleta ya tiene un pago directo de Tesorería vigente: la base no
+   * registra la factura hasta que Tesorería lo anule, y el registro se quedaba
+   * en borrador.
+   */
+  pagadaDirecto: boolean
 }
 
 /**
@@ -178,6 +184,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     registrada: situacionDe.get(d.id)?.registrada ?? false,
     mismoNumero: situacionDe.get(d.id)?.mismo_numero ?? null,
     facturaDeLaOc: situacionDe.get(d.id)?.factura_de_la_oc ?? null,
+    pagadaDirecto: situacionDe.get(d.id)?.pagada_directo ?? false,
   }))
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { FileUp } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import {
@@ -41,8 +42,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   const detector = useDetectorDeFactura()
   const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
+  // La factura no alcanza para la OC: el mensaje pide revisar el anexo, no dice que todo salió bien.
+  const [revisar, setRevisar] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
+    setRevisar(false)
     const archivo = datos.get('archivo')
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
@@ -58,6 +62,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     })
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
+    setRevisar(r.datos?.revisar ?? false)
     setId(crypto.randomUUID())
     factura.vaciar()
     void detector.leer(undefined)
@@ -90,6 +95,18 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
       </>
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
-    {mensaje && <p role="status" className="text-xs text-exito sm:col-span-3">{mensaje}</p>}
+    {mensaje && (
+      <p role="status" className={`text-xs sm:col-span-3 ${revisar ? 'text-aviso' : 'text-exito'}`}>
+        {mensaje}
+        {revisar && (
+          <>
+            {' '}
+            <Link href={`/adquisiciones${orden?.numero ? `?q=${encodeURIComponent(orden.numero)}` : ''}`} className="font-medium underline">
+              Ver la OC en Adquisiciones
+            </Link>
+          </>
+        )}
+      </p>
+    )}
   </form>
 }

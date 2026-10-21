@@ -23,6 +23,16 @@
  *      mal escrito). El desplegable la ofrece diciendo que la OC ya tiene la
  *      suya, avisa al elegirla, y registrarla da el error de la base sin dejar
  *      una factura más.
+ *   4. (séptima vuelta) Con el mismo voucher, lo que llevaba el pago: la OC E
+ *      tiene S/ 100 a cuenta y Logística le anexa la factura FE, que
+ *      Contabilidad ya registró. La tarjeta, la ventana «Anular» y el aviso de
+ *      después dicen que con ese voucher van los S/ 100, y que lo que le falta a
+ *      la factura es un pago nuevo (decía que se pagara toda la factura con él).
+ *   5. (séptima vuelta) El borrador que eligió un anexo que Logística anula no
+ *      queda sin salida: Contabilidad registró la factura de la OC F eligiendo
+ *      su anexo y el registro quedó en borrador (se cayó el último paso);
+ *      Logística anula el anexo con clic, y Contabilidad completa el borrador
+ *      con su PDF (antes la base lo rechazaba, y no había otra salida).
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
@@ -84,6 +94,8 @@ const FY = `F072-${SUFIJO}`
 const FZ = `F073-${SUFIJO}`
 // La misma factura con un dígito de más: la que Logística anexa por error.
 const FZ_MAL = `F073-${SUFIJO}9`
+const FE = `F074-${SUFIJO}`
+const FF = `F075-${SUFIJO}`
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
@@ -143,15 +155,15 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 4) n))`,
+        from generate_series(1, 6) n))`,
   [rq, area, `Prueba de los anexos de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
 await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
-// A, B y D van con boleta; C, con factura.
+// A, B, D, E y F van con boleta; C, con factura.
 await como('logistica')
 const oc = {}
-for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false]]) {
+for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false]]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -214,6 +226,22 @@ const anexoY = await anexar(oc.B, FY)
 const anexoZ = await anexar(oc.D, FZ)
 await registrar(FZ, [oc.D], { documento: anexoZ })
 const anexoZMal = await anexar(oc.D, FZ_MAL)
+// 4. La OC E tiene S/ 100 a cuenta; FE se registró sin OC y Logística la anexa.
+const pagoE = await nuevoId()
+await como('tesoreria')
+const voucherE = await subir('pagos-compras', `${oc.E}/${pagoE}.pdf`, 'tesoreria')
+await consulta(`select public.registrar_pago_compra($1, $2, $3::date, 100, false, null, null, $4, $5, null)`, [pagoE, oc.E, hoy, voucherE, caja])
+await registrar(FE, [])
+await anexar(oc.E, FE)
+// 5. Contabilidad eligió el anexo FF de la OC F y el registro quedó en borrador.
+const anexoF = await anexar(oc.F, FF)
+const borradorF = await nuevoId()
+await como('contabilidad')
+await consulta(
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
+   values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7)`,
+  [borradorF, PROVEEDOR, FF, hoy, total, oc.F, anexoF],
+)
 await como(null)
 console.log(
   `Sembrado ${SUFIJO}: ${nombre(oc.A)} pagada dos veces (${FX}), ${nombre(oc.B)} con el anexo ${FY} de la ${nombre(oc.C)}, ${nombre(oc.D)} con ${FZ} y el anexo ${FZ_MAL}`,
@@ -312,6 +340,7 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   console.log(`       la fila de la A para Tesorería: ${fila.slice(0, 500)}`)
   comprobar(fila.includes('Pagada dos veces') && fila.includes('Pedir la devolución en Cuentas por pagar'), 'Adquisiciones dice «Pagada dos veces» y lleva a pedir la devolución')
   comprobar(fila.includes('Voucher de la boleta') && fila.includes('Voucher de la factura'), 'cada voucher dice si es de la boleta o de la factura')
+  comprobar(!fila.includes('Pagar en Cuentas por pagar'), 'y no manda a pagar su factura: la base lo rechazaría mientras siga el pago directo')
   await contexto.close()
 }
 {
@@ -321,7 +350,7 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   const texto = limpio(await fila.innerText().catch(() => ''))
   console.log(`       la fila de la A para Logística: ${texto.slice(0, 500)}`)
   comprobar((await fila.getByRole('button', { name: `Anular la factura ${FX} de la ${nombre(oc.A)}` }).count()) === 0, 'a Logística no se le ofrece anular el anexo de la factura ya pagada')
-  comprobar(texto.includes(`No se anula: la factura ${FX} ya se pagó`) && texto.includes('Contabilidad corrige la factura'), 'la línea dice por qué y quién lo corrige')
+  comprobar(texto.includes(`No se anula: la factura ${FX} ya tiene pagos`) && texto.includes('Contabilidad corrige la factura'), 'la línea dice por qué y quién lo corrige')
   comprobar(texto.split(`Factura ${FX}`).length - 1 === 1 && texto.includes('por el anexo de Logística'), 'el anexo va en la línea de su factura, una sola vez')
   comprobar(texto.includes('Tesorería pide al proveedor la devolución'), 'y Logística lee a quién espera la devolución')
   comprobar(!(await anulado(anexoX))?.anulado_en, 'el anexo sigue vigente en la base')
@@ -349,7 +378,8 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   const { pagina, contexto } = await entrar('logistica')
   await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
   const { ventana, error } = await anularAnexo(pagina, oc.B, FY, 'Era la factura de la otra OC del mismo proveedor', 3)
-  comprobar(ventana.includes('este anexo es el que está mal') && ventana.includes(FY), 'la ventana dice que el anexo es el que está mal')
+  comprobar(ventana.includes('Si no es de esta OC, este anexo es el que está mal') && ventana.includes(FY) && ventana.includes('la OC se paga por su boleta') && !ventana.includes('vuelve a pagarse'),
+    'la ventana dice que, si la factura no es de esta OC, el anexo es el que está mal, y que la OC se paga por su boleta')
   comprobar(error === '', `la ventana se cerró sin error${error ? `: ${error}` : ''}`)
   const fila = await hasta(() => anulado(anexoY), (f) => f?.anulado_en)
   comprobar(Boolean(fila?.anulado_en) && fila.anulado_por === ids[CUENTAS.logistica] && fila.motivo_anulacion?.startsWith('Era la factura'), 'el anexo queda anulado, con quién y su motivo')
@@ -358,7 +388,11 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
     [anexoY],
   ).catch(() => [{ n: -1 }])
   if (anulaciones >= 0) comprobar(anulaciones === 1, `tres toques, una anulación (${anulaciones} en la auditoría)`)
-  const tachada = limpio(await pagina.locator(`tr[data-orden="${nombre(oc.B)}"]`).innerText().catch(() => ''))
+  // La fila se vuelve a pintar después de cerrar la ventana: se espera a que llegue.
+  const tachada = await hasta(
+    async () => limpio(await pagina.locator(`tr[data-orden="${nombre(oc.B)}"]`).innerText().catch(() => '')),
+    (t) => t.includes(FY) && t.includes('Era la factura'),
+  )
   comprobar(tachada.includes(FY) && tachada.includes('Era la factura'), 'la fila la muestra tachada con su motivo')
   const [{ n: avisos }] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and cuerpo like '%' || $2 || '%'`, [
     ids[CUENTAS.contabilidad],
@@ -406,6 +440,69 @@ async function anularAnexo(pagina, orden, numero, motivo, toques = 1) {
   await contexto.close()
 }
 comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue esperando a Logística')
+
+// ---------------------------------------------------------------- 4. Con el mismo voucher, lo que llevaba el pago
+{
+  const cifra = (n) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+  const resto = cifra(Math.round((total - 100) * 100) / 100)
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator(`article#compra-${oc.E}`)
+  const texto = limpio(await tarjeta.innerText().catch(() => ''))
+  console.log(`       la tarjeta de la E: ${texto.slice(0, 400)}`)
+  comprobar(texto.includes('paga con el mismo voucher los S/ 100.00 que ya salieron') && texto.includes('lo que le falte a la factura después es un pago nuevo'),
+    'la tarjeta dice que con el mismo voucher van los S/ 100.00 del pago, y que el resto es un pago nuevo')
+  await pagina.locator(`[data-anular-pago-compra="${pagoE}"]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  const ventana = limpio(await v.innerText())
+  comprobar(ventana.includes('van con el mismo voucher los S/ 100.00 de este pago'), `la ventana dice lo mismo: «${ventana.slice(0, 300)}»`)
+  await v.locator('textarea[name="motivo"]').fill('El proveedor entregó factura: se paga por ella')
+  await v.getByRole('button', { name: 'Anular' }).click()
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `anula el pago${error ? ` (dijo «${error}»)` : ''}`)
+  const aviso = limpio(await hasta(() => pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (t) => Boolean(t), 5000))
+  console.log(`       el aviso: ${aviso.slice(0, 300)}`)
+  comprobar(aviso.includes('paga con el mismo voucher lo que llevaba este pago, S/ 100.00') && aviso.includes(`Los S/ ${resto} que le faltan después son un pago nuevo`),
+    'el aviso de después manda a pagar con ese voucher S/ 100.00, no la factura entera, y dice cuánto es pago nuevo')
+  const [{ n }] = await consulta(`select count(*)::int as n from pagos_orden_compra where id = $1 and anulado_en is not null`, [pagoE])
+  comprobar(n === 1, 'el pago quedó anulado en la base')
+  await pagina.screenshot({ path: `${CAPTURAS}/anexos-4-tesoreria.png`, fullPage: true })
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 5. El borrador del anexo anulado se completa
+{
+  const { pagina, contexto } = await entrar('logistica')
+  await pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(nombre(oc.F))}`, { waitUntil: 'networkidle' })
+  const { error } = await anularAnexo(pagina, oc.F, FF, 'No era de esta OC: el proveedor la mandó por error')
+  comprobar(error === '', `Logística anula el anexo${error ? `: ${error}` : ''}`)
+  const doc = await hasta(() => anulado(anexoF), (f) => f?.anulado_en)
+  comprobar(Boolean(doc?.anulado_en), 'el anexo queda anulado en la base')
+  const [suelto] = await consulta(`select documento_compra_id, estado from adquisiciones where id = $1`, [borradorF])
+  comprobar(suelto?.estado === 'BORRADOR' && suelto.documento_compra_id === null, 'y el borrador que lo eligió lo suelta')
+  await contexto.close()
+}
+{
+  const { pagina, contexto } = await entrar('contabilidad')
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  const formulario = pagina.locator(`form:has(input[name="id"][value="${borradorF}"]):visible`).first()
+  comprobar((await formulario.count()) === 1, 'Contabilidad ve «Completar comprobante» en su borrador')
+  await formulario.locator('input[type="file"]').setInputFiles({ name: 'factura.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await formulario.getByRole('button', { name: 'Completar comprobante' }).click()
+  await Promise.race([
+    formulario.locator('[role="status"]').waitFor({ timeout: 30000 }),
+    formulario.locator('[role="alert"]').waitFor({ timeout: 30000 }),
+  ]).catch(() => {})
+  const error = limpio(await formulario.locator('[role="alert"]').allInnerTexts().then((t) => t.join(' | ')).catch(() => ''))
+  comprobar(!error, `lo completa con su PDF${error ? ` (dijo «${error}»)` : ''}`)
+  const fila = await hasta(async () => (await consulta(`select estado, ruta_storage from adquisiciones where id = $1`, [borradorF]))[0], (f) => f?.estado === 'REGISTRADA')
+  comprobar(fila?.estado === 'REGISTRADA' && Boolean(fila.ruta_storage), 'y queda registrado, con su PDF')
+  const [{ n }] = await consulta(`select count(*)::int as n from storage.objects where bucket_id = 'comprobantes-financieros' and name = $1`, [fila?.ruta_storage ?? ''])
+  comprobar(n === 1, 'el PDF está en el almacenamiento')
+  await pagina.screenshot({ path: `${CAPTURAS}/anexos-5-contabilidad.png`, fullPage: true })
+  await contexto.close()
+}
 
 comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)
 await navegador.close()

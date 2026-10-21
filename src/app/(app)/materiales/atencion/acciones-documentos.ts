@@ -27,10 +27,11 @@ const campo = (formulario: FormData, nombre: string) => {
   return typeof v === 'string' ? v : undefined
 }
 
+/** `revisar`: la factura que se anexó no alcanza para la OC y el anexo queda por revisar en Adquisiciones. */
 export async function registrarDocumentoCompra(
   _previo: unknown,
   formulario: FormData,
-): Promise<ResultadoAccion> {
+): Promise<ResultadoAccion<{ revisar: boolean }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Adjuntar documentos de compra corresponde a Logística.' }
 
@@ -149,12 +150,14 @@ export async function registrarDocumentoCompra(
   const pagos = s?.pagos_vigentes ?? 0
   const esePago = pagos === 1 ? 'ese pago' : 'esos pagos'
   const registrada = s?.en_camino_origen === 'REGISTRADA'
+  const revisar = Boolean(s && registrada && s.en_camino_alcanza === false)
   return {
     ok: true,
+    datos: { revisar },
     mensaje: errorSituacion || !s
       ? `Factura ${numeroFactura} adjuntada a la compra.`
-      : registrada && s.en_camino_alcanza === false
-        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza para esta: revisa el número. Si no es de esta OC, anula el anexo en Adquisiciones › OC y OS, en la fila de la OC${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
+      : revisar
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró y no alcanza para esta OC (es de otras OC o es por menos): revisa el número. Si no es de esta OC, anula el anexo en Adquisiciones › OC y OS, en la fila de la OC${pagos > 0 ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
       : pagos > 0 && registrada && Number(s.pagada_dos_veces ?? 0) > 0
         ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y Contabilidad ya tenía esa factura registrada y pagada: la compra se pagó dos veces. Tesorería recibió el aviso para pedir la devolución al proveedor.`
         : pagos > 0 && registrada

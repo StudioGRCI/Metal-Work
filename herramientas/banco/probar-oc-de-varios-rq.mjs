@@ -214,8 +214,13 @@ async function entrar(clave) {
   const errores = []
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
+  // El de hidratación va entero: dice qué atributo no calzó al final, y salió dos
+  // veces suelto como Contabilidad sin que se pudiera repetir.
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
+    const texto = m.text()
+    if (m.type() === 'error' && !texto.includes('_next/hmr') && !texto.includes('WebSocket')) {
+      errores.push(texto.includes('hydrated') ? `${pagina.url()} ${texto}` : texto.slice(0, 300))
+    }
   })
   pagina.on('pageerror', (e) => errores.push(String(e).slice(0, 300)))
   await ir(pagina, `${BASE}/ingresar`)

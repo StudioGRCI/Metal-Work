@@ -16,8 +16,9 @@ import { anularDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-
  * factura la sacaba del pago directo, vuelve a pagarse por su boleta. La factura
  * que ya se pagó por un camino y quedaría libre para el otro no se anula: la
  * fila no ofrece el botón (`bloqueoDelAnexo`, en `lib/dominio/adquisiciones`) y la base lo rechaza igual.
- * `porRevisar` es la factura que Contabilidad registró para otras OC y no
- * alcanza para esta: ahí el error es el anexo, y la ventana lo dice.
+ * `porRevisar` es lo que dice la ventana cuando la factura que Contabilidad
+ * registró no alcanza para esta OC (`anexoPorRevisarAlAnular`): si no es de
+ * esta OC, el error es el anexo; si ya tiene pagos, primero se revisa.
  */
 export function AnularAnexo({
   id,
@@ -46,7 +47,7 @@ export function AnularAnexo({
         titulo={`Anular ${etiqueta}`}
         descripcion={
           porRevisar
-            ? `Contabilidad registró la ${porRevisar} para otras OC y no alcanza para esta: este anexo es el que está mal. No se borra: queda tachado en la ${oc} con su PDF, el motivo, quién y cuándo, y la OC vuelve a pagarse por su boleta. Si es de otra OC, después la anexas a la buena.`
+            ? porRevisar
             : factura
               ? `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo, y deja de contar para su pago. Si era de otra OC, después la anexas a la buena. Tesorería y Contabilidad reciben el aviso si les cambia algo.`
               : `No se borra: queda tachada en la ${oc} con su PDF, el motivo, quién y cuándo. Después anexas la buena.`
