@@ -393,7 +393,29 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           titulo="PDF de la orden"
           ayuda="La orden de trabajo firmada, la misma que se imprime. Sin su PDF la orden no se registra."
         />
-        <TarjetaCuerpo>
+        <TarjetaCuerpo className="space-y-4">
+          {/* El número lo trae el papel, como en la OT de una cotización
+              (migración 20261021110000): la orden en la mano y la de la
+              pantalla son la misma. */}
+          <Campo
+            etiqueta="N.º de la OT"
+            htmlFor="numero"
+            ayuda="El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año"
+            requerido
+          >
+            <Entrada
+              id="numero"
+              name="numero"
+              autoComplete="off"
+              inputMode="numeric"
+              required
+              maxLength={11}
+              pattern={'\\d{1,6}(-\\d{4})?'}
+              title="El número de la OT, como 2922 o 2922-2026"
+              placeholder="2922"
+              className="sm:max-w-48"
+            />
+          </Campo>
           <label
             className={cn(
               'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2',
