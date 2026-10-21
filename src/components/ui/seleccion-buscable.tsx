@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -68,6 +68,7 @@ export function SeleccionBuscable({
   const contenedor = useRef<HTMLDivElement>(null)
   const disparador = useRef<HTMLButtonElement>(null)
   const caja = useRef<HTMLInputElement>(null)
+  const listaRef = useRef<HTMLUListElement>(null)
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
   const conEquis = Boolean(elegida) && permiteVaciar && !deshabilitado
@@ -78,6 +79,29 @@ export function SeleccionBuscable({
   const coincidencias = opciones.filter((o) => coincide(palabras, [o.etiqueta, o.detalle]))
   const visibles = coincidencias.slice(0, TOPE)
   const ocultas = coincidencias.length - visibles.length
+
+  // Lo mismo que el buscador de códigos (`ElegirCodigo`): en el teléfono el
+  // campo suele quedar al fondo de la ventana y el panel se abría por debajo
+  // del borde de la pantalla —en la salida del kardex, a 390 px, no se veía
+  // ninguno de los vehículos—. Si no cabe en lo visible, el campo sube arriba,
+  // y si ni así cabe, la lista se acorta a lo que se ve. Se mira otra vez
+  // cuando el teclado aparece o se va y cambia lo visible.
+  useEffect(() => {
+    if (!abierto) return
+    const vista = window.visualViewport
+    function acomodar() {
+      const ul = listaRef.current
+      if (!ul) return
+      const visible = vista ? vista.offsetTop + vista.height : window.innerHeight
+      ul.style.maxHeight = ''
+      if (ul.getBoundingClientRect().bottom > visible) contenedor.current?.scrollIntoView({ block: 'start' })
+      const lista = ul.getBoundingClientRect()
+      if (lista.bottom > visible) ul.style.maxHeight = `${Math.max(Math.floor(visible - lista.top - 8), 120)}px`
+    }
+    acomodar()
+    vista?.addEventListener('resize', acomodar)
+    return () => vista?.removeEventListener('resize', acomodar)
+  }, [abierto])
 
   function abrir() {
     if (deshabilitado) return
@@ -242,7 +266,7 @@ export function SeleccionBuscable({
             />
           </div>
 
-          <ul id={idLista} role="listbox" className="max-h-64 overflow-y-auto py-1">
+          <ul ref={listaRef} id={idLista} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {visibles.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-texto-suave">
                 Nada coincide. Prueba con menos palabras o con el número.
