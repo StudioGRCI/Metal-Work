@@ -7,10 +7,11 @@
  *      almacén con lo que dice el kardex, los accesorios por código interno, lo
  *      que está bajo el mínimo y lo que se acabó, sin precios ni kardex. Busca
  *      por código interno y filtra por almacén.
- *   2. En Requerimientos ve primero los de su área. Cada RQ está cerrado con
- *      cuántos insumos da Almacén y cuántos van a compra; al presionarlo se
- *      despliegan, cada uno con quién lo da, su OC y en qué va. Ve también los
- *      de todas las áreas y los de un código interno.
+ *   2. En Requerimientos ve primero los de su área. Cada RQ en camino llega
+ *      desplegado (tarjetas del 2026-10-20): arriba cuántos insumos se pueden
+ *      recoger en Almacén y cuántos faltan que lleguen, y cada insumo con su
+ *      barra, lo que se recoge, lo que falta de Logística, su OC y en qué va.
+ *      Ve también los de todas las áreas y los de un código interno.
  *   3. Requerimientos, que los lleva, los ve desplegados como siempre, y no
  *      entra al stock.
  *   4. Almacén abre el stock con el enlace a su kardex.
@@ -73,6 +74,12 @@ async function pestanas(pagina) {
   return pagina.locator('nav[aria-label="Secciones"] a').evaluateAll((as) => as.map((a) => a.textContent?.trim()))
 }
 const texto = async (loc) => (await loc.innerText()).replace(/\s+/g, ' ')
+// Las fichas del resumen («2 para recoger») solo se ven con los insumos cerrados:
+// abiertos, cada insumo lo dice en su unidad.
+const resumenCerrado = async (detalles) => {
+  if (await detalles.evaluate((d) => d.open)) await detalles.locator('summary').click()
+  return texto(detalles.locator('summary'))
+}
 const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
 
 // ============================================ 1. El supervisor ve el stock
@@ -142,37 +149,37 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
     've primero los RQ de Maestranza, sin el de Producción')
 
   const rq1 = pagina.locator('[data-insumos="RQ-0001-2026"]')
-  comprobar(!(await rq1.evaluate((d) => d.open)), 'el RQ llega cerrado')
+  comprobar(await rq1.evaluate((d) => d.open), 'el RQ en camino llega desplegado')
   const resumen = await texto(rq1.locator('summary'))
-  console.log('    cerrado:', resumen)
-  comprobar(resumen.includes('3 insumos') && resumen.includes('1 lo da Almacén') && resumen.includes('1 en parte Almacén y en parte compra') && resumen.includes('1 va a compra'),
-    'cerrado dice cuántos da Almacén y cuántos van a compra')
-  comprobar(!(await rq1.locator('li[data-insumo]').first().isVisible()), 'los insumos no se ven hasta presionar')
-  await rq1.locator('summary').click()
-  comprobar(await rq1.locator('li[data-insumo]').first().isVisible(), 'al presionar se despliegan los insumos')
+  console.log('    arriba:', resumen)
+  comprobar(resumen.includes('3 insumos'), 'arriba dice cuántos insumos lleva')
+  comprobar(await rq1.locator('li[data-insumo]').first().isVisible(), 'los insumos se ven sin presionar')
   const insumo = async (n) => texto(rq1.locator(`li[data-insumo="${n}"]`))
   const [i1, i2, i3] = [await insumo(1), await insumo(2), await insumo(3)]
   console.log('    1:', i1)
   console.log('    2:', i2)
   console.log('    3:', i3)
-  comprobar(i1.includes('Disco de corte') && i1.includes('Lo da Almacén'), 'el disco lo da Almacén')
-  comprobar(i2.includes('Plancha') && i2.includes('Almacén y compra') && i2.includes('Almacén 12 · compra 8 UND') && i2.includes('Por comprar'),
-    'la plancha: 12 de Almacén y 8 por comprar')
-  comprobar(i3.includes('Faro') && i3.includes('Va a compra') && /OC-\d+/.test(i3), 'el faro va a compra, con su OC')
+  comprobar(i1.includes('Disco de corte') && i1.includes('para recoger en Almacén') && !/faltan? de/.test(i1), 'el disco se recoge entero en Almacén')
+  comprobar(i2.includes('Plancha') && i2.includes('12 UND para recoger en Almacén') && i2.includes('8 UND faltan de Logística') && i2.includes('Por comprar'),
+    'la plancha: 12 para recoger en Almacén y 8 que faltan de Logística, por comprar')
+  comprobar(i3.includes('Faro') && /faltan? de Logística/.test(i3) && /OC-\d+/.test(i3) && !i3.includes('para recoger'), 'el faro falta entero, con su OC')
   await pagina.screenshot({ path: `${CAPTURAS}/rq-desplegado.png`, fullPage: true })
+  const cerrado = await resumenCerrado(rq1)
+  comprobar(cerrado.includes('2 para recoger') && cerrado.includes('2 por llegar'),
+    `cerrado, dice cuántos se pueden recoger en Almacén y cuántos faltan que lleguen («${cerrado}»)`)
 
-  const rq3 = await texto(pagina.locator('[data-insumos="RQ-0003-2026"] summary'))
-  comprobar(rq3.includes('2 por revisar en Almacén'), 'el RQ que Almacén no revisa dice «por revisar»')
+  const rq3 = await resumenCerrado(pagina.locator('[data-insumos="RQ-0003-2026"]'))
+  comprobar(rq3.includes('2 por revisar'), 'el RQ que Almacén no revisa dice «por revisar»')
 
   await pagina.getByRole('link', { name: /Todas las áreas/ }).click()
   await pagina.waitForURL(/area=todas/)
   await pagina.waitForLoadState('networkidle')
   const todas = await numeros()
   comprobar(todas.length === 3 && todas.includes('RQ-0002-2026'), 'con «Todas las áreas» ve también el de Producción')
-  const rq2 = await texto(pagina.locator('[data-insumos="RQ-0002-2026"] summary'))
-  comprobar(rq2.includes('1 lo da Almacén'), 'el de Producción lo da Almacén entero')
+  const rq2 = await resumenCerrado(pagina.locator('[data-insumos="RQ-0002-2026"]'))
+  comprobar(rq2.includes('1 para recoger'), 'el de Producción está listo para recoger en Almacén')
 
-  await pagina.locator('tr', { has: pagina.locator('[data-insumos="RQ-0002-2026"]') }).getByRole('link', { name: 'MW-0130' }).click()
+  await pagina.locator('[data-rq="RQ-0002-2026"]').getByRole('link', { name: 'MW-0130' }).click()
   await pagina.waitForURL(/codigo=MW-0130/)
   await pagina.waitForLoadState('networkidle')
   const delCodigo = await numeros()

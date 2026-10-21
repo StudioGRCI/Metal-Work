@@ -137,6 +137,32 @@ export const CODIGO_SIN_AVANCE = 'PLANTA'
  */
 export const CODIGO_TODOS_LOS_ACTIVOS = 'TODOS LOS ACTIVOS'
 
+/**
+ * Un código que ofrece el buscador de código interno (`EntradaCodigoInterno`),
+ * como lo da `codigos_internos_para_elegir` (migración 20261020190000).
+ */
+export type CodigoParaElegir = {
+  codigo: string
+  /** La placa y la marca y modelo, o el vehículo que anotó la portería; vacío si el sistema no lo sabe. */
+  unidad: string | null
+  /** Gerencia cerró su costeo al entregar la unidad: no se ofrece, pero se reconoce si alguien lo escribe. */
+  cerrado: boolean
+  /** Es el código de una unidad del padrón: entre dos casi iguales, el bueno. */
+  registrada: boolean
+}
+
+/** Los que no son de una unidad y van primero en la lista: PLANTA, OFICINA. */
+export type CodigoFijo = { codigo: string; detalle: string }
+
+/**
+ * Los códigos que no son de una unidad, primeros en el buscador de código: lo
+ * de la planta y lo de la oficina.
+ */
+export const CODIGO_FIJO_PLANTA = { codigo: 'PLANTA', detalle: 'No es para una unidad: lo de la planta' }
+export const CODIGO_FIJO_OFICINA = { codigo: 'OFICINA', detalle: 'No es para una unidad: lo de la oficina' }
+/** Los dos que no son de una unidad, para los formularios de gastos: la caja, la compra directa, el servicio. */
+export const CODIGOS_FIJOS: CodigoFijo[] = [CODIGO_FIJO_PLANTA, CODIGO_FIJO_OFICINA]
+
 /** PLANTA y TODOS LOS ACTIVOS no son una unidad: no avanzan, no se venden y su costeo no se cierra. */
 export function noEsUnidad(codigo: string) {
   return codigo === CODIGO_SIN_AVANCE || codigo === CODIGO_TODOS_LOS_ACTIVOS

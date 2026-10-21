@@ -4,6 +4,7 @@ import { Pencil, Plus, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { CampoContrato, sacarContrato } from '@/components/estructura/contrato-adjunto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -14,33 +15,18 @@ import { subirContrato } from '@/lib/contratos'
 import type { Subcontratista } from '@/lib/datos/subcontratos'
 import { problemaDeContrato } from '@/lib/dominio/contratos'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO, BUCKET_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
 
 import { adjuntarContratoSubcontrato, guardarSubcontratista, registrarSubcontrato } from './acciones'
 
-/** El código interno con los que ya se usan en el sistema como sugerencia: la base lo normaliza igual. */
-export function CampoCodigoInterno({ id, codigos, valor }: { id: string; codigos: string[]; valor?: string }) {
+/** El código interno con el buscador de todos los formularios: por el código, la placa o la marca. */
+export function CampoCodigoInterno({ id, codigos, valor }: { id: string; codigos: CodigoParaElegir[] | null; valor?: string }) {
   return (
     <Campo etiqueta="Código interno" htmlFor={id} requerido ayuda={AYUDA_CODIGO_INTERNO}>
-      <Entrada
-          id={id}
-          name="codigo_interno"
-          required
-          minLength={2}
-          maxLength={60}
-          list={`${id}-lista`}
-          defaultValue={valor}
-          autoComplete="off"
-          autoCapitalize="characters"
-          className="font-mono uppercase"
-      />
-      <datalist id={`${id}-lista`}>
-        {codigos.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
+      <CodigoInternoConLista id={id} name="codigo_interno" requerido valorInicial={valor} codigos={codigos} />
     </Campo>
   )
 }
@@ -71,7 +57,7 @@ export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: stri
  * trabajo y cuánto se pactó, y su contrato si ya lo tienen. El número SC-… lo pone la
  * base; al salir bien se abre el subcontrato para subirle sus recibos.
  */
-export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas: Subcontratista[]; codigos: string[] }) {
+export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas: Subcontratista[]; codigos: CodigoParaElegir[] | null }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   return (
@@ -106,7 +92,7 @@ function FormularioSubcontrato({
   alCancelar,
 }: {
   subcontratistas: Subcontratista[]
-  codigos: string[]
+  codigos: CodigoParaElegir[] | null
   alCancelar: () => void
 }) {
   const router = useRouter()

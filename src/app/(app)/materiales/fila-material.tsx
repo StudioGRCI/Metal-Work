@@ -150,7 +150,9 @@ export function FilaMaterial({
 
   return (
     <TR className={material.activo ? undefined : 'opacity-60'}>
-      <TD>
+      {/* Una palabra larga sin espacios («(355MMX2,8MMX25,4MM)DEWALT») empujaba
+          la tabla fuera del teléfono: se parte donde haga falta. */}
+      <TD className="[overflow-wrap:anywhere] sm:min-w-48">
         <p className="text-sm font-medium text-texto">{material.descripcion}</p>
         <p className="text-[11px] text-texto-suave">
           {material.codigo_almacen_origen ?? material.codigo}
@@ -163,11 +165,20 @@ export function FilaMaterial({
             </Insignia>
           )}
         </p>
-        {/* En el teléfono la categoría y la especificación van bajo el nombre:
-            con sus columnas, la tabla se corría de costado. */}
-        <p className="text-xs text-texto-suave sm:hidden">
-          {[material.categoria?.nombre, material.especificacion_tecnica].filter(Boolean).join(' · ')}
-        </p>
+        {/* En el teléfono la categoría y la especificación van bajo el nombre, y
+            en la tableta, la especificación: con sus columnas, la tabla se corría
+            de costado o la descripción quedaba en 90 px y partía «REDOND|O». */}
+        {(material.categoria || material.especificacion_tecnica) && (
+          <p className="text-xs text-texto-suave lg:hidden">
+            {material.categoria && (
+              <span className="sm:hidden">
+                {material.categoria.nombre}
+                {material.especificacion_tecnica && ' · '}
+              </span>
+            )}
+            {material.especificacion_tecnica}
+          </p>
+        )}
       </TD>
       <TD className="hidden text-sm text-texto-suave sm:table-cell">{material.categoria?.nombre ?? '—'}</TD>
       <TD className="text-sm text-texto-suave">
@@ -181,10 +192,13 @@ export function FilaMaterial({
           </Insignia>
         )}
       </TD>
-      <TD className="hidden text-xs text-texto-suave sm:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
+      <TD className="hidden text-xs text-texto-suave lg:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (
-        <TD>
-          <div className="flex items-center justify-end gap-1">
+        // Hasta la tableta los dos botones van uno sobre otro y la celda pierde
+        // su margen: lado a lado ocupaban 112 px y la descripción quedaba en
+        // 121, donde se partían a la mitad palabras como «TRONZADORA».
+        <TD className="px-1 md:px-3">
+          <div className="flex flex-col items-center justify-end gap-1 md:flex-row">
             <Boton
               type="button"
               variante="fantasma"

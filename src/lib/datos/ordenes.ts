@@ -5,6 +5,7 @@ import { puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Enums, Vistas } from '@/types/database'
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { paginaQueExiste } from '@/lib/dominio/paginas'
 
 export type ResumenOrden = Vistas<'ot_resumen'>
 
@@ -80,6 +81,9 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
     .order('numero', { ascending: false })
     .range(desde, desde + ORDENES_POR_PAGINA - 1)
 
+  // Una página que ya no existe se cambia por la última que sí hay.
+  const otra = await paginaQueExiste(pagina, ORDENES_POR_PAGINA, { error, count, filas: data?.length ?? 0 }, async () => (await listarOrdenes({ ...filtros, pagina: 1 })).total)
+  if (otra) return listarOrdenes({ ...filtros, pagina: otra })
   if (error) throw new Error(`No se pudieron listar las órdenes: ${error.message}`)
 
   return {

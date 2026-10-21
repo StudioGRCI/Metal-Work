@@ -5,7 +5,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarPersonal } from '@/lib/datos/personal'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { moneda } from '@/lib/format'
-import { cambiaDatosReservados, exigirPermiso, puede } from '@/lib/sesion'
+import { cambiaDatosReservados, exigirPermiso } from '@/lib/sesion'
 
 import { EditarDatosDeCuenta } from './editar'
 
@@ -19,7 +19,6 @@ export const metadata = { title: 'DNI y costo de las cuentas' }
 export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'/rrhh/cuentas'>) {
   const perfil = await exigirPermiso('rrhh.personal')
   const cambia = cambiaDatosReservados(perfil)
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const busqueda = typeof params.q === 'string' && palabrasDeBusqueda(params.q).length > 0 ? params.q : undefined
   const cuentas = await listarPersonal({ busqueda, estado: 'activos' })
@@ -37,7 +36,7 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
             ? 'Las cuentas con las que la gente entra al sistema. Su DNI y su costo por hora los pones tú; el administrador los ve, pero no los cambia. El costo que se carga a cada código interno sale de la ficha de Personal, no de aquí.'
             : 'Las cuentas con las que la gente entra al sistema, con su DNI y su costo por hora. Los cambia Recursos Humanos.'
         }
-        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'DNI y costo de las cuentas' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'DNI y costo de las cuentas' }]}
       />
 
       <div className="mb-3 max-w-xl">

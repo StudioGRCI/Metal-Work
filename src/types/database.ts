@@ -11758,6 +11758,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      codigos_internos_para_elegir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+          unidad: string | null
+          cerrado: boolean | null
+          registrada: boolean | null
+        }[]
+      }
       codigos_internos_resumen: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -12414,6 +12423,17 @@ export type Database = {
           p_lineas: Json | null
         }
         Returns: string
+      }
+      entregado_de_requerimientos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          requerimiento_id: string | null
+          item: number | null
+          entregado: number | null
+          llegado: number | null
+        }[]
       }
       entregar_boleta_planilla_diaria: {
         Args: {

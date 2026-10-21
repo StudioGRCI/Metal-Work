@@ -8,6 +8,7 @@ import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { registrarIngresoGeneral } from './acciones'
 
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -26,6 +27,7 @@ import type {
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { APROBACION_COMPRA, comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { RECOJO_COMPRA, VALIDACION_INGRESO, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { mandarARecojo } from '@/app/(app)/compras/ordenes/acciones'
 import { FormularioProveedor } from '@/app/(app)/proveedores/formulario'
@@ -86,6 +88,7 @@ export function TableroMateriales({
   clavesDocumento,
   proveedores = [],
   puedeRegistrarProveedor = false,
+  codigos = null,
 }: {
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
@@ -106,6 +109,8 @@ export function TableroMateriales({
   /** El padrón activo, para elegir el proveedor de la orden de compra. */
   proveedores?: ProveedorParaCompra[]
   puedeRegistrarProveedor?: boolean
+  /** Los códigos internos para buscar en la orden de compra; null si no se pudieron leer. */
+  codigos?: CodigoParaElegir[] | null
 }) {
   const [compraAbierta,setCompraAbierta]=useState(false)
   const [avisoCompra,setAvisoCompra]=useState<string|null>(null)
@@ -136,7 +141,7 @@ export function TableroMateriales({
       </div>
       {avisoCompra && <p role="status" className="rounded-md bg-exito-suave px-3 py-2 text-sm text-exito">{avisoCompra}</p>}
       <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
-        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
+        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
       </Ventana>
       {lineas.length > 0 && (
         <Tarjeta>
@@ -452,7 +457,7 @@ function CantidadMini({ nombre, valor, unidad }: { nombre: string; valor: number
   return <div className="rounded-md bg-superficie-2 px-2 py-1.5"><p className="text-texto-suave">{nombre}</p><p className="tabular mt-0.5 font-semibold text-texto">{cantidad(valor)} {unidad}</p></div>
 }
 
-function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar}:{lineas:LineaAtencionMaterial[];proveedores:ProveedorParaCompra[];puedeRegistrarProveedor:boolean;alTerminar:(mensaje?:string)=>void}) {
+function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,alTerminar}:{lineas:LineaAtencionMaterial[];proveedores:ProveedorParaCompra[];puedeRegistrarProveedor:boolean;codigos:CodigoParaElegir[]|null;alTerminar:(mensaje?:string)=>void}) {
  const [id]=useState(()=>crypto.randomUUID())
  const [seleccionados,setSeleccionados]=useState<string[]>([])
  // El que se registra desde aquí se suma a la lista sin esperar a que la
@@ -486,7 +491,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,alTerminar
        {avisoAlta&&<p role="status" className="text-xs text-exito">{avisoAlta}</p>}
      </Campo>
      <Campo etiqueta="Referencia del proveedor" htmlFor="oc-numero" requerido ayuda="Su cotización o proforma. El número OC-…-MW lo pone el sistema al emitir."><Entrada id="oc-numero" name="referencia" required minLength={2} maxLength={100}/></Campo>
-     <Campo etiqueta="Código interno" htmlFor="oc-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}><Entrada id="oc-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off"/></Campo>
+     <Campo etiqueta="Código interno" htmlFor="oc-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}><CodigoInternoConLista id="oc-codigo" name="codigo_interno" requerido codigos={codigos} fijos={CODIGOS_FIJOS}/></Campo>
      <Campo etiqueta="Comprobante" htmlFor="oc-comprobante" ayuda={comprobantePedido(conFactura).pide}><Seleccion id="oc-comprobante" name="con_factura" value={conFactura?'true':'false'} onChange={e=>setConFactura(e.target.value==='true')}><option value="true">Con factura</option><option value="false">Sin factura</option></Seleccion></Campo>
      <Campo etiqueta="Entrega estimada" htmlFor="oc-fecha"><Entrada id="oc-fecha" name="fecha_estimada" type="date"/></Campo>
      <Campo etiqueta="Moneda" htmlFor="oc-moneda"><Seleccion id="oc-moneda" name="moneda"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>

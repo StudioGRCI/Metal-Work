@@ -10,8 +10,9 @@ import {
   otsParaLogistica,
   type OrdenServicioListada,
 } from '@/lib/datos/logistica'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
-import { llaveParecido } from '@/lib/dominio/codigos-internos'
+import { llaveParecido, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
@@ -29,12 +30,13 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   const corrigeDetraccion = puede(perfil, ['compras.crear', 'compras.detraccion'])
   const { codigo = '' } = await searchParams
   const buscado = codigo.trim()
-  const [servicios, tipos, proveedores, ordenes, areas] = await Promise.all([
+  const [servicios, tipos, proveedores, ordenes, areas, codigos] = await Promise.all([
     cargarOrdenesServicio(),
     cargarTiposDetraccion(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
     emite ? otsParaLogistica() : Promise.resolve([]),
     emite ? areasSolicitantes() : Promise.resolve([]),
+    emite ? codigosParaElegir() : Promise.resolve(null),
   ])
   // El código se compara como en «Códigos internos»: sin mayúsculas, espacios ni signos, y O igual a 0.
   const llave = llaveParecido(buscado)
@@ -53,6 +55,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               ordenes={ordenes}
               areas={areas}
               tipos={tipos}
+              codigos={codigos}
               puedeRegistrarProveedor={puede(perfil, 'proveedores.editar')}
             />
           )
@@ -90,7 +93,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               />
             ) : (
               visibles.map((s) => (
-                <FilaServicio key={s.id} servicio={s} emite={emite} corrigeDetraccion={corrigeDetraccion} tipos={tipos} />
+                <FilaServicio key={s.id} servicio={s} emite={emite} corrigeDetraccion={corrigeDetraccion} tipos={tipos} codigos={codigos} />
               ))
             )}
           </tbody>
@@ -105,11 +108,13 @@ function FilaServicio({
   emite,
   corrigeDetraccion,
   tipos,
+  codigos,
 }: {
   servicio: OrdenServicioListada
   emite: boolean
   corrigeDetraccion: boolean
   tipos: TipoDetraccion[]
+  codigos: CodigoParaElegir[] | null
 }) {
   const para = [s.orden ? `OT ${s.orden}` : null, s.unidad, s.area].filter(Boolean).join(' · ')
   const abierta = s.estado === 'EMITIDA' || s.estado === 'EN_EJECUCION'
@@ -172,6 +177,7 @@ function FilaServicio({
               montoSinIgvPen={s.monto_pen}
               enDolares={s.moneda === 'USD'}
               tipos={tipos}
+              codigos={codigos}
               cambiaCodigo={emite && abierta}
             />
           )}

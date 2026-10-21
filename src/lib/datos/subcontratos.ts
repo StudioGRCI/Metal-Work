@@ -342,15 +342,6 @@ export async function areasDeSubcontratos(): Promise<{ id: string; codigo: strin
   return data ?? []
 }
 
-/** Los códigos internos que ya se usan en el sistema, para elegir sin escribirlos mal. Solo Administración. */
-export async function codigosParaSubcontratos(): Promise<string[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc('subcontratos_codigos_internos')
-  // Sin la lista se escribe a mano: la base lo normaliza igual.
-  if (error || !data) return []
-  return data.flatMap((f) => (f.codigo ? [f.codigo] : []))
-}
-
 /** Enlaces temporales para abrir los recibos y los vouchers: el bucket es privado y la política decide quién. */
 async function enlacesDeArchivos(rutas: string[]) {
   if (rutas.length === 0) return {} as Record<string, string>

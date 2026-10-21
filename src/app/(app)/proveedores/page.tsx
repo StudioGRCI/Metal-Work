@@ -12,6 +12,7 @@ import { condicionDePago, resumenCuenta } from '@/lib/dominio/proveedores'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AccionesProveedor, NuevoProveedor } from './formulario'
+import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Proveedores' }
 
@@ -29,7 +30,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
   }).toString()
   const { proveedores, total, pagina, paginas } = await listarProveedores({
     busqueda,
-    pagina: Number(params.pagina) || 1,
+    pagina: paginaPedida(params.pagina),
     incluirInactivos,
   })
   const edita = puede(perfil, 'proveedores.editar')

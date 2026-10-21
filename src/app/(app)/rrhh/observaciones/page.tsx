@@ -5,10 +5,11 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { listarObservaciones, listarTrabajadores, type Observacion } from '@/lib/datos/rrhh'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
 import { AnularObservacion, RegistrarObservacion } from './formulario'
 
@@ -38,16 +39,16 @@ function resumir(observaciones: Observacion[]): Resumen[] {
 export default async function PaginaObservaciones({ searchParams }: PageProps<'/rrhh/observaciones'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
   const registra = editaComoRrhh(perfil, 'rrhh.personal')
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
   const mesActual = mesDeLima(hoy)
   const mes = mesValido(params.mes) ? params.mes : mesActual
   const personaId = typeof params.persona === 'string' && GUID.test(params.persona) ? params.persona : null
 
-  const [observaciones, personal] = await Promise.all([
+  const [observaciones, personal, codigos] = await Promise.all([
     listarObservaciones(personaId ? { trabajadorId: personaId } : { mes }),
     listarTrabajadores('todos'),
+    registra ? codigosParaElegir() : Promise.resolve(null),
   ])
   const persona = personaId ? personal.find((p) => p.id === personaId) : undefined
   const resumen = resumir(observaciones)
@@ -60,7 +61,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
         titulo={persona ? `Historial de ${persona.nombres} ${persona.apellidos}` : 'Observaciones y amonestaciones'}
         ayuda="Lo que se le observa a cada persona: observaciones, amonestaciones verbales y escritas, y suspensiones, con su motivo. No se borran: se anulan con su motivo y quedan como evidencia."
         migas={[
-          { titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined },
+          { titulo: 'Recursos Humanos' },
           { titulo: 'Observaciones', ruta: persona ? `/rrhh/observaciones?mes=${mes}` : undefined },
           ...(persona ? [{ titulo: `${persona.nombres} ${persona.apellidos}` }] : []),
         ]}
@@ -69,6 +70,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
             <RegistrarObservacion
               hoy={hoy}
               personaInicial={persona?.activo ? persona.id : undefined}
+              codigos={codigos}
               personal={personal.filter((p) => p.activo).map((p) => ({ id: p.id, nombre: `${p.nombres} ${p.apellidos}`, cargo: p.cargo }))}
             />
           )

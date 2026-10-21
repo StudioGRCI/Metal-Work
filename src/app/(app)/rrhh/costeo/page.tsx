@@ -5,10 +5,11 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { horasEsperandoCosto } from '@/lib/datos/reportes-diarios'
-import { codigosInternos, listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaLarga, hoyLima, mesLargo, moneda, porcentaje } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
 import { AnularTareo, CargarHoras } from './formulario'
 
@@ -40,7 +41,6 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const perfil = await exigirPermiso('rrhh.personal')
   // Carga y anula solo RR. HH.; el administrador lo ve (migración 20261020167000).
   const edita = editaComoRrhh(perfil, 'rrhh.personal')
-  const planillas = puede(perfil, 'rrhh.ver_planillas')
   const params = await searchParams
   const hoy = hoyLima()
   const mesActual = mesDeLima(hoy)
@@ -49,7 +49,8 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const [tareos, personal, codigos, esperando] = await Promise.all([
     tareosDelMes(mes),
     listarTrabajadores('activos'),
-    codigosInternos(),
+    // La lista es para cargar horas: quien solo mira no la necesita.
+    edita ? codigosParaElegir() : Promise.resolve(null),
     horasEsperandoCosto(),
   ])
   const grupos = agrupar(tareos)
@@ -67,7 +68,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
       <EncabezadoPagina
         titulo="Costeo por código interno"
         ayuda={`Las horas que cada persona trabajó en cada unidad y lo que cuestan. Las del reporte diario de los supervisores entran solas; las demás las carga Recursos Humanos. La hora vale el costo mensual de la persona entre ${HORAS_DEL_MES}.`}
-        migas={[{ titulo: 'Recursos Humanos', ruta: planillas ? '/rrhh' : undefined }, { titulo: 'Costeo por código interno' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Costeo por código interno' }]}
         acciones={
           edita && (
           <CargarHoras

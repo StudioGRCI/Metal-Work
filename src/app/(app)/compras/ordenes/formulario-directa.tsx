@@ -4,6 +4,7 @@ import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { registrarDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-documentos'
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
@@ -11,6 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
@@ -78,10 +80,13 @@ async function esPdf(archivo: File) {
 export function NuevaCompraDirecta({
   proveedores,
   materiales,
+  codigos,
   puedeRegistrarProveedor,
 }: {
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
+  /** Para el buscador de código interno; `null` si la lista no se pudo leer. */
+  codigos: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -117,6 +122,7 @@ export function NuevaCompraDirecta({
           key={vez}
           proveedores={proveedores}
           materiales={materiales}
+          codigos={codigos}
           puedeRegistrarProveedor={puedeRegistrarProveedor}
           alTerminar={(mensaje) => {
             setAbierta(false)
@@ -197,6 +203,7 @@ function FormularioCompraDirecta({
   insumos,
   proveedores,
   materiales,
+  codigos = null,
   puedeRegistrarProveedor,
   alTerminar,
 }: {
@@ -204,6 +211,8 @@ function FormularioCompraDirecta({
   insumos?: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
+  /** La lista del código interno de la directa; la de insumos lleva el de cada RQ. */
+  codigos?: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
   alTerminar: (mensaje: string) => void
 }) {
@@ -350,7 +359,7 @@ function FormularioCompraDirecta({
                 />
               </Campo>
               <Campo etiqueta="Código interno" htmlFor="ocd-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}>
-                <Entrada id="ocd-codigo" name="codigo_interno" required minLength={2} maxLength={60} defaultValue="PLANTA" autoComplete="off" />
+                <CodigoInternoConLista id="ocd-codigo" name="codigo_interno" requerido valorInicial="PLANTA" codigos={codigos} fijos={CODIGOS_FIJOS} />
               </Campo>
             </>
           )}

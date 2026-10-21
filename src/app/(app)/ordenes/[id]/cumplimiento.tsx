@@ -493,7 +493,9 @@ function TarjetaPlano({
           </span>
         }
         acciones={
-          <div className="flex items-center gap-2">
+          // En el teléfono las acciones pasan a otra línea: en una sola, «Editar»
+          // y «Quitar» quedaban 100 px fuera de la pantalla.
+          <div className="flex flex-wrap items-center gap-2">
             <Boton variante="secundario" tamano="sm" aria-expanded={mostrarPdf} onClick={() => setMostrarPdf(!mostrarPdf)}>
               PDF y revisiones ({versiones.length})
             </Boton>

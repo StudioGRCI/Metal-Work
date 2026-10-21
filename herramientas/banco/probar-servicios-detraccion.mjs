@@ -20,6 +20,8 @@ import { mkdirSync } from 'node:fs'
 
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -73,7 +75,7 @@ async function emitir(pagina, { codigo, monto, detraccion, motivo, descripcion }
   await ventana.locator('#os-proveedor').click()
   await pagina.locator('[role="option"]').first().click()
   await ventana.locator('#os-descripcion').fill(descripcion)
-  if (codigo) await ventana.locator('#os-codigo').fill(codigo)
+  if (codigo) await escribirCodigo(ventana.locator('#os-codigo'), codigo)
   await ventana.locator('#os-monto').fill(String(monto))
   await ventana.locator('#os-detraccion').selectOption(detraccion)
   if (motivo) await ventana.locator('#os-detraccion-motivo').fill(motivo)

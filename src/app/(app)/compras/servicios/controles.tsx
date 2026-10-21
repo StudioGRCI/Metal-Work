@@ -3,10 +3,12 @@
 import { Ban, CheckCheck, PencilLine, Play } from 'lucide-react'
 import { useState } from 'react'
 
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { AreaTexto, Campo } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { NO_SUJETA, type DetraccionDeServicio, type TipoDetraccion } from '@/lib/dominio/detraccion'
 import { useAccion, useEnvio } from '@/lib/envio'
 
@@ -128,6 +130,7 @@ export function CorregirServicio({
   montoSinIgvPen,
   enDolares,
   tipos,
+  codigos,
   cambiaCodigo,
 }: {
   id: string
@@ -137,6 +140,8 @@ export function CorregirServicio({
   montoSinIgvPen: number | null
   enDolares: boolean
   tipos: TipoDetraccion[]
+  /** Para el buscador de código interno; `null` si no se pudo leer o no se cambia el código. */
+  codigos: CodigoParaElegir[] | null
   cambiaCodigo: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -170,14 +175,13 @@ export function CorregirServicio({
           <input type="hidden" name="id" value={id} />
           {cambiaCodigo && (
             <Campo etiqueta="Código interno" htmlFor={`os-codigo-${id}`} requerido ayuda={AYUDA_CODIGO_INTERNO}>
-              <Entrada
+              <CodigoInternoConLista
                 id={`os-codigo-${id}`}
                 name="codigo_interno"
-                required
-                minLength={2}
-                maxLength={60}
-                autoComplete="off"
-                defaultValue={codigoInterno ?? ''}
+                requerido
+                valorInicial={codigoInterno ?? ''}
+                codigos={codigos}
+                fijos={CODIGOS_FIJOS}
               />
             </Campo>
           )}

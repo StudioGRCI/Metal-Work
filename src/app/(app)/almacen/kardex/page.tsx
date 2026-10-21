@@ -48,7 +48,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const params = await searchParams
 
   const filtros = filtrosDeKardex(params)
-  const pagina = filtros.pagina
   // «Atención de requerimiento» manda aquí con el RQ para registrar su salida.
   const rqInicial = typeof params.rq === 'string' && /^[0-9a-f-]{36}$/i.test(params.rq) ? params.rq : undefined
 
@@ -86,7 +85,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
   const lineasPorValidar = porValidar.reduce((s, e) => s + e.lineas.length, 0)
 
-  const { filas, total, cronologico } = kardex
+  const { filas, total, cronologico, pagina } = kardex
   const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
   const elegido = filtros.material ? materiales.find((m) => m.material_id === filtros.material) : undefined
   const minimoElegido = elegido ? minimos.get(elegido.material_id) ?? null : null
