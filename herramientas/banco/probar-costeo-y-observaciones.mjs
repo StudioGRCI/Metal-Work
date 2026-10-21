@@ -18,6 +18,8 @@
  */
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -85,6 +87,8 @@ const codigoB = 'PLANTA'
   await v.locator('input[name="apellidos"]').fill(persona.apellidos)
   await v.locator('input[name="dni"]').fill(persona.dni)
   await v.locator('input[name="cargo"]').fill('Soldador')
+  // La planilla es obligatoria desde #129: sin elegirla, el formulario no sale.
+  await v.locator('select[name="planilla"]').selectOption('TALLER')
   await v.locator('input[name="banco"]').fill('Banco de Pruebas')
   await v.locator('input[name="numero_cuenta"]').fill(persona.cuenta)
   await v.locator('input[name="costo_mensual"]').fill('2400')
@@ -110,7 +114,7 @@ const codigoB = 'PLANTA'
   await pagina.getByRole('button', { name: 'Cargar horas' }).click()
   const v = pagina.locator('[role="dialog"]')
   await elegir(pagina, v, persona.nombres)
-  await v.locator('input[name="codigo_interno"]').fill(codigoA.toLowerCase())
+  await escribirCodigo(v.locator('input[name="codigo_interno"]'), codigoA.toLowerCase())
   await v.locator('input[name="horas"]').fill('6.5')
   await v.locator('input[name="labor"]').fill('Soldadura de largueros')
   const vista = limpio(await v.textContent())
@@ -126,7 +130,7 @@ const codigoB = 'PLANTA'
 
   // Mismo día: con 10 horas más pasaría de 16.
   await elegir(pagina, v, persona.nombres)
-  await v.locator('input[name="codigo_interno"]').fill(codigoB)
+  await escribirCodigo(v.locator('input[name="codigo_interno"]'), codigoB)
   await v.locator('input[name="horas"]').fill('10')
   await v.getByRole('button', { name: 'Cargar horas' }).click()
   await v.getByRole('alert').filter({ hasText: '16 horas' }).waitFor({ timeout: 15000 }).catch(() => {})
@@ -170,13 +174,16 @@ const codigoB = 'PLANTA'
   await v.locator('select[name="tipo"]').selectOption('AMONESTACION_ESCRITA')
   await v.locator('select[name="motivo"]').selectOption('EPP')
   await v.locator('textarea[name="detalle"]').fill(`Soldaba sin careta en la prueba ${sello}`)
-  await v.locator('input[name="codigo_interno"]').fill(codigoA)
+  await escribirCodigo(v.locator('input[name="codigo_interno"]'), codigoA)
   await v.getByRole('button', { name: 'Registrar' }).click()
   await v.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
   await pagina.waitForLoadState('networkidle')
-  const fila = limpio(await pagina.locator('tbody tr', { hasText: persona.nombres }).textContent())
-  // Observaciones, verbales, escritas y suspensiones.
-  comprobar(fila.endsWith('Soldador0010'), `el resumen cuenta la amonestación escrita (${fila.slice(0, 120)})`)
+  // Observaciones, verbales, escritas y suspensiones, celda por celda: desde #134
+  // la celda del nombre trae también «0 verbales» para el teléfono.
+  const filaResumen = pagina.locator('tbody tr', { hasText: persona.nombres })
+  await filaResumen.waitFor({ timeout: 15000 }).catch(() => {})
+  const celdas = (await filaResumen.locator('td').allTextContents()).map(limpio)
+  comprobar(celdas.slice(1).join(',') === '0,0,1,0', `el resumen cuenta la amonestación escrita (${celdas.join(' | ').slice(0, 120)})`)
   const registro = limpio(await pagina.locator('li', { hasText: `Soldaba sin careta en la prueba ${sello}` }).textContent())
   comprobar(registro.includes('Amonestación escrita') && registro.includes('No usa su EPP') && registro.includes(codigoA), `el registro trae tipo, motivo y código (${registro.slice(0, 140)})`)
 

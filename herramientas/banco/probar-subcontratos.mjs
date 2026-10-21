@@ -31,6 +31,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
+import { escribirCodigo } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -170,7 +171,7 @@ let numeroSc = null
   await pagina.keyboard.type(sello)
   await pagina.getByRole('option', { name: new RegExp(sello) }).first().click()
   await v.locator('textarea[name="descripcion"]').fill('Instalación eléctrica del furgón de prueba, con el material de la casa.')
-  await v.locator('input[name="codigo_interno"]').fill(codigo)
+  await escribirCodigo(v.locator('input[name="codigo_interno"]'), codigo)
   await v.locator('input[name="monto"]').fill('3500')
   // Sin área el navegador no lo deja enviar: es obligatoria.
   const sinArea = await v.locator('select[name="area"]').evaluate((el) => el.validity.valueMissing)

@@ -22,6 +22,8 @@ import { mkdirSync } from 'node:fs'
 
 import { chromium } from 'playwright-core'
 
+import { escribirCodigo } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -78,7 +80,7 @@ const opciones = async (select) => (await select.locator('option:not([disabled])
 async function registrar(pagina, { area, codigo, justificacion, insumos }) {
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.locator('#rq-area').selectOption({ label: area })
-  await ventana.locator('#rq-codigo').fill(codigo)
+  await escribirCodigo(ventana.locator('#rq-codigo'), codigo)
   await ventana.locator('#rq-justificacion').fill(justificacion)
   for (const [i, [descripcion, cantidad]] of insumos.entries()) {
     if (i > 0) await ventana.getByRole('button', { name: 'Agregar insumo' }).click()

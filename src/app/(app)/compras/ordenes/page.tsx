@@ -7,6 +7,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
@@ -27,10 +28,11 @@ function divisa(codigo: string) {
 export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
   const emite = puede(perfil, 'compras.crear')
-  const [compras, proveedores, materiales] = await Promise.all([
+  const [compras, proveedores, materiales, codigos] = await Promise.all([
     cargarOrdenesCompra(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
     emite ? catalogoDeAlmacen() : Promise.resolve([]),
+    emite ? codigosParaElegir() : Promise.resolve(null),
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
   const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
@@ -47,6 +49,7 @@ export default async function PaginaOrdenesCompra() {
             <NuevaCompraDirecta
               proveedores={proveedores}
               materiales={materiales}
+              codigos={codigos}
               puedeRegistrarProveedor={puede(perfil, 'proveedores.editar')}
             />
           )

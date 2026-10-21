@@ -3,6 +3,7 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 
+import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
@@ -10,6 +11,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { AreaSolicitante, OtParaLogistica } from '@/lib/datos/logistica'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { TipoDetraccion } from '@/lib/dominio/detraccion'
 import { useEnvio } from '@/lib/envio'
 
@@ -26,12 +28,15 @@ export function NuevaOrdenServicio({
   ordenes,
   areas,
   tipos,
+  codigos,
   puedeRegistrarProveedor,
 }: {
   proveedores: ProveedorParaCompra[]
   ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
   tipos: TipoDetraccion[]
+  /** Para el buscador de código interno; `null` si la lista no se pudo leer. */
+  codigos: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -68,6 +73,7 @@ export function NuevaOrdenServicio({
           ordenes={ordenes}
           areas={areas}
           tipos={tipos}
+          codigos={codigos}
           puedeRegistrarProveedor={puedeRegistrarProveedor}
           alTerminar={(mensaje) => {
             setAbierta(false)
@@ -84,6 +90,7 @@ function FormularioServicio({
   ordenes,
   areas,
   tipos,
+  codigos,
   puedeRegistrarProveedor,
   alTerminar,
 }: {
@@ -91,6 +98,7 @@ function FormularioServicio({
   ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
   tipos: TipoDetraccion[]
+  codigos: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
   alTerminar: (mensaje: string) => void
 }) {
@@ -133,7 +141,7 @@ function FormularioServicio({
       </Campo>
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo etiqueta="Código interno" htmlFor="os-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}>
-          <Entrada id="os-codigo" name="codigo_interno" required minLength={2} maxLength={60} autoComplete="off" />
+          <CodigoInternoConLista id="os-codigo" name="codigo_interno" requerido codigos={codigos} fijos={CODIGOS_FIJOS} />
         </Campo>
         <Campo etiqueta="Para la OT (opcional)" htmlFor="os-orden" ayuda="Si el servicio es para una unidad en taller.">
           <SeleccionBuscable

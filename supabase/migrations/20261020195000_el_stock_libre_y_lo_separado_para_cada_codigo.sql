@@ -124,10 +124,14 @@ begin
                 and l.orden_compra_detalle_id in (select o.detalle from oc_con_rq_abierto o)))
   ),
   -- Cuánto entró al kardex de cada línea de OC, y de qué material es.
+  -- Lo que entró y lo que falta comprar se reparten con la misma regla que
+  -- `entregado_de_requerimientos` (20261020191000), para que «Stock en almacén»
+  -- y el avance del RQ digan lo mismo: si cambia una, cambia la otra.
   recibido as (
     select d.id as detalle, d.material_id,
            coalesce((select sum(m.cantidad::numeric) from public.movimientos_materiales m
-                      where m.orden_compra_detalle_id = d.id and m.tipo = 'INGRESO'), 0) as cantidad
+                      where m.orden_compra_detalle_id = d.id and m.tipo = 'INGRESO'
+                        and m.devolucion_de is null), 0) as cantidad
       from public.orden_compra_material_detalles d
      where d.id in (select l.detalle from lineas l where l.detalle is not null)
   ),
