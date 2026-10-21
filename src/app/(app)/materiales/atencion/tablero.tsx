@@ -27,6 +27,7 @@ import type {
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { APROBACION_COMPRA, comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
+import { redondearCantidad, topeDeCantidad } from '@/lib/dominio/almacen'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { RECOJO_COMPRA, VALIDACION_INGRESO, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { mandarARecojo } from '@/app/(app)/compras/ordenes/acciones'
@@ -127,7 +128,7 @@ export function TableroMateriales({
   }, [filtro, lineas])
 
   const completos = lineas.filter((linea) => linea.estado === 'ATENDIDO').length
-  const porComprar = lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada)).length
+  const porComprar = lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&faltaComprar(l)>0).length
   const porRevisar = lineas.filter((linea) => estadoOperativo(linea) === 'ALMACEN').length
   const enAlmacen = lineas.filter((linea) => linea.estado === 'EN_ALMACEN').length
   const avanceLineas = lineas.length > 0 ? Math.round((completos / lineas.length) * 100) : 0
@@ -141,7 +142,7 @@ export function TableroMateriales({
       </div>
       {avisoCompra && <p role="status" className="rounded-md bg-exito-suave px-3 py-2 text-sm text-exito">{avisoCompra}</p>}
       <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
-        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
+        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&faltaComprar(l)>0)} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
       </Ventana>
       {lineas.length > 0 && (
         <Tarjeta>
@@ -352,7 +353,7 @@ function LineaMaterial({
   const saldoGlobal = Number(existencias.find((item) => item.material_id === linea.material_id)?.existencia ?? 0)
   const reserva = Number(linea.cantidad_stock ?? (linea.decision_almacen==='STOCK'?solicitado:0))
   const saldoDeCompra = reserva + recibido - despachado
-  const disponible = Math.max(0, Math.min(saldoGlobal, saldoDeCompra, solicitado - despachado))
+  const disponible = Math.max(0, topeDeCantidad(Math.min(saldoGlobal, saldoDeCompra, solicitado - despachado)))
   const porcentaje = solicitado > 0 ? Math.min(100, Math.round((despachado / solicitado) * 100)) : 0
   const areaId = areas.find((area) => area.codigo === linea.area_destino)?.id
   const candidatos = responsables.filter((persona) => persona.area_id === areaId)
@@ -499,7 +500,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,al
      <Campo etiqueta="Días de crédito" ayuda="0 para contado" htmlFor="oc-dias"><Entrada id="oc-dias" name="dias" type="number" min={condicion==='CREDITO'?1:0} max={condicion==='CREDITO'?365:0} value={dias} onChange={e=>setDias(Number(e.target.value))}/></Campo>
    </div>
    <fieldset className="space-y-3"><legend className="mb-3 font-semibold text-texto">Insumos pendientes · {elegidas.length} seleccionados</legend>
-     {lineas.map(l=>{const id=l.detalle_id??'';const seleccionado=seleccionados.includes(id);const faltante=Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)-Number(l.cantidad_comprada);return <div key={id} className="rounded-xl border border-borde p-4">
+     {lineas.map(l=>{const id=l.detalle_id??'';const seleccionado=seleccionados.includes(id);const faltante=faltaComprar(l);return <div key={id} className="rounded-xl border border-borde p-4">
        <label className="flex min-h-11 items-center gap-3 text-sm font-medium text-texto"><input type="checkbox" name="detalle_id" value={id} checked={seleccionado} onChange={e=>setSeleccionados(e.target.checked?[...seleccionados,id]:seleccionados.filter(x=>x!==id))} className="size-5 accent-acento"/>{l.material}</label>
        <p className="ml-8 text-xs text-texto-suave">OT {l.numero_ot} · {NOMBRE_AREA[l.area_destino??'']} · Faltan {cantidad(faltante)} {l.unidad}</p>
        {seleccionado&&<div className="mt-3 grid gap-3 sm:grid-cols-2"><Campo etiqueta="Cantidad a comprar" htmlFor={'oc-cant-'+id}><Entrada id={'oc-cant-'+id} name={'cantidad_'+id} type="number" min={0.001} max={faltante} step="0.001" defaultValue={faltante} required/></Campo>
@@ -587,6 +588,12 @@ function FormularioDespacho({
       {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     </form>
   )
+}
+
+// Lo que falta comprar, redondeado: 1.1 − 0.1 da 1.0000000000000002 y la línea
+// salía «por comprar» sin faltarle nada.
+function faltaComprar(l: LineaAtencionMaterial) {
+  return redondearCantidad(Number(l.cantidad_solicitada) - Number(l.cantidad_stock ?? 0) - Number(l.cantidad_comprada))
 }
 
 function estadoGrupo(lineas: LineaAtencionMaterial[]): string {

@@ -99,3 +99,23 @@ export function almacenEnFrase(almacen: Almacen) {
 export function exigeFormato(almacen: string | null | undefined) {
   return almacen === 'MATERIA_PRIMA' || almacen === 'EPP'
 }
+
+/**
+ * Las cantidades del almacén llevan hasta tres decimales, y la base rechaza una
+ * con más (registrar_salida_material). Toda suma o resta de cantidades que hace
+ * la pantalla pasa por aquí: en el navegador 5.3 − 2.1 da 3.1999999999999997, y
+ * esa cifra iba al tope y a la propuesta de la salida, que la base rechazaba.
+ */
+export function redondearCantidad(n: number) {
+  return Math.round(n * 1000) / 1000
+}
+
+/**
+ * Lo más que puede salir, a los tres decimales de la base y sin pasarse de lo
+ * que hay. La recepción guarda hasta cuatro: con 1.0005, redondear daba 1.001
+ * y la base lo rechazaba («Solo hay 1.0005 libre»). Primero quita el ruido de
+ * la suma (3.1999999999999997 es 3.2) y después corta.
+ */
+export function topeDeCantidad(n: number) {
+  return Math.floor(Math.round(n * 1e6) / 1000) / 1000
+}
