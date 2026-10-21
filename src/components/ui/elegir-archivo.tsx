@@ -24,9 +24,11 @@ function tipoDe(accept: string, conCamara: boolean): Tipo {
   const excel = t.some((x) => x === '.xlsx' || x.includes('spreadsheetml'))
   const xml = t.some((x) => x === '.xml' || x.endsWith('/xml'))
   const pdf = t.some((x) => x === '.pdf' || x === 'application/pdf')
+  const word = t.some((x) => x === '.docx' || x === '.doc' || x.includes('wordprocessingml') || x === 'application/msword')
   const foto = t.some((x) => x.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(x))
   if (excel) return { que: 'Elegir el Excel', formato: 'Solo Excel (.xlsx)', noEs: 'No es un Excel (.xlsx)', Icono: FileSpreadsheet }
   if (xml) return { que: 'Elegir el XML', formato: 'XML o ZIP de SUNAT', noEs: 'No es un XML ni un ZIP', Icono: FileCode }
+  if (pdf && word) return { que: 'Elegir el PDF o el Word', formato: 'PDF o Word', noEs: 'No es un PDF ni un Word', Icono: FileText }
   if (pdf && foto) return { que: 'Elegir el PDF o la foto', formato: 'PDF, JPG, PNG o WEBP', noEs: 'No es un PDF ni una foto', Icono: FileUp }
   if (pdf) return { que: 'Elegir el PDF', formato: 'Solo PDF', noEs: 'No es un PDF', Icono: FileText }
   if (foto) {
@@ -50,6 +52,32 @@ function coincide(archivo: File, accept: string): boolean {
   )
 }
 
+/**
+ * Por qué el archivo no sirve —no es del tipo, está vacío, pasa del tope—, en
+ * las mismas palabras que pone el campo; `null` si sirve. Para las pantallas
+ * que leen o suben el archivo apenas se elige: así no lo intentan con uno que
+ * el campo ya marcó en rojo.
+ */
+export function avisoDeArchivo(archivo: File, accept: string, hastaMb?: number): string | null {
+  if (!coincide(archivo, accept)) return `${tipoDe(accept, false).noEs}: toca para elegir otro`
+  if (archivo.size === 0) return 'Está vacío: toca para elegir otro'
+  if (hastaMb && archivo.size > hastaMb * 1024 * 1024) {
+    return `Pesa ${tamanoArchivo(archivo.size)} y el tope es ${hastaMb} MB: toca para elegir otro`
+  }
+  return null
+}
+
+/**
+ * Lo mismo para un PDF, y además que lo sea por dentro: un Word o una foto con
+ * el nombre cambiado a «.pdf» pasa por la extensión y después no lo abre nadie.
+ */
+export async function avisoDePdf(archivo: File, hastaMb?: number): Promise<string | null> {
+  const aviso = avisoDeArchivo(archivo, 'application/pdf,.pdf', hastaMb)
+  if (aviso) return aviso
+  const cabecera = new TextDecoder().decode(await archivo.slice(0, 5).arrayBuffer())
+  return cabecera === '%PDF-' ? null : 'Está dañado o no es un PDF de verdad: toca para elegir otro'
+}
+
 /** «Elegir el Excel de la planilla» → «Falta el Excel de la planilla.» */
 function faltaDe(principal: string): string {
   const objeto = principal.replace(/^(Tomar|Elegir)\s+/, '')
@@ -61,6 +89,16 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
   texto?: string
   /** El tope que valida el servidor: se dice antes de elegir y se avisa si el archivo pasa. */
   hastaMb?: number
+  /**
+   * El archivo que guarda la pantalla, cuando lo lee o lo sube apenas se elige
+   * y vacía el campo para que se pueda volver a elegir el mismo. Sin esto, el
+   * campo muestra lo que tiene elegido.
+   */
+  archivo?: File | null
+  /** Por qué no sirve, cuando lo sabe la pantalla: «No se pudo leer», el rechazo de la subida. Gana al aviso propio. */
+  aviso?: string | null
+  /** Lo que está pasando con el archivo: «Leyendo el Excel…», «Subiendo…». */
+  estado?: string | null
 }
 
 /**
@@ -80,12 +118,18 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  *
  * Lo que dice cambia con lo elegido: el nombre entero y su peso, o el motivo
  * —no es del tipo, pasa del tope, está vacío— antes de enviar. Avisa, no
- * bloquea: el que decide es el servidor.
+ * bloquea: el que decide es el servidor. Es el mismo en todo lugar que pide
+ * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
+ * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
+ * 2026-10-21).
  */
 export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoProps>(function ElegirArchivo(
   {
     texto,
     hastaMb,
+    archivo: archivoDeLaPantalla,
+    aviso: avisoDeLaPantalla,
+    estado,
     accept = '',
     capture,
     className,
@@ -99,7 +143,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   },
   ref,
 ) {
-  const [archivo, setArchivo] = React.useState<File | null>(null)
+  const [delCampo, setDelCampo] = React.useState<File | null>(null)
   const propio = React.useRef<HTMLInputElement | null>(null)
   const idEstado = React.useId()
   const tipo = tipoDe(accept, Boolean(capture))
@@ -113,11 +157,11 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
       if (typeof ref === 'function') ref(input)
       else if (ref) ref.current = input
       if (!input) return
-      setArchivo(input.files?.[0] ?? null)
+      setDelCampo(input.files?.[0] ?? null)
       const form = input.form
       const alVaciar = () => {
         input.setCustomValidity('')
-        setArchivo(null)
+        setDelCampo(null)
       }
       form?.addEventListener('reset', alVaciar)
       return () => {
@@ -136,20 +180,13 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     if (!required) propio.current?.setCustomValidity('')
   }, [required])
 
-  const vacio = archivo ? archivo.size === 0 : false
-  const pasa = archivo && hastaMb ? archivo.size > hastaMb * 1024 * 1024 : false
-  const ajeno = archivo ? !coincide(archivo, accept) : false
-  const aviso = ajeno
-    ? `${tipo.noEs}: toca para elegir otro`
-    : vacio
-      ? 'Está vacío: toca para elegir otro'
-      : pasa
-        ? `Pesa ${tamanoArchivo(archivo!.size)} y el tope es ${hastaMb} MB: toca para elegir otro`
-        : null
+  const archivo = archivoDeLaPantalla !== undefined ? archivoDeLaPantalla : delCampo
+  const aviso = avisoDeLaPantalla || (archivo ? avisoDeArchivo(archivo, accept, hastaMb) : null)
   const limite = hastaMb ? `hasta ${hastaMb} MB` : ''
-  const pie = archivo
-    ? (aviso ?? `${tamanoArchivo(archivo.size)} · toca para cambiarlo`)
-    : [tipo.formato, limite].filter(Boolean).join(', ')
+  const pie =
+    aviso ??
+    estado ??
+    (archivo ? `${tamanoArchivo(archivo.size)} · toca para cambiarlo` : [tipo.formato, limite].filter(Boolean).join(', '))
   const invalido = invalidoDesdeAfuera === true || invalidoDesdeAfuera === 'true'
   const mal = Boolean(aviso) || invalido
   const principal = texto ?? tipo.que
@@ -162,7 +199,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
           ? mal
             ? 'border-solid border-peligro bg-peligro-suave/40'
             : 'border-solid border-exito'
-          : invalido
+          : mal
             ? 'border-dashed border-peligro'
             : 'border-dashed border-borde-fuerte',
         // El campo de verdad es transparente: su anillo de foco (globals.css)
@@ -215,7 +252,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         }}
         onChange={(e) => {
           e.currentTarget.setCustomValidity('')
-          setArchivo(e.currentTarget.files?.[0] ?? null)
+          setDelCampo(e.currentTarget.files?.[0] ?? null)
           onChange?.(e)
         }}
         {...props}

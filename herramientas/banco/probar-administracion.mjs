@@ -292,15 +292,22 @@ let ordenId = ''
   const repetido = (await uno(`select numero from public.ordenes_trabajo order by creado_en limit 1`))?.numero ?? ''
   await pagina.locator('#numero').fill(repetido)
   await pagina.getByRole('button', { name: 'Registrar orden' }).click()
-  await pagina.locator('[role="alert"]').first().waitFor({ timeout: 10000 })
-  comprobar(/Elige el PDF de la orden/.test(await pagina.locator('[role="alert"]').first().innerText()), 'sin el PDF no se registra')
+  // Lo que falta lo dice el campo del PDF, como el número dice lo suyo, y el cursor va ahí.
+  await pagina.getByText('Falta el PDF de la orden').waitFor({ timeout: 10000 })
+  comprobar(await pagina.locator('#pdf_orden').evaluate((e) => e === document.activeElement && e.getAttribute('aria-invalid') === 'true'),
+    'sin el PDF no se registra: su campo dice que falta y el cursor queda ahí')
   comprobar((await uno(`select count(*)::int as n from public.ordenes_trabajo where descripcion like $1`, [`%banco ${sello}`])).n === 0, 'y no dejó ninguna orden')
 
   const archivo = join(CAPTURAS, `OT-banco-${sello}.pdf`)
   writeFileSync(archivo, pdfConTexto([`ORDEN DE TRABAJO de banco ${sello}`, `CLIENTE: ${cliente}`, 'Reparación de tolva']))
-  await pagina.locator('input[type="file"]').setInputFiles(archivo)
+  // Primero uno que se llama .pdf y no lo es: se queda a la vista, en rojo y con el motivo.
+  await pagina.locator('#pdf_orden').setInputFiles({ name: `NO-ES-PDF-${sello}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('PK\u0003\u0004 un Word con otro nombre') })
+  await pagina.getByText(`NO-ES-PDF-${sello}.pdf`).waitFor({ timeout: 5000 })
+  comprobar(await pagina.getByText('Está dañado o no es un PDF de verdad: toca para elegir otro').isVisible(), 'un archivo que no es PDF por dentro se marca en su campo')
+  await pagina.locator('#pdf_orden').setInputFiles(archivo)
   await pagina.getByText(`OT-banco-${sello}.pdf`).waitFor({ timeout: 5000 })
-  comprobar(await pagina.getByText('Listo · toca para cambiarlo').isVisible(), 'el PDF elegido se distingue de la zona vacía')
+  comprobar(await pagina.getByText(/^[\d.]+ (KB|MB) · toca para cambiarlo$/).isVisible(), 'el PDF elegido se distingue de la zona vacía y dice su peso')
+  comprobar((await pagina.locator('#pdf_orden').getAttribute('aria-invalid')) === null, 'y ya no queda marcado')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-con-pdf.png`, fullPage: true })
   if (repetido) {
     const antesDelRepetido = new Date()
@@ -365,7 +372,7 @@ let ordenId = ''
   const t = limpio(await pagina.locator('main').innerText())
   comprobar(!t.includes(`OT-banco-${sello}.pdf`), 'Gerencia abre la orden y no ve el PDF')
   comprobar(t.includes('La orden tiene su PDF. Lo abren Diseño y Supervisión'), 'pero sabe que la orden tiene su PDF, y quién lo abre')
-  comprobar((await pagina.getByText('Subir PDF').count()) === 0, 'y no se le ofrece subir otro')
+  comprobar((await pagina.locator('[id^="subir-pdf-"]').count()) === 0, 'y no se le ofrece subir otro')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-gerencia.png`, fullPage: true })
   await contexto.close()
 }

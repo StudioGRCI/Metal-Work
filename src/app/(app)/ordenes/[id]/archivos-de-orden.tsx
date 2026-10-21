@@ -1,16 +1,15 @@
 'use client'
 
-import { FileSpreadsheet, FileText, FileUp, Trash2 } from 'lucide-react'
+import { FileSpreadsheet, FileText, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type ReactNode } from 'react'
 
-import { BASE_BOTON, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Boton } from '@/components/ui/boton'
+import { ElegirArchivo, avisoDePdf } from '@/components/ui/elegir-archivo'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { useEnvio } from '@/lib/envio'
 import { fecha as fmtFecha } from '@/lib/format'
-import { cn } from '@/lib/utils'
 
 import { quitarAdjunto } from './acciones-adjuntos'
 
@@ -56,6 +55,9 @@ export function ArchivosDeOrden({
 }) {
   const router = useRouter()
   const [subiendo, setSubiendo] = useState(false)
+  // El PDF que se está subiendo, o el que no entró y por qué: se ven en su campo.
+  const [elegido, setElegido] = useState<File | null>(null)
+  const [avisoSubida, setAvisoSubida] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [, iniciar] = useTransition()
@@ -66,20 +68,26 @@ export function ArchivosDeOrden({
 
   async function subir(archivo: File | undefined) {
     if (!archivo || enCurso.current) return
-    enCurso.current = true
-    setSubiendo(true)
+    setElegido(archivo)
     setError(null)
     setAviso(null)
+    // Se sube apenas se elige: el que no es un PDF de verdad o pasa del tope no sale.
+    const noSirve = await avisoDePdf(archivo, MAXIMO_ADJUNTO_MB)
+    setAvisoSubida(noSirve)
+    if (noSirve) return
+    enCurso.current = true
+    setSubiendo(true)
     try {
       const r = await subirAdjunto(ordenId, archivo, 'ORDEN')
       if (!r.ok) {
-        setError(r.error)
+        setAvisoSubida(r.error)
         return
       }
+      setElegido(null)
       setAviso(r.mensaje ?? 'PDF guardado en la orden.')
       iniciar(() => router.refresh())
     } catch {
-      setError('No se pudo guardar el archivo. Revisa la señal y vuelve a intentar.')
+      setAvisoSubida('No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
     } finally {
       enCurso.current = false
       setSubiendo(false)
@@ -91,32 +99,6 @@ export function ArchivosDeOrden({
       <TarjetaCabecera
         titulo="Orden de trabajo"
         ayuda="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
-        acciones={
-          sube && (
-            <label
-              className={cn(
-                BASE_BOTON,
-                VARIANTES.secundario,
-                TAMANOS.sm,
-                'cursor-pointer',
-                subiendo && 'pointer-events-none opacity-60',
-              )}
-            >
-              <FileUp aria-hidden className="size-3.5" />
-              {subiendo ? 'Subiendo…' : 'Subir PDF'}
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                className="sr-only"
-                disabled={subiendo}
-                onChange={(e) => {
-                  void subir(e.target.files?.[0])
-                  e.target.value = ''
-                }}
-              />
-            </label>
-          )
-        }
       />
       <TarjetaCuerpo className="space-y-4">
         {pdfOculto && (
@@ -126,10 +108,7 @@ export function ArchivosDeOrden({
         )}
         {pdfOculto && adjuntos.length === 0 ? null : adjuntos.length === 0 ? (
           <p className="text-sm text-texto-suave">
-            Todavía no se subió el PDF de la orden.{' '}
-            {sube
-              ? `Sube el PDF de la orden con el botón de arriba (hasta ${MAXIMO_ADJUNTO_MB} MB).`
-              : 'Los sube la oficina o el supervisor.'}
+            Todavía no se subió el PDF de la orden.{!sube && ' Lo sube la oficina o el supervisor.'}
           </p>
         ) : (
           <ul className="divide-y divide-borde">
@@ -138,9 +117,29 @@ export function ArchivosDeOrden({
             ))}
           </ul>
         )}
-        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
-        {sube && adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
-          <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
+        {sube && (
+          <div className="space-y-1.5">
+            {/* Se guarda en la orden apenas se elige, por eso dice «Subir». */}
+            <ElegirArchivo
+              id={`subir-pdf-${ordenId}`}
+              aria-label="PDF de la orden"
+              accept="application/pdf,.pdf"
+              texto="Subir el PDF de la orden"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={elegido}
+              aviso={avisoSubida}
+              estado={subiendo ? 'Subiendo…' : null}
+              disabled={subiendo}
+              onChange={(e) => {
+                void subir(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+            {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
+            {adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
+              <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
+            )}
+          </div>
         )}
 
         {error && (

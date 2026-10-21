@@ -1,6 +1,6 @@
 'use client'
 
-import { FileSearch, FileUp, Plus, Undo2, Upload } from 'lucide-react'
+import { Plus, Undo2, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -8,6 +8,7 @@ import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
@@ -55,6 +56,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Por qué el archivo elegido no sirve: va en su campo, no con los errores de subir.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -82,6 +85,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setIncluyeIgv('')
     setProgreso('')
     setError(null)
+    setAvisoArchivo(null)
     setAviso(null)
     setNumero('')
     setListaClientes(clientes)
@@ -129,10 +133,9 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setArchivo(elegido)
     setError(null)
     setLectura(null)
-    if (!tipoDeCotizacion(elegido)) {
-      setError('La cotización se sube en PDF o en Word.')
-      return
-    }
+    const noSirve = avisoDeArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    setAvisoArchivo(noSirve)
+    if (noSirve) return
 
     setLeyendo(true)
     try {
@@ -296,27 +299,20 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
-            <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF o el Word'}</span>
-            <span className="text-xs">PDF o Word · hasta {MAXIMO_ADJUNTO_MB} MB</span>
-            <input
-              type="file"
+          <Campo etiqueta="La cotización" htmlFor="cot-archivo" requerido>
+            <ElegirArchivo
+              id="cot-archivo"
               accept={ACEPTA_COTIZACION}
-              className="sr-only"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={archivo}
+              aviso={avisoArchivo}
+              estado={leyendo ? progreso || 'Leyendo el archivo…' : null}
               onChange={(e) => {
                 void elegirArchivo(e.target.files?.[0])
                 e.target.value = ''
               }}
             />
-          </label>
-
-          {leyendo && (
-            <p role="status" className="flex items-center gap-2 text-sm text-texto-suave">
-              <FileSearch aria-hidden className="size-4" />
-              {progreso || 'Leyendo el archivo…'}
-            </p>
-          )}
+          </Campo>
 
           {lectura && !leyendo && (
             <div role="status" className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">

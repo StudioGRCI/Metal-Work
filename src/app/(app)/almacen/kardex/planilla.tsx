@@ -6,7 +6,7 @@ import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -17,7 +17,8 @@ import { createClient } from '@/lib/supabase/client'
 
 import { leerPlanillaAlmacen, registrarFilaPlanilla, type FilaPlanilla } from './acciones'
 
-const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
+const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
+const MAXIMO_MB_FOTO = 10
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
 /** Lo que eligió Almacén para una fila sin material: uno del catálogo o darlo de alta. */
 const NUEVO = 'NUEVO'
@@ -90,18 +91,15 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
     }
   }
 
+  // Por qué una foto no sirve lo dice su campo; aquí solo se guarda la que sí.
   function elegirFoto(fila: FilaPlanilla, archivo: File | undefined) {
     setFotos((previas) => {
       const nuevas = { ...previas }
-      if (archivo && TIPOS_FOTO.includes(archivo.type) && archivo.size <= 10485760) nuevas[fila.id] = archivo
+      if (archivo && !avisoDeArchivo(archivo, ACEPTA_FOTO, MAXIMO_MB_FOTO)) nuevas[fila.id] = archivo
       else delete nuevas[fila.id]
       return nuevas
     })
-    if (archivo && (!TIPOS_FOTO.includes(archivo.type) || archivo.size > 10485760)) {
-      setResultados((r) => ({ ...r, [fila.id]: { estado: 'error', mensaje: 'La foto tiene que ser JPG, PNG o WebP de hasta 10 MB.' } }))
-    } else {
-      setResultados((r) => { const n = { ...r }; delete n[fila.id]; return n })
-    }
+    setResultados((r) => { const n = { ...r }; delete n[fila.id]; return n })
   }
 
   async function registrar() {
@@ -251,11 +249,9 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       {r?.estado === 'enviando' && <Insignia tono="info">Registrando…</Insignia>}
                       {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
                       {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
-                        <label title={fotos[f.id]?.name} className="inline-flex min-h-11 max-w-64 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
-                          <span className="truncate">{fotos[f.id] ? `Foto: ${fotos[f.id].name}` : 'Adjuntar foto'}</span>
-                          <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={registrando}
-                            aria-label={`Foto de la salida de la fila ${f.fila}`} onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
-                        </label>
+                        <ElegirArchivo accept={ACEPTA_FOTO} texto="Elegir la foto de la salida" hastaMb={MAXIMO_MB_FOTO}
+                          disabled={registrando} className="w-full sm:w-64" aria-label={`Foto de la salida de la fila ${f.fila}`}
+                          onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
                       )}
                     </div>
                   </li>

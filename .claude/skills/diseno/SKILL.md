@@ -22,10 +22,15 @@ En `src/components/ui/`:
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose
   File»), corta el nombre y no dice qué pide. Saca del `accept` qué pide
   («Elegir el PDF o la foto») y con `hastaMb` dice el tope y avisa si el
-  archivo pasa; el tope ya no se repite en la `ayuda`. Quedan aparte, con su
-  propio diseño, las cajas grandes que leen el archivo al elegirlo (la orden,
-  la cotización, el cronograma) y los botones que suben al tocar (el PDF de
-  la OT, las fotos del avance): esos nunca muestran el control del navegador.
+  archivo pasa; el tope ya no se repite en la `ayuda`. Es el mismo en todo
+  lugar que pide un documento (DKS, 2026-10-21), también donde se lee o se
+  sube apenas se elige: la pantalla le pasa `archivo` (el que guarda, porque
+  vacía el campo para poder elegir el mismo otra vez), `aviso` (por qué no
+  sirvió: no se pudo leer, el rechazo de la subida) y `estado` («Leyendo el
+  Excel…», «Subiendo…»). Antes de leer o subir, `avisoDeArchivo` o
+  `avisoDePdf` (este mira además que sea PDF por dentro) dicen si sirve, con
+  las mismas palabras que el campo. Lo único aparte es el mosaico de fotos
+  del avance (`SelectorFotos`): varias a la vez con su miniatura.
 - `Boton` (`variante` primario/secundario/peligro, `tamano`, `cargando`)
 - `Insignia` y `Punto` con `tono` (exito/aviso/peligro/neutro), `Progreso`
 

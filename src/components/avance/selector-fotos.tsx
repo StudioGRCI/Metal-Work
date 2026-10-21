@@ -62,6 +62,11 @@ export function soltarMiniaturas(fotos: FotoLista[]) {
   for (const f of fotos) if (f.vistaPrevia) URL.revokeObjectURL(f.vistaPrevia)
 }
 
+// El campo de verdad está oculto: el anillo de foco del teclado lo lleva el
+// mosaico, igual que la caja de ElegirArchivo.
+const MOSAICO =
+  'flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco'
+
 /** Qué le pasó a la subida, en palabras del taller. */
 function explicarFalla(mensaje: string) {
   const m = mensaje.toLowerCase()
@@ -257,7 +262,7 @@ export function SelectorFotos({
           </div>
         ))}
 
-        {(maximo === undefined || fotos.length < maximo) && <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
+        {(maximo === undefined || fotos.length < maximo) && <label className={MOSAICO}>
           <Camera aria-hidden className="size-5" />
           <span className="text-[11px]">Tomar foto</span>
           <input
@@ -272,7 +277,7 @@ export function SelectorFotos({
           />
         </label>}
 
-        {(maximo === undefined || fotos.length < maximo) && <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto">
+        {(maximo === undefined || fotos.length < maximo) && <label className={MOSAICO}>
           <Images aria-hidden className="size-5" />
           <span className="text-[11px]">De la galería</span>
           <input

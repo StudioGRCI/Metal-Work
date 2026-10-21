@@ -1,12 +1,14 @@
 'use client'
 
-import { AlertTriangle, CalendarRange, Download, FileSpreadsheet } from 'lucide-react'
+import { AlertTriangle, CalendarRange, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { Campo } from '@/components/ui/campos'
+import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
-import { subirAdjunto } from '@/lib/adjuntos'
+import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { explicarFallo } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
@@ -23,6 +25,8 @@ import { cargarCronograma } from './acciones-actividades'
  * mismo nombre se actualiza y lo nuevo se agrega. El Excel, si se quiere,
  * queda guardado en la orden.
  */
+const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; areasPropias: AreaDelTaller[] }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -31,6 +35,8 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [leyendo, setLeyendo] = useState(false)
   const [guardarExcel, setGuardarExcel] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Por qué el Excel elegido no se pudo leer: va en su campo, no con los errores de cargar.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -39,6 +45,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     setArchivo(null)
     setLectura(null)
     setError(null)
+    setAvisoArchivo(null)
     setAviso(null)
     setGuardarExcel(true)
     setAbierto(true)
@@ -49,10 +56,11 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     setArchivo(elegido)
     setLectura(null)
     setError(null)
-    if (!/\.xlsx$/i.test(elegido.name)) {
-      setError('Tiene que ser un Excel .xlsx. Si está en .xls, guárdalo como «Libro de Excel».')
-      return
-    }
+    const noSirve = /\.xls$/i.test(elegido.name)
+      ? 'Es un .xls: guárdalo como «Libro de Excel» (.xlsx) y elígelo otra vez'
+      : avisoDeArchivo(elegido, ACEPTA_EXCEL, MAXIMO_ADJUNTO_MB)
+    setAvisoArchivo(noSirve)
+    if (noSirve) return
     setLeyendo(true)
     try {
       // La librería solo hace falta aquí: se carga cuando se elige el archivo.
@@ -60,7 +68,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
       const datos = (await readSheet(elegido)) as unknown as unknown[][]
       setLectura(leerCronograma(datos, areasPropias))
     } catch {
-      setError('No se pudo leer el archivo. ¿Es un Excel (.xlsx) y está cerrado en la computadora?')
+      setAvisoArchivo('No se pudo leer: si está abierto en la computadora, ciérralo y elígelo otra vez')
     } finally {
       setLeyendo(false)
     }
@@ -143,7 +151,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo="Subir el cronograma"
-        descripcion="Un Excel con una fila por actividad: Área, Actividad, Referencia, Peso (%), Inicio y Fin. Con las fechas, cada supervisor ve qué le toca reportar y qué se atrasó."
+        descripcion="Un Excel con una fila por actividad: Área, Actividad, Referencia, Peso (%), Inicio y Fin. Con las fechas, cada supervisor ve qué le toca reportar y qué se atrasó. Nada se carga hasta que confirmes."
         ancho="lg"
       >
         <div className="space-y-4">
@@ -156,20 +164,22 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
             Bajar la plantilla
           </a>
 
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
-            <FileSpreadsheet aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el Excel'}</span>
-            <span className="text-xs">{leyendo ? 'Leyendo…' : 'Solo .xlsx. Nada se carga hasta que confirmes.'}</span>
-            <input
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="sr-only"
+          <Campo etiqueta="Excel del cronograma" htmlFor={`cronograma-${ordenId}`}>
+            <ElegirArchivo
+              id={`cronograma-${ordenId}`}
+              accept={ACEPTA_EXCEL}
+              texto="Elegir el Excel del cronograma"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={archivo}
+              aviso={avisoArchivo}
+              estado={leyendo ? 'Leyendo el Excel…' : null}
+              aria-invalid={Boolean(lectura?.error)}
               onChange={(e) => {
                 void leer(e.target.files?.[0])
                 e.target.value = ''
               }}
             />
-          </label>
+          </Campo>
 
           {lectura?.error && <Falla texto={lectura.error} />}
 
