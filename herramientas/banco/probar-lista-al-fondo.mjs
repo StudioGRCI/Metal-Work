@@ -8,7 +8,9 @@
  *      opciones; una se elige con clic real y queda puesta en el campo.
  *   2. Si lo visible se achica (el teclado del teléfono), la lista se acorta
  *      a lo que queda y sigue dentro.
- *   3. En el monitor, donde la lista cabe, abre sin mover nada.
+ *   3. En una página suelta (el material del filtro del kardex), el campo que
+ *      sube queda debajo de la barra de arriba y no tapado por ella.
+ *   4. En el monitor, donde la lista cabe, abre sin mover nada.
  *
  * Necesita más de un puñado de vehículos activos para que la lista sea larga;
  * si el banco trae menos de 30, siembra los que faltan (códigos `PRB_…`).
@@ -82,7 +84,10 @@ const medir = (pagina, idLista) =>
   pagina.evaluate((id) => {
     const ul = document.getElementById(id)
     const v = window.visualViewport
-    const alto = v ? v.offsetTop + v.height : window.innerHeight
+    // Fuera de una ventana, la barra de las secciones del teléfono tapa el pie.
+    const pie = ul.closest('[role="dialog"]') ? null : document.querySelector('[data-barra-inferior]')?.getBoundingClientRect()
+    const pantalla = v ? v.offsetTop + v.height : window.innerHeight
+    const alto = pie && pie.height > 0 ? Math.min(pantalla, pie.top) : pantalla
     const caja = ul.getBoundingClientRect()
     const opciones = [...ul.querySelectorAll('[role="option"]')]
     const vistas = opciones.filter((o) => {
@@ -126,7 +131,34 @@ const medir = (pagina, idLista) =>
   await contexto.close()
 }
 
-// ---------------------------------------------------------------- 3: monitor
+// ---------------------------------------------------------------- 3: página suelta
+{
+  console.log('Teléfono, 390 × 500, el filtro del kardex al fondo de la pantalla')
+  const { pagina, contexto, errores } = await entrar({ width: 390, height: 500 })
+  await pagina.keyboard.press('Escape')
+  await pagina.getByRole('dialog').waitFor({ state: 'detached' })
+  // El campo, pegado al borde de abajo: así la lista no cabe y tiene que subir.
+  await pagina.evaluate(() => {
+    const campo = document.getElementById('k-material')
+    const sobra = document.documentElement.scrollHeight - window.innerHeight - window.scrollY
+    document.body.style.paddingBottom = '600px'
+    window.scrollBy(0, campo.getBoundingClientRect().bottom - window.innerHeight + 4 + Math.min(sobra, 0))
+  })
+  await pagina.locator('#k-material').click()
+  await pagina.locator('#k-material-lista').waitFor()
+  await pagina.waitForTimeout(400)
+  const barra = await pagina.locator('header').first().evaluate((h) => Math.round(h.getBoundingClientRect().bottom))
+  const campo = await pagina.locator('#k-material').evaluate((b) => Math.round(b.getBoundingClientRect().top))
+  const m = await medir(pagina, 'k-material-lista')
+  await pagina.screenshot({ path: join(CAPTURAS, 'lista-al-fondo-3-pagina.png') })
+  console.log(`     barra hasta ${barra} px, campo desde ${campo}; lista de ${m.arriba} a ${m.abajo}, lo visible llega a ${m.alto}`)
+  comprobar(campo >= barra, 'el campo subido queda debajo de la barra de arriba')
+  comprobar(m.abajo <= m.alto && m.vistas >= 1, `la lista se ve dentro de la pantalla (${m.vistas} a la vista)`)
+  comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 4: monitor
 {
   console.log('Monitor, 1280 × 900')
   const { pagina, contexto, errores } = await entrar({ width: 1280, height: 900 })

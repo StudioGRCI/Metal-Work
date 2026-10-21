@@ -71,6 +71,8 @@ export function BarraInferior({
     <>
       <nav
         aria-label="Secciones"
+        // Lo busca `SeleccionBuscable` para que su lista no termine debajo.
+        data-barra-inferior
         className="fixed inset-x-0 bottom-0 z-40 border-t border-borde bg-superficie pb-[env(safe-area-inset-bottom)] select-none lg:hidden print:hidden"
       >
         <ul

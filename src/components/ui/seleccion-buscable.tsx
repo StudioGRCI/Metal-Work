@@ -91,10 +91,20 @@ export function SeleccionBuscable({
     const vista = window.visualViewport
     function acomodar() {
       const ul = listaRef.current
-      if (!ul) return
-      const visible = vista ? vista.offsetTop + vista.height : window.innerHeight
+      const campo = contenedor.current
+      if (!ul || !campo) return
+      // En una página suelta del teléfono, la barra de arriba y la de las
+      // secciones abajo son fijas: el campo subido quedaba tapado por una y el
+      // final de la lista, por la otra. Dentro de una Ventana no hay ninguna.
+      const suelta = !campo.closest('[role="dialog"]')
+      const pie = suelta ? document.querySelector('[data-barra-inferior]')?.getBoundingClientRect() : undefined
+      const pantalla = vista ? vista.offsetTop + vista.height : window.innerHeight
+      const visible = pie && pie.height > 0 ? Math.min(pantalla, pie.top) : pantalla
       ul.style.maxHeight = ''
-      if (ul.getBoundingClientRect().bottom > visible) contenedor.current?.scrollIntoView({ block: 'start' })
+      if (ul.getBoundingClientRect().bottom > visible) {
+        campo.style.scrollMarginTop = suelta ? '5rem' : ''
+        campo.scrollIntoView({ block: 'start' })
+      }
       const lista = ul.getBoundingClientRect()
       if (lista.bottom > visible) ul.style.maxHeight = `${Math.max(Math.floor(visible - lista.top - 8), 120)}px`
     }
