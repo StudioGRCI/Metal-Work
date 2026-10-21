@@ -608,6 +608,8 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
       </Insignia>
       {registradas.map((x) => {
         const m = codigo(x.moneda)
+        // Lo que la factura tomó del pago por la boleta: su voucher ya sale abajo, como el de la boleta.
+        const tomado = x.pagos.filter((p) => p.boleta).reduce((suma, p) => suma + p.monto, 0)
         return (
           <div key={x.id} className="space-y-0.5">
             {registradas.length > 1 && <p className="tabular text-texto-suave">{x.numero}</p>}
@@ -616,14 +618,19 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
                 {x.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(x.saldo, m)}
               </p>
             )}
+            {tomado > 0 && (
+              <p className="tabular text-texto-suave">
+                Tomó <span className="whitespace-nowrap">{moneda(tomado, m)}</span> del pago por la boleta
+              </p>
+            )}
             <Vouchers
-              pagos={x.pagos.map((p) => ({ ...p, moneda: x.moneda }))}
+              pagos={x.pagos.filter((p) => !p.boleta).map((p) => ({ ...p, moneda: x.moneda }))}
               bucket={() => BUCKET_PAGOS_FACTURAS}
               urls={urls}
               rotulo={conBoleta ? 'Voucher de la factura' : 'Voucher'}
             />
-            {/* Con un pago directo vigente de la OC con boleta, la factura no se paga: primero se anula ese pago o se pide la devolución (enlaces de abajo). */}
-            {acceso.porPagar && x.saldo > 0 && !(conBoleta && f.pagos.length > 0) && (
+            {/* La factura en otra moneda que la OC pagada por su boleta no toma ese pago ni se paga encima mientras siga. */}
+            {acceso.porPagar && x.saldo > 0 && !(conBoleta && f.pagos.length > 0 && x.moneda !== f.moneda) && (
               <Link href={`/tesoreria/por-pagar#factura-${x.id}`} className={`${toque} ${enlace}`}>
                 {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
               </Link>
@@ -646,17 +653,8 @@ function Pago({ f, urls, acceso }: { f: CompraTrazada; urls: Map<string, string>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}
-      {/* Llegó su comprobante a una OC ya pagada directo: lo que falta es anular ese pago, no pagar. */}
-      {f.tipo === 'OC' && f.pago === 'PAGO_POR_ANULAR' && (acceso.porPagar ? (
-        <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
-          {acceso.porPagar === 'pagar' ? 'Anular el pago en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
-        </Link>
-      ) : (
-        // Quien no ve Cuentas por pagar (Contabilidad, que la registrará) lee a la vista a quién espera.
-        <p className="text-xs text-texto-suave">Espera que Tesorería anule su pago directo.</p>
-      ))}
-      {/* Pagada por su boleta y por su factura: lo que falta es la devolución, y el pago directo se anula después. */}
-      {f.tipo === 'OC' && f.pago === 'PAGADA_DOS_VECES' && (acceso.porPagar ? (
+      {/* Pagada por su boleta y su factura no tomó todo ese pago: lo que falta es pedir la devolución. */}
+      {f.tipo === 'OC' && f.pago === 'PAGADA_DE_MAS' && (acceso.porPagar ? (
         <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pedir la devolución en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>

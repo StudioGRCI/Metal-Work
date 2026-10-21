@@ -144,9 +144,9 @@ export type FacturaDeLogistica = {
    */
   facturaDeLaOc: string | null
   /**
-   * Su OC con boleta ya tiene un pago directo de Tesorería vigente: la base no
-   * registra la factura hasta que Tesorería lo anule, y el registro se quedaba
-   * en borrador.
+   * Su OC con boleta ya tiene un pago directo de Tesorería vigente: registrada,
+   * la factura toma ese pago y solo debe lo que le falte (migración
+   * 20261020210000). Contabilidad lo sabe antes de registrarla.
    */
   pagadaDirecto: boolean
 }
@@ -267,6 +267,25 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
   return filas
 }
 
+/** Los pagos de una factura, con el pago por la boleta del que salió el que tomó del pago directo. */
+const COLUMNAS_PAGO_FACTURA =
+  'id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta)'
+
+/** El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago. */
+async function conVouchers(
+  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string } | null })[],
+): Promise<PagoDeFactura[]> {
+  const [propios, deLaBoleta] = await Promise.all([
+    enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
+    enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.boleta?.archivo_ruta ?? null)),
+  ])
+  return pagos.map(({ boleta, ...p }) => ({
+    ...p,
+    url: (p.archivo_ruta ? propios.get(p.archivo_ruta) : boleta && deLaBoleta.get(boleta.archivo_ruta)) || null,
+    ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
+  }))
+}
+
 /**
  * La tabla de Adquisiciones: de cada factura, sus OC y de cada OC los RQ que
  * atiende, con el enlace al PDF de la factura y a cada voucher. Las OC que
@@ -292,7 +311,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
     ids.length
       ? supabase
           .from('pagos_adquisicion')
-          .select('id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion')
+          .select(COLUMNAS_PAGO_FACTURA)
           .in('adquisicion_id', ids)
           .is('anulado_en', null)
           .order('fecha')
@@ -301,7 +320,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
   if (saldos.error) throw new Error(`No se pudo leer lo pagado de cada factura: ${saldos.error.message}`)
   if (pagos.error) throw new Error(`No se pudieron leer los pagos de las facturas: ${pagos.error.message}`)
   const saldoDe = new Map((saldos.data ?? []).map((s) => [s.id, s]))
-  const vouchers = await enlaces(BUCKET_PAGOS_FACTURAS, (pagos.data ?? []).map((p) => p.archivo_ruta))
+  const pagosConVoucher = await conVouchers(pagos.data ?? [])
 
   // El código interno de cada OC y los RQ que atiende, de todas las OC de la tabla.
   const idsOc = [
@@ -362,9 +381,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
         lectura: lecturaDeFila(a),
         pagado: cuenta?.pagado == null ? null : Number(cuenta.pagado),
         saldo: cuenta?.saldo == null ? null : Number(cuenta.saldo),
-        pagos: (pagos.data ?? [])
-          .filter((p) => p.adquisicion_id === a.id)
-          .map((p) => ({ ...p, url: (p.archivo_ruta && vouchers.get(p.archivo_ruta)) || null })),
+        pagos: pagosConVoucher.filter((p) => p.adquisicion_id === a.id),
       },
       ordenes: (control?.ordenes ?? []).map(oc),
     }
@@ -387,9 +404,14 @@ type CuentaPagarFila = Pick<
 >
 type PagoFacturaFila = Pick<
   Tablas<'pagos_adquisicion'>,
-  'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+  'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion' | 'pago_orden_compra_id'
 >
-export type PagoDeFactura = PagoFacturaFila & { url: string | null }
+/**
+ * Un pago de la factura con su voucher. El que la factura tomó del pago por la
+ * boleta de su OC (`pago_orden_compra_id`) lo anota el sistema: su voucher es el
+ * de ese pago, y no se anula en la factura sino en la OC (migración 20261020210000).
+ */
+export type PagoDeFactura = PagoFacturaFila & { url: string | null; ordenCompraDeLaBoleta: string | null }
 /** Una cuenta activa del proveedor, para que Tesorería sepa a dónde transferir. */
 export type CuentaDelProveedor = Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>
 export type CuentaPorPagar = CuentaPagarFila & {
@@ -454,7 +476,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_adquisicion')
-        .select('id, adquisicion_id, fecha, monto, referencia, archivo_ruta, anulado_en, motivo_anulacion')
+        .select(COLUMNAS_PAGO_FACTURA)
         .in('adquisicion_id', tanda)
         .order('fecha')
       if (r.error) throw new Error(`No se pudieron leer los pagos de las facturas: ${r.error.message}`)
@@ -470,10 +492,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
     }),
     controlDeFacturas(ids),
   ])
-  const [vouchers, pdfs] = await Promise.all([
-    enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
-    enlacesDeComprobantes(comprobantes),
-  ])
+  const [pagosConVoucher, pdfs] = await Promise.all([conVouchers(pagos), enlacesDeComprobantes(comprobantes)])
   const lecturas = new Map(comprobantes.map((a) => [a.id, lecturaDeFila(a)]))
   // El proveedor de la factura es el de sus OC: la factura solo guarda su nombre.
   const idsOc = [...new Set([...controles.values()].flatMap((c) => c.ordenes.map((o) => o.id)))]
@@ -495,9 +514,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
       url: (f.id && pdfs.get(f.id)) || null,
       control,
       lectura: (f.id && lecturas.get(f.id)) || null,
-      pagos: pagos
-        .filter((p) => p.adquisicion_id === f.id)
-        .map((p) => ({ ...p, url: (p.archivo_ruta && vouchers.get(p.archivo_ruta)) || null })),
+      pagos: pagosConVoucher.filter((p) => p.adquisicion_id === f.id),
       cuentasProveedor: proveedores.flatMap((p) => cuentas.get(p) ?? []),
     }
   })

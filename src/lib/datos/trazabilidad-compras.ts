@@ -16,7 +16,17 @@ import { createClient } from '@/lib/supabase/server'
 const texto = z.string().nullable()
 const numero = z.coerce.number()
 
-const esquemaPagoFactura = z.object({ id: z.guid(), fecha: z.string(), monto: numero, referencia: texto, ruta: texto })
+// `boleta`: el que la factura tomó del pago por la boleta de su OC, con el voucher de
+// ese pago (migración 20261020210000); `bucket` falta en las filas de antes.
+const esquemaPagoFactura = z.object({
+  id: z.guid(),
+  fecha: z.string(),
+  monto: numero,
+  referencia: texto,
+  ruta: texto,
+  bucket: z.string().optional(),
+  boleta: z.boolean().default(false),
+})
 const esquemaFactura = z.object({
   id: z.guid(),
   numero: z.string(),
@@ -161,7 +171,7 @@ export async function enlacesDeCompras(filas: CompraTrazada[]): Promise<{ urls: 
     for (const d of f.documentos) sumar(bucketDelDocumento(f, d), d.ruta)
     for (const fa of f.facturas) {
       sumar(fa.bucket, fa.ruta)
-      for (const p of fa.pagos) sumar(BUCKET_PAGOS_FACTURAS, p.ruta)
+      for (const p of fa.pagos) sumar(p.bucket ?? BUCKET_PAGOS_FACTURAS, p.ruta)
     }
     for (const p of f.pagos) sumar(bucketDelPago(f, p), p.ruta)
   }

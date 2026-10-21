@@ -12,19 +12,13 @@ type Def = { etiqueta: string; tono: Tono; descripcion: string }
 export const ESTADO_PAGO: Record<string, Def> = {
   PAGADA: { etiqueta: 'Pagada', tono: 'exito', descripcion: 'Tesorería pagó todo lo facturado.' },
   PAGO_PARCIAL: { etiqueta: 'Pagada en parte', tono: 'info', descripcion: 'Hay un pago, pero falta pagar o facturar otra parte.' },
-  // La OC con boleta que Tesorería pagó directo y a la que después llegó su comprobante (migración 20261020210000).
-  PAGO_POR_ANULAR: {
-    etiqueta: 'Pago por anular',
-    tono: 'aviso',
-    descripcion:
-      'Tesorería la pagó directo por su boleta y el proveedor entregó factura: Tesorería anula ese pago para que Contabilidad la registre, y se paga por la factura.',
-  },
-  // La OC con boleta que Tesorería pagó directo y también por la factura que llegó después: no se anula, se pide la devolución.
-  PAGADA_DOS_VECES: {
-    etiqueta: 'Pagada dos veces',
+  // La OC con boleta que Tesorería pagó directo y cuya factura, que llegó después, no tomó todo ese pago:
+  // ya estaba pagada o es por menos (migración 20261020210000). No se anula nada: se pide la devolución.
+  PAGADA_DE_MAS: {
+    etiqueta: 'Pagada de más',
     tono: 'peligro',
     descripcion:
-      'Tesorería la pagó directo por su boleta y también pagó la factura que el proveedor entregó después: pide al proveedor la devolución de lo pagado de más, y el pago directo se anula cuando la devuelva.',
+      'Tesorería la pagó por su boleta y la factura que el proveedor entregó después ya estaba pagada o es por menos: se pagó de más. Tesorería pide al proveedor la devolución y, cuando la devuelve, anula el pago que le devolvió.',
   },
   // La OC con boleta a la que Logística anexó una factura registrada para otras OC que no alcanza también para esta.
   // La base no liga una OC con boleta a una factura ya registrada: la salida es anular el anexo o corregir el total.
@@ -122,16 +116,10 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
         (f.tipo === 'OC' && f.con_factura === false && f.pago === 'POR_FACTURAR')
       )
     case 'por-pagar':
-      // La pagada dos veces también: Tesorería pide la devolución y su factura puede deber todavía.
-      return (
-        f.pago === 'POR_PAGAR' ||
-        f.pago === 'PAGO_PARCIAL' ||
-        f.pago === 'PAGO_POR_ANULAR' ||
-        f.pago === 'ANEXO_POR_REVISAR' ||
-        f.pago === 'PAGADA_DOS_VECES'
-      )
+      // La pagada de más también: Tesorería tiene que pedir la devolución.
+      return f.pago === 'POR_PAGAR' || f.pago === 'PAGO_PARCIAL' || f.pago === 'ANEXO_POR_REVISAR' || f.pago === 'PAGADA_DE_MAS'
     case 'pagadas':
-      return f.pago === 'PAGADA' || f.pago === 'PAGADA_DOS_VECES'
+      return f.pago === 'PAGADA' || f.pago === 'PAGADA_DE_MAS'
     case 'guia':
       return guiaPorCargar(f)
     case 'no-se-pagan':
@@ -169,12 +157,19 @@ export function pagoQueCancela(
  */
 export function bloqueoDelAnexo(
   oc: { con_factura: boolean | null; pagos: unknown[] },
-  anexo: { tipo: string; factura?: { numero: string; alcanza: boolean; pagado: number } | null },
+  anexo: { tipo: string; factura?: { numero: string; estado: string; alcanza: boolean; pagado: number } | null },
 ): string | null {
   const factura = anexo.factura
   if (anexo.tipo !== 'FACTURA' || oc.con_factura !== false || !factura?.alcanza) return null
   if (factura.pagado <= 0 && oc.pagos.length === 0) return null
-  return `No se anula: ${factura.pagado > 0 ? `la factura ${factura.numero} ya tiene pagos` : 'la OC ya tiene pagos por su boleta'}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
+  // En el orden de la base: la registrada que tomó el pago por la boleta, la que tiene pagos y el borrador que lo tomaría.
+  const motivo =
+    oc.pagos.length > 0 && factura.estado === 'REGISTRADA'
+      ? `la factura ${factura.numero} tomó lo que Tesorería pagó por la boleta`
+      : factura.pagado > 0
+        ? `la factura ${factura.numero} ya tiene pagos`
+        : `la OC ya se pagó por su boleta y la factura ${factura.numero}, al registrarla, toma ese pago`
+  return `No se anula: ${motivo}. Si el número está mal, Contabilidad corrige la factura; si no es de esta OC, la anula el administrador del sistema.`
 }
 
 /**

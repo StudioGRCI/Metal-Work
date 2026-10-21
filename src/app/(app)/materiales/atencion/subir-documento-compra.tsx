@@ -47,11 +47,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   // La factura no alcanza para la OC, o la OC quedó pagada dos veces: el mensaje
   // pide algo, no dice que todo salió bien.
   const [revisar, setRevisar] = useState(false)
-  const [dosVeces, setDosVeces] = useState(false)
+  const [avisaTesoreria, setAvisaTesoreria] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
     setRevisar(false)
-    setDosVeces(false)
+    setAvisaTesoreria(false)
     const archivo = datos.get('archivo')
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
@@ -68,7 +68,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setRevisar(r.datos?.revisar ?? false)
-    setDosVeces(r.datos?.dosVeces ?? false)
+    setAvisaTesoreria(r.datos?.avisaTesoreria ?? false)
     setId(crypto.randomUUID())
     factura.vaciar()
     void detector.leer(undefined)
@@ -102,7 +102,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     {mensaje && (
-      <p role="status" className={`text-xs sm:col-span-3 ${revisar || dosVeces ? 'text-aviso' : 'text-exito'}`}>
+      <p role="status" className={`text-xs sm:col-span-3 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}
         {revisar && verAdquisiciones && (
           <>

@@ -171,9 +171,39 @@ export async function anularPagoFactura(_previo: unknown, formulario: FormData):
 
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/adquisiciones')
-  const caja = await cajaTrasAnular('PAGO_ADQUISICION', analisis.data.id, 'pago')
+  const [caja, quedo] = await Promise.all([
+    cajaTrasAnular('PAGO_ADQUISICION', analisis.data.id, 'pago'),
+    comoQuedaLaFactura(supabase, analisis.data.id),
+  ])
   revalidatePath('/tesoreria/caja-diaria')
-  return { ok: true, mensaje: `Pago anulado: la factura vuelve a su saldo. ${caja}`.trim() }
+  return { ok: true, mensaje: `${quedo} ${caja}`.trim() }
+}
+
+/**
+ * Lo que dice el aviso después de anular un pago de la factura, leído de la
+ * base: si la OC con boleta de la factura se había pagado de más por su boleta,
+ * la factura toma ahora ese pago (migración 20261020210000) y no vuelve a deber
+ * todo. Si no se pudo leer, no se adivina.
+ */
+async function comoQuedaLaFactura(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string): Promise<string> {
+  const { data: pago } = await supabase.from('pagos_adquisicion').select('adquisicion_id').eq('id', pagoId).maybeSingle()
+  if (!pago) return 'Pago anulado: la factura vuelve a su saldo.'
+  const [cuenta, deLaBoleta] = await Promise.all([
+    supabase.from('v_cuentas_pagar').select('saldo, moneda').eq('id', pago.adquisicion_id).maybeSingle(),
+    supabase
+      .from('pagos_adquisicion')
+      .select('id', { count: 'exact', head: true })
+      .eq('adquisicion_id', pago.adquisicion_id)
+      .not('pago_orden_compra_id', 'is', null)
+      .is('anulado_en', null),
+  ])
+  if (cuenta.error || !cuenta.data || deLaBoleta.error) return 'Pago anulado: la factura vuelve a su saldo.'
+  const saldo = Number(cuenta.data.saldo ?? 0)
+  const m = cuenta.data.moneda === 'USD' ? 'USD' : 'PEN'
+  const falta = saldo > 0 ? `le faltan ${moneda(saldo, m)}` : 'queda pagada'
+  return (deLaBoleta.count ?? 0) > 0
+    ? `Pago anulado: la factura toma lo que se pagó por la boleta de su OC y ${falta}.`
+    : `Pago anulado: a la factura ${saldo > 0 ? `le faltan ${moneda(saldo, m)}` : 'no le falta nada'}.`
 }
 
 const NO_PAGA_COMPRAS = 'Los pagos de las OC con boleta los registra Tesorería.'
@@ -290,77 +320,58 @@ export async function anularPagoCompra(_previo: unknown, formulario: FormData): 
     situacionDeLaCompraDelPago(supabase, analisis.data.id),
   ])
   repintarPagosDeCompra()
-  return { ok: true, mensaje: `${queQuedaTrasAnular(situacion?.situacion ?? null, situacion?.monto ?? 0)} ${caja}`.trim() }
+  return { ok: true, mensaje: `${queQuedaTrasAnular(situacion)} ${caja}`.trim() }
 }
 
 type SituacionDePago = Database['public']['Functions']['situacion_de_pago_de_compra']['Returns'][number]
 
-/** Cómo quedó el pago de la OC de ese pago, leído de la base, y cuánto llevaba el pago; `null` si no se pudo leer. */
+/** Cómo quedó el pago de la OC de ese pago, leído de la base; `null` si no se pudo leer. */
 async function situacionDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string) {
-  const { data: pago, error } = await supabase.from('pagos_orden_compra').select('orden_compra_id, monto').eq('id', pagoId).maybeSingle()
+  const { data: pago, error } = await supabase.from('pagos_orden_compra').select('orden_compra_id').eq('id', pagoId).maybeSingle()
   if (error || !pago) return null
   const { data, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: pago.orden_compra_id })
   if (errorSituacion) {
     console.error('No se pudo leer cómo quedó el pago de la OC', errorSituacion)
     return null
   }
-  return data?.[0] ? { situacion: data[0], monto: Number(pago.monto) } : null
+  return data?.[0] ?? null
 }
 
 /**
  * Lo que dice el aviso después de anular un pago de OC con boleta: lo que la
- * base va a dejar hacer, no lo que se esperaba. Si a la OC le llegó su
- * comprobante y le queda otro pago directo vigente, Contabilidad todavía no lo
- * registra. Con los mismos vouchers se paga lo que ya salió por la boleta desde
- * que llegó el comprobante (`en_camino_salio`: este pago y los que se anularon
- * antes por él), nada más: el resto de la factura es un pago nuevo, y si la
- * factura es por menos, lo de más lo devuelve el proveedor. Decía «págale lo
- * que le falta con el mismo voucher» con el saldo entero; y después, con dos
- * pagos a cuenta, contaba solo el último y mandaba a pagar de nuevo el primero.
- * Si no se pudo leer, no se adivina.
+ * base dejó, no lo que se esperaba. Si su factura había tomado ese pago, deja de
+ * tomarlo y vuelve a deber lo que no cubren los otros pagos (migración
+ * 20261020210000). Si no se pudo leer, no se adivina.
  */
-function queQuedaTrasAnular(s: SituacionDePago | null, monto: number): string {
+function queQuedaTrasAnular(s: SituacionDePago | null): string {
   if (!s) return 'Pago anulado.'
   const n = s.pagos_vigentes ?? 0
   const m = s.moneda === 'USD' ? 'USD' : 'PEN'
-  const salio = Number(s.en_camino_salio ?? monto)
-  const vouchers = salio > monto ? 'los mismos vouchers' : 'el mismo voucher'
-  const quedan = n === 1 ? 'queda otro pago directo vigente' : `quedan ${n} pagos directos vigentes`
-  const anulalo = n === 1 ? 'anúlalo' : 'anúlalos'
   // La factura que Logística anexó es de otras OC y no alcanza para esta: la OC
-  // se sigue pagando por su boleta hasta que se anule ese anexo.
+  // se sigue pagando por su boleta cuando se anule ese anexo.
   if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false) {
     return `Pago anulado. Ojo: la factura ${s.en_camino} anexada a esta OC, que Contabilidad registró para otras OC, no alcanza para ella; la OC se paga por su boleta cuando Logística anule ese anexo.`
   }
-  // Con otro pago directo vigente y la factura ya pagada, la compra sigue pagada dos veces.
-  if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && n > 0 && Number(s.pagada_dos_veces ?? 0) > 0) {
-    return `Pago anulado, pero ${quedan} de esta OC, que también se pagó por su factura ${s.en_camino}: ${anulalo} cuando el proveedor devuelva los ${moneda(Number(s.pagada_dos_veces), m)} que se le pagaron de más.`
+  if (s.factura && s.otra_moneda) {
+    return n > 0
+      ? `Pago anulado, pero la OC sigue con ${n === 1 ? 'otro pago' : `${n} pagos`} por su boleta: su factura ${s.factura}, en otra moneda, no se paga mientras ${n === 1 ? 'siga' : 'sigan'}.`
+      : `Pago anulado: la OC se paga por su factura ${s.factura}, en otra moneda, en «Facturas por pagar», con el mismo voucher si el proveedor no lo devolvió.`
   }
-  // Contabilidad ya registró la factura de la OC sin ligarla: Tesorería la paga cuando no quede pago directo.
-  if (s.en_camino && s.en_camino_origen === 'REGISTRADA') {
-    if (n > 0) {
-      return `Pago anulado, pero ${quedan} de esta OC: ${anulalo} también para pagar su factura ${s.en_camino}, que Contabilidad ya registró. Después, con los mismos vouchers van los ${moneda(salio, m)} que ya salieron.`
+  if (s.factura) {
+    const deMas = Number(s.de_mas ?? 0)
+    if (deMas > 0) {
+      return `Pago anulado, pero la OC sigue pagada de más: ${moneda(deMas, m)}. Cuando el proveedor los devuelva, anula el pago que te devolvió.`
     }
-    // Lo que le falta a esa factura: si ya está pagada, no queda nada por pagar (la base no da el saldo en otra moneda).
-    if (s.en_camino_saldo !== null && Number(s.en_camino_saldo) <= 0) {
-      return `Pago anulado: la OC queda pagada una vez, por su factura ${s.en_camino}, que ya está pagada.`
-    }
-    const registrada = `Pago anulado: la OC se paga por su factura ${s.en_camino}, que Contabilidad ya registró. En «Facturas por pagar»`
-    if (s.en_camino_saldo === null) return `${registrada} paga con ${vouchers} lo que ya salió por la boleta, ${moneda(salio, m)}.`
-    const saldo = Number(s.en_camino_saldo)
-    if (salio >= saldo) {
-      const deMas = Math.round((salio - saldo) * 100) / 100
-      return `${registrada} paga lo que le falta, ${moneda(saldo, m)}, con ${vouchers}: el dinero ya salió.${
-        deMas > 0 ? ` Los ${moneda(deMas, m)} que salieron de más los devuelve el proveedor, si no los devolvió ya.` : ''
-      }`
-    }
-    return `${registrada} paga con ${vouchers} los ${moneda(salio, m)} que ya salieron. Los ${moneda(saldo - salio, m)} que le faltan después son un pago nuevo.`
+    const saldo = Number(s.factura_saldo ?? 0)
+    if (saldo <= 0) return `Pago anulado: la OC sigue pagada por su factura ${s.factura}.`
+    return `Pago anulado: su factura ${s.factura} ya no toma ese pago y le faltan ${moneda(saldo, m)}: se pagan en «Facturas por pagar».`
   }
-  if (s.en_camino && n > 0) {
-    return `Pago anulado, pero ${quedan} de esta OC: ${anulalo} también para que Contabilidad registre su comprobante ${s.en_camino}.`
-  }
+  // El comprobante que el proveedor entregó y Contabilidad todavía no registra: registrado, toma los pagos que queden.
   if (s.en_camino) {
-    return `Pago anulado: la OC se paga por su comprobante ${s.en_camino} en «Facturas por pagar» cuando Contabilidad lo registre, con ${vouchers} por lo que ya salió (${moneda(salio, m)}). Si el comprobante es por más, el resto es un pago nuevo; si es por menos, la diferencia la devuelve el proveedor.`
+    const quien = s.en_camino_origen === 'BORRADOR' ? 'Contabilidad lo tiene en borrador' : 'Logística lo anexó'
+    return `Pago anulado: la OC se paga por su comprobante ${s.en_camino} (${quien}) en «Facturas por pagar» cuando Contabilidad lo registre.${
+      n > 0 ? ' Registrado, toma lo que queda pagado por la boleta.' : ''
+    }`
   }
   if (s.cancelada) {
     return Number(s.saldo ?? 0) <= 0

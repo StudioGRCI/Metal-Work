@@ -6393,6 +6393,7 @@ export type Database = {
           anulado_en: string | null
           motivo_anulacion: string | null
           actualizado_en: string
+          pago_orden_compra_id: string | null
         }
         Insert: {
           id?: string
@@ -6409,6 +6410,7 @@ export type Database = {
           anulado_en?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          pago_orden_compra_id?: string | null
         }
         Update: {
           id?: string
@@ -6425,6 +6427,7 @@ export type Database = {
           anulado_en?: string | null
           motivo_anulacion?: string | null
           actualizado_en?: string
+          pago_orden_compra_id?: string | null
         }
         Relationships: [
           {
@@ -6439,6 +6442,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_pago_orden_compra_id_fkey"
+            columns: ["pago_orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "pagos_orden_compra"
             referencedColumns: ["id"]
           },
           {
@@ -11127,7 +11137,13 @@ export type Database = {
         }
         Returns: null
       }
-      avisar_pago_por_anular: {
+      avisar_pago_directo: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
+      }
+      bloquear_facturas_de_las_compras: {
         Args: {
           p_compras: string[] | null
         }
@@ -12056,12 +12072,6 @@ export type Database = {
         }
         Returns: null
       }
-      compra_pagada_directo: {
-        Args: {
-          p_compras: string[] | null
-        }
-        Returns: string
-      }
       compra_tiene_comprobante: {
         Args: {
           p_compra: string | null
@@ -12094,11 +12104,20 @@ export type Database = {
           comprobante_en_camino_bucket: string | null
           comprobante_en_camino_ruta: string | null
           comprobante_en_camino_alcanza: boolean | null
-          pagada_dos_veces: number | null
           estuvo_en_factura: string | null
-          salio_por_boleta: number | null
-          comprobante_en_camino_saldo: number | null
+          factura: string | null
+          factura_id: string | null
+          factura_saldo: number | null
+          aplicado: number | null
+          de_mas: number | null
+          otra_moneda: boolean | null
         }[]
+      }
+      compras_de_la_factura: {
+        Args: {
+          p_factura: string | null
+        }
+        Returns: string[]
       }
       compras_en_gestion: {
         Args: Record<PropertyKey, never>
@@ -12223,10 +12242,13 @@ export type Database = {
           ruta: string | null
           documento_id: string | null
           alcanza: boolean | null
-          pagado_dos_veces: number | null
-          salio_por_boleta: number | null
-          saldo: number | null
         }[]
+      }
+      conciliar_pago_directo: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
       }
       confirmar_igv_cotizacion: {
         Args: {
@@ -12833,6 +12855,15 @@ export type Database = {
           facturado: number | null
           completa: boolean | null
           facturas: Json | null
+        }[]
+      }
+      facturas_de_la_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          parcial: boolean | null
         }[]
       }
       fijar_condicion_pago_compra: {
@@ -13514,6 +13545,20 @@ export type Database = {
           numero: string | null
           unidad: string | null
           estado: string | null
+        }[]
+      }
+      pago_directo_de_la_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          factura_id: string | null
+          factura: string | null
+          factura_saldo: number | null
+          aplicado: number | null
+          de_mas: number | null
+          otra_moneda: boolean | null
+          entera: boolean | null
         }[]
       }
       pasar_compra_a_tesoreria: {
@@ -14877,13 +14922,15 @@ export type Database = {
           en_camino: string | null
           en_camino_origen: string | null
           en_camino_alcanza: boolean | null
-          pagada_dos_veces: number | null
           pagos_vigentes: number | null
           cancelada: boolean | null
           saldo: number | null
           moneda: string | null
-          en_camino_saldo: number | null
-          en_camino_salio: number | null
+          factura: string | null
+          factura_saldo: number | null
+          aplicado: number | null
+          de_mas: number | null
+          otra_moneda: boolean | null
         }[]
       }
       solicitar_revision_salida: {

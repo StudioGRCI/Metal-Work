@@ -20,12 +20,12 @@
 --
 -- Una OC se paga por un solo camino: la que trae factura (registrada, en
 -- borrador o anexada por Logística, la registre Contabilidad ligada a ella, a
--- otra OC o a ninguna) no se paga directo, y a la que Tesorería ya le pagó
--- directo Contabilidad no le registra ni le paga esa factura hasta que ese pago
--- se anule. Con un pago vigente, la OC tampoco cambia su total. Si la factura
--- llega a una OC ya pagada, Tesorería recibe el aviso para anular su pago (o,
--- si la factura ya estaba pagada, para pedir la devolución de lo que se pagó de
--- más). La misma factura se reconoce aunque se escriba de otra forma («S.A.C.» o
+-- otra OC o a ninguna) no se paga directo. Y si la factura llega a una OC que
+-- Tesorería ya pagó directo, la factura toma ese pago: el dinero salió una vez
+-- y nadie anula un pago bien hecho. Si la factura es por más, se paga la
+-- diferencia; si es por menos, o ya estaba pagada, lo pagado de más queda a la
+-- vista hasta que el proveedor lo devuelva. Con un pago vigente, la OC tampoco
+-- cambia su total. La misma factura se reconoce aunque se escriba de otra forma («S.A.C.» o
 -- «SAC», «F001-000123» o «F001 123»; «S.A.C.» y «E.I.R.L.» son dos empresas), no
 -- entra dos veces a Adquisiciones y, registrada sin OC, se liga sola a la OC con
 -- boleta a la que Logística la anexó; si esa OC ya tiene su factura, no entra
@@ -177,6 +177,17 @@ do $$ begin
       and not exists (select 1 from public.pagos_orden_compra p where p.archivo_ruta = objects.name));
   end if;
 end $$;
+
+-- Si el proveedor entrega factura después, la factura toma este pago (sección 6):
+-- un pago de la factura que es este mismo, sin caja propia, porque el dinero
+-- salió una sola vez. Lo pone y lo quita el sistema.
+-- (b) La sección 6 busca por él los pagos de cada OC; casi todas las filas van en null.
+alter table public.pagos_adquisicion
+  add column if not exists pago_orden_compra_id uuid references public.pagos_orden_compra(id) on delete restrict;
+create index if not exists ix_pagos_adquisicion_pago_orden_compra
+  on public.pagos_adquisicion (pago_orden_compra_id) where pago_orden_compra_id is not null;
+comment on column public.pagos_adquisicion.pago_orden_compra_id is
+  'El pago directo de la OC con boleta que esta factura tomó (migración 20261020210000): no movió la caja, la movió ese pago. Lo pone y lo anula el sistema.';
 
 -- Con un pago vigente, la OC ya no cambia de boleta a factura ni de moneda: el
 -- pago quedaría colgado de una OC que se paga por otro camino. Y quién registra
@@ -527,6 +538,73 @@ comment on function public.anexos_de_la_factura(public.adquisiciones) is
   'Los anexos vigentes de OC con boleta de los que esa factura es la factura (por el anexo que eligió o por su número y su proveedor). Ayudante interno.';
 revoke all on function public.anexos_de_la_factura(public.adquisiciones) from public, anon, authenticated;
 
+-- Las facturas registradas de una OC con boleta: la que la tiene en su cabecera
+-- o ligada (con `parcial`, si la cubre en parte) y la de su anexo que alcanza
+-- para ella, aunque Contabilidad no la ligara. La que no alcanza no es suya: su
+-- anexo está por revisar. Con ellas la factura toma el pago directo (sección 6)
+-- y Tesorería sabe que la OC ya se paga por factura. Por la cabecera, el vínculo
+-- y el anexo por separado: con un `or` recorría la tabla.
+create or replace function public.facturas_de_la_compra(p_compra uuid)
+returns table (adquisicion_id uuid, parcial boolean)
+language sql stable security definer rows 2 set search_path to 'public' as $$
+  select x.id, coalesce(bool_and(l.parcial), false)
+    from (select a.id from public.adquisiciones a where a.orden_compra_id = p_compra
+          union
+          select l.adquisicion_id from public.adquisiciones_ordenes_compra l
+           where l.orden_compra_id = p_compra and l.quitada_en is null
+          union
+          select f.adquisicion_id
+            from public.documentos_compra_material d
+            cross join lateral public.factura_del_anexo(d.id) f
+           where d.orden_compra_id = p_compra and d.tipo = 'FACTURA' and d.anulado_en is null
+             and f.estado = 'REGISTRADA' and f.alcanza) x
+    join public.adquisiciones a on a.id = x.id and a.estado = 'REGISTRADA'
+    left join public.adquisiciones_ordenes_compra l
+      on l.adquisicion_id = a.id and l.orden_compra_id = p_compra and l.quitada_en is null
+   group by x.id;
+$$;
+comment on function public.facturas_de_la_compra(uuid) is
+  'Las facturas registradas de una OC con boleta: en su cabecera, ligadas (y si la cubren en parte) o la de su anexo que alcanza para ella. Ayudante interno.';
+revoke all on function public.facturas_de_la_compra(uuid) from public, anon, authenticated;
+
+-- El pago directo de una OC con boleta frente a sus facturas (sección 6): la
+-- primera factura registrada (para nombrarla y saltar a ella), lo que les falta
+-- a las de su moneda, cuánto de los pagos directos tomaron y lo pagado de más:
+-- lo que no tomaron, si alguna la cubre entera (si todas la cubren en parte,
+-- falta la otra factura, no sobra). Si hay una en otra moneda: esa no toma
+-- nada, el sistema no convierte. Y si alguna la cubre entera.
+create or replace function public.pago_directo_de_la_compra(p_compra uuid)
+returns table (factura_id uuid, factura text, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean,
+               entera boolean)
+language sql stable security definer rows 1 set search_path to 'public' as $$
+  with f as (
+    select a.id, a.numero_documento, a.moneda, a.fecha_emision, a.creado_en, x.parcial,
+           a.total - coalesce((select sum(p.monto) from public.pagos_adquisicion p
+                                where p.adquisicion_id = a.id and p.anulado_en is null), 0) as saldo
+      from public.facturas_de_la_compra(p_compra) x
+      join public.adquisiciones a on a.id = x.adquisicion_id
+  ),
+  d as (select coalesce(sum(p.monto), 0) as pagado, count(*) as n
+          from public.pagos_orden_compra p where p.orden_compra_id = p_compra and p.anulado_en is null),
+  t as (select coalesce(sum(x.monto), 0) as aplicado
+          from public.pagos_orden_compra p
+          join public.pagos_adquisicion x on x.pago_orden_compra_id = p.id and x.anulado_en is null
+         where p.orden_compra_id = p_compra)
+  select (select f.id from f order by f.fecha_emision, f.creado_en, f.id limit 1),
+         (select f.numero_documento from f order by f.fecha_emision, f.creado_en, f.id limit 1),
+         (select sum(greatest(f.saldo, 0)) from f where f.moneda = c.moneda)::numeric(14, 2),
+         t.aplicado::numeric(14, 2),
+         case when exists (select 1 from f where f.moneda = c.moneda and not f.parcial)
+              then greatest(d.pagado - t.aplicado, 0) else 0 end::numeric(14, 2),
+         d.n > 0 and exists (select 1 from f where f.moneda <> c.moneda),
+         exists (select 1 from f where not f.parcial)
+    from public.ordenes_compra_materiales c cross join d cross join t
+   where c.id = p_compra and not c.con_factura;
+$$;
+comment on function public.pago_directo_de_la_compra(uuid) is
+  'De una OC con boleta: su primera factura registrada, lo que les falta a las de su moneda, cuánto del pago directo tomaron, lo pagado de más (si alguna la cubre entera), si alguna va en otra moneda y si alguna la cubre entera. Ayudante interno.';
+revoke all on function public.pago_directo_de_la_compra(uuid) from public, anon, authenticated;
+
 -- El desplegable «Factura que anexó Logística» de Adquisiciones: de cada anexo,
 -- si ya tiene factura (registrada o en borrador: no se ofrece, porque se
 -- registraría dos veces); si su OC con boleta ya tiene otra factura completa
@@ -534,9 +612,9 @@ revoke all on function public.anexos_de_la_factura(public.adquisiciones) from pu
 -- registra otra); y el proveedor de otra factura con su mismo número, para que
 -- Contabilidad mire antes de registrarla: si el proveedor se escribió de otra
 -- forma, la clave no lo reconoce. Y si su OC con boleta ya tiene un pago directo
--- vigente: la base no registra la factura hasta que Tesorería lo anule, y el
--- registro quedaba en borrador (lo cobró la séptima auditoría). Columnas con
--- nombre, como las demás que se llaman por `rpc` (skill esquema).
+-- vigente: registrada, la factura toma ese pago (sección 6), y Contabilidad lo
+-- sabe antes de registrarla. Columnas con nombre, como las demás que se llaman
+-- por `rpc` (skill esquema).
 create or replace function public.situacion_de_facturas_anexadas(p_documentos uuid[])
 returns table (documento uuid, registrada boolean, mismo_numero text, factura_de_la_oc text, pagada_directo boolean)
 language plpgsql stable security definer set search_path to 'public' as $$
@@ -572,55 +650,33 @@ begin
 end;
 $$;
 comment on function public.situacion_de_facturas_anexadas(uuid[]) is
-  'Para el desplegable de Contabilidad: de cada factura anexada, si ya tiene factura en Adquisiciones, la factura completa que ya tiene su OC con boleta, el proveedor de otra con su mismo número y si su OC con boleta tiene un pago directo vigente. Exige adquisiciones.ver.';
+  'Para el desplegable de Contabilidad: de cada factura anexada, si ya tiene factura en Adquisiciones, la factura completa que ya tiene su OC con boleta, el proveedor de otra con su mismo número y si su OC con boleta tiene un pago directo vigente (la factura lo toma al registrarla). Exige adquisiciones.ver.';
 revoke all on function public.situacion_de_facturas_anexadas(uuid[]) from public, anon;
 grant execute on function public.situacion_de_facturas_anexadas(uuid[]) to authenticated;
 
--- El comprobante que el proveedor de una OC con boleta ya entregó y por el que
--- se paga, en vez de por su boleta, con prioridad:
+-- El comprobante que el proveedor de una OC con boleta ya entregó y que todavía
+-- no es su factura registrada, con prioridad:
 --   1. BORRADOR: el que Contabilidad tiene en borrador ligado a la OC.
 --   2. REGISTRADA: la factura que Logística le anexó y que Contabilidad registró
---      sin ligarla a esta OC (sin OC o con otras): la OC se paga por ella.
+--      para otras OC, y que no alcanza para esta: el anexo está por revisar.
 --   3. LOGISTICA: la factura que Logística le anexó y que nadie registró.
--- La factura anexada que Contabilidad registró para esta OC no da fila: es su
--- factura, y el pago directo ya lo rechaza por eso. La OC con factura tampoco:
--- no se paga directo y, sin esto, Adquisiciones calculaba esto para cada una.
--- Da una fila o ninguna, y lo dice (`rows 1`): sin eso el planificador esperaba
--- mil por OC y la lista de Tesorería compilaba con JIT. El borrador se busca por
--- la cabecera y por el vínculo por separado: con un `or` recorría la tabla.
--- De la registrada dice si alcanza para esta OC (si no, el anexo es de otra
--- compra), lo que le falta (`saldo`, si va en la moneda de la OC) y cuánto se
--- pagó dos veces: lo que Tesorería pagó directo por encima del saldo de la
--- factura, si la factura ya tiene pagos. Si el saldo lo cubre, no hay doble
--- pago: se anula el pago directo y la factura se paga con el mismo voucher. Y si
--- la factura no tiene pagos, lo que el pago directo pase de su total no es un
--- pago doble: la factura es por menos y esa diferencia la devuelve el proveedor
--- (decía «pagada dos veces» de una factura sin ningún pago; lo cobró la octava).
--- Lo pagado de la factura no lo decía, porque pudo ser la parte de otra OC.
--- `salio_por_boleta` es lo que ya salió por la boleta desde que llegó el
--- comprobante: los pagos directos vigentes y los que se anularon después, que
--- se anularon para pagar la factura con su voucher (con dos pagos a cuenta, el
--- aviso del segundo solo contaba ese, y mandaba a pagar de nuevo lo del primero;
--- lo cobró la octava). Pagado directo un comprobante en camino ya no se paga.
+-- La factura anexada que Contabilidad registró y que alcanza para esta OC, ligada
+-- o no, no da fila: es su factura (`facturas_de_la_compra`) y toma su pago directo
+-- (sección 6). La OC con factura tampoco: no se paga directo y, sin esto,
+-- Adquisiciones calculaba esto para cada una. Da una fila o ninguna, y lo dice
+-- (`rows 1`): sin eso el planificador esperaba mil por OC y la lista de Tesorería
+-- compilaba con JIT. El borrador se busca por la cabecera y por el vínculo por
+-- separado: con un `or` recorría la tabla.
 create or replace function public.comprobante_en_camino(p_compra uuid)
-returns table (numero text, origen text, bucket text, ruta text, documento_id uuid, alcanza boolean, pagado_dos_veces numeric,
-               salio_por_boleta numeric, saldo numeric)
+returns table (numero text, origen text, bucket text, ruta text, documento_id uuid, alcanza boolean)
 language sql stable security definer rows 1 set search_path to 'public' as $$
-  select x.numero, x.origen, x.bucket, x.ruta, x.documento_id, x.alcanza,
-         case when x.origen = 'REGISTRADA' and x.alcanza and x.pagado > 0 and x.moneda = c.moneda
-              then greatest(coalesce((select sum(p.monto) from public.pagos_orden_compra p
-                                       where p.orden_compra_id = p_compra and p.anulado_en is null), 0) - x.saldo, 0)
-              else 0 end::numeric(14, 2),
-         coalesce((select sum(p.monto) from public.pagos_orden_compra p
-                    where p.orden_compra_id = p_compra and (p.anulado_en is null or p.anulado_en >= x.llego)), 0)::numeric(14, 2),
-         case when x.moneda = c.moneda then greatest(x.saldo, 0) end::numeric(14, 2)
+  select x.numero, x.origen, x.bucket, x.ruta, x.documento_id, x.alcanza
     from (
     (select a.numero_documento as numero, 'BORRADOR'::text as origen,
             case when a.ruta_storage is not null then 'comprobantes-financieros'
                  when d.ruta_storage is not null then 'documentos-compras' end as bucket,
             coalesce(a.ruta_storage, d.ruta_storage) as ruta, a.documento_compra_id as documento_id,
-            null::boolean as alcanza, null::numeric as saldo, null::numeric as pagado, null::text as moneda,
-            coalesce(d.creado_en, a.creado_en) as llego, 1 as prioridad
+            null::boolean as alcanza, 1 as prioridad
        from (select b.id from public.adquisiciones b where b.orden_compra_id = p_compra and b.estado = 'BORRADOR'
              union
              select l.adquisicion_id from public.adquisiciones_ordenes_compra l
@@ -635,16 +691,12 @@ language sql stable security definer rows 1 set search_path to 'public' as $$
             case when f.estado = 'REGISTRADA' then f.bucket else 'documentos-compras' end,
             case when f.estado = 'REGISTRADA' then f.ruta else d.ruta_storage end,
             d.id,
-            case when f.estado = 'REGISTRADA' then f.alcanza end,
-            case when f.estado = 'REGISTRADA' then f.saldo end,
-            case when f.estado = 'REGISTRADA' then f.pagado end,
-            case when f.estado = 'REGISTRADA' then f.moneda end,
-            d.creado_en,
+            case when f.estado = 'REGISTRADA' then false end,
             case when f.estado = 'REGISTRADA' then 2 else 3 end
        from public.documentos_compra_material d
        left join lateral public.factura_del_anexo(d.id) f on true
       where d.orden_compra_id = p_compra and d.tipo = 'FACTURA' and d.anulado_en is null
-        and not coalesce(f.estado = 'REGISTRADA' and f.cubre_su_oc, false)
+        and not coalesce(f.estado = 'REGISTRADA' and f.alcanza, false)
       order by case when f.estado = 'REGISTRADA' then 2 else 3 end, d.creado_en limit 1)
   ) x
   join public.ordenes_compra_materiales c on c.id = p_compra and not c.con_factura
@@ -652,18 +704,20 @@ language sql stable security definer rows 1 set search_path to 'public' as $$
   limit 1;
 $$;
 comment on function public.comprobante_en_camino(uuid) is
-  'El comprobante por el que se paga una OC con boleta en vez de por su boleta: el borrador de Contabilidad ligado a ella, la factura anexada que Contabilidad registró sin ligarla (si alcanza para esta OC, lo que le falta y cuánto se pagó dos veces) o la anexada que nadie registró; y lo que ya salió por la boleta desde que llegó. Ayudante interno de las funciones de Tesorería y Adquisiciones.';
+  'El comprobante de una OC con boleta que todavía no es su factura registrada: el borrador de Contabilidad ligado a ella, la factura anexada que Contabilidad registró para otras OC y no alcanza para esta (`alcanza` en falso: el anexo está por revisar) o la anexada que nadie registró. Ayudante interno de las funciones de Tesorería y Adquisiciones.';
 revoke all on function public.comprobante_en_camino(uuid) from public, anon, authenticated;
 
 -- Logística anula la factura o la boleta que anexó por error a una OC. Con su
 -- motivo, quién y cuándo; el PDF queda como evidencia. Lo puede quien anexa
 -- (`compras.crear`, el permiso de la política de alta de la tabla). Si con eso la
--- OC con boleta vuelve a pagarse por su boleta, se le avisa a Tesorería (y los
--- avisos que ya no corren se dan por leídos); si Contabilidad tenía registrada
--- o en borrador esa factura, se le avisa a ella.
+-- OC con boleta vuelve a pagarse por su boleta, se le avisa a Tesorería; si
+-- Contabilidad tenía registrada o en borrador esa factura, se le avisa a ella.
+-- Lo que cambia en el pago (la factura que deja de tomar el pago directo, los
+-- avisos que ya no corren) lo rehace la sección 6 al anularse el documento.
 -- No se anula el anexo de la factura que ya se pagó por un camino y quedaría
 -- libre para pagarse por el otro: la que alcanza para esta OC, ligada a ella o
--- no, si Tesorería ya le pagó algo a esa factura o le pagó directo a la OC.
+-- no, si Tesorería ya le pagó algo a esa factura o le pagó directo a la OC (la
+-- factura registrada toma ese pago; la que está en borrador, al registrarla).
 -- Anulado el anexo, nada los relacionaba: la OC se pagaba por su boleta encima de
 -- la factura, o la factura encima del pago directo (lo cobró la revisión de la
 -- sexta vuelta). Y la ligada, porque sin el anexo la corrección ya le podía
@@ -672,20 +726,18 @@ revoke all on function public.comprobante_en_camino(uuid) from public, anon, aut
 -- es de esta OC, la anula el administrador del sistema, que lo puede todo. La
 -- factura que no alcanza para esta OC (es de las otras que tiene ligadas) sí se
 -- anula: ese anexo es el error.
--- Primero el candado de la clave de la factura, el mismo de Adquisiciones: si
--- Contabilidad la está dando de alta o corrigiendo, termina antes y aquí se ve.
--- Después el documento y la OC «for update», como al pagarla: un pago directo que
--- esté entrando termina antes, o espera a que esto termine. En ese orden, el de
--- Adquisiciones (la clave, y después el documento que elige y la OC): con el
--- documento antes que la clave, el alta de la factura que lo elige y esta
--- anulación se esperaban la una a la otra (lo cobró la séptima auditoría).
+-- Los candados, en el orden de Adquisiciones: primero las facturas (el borrador
+-- que eligió el anexo y las registradas de la OC, que la sección 6 va a tocar),
+-- después la clave de la factura, el documento y la OC «for update», como al
+-- pagarla: un pago directo que esté entrando termina antes, o espera a que esto
+-- termine. Con el documento antes que la clave, el alta de la factura que lo
+-- elige y esta anulación se esperaban la una a la otra (lo cobró la séptima
+-- auditoría); con el borrador después de la OC, también (40P01, la octava).
 -- El borrador de Contabilidad que eligió este anexo lo suelta: el anexo ya no
 -- cuenta, y el borrador no se podía completar, ni corregir, ni darse de alta
 -- otra vez, y su OC no se pagaba por ningún lado (lo cobró la séptima). Sigue
 -- con su OC: si la factura no es de esa OC, Contabilidad la corrige al
--- registrarla. Esos borradores se toman antes que todo lo demás: completarlo
--- toma su fila y después la OC, y al revés se esperaban el uno al otro (40P01,
--- lo cobró la octava).
+-- registrarla.
 create or replace function public.anular_documento_compra(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -695,7 +747,7 @@ declare
   v_numero  text;
   v_factura record;
   v_antes   boolean;
-  v_despues record;
+  v_queda   boolean;
   v_pagos   integer;
   v_motivo  text := btrim(coalesce(p_motivo, ''));
 begin
@@ -709,6 +761,7 @@ begin
   if not found then raise exception 'Ese documento no existe.' using errcode = 'check_violation'; end if;
   select * into v_oc from public.ordenes_compra_materiales where id = v_doc.orden_compra_id;
   perform 1 from public.adquisiciones where documento_compra_id = p_id and estado = 'BORRADOR' order by id for update;
+  perform public.bloquear_facturas_de_las_compras(array[v_doc.orden_compra_id]);
   if public.clave_numero_comprobante(v_doc.numero_documento) is not null and public.clave_proveedor(v_oc.proveedor) is not null then
     perform pg_advisory_xact_lock(hashtextextended('adquisicion|' || public.clave_numero_comprobante(v_doc.numero_documento)
                                                    || '|' || public.clave_proveedor(v_oc.proveedor), 0));
@@ -724,12 +777,18 @@ begin
   v_numero := coalesce(v_doc.numero_documento, v_doc.nombre_archivo);
   select * into v_factura from public.factura_del_anexo(p_id);
   select count(*) into v_pagos from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
-  v_antes := exists (select 1 from public.comprobante_en_camino(v_oc.id));
+  v_antes := exists (select 1 from public.comprobante_en_camino(v_oc.id))
+             or exists (select 1 from public.facturas_de_la_compra(v_oc.id));
 
   if v_doc.tipo = 'FACTURA' and not v_oc.con_factura and v_factura.adquisicion_id is not null
      and v_factura.alcanza and (v_factura.pagado > 0 or v_pagos > 0)
      and not public.es_admin() then
     raise exception '%', case
+      when v_pagos > 0 and v_factura.estado = 'REGISTRADA' then
+        'No se anula: la factura ' || v_factura.numero || ' de este anexo ya está registrada'
+        || case when v_factura.cubre_su_oc then ' para la ' || v_nombre else '' end
+        || ' y tomó lo que Tesorería pagó por la boleta de la ' || v_nombre
+        || '; anulado el anexo, la factura volvería a deber y se pagaría también.'
       when v_factura.pagado > 0 then
         'No se anula: la factura ' || v_factura.numero || ' de este anexo ya está registrada'
         || case when v_factura.cubre_su_oc then ' para la ' || v_nombre else '' end
@@ -738,8 +797,7 @@ begin
         || '; anulado el anexo, la ' || v_nombre || ' se podría pagar otra vez por su boleta.'
       else
         'No se anula: Tesorería ya pagó la ' || v_nombre || ' por su boleta y la factura ' || v_factura.numero
-        || ' de este anexo está ' || case when v_factura.estado = 'BORRADOR' then 'en borrador' else 'registrada' end
-        || ' en Adquisiciones; anulado el anexo, se pagaría también la factura.'
+        || ' de este anexo está en borrador en Adquisiciones: registrada, toma ese pago; anulado el anexo, se pagaría también la factura.'
       end
       || ' Si el número está mal escrito, Contabilidad corrige la factura: sigue siendo la de este anexo. Si de verdad no es de esta OC, que lo anule el administrador del sistema.'
       using errcode = 'check_violation';
@@ -750,15 +808,8 @@ begin
    where id = p_id;
   update public.adquisiciones set documento_compra_id = null
    where documento_compra_id = p_id and estado = 'BORRADOR';
-
-  -- Los avisos a Tesorería que ya no corren se dan por leídos: el del anexo por
-  -- revisar, si ya no lo está; el de anular el pago directo, si la OC ya no
-  -- espera ningún comprobante.
-  select e.origen, e.alcanza into v_despues from public.comprobante_en_camino(v_oc.id) e;
-  update public.notificaciones set leida_en = now()
-   where origen_id = v_oc.id and leida_en is null
-     and ((titulo like 'Factura anexada por revisar: %' and not coalesce(v_despues.origen = 'REGISTRADA' and not v_despues.alcanza, false))
-          or (titulo like 'Llegó factura de una OC pagada: %' and v_despues.origen is null));
+  v_queda := exists (select 1 from public.comprobante_en_camino(v_oc.id))
+             or exists (select 1 from public.facturas_de_la_compra(v_oc.id));
 
   if v_factura.adquisicion_id is not null then
     perform public.notificar_a_permiso('adquisiciones.registrar',
@@ -771,20 +822,18 @@ begin
   end if;
   -- La OC con boleta que esperaba esta factura vuelve a pagarse por su boleta o,
   -- si Tesorería ya le pagó directo, sigue pagada así: no se le dice «otra vez».
-  -- Si la factura ya tiene pagos y no la cubría (alcance o no), puede que la OC
-  -- fuera parte de ella: Tesorería lo revisa antes de pagarla por su boleta.
-  if v_doc.tipo = 'FACTURA' and not v_oc.con_factura and v_oc.pago_en_tesoreria and v_antes
-     and v_despues.origen is null
-     and not exists (select 1 from public.adquisiciones a
-                      where a.estado = 'REGISTRADA'
-                        and (a.orden_compra_id = v_oc.id
-                             or exists (select 1 from public.adquisiciones_ordenes_compra l
-                                         where l.adquisicion_id = a.id and l.orden_compra_id = v_oc.id and l.quitada_en is null))) then
+  -- Si la factura era la suya (solo el administrador llega aquí con pago
+  -- directo), ya no toma ese pago y vuelve a deber. Si no alcanzaba para ella y
+  -- es de otras OC, puede que esta OC fuera parte de ella: Tesorería lo revisa
+  -- antes de pagarla por su boleta.
+  if v_doc.tipo = 'FACTURA' and not v_oc.con_factura and v_oc.pago_en_tesoreria and v_antes and not v_queda then
     perform public.notificar_a_permiso('tesoreria.registrar_pagos',
-      case when v_pagos > 0 then 'La OC queda con su pago directo: ' else 'La OC vuelve a pagarse por su boleta: ' end || v_nombre,
+      case when v_pagos > 0 then 'La OC queda pagada por su boleta: ' else 'La OC vuelve a pagarse por su boleta: ' end || v_nombre,
       'Logística anuló la factura ' || v_numero || ' que había anexado a la ' || v_nombre || ': «' || v_motivo || '».'
-        || case when v_pagos > 0 then ' Su pago directo queda como estaba: no lo anules.' else '' end
-        || case when v_factura.pagado > 0 and not v_factura.cubre_su_oc
+        || case when v_pagos > 0 and v_factura.estado = 'REGISTRADA' and v_factura.alcanza
+                then ' La factura ' || v_factura.numero || ' ya no toma lo que pagaste por la boleta y vuelve a deber lo que tomaba: si sí era de esta OC, no la pagues dos veces.'
+                when v_factura.alcanza then ''
+                when v_factura.pagado > 0 and not v_factura.cubre_su_oc
                 then ' Ojo: la factura ' || v_factura.numero || ' ya tiene pagos de '
                      || case when v_factura.moneda = 'USD' then 'US$ ' else 'S/ ' end || to_char(v_factura.pagado, 'FM999G999G990D00')
                      || case when v_pagos > 0 then '; si esta OC era parte de ella (Contabilidad lo ve en la factura), se pagó dos veces: pide al proveedor la devolución.'
@@ -891,24 +940,25 @@ begin
 end $$;
 
 -- Aprobadas (o sin aprobación que pedir), con su total, lo pagado y su
--- vencimiento: todas las que faltan, las canceladas que trajeron después su
--- comprobante (Tesorería tiene que anular su pago) y las 60 últimas canceladas.
--- Primero las que piden algo a Tesorería: las pagadas a las que llegó su
--- comprobante, que si no quedaban al fondo, detrás de todas las por pagar. Con
--- lo que se pagó de más (sección 4): si la factura y la boleta se pagaron las
--- dos, la tarjeta lo dice en vez de mandar a pagar. Y con lo que ya salió por la
--- boleta y lo que le falta a la factura: la tarjeta dice cuánto va con los
--- mismos vouchers. Y la que Logística anexó a
--- una factura registrada para otras OC que no alcanza para ella se queda a la
--- vista: no se paga por esa factura, y alguien tiene que revisar el anexo.
+-- vencimiento: todas las que faltan o piden algo y las 60 últimas canceladas.
+-- Con el comprobante que el proveedor ya entregó y todavía no es su factura (se
+-- espera: no se paga por la boleta) y con su factura registrada, si la tiene:
+-- cuánto de lo pagado directo tomó, lo que le falta (se paga en «Facturas por
+-- pagar») y lo pagado de más (sección 6). La que se paga por su factura sin
+-- pagos directos no sale: está en las facturas. Primero lo que le pide algo a
+-- Tesorería: lo pagado de más (pedir la devolución) y la factura en otra moneda,
+-- que no toma el pago. La que Logística anexó a una factura registrada para
+-- otras OC que no alcanza para ella se queda a la vista: no se paga por esa
+-- factura, y alguien tiene que revisar el anexo.
+-- Cancelada: sus pagos directos la cubren, o su factura entera ya no debe nada.
 create or replace function public.compras_con_boleta_por_pagar()
 returns table (
   id uuid, numero text, referencia text, proveedor_id uuid, proveedor text, proveedor_documento text,
   codigo_interno text, moneda text, total numeric, sin_precio boolean, condicion_pago text, dias_credito integer,
   creado_en timestamptz, vence date, recojo text, pagado numeric, cancelada boolean, ultimo_pago date,
   comprobante_en_camino text, comprobante_en_camino_origen text, comprobante_en_camino_bucket text,
-  comprobante_en_camino_ruta text, comprobante_en_camino_alcanza boolean, pagada_dos_veces numeric, estuvo_en_factura text,
-  salio_por_boleta numeric, comprobante_en_camino_saldo numeric
+  comprobante_en_camino_ruta text, comprobante_en_camino_alcanza boolean, estuvo_en_factura text,
+  factura text, factura_id uuid, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean
 ) language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -923,24 +973,21 @@ begin
            c.condicion_pago, c.dias_credito, c.creado_en,
            ((c.creado_en at time zone 'America/Lima')::date + coalesce(c.dias_credito, 0)) as vence,
            c.recojo, coalesce(g.n, 0) as n, coalesce(g.pagado, 0)::numeric(14, 2) as pagado,
-           -- Pagada: sus pagos vigentes suman el total, o uno vigente la dio por cancelada (sección 2).
-           coalesce(g.n > 0 and (g.sin_completar or g.pagado >= t.total), false) as cancelada, g.ultimo,
-           -- El proveedor entregó su comprobante: se paga por él, no aquí.
+           -- Pagos directos que la cubren (sección 2), o su factura entera ya pagada.
+           coalesce(g.n > 0 and (g.sin_completar or g.pagado >= t.total), false)
+             or (pd.factura is not null and pd.entera and not pd.otra_moneda and coalesce(pd.factura_saldo, 0) <= 0) as cancelada,
+           g.ultimo,
            e.numero as en_camino, e.origen as en_camino_origen, e.bucket as en_camino_bucket, e.ruta as en_camino_ruta,
-           e.alcanza as en_camino_alcanza, coalesce(e.pagado_dos_veces, 0) as dos_veces,
-           e.salio_por_boleta as salio, case when e.origen = 'REGISTRADA' then e.saldo end as en_camino_saldo,
-           -- Contabilidad le registró su comprobante ligado a ella.
-           exists (select 1 from public.adquisiciones a
-                    where a.estado = 'REGISTRADA' and a.orden_compra_id = c.id)
-             or exists (select 1 from public.adquisiciones_ordenes_compra l
-                          join public.adquisiciones a on a.id = l.adquisicion_id
-                         where l.orden_compra_id = c.id and l.quitada_en is null and a.estado = 'REGISTRADA') as registrada,
+           e.alcanza as en_camino_alcanza,
            -- Una factura ya pagada la cubría y una corrección se la quitó: que Tesorería lo vea antes de pagarla.
            (select a.numero_documento from public.adquisiciones a
               join public.adquisiciones_ordenes_compra l on l.adquisicion_id = a.id
              where l.orden_compra_id = c.id and l.quitada_en is not null and a.estado = 'REGISTRADA'
                and exists (select 1 from public.pagos_adquisicion x where x.adquisicion_id = a.id and x.anulado_en is null)
-             order by a.fecha_emision desc limit 1) as estuvo_en
+               and not exists (select 1 from public.facturas_de_la_compra(c.id) y where y.adquisicion_id = a.id)
+             order by a.fecha_emision desc limit 1) as estuvo_en,
+           pd.factura, pd.factura_id, pd.factura_saldo, coalesce(pd.aplicado, 0)::numeric(14, 2) as aplicado,
+           coalesce(pd.de_mas, 0)::numeric(14, 2) as de_mas, coalesce(pd.otra_moneda, false) as otra_moneda
       from public.ordenes_compra_materiales c
       left join public.proveedores p on p.id = c.proveedor_id
       cross join lateral (select public.total_orden_compra(c.id) as total) t
@@ -950,37 +997,36 @@ begin
           from public.pagos_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
       ) g on true
       left join lateral public.comprobante_en_camino(c.id) e on true
+      left join lateral public.pago_directo_de_la_compra(c.id) pd on true
      where not c.con_factura and c.pago_en_tesoreria and c.aprobacion in ('APROBADA', 'NO_REQUERIDA')
   ),
-  -- Si Contabilidad le registró su factura, ligada a ella o no, se paga en las
-  -- facturas; la que ya tenía pagos aquí se queda, para que se vean, y la del
-  -- anexo que no alcanza para ella, para que se revise.
-  visibles as (
-    select * from filas f
-     where f.n > 0 or not (f.registrada or (f.en_camino_origen is not distinct from 'REGISTRADA' and f.en_camino_alcanza))
+  -- La que se paga por su factura registrada, sin pagos directos, está en las facturas.
+  visibles as (select * from filas f where f.n > 0 or f.factura is null),
+  -- Lo que pide algo o todavía debe; lo demás, las 60 últimas.
+  pendientes as (
+    select f.*, f.de_mas > 0 or f.otra_moneda or not f.cancelada or f.en_camino is not null as pide from visibles f
   )
   select * from (
     select f.id, f.numero, f.referencia, f.proveedor_id, f.proveedor, f.ruc, f.codigo_interno, f.moneda, f.total, f.sin_precio,
            f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
-           f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.dos_veces, f.estuvo_en,
-           f.salio, f.en_camino_saldo
-      from visibles f where not f.cancelada or f.en_camino is not null
+           f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
+           f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda
+      from pendientes f where f.pide
     union all
     (select f.id, f.numero, f.referencia, f.proveedor_id, f.proveedor, f.ruc, f.codigo_interno, f.moneda, f.total, f.sin_precio,
             f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
-            f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.dos_veces, f.estuvo_en,
-            f.salio, f.en_camino_saldo
-       from visibles f where f.cancelada and f.en_camino is null order by f.ultimo desc nulls last, f.creado_en desc limit 60)
+            f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
+            f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda
+       from pendientes f where not f.pide order by f.ultimo desc nulls last, f.creado_en desc limit 60)
   ) x
-  -- Primero lo que le pide algo a Tesorería: el pago directo por anular y,
-  -- detrás, la pagada dos veces (pedir la devolución). El anexo por revisar no le
-  -- pide nada (lo revisa Logística) y va con las demás.
-  order by (x.en_camino is not null and x.pagado > 0 and x.en_camino_alcanza is distinct from false) desc,
-           coalesce(x.dos_veces, 0) > 0, x.cancelada, x.vence, x.creado_en;
+  -- Primero lo que le pide algo a Tesorería: lo pagado de más y la factura en
+  -- otra moneda. El anexo por revisar no le pide nada (lo revisa Logística) y va
+  -- con las demás.
+  order by (x.de_mas > 0 or x.otra_moneda) desc, x.cancelada, x.vence, x.creado_en;
 end;
 $$;
 comment on function public.compras_con_boleta_por_pagar() is
-  'Las OC con boleta aprobadas que Tesorería paga: las que faltan, las canceladas que trajeron después su comprobante y las 60 últimas canceladas, con el comprobante que el proveedor ya entregó (se paga por él; si alcanza para ella, lo que se pagó dos veces, lo que le falta y lo que ya salió por la boleta) y la factura pagada que la cubría antes de una corrección. Exige tesoreria.registrar_pagos o tesoreria.ver_documentos.';
+  'Las OC con boleta aprobadas que Tesorería paga: las que faltan o piden algo y las 60 últimas canceladas, con el comprobante que el proveedor ya entregó y todavía no es su factura, su factura registrada (cuánto del pago directo tomó, lo que le falta y lo pagado de más) y la factura pagada que la cubría antes de una corrección. Exige tesoreria.registrar_pagos o tesoreria.ver_documentos.';
 revoke all on function public.compras_con_boleta_por_pagar() from public, anon;
 grant execute on function public.compras_con_boleta_por_pagar() to authenticated;
 
@@ -1024,16 +1070,15 @@ begin
   if exists (select 1 from public.orden_compra_material_detalles where orden_compra_id = p_orden_compra and precio_unitario is null) then
     raise exception 'La % tiene líneas sin precio: Logística tiene que completarlas antes del pago.', v_nombre using errcode = 'check_violation';
   end if;
-  -- Si Contabilidad ya le registró un comprobante, se paga por ahí: dos caminos son dos pagos.
+  -- Si Contabilidad ya le registró su factura (ligada, o la del anexo que alcanza
+  -- para ella), se paga por ahí: dos caminos son dos pagos.
   select a.numero_documento into v_fact
-    from public.adquisiciones a
-   where a.estado = 'REGISTRADA'
-     and (a.orden_compra_id = p_orden_compra
-          or exists (select 1 from public.adquisiciones_ordenes_compra l
-                      where l.adquisicion_id = a.id and l.orden_compra_id = p_orden_compra and l.quitada_en is null))
+    from public.facturas_de_la_compra(p_orden_compra) f
+    join public.adquisiciones a on a.id = f.adquisicion_id
+   order by a.fecha_emision, a.creado_en
    limit 1;
   if v_fact is not null then
-    raise exception 'Contabilidad ya registró el comprobante % de la %: se paga en Cuentas por pagar.', v_fact, v_nombre
+    raise exception 'Contabilidad ya registró el comprobante % de la %: lo que falte se paga por él en «Facturas por pagar».', v_fact, v_nombre
       using errcode = 'check_violation';
   end if;
   -- Ni si el proveedor entregó su comprobante y todavía no se registra: se paga por él.
@@ -1041,11 +1086,8 @@ begin
   if v_origen = 'BORRADOR' then
     raise exception 'Contabilidad tiene en borrador el comprobante % de la %: se paga por él en Cuentas por pagar cuando lo registre.', v_fact, v_nombre
       using errcode = 'check_violation';
-  elsif v_origen = 'REGISTRADA' and not v_alcanza then
-    raise exception 'Logística anexó a la % la factura %, que Contabilidad registró para otras OC y que no alcanza para esta: si el anexo fue por error, que Logística lo anule y la OC se paga por su boleta.', v_nombre, v_fact
-      using errcode = 'check_violation';
   elsif v_origen = 'REGISTRADA' then
-    raise exception 'Contabilidad registró la factura % que Logística anexó a la %: se paga por ella en Cuentas por pagar, no por su boleta.', v_fact, v_nombre
+    raise exception 'Logística anexó a la % la factura %, que Contabilidad registró para otras OC y que no alcanza para esta: si el anexo fue por error, que Logística lo anule y la OC se paga por su boleta.', v_nombre, v_fact
       using errcode = 'check_violation';
   elsif v_origen = 'LOGISTICA' then
     raise exception 'Logística anexó a la % la factura % del proveedor: Contabilidad la registra y se paga por ella en Cuentas por pagar.', v_nombre, v_fact
@@ -1102,6 +1144,12 @@ comment on function public.registrar_pago_compra(uuid, uuid, date, numeric, bool
 revoke all on function public.registrar_pago_compra(uuid, uuid, date, numeric, boolean, text, text, text, uuid, numeric) from public, anon;
 grant execute on function public.registrar_pago_compra(uuid, uuid, date, numeric, boolean, text, text, text, uuid, numeric) to authenticated;
 
+-- Tesorería anula el pago directo que estuvo mal, o el que el proveedor le
+-- devolvió. Si la factura que llegó después lo había tomado, deja de tomarlo y
+-- vuelve a deber lo que no cubren los demás (sección 6). Los candados, en el
+-- orden de Adquisiciones: las facturas de la OC, la OC y el pago; con el pago
+-- primero, Contabilidad registrando la factura a la vez y esta anulación se
+-- esperaban la una a la otra.
 create or replace function public.anular_pago_compra(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare v_pago public.pagos_orden_compra%rowtype;
@@ -1110,30 +1158,36 @@ begin
   if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
     raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
   end if;
-  select * into v_pago from public.pagos_orden_compra where id = p_id for update;
+  select * into v_pago from public.pagos_orden_compra where id = p_id;
   if not found then raise exception 'Ese pago no existe.' using errcode = 'check_violation'; end if;
+  perform public.bloquear_facturas_de_las_compras(array[v_pago.orden_compra_id]);
+  perform 1 from public.ordenes_compra_materiales where id = v_pago.orden_compra_id for no key update;
+  select * into v_pago from public.pagos_orden_compra where id = p_id for update;
   if v_pago.anulado_en is not null then return p_id; end if;
   perform public.caja_anular_por_pago('PAGO_ORDEN_COMPRA', p_id, p_motivo, 'pago');
   update public.pagos_orden_compra
      set anulado_por = public.usuario_actual(), anulado_en = now(), motivo_anulacion = btrim(p_motivo)
    where id = p_id;
+  perform public.conciliar_pago_directo(array[v_pago.orden_compra_id]);
   return p_id;
 end;
 $$;
+comment on function public.anular_pago_compra(uuid, text) is
+  'Tesorería anula, con su motivo, un pago directo de una OC con boleta: su egreso sale de la caja y, si una factura lo había tomado, deja de tomarlo. Exige tesoreria.registrar_pagos.';
 revoke all on function public.anular_pago_compra(uuid, text) from public, anon;
 grant execute on function public.anular_pago_compra(uuid, text) to authenticated;
 
 -- Cómo queda el pago de una OC después de anular uno de sus pagos o de anexarle
 -- su factura: el comprobante en camino, cuántos pagos directos siguen vigentes,
--- si está pagada y lo que le falta. Con ella el aviso que lee Tesorería, o
--- Logística, dice lo que la base va a dejar hacer (sin traer la lista entera).
--- La ven quien paga, quien consulta Tesorería y Logística, que emitió la OC: los
--- mismos que leen sus pagos. Con lo que ya salió por la boleta desde que llegó
--- el comprobante (`en_camino_salio`): es lo que va con los mismos vouchers.
+-- si están completos y lo que le falta, y su factura registrada: cuánto de esos
+-- pagos tomó, lo que le falta y lo pagado de más (sección 6). Con ella el aviso
+-- que lee Tesorería, o Logística, dice lo que la base va a dejar hacer (sin
+-- traer la lista entera). La ven quien paga, quien consulta Tesorería y
+-- Logística, que emitió la OC: los mismos que leen sus pagos.
 create or replace function public.situacion_de_pago_de_compra(p_compra uuid)
-returns table (en_camino text, en_camino_origen text, en_camino_alcanza boolean, pagada_dos_veces numeric,
-               pagos_vigentes integer, cancelada boolean, saldo numeric, moneda text, en_camino_saldo numeric,
-               en_camino_salio numeric)
+returns table (en_camino text, en_camino_origen text, en_camino_alcanza boolean,
+               pagos_vigentes integer, cancelada boolean, saldo numeric, moneda text,
+               factura text, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean)
 language plpgsql stable security definer rows 1 set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -1142,12 +1196,11 @@ begin
     raise exception 'El pago de la OC lo ven Tesorería y Logística.' using errcode = 'insufficient_privilege';
   end if;
   return query
-  select e.numero, e.origen, e.alcanza, coalesce(e.pagado_dos_veces, 0)::numeric(14, 2), g.n::integer,
+  select e.numero, e.origen, e.alcanza, g.n::integer,
          coalesce(g.n > 0 and (g.sin_completar or g.pagado >= t.total), false),
          greatest(t.total - coalesce(g.pagado, 0), 0)::numeric(14, 2), c.moneda,
-         -- Lo que le falta a la factura registrada por la que se paga, en la moneda de la OC.
-         case when e.origen = 'REGISTRADA' then e.saldo end,
-         e.salio_por_boleta
+         pd.factura, pd.factura_saldo, coalesce(pd.aplicado, 0)::numeric(14, 2), coalesce(pd.de_mas, 0)::numeric(14, 2),
+         coalesce(pd.otra_moneda, false)
     from public.ordenes_compra_materiales c
     cross join lateral (select public.total_orden_compra(c.id) as total) t
     cross join lateral (
@@ -1155,11 +1208,12 @@ begin
         from public.pagos_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
     ) g
     left join lateral public.comprobante_en_camino(c.id) e on true
+    left join lateral public.pago_directo_de_la_compra(c.id) pd on true
    where c.id = p_compra;
 end;
 $$;
 comment on function public.situacion_de_pago_de_compra(uuid) is
-  'El pago de una OC: su comprobante en camino (si alcanza para ella, lo que se pagó de más, lo que le falta a la factura y lo que ya salió por la boleta), los pagos directos vigentes, si está pagada y su saldo. Exige tesoreria.registrar_pagos, tesoreria.ver_documentos o compras.crear.';
+  'El pago de una OC: su comprobante en camino (y si es un anexo por revisar), los pagos directos vigentes, si la cubren y su saldo, y su factura registrada: cuánto del pago directo tomó, lo que le falta, lo pagado de más y si va en otra moneda. Exige tesoreria.registrar_pagos, tesoreria.ver_documentos o compras.crear.';
 revoke all on function public.situacion_de_pago_de_compra(uuid) from public, anon;
 grant execute on function public.situacion_de_pago_de_compra(uuid) to authenticated;
 
@@ -1389,128 +1443,372 @@ grant execute on function public.anular_documento_servicio(uuid, text) to authen
 
 -- 6. Una OC, un solo camino de pago ---------------------------------------------------------
 -- `registrar_pago_compra` no paga directo la OC que ya trae factura (registrada,
--- en borrador o anexada por Logística). Esto cierra el otro lado: a la OC que
--- Tesorería ya pagó directo no se le liga una factura, ni se registra la factura
--- que la tiene ligada o que Logística le anexó, ni se le devuelve en una
--- corrección, ni se le paga una factura encima, mientras ese pago siga vigente.
--- Si el proveedor entregó factura, Tesorería anula el pago y se paga por la
--- factura. Los disparadores van sin lista de columnas: `update of` mira el SET de
--- la sentencia, no lo que cambió (skill esquema). Las OC se toman «for share»: un
--- pago que esté entrando a la misma OC (la toma «for update») termina antes, y
--- esta consulta ya lo ve.
-create or replace function public.compra_pagada_directo(p_compras uuid[])
-returns text language plpgsql security definer set search_path to 'public' as $$
-declare v_nombre text;
+-- en borrador o anexada por Logística). Y si la factura llega después a una OC
+-- que Tesorería ya pagó directo, la factura toma ese pago: un pago de la factura
+-- (`pagos_adquisicion.pago_orden_compra_id`) que es el mismo de la boleta, sin
+-- caja propia, porque el dinero salió una vez. Antes Tesorería anulaba el pago
+-- de la boleta y pagaba la factura «con el mismo voucher», y entre los dos pasos
+-- el dinero que ya había salido no lo veía nadie: por tres caminos se volvía a
+-- pagar (lo cobró la novena auditoría). Ahora nadie anula un pago bien hecho:
+--   · La factura toma, en orden de fecha, lo que los pagos directos de la OC
+--     alcanzan a cubrir de lo que le falta. Si es por más, el resto se paga en
+--     «Facturas por pagar»; si es por menos, o ya la habían pagado, lo que no
+--     toma queda como pagado de más (`pago_directo_de_la_compra`, sección 4).
+--   · Se rehace sola cada vez que cambia algo de lo que la sostiene: la factura
+--     se registra o se corrige, se liga o se quita una OC, Logística anexa o
+--     anula la factura, Tesorería anula un pago directo o un pago de la factura.
+--     Lo que ya no corresponde se anula con su motivo (queda como evidencia) y
+--     lo que falta se agrega.
+--   · Solo el sistema la pone y la quita: el permiso de pagar no basta, y no se
+--     anula a mano en la factura (se anula el pago de la boleta).
+--   · La factura en otra moneda no toma nada (el sistema no convierte): no se
+--     paga encima mientras el pago de la boleta siga vigente.
+-- Lo pagado de más se resuelve anulando el pago que el proveedor devolvió: el de
+-- la factura, si la pagaron también, o el de la boleta; la cuenta se rehace.
+
+-- Las facturas que la conciliación va a tocar, «for update» y en orden: las
+-- registradas de cada OC y las que tienen tomado un pago directo suyo. Se toman
+-- antes que la OC, como al registrar o corregir la factura en Adquisiciones
+-- (primero la factura, después la OC): al revés, la anulación de un pago o de
+-- un anexo y el registro de la factura se esperaban la una a la otra.
+create or replace function public.bloquear_facturas_de_las_compras(p_compras uuid[])
+returns void language plpgsql security definer set search_path to 'public' as $$
 begin
-  perform 1 from public.ordenes_compra_materiales where id = any(p_compras) order by id for share;
-  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
-    from public.ordenes_compra_materiales c
-   where c.id = any(p_compras)
-     and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
-   order by c.numero
-   limit 1;
-  return v_nombre;
+  perform 1 from public.adquisiciones a
+   where a.id in (select f.adquisicion_id from unnest(p_compras) c(id) cross join lateral public.facturas_de_la_compra(c.id) f
+                  union
+                  select x.adquisicion_id from public.pagos_adquisicion x
+                    join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+                   where p.orden_compra_id = any(p_compras) and x.anulado_en is null)
+   order by a.id
+     for update;
 end;
 $$;
-comment on function public.compra_pagada_directo(uuid[]) is
-  'La primera de esas OC que tiene un pago directo de Tesorería vigente, o null. La usan los disparadores de Adquisiciones.';
-revoke all on function public.compra_pagada_directo(uuid[]) from public, anon, authenticated;
+comment on function public.bloquear_facturas_de_las_compras(uuid[]) is
+  'Toma «for update», en orden, las facturas registradas de esas OC y las que tienen tomado un pago directo suyo. Ayudante interno.';
+revoke all on function public.bloquear_facturas_de_las_compras(uuid[]) from public, anon, authenticated;
 
--- Las OC que cuentan: las ligadas a la factura y, desde la sexta vuelta, las OC
--- con boleta de las facturas que Logística anexó y de las que esta es la factura
--- (por el anexo que eligió o por su número y su proveedor), ligadas o no: la
--- factura registrada sin OC que cubre una OC con boleta pagada directo era el
--- segundo pago. Del anexo, solo la OC para la que la factura alcanza: la que no
--- alcanza está «por revisar» (el anexo es el error) y trababa la factura de la
--- otra OC, con un mensaje que mandaba a anular el pago de la boleta.
+-- Las OC que una factura puede estar pagando: la de su cabecera, las ligadas (y
+-- las que se le quitaron), las de los anexos de los que es la factura y las que
+-- ya le dieron un pago directo. Con su fila de antes y la de después, la
+-- conciliación sabe a quién mirar cuando la factura cambia.
+create or replace function public.compras_de_la_factura(p_factura public.adquisiciones)
+returns uuid[] language sql stable security definer set search_path to 'public' as $$
+  select coalesce(array_agg(distinct x.id) filter (where x.id is not null), '{}')
+    from (select p_factura.orden_compra_id as id
+          union all
+          select l.orden_compra_id from public.adquisiciones_ordenes_compra l where l.adquisicion_id = p_factura.id
+          union all
+          select a.orden_compra_id from public.anexos_de_la_factura(p_factura) a
+          union all
+          select p.orden_compra_id from public.pagos_adquisicion x
+            join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+           where x.adquisicion_id = p_factura.id and x.anulado_en is null) x;
+$$;
+comment on function public.compras_de_la_factura(public.adquisiciones) is
+  'Las OC que esa factura puede estar pagando: cabecera, vínculos, anexos de los que es la factura y las que le dieron un pago directo. Ayudante interno.';
+revoke all on function public.compras_de_la_factura(public.adquisiciones) from public, anon, authenticated;
+
+-- El pago de una factura lo registra quien paga, hasta su saldo (la de la
+-- 20261015122000). El pago de la boleta que la factura toma lo pone la
+-- conciliación aunque quien registra la factura sea Contabilidad, sin el
+-- permiso de pagar: solo con la marca que la conciliación deja para ese pago y
+-- que nadie más pone. Sin ella, quien tiene el permiso de pagar daba por pagada
+-- una factura con el pago de cualquier OC, sin que saliera nada de la caja.
+create or replace function public.fn_validar_pago_adquisicion()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare v_total numeric; v_estado text; v_pagado numeric;
+begin
+  if new.pago_orden_compra_id is null then
+    perform public.exigir_permiso('tesoreria.registrar_pagos');
+  elsif current_setting('metalwork.aplica_pago_directo', true) is distinct from new.pago_orden_compra_id::text then
+    raise exception 'El pago de la boleta que toma la factura lo anota el sistema solo.' using errcode = 'insufficient_privilege';
+  end if;
+  select total, estado into v_total, v_estado from public.adquisiciones where id = new.adquisicion_id for update;
+  if v_estado <> 'REGISTRADA' then raise exception 'El comprobante debe estar registrado antes del pago.'; end if;
+  select coalesce(sum(monto), 0) into v_pagado from public.pagos_adquisicion
+   where adquisicion_id = new.adquisicion_id and anulado_en is null;
+  if v_pagado + new.monto > v_total then raise exception 'El pago supera el saldo del comprobante.'; end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_validar_pago_adquisicion() from public, anon, authenticated;
+
+-- El pago no se borra ni se corrige (la de la 20261015122000), y el que es el
+-- de la boleta lo anula solo la conciliación: si el pago de la boleta estuvo
+-- mal, o el proveedor lo devolvió, se anula ese, y la factura deja de tomarlo.
+create or replace function public.fn_pago_adquisicion_guardia()
+returns trigger language plpgsql set search_path to 'public' as $$
+declare
+  v_cambian constant text[] := array['anulado_por', 'anulado_en', 'motivo_anulacion', 'actualizado_en'];
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'Un pago no se borra: se anula con su motivo.' using errcode = 'check_violation';
+  end if;
+  if old.anulado_en is not null then
+    raise exception 'Ese pago está anulado: queda como evidencia.' using errcode = 'check_violation';
+  end if;
+  if (to_jsonb(new) - v_cambian) is distinct from (to_jsonb(old) - v_cambian) then
+    raise exception 'Lo que dice el pago no se corrige: anúlalo con su motivo y regístralo de nuevo.' using errcode = 'check_violation';
+  end if;
+  if old.pago_orden_compra_id is not null
+     and current_setting('metalwork.aplica_pago_directo', true) is distinct from old.pago_orden_compra_id::text then
+    raise exception 'Ese es el pago que se hizo por la boleta de la OC, y la factura lo tomó: no se anula aquí. Si estuvo mal, o el proveedor lo devolvió, Tesorería lo anula en «OC con boleta» y la factura vuelve a deber.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_pago_adquisicion_guardia() from public, anon, authenticated;
+
+-- La conciliación: para cada OC con boleta, qué toma cada una de sus facturas
+-- de sus pagos directos. Los pagos, del primero al último; las facturas de su
+-- moneda, de la más antigua a la más nueva, cada una con lo que le queda libre
+-- (su total menos lo pagado que no es un pago directo de esta OC: sus pagos
+-- propios y lo que tomó de otras OC). Cada pago llena lo que puede y lo que
+-- sobra pasa a la siguiente. Lo tomado que ya no calza (el pago se anuló, la
+-- factura cambió o dejó de ser la de la OC) se anula con su motivo, y lo que
+-- falta se agrega, con la fecha del pago de la boleta y quien lo registró. Las
+-- facturas y la OC se toman antes de mirar nada: dos conciliaciones de la misma
+-- OC no se cruzan, y un pago que esté entrando termina antes. La OC «for no key
+-- update»: así no espera a quien le está anexando un documento (que la toma
+-- «for key share»), que puede estar esperando esta misma factura.
+create or replace function public.conciliar_pago_directo(p_compras uuid[])
+returns void language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_compras  uuid[] := array(select distinct x from unnest(p_compras) x where x is not null order by 1);
+  v_oc       record;
+  v_pagos    uuid[];
+  v_montos   numeric[];
+  v_facturas uuid[];
+  v_libres   numeric[];
+  v_d_pago   uuid[];
+  v_d_fact   uuid[];
+  v_d_monto  numeric[];
+  v_toma     numeric;
+  v_hay      boolean;
+  v_x        record;
+  v_pago     public.pagos_orden_compra%rowtype;
+  v_ref      text;
+  i          integer;
+  j          integer;
+  k          integer;
+begin
+  if cardinality(v_compras) = 0 then return; end if;
+  perform public.bloquear_facturas_de_las_compras(v_compras);
+  for v_oc in select c.id, coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda
+                from public.ordenes_compra_materiales c
+               where c.id = any(v_compras) and not c.con_factura
+               order by c.id
+                 for no key update loop
+    select coalesce(array_agg(p.id order by p.fecha_pago, p.creado_en, p.id), '{}'),
+           coalesce(array_agg(p.monto order by p.fecha_pago, p.creado_en, p.id), '{}')
+      into v_pagos, v_montos
+      from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
+    select coalesce(array_agg(a.id order by a.fecha_emision, a.creado_en, a.id), '{}'),
+           coalesce(array_agg(a.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
+                                                    where x.adquisicion_id = a.id and x.anulado_en is null
+                                                      and not exists (select 1 from public.pagos_orden_compra p
+                                                                       where p.id = x.pago_orden_compra_id
+                                                                         and p.orden_compra_id = v_oc.id)), 0)
+                              order by a.fecha_emision, a.creado_en, a.id), '{}')
+      into v_facturas, v_libres
+      from public.facturas_de_la_compra(v_oc.id) f
+      join public.adquisiciones a on a.id = f.adquisicion_id
+     where a.moneda = v_oc.moneda;
+
+    v_d_pago := '{}'; v_d_fact := '{}'; v_d_monto := '{}';
+    i := 1; j := 1;
+    while i <= cardinality(v_pagos) and j <= cardinality(v_facturas) loop
+      if v_libres[j] <= 0 then j := j + 1; continue; end if;
+      v_toma := least(v_montos[i], v_libres[j]);
+      v_d_pago := v_d_pago || v_pagos[i];
+      v_d_fact := v_d_fact || v_facturas[j];
+      v_d_monto := v_d_monto || v_toma;
+      v_montos[i] := v_montos[i] - v_toma;
+      v_libres[j] := v_libres[j] - v_toma;
+      if v_montos[i] <= 0 then i := i + 1; end if;
+    end loop;
+
+    -- Lo que ya está tomado y calza se queda; lo demás se anula.
+    for v_x in select x.id, x.pago_orden_compra_id, x.adquisicion_id, x.monto, x.registrado_por,
+                      p.anulado_en as pago_anulado, p.motivo_anulacion as motivo_pago
+                 from public.pagos_adquisicion x
+                 join public.pagos_orden_compra p on p.id = x.pago_orden_compra_id
+                where p.orden_compra_id = v_oc.id and x.anulado_en is null
+                order by x.creado_en, x.id loop
+      v_hay := false;
+      for k in 1 .. cardinality(v_d_pago) loop
+        if v_d_monto[k] is not null and v_d_pago[k] = v_x.pago_orden_compra_id
+           and v_d_fact[k] = v_x.adquisicion_id and v_d_monto[k] = v_x.monto then
+          v_d_monto[k] := null;
+          v_hay := true;
+          exit;
+        end if;
+      end loop;
+      continue when v_hay;
+      perform set_config('metalwork.aplica_pago_directo', v_x.pago_orden_compra_id::text, true);
+      update public.pagos_adquisicion
+         set anulado_en = now(), anulado_por = coalesce(public.usuario_actual(), v_x.registrado_por),
+             motivo_anulacion = left(case when v_x.pago_anulado is not null
+                                          then 'Se anuló el pago de la boleta de la ' || v_oc.nombre || ': «' || coalesce(v_x.motivo_pago, '') || '»'
+                                          else 'La factura ya no toma así el pago de la boleta de la ' || v_oc.nombre
+                                               || ': cambió la factura, su anexo o sus pagos.' end, 500)
+       where id = v_x.id;
+    end loop;
+
+    -- Lo que falta tomar.
+    for k in 1 .. cardinality(v_d_pago) loop
+      continue when v_d_monto[k] is null;
+      select * into v_pago from public.pagos_orden_compra where id = v_d_pago[k];
+      v_ref := left('Pago por la boleta de la ' || v_oc.nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
+                    || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 110);
+      if exists (select 1 from public.pagos_adquisicion x
+                  where x.adquisicion_id = v_d_fact[k] and x.anulado_en is null and x.referencia = v_ref) then
+        v_ref := v_ref || ' · ' || left(v_pago.id::text, 8);
+      end if;
+      perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
+      insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por, pago_orden_compra_id)
+      values (v_d_fact[k], v_pago.fecha_pago, v_d_monto[k], v_ref, v_pago.registrado_por, v_pago.id);
+    end loop;
+    perform set_config('metalwork.aplica_pago_directo', '', true);
+  end loop;
+  perform public.avisar_pago_directo(v_compras);
+end;
+$$;
+comment on function public.conciliar_pago_directo(uuid[]) is
+  'Rehace, para cada OC con boleta, qué toman sus facturas registradas de sus pagos directos: anula con su motivo lo que ya no calza, agrega lo que falta y avisa a Tesorería. La llaman los disparadores y las funciones que cambian la factura, el anexo o los pagos. Ayudante interno.';
+revoke all on function public.conciliar_pago_directo(uuid[]) from public, anon, authenticated;
+
+-- Lo que Tesorería tiene que saber de cada OC con boleta pagada directo, sin
+-- repetirlo (uno por persona mientras no lo lea), y dando por leído lo que ya no
+-- corre:
+--   · Pagada de más: la factura que llegó después ya estaba pagada, o es por
+--     menos. Se pide la devolución; devuelta, se anula el pago que el proveedor
+--     devolvió (el de la factura o el de la boleta) y la cuenta se rehace. Si la
+--     factura es por menos, se anula el de la boleta y la factura se paga con
+--     ese mismo voucher por lo que tomaba.
+--   · El anexo por revisar: Logística le anexó una factura que Contabilidad
+--     registró para otras OC y que no alcanza para esta. La factura no toma el
+--     pago; si la OC sí era parte de ella, que no se pague dos veces.
+--   · La factura en otra moneda: no toma el pago, y no se paga encima.
+create or replace function public.avisar_pago_directo(p_compras uuid[])
+returns void language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_oc     record;
+  v_pd     record;
+  v_e      record;
+  v_n      integer;
+  v_monto  numeric;
+  v_propio numeric;
+  v_s      text;
+  v_titulo text;
+  v_cuerpo text;
+begin
+  for v_oc in select c.id, coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda
+                from public.ordenes_compra_materiales c
+               where c.id = any(p_compras) and not c.con_factura loop
+    select count(*), coalesce(sum(p.monto), 0) into v_n, v_monto
+      from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
+    select * into v_pd from public.pago_directo_de_la_compra(v_oc.id);
+    select e.numero, e.origen into v_e from public.comprobante_en_camino(v_oc.id) e;
+    v_s := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+    v_titulo := null;
+    if v_n > 0 and coalesce(v_pd.de_mas, 0) > 0 then
+      -- Lo que Tesorería le pagó a la factura misma, no lo que tomó de las boletas.
+      select coalesce(sum(x.monto), 0) into v_propio
+        from public.facturas_de_la_compra(v_oc.id) f
+        join public.pagos_adquisicion x on x.adquisicion_id = f.adquisicion_id
+       where x.anulado_en is null and x.pago_orden_compra_id is null;
+      v_titulo := 'Compra pagada de más: ' || v_oc.nombre;
+      v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta (' || v_s || to_char(v_monto, 'FM999G999G990D00') || ')'
+               || case when v_propio > 0
+                       then ' y también por su factura ' || v_pd.factura || ', que Tesorería ya había pagado: se pagaron '
+                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago que te devolvió (el de la factura, en «Facturas por pagar», o el de la boleta, en «OC con boleta») y la cuenta se rehace.'
+                       else ' y su factura ' || v_pd.factura || ', que llegó después, es por menos: la factura tomó '
+                            || v_s || to_char(v_pd.aplicado, 'FM999G999G990D00') || ' de ese pago y se pagaron '
+                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más. Pide al proveedor la devolución; cuando la devuelva, anula el pago de la boleta en «OC con boleta» y paga la factura con ese mismo voucher por '
+                            || v_s || to_char(v_pd.aplicado, 'FM999G999G990D00') || '.' end;
+    elsif v_n > 0 and v_e.origen = 'REGISTRADA' then
+      v_titulo := 'Factura anexada por revisar: ' || v_oc.nombre;
+      v_cuerpo := 'Logística anexó a la ' || v_oc.nombre || ', que pagaste por su boleta, la factura ' || v_e.numero
+               || ', que Contabilidad registró para otras OC y que no alcanza para esta: la factura no toma ese pago. Si el anexo fue por error, que Logística lo anule. Si la OC sí era parte de esa factura, no la pagues dos veces: pregúntale a Contabilidad.';
+    elsif v_n > 0 and coalesce(v_pd.otra_moneda, false) then
+      v_titulo := 'Factura en otra moneda: ' || v_oc.nombre;
+      v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta en ' || case when v_oc.moneda = 'USD' then 'dólares' else 'soles' end
+               || ' y su factura ' || v_pd.factura || ' va en ' || case when v_oc.moneda = 'USD' then 'soles' else 'dólares' end
+               || ': el sistema no la da por pagada con ese pago, y no se paga encima. Si la factura reemplaza a la boleta, anula ese pago en «OC con boleta» y paga la factura con el mismo voucher.';
+    end if;
+    update public.notificaciones set leida_en = now()
+     where origen_id = v_oc.id and leida_en is null
+       and titulo in ('Compra pagada de más: ' || v_oc.nombre, 'Factura anexada por revisar: ' || v_oc.nombre,
+                      'Factura en otra moneda: ' || v_oc.nombre)
+       and titulo is distinct from v_titulo;
+    continue when v_titulo is null;
+    insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+    select u.id, v_titulo, v_cuerpo, '/tesoreria/por-pagar#compra-' || v_oc.id, 'ordenes_compra_materiales', v_oc.id
+      from public.usuarios u
+      join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'tesoreria.registrar_pagos'
+     where u.activo and u.id is distinct from public.usuario_actual()
+       and not exists (select 1 from public.notificaciones n
+                        where n.usuario_id = u.id and n.origen_id = v_oc.id and n.titulo = v_titulo and n.leida_en is null);
+  end loop;
+end;
+$$;
+comment on function public.avisar_pago_directo(uuid[]) is
+  'Avisa a Tesorería de cada OC con boleta pagada directo cuya factura la dejó pagada de más, cuyo anexo está por revisar o cuya factura va en otra moneda, y da por leídos los avisos de esa OC que ya no corren. Ayudante interno de la conciliación.';
+revoke all on function public.avisar_pago_directo(uuid[]) from public, anon, authenticated;
+
+-- La factura en otra moneda que la OC con boleta que Tesorería ya pagó directo
+-- no toma ese pago (el sistema no convierte): no se paga encima mientras ese
+-- pago siga vigente. Las demás facturas de una OC pagada directo ya lo tomaron y
+-- solo deben lo que les falta: basta la validación de su saldo.
 create or replace function public.fn_factura_sin_pago_directo()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare
-  v_compras   uuid[];
-  v_nombre    text;
-  v_dos_veces text;
-  v_adq       public.adquisiciones%rowtype;
+  v_adq    public.adquisiciones%rowtype;
+  v_nombre text;
 begin
-  if tg_table_name = 'adquisiciones_ordenes_compra' then
-    -- Al ligar la OC, al devolverla en una corrección o al cambiarla por otra.
-    if new.quitada_en is not null
-       or (tg_op = 'UPDATE' and old.quitada_en is null
-           and new.orden_compra_id is not distinct from old.orden_compra_id
-           and new.adquisicion_id is not distinct from old.adquisicion_id) then
-      return new;
-    end if;
-    v_compras := array[new.orden_compra_id];
-  elsif tg_table_name = 'pagos_adquisicion' then
-    -- Al pagar la factura: las OC que cubre y las de sus anexos.
-    if new.anulado_en is not null then return new; end if;
-    select * into v_adq from public.adquisiciones where id = new.adquisicion_id;
-    select coalesce(array_agg(l.orden_compra_id), '{}') into v_compras
-      from public.adquisiciones_ordenes_compra l where l.adquisicion_id = new.adquisicion_id and l.quitada_en is null;
-    v_compras := v_compras || array_remove(array[v_adq.orden_compra_id], null)
-              || coalesce((select array_agg(x.orden_compra_id)
-                             from public.anexos_de_la_factura(v_adq) x
-                            where public.factura_alcanza_para(v_adq, x.orden_compra_id)), '{}');
-  else
-    if new.estado <> 'REGISTRADA' then return new; end if;
-    if tg_op = 'UPDATE' and old.estado = 'REGISTRADA' then
-      -- Ya registrada: la OC de la cabecera, si cambió, y los anexos que
-      -- coinciden con ella, si cambió su número, su proveedor o el anexo elegido.
-      v_compras := '{}';
-      if new.orden_compra_id is distinct from old.orden_compra_id and new.orden_compra_id is not null then
-        v_compras := array[new.orden_compra_id];
-      end if;
-      if (public.clave_numero_comprobante(new.numero_documento), public.clave_proveedor(new.proveedor), new.documento_compra_id, new.tipo, new.total)
-         is distinct from (public.clave_numero_comprobante(old.numero_documento), public.clave_proveedor(old.proveedor), old.documento_compra_id, old.tipo, old.total) then
-        v_compras := v_compras || coalesce((select array_agg(x.orden_compra_id)
-                                              from public.anexos_de_la_factura(new) x
-                                             where public.factura_alcanza_para(new, x.orden_compra_id)), '{}');
-      end if;
-      if cardinality(v_compras) = 0 then return new; end if;
-    else
-      -- Al registrar la factura: las OC que ya tiene ligadas y las de sus anexos.
-      select coalesce(array_agg(l.orden_compra_id), '{}') into v_compras
-        from public.adquisiciones_ordenes_compra l where l.adquisicion_id = new.id and l.quitada_en is null;
-      if new.orden_compra_id is not null then v_compras := v_compras || new.orden_compra_id; end if;
-      v_compras := v_compras || coalesce((select array_agg(x.orden_compra_id)
-                                            from public.anexos_de_la_factura(new) x
-                                           where public.factura_alcanza_para(new, x.orden_compra_id)), '{}');
-    end if;
+  if tg_table_name <> 'pagos_adquisicion' or new.anulado_en is not null or new.pago_orden_compra_id is not null then
+    return new;
   end if;
-  v_nombre := public.compra_pagada_directo(v_compras);
-  if v_nombre is not null and tg_table_name = 'pagos_adquisicion' then
-    -- Si esta factura ya se había pagado y el pago directo pasa de su saldo, la
-    -- compra se pagó dos veces: lo primero es la devolución, no anular el pago
-    -- (Adquisiciones mandaba a pagar aquí y el rechazo decía «primero se anula
-    -- ese pago», al revés que Cuentas por pagar; lo cobró la séptima auditoría).
-    select coalesce(c.numero, 'OC ' || c.referencia) into v_dos_veces
-      from public.ordenes_compra_materiales c
-      cross join lateral public.comprobante_en_camino(c.id) e
-     where c.id = any(v_compras) and e.pagado_dos_veces > 0
-     order by c.numero
-     limit 1;
-    if v_dos_veces is not null then
-      raise exception 'La % se pagó dos veces: por su boleta y por esta factura. Tesorería pide al proveedor la devolución de lo pagado de más; cuando el proveedor la devuelva, anula el pago de la boleta en Cuentas por pagar y paga aquí lo que le falta a esta factura con ese mismo voucher.',
-        v_dos_veces using errcode = 'check_violation';
-    end if;
-    raise exception 'Tesorería ya le pagó la % directo, por su boleta: esta factura no se paga encima. Si el proveedor entregó factura, primero se anula ese pago.',
-      v_nombre using errcode = 'check_violation';
-  elsif v_nombre is not null then
-    raise exception 'Tesorería ya le pagó la % directo, por su boleta: si el proveedor entregó factura, Tesorería anula ese pago antes de que la factura se registre aquí. Dos caminos son dos pagos.',
+  select * into v_adq from public.adquisiciones where id = new.adquisicion_id;
+  select coalesce(c.numero, 'OC ' || c.referencia) into v_nombre
+    from public.ordenes_compra_materiales c
+   where c.id = any(public.compras_de_la_factura(v_adq)) and not c.con_factura and c.moneda <> v_adq.moneda
+     and exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = v_adq.id)
+     and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
+   order by c.numero
+   limit 1;
+  if v_nombre is not null then
+    raise exception 'Tesorería ya pagó la % directo, por su boleta, en otra moneda que esta factura: el sistema no la da por pagada con ese pago, y no se paga encima. Si la factura reemplaza a la boleta, primero se anula ese pago en «OC con boleta» y después se paga aquí con el mismo voucher.',
       v_nombre using errcode = 'check_violation';
   end if;
   return new;
 end;
 $$;
 revoke all on function public.fn_factura_sin_pago_directo() from public, anon, authenticated;
-create or replace trigger trg_adquisicion_oc_sin_pago_directo
-  before insert or update on public.adquisiciones_ordenes_compra
-  for each row execute function public.fn_factura_sin_pago_directo();
-create or replace trigger trg_adquisicion_sin_pago_directo
-  before insert or update on public.adquisiciones
-  for each row execute function public.fn_factura_sin_pago_directo();
 create or replace trigger trg_pago_factura_sin_pago_directo
   before insert on public.pagos_adquisicion
   for each row execute function public.fn_factura_sin_pago_directo();
+
+-- Anulado un pago propio de la factura (el proveedor lo devolvió, o estuvo mal),
+-- la factura vuelve a tener lugar: si una OC con boleta suya quedó pagada de más
+-- por la boleta, la factura lo toma.
+create or replace function public.fn_conciliar_por_pago_de_factura()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare v_adq public.adquisiciones%rowtype;
+begin
+  if new.pago_orden_compra_id is not null or old.anulado_en is not null or new.anulado_en is null then return null; end if;
+  select * into v_adq from public.adquisiciones where id = new.adquisicion_id;
+  perform public.conciliar_pago_directo(public.compras_de_la_factura(v_adq));
+  return null;
+end;
+$$;
+revoke all on function public.fn_conciliar_por_pago_de_factura() from public, anon, authenticated;
+create or replace trigger trg_conciliar_por_pago_de_factura
+  after update on public.pagos_adquisicion
+  for each row execute function public.fn_conciliar_por_pago_de_factura();
 
 -- La OC con boleta de antes que no se pagó: Tesorería la pasa a su lista y se
 -- paga como las de ahora. Solo de falso a verdadero, y no la que ya tiene
@@ -1534,25 +1832,20 @@ begin
   end if;
   if v_oc.pago_en_tesoreria then return p_compra; end if;
   select a.numero_documento into v_fact
-    from public.adquisiciones a
-   where a.estado = 'REGISTRADA'
-     and (a.orden_compra_id = p_compra
-          or exists (select 1 from public.adquisiciones_ordenes_compra l
-                      where l.adquisicion_id = a.id and l.orden_compra_id = p_compra and l.quitada_en is null))
+    from public.facturas_de_la_compra(p_compra) f
+    join public.adquisiciones a on a.id = f.adquisicion_id
+   order by a.fecha_emision, a.creado_en
    limit 1;
   if v_fact is not null then
-    raise exception 'Contabilidad ya registró el comprobante % de la %: se paga en Cuentas por pagar.', v_fact, v_nombre
+    raise exception 'Contabilidad ya registró el comprobante % de la %: se paga por él en «Facturas por pagar».', v_fact, v_nombre
       using errcode = 'check_violation';
   end if;
   select e.numero, e.origen, e.alcanza into v_fact, v_origen, v_alcanza from public.comprobante_en_camino(p_compra) e;
   if v_origen = 'BORRADOR' then
     raise exception 'Contabilidad tiene en borrador el comprobante % de la %: se paga por él en Cuentas por pagar cuando lo registre.', v_fact, v_nombre
       using errcode = 'check_violation';
-  elsif v_origen = 'REGISTRADA' and not v_alcanza then
-    raise exception 'Logística anexó a la % la factura %, que Contabilidad registró para otras OC y que no alcanza para esta: si el anexo fue por error, que Logística lo anule.', v_nombre, v_fact
-      using errcode = 'check_violation';
   elsif v_origen = 'REGISTRADA' then
-    raise exception 'Contabilidad registró la factura % que Logística anexó a la %: se paga por ella en Cuentas por pagar, no por su boleta.', v_fact, v_nombre
+    raise exception 'Logística anexó a la % la factura %, que Contabilidad registró para otras OC y que no alcanza para esta: si el anexo fue por error, que Logística lo anule.', v_nombre, v_fact
       using errcode = 'check_violation';
   elsif v_origen = 'LOGISTICA' then
     raise exception 'Logística anexó a la % la factura % del proveedor: Contabilidad la registra y se paga por ella en Cuentas por pagar.', v_nombre, v_fact
@@ -1588,8 +1881,9 @@ grant execute on function public.pasar_compra_a_tesoreria(uuid) to authenticated
 --   · Al darla de alta sin OC ni anexo elegido, y no como «Otro» (la nota de
 --     crédito lleva el número de su factura): si Logística anexó esa factura a
 --     una OC con boleta que la puede llevar (aprobada, en la lista de Tesorería,
---     la misma condición de pago, OT y unidad, sin su factura completa ni pago
---     directo), se liga sola a ella. Si esa OC ya tiene su factura (otra eligió
+--     la misma condición de pago, OT y unidad, sin su factura completa), se liga
+--     sola a ella; si Tesorería ya la pagó directo, la factura toma ese pago
+--     (sección 6). Si esa OC ya tiene su factura (otra eligió
 --     ese anexo, o tiene una completa), se rechaza: es la misma factura con el
 --     número corregido, o el anexo está mal; quedaba sin OC y se pagaba dos veces.
 --     Si ninguna la puede llevar por otra razón, queda sin OC y la OC se paga por
@@ -1683,7 +1977,6 @@ begin
        and not exists (select 1 from public.adquisiciones_ordenes_compra l
                          join public.adquisiciones a on a.id = l.adquisicion_id
                         where l.orden_compra_id = c.id and l.quitada_en is null and not l.parcial and a.estado = 'REGISTRADA')
-       and not exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
      order by d.creado_en
      limit 1;
     if found then
@@ -1786,178 +2079,250 @@ create or replace trigger trg_vinculo_con_anexo
   before update on public.adquisiciones_ordenes_compra
   for each row execute function public.fn_vinculo_con_anexo();
 
--- La factura que llega a una OC que Tesorería ya pagó directo no se puede
--- registrar ni pagar hasta que ese pago se anule, y la tarjeta que lo dice está
--- en Cuentas por pagar: sin aviso, Contabilidad choca con el rechazo y nadie se
--- entera. Le llega a quien paga cuando Logística la anexa, cuando Contabilidad
--- registra una factura que es la de un anexo, y cuando una corrección en
--- Adquisiciones devuelve a la OC una factura que ya no la cubría.
--- En el caso normal el dinero ya salió: se anula el pago de la boleta y con el
--- mismo voucher se paga lo que ese pago llevaba, nada más: el resto de la
--- factura es un pago nuevo (decía «paga la factura con el mismo voucher», y tras
--- un pago a cuenta de S/ 30 se pagaban S/ 100 con él; lo cobró la séptima
--- auditoría); si la factura es por menos que ese pago, con el voucher va lo que
--- le falta y la diferencia la devuelve el proveedor. Si el saldo de la factura
--- no alcanza para lo que se pagó directo y la factura ya tiene pagos (se
--- registró y se pagó antes de que Logística la anexara), la compra se pagó dos
--- veces: se pide la devolución al proveedor. Si la factura no alcanza para
--- esta OC, el que está mal es el anexo: el pago directo no se toca.
--- Uno por persona: si todavía tiene sin leer el mismo aviso de esa OC, no se
--- repite; y los de antes que ya no corren (la OC cambió de situación) se dan por
--- leídos: el que mandaba anular un pago que ya no se anula quedaba a la vista.
-create or replace function public.avisar_pago_por_anular(p_compras uuid[])
-returns void language plpgsql security definer set search_path to 'public' as $$
-declare
-  v_oc     record;
-  v_e      record;
-  v_hay    boolean;
-  v_n      integer;
-  v_monto  numeric;
-  v_saldo  numeric;
-  v_s      text;
-  v_pagos  text;
-  v_titulo text;
-  v_cuerpo text;
-begin
-  for v_oc in select c.id, coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda
-                from public.ordenes_compra_materiales c
-               where c.id = any(p_compras) and not c.con_factura loop
-    select count(*), coalesce(sum(p.monto), 0) into v_n, v_monto
-      from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null;
-    select e.numero, e.origen, e.alcanza, e.pagado_dos_veces, e.documento_id into v_e from public.comprobante_en_camino(v_oc.id) e;
-    v_hay := found;
-    v_titulo := null;
-    v_s := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
-    if v_n > 0 and v_hay then
-      v_pagos := case when v_n = 1 then 'ese pago' else 'esos ' || v_n || ' pagos' end;
-      -- Lo que le falta a la factura registrada, si es de la moneda de la OC.
-      v_saldo := case when v_e.origen = 'REGISTRADA'
-                      then (select f.saldo from public.factura_del_anexo(v_e.documento_id) f where f.moneda = v_oc.moneda) end;
-      if v_e.origen = 'REGISTRADA' and not v_e.alcanza then
-        v_titulo := 'Factura anexada por revisar: ' || v_oc.nombre;
-        v_cuerpo := 'Logística anexó a la ' || v_oc.nombre || ' la factura ' || v_e.numero
-                 || ', que Contabilidad registró para otras OC y que no alcanza para esta. No anules ' || v_pagos
-                 || ' de la boleta: si el anexo fue por error, que Logística lo anule.';
-      elsif v_e.origen = 'REGISTRADA' and v_e.pagado_dos_veces > 0 then
-        v_titulo := 'Compra pagada dos veces: ' || v_oc.nombre;
-        v_cuerpo := 'La ' || v_oc.nombre || ' se pagó por su boleta y también por la factura ' || v_e.numero
-                 || ', que Contabilidad registró y Tesorería pagó antes de que Logística la anexara: se pagaron '
-                 || v_s || to_char(v_e.pagado_dos_veces, 'FM999G999G990D00') || ' de más. Pide al proveedor la devolución;'
-                 || ' cuando el proveedor la devuelva, anula ' || v_pagos || ' de la boleta en Cuentas por pagar'
-                 || case when coalesce(v_saldo, 0) > 0
-                         then ' y paga con ' || case when v_n = 1 then 'el mismo voucher' else 'los mismos vouchers' end || ' lo que le falta a la factura, ' || v_s || to_char(v_saldo, 'FM999G999G990D00') || '.'
-                         else '.' end;
-      else
-        v_titulo := 'Llegó factura de una OC pagada: ' || v_oc.nombre;
-        v_cuerpo := case v_e.origen
-                      when 'BORRADOR' then 'Contabilidad tiene en borrador el comprobante ' || v_e.numero
-                      when 'REGISTRADA' then 'Contabilidad registró la factura ' || v_e.numero || ' que Logística anexó'
-                      else 'El proveedor entregó la factura ' || v_e.numero end
-                 || ' de la ' || v_oc.nombre || ', que ya pagaste por su boleta (' || v_s || to_char(v_monto, 'FM999G999G990D00')
-                 || '). Anula ' || v_pagos || ' en Cuentas por pagar y paga '
-                 || case v_e.origen when 'BORRADOR' then 'el comprobante, cuando Contabilidad lo registre,'
-                                    when 'REGISTRADA' then 'la factura'
-                                    else 'la factura, cuando Contabilidad la registre,' end
-                 || case when v_saldo is not null and v_saldo < v_monto
-                         then ' con ' || case when v_n = 1 then 'el mismo voucher' else 'los mismos vouchers' end || ' por lo que le falta, ' || v_s || to_char(v_saldo, 'FM999G999G990D00')
-                              || ': el dinero ya salió, y los ' || v_s || to_char(v_monto - v_saldo, 'FM999G999G990D00')
-                              || ' que salieron de más los devuelve el proveedor.'
-                         else ' con ' || case when v_n = 1 then 'el mismo voucher' else 'los mismos vouchers' end || ' por esos ' || v_s || to_char(v_monto, 'FM999G999G990D00') || ': el dinero ya salió.' end
-                 || case when v_saldo is null then ' Si la factura es por más, lo que le falte después es un pago nuevo; si es por menos, la diferencia la devuelve el proveedor.'
-                         when v_saldo > v_monto then ' Los ' || v_s || to_char(v_saldo - v_monto, 'FM999G999G990D00') || ' que le faltan después son un pago nuevo.'
-                         else '' end;
-      end if;
-    end if;
-    update public.notificaciones set leida_en = now()
-     where origen_id = v_oc.id and leida_en is null
-       and titulo in ('Factura anexada por revisar: ' || v_oc.nombre, 'Compra pagada dos veces: ' || v_oc.nombre,
-                      'Llegó factura de una OC pagada: ' || v_oc.nombre)
-       and titulo is distinct from v_titulo;
-    continue when v_titulo is null;
-    insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
-    select u.id, v_titulo, v_cuerpo, '/tesoreria/por-pagar#compra-' || v_oc.id, 'ordenes_compra_materiales', v_oc.id
-      from public.usuarios u
-      join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'tesoreria.registrar_pagos'
-     where u.activo and u.id is distinct from public.usuario_actual()
-       and not exists (select 1 from public.notificaciones n
-                        where n.usuario_id = u.id and n.origen_id = v_oc.id and n.titulo = v_titulo and n.leida_en is null);
-  end loop;
-end;
-$$;
-comment on function public.avisar_pago_por_anular(uuid[]) is
-  'Avisa a Tesorería de cada OC con boleta de la lista que tiene un pago directo vigente y su comprobante en camino: tiene que anular ese pago y pagar con su voucher lo que llevaba, pedir la devolución si la factura ya estaba pagada, o no tocarlo si el anexo es de otra compra; y da por leídos los avisos de esa OC que ya no corren. Ayudante interno de los disparadores.';
-revoke all on function public.avisar_pago_por_anular(uuid[]) from public, anon, authenticated;
-
--- Las OC que pueden haber vuelto a tener su factura en camino, o cambiado de
--- situación: la del documento que Logística anexa; al registrar una factura (o
--- ligarle otra OC ya registrada), las OC con boleta de los anexos de los que es
--- la factura: el anexo de la OC ya pagada pasaba a «por revisar» y el aviso de
--- anular su pago quedaba sin leer (lo cobró la séptima auditoría); y, al
--- corregir una factura registrada, las OC que la corrección le quitó y las de
--- sus anexos, con su número y su proveedor de antes y de después.
-create or replace function public.fn_aviso_factura_de_compra_pagada()
+-- Las OC cuya factura pudo cambiar, para conciliar su pago directo y avisar a
+-- Tesorería: la del documento que Logística anexa o anula; las de la factura que
+-- se registra o se corrige, con su fila de antes y la de después; y la del
+-- vínculo que se agrega, se quita o cambia, con las de su factura. La
+-- corrección de Adquisiciones escribe la factura y después sus vínculos:
+-- concilia una sola vez, al final (`corregir_factura_compra`), y no a cada paso
+-- con la factura a medio corregir.
+create or replace function public.fn_conciliar_pago_directo()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare
   v_compras uuid[];
   v_adq     public.adquisiciones%rowtype;
 begin
+  if current_setting('metalwork.corrigiendo', true) = 'factura' then return null; end if;
   if tg_table_name = 'documentos_compra_material' then
-    if new.tipo = 'FACTURA' then perform public.avisar_pago_por_anular(array[new.orden_compra_id]); end if;
-    return null;
-  elsif tg_table_name = 'adquisiciones' then
-    v_compras := '{}';
-    if new.estado = 'REGISTRADA' and (tg_op = 'INSERT' or old.estado <> 'REGISTRADA') then
-      v_compras := coalesce((select array_agg(x.orden_compra_id) from public.anexos_de_la_factura(new) x), '{}');
-    end if;
-    if tg_op = 'UPDATE'
-       and (new.numero_documento, new.proveedor, new.documento_compra_id, new.orden_compra_id)
-           is distinct from (old.numero_documento, old.proveedor, old.documento_compra_id, old.orden_compra_id) then
-      v_compras := v_compras
-                || array_remove(array[old.orden_compra_id,
-                                      (select d.orden_compra_id from public.documentos_compra_material d where d.id = old.documento_compra_id)], null)
-                || coalesce((select array_agg(x.orden_compra_id)
-                               from public.anexos_de_la_factura(old) x), '{}')
-                || coalesce((select array_agg(x.orden_compra_id)
-                               from public.anexos_de_la_factura(new) x), '{}');
-    end if;
-    if cardinality(v_compras) = 0 then return null; end if;
-  elsif tg_op = 'INSERT' then
-    -- La OC que se le liga a una factura ya registrada cambia para qué alcanza.
-    select * into v_adq from public.adquisiciones a where a.id = new.adquisicion_id;
-    if v_adq.estado is distinct from 'REGISTRADA' or new.quitada_en is not null then return null; end if;
-    v_compras := coalesce((select array_agg(x.orden_compra_id)
-                             from public.anexos_de_la_factura(v_adq) x), '{}');
-  else
-    if old.quitada_en is not null
-       or (new.quitada_en is null and new.orden_compra_id is not distinct from old.orden_compra_id) then
+    if new.tipo <> 'FACTURA' or (tg_op = 'UPDATE' and new.anulado_en is not distinct from old.anulado_en) then
       return null;
     end if;
-    select * into v_adq from public.adquisiciones a where a.id = old.adquisicion_id;
-    v_compras := array[old.orden_compra_id]
-              || coalesce((select array_agg(x.orden_compra_id)
-                             from public.anexos_de_la_factura(v_adq) x), '{}');
+    v_compras := array[new.orden_compra_id];
+  elsif tg_table_name = 'adquisiciones' then
+    if tg_op = 'INSERT' then
+      if new.estado <> 'REGISTRADA' then return null; end if;
+      v_compras := public.compras_de_la_factura(new);
+    else
+      if 'REGISTRADA' not in (new.estado, old.estado)
+         or (new.estado, new.total, new.moneda, new.numero_documento, new.proveedor, new.documento_compra_id,
+             new.orden_compra_id, new.tipo, new.fecha_emision)
+            is not distinct from (old.estado, old.total, old.moneda, old.numero_documento, old.proveedor, old.documento_compra_id,
+                                  old.orden_compra_id, old.tipo, old.fecha_emision) then
+        return null;
+      end if;
+      v_compras := public.compras_de_la_factura(old) || public.compras_de_la_factura(new);
+    end if;
+  else
+    if tg_op = 'UPDATE' and (new.quitada_en, new.orden_compra_id, new.adquisicion_id, new.parcial)
+                            is not distinct from (old.quitada_en, old.orden_compra_id, old.adquisicion_id, old.parcial) then
+      return null;
+    end if;
+    select * into v_adq from public.adquisiciones a where a.id = new.adquisicion_id;
+    if v_adq.estado is distinct from 'REGISTRADA' then return null; end if;
+    v_compras := array[new.orden_compra_id] || public.compras_de_la_factura(v_adq)
+              || case when tg_op = 'UPDATE' then array[old.orden_compra_id] else '{}'::uuid[] end;
   end if;
-  perform public.avisar_pago_por_anular(v_compras);
+  perform public.conciliar_pago_directo(v_compras);
   return null;
 end;
 $$;
-revoke all on function public.fn_aviso_factura_de_compra_pagada() from public, anon, authenticated;
-create or replace trigger trg_aviso_factura_de_compra_pagada
-  after insert on public.documentos_compra_material
-  for each row execute function public.fn_aviso_factura_de_compra_pagada();
-create or replace trigger trg_aviso_pago_por_anular_adquisicion
+revoke all on function public.fn_conciliar_pago_directo() from public, anon, authenticated;
+create or replace trigger trg_conciliar_pago_directo_documento
+  after insert or update on public.documentos_compra_material
+  for each row execute function public.fn_conciliar_pago_directo();
+create or replace trigger trg_conciliar_pago_directo_adquisicion
   after insert or update on public.adquisiciones
-  for each row execute function public.fn_aviso_factura_de_compra_pagada();
-create or replace trigger trg_aviso_pago_por_anular_vinculo
+  for each row execute function public.fn_conciliar_pago_directo();
+create or replace trigger trg_conciliar_pago_directo_vinculo
   after insert or update on public.adquisiciones_ordenes_compra
-  for each row execute function public.fn_aviso_factura_de_compra_pagada();
+  for each row execute function public.fn_conciliar_pago_directo();
+
+-- Corregir la factura: la de la 20261016701000 con dos cambios por la sección 6.
+-- El total no baja de lo que Tesorería le pagó, y la moneda no cambia si le
+-- pagó algo, pero el pago de la boleta que la factura tomó no cuenta para eso:
+-- con él, Contabilidad no podía corregir el total mal escrito de la factura de
+-- una OC pagada directo. Y la conciliación corre una vez, al final, con las OC
+-- de antes y las de después: los disparadores no la corren a cada paso, con la
+-- factura escrita y sus vínculos todavía sin escribir.
+create or replace function public.corregir_factura_compra(
+  p_correccion uuid, p_id uuid, p_motivo text, p_justificante text, p_nombre text, p_cambios jsonb
+) returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_adq       public.adquisiciones%rowtype;
+  v_nueva     public.adquisiciones%rowtype;
+  v_antes     jsonb;
+  v_despues   jsonb;
+  v_pagado    numeric;
+  v_ordenes   uuid[];
+  v_actuales  uuid[];
+  v_parciales uuid[];
+  v_parciales_antes uuid[];
+  v_oc        uuid;
+  v_otra      text;
+  v_principal uuid;
+  v_doc_oc    uuid;
+  v_lectura   jsonb;
+  v_compras   uuid[];
+begin
+  perform public.exigir_permiso('adquisiciones.registrar');
+  select * into v_adq from public.adquisiciones where id = p_id for update;
+  if not found then raise exception 'El comprobante no existe.'; end if;
+  if exists (select 1 from public.correcciones where id = p_correccion and documento_id = p_id) then
+    return p_id;
+  end if;
+  if v_adq.estado <> 'REGISTRADA' then
+    raise exception 'El comprobante % está en borrador: complétalo, no hace falta corregirlo.', v_adq.numero_documento
+      using errcode = 'check_violation';
+  end if;
+  if p_cambios is null or jsonb_typeof(p_cambios) <> 'object' then
+    raise exception 'Vuelve a cargar la pantalla.' using errcode = 'check_violation';
+  end if;
+  -- Lo que Tesorería le pagó: el pago de la boleta que tomó no cuenta, se rehace al final.
+  select coalesce(sum(monto), 0) into v_pagado from public.pagos_adquisicion
+   where adquisicion_id = p_id and anulado_en is null and pago_orden_compra_id is null;
+  v_compras := public.compras_de_la_factura(v_adq);
+  v_actuales := array(select l.orden_compra_id from public.adquisiciones_ordenes_compra l
+                       where l.adquisicion_id = p_id and l.quitada_en is null order by l.creado_en);
+  v_parciales_antes := array(select l.orden_compra_id from public.adquisiciones_ordenes_compra l
+                              where l.adquisicion_id = p_id and l.quitada_en is null and l.parcial order by l.creado_en);
+  v_antes := to_jsonb(v_adq) - 'actualizado_en' - 'lectura_en'
+             || jsonb_build_object('ordenes', to_jsonb(v_actuales), 'parciales', to_jsonb(v_parciales_antes));
+
+  v_nueva := v_adq;
+  begin
+    v_nueva.proveedor := coalesce(btrim(p_cambios->>'proveedor'), v_adq.proveedor);
+    v_nueva.numero_documento := coalesce(btrim(p_cambios->>'numero_documento'), v_adq.numero_documento);
+    v_nueva.fecha_emision := coalesce((p_cambios->>'fecha_emision')::date, v_adq.fecha_emision);
+    v_nueva.fecha_vencimiento := coalesce((p_cambios->>'fecha_vencimiento')::date, v_adq.fecha_vencimiento);
+    v_nueva.moneda := coalesce(p_cambios->>'moneda', v_adq.moneda);
+    v_nueva.total := coalesce((p_cambios->>'total')::numeric, v_adq.total);
+    v_nueva.condicion_pago := coalesce(p_cambios->>'condicion_pago', v_adq.condicion_pago);
+    v_nueva.observacion := coalesce(p_cambios->>'observacion', v_adq.observacion);
+    v_nueva.ruta_storage := coalesce(nullif(p_cambios->>'pdf_ruta', ''), v_adq.ruta_storage);
+    v_ordenes := case when p_cambios ? 'ordenes'
+                      then array(select distinct x::uuid from jsonb_array_elements_text(p_cambios->'ordenes') x)
+                      else v_actuales end;
+    v_parciales := case when p_cambios ? 'parciales'
+                        then array(select distinct x::uuid from jsonb_array_elements_text(p_cambios->'parciales') x)
+                        else v_parciales_antes end;
+  exception when others then
+    raise exception 'Revisa los datos de la corrección.' using errcode = 'check_violation';
+  end;
+  v_parciales := array(select p from unnest(v_parciales) p where p = any (v_ordenes));
+  if v_nueva.total <= 0 or v_nueva.total <> round(v_nueva.total, 2) then
+    raise exception 'El total va con IGV, mayor que cero, con hasta dos decimales.' using errcode = 'check_violation';
+  end if;
+  if v_nueva.total < v_pagado then
+    raise exception 'Tesorería ya pagó % de esta factura: el total no puede quedar por debajo.', v_pagado using errcode = 'check_violation';
+  end if;
+  if v_nueva.moneda is distinct from v_adq.moneda and v_pagado > 0 then
+    raise exception 'La factura ya tiene pagos: su moneda no cambia. Anula primero los pagos.' using errcode = 'check_violation';
+  end if;
+  if v_nueva.condicion_pago = 'CONTADO' and v_nueva.fecha_vencimiento <> v_nueva.fecha_emision then
+    v_nueva.fecha_vencimiento := v_nueva.fecha_emision;
+  end if;
+  if cardinality(v_ordenes) > 40 then
+    raise exception 'Una factura cubre hasta 40 OC.' using errcode = 'check_violation';
+  end if;
+  if v_nueva.ruta_storage is distinct from v_adq.ruta_storage
+     and v_nueva.ruta_storage !~ ('^adquisiciones/' || p_id::text || '/correccion-[0-9a-f-]{36}\.pdf$') then
+    raise exception 'Vuelve a adjuntar el PDF corregido de la factura.' using errcode = 'check_violation';
+  end if;
+
+  -- Cada OC nueva, o que esta factura pasa a completar, no la completa otra factura registrada.
+  foreach v_oc in array v_ordenes loop
+    if v_oc = any (v_actuales) and (v_oc = any (v_parciales) or not (v_oc = any (v_parciales_antes))) then continue; end if;
+    select a.numero_documento into v_otra
+      from public.adquisiciones_ordenes_compra l join public.adquisiciones a on a.id = l.adquisicion_id
+     where l.orden_compra_id = v_oc and l.quitada_en is null and not l.parcial and a.estado = 'REGISTRADA' and a.id <> p_id limit 1;
+    if v_otra is not null then
+      raise exception 'Una de las OC ya tiene su factura completa (%): corrige esa factura primero.', v_otra using errcode = 'check_violation';
+    end if;
+    if not exists (select 1 from public.ordenes_compra_materiales c where c.id = v_oc and c.con_factura) then
+      raise exception 'Una de las OC no existe o va sin factura.' using errcode = 'check_violation';
+    end if;
+  end loop;
+
+  -- La principal fija la OT y el PDF de Logística: si sale, otra de las que quedan.
+  v_principal := case when v_adq.orden_compra_id = any (v_ordenes) then v_adq.orden_compra_id else v_ordenes[1] end;
+  if v_nueva.documento_compra_id is not null then
+    select d.orden_compra_id into v_doc_oc from public.documentos_compra_material d where d.id = v_nueva.documento_compra_id;
+    if v_doc_oc = any (v_ordenes) then
+      v_principal := v_doc_oc;
+    elsif v_nueva.ruta_storage is not null then
+      v_nueva.documento_compra_id := null;
+    else
+      raise exception 'Esta factura usa el PDF que Logística subió a una OC que quitas: adjunta el PDF de la factura.'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  v_nueva.orden_compra_id := v_principal;
+  if v_principal is null then v_nueva.orden_id := null; end if;
+
+  v_lectura := p_cambios->'lectura';
+  perform set_config('metalwork.corrigiendo', 'factura', true);
+  update public.adquisiciones
+     set proveedor = v_nueva.proveedor, numero_documento = v_nueva.numero_documento,
+         fecha_emision = v_nueva.fecha_emision, fecha_vencimiento = v_nueva.fecha_vencimiento,
+         moneda = v_nueva.moneda, total = v_nueva.total, condicion_pago = v_nueva.condicion_pago,
+         observacion = v_nueva.observacion, ruta_storage = v_nueva.ruta_storage,
+         documento_compra_id = v_nueva.documento_compra_id, orden_compra_id = v_nueva.orden_compra_id,
+         orden_id = case when v_nueva.orden_compra_id is distinct from v_adq.orden_compra_id then null else orden_id end,
+         lectura_fuente = case when jsonb_typeof(v_lectura) = 'object' then v_lectura->>'fuente' else lectura_fuente end,
+         lectura_total = case when jsonb_typeof(v_lectura) = 'object' then (v_lectura->>'total')::numeric else lectura_total end,
+         lectura_moneda = case when jsonb_typeof(v_lectura) = 'object' then v_lectura->>'moneda' else lectura_moneda end,
+         lectura_numero = case when jsonb_typeof(v_lectura) = 'object' then v_lectura->>'numero' else lectura_numero end,
+         lectura_ordenes = case when jsonb_typeof(v_lectura) = 'object'
+                                then array(select jsonb_array_elements_text(coalesce(v_lectura->'ordenes', '[]'::jsonb)))
+                                else lectura_ordenes end
+   where id = p_id;
+  -- Las que salen quedan quitadas; las que vuelven se reactivan; las nuevas se enlazan.
+  update public.adquisiciones_ordenes_compra set quitada_en = now(), quitada_por = public.usuario_actual()
+   where adquisicion_id = p_id and quitada_en is null and not (orden_compra_id = any (v_ordenes));
+  update public.adquisiciones_ordenes_compra set quitada_en = null, quitada_por = null
+   where adquisicion_id = p_id and quitada_en is not null and orden_compra_id = any (v_ordenes);
+  insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id, parcial)
+  select p_id, o, o = any (v_parciales) from unnest(v_ordenes) o
+   where not exists (select 1 from public.adquisiciones_ordenes_compra l where l.adquisicion_id = p_id and l.orden_compra_id = o)
+  on conflict (adquisicion_id, orden_compra_id) do nothing;
+  update public.adquisiciones_ordenes_compra set parcial = (orden_compra_id = any (v_parciales))
+   where adquisicion_id = p_id and quitada_en is null and parcial is distinct from (orden_compra_id = any (v_parciales));
+  perform set_config('metalwork.corrigiendo', '', true);
+
+  -- Que todas las OC que quedan sean del mismo proveedor y la misma condición que la factura.
+  if exists (select 1 from public.adquisiciones_ordenes_compra l
+               join public.ordenes_compra_materiales c on c.id = l.orden_compra_id
+              where l.adquisicion_id = p_id and l.quitada_en is null and c.condicion_pago <> v_nueva.condicion_pago) then
+    raise exception 'Las OC de la factura tienen que ir con la misma condición de pago que ella.' using errcode = 'check_violation';
+  end if;
+  if (select count(distinct coalesce(c.proveedor_id::text, upper(btrim(c.proveedor))))
+        from public.adquisiciones_ordenes_compra l join public.ordenes_compra_materiales c on c.id = l.orden_compra_id
+       where l.adquisicion_id = p_id and l.quitada_en is null) > 1 then
+    raise exception 'Una factura es de un solo proveedor: sus OC tienen que ser del mismo.' using errcode = 'check_violation';
+  end if;
+
+  select * into v_nueva from public.adquisiciones where id = p_id;
+  v_despues := to_jsonb(v_nueva) - 'actualizado_en' - 'lectura_en'
+    || jsonb_build_object(
+         'ordenes', to_jsonb(array(select l.orden_compra_id from public.adquisiciones_ordenes_compra l
+                                    where l.adquisicion_id = p_id and l.quitada_en is null order by l.creado_en)),
+         'parciales', to_jsonb(array(select l.orden_compra_id from public.adquisiciones_ordenes_compra l
+                                      where l.adquisicion_id = p_id and l.quitada_en is null and l.parcial order by l.creado_en)));
+  perform public.conciliar_pago_directo(v_compras || public.compras_de_la_factura(v_nueva));
+  perform public.registrar_correccion(p_correccion, 'FACTURA_COMPRA', p_id, v_nueva.numero_documento, p_motivo, p_justificante,
+                                      p_nombre, v_antes, v_despues);
+  return p_id;
+end $$;
+revoke all on function public.corregir_factura_compra(uuid, uuid, text, text, text, jsonb) from public, anon;
+grant execute on function public.corregir_factura_compra(uuid, uuid, text, text, text, jsonb) to authenticated;
 
 -- 7. Adquisiciones: el pago de la boleta y los documentos de la OS -------------------------
 -- La misma firma de la 20261020170000. Cambia:
 --   · la OC con boleta que paga Tesorería sale POR_PAGAR, PAGO_PARCIAL o PAGADA
 --     con sus pagos; SIN_FACTURA queda para las de antes, pagadas fuera; la que
---     trae su comprobante espera que se registre (POR_FACTURAR) y, si ya tenía
---     un pago directo, PAGO_POR_ANULAR: Tesorería anula ese pago primero.
+--     trae su comprobante espera que se registre (POR_FACTURAR). Si ya tenía un
+--     pago directo, su factura lo toma (sección 6): sale como se paga la factura
+--     y, si la factura no tomó todo lo que se pagó, PAGADA_DE_MAS.
 --   · la OS trae sus documentos.
 --   · cada archivo dice en qué bucket está.
 --   · (sexta vuelta) la factura que Logística anexó a una OC con boleta y que
@@ -1969,10 +2334,8 @@ create or replace trigger trg_aviso_pago_por_anular_vinculo
 --     documentos traen su anulación; cada pago dice si fue el que canceló la OC
 --     (el que llegó al total, o el que la dio por cancelada), no lo que se pensó
 --     al registrarlo: si se anula uno de antes, el que sigue ya no es «a cuenta».
---   · (sexta auditoría) la OC con boleta pagada directo y por la factura que
---     llegó después sale PAGADA_DOS_VECES, no PAGO_POR_ANULAR: lo que se pide es
---     la devolución, no anular el pago. Pagada su factura parcial, la OC con
---     boleta sale PAGO_PARCIAL, como la de factura: decía PAGADA. Cada factura
+--   · (sexta auditoría) pagada su factura parcial, la OC con boleta sale
+--     PAGO_PARCIAL, como la de factura: decía PAGADA. Cada factura
 --     anexada trae la factura registrada que es la suya (número, si alcanza y
 --     lo pagado), para que Adquisiciones diga si el anexo se puede anular y no
 --     la muestre dos veces.
@@ -2053,10 +2416,14 @@ begin
       left join public.documentos_compra_material d on d.id = a.documento_compra_id
       left join lateral (
         select sum(x.monto) as pagado,
-               jsonb_agg(jsonb_build_object('id', x.id, 'fecha', x.fecha, 'monto', x.monto,
-                                            'referencia', x.referencia, 'ruta', x.archivo_ruta, 'bucket', 'pagos-facturas')
+               jsonb_agg(jsonb_build_object('id', x.id, 'fecha', x.fecha, 'monto', x.monto, 'referencia', x.referencia,
+                                            -- El pago de la boleta que la factura tomó (sección 6) lleva el voucher de ese pago.
+                                            'ruta', coalesce(x.archivo_ruta, po.archivo_ruta),
+                                            'bucket', case when x.pago_orden_compra_id is not null then 'pagos-compras' else 'pagos-facturas' end,
+                                            'boleta', x.pago_orden_compra_id is not null)
                          order by x.fecha, x.creado_en) as pagos
           from public.pagos_adquisicion x
+          left join public.pagos_orden_compra po on po.id = x.pago_orden_compra_id
          where x.adquisicion_id = a.id and x.anulado_en is null
       ) p on true
      group by l.orden_compra_id
@@ -2085,16 +2452,19 @@ begin
            when c.aprobacion = 'RECHAZADA' then 'NO_SE_PAGA'
            when c.aprobacion = 'POR_APROBAR' then 'ESPERA_APROBACION'
            -- Logística le anexó una factura registrada para otras OC que no alcanza para esta.
-           when not c.con_factura and fe.origen = 'REGISTRADA' and not fe.alcanza then 'ANEXO_POR_REVISAR'
+           when not c.con_factura and fe.origen = 'REGISTRADA' then 'ANEXO_POR_REVISAR'
            -- La de antes se pagó fuera, salvo que el proveedor entregara factura: esa se paga por ella.
            when not c.con_factura and not c.pago_en_tesoreria and coalesce(fa.registradas, 0) = 0 and fe.origen is null then 'SIN_FACTURA'
-           -- Pagada directo y también por la factura que llegó después: se pide la devolución, no se anula el pago.
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and fe.origen = 'REGISTRADA' and fe.pagado_dos_veces > 0 then 'PAGADA_DOS_VECES'
-           -- Tesorería la pagó directo y después llegó su comprobante: tiene que anular ese pago para que se registre.
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and fe.origen is not null then 'PAGO_POR_ANULAR'
-           -- Pagada: sus pagos vigentes suman el total, o uno vigente la dio por cancelada (sección 2).
-           when not c.con_factura and coalesce(pb.n, 0) > 0 and (pb.sin_completar or pb.pagado >= tt.total) then 'PAGADA'
-           when not c.con_factura and coalesce(pb.n, 0) > 0 then 'PAGO_PARCIAL'
+           -- Pagada directo y su factura, que llegó después, no tomó todo lo pagado: se pide la devolución.
+           when not c.con_factura and coalesce(pb.n, 0) > 0 and coalesce(pd.de_mas, 0) > 0 then 'PAGADA_DE_MAS'
+           -- Sin factura registrada que tome sus pagos directos (o con una en otra
+           -- moneda, que no toma nada): pagada si suman el total o uno vigente la dio
+           -- por cancelada (sección 2), y si no, pagada en parte; lo que falta, por su
+           -- boleta o por la factura que llegue. Con factura, la que tomó el pago,
+           -- sale como se paga esa factura (abajo): si es por más, le falta algo.
+           when not c.con_factura and coalesce(pb.n, 0) > 0 and (coalesce(fa.registradas, 0) = 0 or coalesce(pd.otra_moneda, false))
+                and (pb.sin_completar or pb.pagado >= tt.total) then 'PAGADA'
+           when not c.con_factura and coalesce(pb.n, 0) > 0 and (coalesce(fa.registradas, 0) = 0 or coalesce(pd.otra_moneda, false)) then 'PAGO_PARCIAL'
            -- La boleta que Contabilidad registró como comprobante se paga por ahí (y
            -- `registrar_pago_compra` ya no la deja pagar directo): sigue como factura.
            -- La que trae factura (en borrador o anexada por Logística) espera que Contabilidad la registre.
@@ -2119,9 +2489,11 @@ begin
        where a.orden_compra_id = c.id and a.anulada_en is not null
     ) ga on true
     cross join lateral (select public.total_orden_compra(c.id) as total) tt
-    -- El proveedor de la OC con boleta entregó su comprobante y se paga por él. Solo
-    -- la OC con boleta: la condición va afuera de la función y la de factura no la llama.
-    left join lateral (select e.origen, e.alcanza, e.pagado_dos_veces from public.comprobante_en_camino(c.id) e where not c.con_factura) fe on true
+    -- El proveedor de la OC con boleta entregó su comprobante y se paga por él, y
+    -- su pago directo frente a su factura (sección 4). Solo la OC con boleta: la
+    -- condición va afuera de la función y la de factura no la llama.
+    left join lateral (select e.origen, e.alcanza from public.comprobante_en_camino(c.id) e where not c.con_factura) fe on true
+    left join lateral (select x.de_mas, x.otra_moneda from public.pago_directo_de_la_compra(c.id) x where not c.con_factura) pd on true
     -- El RQ nuevo (RQ-0001-2026): la OC lo atiende con alguna de sus líneas.
     left join lateral (
       select jsonb_agg(jsonb_build_object('id', x.id, 'numero', x.numero) order by x.numero) as lista,

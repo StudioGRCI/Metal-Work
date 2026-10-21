@@ -732,24 +732,25 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
     // Las OC con boleta, que Tesorería paga directo (migración 20261020210000);
     // la que tiene líneas sin precio espera a Logística, y la que trae su
-    // comprobante se paga por él, en las facturas: ninguna de las dos se paga
-    // aquí. La que ya tenía un pago directo cuando llegó su comprobante sí
-    // espera a Tesorería, que tiene que anularlo: va aparte.
-    let boletas: Promise<{ porPagar: number; porAnular: number }> | null = null
+    // comprobante o ya tiene su factura registrada se paga por ella, en las
+    // facturas: ninguna se paga aquí. La que se pagó por su boleta y cuya
+    // factura la dejó pagada de más (o va en otra moneda y no toma ese pago)
+    // espera a Tesorería, que pide la devolución: va aparte.
+    let boletas: Promise<{ porPagar: number; deMas: number }> | null = null
     const conBoleta = () =>
       (boletas ??= (async () => {
         const { data, error } = await supabase.rpc('compras_con_boleta_por_pagar')
         if (error) throw new Error('No se pudo consultar el pendiente.')
         const filas = data ?? []
         return {
-          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino).length,
-          porAnular: filas.filter((c) => c.comprobante_en_camino && Number(c.pagado) > 0).length,
+          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino && !c.factura).length,
+          deMas: filas.filter((c) => Number(c.de_mas ?? 0) > 0 || c.otra_moneda).length,
         }
       })())
     tareas.push({
-      clave: 'compras_con_pago_por_anular', ruta: '/tesoreria/por-pagar', tono: 'peligro',
-      texto: n => plural(n, 'OC con boleta trajo factura y tiene un pago directo que anular', 'OC con boleta trajeron factura y tienen un pago directo que anular'),
-      contar: async () => (await conBoleta()).porAnular,
+      clave: 'compras_con_boleta_pagadas_de_mas', ruta: '/tesoreria/por-pagar', tono: 'peligro',
+      texto: n => plural(n, 'OC con boleta pagada de más o con factura en otra moneda', 'OC con boleta pagadas de más o con factura en otra moneda'),
+      contar: async () => (await conBoleta()).deMas,
     })
     tareas.push({
       clave: 'compras_con_boleta_por_pagar', ruta: '/tesoreria/por-pagar', tono: 'aviso',
