@@ -38,9 +38,12 @@ begin
             null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-45', null);
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.b')::uuid, 'Beto', 'Casi', '70000346', 'Pintor',
             null, '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-46', null);
-  -- Entra dos minutos antes de ahora: llega dentro de la tolerancia (o antes, si es medianoche).
+  -- Entra dos minutos antes de ahora: llega dentro de la tolerancia (o antes, si
+  -- es medianoche). Sin tope: con la entrada topada a las 23:00, de 23:05 a 23:59
+  -- la marca caía fuera de la tolerancia y el check fallaba todas las noches. La
+  -- salida, 23:59:59, siempre queda después.
   v_id := public.rrhh_guardar_trabajador(current_setting('prueba.c')::uuid, 'Celia', 'Justo', '70000347', 'Armadora',
-            null, least((now() at time zone 'America/Lima')::time - interval '2 minutes', time '23:00'), '23:59:59',
+            null, (now() at time zone 'America/Lima')::time - interval '2 minutes', '23:59:59',
             'Banco de Pruebas', 'AHORROS', '191-0000000-0-47', null);
   v_id := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.a')::uuid, 3000);
   v_id := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.b')::uuid, 2000);
