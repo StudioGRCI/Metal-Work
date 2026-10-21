@@ -240,13 +240,13 @@ cargó, que es casi nada. Pantalla nueva → mirarla con los selectores que la
 delatan si viene vacía (`tbody tr`, el `h1`, el estado vacío). Lo mismo vale para
 los scripts del banco.
 
-**El banco no aplica las políticas de Storage.** Su `DELETE` de un archivo quita
-la fila de `storage.objects` y deja el archivo en el disco, y firma enlaces de
-rutas sin fila: la pantalla puede mostrar un PDF que en Supabase ya no existe, o
-dejar borrar uno que Supabase rechazaría. Toda subida o quitada de archivo se
-comprueba en el `probar-*.mjs` consultando `storage.objects` después del clic, y
-lo que dependa de una política de Storage se prueba en un check con
-`set local role authenticated`.
+**El banco aplica las políticas de Storage desde el 2026-10-20**, pero no el
+tamaño máximo ni los tipos permitidos de cada cubeta (`herramientas/banco/README.md`
+› Lo que respeta y lo que no). Antes firmaba y servía cualquier archivo, y una
+pantalla podía mostrar un PDF que Supabase habría rechazado. Igual, toda subida o
+quitada de archivo se comprueba en el `probar-*.mjs` consultando `storage.objects`
+después del clic, y lo que dependa de una política de Storage se prueba también
+en un check con `set local role authenticated`.
 
 ## Trampas
 
