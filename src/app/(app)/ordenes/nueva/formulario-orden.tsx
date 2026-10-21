@@ -51,6 +51,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const enCurso = useRef(false)
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
+  // La garantía es de un vehículo que vuelve: va con su unidad (migración 20261021120000).
+  const [tipoTrabajo, setTipoTrabajo] = useState('FABRICACION')
+  const esGarantia = tipoTrabajo === 'GARANTIA'
   const [carroceriaId, setCarroceriaId] = useState('')
   const [responsableId, setResponsableId] = useState('')
   const [cargadas, setCargadas] = useState<{
@@ -247,10 +250,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           <Campo
             etiqueta="Unidad"
             htmlFor="unidad_id"
+            requerido={esGarantia}
             ayuda={
               clienteId && unidades.length === 0
                 ? 'Este cliente no tiene unidades registradas'
-                : 'Vehículo sobre el que se ejecuta el trabajo'
+                : esGarantia
+                  ? 'La garantía va con la unidad que vuelve, y la unidad con su código interno.'
+                  : 'Vehículo sobre el que se ejecuta el trabajo'
             }
           >
             <div className="flex items-center gap-2">
@@ -312,7 +318,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           </Campo>
 
           <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
-            <Seleccion id="tipo_trabajo" name="tipo_trabajo" defaultValue="FABRICACION">
+            <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
               {TIPOS_TRABAJO.map((o) => (
                 <option key={o.valor} value={o.valor}>
                   {o.etiqueta}

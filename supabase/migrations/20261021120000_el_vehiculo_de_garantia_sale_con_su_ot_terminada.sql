@@ -137,6 +137,30 @@ returns uuid language sql stable security definer set search_path to 'public' as
 $$;
 revoke all on function public.vehiculo_ot_de_garantia_abierta(uuid) from public, anon, authenticated;
 
+-- La OT de garantía es de un vehículo que vuelve: sin su unidad, o con una
+-- unidad sin código interno, no hay ingreso que atarle y su número de papel
+-- quedaría gastado. Se exige al registrarla y al cambiarla.
+create or replace function public.fn_ot_garantia_con_su_unidad()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  if new.tipo_trabajo = 'GARANTIA' and new.estado <> 'ANULADA' then
+    if new.unidad_id is null then
+      raise exception 'La OT de garantía va con la unidad que vuelve: elige su unidad.' using errcode = 'check_violation';
+    elsif not exists (select 1 from public.unidades u where u.id = new.unidad_id
+                       and public.normalizar_codigo_interno(u.codigo_interno) is not null) then
+      raise exception 'La unidad de la OT de garantía no tiene código interno: sin él el vehículo no entra por garantía.'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_ot_garantia_con_su_unidad() from public, anon, authenticated;
+drop trigger if exists trg_ot_garantia_con_su_unidad on public.ordenes_trabajo;
+create trigger trg_ot_garantia_con_su_unidad
+  before insert or update of tipo_trabajo, unidad_id on public.ordenes_trabajo
+  for each row execute function public.fn_ot_garantia_con_su_unidad();
+
 -- ------------------------------------------- 2. lo que le falta para salir
 -- Igual que en 20261020166000; el ingreso atado a una OT de garantía espera
 -- que su garantía esté terminada, y no el avance del código.
@@ -154,11 +178,12 @@ begin
   end if;
   select * into v_orden from public.ordenes_trabajo where id = v_reg.orden_id;
   if v_orden.tipo_trabajo = 'GARANTIA' then
-    -- Anulada con el vehículo adentro: ya no hay garantía que terminar, y
-    -- decir que espera a Administración la dejaría esperando para siempre.
+    -- Anulada con el vehículo adentro (Gerencia la rechazó): ya no hay
+    -- garantía que terminar, y esperarla lo dejaría en la planta para siempre.
+    -- Sale como los demás, con el visto de Tesorería, que ve si hay algo que
+    -- cobrar.
     if v_orden.estado = 'ANULADA' then
-      return format('La OT de garantía %s está anulada: anula este ingreso y regístralo con la OT que corresponda.',
-                    v_orden.numero);
+      null;
     elsif v_orden.estado = 'BORRADOR' then
       return format('La OT de garantía %s espera la aprobación de Gerencia; después, Administración la da por terminada cuando el taller avise.',
                     v_orden.numero);
@@ -274,6 +299,7 @@ begin
   elsif v_codigo is not null and exists (
           select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
            where o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
+             and not (o.tipo_trabajo = 'GARANTIA' and public.orden_garantia_terminada(o.id))
              and upper(regexp_replace(btrim(coalesce(u.codigo_interno, '')), '[^A-Za-z0-9]', '', 'g'))
                = upper(regexp_replace(v_codigo, '[^A-Za-z0-9]', '', 'g'))) then
     -- Un código con OT en el taller que entra como cochera u «otro» se saltaría
@@ -284,6 +310,7 @@ begin
   elsif exists (
           select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
            where o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
+             and not (o.tipo_trabajo = 'GARANTIA' and public.orden_garantia_terminada(o.id))
              and ((v_placa is not null and public.normalizar_placa(u.placa) = v_placa)
                or (v_chasis is not null and upper(btrim(coalesce(u.numero_chasis, ''))) = v_chasis))) then
     -- Lo mismo por la placa o el chasis.
@@ -369,7 +396,8 @@ begin
          public.vehiculo_lo_que_falta_para_salir(v.id, true),
          case when o.tipo_trabajo = 'GARANTIA' then o.numero::text end,
          case when o.tipo_trabajo = 'GARANTIA' then
-           case when public.orden_garantia_terminada(o.id) then 'TERMINADA' else o.estado::text end end
+           case when o.estado = 'ANULADA' then 'ANULADA'
+                when public.orden_garantia_terminada(o.id) then 'TERMINADA' else o.estado::text end end
     from public.registro_vehiculos v
     left join public.ordenes_trabajo o on o.id = v.orden_id
    where v.id = any (p_registros) and v.salida_en is null and v.anulado_en is null;

@@ -45,6 +45,9 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
   if (!analisis.success) {
     return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos del formulario.' }
   }
+  if (analisis.data.tipo_trabajo === 'GARANTIA' && !analisis.data.unidad_id) {
+    return { ok: false, error: 'La OT de garantía va con la unidad que vuelve: elige su unidad.' }
+  }
 
   const v = analisis.data
   if (!v.ruta_pdf.startsWith(`ot/${v.orden_id}/`)) {
@@ -182,7 +185,7 @@ export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormDat
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   revalidatePath('/vehiculos')
-  return { ok: true, mensaje: 'Garantía terminada: el vehículo ya puede pedir el visto de Tesorería.' }
+  return { ok: true, mensaje: 'Garantía terminada.' }
 }
 
 const esquemaPonerCliente = z.object({

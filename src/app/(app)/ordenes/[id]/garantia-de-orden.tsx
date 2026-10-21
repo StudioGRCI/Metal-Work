@@ -29,19 +29,20 @@ export async function InsigniaDeGarantia({ orden }: { orden: OrdenDeGarantia }) 
  * anulada, no hay nada que decir.
  */
 export async function GarantiaDeOrden({ orden, perfil }: { orden: OrdenDeGarantia; perfil: PerfilSesion }) {
-  if (orden.tipo_trabajo !== 'GARANTIA' || orden.estado === 'BORRADOR' || orden.estado === 'ANULADA') return null
+  if (orden.tipo_trabajo !== 'GARANTIA' || orden.estado === 'BORRADOR') return null
 
+  // La marca se ve también si después se anuló la OT: es la que dejó salir al vehículo.
   const marca = await garantiaTerminada(orden.id)
   if (marca) {
     return (
       <p role="status" className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
         <strong>Garantía terminada</strong> el {fechaHora(marca.terminada_en)}
         {marca.quien ? ` por ${puesto(marca.quien)}` : ''}
-        {marca.nota ? `: ${marca.nota.replace(/[\s.]+$/, '')}.` : '.'} Con el visto de Tesorería, el vehículo sale.
+        {marca.nota ? `: ${marca.nota.replace(/[\s.]+$/, '')}.` : '.'} Si su vehículo está en la planta, sale con el visto de Tesorería.
       </p>
     )
   }
-  if (YA_TERMINADA.includes(orden.estado)) return null
+  if (orden.estado === 'ANULADA' || YA_TERMINADA.includes(orden.estado)) return null
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">

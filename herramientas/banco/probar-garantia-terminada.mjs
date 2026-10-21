@@ -140,16 +140,17 @@ let registroId = null
   const v = pagina.locator('[role="dialog"]')
   await v.locator('#veh-motivo').selectOption('FABRICACION')
   await v.locator('#veh-codigo').click()
-  await v.getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
-  const deFabricacion = (await v.getByRole('option').allInnerTexts()).map(limpio)
+  await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
+  // Las opciones de la lista de códigos, no las del motivo (que también son `option`).
+  const deFabricacion = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
   await pagina.keyboard.press('Escape')
   await v.locator('#veh-motivo').selectOption('GARANTIA')
   const sinLista = limpio(await v.locator('#veh-codigo').innerText())
   let porGarantia = []
   if (!sinLista.includes('No hay códigos')) {
     await v.locator('#veh-codigo').click()
-    await v.getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
-    porGarantia = (await v.getByRole('option').allInnerTexts()).map(limpio)
+    await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
+    porGarantia = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
   }
   const nuestro = porGarantia.find((o) => o.includes(CODIGO))
   comprobar(Boolean(nuestro) && nuestro.includes(NUMERO), `por garantía se ofrece el código con su OT de garantía («${nuestro}»)`)
@@ -220,7 +221,7 @@ let registroId = null
   await Promise.all([1, 2, 3].map(() => confirmar.click({ force: true, timeout: 2000 }).catch(() => {})))
   await pagina.getByText('Garantía terminada', { exact: false }).first().waitFor({ timeout: 20000 })
   const hecho = limpio(await pagina.locator('p[role="status"]', { hasText: 'Garantía terminada' }).innerText().catch(() => ''))
-  comprobar(hecho.includes('Compuerta cambiada, avisó Maestranza') && hecho.includes('el vehículo sale'), `la OT dice «${hecho}»`)
+  comprobar(hecho.includes('Compuerta cambiada, avisó Maestranza') && hecho.includes('sale con el visto de Tesorería'), `la OT dice «${hecho}»`)
   comprobar((await pagina.getByRole('button', { name: 'Dar por terminada la garantía' }).count()) === 0, 'y el botón ya no está')
   comprobar((await pagina.locator('h1').getByText('Garantía terminada', { exact: true }).count()) === 1, 'y el título dice «Garantía terminada»')
   await pagina.screenshot({ path: join(CAPTURAS, 'garantia-3-ot-terminada.png'), fullPage: true })

@@ -225,8 +225,8 @@ select test.afirmar(pg_temp.estado('f') ->> 'garantia_ot' is null and (pg_temp.e
   'la fabricación sigue esperando el 100 % del avance de su código');
 reset role;
 
--- Si la OT de garantía se anula con el vehículo adentro, se dice qué hacer en
--- vez de esperar a Administración para siempre.
+-- Si Gerencia anula la OT de garantía con el vehículo adentro, ya no hay
+-- garantía que esperar: sale como los demás, con el visto de Tesorería.
 select pg_temp.unidad('CHK416_N_26/55') as unidad_n \gset
 select pg_temp.orden('9422-2026', :'unidad_n', 'GARANTIA') as garantia_n \gset
 select set_config('prueba.n', gen_random_uuid()::text, true);
@@ -240,10 +240,36 @@ update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se reg
 select test.como_usuario(:'req_id');
 set local role authenticated;
 select test.afirmar(pg_temp.estado('n') ->> 'garantia_estado' = 'ANULADA'
+                    and pg_temp.estado('n') ->> 'falta_para_pedir' is null
                     and pg_temp.estado('n') ->> 'falta_para_salir'
-                        = 'La OT de garantía 9422-2026 está anulada: anula este ingreso y regístralo con la OT que corresponda.',
-  format('con su OT de garantía anulada, dice qué hacer: %s', pg_temp.estado('n') ->> 'falta_para_salir'));
+                        = 'Falta la aprobación de Tesorería: pídele la revisión de la salida.',
+  format('con su OT de garantía anulada, solo espera a Tesorería: %s', pg_temp.estado('n') ->> 'falta_para_salir'));
 reset role;
+
+-- Con la garantía terminada, la unidad vuelve a entrar a la cochera.
+select pg_temp.unidad('CHK416_C_26/56') as unidad_c \gset
+select pg_temp.orden('9423-2026', :'unidad_c', 'GARANTIA') as garantia_c \gset
+insert into public.ot_garantia_terminada (orden_id, terminada_por) values (:'garantia_c', :'adm_id');
+select set_config('prueba.c', gen_random_uuid()::text, true);
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select public.registrar_ingreso_vehiculo(pg_temp.id('c'), null, null, 'CHK416_C_26/56', 'Camión', 'QA', 'COCHERA', null, null,
+  pg_temp.foto('c', 'ingreso'));
+select test.afirmar((select motivo = 'COCHERA' from public.registro_vehiculos where id = pg_temp.id('c')),
+  'con su garantía terminada, la unidad entra a la cochera');
+reset role;
+
+-- La OT de garantía va con su unidad, y la unidad con su código.
+select test.como_usuario(:'admin_id');
+select test.debe_fallar($q$insert into public.ordenes_trabajo (numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion)
+  values ('9424-2026', current_setting('prueba.cliente')::uuid, current_setting('prueba.sede')::uuid, 'GARANTIA', 'NORMAL', 'Sin unidad')$q$,
+  'la OT de garantía sin unidad no se registra', 'elige su unidad');
+insert into public.unidades (cliente_id, tipo_vehiculo) values (:'cliente_id', 'CAMION') returning id as unidad_sin_codigo \gset
+select set_config('prueba.sin_codigo', :'unidad_sin_codigo', true);
+select test.debe_fallar($q$insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, tipo_trabajo, prioridad, descripcion)
+  values ('9425-2026', current_setting('prueba.cliente')::uuid, current_setting('prueba.sin_codigo')::uuid,
+          current_setting('prueba.sede')::uuid, 'GARANTIA', 'NORMAL', 'Sin código')$q$,
+  'ni con una unidad sin código interno', 'no tiene código interno');
 
 -- La función interna no la llama nadie desde la API.
 select test.como_usuario(:'req_id');

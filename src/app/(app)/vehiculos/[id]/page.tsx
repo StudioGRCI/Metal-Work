@@ -278,11 +278,9 @@ function RevisionDeTesoreria({
         {puedePedir && !esperando && !revisada && (estado?.falta_para_pedir ? (
           // El porqué ya está arriba, junto al avance: aquí no se repite.
           <p className="text-sm text-texto-suave">
-            {!estado.garantia_ot
-              ? 'Se pide cuando el código llegue al 100 % del avance.'
-              : estado.garantia_estado === 'ANULADA'
-                ? 'Con su OT de garantía anulada no se pide: arriba dice qué hacer.'
-                : 'Se pide cuando Administración dé por terminada la garantía.'}
+            {estado.garantia_ot
+              ? 'Se pide cuando Administración dé por terminada la garantía.'
+              : 'Se pide cuando el código llegue al 100 % del avance.'}
           </p>
         ) : lista ? (
           <PedirRevision registro={registro} solicitud={crypto.randomUUID()} />
