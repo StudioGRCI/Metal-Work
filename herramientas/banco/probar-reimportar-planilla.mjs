@@ -10,6 +10,9 @@
  *      fila 1, la que tenía otra en la primera carga— y entra. Antes de la
  *      migración 20261021150000 caía con «Ya existe un registro con esos datos.».
  *   3. En la planilla quedan las tres, cada una con la hoja y fila de su carga.
+ *   4. Corrige en el libro el nombre de una que ya entró y lo vuelve a cargar:
+ *      la versión corregida sale para elegir —por el nombre no es la misma—,
+ *      pero la ventana avisa que la de antes ya está y no figura en el Excel.
  *
  * Variables: BANCO_CLAVE (la clave local de las cuentas), BASE
  * (http://localhost:3111). La planilla es de un mes lejano (2090 en adelante)
@@ -83,6 +86,7 @@ const sello = Date.now().toString().slice(-6)
 const ANA = `QUISPE ROJAS ANA ${sello}`
 const JORGE = `RAMOS TELLO JORGE ${sello}`
 const NUEVA = `TORRES LAZO JULIA ${sello}`
+const ANA_CORREGIDA = `QUISPE ROJAS ANA LUCIA ${sello}`
 
 /** Una boleta de quince filas, con la forma de la del Excel de RR. HH. */
 function boleta(nombre, sueldo) {
@@ -113,14 +117,17 @@ async function libro(archivo, personas) {
 }
 const primero = await libro(`planilla-${sello}-primera.xlsx`, [[ANA, 2000], [JORGE, 2400]])
 const corregido = await libro(`planilla-${sello}-corregida.xlsx`, [[NUEVA, 1800], [ANA, 2000], [JORGE, 2400]])
+const renombrado = await libro(`planilla-${sello}-nombre-corregido.xlsx`, [[NUEVA, 1800], [ANA_CORREGIDA, 2000], [JORGE, 2400]])
 
 // ------------------------------------------------- RR. HH. con clic real
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
 const pagina = await contexto.newPage()
+// Las capturas van con `caret: 'initial'`: la de Playwright esconde el cursor con
+// un estilo, y si cae mientras React hidrata, la consola dice que el HTML no cuadra.
 const errores = []
 pagina.on('console', (m) => {
-  if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
+  if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, process.env.LARGO ? 6000 : 300))
 })
 
 try {
@@ -167,7 +174,8 @@ try {
   comprobar(deAntes, 'las personas de la primera carga salen como «ya está» y no se pueden elegir')
   comprobar(fila1.includes(`${hoja}, fila 1`), `la persona nueva cae en la fila 1, la que ya tenía otra (${fila1.slice(0, 90)})`)
   await v.locator('label', { hasText: NUEVA }).locator('input[type="checkbox"]').check()
-  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-antes-de-importar.png`, fullPage: false })
+  comprobar(!(await v.getByText(/no figuran? en este Excel/).count()), 'con las filas corridas no avisa de nadie: todas siguen en el libro')
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-antes-de-importar.png`, fullPage: false, caret: 'initial' })
   error = await importar(v)
   comprobar(!error, `el Excel corregido se vuelve a cargar${error ? `: ${error}` : ''}`)
   const aviso = limpio(await pagina.getByRole('status').filter({ hasText: 'importada' }).first().textContent({ timeout: 10000 }).catch(() => ''))
@@ -176,7 +184,14 @@ try {
   const resumen = limpio(await pagina.getByText(`Planilla de taller · ${titulo}`).locator('xpath=..').textContent())
   comprobar(resumen.includes('3 personas'), `la planilla dice que tiene tres personas (${resumen.slice(0, 80)})`)
   comprobar(await pagina.getByText(NUEVA).first().isVisible(), 'la persona nueva se ve en la planilla')
-  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-importado.png`, fullPage: false })
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-importado.png`, fullPage: false, caret: 'initial' })
+
+  // 4. El nombre corregido en el libro: avisa antes de elegir.
+  v = await cargar(renombrado, [])
+  const avisoNombre = limpio(await v.getByText(/no figuran? en este Excel/).textContent({ timeout: 10000 }).catch(() => ''))
+  comprobar(avisoNombre.includes(ANA) && avisoNombre.includes('nombre'), `avisa que ${ANA} ya está y no figura en el Excel (${avisoNombre.slice(0, 140)})`)
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-nombre-corregido-aviso.png`, fullPage: false, caret: 'initial' })
+  await v.getByRole('button', { name: 'Cancelar' }).click()
 
   // 3. Lo que quedó en la base.
   const personas = await consulta(`select nombre, fila_origen from planilla_personas where planilla_id = $1 order by fila_origen, nombre`, [planillaId])

@@ -28,6 +28,12 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
   const todas = useMemo(() => lectura?.empresas.flatMap((g) => g.lineas) ?? [], [lectura])
   const elegidas = todas.filter((l) => seleccion.includes(id(l)))
   const yaEsta = (l: LineaPlanilla) => lectura?.yaEn[claveNombre(l.nombre)]
+  // Quien ya entró a esta planilla y no figura en el libro: si es que se le
+  // corrigió el nombre, la versión corregida sale para elegir y entraría dos veces.
+  const faltan = useMemo(() => {
+    const enElLibro = new Set(todas.map((l) => claveNombre(l.nombre)))
+    return (lectura?.importadas ?? []).filter((n) => !enElLibro.has(claveNombre(n)))
+  }, [lectura, todas])
   // Al cerrar se olvida el error de la vez anterior: volvía a salir con la
   // ventana vacía, sin ningún archivo elegido.
   const cerrar = () => { setAbierta(false); leer.limpiar(); confirmar.limpiar() }
@@ -63,6 +69,15 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
             {lectura.omitidas.length > 0 && <> No se leyeron por no ser de este mes y año: {lectura.omitidas.join(' · ')}.</>}
             {!lectura.conPagos && <> El libro no tiene hoja PAGOS: no se sabe la empresa de cada persona.</>}
           </p>
+          {faltan.length > 0 && (
+            <div className="flex items-start gap-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-3 text-sm text-texto">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
+              <p>
+                Ya {faltan.length === 1 ? 'está' : 'están'} en esta planilla y no {faltan.length === 1 ? 'figura' : 'figuran'} en este Excel: {faltan.join(' · ')}.
+                Si en el Excel le corregiste el nombre, no elijas a la versión corregida: entraría dos veces.
+              </p>
+            </div>
+          )}
           {lectura.errores.length > 0 && (
             <div role="alert" className="rounded-[var(--radius-base)] border border-peligro/40 bg-peligro-suave p-3 text-sm">
               <p className="font-medium text-peligro">No se pueden importar ({lectura.errores.length})</p>

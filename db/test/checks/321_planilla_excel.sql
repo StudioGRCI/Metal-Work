@@ -8,7 +8,9 @@
 -- administrativa del mismo mes, ni dos veces en un mismo envío. El reparto en
 -- partes iguales entre tres OT deja 33.33 + 33.33 + 33.34 a cada persona, y
 -- con eso la planilla cierra; cerrada, el reparto ya no cambia. Quien no es de
--- RR. HH. no importa.
+-- RR. HH. no importa. El Excel corregido con las filas corridas se vuelve a
+-- cargar en la misma planilla aunque la persona nueva caiga en la fila que ya
+-- tenía otra de la primera carga.
 begin;
 
 select id as sede_id from public.sedes order by nombre limit 1 \gset
