@@ -11754,6 +11754,10 @@ export type Database = {
           compras_sin_precio: number | null
         }[]
       }
+      codigos_internos_lista: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       codigos_internos_para_elegir: {
         Args: Record<PropertyKey, never>
         Returns: {

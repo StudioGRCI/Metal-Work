@@ -4,6 +4,7 @@ import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 
 /**
  * Lo que Diseño carga por código interno: planos, materiales y etapas. Todo
@@ -31,31 +32,37 @@ export type CodigoDeDiseno = {
   ultimo_cambio: string | null
 }
 
+/** Una fila de `codigos_internos_de_diseno`, como la lleva la pantalla. */
+type FilaDeDiseno = Database['public']['Functions']['codigos_internos_de_diseno']['Returns'][number]
+
+/** La fila de la base, con sus números como números; sin código no hay fila. */
+export function codigoDeDiseno(f: FilaDeDiseno): CodigoDeDiseno[] {
+  return f.codigo
+    ? [
+        {
+          codigo: f.codigo,
+          unidad: f.unidad,
+          planos: n(f.planos),
+          planos_por_recibir: n(f.planos_por_recibir),
+          materiales: n(f.materiales),
+          etapas: n(f.etapas),
+          etapas_terminadas: n(f.etapas_terminadas),
+          etapas_vencidas: n(f.etapas_vencidas),
+          etapa_actual: f.etapa_actual,
+          etapa_actual_area: f.etapa_actual_area,
+          etapa_actual_fin: f.etapa_actual_fin,
+          ultimo_cambio: f.ultimo_cambio,
+        },
+      ]
+    : []
+}
+
 /** Todos los códigos de unidad del sistema, con los que Diseño movió hace poco primero. */
 export async function codigosDeDiseno(): Promise<CodigoDeDiseno[]> {
   const supabase = await createClient()
   const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_de_diseno'), ['ultimo_cambio.desc.nullslast', 'codigo'])
   if (error) throw new Error(`No se pudieron leer los códigos internos de Diseño: ${error.message}`)
-  return (data ?? []).flatMap((f) =>
-    f.codigo
-      ? [
-          {
-            codigo: f.codigo,
-            unidad: f.unidad,
-            planos: n(f.planos),
-            planos_por_recibir: n(f.planos_por_recibir),
-            materiales: n(f.materiales),
-            etapas: n(f.etapas),
-            etapas_terminadas: n(f.etapas_terminadas),
-            etapas_vencidas: n(f.etapas_vencidas),
-            etapa_actual: f.etapa_actual,
-            etapa_actual_area: f.etapa_actual_area,
-            etapa_actual_fin: f.etapa_actual_fin,
-            ultimo_cambio: f.ultimo_cambio,
-          },
-        ]
-      : [],
-  )
+  return (data ?? []).flatMap(codigoDeDiseno)
 }
 
 /** Un plano con su revisión vigente. */

@@ -127,6 +127,12 @@ cualquier archivo sin preguntar: una pantalla podía abrir un PDF que Supabase
 habría rechazado. Lo que no imita es el tamaño máximo y los tipos permitidos
 de cada cubeta, ni las transformaciones de imagen.
 
+**Las funciones devuelven lo mismo que en Supabase.** Una `returns table
+(codigo text)` sale como `[{"codigo": "…"}]`, y una `returns setof text`, sin
+columnas con nombre, como `["…"]`. Hasta el 2026-10-21 el banco entregaba las
+dos como objetos; hoy ninguna función es de la segunda forma, pero la primera que
+lo fuera habría salido bien en el banco y rota en producción.
+
 **Falla en voz alta.** Ante cualquier cosa que no sepa traducir responde 501 con
 el motivo, nunca una lista vacía. Una pantalla vacía se parece demasiado a una
 pantalla correcta sin datos, y esa confusión es justamente lo que haría inútil

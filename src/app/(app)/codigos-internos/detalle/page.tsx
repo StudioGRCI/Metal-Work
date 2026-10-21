@@ -15,13 +15,12 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import {
   actividadesDelCodigo,
   aporteDeLosPlanos,
-  avanceDeLosCodigos,
   avanceDelCodigo,
   comprasDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
   partesDelAvance,
-  listarCodigosInternos,
+  leerListaDeCodigos,
   personalDelCodigo,
   repartoATodosLosActivos,
   sumarCodigosDeDiseno,
@@ -29,7 +28,7 @@ import {
   type RepartoATodos as RepartoATodosFila,
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
-import { codigosDeDiseno, etapasDeCodigo } from '@/lib/datos/diseno-codigos'
+import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, repartoDelMes } from '@/lib/datos/gastos-generales'
 import {
@@ -86,10 +85,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [conDocumentos, deDiseno, avances, facturado, reparto, horasDelMes, faltaOficina] = await Promise.all([
-    listarCodigosInternos(),
-    codigosDeDiseno(),
-    avanceDeLosCodigos(codigo),
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina] = await Promise.all([
+    leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),

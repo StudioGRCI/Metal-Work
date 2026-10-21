@@ -171,8 +171,9 @@ function FilaCompra({
         <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
         {c.facturas.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
-            {c.facturas.map((f) => (
-              <li key={f.numero} className="tabular whitespace-nowrap">
+            {/* Una OC puede tener dos facturas con el mismo número: el número solo no sirve de clave. */}
+            {c.facturas.map((f, i) => (
+              <li key={`${i}-${f.numero}`} className="tabular whitespace-nowrap">
                 {f.numero}
                 {f.fecha && <span className="text-texto-suave"> · {fecha(f.fecha)}</span>}
               </li>

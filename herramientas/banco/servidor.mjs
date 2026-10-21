@@ -309,7 +309,11 @@ async function formaDeFuncion(nombre) {
     // Con varias versiones de la función (una vieja que ya no se usa y la nueva
     // con un parámetro más), un parámetro es JSON si lo es en alguna: Postgres
     // elige la versión por los nombres que se le pasan, como PostgREST.
+    // `escalar`: devuelve valores sueltos (`returns setof text`), sin columnas con
+    // nombre. PostgREST los entrega como `["a", "b"]`; una `returns table (codigo
+    // text)` también tiene tipo text en pg_proc, pero sale como `[{"codigo": "a"}]`.
     `select p.proretset, t.typtype, t.typname,
+            t.typtype not in ('c', 'p') and not coalesce('t' = any(p.proargmodes) or 'o' = any(p.proargmodes), false) as escalar,
             coalesce((select array_agg(distinct a.nombre)
                         from pg_proc q, unnest(q.proargnames, q.proargtypes::oid[]) as a(nombre, tipo)
                        where q.pronamespace = p.pronamespace and q.proname = p.proname
@@ -363,7 +367,8 @@ async function manejarDatos(req, res, url) {
     const objeto = (req.headers.accept ?? '').includes('vnd.pgrst.object')
 
     return conSesion(sesion, res, async (cliente) => {
-      const { rows, fields } = await cliente.query(consulta.texto, consulta.valores)
+      const { rows: filas, fields } = await cliente.query(consulta.texto, consulta.valores)
+      const rows = forma.proretset && forma.escalar ? filas.map((f) => f[fields[0].name]) : filas
       if (forma.proretset && objeto) {
         if (rows.length !== 1) {
           return responder(res, 406, { message: `Se esperaba una fila y llegaron ${rows.length}` })
