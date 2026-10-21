@@ -65,6 +65,8 @@ export type CodigoParaIngreso = {
   chasis: string | null
   /** Ya entró y no ha salido: no entra otra vez. */
   en_planta: boolean
+  /** Su OT de garantía abierta, si tiene: con el motivo «Garantía» solo entran estos, con esta OT. */
+  garantia_numero: string | null
 }
 
 /** Los códigos que ofrece la ventana del ingreso, con todo lo que se carga solo (`vehiculos_codigos_para_ingreso`). */
@@ -83,6 +85,7 @@ export async function codigosParaIngreso(): Promise<CodigoParaIngreso[]> {
             placa: f.placa,
             chasis: f.chasis,
             en_planta: Boolean(f.en_planta),
+            garantia_numero: f.garantia_numero,
           },
         ]
       : [],
@@ -100,6 +103,10 @@ export type EstadoDeSalida = {
   tesoreria: string | null
   falta_para_pedir: string | null
   falta_para_salir: string | null
+  /** Si entró por garantía: el número de su OT de garantía, que es lo que espera la salida en vez del avance. */
+  garantia_ot: string | null
+  /** «TERMINADA» cuando Administración la dio por terminada; si no, el estado de la OT. */
+  garantia_estado: string | null
 }
 
 /** El estado de la salida de cada ingreso que sigue en la planta, por id. */
@@ -117,6 +124,8 @@ export async function estadosDeSalida(ids: string[]): Promise<Map<string, Estado
       tesoreria: f.tesoreria,
       falta_para_pedir: f.falta_para_pedir,
       falta_para_salir: f.falta_para_salir,
+      garantia_ot: f.garantia_ot,
+      garantia_estado: f.garantia_estado,
     })
   }
   return estados

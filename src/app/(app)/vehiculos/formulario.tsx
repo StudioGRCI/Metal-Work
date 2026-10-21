@@ -112,9 +112,14 @@ function FormularioIngreso({
   // El trabajo del taller entra con el código de una unidad con OT, y de ahí
   // salen el cliente y el vehículo (migración 20261020166000).
   const conCodigo = motivoExigeCodigo(motivo)
-  const elegido = conCodigo ? codigos.find((c) => c.codigo_interno === codigo) : undefined
-  const libres = codigos.filter((c) => !c.en_planta)
-  const enPlanta = codigos.length - libres.length
+  // Por garantía entra el código con su OT de garantía abierta, y esa es la OT
+  // que se muestra y la que espera la salida (migración 20261021120000).
+  const porGarantia = motivo === 'GARANTIA'
+  const posibles = porGarantia ? codigos.filter((c) => c.garantia_numero) : codigos
+  const otDe = (c: CodigoParaIngreso) => (porGarantia ? (c.garantia_numero ?? c.orden_numero) : c.orden_numero)
+  const elegido = conCodigo ? posibles.find((c) => c.codigo_interno === codigo) : undefined
+  const libres = posibles.filter((c) => !c.en_planta)
+  const enPlanta = posibles.length - libres.length
   const faltaCodigo = conCodigo && !elegido
   // Sin código que elegir, no se piden fotos que no van a servir.
   const sinCodigos = conCodigo && libres.length === 0
@@ -157,14 +162,14 @@ function FormularioIngreso({
             ayuda={
               libres.length === 0
                 ? undefined
-                : `Solo los códigos con su OT. El cliente y el vehículo se cargan solos.${
+                : `Solo los códigos con su OT${porGarantia ? ' de garantía' : ''}. El cliente y el vehículo se cargan solos.${
                     enPlanta > 0 ? ` ${enPlanta === 1 ? 'Uno ya está' : `${enPlanta} ya están`} en la planta y no se ofrece${enPlanta === 1 ? '' : 'n'}.` : ''
                   }`
             }
           >
             {libres.length === 0 ? (
               <p id="veh-codigo" className="text-sm text-texto">
-                No hay códigos con OT por ingresar{enPlanta > 0 ? `: ${enPlanta === 1 ? 'el único ya está' : `los ${enPlanta} ya están`} en la planta` : ''}.
+                No hay códigos con OT{porGarantia ? ' de garantía abierta' : ''} por ingresar{enPlanta > 0 ? `: ${enPlanta === 1 ? 'el único ya está' : `los ${enPlanta} ya están`} en la planta` : ''}.
               </p>
             ) : (
               <SeleccionBuscable
@@ -178,7 +183,7 @@ function FormularioIngreso({
                 onChange={setCodigo}
                 opciones={libres.map((c) => ({
                   valor: c.codigo_interno,
-                  etiqueta: `${c.codigo_interno} · OT ${c.orden_numero}`,
+                  etiqueta: `${c.codigo_interno} · OT ${otDe(c)}`,
                   detalle: [c.cliente, c.placa].filter(Boolean).join(' · '),
                 }))}
               />
@@ -186,6 +191,9 @@ function FormularioIngreso({
           </Campo>
           {libres.length === 0 && (
             <p className="text-sm text-texto-suave">
+              {porGarantia
+                ? 'Por garantía entra el código con su OT de garantía: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía. '
+                : ''}
               Un vehículo entra a trabajo solo con su código interno y su OT, y el código nace cuando Gerencia aprueba la cotización con su OT. Si
               solo se guarda, elige «Cochera».
             </p>
@@ -194,7 +202,7 @@ function FormularioIngreso({
             <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm" data-codigo-elegido={elegido.codigo_interno}>
               <p className="font-medium text-texto">{elegido.unidad}</p>
               <p className="text-texto-suave">
-                {elegido.cliente} · OT <span className="tabular">{elegido.orden_numero}</span>
+                {elegido.cliente} · OT <span className="tabular">{otDe(elegido)}</span>
               </p>
             </div>
           )}

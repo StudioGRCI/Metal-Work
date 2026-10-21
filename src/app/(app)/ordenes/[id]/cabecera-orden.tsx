@@ -14,6 +14,7 @@ import { fecha, hoyLima, numero as fmtNumero } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 
 import { AccionesEstado } from './acciones-estado'
+import { GarantiaDeOrden } from './garantia-de-orden'
 import { Pestanas } from './pestanas'
 
 /** Estados en los que la orden ya no corre plazo: no puede estar atrasada. */
@@ -159,6 +160,8 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
           <strong>Orden anulada:</strong> {orden.motivo_anulacion}
         </p>
       )}
+
+      <GarantiaDeOrden orden={orden} perfil={perfil} />
 
       {/* En el monitor las secciones viven en la barra lateral: el contenedor
           se oculta pero el componente se monta igual, porque es el que las

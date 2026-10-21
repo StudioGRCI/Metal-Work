@@ -179,7 +179,15 @@ function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado
   return (
     <div className="flex flex-wrap items-center gap-1">
       <Insignia tono="aviso">En planta</Insignia>
-      {estado?.exige && (
+      {estado?.exige && estado.garantia_ot && (
+        <span className="tabular text-xs text-texto-suave" data-garantia-salida={estado.garantia_estado ?? ''}>
+          Garantía {estado.garantia_ot} ·{' '}
+          {estado.garantia_estado === 'TERMINADA'
+            ? estado.falta_para_salir ? 'terminada, falta Tesorería' : 'terminada'
+            : 'por terminar'}
+        </span>
+      )}
+      {estado?.exige && !estado.garantia_ot && (
         <span className="tabular text-xs text-texto-suave" data-avance-salida={estado.avance ?? 0}>
           Avance {estado.avance ?? 0} %{estado.avance === 100 && estado.falta_para_salir ? ' · falta Tesorería' : ''}
         </span>

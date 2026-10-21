@@ -89,7 +89,14 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             </Dato>
             {r.placa && r.chasis && <Dato titulo="Chasis">{r.chasis}</Dato>}
             {r.codigo_interno && (r.placa || r.chasis) && <Dato titulo="Código interno">{r.codigo_interno}</Dato>}
-            {estado?.exige && (
+            {estado?.exige && estado.garantia_ot && (
+              <Dato titulo="OT de garantía">
+                <span data-garantia-salida={estado.garantia_estado ?? ''}>
+                  {estado.garantia_ot} · {estado.garantia_estado === 'TERMINADA' ? 'Terminada' : 'Por terminar'}
+                </span>
+              </Dato>
+            )}
+            {estado?.exige && !estado.garantia_ot && (
               <Dato titulo="Avance del código">
                 <span data-avance-salida={estado.avance ?? 0}>{estado.avance ?? 0} %</span>
               </Dato>
@@ -267,7 +274,11 @@ function RevisionDeTesoreria({
         )}
         {puedePedir && !esperando && !revisada && (estado?.falta_para_pedir ? (
           // El porqué ya está arriba, junto al avance: aquí no se repite.
-          <p className="text-sm text-texto-suave">Se pide cuando el código llegue al 100 % del avance.</p>
+          <p className="text-sm text-texto-suave">
+            {estado.garantia_ot
+              ? 'Se pide cuando Administración dé por terminada la garantía.'
+              : 'Se pide cuando el código llegue al 100 % del avance.'}
+          </p>
         ) : lista ? (
           <PedirRevision registro={registro} solicitud={crypto.randomUUID()} />
         ) : (

@@ -363,6 +363,22 @@ export async function fechasClaveDeOrden(ordenId: string) {
   } | null
 }
 
+/**
+ * Si Administración ya dio por terminada la garantía de esta OT (migración
+ * 20261021120000): es lo que espera la salida del vehículo que entró por
+ * garantía. Va aparte del estado de la OT, que en una garantía no se mueve.
+ */
+export async function garantiaTerminada(ordenId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_garantia_terminada')
+    .select('terminada_en, nota, quien:usuarios!ot_garantia_terminada_terminada_por_fkey(puesto)')
+    .eq('orden_id', ordenId)
+    .maybeSingle()
+  if (error) throw new Error(`No se pudo leer si la garantía está terminada: ${error.message}`)
+  return data as unknown as { terminada_en: string; nota: string | null; quien: { puesto: string | null } | null } | null
+}
+
 /** Las tres compuertas de salida: papeles, tesorería y portería. */
 export async function estadoDeSalida(ordenId: string) {
   const supabase = await createClient()

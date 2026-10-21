@@ -156,6 +156,35 @@ export async function cambiarEstadoOrden(
   return { ok: true, mensaje: 'Estado actualizado.' }
 }
 
+/**
+ * Administración da por terminada la garantía cuando el taller avisa
+ * (decisión de DKS, migración 20261021120000). La base exige el mismo permiso,
+ * `ordenes.editar`, deja la OT como está y avisa a Requerimientos si el
+ * vehículo está en la planta: con el visto de Tesorería, sale.
+ */
+export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ordenes.editar')) {
+    return { ok: false, error: 'La garantía la da por terminada Administración.' }
+  }
+  const analisis = z
+    .object({ orden_id: z.guid(), nota: z.string().trim().max(500, 'La nota va en 500 caracteres como máximo.').optional() })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Datos incompletos.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('dar_por_terminada_la_garantia', {
+    p_orden: analisis.data.orden_id,
+    p_nota: analisis.data.nota || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  revalidatePath('/vehiculos')
+  return { ok: true, mensaje: 'Garantía terminada: el vehículo ya puede pedir el visto de Tesorería.' }
+}
+
 const esquemaPonerCliente = z.object({
   orden_id: z.guid(),
   cliente_id: z.guid('Elige el cliente'),
