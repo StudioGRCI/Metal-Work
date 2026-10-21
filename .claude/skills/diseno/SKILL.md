@@ -18,6 +18,14 @@ En `src/components/ui/`:
 - `Tabla`, `TablaCabecera`, `TH`, `TD`, `TR`, `SinDatos` (estado vacío con
   título y descripción)
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
+- `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
+  `Entrada type="file"`: el botón del navegador sale en su idioma («Choose
+  File»), corta el nombre y no dice qué pide. Saca del `accept` qué pide
+  («Elegir el PDF o la foto») y con `hastaMb` dice el tope y avisa si el
+  archivo pasa; el tope ya no se repite en la `ayuda`. Quedan aparte, con su
+  propio diseño, las cajas grandes que leen el archivo al elegirlo (la orden,
+  la cotización, el cronograma) y los botones que suben al tocar (el PDF de
+  la OT, las fotos del avance): esos nunca muestran el control del navegador.
 - `Boton` (`variante` primario/secundario/peligro, `tamano`, `cargando`)
 - `Insignia` y `Punto` con `tono` (exito/aviso/peligro/neutro), `Progreso`
 

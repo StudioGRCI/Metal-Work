@@ -6,6 +6,7 @@ import { useRef, useState } from 'react'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { CompraSinFactura, OrdenDeFactura } from '@/lib/datos/adquisiciones'
 import { avisosDelDetector, lecturaUtil, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
@@ -261,7 +262,7 @@ function Formulario({
           />
         </Campo>
         <Campo etiqueta="PDF corregido (opcional)" htmlFor={`fc-pdf-${id}`} ayuda="Solo si el PDF adjunto estaba mal. El que reemplaza queda como evidencia.">
-          <Entrada id={`fc-pdf-${id}`} name="pdf" type="file" accept="application/pdf,.pdf" onChange={(e) => void leerPdf(e.target.files?.[0])} />
+          <ElegirArchivo id={`fc-pdf-${id}`} name="pdf" accept="application/pdf,.pdf" hastaMb={10} onChange={(e) => void leerPdf(e.target.files?.[0])} />
         </Campo>
       </div>
       <Campo etiqueta="Observación" htmlFor={`fc-obs-${id}`}>

@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import { BUCKET_GUIAS_REMISION, MAXIMO_MB_GUIA, NUMERO_GUIA, normalizarNumeroGuia, rutaGuiaRemision } from '@/lib/dominio/logistica'
 import { useAccion, useEnvio } from '@/lib/envio'
@@ -228,7 +229,7 @@ export function CargarGuia({ ordenCompraId, solicitudId, hoy }: { ordenCompraId:
         <Entrada id={`guia-fecha-${ordenCompraId}`} name="fecha" type="date" max={hoy} defaultValue={hoy} required disabled={enviando} />
       </Campo>
       <Campo etiqueta="PDF de la guía" htmlFor={`guia-pdf-${ordenCompraId}`} requerido>
-        <Entrada id={`guia-pdf-${ordenCompraId}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
+        <ElegirArchivo id={`guia-pdf-${ordenCompraId}`} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_GUIA} required disabled={enviando} />
       </Campo>
       <Boton type="submit" cargando={enviando}>
         <FileUp aria-hidden className="size-4" />

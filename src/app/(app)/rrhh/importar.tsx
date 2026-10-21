@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import { Ventana } from '@/components/ui/ventana'
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada } from '@/components/ui/campos'
+import { Campo } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 import { claveNombre, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
@@ -62,7 +63,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
         <form onSubmit={leer.alEnviar} className="space-y-4">
           <input type="hidden" name="planilla_id" value={planillaId} />
           <Campo etiqueta="Excel de la planilla del mes" htmlFor="pl-excel" requerido ayuda="El mismo libro que arma Recursos Humanos, con sus hojas RESUMEN y PAGOS.">
-            <Entrada id="pl-excel" name="archivo" type="file" accept=".xlsx" required />
+            <ElegirArchivo id="pl-excel" name="archivo" accept=".xlsx" texto="Elegir el Excel de la planilla" hastaMb={5} required aria-invalid={Boolean(leer.error)} onChange={() => leer.limpiar()} />
           </Campo>
           {leer.error && <p role="alert" className="text-sm text-peligro">{leer.error}</p>}
           <div className="flex justify-end gap-2 pt-1">

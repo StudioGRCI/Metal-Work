@@ -7,6 +7,7 @@ import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoPlanilla } from '@/lib/archivos-planilla'
@@ -123,8 +124,8 @@ export function RegistrarPago({
             </Campo>
             <CuentaDeLaCaja cuentas={cuentas} monedaDocumento="PEN" tipo="pago" dia={dia} prefijo={`planilla-${pagoId}`} />
           </div>
-          <Campo etiqueta="Comprobante" htmlFor={`pago-archivo-${pagoId}`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_PLANILLA} MB.`}>
-            <Entrada id={`pago-archivo-${pagoId}`} name="archivo" type="file" accept={ACEPTA} required />
+          <Campo etiqueta="Comprobante" htmlFor={`pago-archivo-${pagoId}`} requerido>
+            <ElegirArchivo id={`pago-archivo-${pagoId}`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_PLANILLA} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">
@@ -169,8 +170,8 @@ export function SubirBoleta({ planillaId, personaId, nombre, cambiar }: { planil
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="persona_id" value={personaId} />
           <input type="hidden" name="planilla_id" value={planillaId} />
-          <Campo etiqueta="Boleta" htmlFor={`boleta-${personaId}`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_PLANILLA} MB.`}>
-            <Entrada id={`boleta-${personaId}`} name="archivo" type="file" accept={ACEPTA} required />
+          <Campo etiqueta="Boleta" htmlFor={`boleta-${personaId}`} requerido>
+            <ElegirArchivo id={`boleta-${personaId}`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_PLANILLA} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">

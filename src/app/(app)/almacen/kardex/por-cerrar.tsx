@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada } from '@/components/ui/campos'
+import { Campo } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { ALMACENES, esAlmacen } from '@/lib/dominio/almacen'
 import { SIN_RESPUESTA, useEnvio } from '@/lib/envio'
@@ -113,8 +114,8 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
         <form onSubmit={alEnviar} className="flex w-full flex-wrap items-end gap-3">
           <input type="hidden" name="movimiento_id" value={salida.id} />
           <Campo etiqueta="Formato firmado (escaneo o foto)" htmlFor={`fmt-${salida.id}`} requerido
-            ayuda="Firmado por el almacenero y por quien recibe. PDF o foto de hasta 10 MB." className="min-w-0 flex-1 basis-64">
-            <Entrada id={`fmt-${salida.id}`} name="formato" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" required />
+            ayuda="Firmado por el almacenero y por quien recibe." className="min-w-0 flex-1 basis-64">
+            <ElegirArchivo id={`fmt-${salida.id}`} name="formato" accept="application/pdf,image/jpeg,image/png,image/webp" hastaMb={10} required />
           </Campo>
           <Boton type="submit" cargando={enviando}>Cerrar salida</Boton>
           {error && <p role="alert" className="w-full text-sm text-peligro">{error}</p>}

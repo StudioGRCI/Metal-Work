@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -177,7 +178,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       <div className="space-y-4">
         {!filas && (
           <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
-            <Entrada id="planilla-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            <ElegirArchivo id="planilla-archivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hastaMb={8}
               disabled={leyendo} onChange={(e) => leer(e.target.files?.[0])} />
           </Campo>
         )}
@@ -250,8 +251,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       {r?.estado === 'enviando' && <Insignia tono="info">Registrando…</Insignia>}
                       {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
                       {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
-                        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
-                          {fotos[f.id] ? `Foto: ${fotos[f.id].name.slice(0, 18)}` : 'Adjuntar foto'}
+                        <label title={fotos[f.id]?.name} className="inline-flex min-h-11 max-w-64 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
+                          <span className="truncate">{fotos[f.id] ? `Foto: ${fotos[f.id].name}` : 'Adjuntar foto'}</span>
                           <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={registrando}
                             aria-label={`Foto de la salida de la fila ${f.fila}`} onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
                         </label>

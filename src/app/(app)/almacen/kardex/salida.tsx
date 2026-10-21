@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { type Almacen, ALMACENES, exigeFormato } from '@/lib/dominio/almacen'
@@ -221,8 +222,8 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
             <Campo etiqueta="Nombre de quien recibe" htmlFor="sal-recibe" requerido>
               <Entrada id="sal-recibe" name="recibido_por_nombre" required minLength={3} maxLength={160} />
             </Campo>
-            <Campo etiqueta="Foto de la salida" htmlFor="sal-foto" requerido ayuda="Hasta 10 MB; que se vea el material.">
-              <Entrada id="sal-foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required />
+            <Campo etiqueta="Foto de la salida" htmlFor="sal-foto" requerido ayuda="Que se vea el material.">
+              <ElegirArchivo id="sal-foto" name="foto" accept="image/jpeg,image/png,image/webp" hastaMb={10} capture="environment" required />
             </Campo>
           </div>
 

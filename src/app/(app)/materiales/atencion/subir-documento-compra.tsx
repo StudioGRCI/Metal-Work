@@ -11,7 +11,8 @@ import {
   useDetectorDeFactura,
 } from '@/app/(app)/compras/ordenes/detector-oc'
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
 import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -69,8 +70,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         {TIPOS.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
       </Seleccion>
     </Campo>
-    <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Hasta 20 MB. Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
-      <Entrada id={`archivo-compra-${ordenCompraId}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando}
+    <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
+      <ElegirArchivo id={`archivo-compra-${ordenCompraId}`} name="archivo" accept="application/pdf,.pdf" hastaMb={20} required disabled={enviando}
         onChange={(e) => void detector.leer(e.target.files?.[0]).then(factura.completar)} />
     </Campo>
     <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>

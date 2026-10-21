@@ -6,6 +6,7 @@ import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
@@ -140,7 +141,7 @@ export function ConteoInicial() {
                   <Entrada id="conteo-inicial-fecha" type="date" value={fecha} max={hoyLima()} onChange={(e) => setFecha(e.target.value)} disabled={leyendo} />
                 </Campo>
                 <Campo etiqueta="Formato de conteo, ya lleno" htmlFor="conteo-inicial-archivo">
-                  <Entrada id="conteo-inicial-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  <ElegirArchivo id="conteo-inicial-archivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hastaMb={8}
                     disabled={leyendo || !fecha} onChange={(e) => leer(e.target.files?.[0])} />
                 </Campo>
               </div>

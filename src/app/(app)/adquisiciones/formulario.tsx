@@ -4,6 +4,7 @@ import { useId, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
@@ -344,11 +345,11 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="PDF del comprobante" htmlFor="adq-pdf" ayuda="Obligatorio si no eliges una factura de Logística.">
-        <Entrada
+        <ElegirArchivo
           id="adq-pdf"
           name="pdf"
-          type="file"
           accept="application/pdf,.pdf"
+          hastaMb={10}
           onChange={(e) => {
             const archivo = e.target.files?.[0]
             void detectar('pdf', archivo ? () => leerFactura(archivo, setLeyendo) : null)
@@ -360,10 +361,10 @@ function Formulario({
         htmlFor="adq-xml"
         ayuda="Si el proveedor lo mandó, el detector lo lee primero: es el documento legal. Solo se lee, no se guarda."
       >
-        <Entrada
+        <ElegirArchivo
           id="adq-xml"
-          type="file"
           accept={ACEPTA_XML_FACTURA}
+          hastaMb={20}
           onChange={(e) => {
             const archivo = e.target.files?.[0]
             void detectar('xml', archivo ? () => leerFactura(archivo, setLeyendo) : null)
@@ -524,11 +525,11 @@ export function CompletarAdquisicion({ id }: { id: string }) {
         <input key={nombre} type="hidden" name={nombre} value={valor} />
       ))}
       <Campo etiqueta="PDF pendiente" htmlFor={campo} requerido>
-        <Entrada
+        <ElegirArchivo
           id={campo}
           name="pdf"
-          type="file"
           accept="application/pdf,.pdf"
+          hastaMb={10}
           required
           onChange={async (e) => {
             const archivo = e.target.files?.[0]

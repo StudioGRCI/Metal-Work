@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 
-import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { AreaTexto, Campo } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import type { ResultadoAccion } from '@/lib/acciones'
 import {
   ACEPTA_JUSTIFICANTE,
   BUCKET_JUSTIFICANTES,
+  MAX_JUSTIFICANTE,
   problemaDelJustificante,
   rutaDeJustificante,
 } from '@/lib/dominio/correcciones'
@@ -34,9 +36,9 @@ export function CamposDeCorreccion({ id, disabled }: { id: string; disabled?: bo
         etiqueta="Justificante"
         htmlFor={`correccion-justificante-${id}`}
         requerido
-        ayuda="El PDF o la foto que respalda la corrección, hasta 10 MB. Sin justificante no se corrige."
+        ayuda="El documento que respalda la corrección. Sin justificante no se corrige."
       >
-        <Entrada id={`correccion-justificante-${id}`} name="justificante" type="file" accept={ACEPTA_JUSTIFICANTE} required disabled={disabled} />
+        <ElegirArchivo id={`correccion-justificante-${id}`} name="justificante" accept={ACEPTA_JUSTIFICANTE} hastaMb={MAX_JUSTIFICANTE / 1024 / 1024} required disabled={disabled} />
       </Campo>
     </>
   )

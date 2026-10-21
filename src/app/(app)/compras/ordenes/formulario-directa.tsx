@@ -7,6 +7,7 @@ import { registrarDocumentoCompra } from '@/app/(app)/materiales/atencion/accion
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
@@ -500,15 +501,15 @@ function FormularioCompraDirecta({
           htmlFor="ocd-factura"
           ayuda={
             conFactura
-              ? 'PDF de hasta 20 MB. Si todavía no la tienes, la adjuntas después desde la lista.'
-              : 'La boleta, nota de venta o recibo, en PDF de hasta 20 MB. Si todavía no lo tienes, lo adjuntas después desde la lista.'
+              ? 'Si todavía no la tienes, la adjuntas después desde la lista.'
+              : 'La boleta, nota de venta o recibo. Si todavía no lo tienes, lo adjuntas después desde la lista.'
           }
         >
-          <Entrada
+          <ElegirArchivo
             id="ocd-factura"
             name="factura"
-            type="file"
             accept="application/pdf,.pdf"
+            hastaMb={20}
             disabled={enviando}
             onChange={(e) => {
               const archivo = e.target.files?.[0]

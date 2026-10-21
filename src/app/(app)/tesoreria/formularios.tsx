@@ -7,6 +7,7 @@ import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -133,8 +134,8 @@ export function CobrarFactura({
             </Campo>
             <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="cobro" dia={dia} prefijo={`cobro-${facturaId}`} />
           </div>
-          <Campo etiqueta="Voucher o constancia del depósito" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
-            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+          <Campo etiqueta="Voucher o constancia del depósito" htmlFor={campo('archivo')} requerido>
+            <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">
@@ -304,8 +305,8 @@ export function PagarServicio({
             </Campo>
             <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="pago" dia={dia} prefijo={`servicio-${ordenServicioId}`} />
           </div>
-          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
-            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
+            <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">
@@ -466,8 +467,8 @@ export function PagarFactura({
             </Campo>
             <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="pago" dia={dia} prefijo={`factura-${adquisicionId}`} />
           </div>
-          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
-            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
+            <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">
