@@ -31,9 +31,16 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
   // Quien ya entró a esta planilla y no figura en el libro: si es que se le
   // corrigió el nombre, la versión corregida sale para elegir y entraría dos veces.
   const faltan = useMemo(() => {
-    const enElLibro = new Set(todas.map((l) => claveNombre(l.nombre)))
+    const enElLibro = new Set([...todas, ...(lectura?.errores ?? [])].map((l) => claveNombre(l.nombre)))
     return (lectura?.importadas ?? []).filter((n) => !enElLibro.has(claveNombre(n)))
   }, [lectura, todas])
+  // La persona del libro que comparte dos palabras del nombre con una de las que
+  // faltan es, casi seguro, la misma con el nombre corregido: se marca en su fila
+  // y «Elegir las N» no la mete; se puede elegir a mano si de verdad es otra.
+  const pareceA = (l: LineaPlanilla) => {
+    const propias = new Set(claveNombre(l.nombre).split(' '))
+    return faltan.find((n) => claveNombre(n).split(' ').filter((p) => propias.has(p)).length >= 2)
+  }
   // Al cerrar se olvida el error de la vez anterior: volvía a salir con la
   // ventana vacía, sin ningún archivo elegido.
   const cerrar = () => { setAbierta(false); leer.limpiar(); confirmar.limpiar() }
@@ -70,11 +77,12 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
             {!lectura.conPagos && <> El libro no tiene hoja PAGOS: no se sabe la empresa de cada persona.</>}
           </p>
           {faltan.length > 0 && (
-            <div className="flex items-start gap-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-3 text-sm text-texto">
+            <div role="note" className="flex items-start gap-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-3 text-sm text-texto">
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
               <p>
-                Ya {faltan.length === 1 ? 'está' : 'están'} en esta planilla y no {faltan.length === 1 ? 'figura' : 'figuran'} en este Excel: {faltan.join(' · ')}.
-                Si en el Excel le corregiste el nombre, no elijas a la versión corregida: entraría dos veces.
+                {faltan.length === 1
+                  ? <>Ya está en esta planilla y no figura en este Excel: {faltan[0]}. Si en el Excel le corregiste el nombre, no elijas a la versión corregida: entraría dos veces.</>
+                  : <>Ya están en esta planilla y no figuran en este Excel: {faltan.join(' · ')}. Si en el Excel les corregiste el nombre, no elijas a las versiones corregidas: entrarían dos veces.</>}
               </p>
             </div>
           )}
@@ -87,7 +95,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
             </div>
           )}
           {lectura.empresas.map((g) => {
-            const disponibles = g.lineas.filter((l) => !yaEsta(l))
+            const disponibles = g.lineas.filter((l) => !yaEsta(l) && !pareceA(l))
             const claves = disponibles.map(id)
             const todasMarcadas = claves.length > 0 && claves.every((c) => seleccion.includes(c))
             return (
@@ -108,7 +116,11 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
                 <ul className="divide-y divide-borde">
                   {g.lineas.map((l) => {
                     const ya = yaEsta(l)
-                    const avisos = l.detalle.avisos ?? []
+                    const parecida = !ya && pareceA(l)
+                    const avisos = [
+                      ...(parecida ? [`¿Es ${parecida} con el nombre corregido? Ya está en esta planilla: si es la misma, no la elijas.`] : []),
+                      ...(l.detalle.avisos ?? []),
+                    ]
                     return (
                       <li key={id(l)}>
                         <label className={`flex items-start gap-3 px-3 py-3 text-sm ${ya ? 'opacity-60' : 'cursor-pointer'}`}>

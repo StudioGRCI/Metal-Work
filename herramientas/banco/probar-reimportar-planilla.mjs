@@ -9,10 +9,10 @@
  *      las dos de antes salen como «ya está», elige a la nueva —que cae en la
  *      fila 1, la que tenía otra en la primera carga— y entra. Antes de la
  *      migración 20261021150000 caía con «Ya existe un registro con esos datos.».
- *   3. En la planilla quedan las tres, cada una con la hoja y fila de su carga.
- *   4. Corrige en el libro el nombre de una que ya entró y lo vuelve a cargar:
+ *   3. Corrige en el libro el nombre de una que ya entró y lo vuelve a cargar:
  *      la versión corregida sale para elegir —por el nombre no es la misma—,
  *      pero la ventana avisa que la de antes ya está y no figura en el Excel.
+ *   4. En la planilla quedan las tres, cada una con la hoja y fila de su carga.
  *
  * Variables: BANCO_CLAVE (la clave local de las cuentas), BASE
  * (http://localhost:3111). La planilla es de un mes lejano (2090 en adelante)
@@ -186,14 +186,17 @@ try {
   comprobar(await pagina.getByText(NUEVA).first().isVisible(), 'la persona nueva se ve en la planilla')
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-corregido-importado.png`, fullPage: false, caret: 'initial' })
 
-  // 4. El nombre corregido en el libro: avisa antes de elegir.
+  // 3. El nombre corregido en el libro: avisa antes de elegir.
   v = await cargar(renombrado, [])
   const avisoNombre = limpio(await v.getByText(/no figuran? en este Excel/).textContent({ timeout: 10000 }).catch(() => ''))
   comprobar(avisoNombre.includes(ANA) && avisoNombre.includes('nombre'), `avisa que ${ANA} ya está y no figura en el Excel (${avisoNombre.slice(0, 140)})`)
+  const filaCorregida = limpio(await v.locator('label', { hasText: ANA_CORREGIDA }).textContent())
+  comprobar(filaCorregida.includes(`¿Es ${ANA} con el nombre corregido?`), 'la fila con el nombre corregido lo dice en la propia fila')
+  comprobar(!(await v.getByRole('button', { name: /^Elegir las/ }).count()), '«Elegir las N» no la cuenta: es la única nueva y no sale el botón')
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-nombre-corregido-aviso.png`, fullPage: false, caret: 'initial' })
   await v.getByRole('button', { name: 'Cancelar' }).click()
 
-  // 3. Lo que quedó en la base.
+  // 4. Lo que quedó en la base.
   const personas = await consulta(`select nombre, fila_origen from planilla_personas where planilla_id = $1 order by fila_origen, nombre`, [planillaId])
   comprobar(personas.length === 3, `en la planilla quedan las tres personas (${personas.length})`)
   comprobar(personas.filter((p) => p.fila_origen === 1).length === 2, 'dos de dos cargas distintas comparten la fila 1, cada una de su libro')
