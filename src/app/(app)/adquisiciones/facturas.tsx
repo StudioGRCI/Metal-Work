@@ -685,7 +685,7 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
               {/* Lo que tomó de lo pagado por la boleta de una OC lleva el voucher de ese pago; el que Tesorería pasó a mano dice cómo. */}
               {p.url ? (
                 <a href={p.url} target="_blank" rel="noreferrer" className={enlace}>
-                  {p.pago_orden_compra_id ? 'Voucher de la boleta' : 'Voucher'}
+                  {p.pago_orden_compra_id ? (p.archivo_ruta ? 'Nota de crédito o documento' : 'Voucher de la boleta') : 'Voucher'}
                   {f.pagos.length > 1 ? ` ${i + 1}` : ''}
                 </a>
               ) : (

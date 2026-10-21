@@ -12213,6 +12213,8 @@ export type Database = {
           a_otras: number | null
           a_otras_facturas: string | null
           entera: boolean | null
+          pago_que_cancela: string | null
+          sin_completar: boolean | null
         }[]
       }
       compras_de_la_factura: {
@@ -13721,6 +13723,15 @@ export type Database = {
           sin_tomar: number | null
         }[]
       }
+      pago_que_cancela_la_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          pago_id: string | null
+          sin_completar: boolean | null
+        }[]
+      }
       pasar_compra_a_tesoreria: {
         Args: {
           p_compra: string | null
@@ -15112,6 +15123,7 @@ export type Database = {
           otra_saldo: number | null
           a_mano: number | null
           a_otras: number | null
+          entera: boolean | null
         }[]
       }
       solicitar_revision_salida: {
@@ -15297,6 +15309,7 @@ export type Database = {
           p_factura: string | null
           p_monto_boleta: number | null
           p_monto_factura: number | null
+          p_ruta?: string | null
         }
         Returns: string
       }

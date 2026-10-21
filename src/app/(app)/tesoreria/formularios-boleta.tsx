@@ -11,7 +11,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
-import { BUCKET_PAGOS_COMPRAS, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
+import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
@@ -418,7 +418,9 @@ export type FacturaParaDescontar = { id: string; numero: string; moneda: CodigoM
 /**
  * El proveedor no devuelve lo pagado de más: lo descuenta de otra factura suya.
  * Tesorería elige esa factura y la factura lo toma como pagado, sin mover la
- * caja. En otra moneda pide también lo que toma la factura; en la misma, es lo mismo.
+ * caja. En otra moneda pide también lo que toma la factura; en la misma, es lo
+ * mismo. Con la nota de crédito o el documento donde el proveedor lo rebajó (DKS,
+ * 2026-10-21), que sube primero a `pagos-facturas/{factura}/…`.
  */
 export function DescontarDeOtraFactura({
   ordenCompraId,
@@ -439,7 +441,21 @@ export function DescontarDeOtraFactura({
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
   const avisar = useAvisoDeLaCaja()
-  const { alEnviar, enviando, error } = useEnvio(tomarPagoDeLaBoleta, (r) => {
+
+  async function descontar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+    const archivo = datos.get('archivo')
+    datos.delete('archivo')
+    const facturaId = datos.get('factura_id')
+    if (typeof facturaId !== 'string' || !facturaId) return { ok: false, error: 'Elige la factura.' }
+    if (!(archivo instanceof File) || archivo.size === 0) {
+      return { ok: false, error: 'Adjunta la nota de crédito o el documento donde el proveedor descontó lo pagado de más.' }
+    }
+    return subirArchivoFinanzas(BUCKET_PAGOS_FACTURAS, facturaId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+      datos.set('ruta', ruta)
+      return tomarPagoDeLaBoleta(null, datos)
+    })
+  }
+  const { alEnviar, enviando, error } = useEnvio(descontar, (r) => {
     setTomaId(null)
     avisar(r.mensaje ?? null)
   })
@@ -525,6 +541,15 @@ export function DescontarDeOtraFactura({
                 // En la misma moneda, lo que toma la factura es lo mismo que sale de lo pagado de más.
                 <input type="hidden" name="monto_factura" value={deLaBoleta} />
               )}
+              <Campo
+                etiqueta="Nota de crédito o documento del descuento"
+                htmlFor={campo('archivo')}
+                requerido
+                className="sm:col-span-2"
+                ayuda={`La nota de crédito del proveedor, o la factura o el estado de cuenta donde descontó lo pagado de más. PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}
+              >
+                <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+              </Campo>
             </div>
           )}
           {error && (

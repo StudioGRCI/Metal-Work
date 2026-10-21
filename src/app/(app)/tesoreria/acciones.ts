@@ -461,7 +461,7 @@ export async function registrarDevolucionCompra(_previo: unknown, formulario: Fo
     situacionDeLaCompra(supabase, d.orden_compra_id),
   ])
   repintarPagosDeCompra()
-  return { ok: true, mensaje: `Devolución registrada. ${queQuedaTrasDevolver(situacion)} ${caja}`.trim() }
+  return { ok: true, mensaje: `Devolución registrada. ${queQuedaTrasDevolver(situacion, true)} ${caja}`.trim() }
 }
 
 /** Anular con su motivo una devolución mal registrada: su ingreso sale de la caja. Mismo permiso que `anular_devolucion_compra`. */
@@ -492,10 +492,13 @@ export async function anularDevolucionCompra(_previo: unknown, formulario: FormD
 
 /**
  * Lo que dice el aviso después de registrar o anular una devolución, leído de
- * la base: lo pagado de más que queda, lo que le falta a su factura o, sin
- * factura, lo que le queda por pagar a la OC. Si no se pudo leer, no se adivina.
+ * la base: lo pagado de más que queda, lo que le falta a su factura, lo que
+ * queda para la factura que falta o, sin factura, lo que le queda por pagar a
+ * la OC. Si no se pudo leer, no se adivina. Al registrarla, si la OC queda
+ * debiendo, dice también el otro camino: si el proveedor cobró de más o entregó
+ * menos, Logística baja el total de la OC hasta lo pagado.
  */
-function queQuedaTrasDevolver(s: SituacionDePago | null): string {
+function queQuedaTrasDevolver(s: SituacionDePago | null, alRegistrar = false): string {
   if (!s) return ''
   const m = s.moneda === 'USD' ? 'USD' : 'PEN'
   const deMas = Number(s.de_mas ?? 0)
@@ -505,19 +508,31 @@ function queQuedaTrasDevolver(s: SituacionDePago | null): string {
   }
   if (s.factura) {
     const saldo = Number(s.factura_saldo ?? 0)
-    return saldo > 0
-      ? `Su factura ${s.factura} ahora toma ${moneda(Number(s.aplicado ?? 0), m)} y le faltan ${moneda(saldo, m)}, que se pagan en «Facturas por pagar».`
-      : 'Ya no queda nada pagado de más.'
+    if (saldo > 0) {
+      return `Su factura ${s.factura} ahora toma ${moneda(Number(s.aplicado ?? 0), m)} y le faltan ${moneda(saldo, m)}, que se pagan en «Facturas por pagar».`
+    }
+    // Sus facturas la cubren en parte: nunca hubo nada pagado de más, lo que queda es para la que falta.
+    if (!s.entera) {
+      const sinTomar = Number(s.sin_tomar ?? 0)
+      return sinTomar > 0
+        ? `Quedan ${moneda(sinTomar, m)} pagados por la boleta, que tomará la factura que falta.`
+        : 'No queda nada pagado por la boleta para la factura que falta: se pagará por ella.'
+    }
+    return 'Ya no queda nada pagado de más.'
   }
-  return s.cancelada ? 'La OC sigue pagada.' : `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
+  if (s.cancelada) return 'La OC sigue pagada.'
+  const debe = `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
+  return alRegistrar ? `${debe} Si te lo devolvió porque cobró de más o entregó menos, pídele a Logística que corrija la OC: su total baja hasta lo pagado.` : debe
 }
 
 /**
  * Tesorería pasa a una factura lo pagado por la boleta (undécima vuelta): a su
  * factura en otra moneda, al cambio que reconoce el proveedor, o a otra factura
- * suya en que descuenta lo pagado de más. No mueve la caja: el dinero ya salió.
- * Mismo permiso que `tomar_pago_de_la_boleta` (`tesoreria.registrar_pagos`). El
- * id llega de la pantalla: un reintento no lo pasa dos veces.
+ * suya en que descuenta lo pagado de más, con la nota de crédito o el documento
+ * del descuento ya subido a `pagos-facturas/{factura}/…` (DKS, 2026-10-21). No
+ * mueve la caja: el dinero ya salió. Mismo permiso que `tomar_pago_de_la_boleta`
+ * (`tesoreria.registrar_pagos`). El id llega de la pantalla: un reintento no lo
+ * pasa dos veces.
  */
 export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -531,6 +546,7 @@ export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData
       factura_id: z.guid('Elige la factura.'),
       monto_boleta: importe('lo que sale de lo pagado por la boleta'),
       monto_factura: importe('lo que toma la factura'),
+      ruta: z.string().min(1).max(200).optional(),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -538,6 +554,7 @@ export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData
       factura_id: dato(formulario, 'factura_id'),
       monto_boleta: dato(formulario, 'monto_boleta'),
       monto_factura: dato(formulario, 'monto_factura'),
+      ruta: dato(formulario, 'ruta') || undefined,
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los montos.' }
   const d = analisis.data
@@ -549,6 +566,7 @@ export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData
     p_factura: d.factura_id,
     p_monto_boleta: d.monto_boleta,
     p_monto_factura: d.monto_factura,
+    p_ruta: d.ruta,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La factura no tomó lo pagado por la boleta. Recarga la pantalla.' }

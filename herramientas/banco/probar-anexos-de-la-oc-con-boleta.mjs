@@ -47,12 +47,18 @@
  *      tomar por menos, y paga el resto desde la cuenta en dólares. Gerencia
  *      no ve esos botones. En la 1, Tesorería ve «Registrar devolución» y «Lo
  *      descuenta de otra factura»; Gerencia, no.
+ *   7. (DKS, 2026-10-21) Lo pagado de más de la OC A se descuenta de otra
+ *      factura del proveedor con la nota de crédito o el documento del
+ *      descuento: sin él no se envía y no entra nada; con él, tres toques
+ *      dejan una toma, el archivo queda en storage.objects y en el disco, la
+ *      OC deja de estar pagada de más y la factura muestra «Nota de crédito o
+ *      documento», que abre.
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
  * BANCO_ARCHIVOS y el correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import pg from 'pg'
@@ -712,6 +718,56 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await g.pagina.locator('[data-tomar-al-cambio], [data-soltar-toma]').count()) === 0, 'Gerencia no ve «La factura lo toma al cambio» ni «Deshacer»')
   await g.contexto.close()
+}
+
+// ---------------------------------------------------------------- 7. Lo descuenta de otra factura, con su nota de crédito
+{
+  const FD = `F078-${SUFIJO}`
+  const facturaD = await registrar(FD, [], { monto: 500 })
+  await como(null)
+  const tomasD = () => consulta(`select id, monto::float as monto, archivo_ruta, archivo_mime from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [facturaD])
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await pagina.locator(`article#compra-${oc.A} [data-descontar-de-otra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('select[name="factura_id"]').selectOption(facturaD)
+  const ventana = limpio(await v.innerText())
+  comprobar(ventana.includes('Nota de crédito o documento del descuento') && (await v.locator('input[name="archivo"][required]').count()) === 1,
+    'la ventana pide la nota de crédito o el documento del descuento, y es obligatorio')
+  comprobar(Number(await v.locator('input[name="monto_boleta"]').inputValue()) === total, `trae lo pagado de más: S/ ${cifra(total)}`)
+  // Sin el documento, el navegador no lo envía y no entra nada.
+  await v.getByRole('button', { name: 'Descontar' }).click()
+  await pagina.waitForTimeout(1500)
+  comprobar((await v.isVisible()) && (await tomasD()).length === 0, 'sin el documento no se envía: la ventana sigue abierta y la factura no tomó nada')
+  await v.locator('input[name="archivo"]').setInputFiles({ name: 'nota-de-credito.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await tresToques(v.getByRole('button', { name: 'Descontar' }))
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `con la nota de crédito, lo descuenta${error ? ` (dijo «${error}»)` : ''}`)
+  const tomas = await hasta(tomasD, (r) => r.length > 0)
+  comprobar(tomas.length === 1 && tomas[0].monto === total && Boolean(tomas[0].archivo_ruta?.startsWith(`${facturaD}/`)) && tomas[0].archivo_mime === 'application/pdf',
+    `tres toques, una toma de S/ ${cifra(total)} con la nota de crédito en la carpeta de la factura (${tomas.length})`)
+  const ruta = tomas[0]?.archivo_ruta ?? '-'
+  const [{ n: objetos }] = await consulta(`select count(*)::int as n from storage.objects where bucket_id = 'pagos-facturas' and name = $1`, [ruta])
+  comprobar(objetos === 1 && existsSync(join(ARCHIVOS, 'pagos-facturas', ruta)), 'la nota de crédito está en storage.objects y en el disco del banco')
+  const [{ n: movimientosD }] = await consulta(`select count(*)::int as n from movimientos_caja where origen_id = any($1::uuid[])`, [tomas.map((t) => t.id)])
+  comprobar(movimientosD === 0, 'sin mover la caja')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const laA = limpio(await pagina.locator(`article#compra-${oc.A}`).textContent().catch(() => ''))
+  comprobar(!laA.includes('Pagada de más') && (await pagina.locator(`article#compra-${oc.A} [data-descontar-de-otra]`).count()) === 0,
+    `la OC A ya no está pagada de más: «${laA.slice(0, 220)}»`)
+  const enD = pagina.locator(`article#factura-${facturaD}`)
+  const plegadaD = pagina.locator('details', { has: enD })
+  if ((await plegadaD.count()) > 0 && !(await plegadaD.first().evaluate((d) => d.open))) await plegadaD.first().locator('summary').click()
+  const textoD = limpio(await enD.textContent().catch(() => ''))
+  comprobar(textoD.includes('Descontado de lo pagado de más por la boleta') && textoD.includes(`Saldo S/ ${cifra(500 - total)}`),
+    `la factura ${FD} muestra el descuento y debe el resto: «${textoD.slice(0, 260)}»`)
+  const nota = await enD.getByRole('link', { name: 'Nota de crédito o documento' }).first().getAttribute('href').catch(() => null)
+  const respuesta = nota ? await contexto.request.get(nota).catch(() => null) : null
+  comprobar(respuesta?.status() === 200, `el enlace «Nota de crédito o documento» abre (${respuesta?.status() ?? 'sin enlace'})`)
+  comprobar((await pagoSegunAdquisiciones(oc.A)) === 'PAGADA', 'y Adquisiciones da por pagada la OC A')
+  await pagina.screenshot({ path: `${CAPTURAS}/anexos-7-tesoreria.png`, fullPage: true })
+  await contexto.close()
 }
 
 comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)

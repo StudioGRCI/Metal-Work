@@ -40,7 +40,7 @@ const centimos = (n: number) => Math.round(n * 100) / 100
 
 type Cuenta =
   | { tipo: 'otra'; factura: string; sinTomar: number }
-  | { tipo: 'factura'; factura: string; toma: number; falta: number; deMas: number }
+  | { tipo: 'factura'; factura: string; toma: number; falta: number; deMas: number; sobra: number; entera: boolean }
   | { tipo: 'sin'; saldo: number }
 
 /**
@@ -62,7 +62,7 @@ function cuenta(b: BoletaParaDevolver, delta: number): Cuenta {
     const cabe = centimos(b.aplicado - aManoPropio + b.facturaSaldo)
     const toma = Math.min(libre, cabe)
     const sobra = centimos(libre - toma)
-    return { tipo: 'factura', factura: b.factura, toma, falta: centimos(cabe - toma), deMas: sobra >= 1 && b.entera ? sobra : 0 }
+    return { tipo: 'factura', factura: b.factura, toma, falta: centimos(cabe - toma), deMas: sobra >= 1 && b.entera ? sobra : 0, sobra, entera: b.entera }
   }
   return { tipo: 'sin', saldo: b.sinCompletar && neto > 0 ? 0 : Math.max(centimos(b.total - neto), 0) }
 }
@@ -79,9 +79,19 @@ export function queQuedaTrasLaDevolucion(b: BoletaParaDevolver, delta: number, m
     if (r.falta > 0) {
       return `Su factura ${r.factura} toma ${moneda(r.toma, m)} y le faltan ${moneda(r.falta, m)}, que se pagan en «Facturas por pagar».`
     }
+    // Sus facturas la cubren en parte: no hubo nada pagado de más, lo que queda es para la que falta.
+    if (!r.entera) {
+      return r.sobra > 0
+        ? `Quedan ${moneda(r.sobra, m)} pagados por la boleta, que tomará la factura que falta.`
+        : 'No queda nada pagado por la boleta para la factura que falta: se pagará por ella.'
+    }
     return r.deMas > 0 ? `Quedan ${moneda(r.deMas, m)} pagados de más.` : 'Ya no queda nada pagado de más.'
   }
-  return r.saldo > 0 ? `La OC queda debiendo ${moneda(r.saldo, m)}.` : 'La OC sigue pagada.'
+  if (r.saldo <= 0) return 'La OC sigue pagada.'
+  // Al registrarla (`delta` negativo), el otro camino: si cobró de más o entregó menos, la OC baja hasta lo pagado.
+  return delta < 0
+    ? `La OC queda debiendo ${moneda(r.saldo, m)}. Si te lo devolvió porque cobró de más o entregó menos, pídele a Logística que corrija la OC: su total baja hasta lo pagado.`
+    : `La OC queda debiendo ${moneda(r.saldo, m)}.`
 }
 
 /** Lo que una factura tomó de un pago por la boleta, en la moneda de la OC. */

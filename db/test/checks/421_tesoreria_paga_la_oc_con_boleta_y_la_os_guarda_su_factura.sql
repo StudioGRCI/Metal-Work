@@ -109,6 +109,19 @@ create or replace function pg_temp.sin_leer(p_clave text, p_oc text, p_titulo te
   select count(*)::integer from public.notificaciones
    where usuario_id = pg_temp.id(p_clave) and origen_id = pg_temp.id(p_oc) and titulo like p_titulo || '%' and leida_en is null;
 $$;
+-- Logística corrige el precio de la única línea de la OC, como en la pantalla: con su motivo y su justificante.
+create or replace function pg_temp.corregir_precio(p_oc text, p_precio numeric) returns uuid language plpgsql as $$
+declare
+  v_c    uuid := gen_random_uuid();
+  v_ruta text := pg_temp.id(p_oc) || '/' || v_c || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('justificantes-correccion', v_ruta, public.usuario_actual()::text, '{"mimetype": "application/pdf", "size": 3072}');
+  return public.corregir_orden_compra(v_c, pg_temp.id(p_oc), 'El proveedor corrigió el precio de la plancha', v_ruta, 'nota.pdf',
+    jsonb_build_object('lineas', jsonb_build_array(jsonb_build_object(
+      'detalle_id', (select d.id from public.orden_compra_material_detalles d where d.orden_compra_id = pg_temp.id(p_oc)),
+      'precio_unitario', p_precio))));
+end $$;
 
 -- ============================================ 0. Puertas
 do $$
@@ -171,7 +184,7 @@ declare f text;
 begin
   foreach f in array array['public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric)',
                            'public.anular_devolucion_compra(uuid, text)',
-                           'public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric)',
+                           'public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric, text)',
                            'public.soltar_pago_de_la_boleta(uuid, uuid, text)',
                            'public.facturas_para_descontar(uuid)', 'public.pago_directo_de_la_factura(uuid)'] loop
     perform test.afirmar(not has_function_privilege('anon', f, 'execute') and has_function_privilege('authenticated', f, 'execute'),
@@ -181,6 +194,7 @@ begin
                        and not has_function_privilege('authenticated', 'public.bloquear_cierre(uuid[], uuid)', 'execute')
                        and not has_function_privilege('authenticated', 'public.libre_de_los_pagos_de_compra(uuid)', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_devolucion_compra_guardia()', 'execute')
+                       and not has_function_privilege('authenticated', 'public.pago_que_cancela_la_compra(uuid)', 'execute')
                        and not has_function_privilege('authenticated',
                              'public.caja_mover_por_pago(text, uuid, text, uuid, date, numeric, text, numeric, text, text, text)', 'execute')
                        and not has_function_privilege('authenticated', 'public.caja_anular_por_pago(text, uuid, text, text)', 'execute'),
@@ -453,6 +467,64 @@ begin
   perform test.afirmar((select cancelada and pagado = current_setting('prueba.total1')::numeric
                           from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
     'y Tesorería la vuelve a pagar: la base no dice que ya está pagada');
+  raise exception using errcode = 'Q4211', message = 'deshacer';
+exception when sqlstate 'Q4211' then null;
+end $$;
+-- Dada por cancelada con menos, devuelto todo y pagada después a cuenta: la
+-- marca de aquel pago ya no vale, la OC debe lo que falta y se puede pagar (lo
+-- cobró la segunda pasada de la undécima auditoría: quedaba «Pagada» con
+-- S/ 100). Y si el proveedor devuelve porque cobró de más, Logística baja la OC
+-- hasta lo pagado y queda pagada; subirla o bajarla de lo pagado, no. Se
+-- deshace al final.
+do $$
+declare v text;
+begin
+  foreach v in array array['p4f', 'p4g', 'p4h', 'dv4b', 'dv4c'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform pg_temp.pagar('p4f', 'oc4', 300, true, pg_temp.subir('pagos-compras', 'oc4'));
+  perform pg_temp.devolver('dv4b', 'oc4', 300, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4215');
+  perform pg_temp.pagar('p4g', 'oc4', 100, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform test.afirmar((select not cancelada and pagado = 100 and devuelto = 300 and pago_que_cancela is null and not sin_completar
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select not cancelada and saldo = 261.50 and not entera from public.situacion_de_pago_de_compra(pg_temp.id('oc4')))
+                       and pg_temp.pago('oc4') = 'PAGO_PARCIAL',
+    'dada por cancelada con S/ 300, devueltos los 300 y pagados S/ 100 a cuenta, la OC debe S/ 261.50: la marca de aquel pago ya no vale');
+  perform pg_temp.pagar('p4h', 'oc4', 261.50, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform test.afirmar((select cancelada and pagado = 361.50 and pago_que_cancela = pg_temp.id('p4h') and not sin_completar
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select count(*) filter (where (p->>'cancela')::boolean) = 1
+                                   and bool_or((p->>'cancela')::boolean and p->>'id' = pg_temp.id('p4h')::text)
+                              from public.trazabilidad_de_compras() t, jsonb_array_elements(t.pagos) p
+                             where t.id = pg_temp.id('oc4')),
+    'Tesorería paga los S/ 261.50 y la OC queda pagada: la canceló ese pago, y solo ese lo dice');
+  -- El proveedor devuelve S/ 61.50 que cobró de más: la OC vuelve a deber, pero no se paga otra vez.
+  perform pg_temp.devolver('dv4c', 'oc4', 61.50, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4216');
+  perform test.afirmar((select not cancelada and pagado = 300 and pago_que_cancela is null
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'el proveedor devuelve S/ 61.50: con S/ 300 netos, la OC vuelve a deber S/ 61.50');
+  reset role;
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform test.debe_fallar($q$ select pg_temp.corregir_precio('oc4', 90) $q$,
+    'Logística no la baja de lo pagado: S/ 270 con S/ 300 netos', 'Tesorería ya le pagó S/ 300.00 a la');
+  perform pg_temp.corregir_precio('oc4', 100);
+  reset role;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform test.afirmar((select cancelada and total = 300 and pagado = 300 and pago_que_cancela = pg_temp.id('p4h')
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select cancelada and saldo = 0 from public.situacion_de_pago_de_compra(pg_temp.id('oc4')))
+                       and pg_temp.pago('oc4') = 'PAGADA',
+    'Logística baja la plancha a S/ 100: la OC queda en S/ 300, pagada, y nadie la paga otra vez');
+  reset role;
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform test.debe_fallar($q$ select pg_temp.corregir_precio('oc4', 120.50) $q$,
+    'y no la vuelve a subir', 'su total puede bajar, pero no subir');
+  reset role;
   raise exception using errcode = 'Q4211', message = 'deshacer';
 exception when sqlstate 'Q4211' then null;
 end $$;
@@ -947,11 +1019,21 @@ begin
         'para descontar lo pagado de más, Tesorería ve las facturas del proveedor con saldo: no la de la OC, ni la de otro proveedor');
       perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fo'), 10, 10) $q$,
         'no se descuenta en la factura de otro proveedor', 'es de otro proveedor');
-      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 90) $q$,
+      -- DKS, 2026-10-21: el descuento lleva la nota de crédito o el documento donde el proveedor lo descontó.
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100) $q$,
+        'sin la nota de crédito o el documento del descuento, no se descuenta', 'Adjunta la nota de crédito o el documento');
+      perform set_config('prueba.nc_otra', pg_temp.subir('pagos-facturas', 'fc'), true);
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100,
+                                         current_setting('prueba.nc_otra')) $q$,
+        'el documento va en la carpeta de la factura donde se descuenta', 'Vuelve a adjuntar el archivo');
+      perform set_config('prueba.nc1', pg_temp.subir('pagos-facturas', 'f4216'), true);
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 90,
+                                         current_setting('prueba.nc1')) $q$,
         'en la misma moneda, lo que sale de la boleta es lo que toma la factura', 'En la misma moneda');
-      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100.01, 100.01) $q$,
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 100.01, 100.01,
+                                         current_setting('prueba.nc1')) $q$,
         'ni más de lo pagado de más', 'no se descuenta más');
-      perform public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100);
+      perform public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100, current_setting('prueba.nc1'));
       perform test.afirmar((select de_mas = 0 and a_otras = 100 and a_otras_facturas = 'F001-4216' and aplicado = 0 and cancelada
                               from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
                            and pg_temp.pago('oc1') = 'PAGADA',
@@ -959,8 +1041,22 @@ begin
       reset role;
       perform test.afirmar(pg_temp.saldo('f4216') = 50 and pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 0
                            and (select referencia like 'Descontado de lo pagado de más por la boleta de la %' and monto_de_la_boleta = 100
+                                       and archivo_ruta = current_setting('prueba.nc1') and archivo_mime = 'application/pdf'
+                                       and archivo_tamano = 2048
                                   from public.pagos_adquisicion where id = pg_temp.id('tj')),
-        'esa factura debe S/ 50, la toma dice de dónde sale y el aviso se da por leído');
+        'esa factura debe S/ 50, la toma dice de dónde sale, guarda la nota de crédito y el aviso se da por leído');
+      -- La nota de crédito la ven quienes ven el pago de la factura, aunque no la hayan subido; nadie la quita.
+      perform pg_temp.como('contabilidad');
+      set local role authenticated;
+      perform test.afirmar((select count(*) from storage.objects where bucket_id = 'pagos-facturas' and name = current_setting('prueba.nc1')) = 1,
+        'Contabilidad ve la nota de crédito del descuento');
+      reset role;
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      delete from storage.objects where bucket_id = 'pagos-facturas' and name = current_setting('prueba.nc1');
+      reset role;
+      perform test.afirmar((select count(*) from storage.objects where bucket_id = 'pagos-facturas' and name = current_setting('prueba.nc1')) = 1,
+        'y Tesorería no la quita: la nombra un pago');
       perform pg_temp.como('tesoreria');
       set local role authenticated;
       perform public.soltar_pago_de_la_boleta(pg_temp.id('oc1'), pg_temp.id('f4216'), 'El proveedor al final prefiere devolverlo');
@@ -971,7 +1067,11 @@ begin
       -- Descontado en parte, el aviso dice lo descontado y lo que queda: su cuenta suma.
       perform pg_temp.como('tesoreria');
       set local role authenticated;
-      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 30, 30);
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 30, 30,
+                                         current_setting('prueba.nc1')) $q$,
+        'la nota de un descuento no sirve para otro', 'Ese archivo ya es el de otro pago');
+      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 30, 30,
+                                             pg_temp.subir('pagos-facturas', 'f4216'));
       reset role;
       perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 1
                            and exists (select 1 from public.notificaciones
@@ -1197,23 +1297,53 @@ begin
   end;
 end $$;
 
--- Con su pago vigente, la OC no cambia su total; lo que no lo toca, sí.
+-- Con su pago vigente (S/ 100 a cuenta), el total de la OC no sube: es el
+-- documento que se paga. Sin factura baja, pero no de lo pagado (undécima
+-- vuelta). Lo que no toca el total pasa.
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.corregir_precio('oc1', 130) $$,
+  'con un pago vigente, Logística no le sube el precio a la OC', 'su total puede bajar, pero no subir');
+select test.debe_fallar($$ select pg_temp.corregir_precio('oc1', 30) $$,
+  'ni se lo baja de lo pagado: S/ 90 con S/ 100 pagados', 'Tesorería ya le pagó S/ 100.00 a la');
+reset role;
 select pg_temp.como('contabilidad');
-select test.debe_fallar($$ update public.orden_compra_material_detalles set precio_unitario = 100 where orden_compra_id = pg_temp.id('oc1') $$,
-  'la OC con un pago directo vigente no cambia su precio', 'su total no cambia');
-select test.debe_fallar($$ update public.orden_compra_material_detalles set cantidad = 1 where orden_compra_id = pg_temp.id('oc1') $$,
-  'ni su cantidad', 'su total no cambia');
 select test.debe_fallar($$ delete from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc1') $$,
-  'ni pierde líneas', 'su total no cambia');
+  'ni pierde sus líneas', 'su total no baja de eso');
 select test.debe_fallar($$ insert into public.orden_compra_material_detalles (orden_compra_id, material_id, cantidad, precio_unitario)
                            values (pg_temp.id('oc1'), current_setting('prueba.mat')::uuid, 1, 10) $$,
-  'ni gana líneas', 'su total no cambia');
+  'ni gana líneas', 'su total puede bajar, pero no subir');
 select test.debe_fallar($$ update public.orden_compra_material_detalles set orden_compra_id = pg_temp.id('oc1') where orden_compra_id = pg_temp.id('oc4') $$,
-  'ni recibe una línea que viene de otra OC', 'su total no cambia');
+  'ni recibe una línea que viene de otra OC', 'su total puede bajar, pero no subir');
 select test.debe_fallar($$ update public.orden_compra_material_detalles set orden_compra_id = pg_temp.id('oc4') where orden_compra_id = pg_temp.id('oc1') $$,
-  'ni se la pasa a otra', 'su total no cambia');
+  'ni se la pasa a otra', 'su total puede bajar, pero no subir');
 update public.orden_compra_material_detalles set precio_unitario = precio_unitario where orden_compra_id = pg_temp.id('oc1');
 select test.afirmar(public.total_orden_compra(pg_temp.id('oc1')) = 361.50, 'y lo que no cambia el total pasa');
+-- Bajarla hasta lo pagado o más arriba sí: la OC queda en lo que se compró y
+-- debe la diferencia. Con la factura anexada, ya no: el total lo dice la
+-- factura. Se deshace.
+do $$
+begin
+  perform set_config('prueba.d1f', gen_random_uuid()::text, true);
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform pg_temp.corregir_precio('oc1', 100);
+  reset role;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform test.afirmar((select total = 300 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
+                       and (select not cancelada and saldo = 200 from public.situacion_de_pago_de_compra(pg_temp.id('oc1'))),
+    'Logística le baja la plancha a S/ 100 con S/ 100 pagados: la OC queda en S/ 300 y debe S/ 200');
+  reset role;
+  perform pg_temp.anexar('d1f', 'oc1', 'F001-4219');
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform test.debe_fallar($q$ select pg_temp.corregir_precio('oc1', 99) $q$,
+    'con la factura anexada, Logística no le cambia el total', 'lo dice la factura');
+  reset role;
+  raise exception using errcode = 'Q4211', message = 'deshacer';
+exception when sqlstate 'Q4211' then null;
+end $$;
 -- El proveedor entregó factura y Logística la anexó a la OC: ya no se paga
 -- directo, y cuando Contabilidad la registre, la factura toma el pago.
 select pg_temp.como('comprador');

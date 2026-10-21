@@ -129,27 +129,6 @@ export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
 }
 
 /**
- * El pago vigente que cancela la OC con boleta, como `trazabilidad_de_compras`:
- * el que Tesorería dio por cancelado sin llegar al total o, si no hay, el que
- * llegó al total (migración 20261020210000). Los pagos vienen en el orden en que
- * se hicieron. Con dos pagos que «cancelan», solo uno la canceló.
- */
-export function pagoQueCancela(
-  pagos: { id: string; monto: number; anulado_en: string | null; cancela_sin_completar: boolean }[],
-  total: number,
-): string | null {
-  const vigentes = pagos.filter((p) => !p.anulado_en)
-  const sinCompletar = vigentes.filter((p) => p.cancela_sin_completar).at(-1)
-  if (sinCompletar) return sinCompletar.id
-  let acumulado = 0
-  for (const p of vigentes) {
-    acumulado += Number(p.monto)
-    if (acumulado >= total) return p.id
-  }
-  return null
-}
-
-/**
  * Por qué Adquisiciones no ofrece «Anular» la factura que Logística anexó a una
  * OC con boleta, con la misma regla de `anular_documento_compra` (migración
  * 20261020210000): la factura que alcanza para esa OC, si ya se pagó ella o la
