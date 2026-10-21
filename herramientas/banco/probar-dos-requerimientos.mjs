@@ -14,6 +14,13 @@
  *   5. La administradora genera la OC del RQA con lo que falta: queda en compra.
  *      En el RQ de operación no tiene botones.
  *
+ * Al día hasta la revisión de Almacén (2026-10-21). Desde #105 «Generar OC» va
+ * arriba de la lista de Atención y junta insumos de varios RQ, y la fila de
+ * Atención cuenta cada insumo con otras palabras: lo que lee de la fila en 3 y
+ * los pasos 4 y 5 esperan la pantalla de antes y fallan, aunque la revisión
+ * queda bien en la base. La OC de varios RQ tiene su recorrido aparte,
+ * `probar-oc-de-varios-rq.mjs`.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos
  * REQUERIMIENTOS, ADMINISTRACION, ALMACEN y LOGISTICA si no son
  * `*.local@metalwork.test`.
@@ -84,9 +91,12 @@ async function registrar(pagina, { area, codigo, justificacion, insumos }) {
   await ventana.locator('#rq-justificacion').fill(justificacion)
   for (const [i, [descripcion, cantidad]] of insumos.entries()) {
     if (i > 0) await ventana.getByRole('button', { name: 'Agregar insumo' }).click()
-    await ventana.locator('input[name="descripcion"]').nth(i).fill(descripcion)
-    await ventana.locator('input[name="cantidad"]').nth(i).fill(String(cantidad))
-    await ventana.locator('select[name="categoria_id"]').nth(i).selectOption({ index: 1 })
+    // Desde #98 cada insumo se elige del catálogo de Almacén; los del recorrido
+    // son inventados, así que se piden como material nuevo.
+    await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).last().click()
+    await ventana.locator('[id^="rq-desc-"]').nth(i).fill(descripcion)
+    await ventana.locator('[id^="rq-cant-"]').nth(i).fill(String(cantidad))
+    await ventana.locator('[id^="rq-cat-"]').nth(i).selectOption({ index: 1 })
   }
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
   await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
@@ -159,9 +169,10 @@ let rqa = ''
   rqa = r.numero
   comprobar(/^RQA-/.test(rqa), `RQA registrado con su serie: «${r.aviso}»`)
   await pagina.waitForTimeout(800)
-  const fila = pagina.locator('tbody tr', { hasText: rqa })
-  comprobar((await texto(fila)).includes('Administración') && (await texto(fila)).includes('Por revisar'), 'la fila dice Administración y «Por revisar»')
-  comprobar((await pagina.locator('tbody tr', { hasText: rq }).count()) === 0, 'en su pestaña no aparece el RQ de operación')
+  // Desde #128 cada RQ es una tarjeta (`data-rq`), no una fila.
+  const fila = pagina.locator(`[data-rq="${rqa}"]`)
+  comprobar((await texto(fila)).includes('Administración') && (await texto(fila)).includes('Por revisar'), 'la tarjeta dice Administración y «Por revisar»')
+  comprobar((await pagina.locator(`[data-rq="${rq}"]`).count()) === 0, 'en su pestaña no aparece el RQ de operación')
   comprobar(errores.length === 0, `sin errores de consola como la administradora ${errores.join(' | ')}`)
   await contexto.close()
 }
