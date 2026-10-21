@@ -146,6 +146,15 @@ await consulta(
    select c.id, $1, $2, (select id from public.tipos_carroceria where activo order by orden_secuencia limit 1), 'banco.pdf', 'cot/' || c.id || '/banco.pdf' from c`,
   [COTIZACION, clienteId],
 )
+// Con su archivo anotado en Storage, como la deja «Subir cotización»: sin él,
+// la lista dice «No se pudo abrir el archivo» y el recorrido lo cuenta como
+// pantalla de error.
+await consulta(
+  `insert into storage.objects (bucket_id, name, metadata)
+   select 'cotizaciones-pdf', ruta_storage, jsonb_build_object('mimetype', 'application/pdf', 'size', 1024)
+   from public.cotizaciones_pdf where numero = $1`,
+  [COTIZACION],
+)
 // Los números los da su serie, como en la pantalla: a mano dejarían un hueco que nadie explica.
 const SERVICIO = (await uno(`select public.siguiente_correlativo('ORDEN_SERVICIO', '001', null) as n`)).n
 await consulta(`insert into public.ordenes_servicio (numero, proveedor_id, proveedor, descripcion, monto, codigo_interno, creado_por) values ($1, $2, $3, 'Torneado de prueba', 1, $4, $5)`,
@@ -274,8 +283,9 @@ for (const ancho of [390, 1280]) {
   }
 
   // Lo que se ve es lo que la base tiene: los materiales con «angulo», contados con y sin tilde.
+  // Con Diseño, que es quien usa el catálogo: Gerencia ya no lo abre (#134).
   {
-    const { pagina } = await sesion('gerencia')
+    const { pagina } = await sesion('diseno')
     await pagina.goto(`${BASE}/materiales`, { waitUntil: 'networkidle' })
     await buscar(pagina, 'Buscar material', 'buscar', `busca ${sello}`)
     const filas = await hasta(() => pagina.locator('main tbody tr', { hasText: sello }).count(), (n) => n === 2)
@@ -653,7 +663,8 @@ for (const ancho of [390, 1280]) {
     for (const texto of [`angel zuniga ${sello}`, `pena ${sello}`, `${DNI}1`]) {
       await caja.fill('')
       await caja.pressSequentially(texto, { delay: 15 })
-      const t = await textoDe(pagina)
+      // El DNI entero se busca en el servidor, sin bajar los números (#126): se espera la respuesta.
+      const t = await hasta(() => textoDe(pagina), (x) => x.includes(TRABAJADOR) && !x.includes(OTRO))
       comprobar(t.includes(TRABAJADOR) && !t.includes(OTRO), `Asistencia (portería): «${texto}» deja solo a ${TRABAJADOR}`)
     }
   }
