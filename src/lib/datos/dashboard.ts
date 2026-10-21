@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 
 import type { TonoIndicador } from '@/components/ui/indicador'
-import { avanceDeLosCodigos, listarCodigosInternos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
+import { leerListaDeCodigos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
@@ -351,7 +351,8 @@ const CIFRAS = {
     ruta: '/codigos-internos?costeo=todos',
     calcular: async (c) => {
       // Con los que solo tienen planos o etapas de Diseño, como la lista.
-      const codigos = sumarCodigosDeDiseno(await c.una('codigos', () => listarCodigosInternos()), await deDiseno(c))
+      const lista = await c.una('codigos', () => leerListaDeCodigos())
+      const codigos = sumarCodigosDeDiseno(lista.codigos, lista.diseno)
       const desde = sumarDias(c.hoy, -30)
       const activos = codigos.filter((k) => k.ultima_actividad && k.ultima_actividad.slice(0, 10) >= desde).length
       return { titulo: 'Códigos con movimiento', valor: String(activos), pie: `en 30 días · ${codigos.length} en total`, icono: Hash, tono: 'acento' }
@@ -361,7 +362,7 @@ const CIFRAS = {
     // La tarjeta suma abiertos y cerrados: la lista, también.
     ruta: '/codigos-internos?costeo=todos&ver=costo',
     calcular: async (c) => {
-      const codigos = await c.una('codigos', () => listarCodigosInternos())
+      const { codigos } = await c.una('codigos', () => leerListaDeCodigos())
       const pen = codigos.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
       const usd = codigos.reduce((n, k) => n + costoDelCodigo(k).usd, 0)
       const pie = usd > 0 ? `y ${moneda(usd, 'USD')} sin tipo de cambio · todo lo que suma cada código` : 'todo lo que suma cada código, en soles'
@@ -371,7 +372,7 @@ const CIFRAS = {
   codigos_por_completar: {
     ruta: '/codigos-internos?costeo=todos&ver=por-completar',
     calcular: async (c) => {
-      const codigos = await c.una('codigos', () => listarCodigosInternos())
+      const { codigos } = await c.una('codigos', () => leerListaDeCodigos())
       const n = codigos.filter((k) => k.horas_sin_costo > 0 || k.materiales_sin_precio > 0 || k.compras_sin_precio > 0 || k.lineas_sin_cambio > 0).length
       return { titulo: 'Costo por completar', valor: String(n), pie: 'horas sin costo, materiales sin precio o dólares sin cambio', icono: AlertTriangle, tono: n > 0 ? 'aviso' : 'exito' }
     },
@@ -803,7 +804,7 @@ export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<Dashboar
 /** Los seis códigos que se movieron hace menos, con su avance y su costo: lo primero que Gerencia abre. */
 async function codigosEnCurso(c: Contexto): Promise<CodigoEnCurso[]> {
   try {
-    const [codigos, avances] = await Promise.all([c.una('codigos', () => listarCodigosInternos()), avanceDeLosCodigos()])
+    const { codigos, avances } = await c.una('codigos', () => leerListaDeCodigos())
     return [...codigos]
       .filter((k) => k.ultima_actividad)
       .sort((a, b) => (b.ultima_actividad ?? '').localeCompare(a.ultima_actividad ?? ''))

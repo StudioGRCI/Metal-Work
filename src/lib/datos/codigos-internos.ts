@@ -1,7 +1,11 @@
 import 'server-only'
 
+import { cache } from 'react'
+
+import { codigoDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 
 /**
  * Los códigos internos para Gerencia: todo sale de las funciones de la migración
@@ -119,6 +123,9 @@ export type CierreDelCodigo = {
   margen_pct: number | null
 }
 
+/** Una fila de lo que devuelve una función de la base. */
+type Fila<F extends keyof Database['public']['Functions']> = Database['public']['Functions'][F]['Returns'] extends (infer R)[] ? R : never
+
 const n = (v: number | null | undefined) => Number(v ?? 0)
 const nulo = (v: number | null | undefined) => (v === null || v === undefined ? null : Number(v))
 
@@ -150,12 +157,9 @@ export const SIN_COSTO_COMPLETO: CostoCompleto = {
  * Dashboard de Administración); el precio y el margen llegan solo a quien ve
  * el precio de venta.
  */
-export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<string, CostoCompleto>> {
-  const supabase = await createClient()
-  const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_costo', codigo ? { p_codigo: codigo } : {}), ['codigo'])
-  if (error) throw new Error(`No se pudo leer el costo de los códigos: ${error.message}`)
+function mapaDeCosto(filas: Fila<'codigos_internos_costo'>[]): Map<string, CostoCompleto> {
   return new Map(
-    (data ?? []).flatMap((f) => {
+    filas.flatMap((f) => {
       if (!f.codigo) return []
       const semaforo = f.semaforo === 'EN_RANGO' || f.semaforo === 'AJUSTADO' || f.semaforo === 'EXCEDIDO' ? f.semaforo : null
       const costo: CostoCompleto = {
@@ -209,26 +213,56 @@ export async function costoCompletoDeLosCodigos(codigo?: string): Promise<Map<st
   )
 }
 
-/** Todos los códigos del sistema, del que tuvo movimiento más reciente al más viejo. */
-export async function listarCodigosInternos(): Promise<ResumenCodigo[]> {
+/** Lo que la pantalla de Códigos internos lee de una vez. */
+export type ListaDeCodigos = {
+  /** Del que tuvo movimiento más reciente al más viejo. */
+  codigos: ResumenCodigo[]
+  diseno: CodigoDeDiseno[]
+  avances: Map<string, AvanceDeCodigo>
+}
+
+/**
+ * La lista, lo que Diseño lleva en cada código y su avance, en una sola lectura
+ * (`codigos_internos_lista`, migración 20261021100000). Eran seis lecturas a la
+ * vez, cada una en su conexión, y en producción se cortaban por tiempo al
+ * arrancar todas en frío. Una por pedido: el Dashboard la pide desde varias tarjetas.
+ */
+export const leerListaDeCodigos = cache(async (): Promise<ListaDeCodigos> => {
   const supabase = await createClient()
-  // El resumen de la base no trae las órdenes de servicio, los subcontratos ni
-  // el costo completo (cambiarle las columnas exige borrarlo): salen de su
-  // propia función, con las mismas líneas que el costeo de cada código.
-  // Pasados los mil códigos, los más viejos se quedaban fuera y su detalle decía
-  // que no existían: se leen todos.
-  const [{ data, error }, porServicio, porSubcontrato, completo] = await Promise.all([
-    todasLasFilas(() => supabase.rpc('codigos_internos_resumen'), ['ultima_actividad.desc.nullslast', 'codigo']),
-    todasLasFilas(() => supabase.rpc('codigos_internos_servicios'), ['codigo']),
-    todasLasFilas(() => supabase.rpc('codigos_internos_subcontratos'), ['codigo']),
-    costoCompletoDeLosCodigos(),
-  ])
+  const { data, error } = await supabase.rpc('codigos_internos_lista')
   if (error) throw new Error(`No se pudieron leer los códigos internos: ${error.message}`)
-  if (porServicio.error) throw new Error(`No se pudieron leer los servicios de los códigos: ${porServicio.error.message}`)
-  if (porSubcontrato.error) throw new Error(`No se pudieron leer los subcontratos de los códigos: ${porSubcontrato.error.message}`)
-  const servicios = new Map((porServicio.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
-  const subcontratos = new Map((porSubcontrato.data ?? []).flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
-  const filas = (data ?? []).flatMap((f): ResumenCodigo[] => {
+  const lista = (data ?? {}) as Partial<Record<keyof FilasDeLaLista, unknown>>
+  const filas = <K extends keyof FilasDeLaLista>(clave: K) => (Array.isArray(lista[clave]) ? lista[clave] : []) as FilasDeLaLista[K]
+  return {
+    codigos: armarLista(filas('resumen'), filas('servicios'), filas('subcontratos'), mapaDeCosto(filas('costo'))),
+    diseno: filas('diseno').flatMap(codigoDeDiseno),
+    avances: mapaDeAvance(filas('avance')),
+  }
+})
+
+type FilasDeLaLista = {
+  resumen: Fila<'codigos_internos_resumen'>[]
+  servicios: Fila<'codigos_internos_servicios'>[]
+  subcontratos: Fila<'codigos_internos_subcontratos'>[]
+  costo: Fila<'codigos_internos_costo'>[]
+  avance: Fila<'codigos_internos_avance'>[]
+  diseno: Fila<'codigos_internos_de_diseno'>[]
+}
+
+/**
+ * El resumen de la base no trae las órdenes de servicio, los subcontratos ni el
+ * costo completo (cambiarle las columnas exige borrarlo): salen de su propia
+ * función, con las mismas líneas que el costeo de cada código.
+ */
+function armarLista(
+  resumen: Fila<'codigos_internos_resumen'>[],
+  porServicio: Fila<'codigos_internos_servicios'>[],
+  porSubcontrato: Fila<'codigos_internos_subcontratos'>[],
+  completo: Map<string, CostoCompleto>,
+): ResumenCodigo[] {
+  const servicios = new Map(porServicio.flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
+  const subcontratos = new Map(porSubcontrato.flatMap((s) => (s.codigo ? [[s.codigo, s] as const] : [])))
+  const filas = resumen.flatMap((f): ResumenCodigo[] => {
     const s = f.codigo ? servicios.get(f.codigo) : undefined
     const sc = f.codigo ? subcontratos.get(f.codigo) : undefined
     return f.codigo
@@ -305,8 +339,12 @@ export async function avanceDeLosCodigos(codigo?: string): Promise<Map<string, A
   const supabase = await createClient()
   const { data, error } = await todasLasFilas(() => supabase.rpc('codigos_internos_avance', codigo ? { p_codigo: codigo } : {}), ['codigo'])
   if (error) throw new Error(`No se pudo leer el avance de los códigos: ${error.message}`)
+  return mapaDeAvance(data ?? [])
+}
+
+function mapaDeAvance(filas: Fila<'codigos_internos_avance'>[]): Map<string, AvanceDeCodigo> {
   return new Map(
-    (data ?? []).flatMap((f) =>
+    filas.flatMap((f) =>
       f.codigo
         ? [
             [
