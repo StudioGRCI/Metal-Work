@@ -5,6 +5,7 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { SinDatos, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { catalogosDeMateriales, listarCatalogoMateriales } from '@/lib/datos/materiales'
+import { paginaPedida } from '@/lib/dominio/paginas'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { FilaMaterial, NuevoMaterial } from './fila-material'
@@ -26,7 +27,7 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
 
   const busqueda = typeof params.buscar === 'string' ? params.buscar : undefined
   const inactivos = params.todos === '1'
-  const pedida = Math.max(1, Number.parseInt(typeof params.pagina === 'string' ? params.pagina : '1', 10) || 1)
+  const pedida = paginaPedida(params.pagina)
 
   const [resultado, catalogos] = await Promise.all([
     listarCatalogoMateriales({ busqueda, inactivos, pagina: pedida }),
@@ -83,11 +84,11 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
             <Tabla>
               <TablaCabecera>
                 <TR>
-                  <TH>Material</TH>
+                  <TH className="sm:min-w-48">Material</TH>
                   <TH className="hidden sm:table-cell">Categoría</TH>
                   <TH>Unidad</TH>
-                  <TH className="hidden sm:table-cell">Especificación</TH>
-                  {puedeEditar && <TH className="sm:w-28" />}
+                  <TH className="hidden lg:table-cell">Especificación</TH>
+                  {puedeEditar && <TH className="md:w-28" />}
                 </TR>
               </TablaCabecera>
               <tbody>

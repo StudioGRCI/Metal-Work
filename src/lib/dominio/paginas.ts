@@ -1,3 +1,17 @@
+/** Las páginas que se aceptan en la dirección; más allá no hay listas tan largas. */
+const PAGINA_MAXIMA = 100_000
+
+/**
+ * La página que pide la dirección, entera y en su rango. Con `Number(…) || 1`,
+ * «?pagina=2.5» decía «Mostrando 38.5–62.5» y «?pagina=Infinity» tumbaba la
+ * pantalla (2026-10-21).
+ */
+export function paginaPedida(valor: unknown): number {
+  const texto = Array.isArray(valor) ? valor[0] : valor
+  const numero = typeof texto === 'string' && /^\d+$/.test(texto.trim()) ? Number(texto.trim()) : 1
+  return Number.isSafeInteger(numero) && numero >= 1 ? Math.min(numero, PAGINA_MAXIMA) : 1
+}
+
 /**
  * La última página que sí existe, cuando se pidió una que ya no (una dirección
  * guardada, o estar en la última página cuando bajó el total); `null` si la

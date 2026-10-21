@@ -23,6 +23,7 @@ import { reemplazoDeLaOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden
 import { exigirSesion, puede } from '@/lib/sesion'
 
 import { FiltrosOrdenes } from './filtros-ordenes'
+import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Órdenes de trabajo' }
 
@@ -47,7 +48,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
     estado: comoEstado(params.estado),
     prioridad: comoPrioridad(params.prioridad),
     atrasadas: params.atrasadas === '1',
-    pagina: Number(params.pagina) || 1,
+    pagina: paginaPedida(params.pagina),
   }
 
   const { ordenes, total, pagina, paginas } = await listarOrdenes(filtros)

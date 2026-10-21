@@ -5,7 +5,7 @@ import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
-import { paginaQueExiste } from '@/lib/dominio/paginas'
+import { paginaPedida, paginaQueExiste } from '@/lib/dominio/paginas'
 
 export type FilaKardex = Pick<Vistas<'v_kardex_almacen'>,
   'id' | 'fecha' | 'material_id' | 'material_codigo' | 'material' | 'unidad_medida' | 'movimiento' | 'origen'
@@ -48,7 +48,7 @@ export function filtrosDeKardex(params: Record<string, string | string[] | undef
     hasta: DIA.test(hasta) ? hasta : undefined,
     unidad: unidad || undefined,
     almacen: esAlmacen(almacen) ? almacen : undefined,
-    pagina: Math.max(1, Number.parseInt(texto(params.pagina) || '1', 10) || 1),
+    pagina: paginaPedida(params.pagina),
   }
 }
 

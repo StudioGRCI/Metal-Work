@@ -28,6 +28,9 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
   const todas = useMemo(() => lectura?.empresas.flatMap((g) => g.lineas) ?? [], [lectura])
   const elegidas = todas.filter((l) => seleccion.includes(id(l)))
   const yaEsta = (l: LineaPlanilla) => lectura?.yaEn[claveNombre(l.nombre)]
+  // Al cerrar se olvida el error de la vez anterior: volvía a salir con la
+  // ventana vacía, sin ningún archivo elegido.
+  const cerrar = () => { setAbierta(false); leer.limpiar(); confirmar.limpiar() }
   const alternar = (claves: string[], marcar: boolean) =>
     setSeleccion((antes) => marcar ? [...new Set([...antes, ...claves])] : antes.filter((c) => !claves.includes(c)))
 
@@ -36,7 +39,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
       <FileSpreadsheet aria-hidden className="size-4" /> Importar del Excel
     </Boton>
     {confirmar.resultado?.ok && <p role="status" className="text-sm text-exito">{confirmar.resultado.mensaje}</p>}
-    <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} ancho="xl" titulo="Importar la planilla del Excel"
+    <Ventana abierta={abierta} alCerrar={cerrar} ancho="xl" titulo="Importar la planilla del Excel"
       descripcion="Se lee el libro entero: las hojas RESUMEN del mes y la hoja PAGOS, que dice la empresa de cada persona. Elige quiénes van a esta planilla.">
       {!lectura ? (
         <form onSubmit={leer.alEnviar} className="space-y-4">
@@ -46,7 +49,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
           </Campo>
           {leer.error && <p role="alert" className="text-sm text-peligro">{leer.error}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>Cancelar</Boton>
+            <Boton type="button" variante="secundario" onClick={cerrar}>Cancelar</Boton>
             <Boton type="submit" cargando={leer.enviando}>Leer y comprobar</Boton>
           </div>
         </form>
@@ -126,7 +129,8 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
               {elegidas.length} {elegidas.length === 1 ? 'persona elegida' : 'personas elegidas'} ·
               <span className="tabular font-semibold"> {moneda(elegidas.reduce((s, l) => s + costo(l), 0))}</span> para repartir entre las OT
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Boton type="button" variante="fantasma" onClick={cerrar}>Cancelar</Boton>
               <Boton type="button" variante="secundario" onClick={() => setLectura(null)}>Otro Excel</Boton>
               <Boton type="submit" cargando={confirmar.enviando} disabled={!elegidas.length}>Importar {elegidas.length || ''}</Boton>
             </div>

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { paginaQueExiste } from './paginas.ts'
+import { paginaPedida, paginaQueExiste } from './paginas.ts'
 
 const sinContar = async () => assert.fail('no debía contar')
 
@@ -21,4 +21,13 @@ test('el banco la devuelve vacía con su total: se va a la última sin contar ot
 
 test('otro error no se toca: lo lanza quien consulta', async () => {
   assert.equal(await paginaQueExiste(5, 25, { error: { code: '57014' }, count: null, filas: 0 }, sinContar), null)
+})
+
+test('la página de la dirección sale entera y en su rango', () => {
+  assert.equal(paginaPedida(undefined), 1)
+  assert.equal(paginaPedida('3'), 3)
+  assert.equal(paginaPedida(['4', '5']), 4)
+  for (const raro of ['0', '-2', '2.5', 'Infinity', 'abc', '', '1e3']) assert.equal(paginaPedida(raro), 1, raro)
+  assert.equal(paginaPedida('99999999999999999999999'), 1)
+  assert.equal(paginaPedida('250000'), 100000)
 })
