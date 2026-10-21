@@ -8,6 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { Ventana } from '@/components/ui/ventana'
 import { subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
+import { explicarFallo } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 
 import { cargarCronograma } from './acciones-actividades'
@@ -114,6 +115,10 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         setAviso(mensaje)
         setAbierto(false)
         iniciar(() => router.refresh())
+      } catch (e) {
+        // Lo mismo que en useAccion: sin señal, la pantalla entera caía y se
+        // perdía el Excel leído.
+        setError(explicarFallo(e))
       } finally {
         enCurso.current = false
       }

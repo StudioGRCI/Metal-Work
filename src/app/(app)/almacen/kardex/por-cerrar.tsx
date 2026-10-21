@@ -8,7 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { ALMACENES, esAlmacen } from '@/lib/dominio/almacen'
-import { useEnvio } from '@/lib/envio'
+import { SIN_RESPUESTA, useEnvio } from '@/lib/envio'
 import { cantidad, fechaHora } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -59,6 +59,8 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
     }
     const db = createClient()
     const { data, error: sesion } = await db.auth.getUser()
+    // Sin señal, supabase-js devuelve el fallo como error de sesión: no es que haya terminado.
+    if (sesion?.name === 'AuthRetryableFetchError') return { ok: false, error: SIN_RESPUESTA }
     if (sesion || !data.user) return { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
     const extension = archivo.type === 'application/pdf' ? 'pdf' : archivo.type === 'image/jpeg' ? 'jpg' : archivo.type === 'image/png' ? 'png' : 'webp'
     const ruta = `${data.user.id}/${salida.id}-formato.${extension}`

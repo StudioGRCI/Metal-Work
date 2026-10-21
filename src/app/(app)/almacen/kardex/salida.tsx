@@ -9,7 +9,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { type Almacen, ALMACENES, exigeFormato } from '@/lib/dominio/almacen'
 import { CODIGO_TODOS_LOS_ACTIVOS, normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { useEnvio } from '@/lib/envio'
+import { SIN_RESPUESTA, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -60,6 +60,8 @@ export function NuevaSalida({ materiales, unidades, lineasRq = [], rqInicial }: 
     }
     const db = createClient()
     const { data, error: sesion } = await db.auth.getUser()
+    // Sin señal, supabase-js devuelve el fallo como error de sesión: no es que haya terminado.
+    if (sesion?.name === 'AuthRetryableFetchError') return { ok: false, error: SIN_RESPUESTA }
     if (sesion || !data.user) return { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
     const extension = archivo.type === 'image/jpeg' ? 'jpg' : archivo.type === 'image/png' ? 'png' : 'webp'
     const ruta = `${data.user.id}/${String(datos.get('operacion_id'))}.${extension}`
