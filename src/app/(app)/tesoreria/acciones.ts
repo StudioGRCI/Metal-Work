@@ -475,13 +475,19 @@ export async function anularDevolucionCompra(_previo: unknown, formulario: FormD
   const { data, error } = await supabase.rpc('anular_devolucion_compra', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'La devolución no se anuló. Recarga la pantalla.' }
-  const { data: devolucion } = await supabase.from('devoluciones_orden_compra').select('orden_compra_id').eq('id', analisis.data.id).maybeSingle()
+  const { data: devolucion, error: errorDevolucion } = await supabase
+    .from('devoluciones_orden_compra')
+    .select('orden_compra_id')
+    .eq('id', analisis.data.id)
+    .maybeSingle()
+  if (errorDevolucion) console.error('anularDevolucionCompra: no se pudo leer la devolución anulada', errorDevolucion)
   const [caja, situacion] = await Promise.all([
     cajaTrasAnular('DEVOLUCION_ORDEN_COMPRA', analisis.data.id, 'devolucion'),
     devolucion ? situacionDeLaCompra(supabase, devolucion.orden_compra_id) : Promise.resolve(null),
   ])
   repintarPagosDeCompra()
-  return { ok: true, mensaje: `Devolución anulada. ${queQuedaTrasDevolver(situacion)} ${caja}`.trim() }
+  const sinLeer = situacion ? '' : 'No se pudo leer cómo quedó la OC: mírala en «OC con boleta».'
+  return { ok: true, mensaje: `Devolución anulada. ${queQuedaTrasDevolver(situacion) || sinLeer} ${caja}`.trim() }
 }
 
 /**
@@ -601,7 +607,8 @@ export async function soltarPagoDeLaBoleta(_previo: unknown, formulario: FormDat
     supabase.from('v_cuentas_pagar').select('saldo').eq('id', d.factura_id).maybeSingle(),
   ])
   if (factura.error || cuenta.error || !factura.data || !cuenta.data) {
-    return { ok: true, mensaje: 'Toma deshecha: lo pagado por la boleta queda sin pasar a ninguna factura.' }
+    if (factura.error || cuenta.error) console.error('soltarPagoDeLaBoleta: no se pudo leer cómo quedó la factura', factura.error ?? cuenta.error)
+    return { ok: true, mensaje: 'Toma deshecha: lo pagado por la boleta queda sin pasar a ninguna factura. No se pudo leer cuánto debe ahora la factura: mírala en «Facturas por pagar».' }
   }
   const m = factura.data.moneda === 'USD' ? 'USD' : 'PEN'
   return {

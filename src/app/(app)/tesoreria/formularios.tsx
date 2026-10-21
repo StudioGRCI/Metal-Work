@@ -705,6 +705,7 @@ export function AnularPagoCompra({
   queQueda,
   puedeDevolver,
   alCambio,
+  tomadoAMano,
 }: {
   pagoId: string
   compraId: string
@@ -714,6 +715,8 @@ export function AnularPagoCompra({
   puedeDevolver: boolean
   /** Lo pagado por la boleta espera a su factura en otra moneda. */
   alCambio: { factura: string; moneda: string } | null
+  /** La factura que tomó a mano lo pagado por la boleta: mientras lo tenga, no hay nada que devolver. */
+  tomadoAMano: { facturaId: string | null; factura: string } | null
 }) {
   const [abierta, setAbierta] = useState(false)
   const [quePaso, setQuePaso] = useState<'no_salio' | 'devolvio' | 'al_cambio' | null>(null)
@@ -782,9 +785,27 @@ export function AnularPagoCompra({
           {quePaso === 'devolvio' && (
             <p role="status" className="text-sm text-texto">
               No se anula: lo que salió, salió.{' '}
-              {puedeDevolver
-                ? 'Registra lo que entró con «Registrar devolución»; la OC y su factura se rehacen solas.'
-                : 'Lo que entró se registra con «Registrar devolución», y lo hace quien lleva la caja; la OC y su factura se rehacen solas.'}
+              {puedeDevolver ? (
+                'Registra lo que entró con «Registrar devolución»; la OC y su factura se rehacen solas.'
+              ) : tomadoAMano ? (
+                <>
+                  Pero lo pagado por la boleta ya lo tomó a mano la factura{' '}
+                  {tomadoAMano.facturaId ? (
+                    <a
+                      href={`#factura-${tomadoAMano.facturaId}`}
+                      onClick={() => setAbierta(false)}
+                      className="inline-flex min-h-11 items-center font-medium text-acento underline-offset-2 hover:underline sm:min-h-0"
+                    >
+                      {tomadoAMano.factura}
+                    </a>
+                  ) : (
+                    tomadoAMano.factura
+                  )}
+                  : primero, en esa factura, «Deshacer»; después registra lo que entró con «Registrar devolución».
+                </>
+              ) : (
+                'Lo que entró se registra con «Registrar devolución»; la OC y su factura se rehacen solas.'
+              )}
             </p>
           )}
           {quePaso === 'al_cambio' && alCambio && (

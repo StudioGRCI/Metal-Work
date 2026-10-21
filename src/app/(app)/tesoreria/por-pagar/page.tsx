@@ -371,7 +371,13 @@ function boletaParaLaCuenta(b: CompraConBoleta): BoletaParaDevolver {
     otraMoneda: Boolean(b.otra_moneda),
     otraFactura: b.otra_factura,
     sinCompletar: b.pagos.some((p) => !p.anulado_en && p.cancela_sin_completar),
+    entera: Boolean(b.entera),
   }
+}
+
+/** Lo que la OC con su factura parcial todavía no tiene pagado: el total menos lo neto pagado por la boleta. */
+function faltaDeLaOc(b: CompraConBoleta) {
+  return Math.max(Math.round((Number(b.total ?? 0) - Number(b.pagado ?? 0)) * 100) / 100, 0)
 }
 
 /** Lo que la factura de la compra tomó al cambio de los pagos vigentes, sumado: la factura, y cuánto en cada moneda. */
@@ -462,13 +468,26 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
           Su factura {aLaFactura(alCambio.facturaId, alCambio.factura)}, en {nombreMoneda(alCambio.moneda)}, tomó al cambio lo pagado por la boleta {cambio}{' '}
           y le faltan {monto(otraSaldo, alCambio.moneda)}, que se pagan por ella en «Facturas por pagar».
         </>
-      ) : (
+      ) : b.cancelada ? (
         <>
           Pagada por su factura {aLaFactura(alCambio.facturaId, alCambio.factura)}, que tomó al cambio lo pagado por la boleta {cambio}.
+        </>
+      ) : (
+        <>
+          Su factura {aLaFactura(alCambio.facturaId, alCambio.factura)} es por una parte de la OC y tomó al cambio lo suyo {cambio}. Lo demás,{' '}
+          {monto(faltaDeLaOc(b))}, espera la factura que falta.
         </>
       )
     }
     const falta = Number(b.factura_saldo ?? 0)
+    if (falta <= 0 && !b.cancelada) {
+      return (
+        <>
+          Su factura {factura} es por una parte de la OC y ya tomó {monto(aplicado)} de lo pagado por la boleta. Lo demás, {monto(faltaDeLaOc(b))}, espera la
+          factura que falta.
+        </>
+      )
+    }
     if (falta <= 0) return <>Pagada por su factura {factura}, que tomó lo pagado por la boleta.</>
     // Un pago la dio por cancelada con menos: la diferencia es un descuento que la factura no trae.
     const sinCompletar = b.pagos.some((p) => !p.anulado_en && p.cancela_sin_completar)
@@ -481,7 +500,7 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
           <>
             {' '}
             {paga ? 'Diste la OC por cancelada' : 'Tesorería la dio por cancelada'} con {monto(Number(b.pagado ?? 0))}: si el descuento sigue en pie,{' '}
-            {paga ? 'pide' : 'pide'} al proveedor la nota de crédito por {monto(falta)} y no {paga ? 'pagues' : 'paga'} esa diferencia.
+            pide al proveedor la nota de crédito por {monto(falta)} y no {paga ? 'pagues' : 'paga'} esa diferencia.
           </>
         )}
       </>
@@ -622,8 +641,21 @@ function Factura({
   const aManoVigentes = c.pagos.filter((p) => p.monto_de_la_boleta !== null && !p.anulado_en && p.ordenCompraDeLaBoleta)
   const ultimaAMano = new Map(aManoVigentes.map((p) => [p.ordenCompraDeLaBoleta!, p.id]))
   const aManoDe = (oc: string) => redondear(aManoVigentes.filter((p) => p.ordenCompraDeLaBoleta === oc).reduce((s, p) => s + Number(p.monto), 0))
-  // Tomaba de un pago por la boleta que se anuló: si ese dinero sí salió, se paga con el mismo voucher, no con otro.
-  const deUnoAnulado = saldo > 0 ? c.pagos.filter((p) => p.pago_orden_compra_id && p.anulado_en && p.motivo_anulacion?.startsWith('Se anuló el pago de la boleta')) : []
+  // Tomaba de un pago por la boleta que se anuló por mal registrado: si ese dinero sí salió, se paga con el mismo
+  // voucher, no con otro. Una vez que Tesorería registró en la factura, después de la anulación, lo que tomaba, la
+  // nota ya no corre: lo que siga debiendo la factura sí se transfiere.
+  const propiosDespues = (desde: string) =>
+    c.pagos.filter((q) => !q.anulado_en && !q.pago_orden_compra_id && q.creado_en > desde).reduce((s, q) => s + Number(q.monto), 0)
+  const deUnoAnulado =
+    saldo > 0
+      ? c.pagos.filter(
+          (p) =>
+            p.pago_orden_compra_id &&
+            p.anulado_en &&
+            p.motivo_anulacion?.startsWith('Se anuló el pago de la boleta') &&
+            propiosDespues(p.anulado_en) < Number(p.monto) - 0.005,
+        )
+      : []
   const espera = saldo > 0 && esperaBoleta?.id ? esperaBoleta : null
   return (
     // El id es el ancla con que Adquisiciones salta a esta factura.
@@ -686,8 +718,8 @@ function Factura({
         {paga &&
           deUnoAnulado.map((p) => (
             <p key={`anulado-${p.id}`} className="text-xs text-aviso">
-              Tomaba {moneda(p.monto, m)} del pago por la boleta del {fecha(p.fecha)}. {p.motivo_anulacion}. Si ese dinero sí salió, no transfieras otra
-              vez: registra aquí el pago con ese mismo voucher.
+              Tomaba {moneda(p.monto, m)} del pago por la boleta ({p.referencia}), que se anuló. {p.motivo_anulacion}. Si ese dinero sí salió, no
+              transfieras otra vez: registra aquí el pago con ese mismo voucher.
             </p>
           ))}
         {espera ? (
@@ -697,7 +729,7 @@ function Factura({
             {pasa ? (
               <>
                 Primero, en{' '}
-                <a href={`#compra-${espera.id}`} className="font-medium underline-offset-2 hover:underline">
+                <a href={`#compra-${espera.id}`} className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
                   su OC con boleta
                 </a>
                 , «La factura lo toma al cambio»; después se paga aquí lo que falte.
@@ -755,7 +787,9 @@ function Factura({
                   {/* Lo anota el sistema o Tesorería desde la OC: el pago es de la boleta, y ahí se ve. */}
                   {deLaBoleta && !p.anulado_en && p.ordenCompraDeLaBoleta && (
                     <a href={`#compra-${p.ordenCompraDeLaBoleta}`} className="inline-flex min-h-11 items-center text-acento hover:underline sm:min-h-0">
-                      Lo pagó su OC con boleta
+                      {p.referencia?.startsWith('Descontado de lo pagado de más')
+                        ? `Lo pagado de más de la ${nombresOc.get(p.ordenCompraDeLaBoleta) ?? 'OC con boleta'}`
+                        : 'Lo pagó su OC con boleta'}
                     </a>
                   )}
                   {pasa && aMano && !p.anulado_en && p.ordenCompraDeLaBoleta && ultimaAMano.get(p.ordenCompraDeLaBoleta) === p.id && c.id && (
@@ -838,6 +872,9 @@ function CompraConBoletaFila({
   const boleta = boletaParaLaCuenta(b)
   // Lo que el proveedor puede devolver: lo neto, menos lo que una factura tomó a mano.
   const puedeDevolver = paga && topeDeLaDevolucion(boleta) > 0
+  // La factura que tomó a mano lo pagado: se deshace ahí antes de registrar una devolución.
+  const tomaAMano = b.pagos.filter((p) => !p.anulado_en).flatMap((p) => p.tomas.filter((t) => t.aMano))[0]
+  const tomadoAMano = tomaAMano ? { facturaId: tomaAMano.facturaId, factura: tomaAMano.factura } : null
   const diaDelCambio = diaDelUltimoPago(b)
   const otraFactura =
     pasa && b.otra_moneda && b.otra_factura_id && b.otra_factura
@@ -879,6 +916,8 @@ function CompraConBoletaFila({
     <>
       A su factura le faltan <span className="whitespace-nowrap">{moneda(otraSaldo, alCambio.moneda)}</span>
     </>
+  ) : !b.cancelada ? (
+    'Espera la factura que falta'
   ) : (
     'Pagada por su factura'
   )
@@ -1058,6 +1097,7 @@ function CompraConBoletaFila({
                     queQueda={queQuedaAlAnular(b, p.id, m)}
                     puedeDevolver={puedeDevolver}
                     alCambio={otraFactura ? { factura: otraFactura.numero, moneda: nombreMoneda(otraFactura.moneda) } : null}
+                    tomadoAMano={tomadoAMano}
                   />
                 )}
               </span>

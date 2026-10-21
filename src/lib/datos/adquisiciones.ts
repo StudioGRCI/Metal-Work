@@ -277,7 +277,7 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
  * la moneda de la OC.
  */
 const COLUMNAS_PAGO_FACTURA =
-  'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda)'
+  'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, creado_en, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda)'
 
 /** El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago. */
 async function conVouchers(
@@ -414,7 +414,7 @@ type CuentaPagarFila = Pick<
 type PagoFacturaFila = Pick<
   Tablas<'pagos_adquisicion'>,
   | 'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'monto_de_la_boleta' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
-  | 'pago_orden_compra_id'
+  | 'pago_orden_compra_id' | 'creado_en'
 >
 /**
  * Un pago de la factura con su voucher. El que la factura tomó del pago por la

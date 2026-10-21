@@ -46,7 +46,7 @@ begin
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
   foreach v in array array['rq', 'oc1', 'oc2', 'oc3', 'oc4', 'oc5', 'os1', 'os2', 'os3', 'f1', 'f3', 'f4',
-                           'p1', 'p2', 'p3', 'p4', 'p4a', 'p4b', 'p4c', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
+                           'p1', 'p2', 'p3', 'p4', 'p4a', 'p4b', 'p4c', 'p4d', 'p4e', 'dv4', 'pv', 'd1', 'd2', 'd3', 'd4'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -437,6 +437,25 @@ select public.anular_pago_compra(pg_temp.id('p4c'), 'Se registró en la OC que n
 select test.afirmar((select pagos_vigentes = 0 and not cancelada and saldo = current_setting('prueba.total1')::numeric
                        from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
   'anulado ese también, vuelve a deberse entera');
+-- Dada por cancelada con menos y devuelto todo lo pagado, la OC vuelve a deberse
+-- y se paga: la lista la cobraba y la base decía «ya está pagada», sin salida
+-- (lo cobró la undécima auditoría). Se deshace al final.
+do $$
+begin
+  perform pg_temp.pagar('p4d', 'oc4', 200, true, pg_temp.subir('pagos-compras', 'oc4'));
+  perform pg_temp.devolver('dv4', 'oc4', 200, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4214');
+  perform test.afirmar((select not cancelada and pagado = 0 and devuelto = 200
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select not cancelada and saldo = current_setting('prueba.total1')::numeric
+                              from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
+    'dada por cancelada con S/ 200 y devueltos los 200, la OC vuelve a deberse entera');
+  perform pg_temp.pagar('p4e', 'oc4', current_setting('prueba.total1')::numeric, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform test.afirmar((select cancelada and pagado = current_setting('prueba.total1')::numeric
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'y Tesorería la vuelve a pagar: la base no dice que ya está pagada');
+  raise exception using errcode = 'Q4211', message = 'deshacer';
+exception when sqlstate 'Q4211' then null;
+end $$;
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -949,6 +968,17 @@ begin
         'deshecho el descuento, la OC vuelve a tener S/ 100 pagados de más');
       reset role;
       perform test.afirmar(pg_temp.saldo('f4216') = 150, 'y la factura vuelve a deberlos');
+      -- Descontado en parte, el aviso dice lo descontado y lo que queda: su cuenta suma.
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('f4216'), 30, 30);
+      reset role;
+      perform test.afirmar(pg_temp.sin_leer('tesoreria', 'oc1', 'Compra pagada de más: ') = 1
+                           and exists (select 1 from public.notificaciones
+                                        where usuario_id = pg_temp.id('tesoreria') and origen_id = pg_temp.id('oc1') and leida_en is null
+                                          and titulo like 'Compra pagada de más: %'
+                                          and cuerpo like '%se pagaron S/ 100.00 de más. De eso, S/ 30.00 ya se descontaron de otra factura del proveedor: quedan S/ 70.00.%'),
+        'descontados S/ 30 en otra factura, el aviso dice lo descontado y los S/ 70 que quedan');
       raise exception using errcode = 'Q4211', message = 'deshacer';
     exception when sqlstate 'Q4211' then null;
     end;
@@ -1100,6 +1130,23 @@ begin
                                       current_setting('prueba.caja')),
         'y la factura no se paga encima', 'supera el saldo');
       reset role;
+      raise exception using errcode = 'Q4211', message = 'deshacer';
+    exception when sqlstate 'Q4211' then null;
+    end;
+
+    -- Tres tomas en parte del mismo pago entran las tres: la tercera repetía la
+    -- referencia de la segunda y chocaba (lo cobró la undécima auditoría).
+    begin
+      perform pg_temp.como('tesoreria');
+      set local role authenticated;
+      perform public.soltar_pago_de_la_boleta(pg_temp.id('oc1'), pg_temp.id('fd'), 'Se toma en tres partes, como lo reconoce el proveedor');
+      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 50, 13.51);
+      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 30, 8.11);
+      perform public.tomar_pago_de_la_boleta(gen_random_uuid(), pg_temp.id('oc1'), pg_temp.id('fd'), 20, 5.41);
+      reset role;
+      perform test.afirmar((select count(*) = 3 and count(distinct referencia) = 3 and sum(monto) = 27.03 and sum(monto_de_la_boleta) = 100
+                              from public.pagos_adquisicion where adquisicion_id = pg_temp.id('fd') and anulado_en is null),
+        'tres tomas en parte del mismo pago entran las tres, cada una con su referencia');
       raise exception using errcode = 'Q4211', message = 'deshacer';
     exception when sqlstate 'Q4211' then null;
     end;

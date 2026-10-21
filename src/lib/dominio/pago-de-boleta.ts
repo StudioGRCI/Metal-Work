@@ -32,6 +32,8 @@ export type BoletaParaDevolver = {
   otraFactura: string | null
   /** Un pago vigente la dio por cancelada con menos del total. */
   sinCompletar: boolean
+  /** Alguna de sus facturas la cubre entera: lo que sobra es de más; si todas son parciales, espera la que falta. */
+  entera: boolean
 }
 
 const centimos = (n: number) => Math.round(n * 100) / 100
@@ -59,10 +61,8 @@ function cuenta(b: BoletaParaDevolver, delta: number): Cuenta {
     const aManoPropio = centimos(b.aMano - b.aOtras)
     const cabe = centimos(b.aplicado - aManoPropio + b.facturaSaldo)
     const toma = Math.min(libre, cabe)
-    // Si hoy sobra más de un sol sin que sea de más, ninguna factura la cubre entera.
-    const entera = b.deMas > 0 || !(b.sinTomar >= 1)
     const sobra = centimos(libre - toma)
-    return { tipo: 'factura', factura: b.factura, toma, falta: centimos(cabe - toma), deMas: sobra >= 1 && entera ? sobra : 0 }
+    return { tipo: 'factura', factura: b.factura, toma, falta: centimos(cabe - toma), deMas: sobra >= 1 && b.entera ? sobra : 0 }
   }
   return { tipo: 'sin', saldo: b.sinCompletar && neto > 0 ? 0 : Math.max(centimos(b.total - neto), 0) }
 }

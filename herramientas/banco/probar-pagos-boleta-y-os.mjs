@@ -428,7 +428,7 @@ let pagoId
   const [{ id: otra }] = await consulta('select gen_random_uuid() as id')
   await consulta(
     `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 50, 'CONTADO')`,
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 80, 'CONTADO')`,
     [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy],
   )
   const rechazo = await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [otra, oc[2]])
@@ -439,7 +439,28 @@ let pagoId
   await consulta(`update adquisiciones set ruta_storage = $2, estado = 'REGISTRADA' where id = $1`, [otra, `adquisiciones/${otra}/comprobante.pdf`])
   await como(null)
   const tomado = await consulta(`select monto::float as monto from pagos_adquisicion where adquisicion_id = $1 and pago_orden_compra_id = $2 and anulado_en is null`, [otra, pagoDirecto])
-  comprobar(tomado.length === 1 && tomado[0].monto === 50, 'registrada, la factura toma los S/ 50 que ya se pagaron por la boleta')
+  comprobar(tomado.length === 1 && tomado[0].monto === 50, 'registrada, la factura de S/ 80 toma los S/ 50 que ya se pagaron por la boleta')
+
+  // Ese pago se anula porque se registró mal: la factura deja de tomarlo y su tarjeta pide registrarlo con ese voucher si el dinero sí
+  // salió. Registrado, la nota ya no corre: los S/ 30 que le faltan a la factura sí se transfieren (la undécima auditoría la vio seguir).
+  await como('tesoreria')
+  await consulta(`select public.anular_pago_compra($1, 'Se registró en la OC que no era')`, [pagoDirecto])
+  await como(null)
+  const t2 = await entrar('tesoreria')
+  await t2.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const notaAntes = limpio(await t2.pagina.locator(`article#factura-${otra}`).textContent().catch(() => ''))
+  comprobar(notaAntes.includes('Tomaba S/ 50.00 del pago por la boleta') && notaAntes.includes('con ese mismo voucher'),
+    `anulado ese pago, la factura dice lo que tomaba y que se registre con ese voucher: «${notaAntes.slice(0, 260)}»`)
+  await como('tesoreria')
+  const [{ id: propio }] = await consulta('select gen_random_uuid() as id')
+  const voucherPropio = await subir('pagos-facturas', `${otra}/${propio}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_factura($1, $2, $3::date, 50, $4, $5, $6, null)`, [propio, otra, hoy, `OP-NOTA-${SUFIJO}`, voucherPropio, caja])
+  await como(null)
+  await t2.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const notaDespues = limpio(await t2.pagina.locator(`article#factura-${otra}`).textContent().catch(() => ''))
+  comprobar(notaDespues.includes('Saldo S/ 30.00') && !notaDespues.includes('con ese mismo voucher'),
+    `registrados los S/ 50 con ese voucher, la nota se va y la factura debe S/ 30: «${notaDespues.slice(0, 200)}»`)
+  await t2.contexto.close()
 }
 
 // ---------------------------------------------------------------- 3c. La OC con boleta cuyo proveedor entregó factura

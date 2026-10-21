@@ -240,7 +240,7 @@ export function AnularDevolucion({ devolucionId, etiqueta, queQueda }: { devoluc
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular la devolución"
-        descripcion={`Queda en el historial con su motivo y su constancia, y la caja diaria anula su ingreso. ${queQueda}`}
+        descripcion={`Queda en el historial con su motivo y su constancia, y la caja diaria anula su ingreso; si su día ya está cerrado, hoy sale de esa cuenta lo que entró. ${queQueda}`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

@@ -660,6 +660,19 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   comprobar(limpio(await enFactura.textContent().catch(() => '')).includes('Tomado al cambio del pago por la boleta') && (await enFactura.locator('[data-soltar-toma]').count()) === 1,
     'la factura muestra la toma al cambio, con «Deshacer»')
 
+  // Todo lo pagado lo tomó a mano la factura: «me lo devolvió» manda a deshacer la toma primero, sin un botón a una ventana que no está.
+  const laH = pagina.locator(`article#compra-${oc.H}`)
+  const plegadaH = pagina.locator('details', { has: laH })
+  if ((await plegadaH.count()) > 0 && !(await plegadaH.first().evaluate((d) => d.open))) await plegadaH.first().locator('summary').click()
+  await laH.locator(`[data-anular-pago-compra="${pagoH}"]`).click()
+  const va = pagina.locator('[role="dialog"]')
+  await va.locator('input[name="que_paso"][value="devolvio"]').check()
+  const devolvio = limpio(await va.textContent())
+  comprobar(devolvio.includes('ya lo tomó a mano la factura') && devolvio.includes('«Deshacer»')
+    && (await va.locator('[data-ir-a-devolucion]').count()) === 0 && (await va.locator(`a[href="#factura-${facturaH}"]`).count()) === 1,
+    `con todo tomado a mano, «me lo devolvió» manda a deshacer la toma en su factura: «${devolvio.slice(0, 260)}»`)
+  await va.getByRole('button', { name: 'Cancelar' }).click()
+
   // Deshacer, con su motivo: vuelve a esperar.
   const detalles = pagina.locator('details', { has: enFactura })
   if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()

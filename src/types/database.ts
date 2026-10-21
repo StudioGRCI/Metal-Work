@@ -12212,6 +12212,7 @@ export type Database = {
           a_mano: number | null
           a_otras: number | null
           a_otras_facturas: string | null
+          entera: boolean | null
         }[]
       }
       compras_de_la_factura: {

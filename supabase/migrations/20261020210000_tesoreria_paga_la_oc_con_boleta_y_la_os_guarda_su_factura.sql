@@ -341,7 +341,7 @@ begin
      and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = c.id and p.anulado_en is null)
    limit 1;
   if v_nombre is not null then
-    raise exception 'Tesorería ya le registró un pago a la %: su total no cambia. Si hay que corregir cantidades o precios, Tesorería anula antes ese pago.',
+    raise exception 'Tesorería ya le registró un pago a la %: su total no cambia. Si ese pago no salió o se registró mal, Tesorería lo anula primero, con su motivo; si el proveedor cobró de más, Tesorería registra lo que devuelva.',
       v_nombre using errcode = 'check_violation';
   end if;
   return case when tg_op = 'DELETE' then old else new end;
@@ -1268,7 +1268,7 @@ returns table (
   comprobante_en_camino_ruta text, comprobante_en_camino_alcanza boolean, estuvo_en_factura text,
   factura text, factura_id uuid, factura_saldo numeric, aplicado numeric, de_mas numeric, otra_moneda boolean,
   devuelto numeric, sin_tomar numeric, otra_factura_id uuid, otra_factura text, otra_saldo numeric,
-  a_mano numeric, a_otras numeric, a_otras_facturas text
+  a_mano numeric, a_otras numeric, a_otras_facturas text, entera boolean
 ) language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -1310,7 +1310,9 @@ begin
                 join public.adquisiciones a on a.id = x.adquisicion_id
                where y.orden_compra_id = c.id
                  and not exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = a.id))
-           end as a_otras_facturas
+           end as a_otras_facturas,
+           -- Alguna factura la cubre entera: lo que sobra es de más, no espera otra factura.
+           coalesce(pd.entera, false) as entera
       from public.ordenes_compra_materiales c
       left join public.proveedores p on p.id = c.proveedor_id
       cross join lateral (select public.total_orden_compra(c.id) as total) t
@@ -1344,14 +1346,14 @@ begin
            f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
            f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
            f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda,
-           f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas
+           f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas, f.entera
       from pendientes f where f.pide
     union all
     (select f.id, f.numero, f.referencia, f.proveedor_id, f.proveedor, f.ruc, f.codigo_interno, f.moneda, f.total, f.sin_precio,
             f.condicion_pago, f.dias_credito, f.creado_en, f.vence, f.recojo, f.pagado, f.cancelada, f.ultimo,
             f.en_camino, f.en_camino_origen, f.en_camino_bucket, f.en_camino_ruta, f.en_camino_alcanza, f.estuvo_en,
             f.factura, f.factura_id, f.factura_saldo, f.aplicado, f.de_mas, f.otra_moneda,
-            f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas
+            f.devuelto, f.sin_tomar, f.otra_factura_id, f.otra_factura, f.otra_saldo, f.a_mano, f.a_otras, f.a_otras_facturas, f.entera
        from pendientes f where not f.pide order by f.ultimo desc nulls last, f.creado_en desc limit 60)
   ) x
   -- Primero lo que le pide algo a Tesorería: lo pagado de más y lo que espera la
@@ -1429,15 +1431,16 @@ begin
       using errcode = 'check_violation';
   end if;
   -- Pagada: sus pagos vigentes, menos lo que el proveedor devolvió, suman el
-  -- total, o uno vigente la dio por cancelada (sección 2). Lo devuelto se puede
-  -- volver a pagar: el tope es lo neto.
+  -- total, o uno vigente la dio por cancelada (sección 2) y algo de lo pagado
+  -- sigue sin devolver, como la cuentan la lista y la situación. Lo devuelto se
+  -- puede volver a pagar: el tope es lo neto.
   v_total := public.total_orden_compra(p_orden_compra);
   select coalesce(sum(monto), 0), coalesce(bool_or(cancela_sin_completar), false) into v_pagado, v_sin_completar
     from public.pagos_orden_compra
    where orden_compra_id = p_orden_compra and anulado_en is null;
   v_pagado := v_pagado - coalesce((select sum(monto) from public.devoluciones_orden_compra
                                     where orden_compra_id = p_orden_compra and anulado_en is null), 0);
-  if v_sin_completar or (v_pagado > 0 and v_pagado >= v_total) then
+  if v_pagado > 0 and (v_sin_completar or v_pagado >= v_total) then
     raise exception 'La % ya está pagada.', v_nombre using errcode = 'check_violation';
   end if;
   if p_fecha_pago is null or p_fecha_pago > v_hoy or p_fecha_pago < v_hoy - 365 then
@@ -2265,10 +2268,15 @@ begin
                        else '' end || ')'
                || case when v_propio > 0
                        then ' y también por su factura ' || v_pd.factura || ', que Tesorería ya había pagado: se pagaron '
-                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más.'
+                            || v_s || to_char(v_pd.de_mas + coalesce(v_pd.a_otras, 0), 'FM999G999G990D00') || ' de más.'
                        else ' y su factura ' || v_pd.factura || ', que llegó después, es por menos: la factura tomó '
                             || v_s || to_char(v_pd.aplicado, 'FM999G999G990D00') || ' de ese pago y se pagaron '
-                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || ' de más.' end
+                            || v_s || to_char(v_pd.de_mas + coalesce(v_pd.a_otras, 0), 'FM999G999G990D00') || ' de más.' end
+               -- Lo ya descontado en otra factura suya sale de la cuenta: queda lo que falta resolver.
+               || case when coalesce(v_pd.a_otras, 0) > 0
+                       then ' De eso, ' || v_s || to_char(v_pd.a_otras, 'FM999G999G990D00') || ' ya se descontaron de otra factura del proveedor: quedan '
+                            || v_s || to_char(v_pd.de_mas, 'FM999G999G990D00') || '.'
+                       else '' end
                || ' Pide al proveedor la devolución y, cuando la devuelva, regístrala en «OC con boleta» con «Registrar devolución». Si te la descuenta en otra factura suya, usa «Lo descuenta de otra factura».';
     elsif v_neto > 0 and v_e.origen = 'REGISTRADA' then
       v_titulo := 'Factura anexada por revisar: ' || v_oc.nombre;
@@ -2574,6 +2582,7 @@ declare
   v_p       record;
   v_pago    public.pagos_orden_compra%rowtype;
   v_ref     text;
+  v_id      uuid;
   v_primera boolean := true;
   v_s_oc    text;
   v_s_f     text;
@@ -2656,18 +2665,20 @@ begin
     end if;
     v_resto_f := v_resto_f - v_monto;
     select * into v_pago from public.pagos_orden_compra where id = v_p.pago_id;
+    v_id := case when v_primera then p_id else gen_random_uuid() end;
     v_ref := left(case when v_suya then 'Tomado al cambio del pago por la boleta de la '
                        else 'Descontado de lo pagado de más por la boleta de la ' end
                   || v_nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
                   || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);
+    -- Otra toma del mismo pago en la misma factura: el sufijo es el de esta fila, que no se repite.
     if exists (select 1 from public.pagos_adquisicion x
                 where x.adquisicion_id = p_factura and x.anulado_en is null and x.referencia = v_ref) then
-      v_ref := v_ref || ' · ' || left(v_pago.id::text, 8);
+      v_ref := v_ref || ' · ' || left(v_id::text, 8);
     end if;
     perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
     insert into public.pagos_adquisicion (id, adquisicion_id, fecha, monto, referencia, registrado_por,
                                           pago_orden_compra_id, monto_de_la_boleta)
-    values (case when v_primera then p_id else gen_random_uuid() end, p_factura, v_pago.fecha_pago, v_monto, v_ref,
+    values (v_id, p_factura, v_pago.fecha_pago, v_monto, v_ref,
             public.usuario_actual(), v_pago.id, v_parte);
     v_primera := false;
   end loop;
