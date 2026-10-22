@@ -53,6 +53,11 @@
  *      dejan una toma, el archivo queda en storage.objects y en el disco, la
  *      OC deja de estar pagada de más y la factura muestra «Nota de crédito o
  *      documento», que abre.
+ *   8. (duodécima vuelta) Lo pagado de más sale de dos pagos: la OC I se pagó
+ *      en dos partes y su factura FI, por S/ 100, tomó del primero. El
+ *      descuento de los S/ 261.50 que sobran se reparte en dos tomas y una
+ *      sola nota de crédito: las dos dicen «Nota de crédito o documento» en
+ *      Tesorería y en la pestaña Facturas, ninguna «Voucher de la boleta».
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
@@ -184,15 +189,15 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 8) n))`,
+        from generate_series(1, 9) n))`,
   [rq, area, `Prueba de los anexos de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
 await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
-// A, B, D, E, F, G y H van con boleta; C, con factura.
+// A, B, D, E, F, G, H e I van con boleta; C, con factura.
 await como('logistica')
 const oc = {}
-for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false], ['G', 7, false], ['H', 8, false]]) {
+for (const [clave, item, conFactura] of [['A', 1, false], ['B', 2, false], ['C', 3, true], ['D', 4, false], ['E', 5, false], ['F', 6, false], ['G', 7, false], ['H', 8, false], ['I', 9, false]]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -274,6 +279,15 @@ await como('tesoreria')
 const voucherH = await subir('pagos-compras', `${oc.H}/${pagoH}.pdf`, 'tesoreria')
 await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`, [pagoH, oc.H, hoy, total, voucherH, caja])
 const facturaH = await registrar(FH, [oc.H], { moneda: 'USD', monto: 97.7 })
+// 8. La OC I se pagó en dos partes y su factura FI, por S/ 100, la cubre entera: sobran S/ 261.50.
+const FI = `F079-${SUFIJO}`
+for (const parte of [200, total - 200]) {
+  const pago = await nuevoId()
+  await como('tesoreria')
+  const voucher = await subir('pagos-compras', `${oc.I}/${pago}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, false, null, null, $5, $6, null)`, [pago, oc.I, hoy, parte, voucher, caja])
+}
+await registrar(FI, [oc.I], { monto: 100 })
 // 5. Contabilidad eligió el anexo FF de la OC F y el registro quedó en borrador.
 const anexoF = await anexar(oc.F, FF)
 const borradorF = await nuevoId()
@@ -768,6 +782,46 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   comprobar((await pagoSegunAdquisiciones(oc.A)) === 'PAGADA', 'y Adquisiciones da por pagada la OC A')
   await pagina.screenshot({ path: `${CAPTURAS}/anexos-7-tesoreria.png`, fullPage: true })
   await contexto.close()
+}
+
+// ---------------------------------------------------------------- 8. El descuento que sale de dos pagos
+{
+  const FD2 = `F080-${SUFIJO}`
+  const facturaD2 = await registrar(FD2, [], { monto: 500 })
+  await como(null)
+  const sobra = total - 100
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await pagina.locator(`article#compra-${oc.I} [data-descontar-de-otra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('select[name="factura_id"]').selectOption(facturaD2)
+  comprobar(Number(await v.locator('input[name="monto_boleta"]').inputValue()) === sobra, `trae lo pagado de más: S/ ${cifra(sobra)}`)
+  await v.locator('input[name="archivo"]').setInputFiles({ name: 'nota-de-credito.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await v.getByRole('button', { name: 'Descontar' }).click()
+  const error = await esperarVentana(pagina)
+  comprobar(!error, `lo descuenta${error ? ` (dijo «${error}»)` : ''}`)
+  const tomas = await hasta(
+    () => consulta(`select monto::float as monto, archivo_ruta from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null order by monto`, [facturaD2]),
+    (r) => r.length > 1,
+  )
+  comprobar(tomas.length === 2 && tomas[0].monto === 100 && tomas[1].monto === total - 200 && tomas.filter((t) => t.archivo_ruta).length === 1,
+    `sale de los dos pagos: dos tomas, S/ 100.00 y S/ ${cifra(total - 200)}, con una sola nota (${JSON.stringify(tomas.map((t) => [t.monto, Boolean(t.archivo_ruta)]))})`)
+  const etiquetas = async (zona) => (await zona.locator('a').allInnerTexts()).map(limpio).filter((t) => /^(Nota de crédito|Voucher)/.test(t))
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const enD2 = pagina.locator(`article#factura-${facturaD2}`)
+  const plegada = pagina.locator('details', { has: enD2 })
+  if ((await plegada.count()) > 0 && !(await plegada.first().evaluate((d) => d.open))) await plegada.first().locator('summary').click()
+  const enTesoreria = await etiquetas(enD2)
+  comprobar(enTesoreria.length === 2 && enTesoreria.every((t) => t.startsWith('Nota de crédito o documento')),
+    `en Tesorería, las dos tomas dicen «Nota de crédito o documento»: ${JSON.stringify(enTesoreria)}`)
+  await contexto.close()
+  const c = await entrar('contabilidad')
+  await c.pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  const enFacturas = await etiquetas(c.pagina.locator('tbody:visible', { hasText: FD2 }))
+  comprobar(enFacturas.length === 2 && enFacturas.every((t) => t.startsWith('Nota de crédito o documento')),
+    `en Facturas, también: ${JSON.stringify(enFacturas)}`)
+  await c.contexto.close()
 }
 
 comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)

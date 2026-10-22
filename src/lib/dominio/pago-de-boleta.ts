@@ -8,8 +8,10 @@ import { moneda, type CodigoMoneda } from '@/lib/format'
  * pago. Es la misma cuenta que hace la
  * base al conciliar: lo neto (lo pagado menos lo devuelto), menos lo que se
  * pasó a mano a una factura, es lo que la factura toma sola, hasta lo que le
- * falta; lo que sobra queda pagado de más. Va aquí y no en el formulario, que es
- * 'use client': la página también la llama.
+ * falta; lo que sobra queda pagado de más. Sin factura, si queda algo pagado
+ * sin llegar al total, la OC queda pagada o debiendo según lo que Tesorería
+ * diga al registrarla (`preguntaSiQuedaPagada`). Va aquí y no en el
+ * formulario, que es 'use client': la página también la llama.
  */
 
 /** Lo que hace falta de la tarjeta de la OC con boleta para la cuenta. */
@@ -30,8 +32,10 @@ export type BoletaParaDevolver = {
   sinTomar: number
   otraMoneda: boolean
   otraFactura: string | null
-  /** Un pago vigente la dio por cancelada con menos del total. */
+  /** Está cancelada con menos del total: lo último que dijo Tesorería (un pago o una devolución) la dio por pagada. */
   sinCompletar: boolean
+  /** El proveedor ya entregó su comprobante y Contabilidad no lo registró: lo que se paga lo dirá él. */
+  enCamino: boolean
   /** Alguna de sus facturas la cubre entera: lo que sobra es de más; si todas son parciales, espera la que falta. */
   entera: boolean
 }
@@ -41,7 +45,7 @@ const centimos = (n: number) => Math.round(n * 100) / 100
 type Cuenta =
   | { tipo: 'otra'; factura: string; sinTomar: number }
   | { tipo: 'factura'; factura: string; toma: number; falta: number; deMas: number; sobra: number; entera: boolean }
-  | { tipo: 'sin'; saldo: number }
+  | { tipo: 'sin'; saldo: number; neto: number }
 
 /**
  * La cuenta de la base con `delta` más de lo neto. Lo pagado de más se marca
@@ -64,12 +68,38 @@ function cuenta(b: BoletaParaDevolver, delta: number): Cuenta {
     const sobra = centimos(libre - toma)
     return { tipo: 'factura', factura: b.factura, toma, falta: centimos(cabe - toma), deMas: sobra >= 1 && b.entera ? sobra : 0, sobra, entera: b.entera }
   }
-  return { tipo: 'sin', saldo: b.sinCompletar && neto > 0 ? 0 : Math.max(centimos(b.total - neto), 0) }
+  return { tipo: 'sin', saldo: b.sinCompletar && neto > 0 ? 0 : Math.max(centimos(b.total - neto), 0), neto }
 }
 
-/** Cómo queda la OC con `delta` más de lo neto: −monto al registrar una devolución, +monto al anularla. */
-export function queQuedaTrasLaDevolucion(b: BoletaParaDevolver, delta: number, m: CodigoMoneda): string {
-  const r = cuenta(b, delta)
+/**
+ * Sin factura ni comprobante en camino, si tras devolver `monto` queda algo
+ * pagado sin llegar al total: Tesorería dice si con eso la OC queda pagada (el
+ * proveedor cobró de más o entregó menos) o debe lo que falta. La base exige la
+ * respuesta en el mismo caso.
+ */
+export function preguntaSiQuedaPagada(b: Pick<BoletaParaDevolver, 'factura' | 'enCamino' | 'neto' | 'total'>, monto: number): boolean {
+  if (b.factura || b.enCamino) return false
+  const queda = centimos(b.neto - monto)
+  return queda > 0 && queda < b.total
+}
+
+/**
+ * Cómo queda la OC con `delta` más de lo neto: −monto al registrar una
+ * devolución, +monto al anularla. Al registrarla, `dejaPagada` es lo que
+ * Tesorería contestó a `preguntaSiQuedaPagada`; sin respuesta todavía, no dice
+ * nada de la OC sin factura. Al anularla, `sinCompletar` ya trae lo que diría la
+ * base sin ella.
+ */
+export function queQuedaTrasLaDevolucion(b: BoletaParaDevolver, delta: number, m: CodigoMoneda, dejaPagada?: boolean): string {
+  if (delta < 0 && preguntaSiQuedaPagada(b, -delta)) {
+    if (dejaPagada === undefined) return ''
+    const queda = centimos(b.neto + delta)
+    return dejaPagada
+      ? `La OC queda pagada con ${moneda(queda, m)}, lo que queda de lo pagado.`
+      : `La OC queda debiendo ${moneda(centimos(b.total - queda), m)}.`
+  }
+  // Una devolución sin «queda pagada» es lo último que dijo Tesorería: lo que la daba por cancelada ya no vale.
+  const r = cuenta(delta < 0 ? { ...b, sinCompletar: false } : b, delta)
   if (r.tipo === 'otra') {
     return r.sinTomar > 0
       ? `Quedan ${moneda(r.sinTomar, m)} pagados por la boleta sin pasar a su factura ${r.factura}.`
@@ -87,10 +117,9 @@ export function queQuedaTrasLaDevolucion(b: BoletaParaDevolver, delta: number, m
     }
     return r.deMas > 0 ? `Quedan ${moneda(r.deMas, m)} pagados de más.` : 'Ya no queda nada pagado de más.'
   }
-  if (r.saldo <= 0) return 'La OC sigue pagada.'
-  // Al registrarla (`delta` negativo), el otro camino: si cobró de más o entregó menos, la OC baja hasta lo pagado.
-  return delta < 0
-    ? `La OC queda debiendo ${moneda(r.saldo, m)}. Si te lo devolvió porque cobró de más o entregó menos, pídele a Logística que corrija la OC: su total baja hasta lo pagado.`
+  if (r.saldo <= 0) return 'La OC queda pagada.'
+  return r.neto <= 0 && delta < 0
+    ? `El proveedor devolvió todo lo pagado: la OC vuelve a deber ${moneda(r.saldo, m)}.`
     : `La OC queda debiendo ${moneda(r.saldo, m)}.`
 }
 

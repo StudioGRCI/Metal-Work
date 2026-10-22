@@ -169,6 +169,8 @@ export type DevolucionDeCompra = {
   moneda: string
   monto: number
   operacion: string | null
+  /** Tesorería dijo al registrarla que con lo que quedaba la OC quedaba pagada. */
+  deja_pagada: boolean
   archivo_ruta: string
   anulado_en: string | null
   motivo_anulacion: string | null
@@ -183,7 +185,7 @@ export async function devolucionesDeCompras(ids: string[]): Promise<DevolucionDe
   for (let i = 0; i < ids.length; i += 150) {
     const { data, error } = await supabase
       .from('devoluciones_orden_compra')
-      .select('id, orden_compra_id, fecha, moneda, monto, operacion, archivo_ruta, anulado_en, motivo_anulacion')
+      .select('id, orden_compra_id, fecha, moneda, monto, operacion, deja_pagada, archivo_ruta, anulado_en, motivo_anulacion')
       .in('orden_compra_id', ids.slice(i, i + 150))
       .order('fecha')
       .order('creado_en')

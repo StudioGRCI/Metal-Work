@@ -696,6 +696,7 @@ function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso:
               <span className={d.anulado_en ? 'line-through' : undefined}>
                 <span className="tabular">
                   Devolución del {fecha(d.fecha)} · <span className="whitespace-nowrap">{moneda(d.monto, codigo(d.moneda))}</span>
+                  {d.deja_pagada && ' · con lo que quedaba, la OC quedó pagada'}
                 </span>{' '}
                 <Archivo url={urls.get(claveDeArchivo(BUCKET_PAGOS_COMPRAS, d.archivo_ruta))}>Constancia de la devolución</Archivo>
               </span>

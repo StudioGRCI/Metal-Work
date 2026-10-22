@@ -1843,6 +1843,7 @@ export type Database = {
           moneda: string
           monto: number
           operacion: string | null
+          deja_pagada: boolean
           archivo_ruta: string
           archivo_mime: string
           archivo_tamano: number
@@ -1860,6 +1861,7 @@ export type Database = {
           moneda: string
           monto: number
           operacion?: string | null
+          deja_pagada?: boolean
           archivo_ruta: string
           archivo_mime: string
           archivo_tamano: number
@@ -1877,6 +1879,7 @@ export type Database = {
           moneda?: string
           monto?: number
           operacion?: string | null
+          deja_pagada?: boolean
           archivo_ruta?: string
           archivo_mime?: string
           archivo_tamano?: number
@@ -12219,6 +12222,8 @@ export type Database = {
           entera: boolean | null
           pago_que_cancela: string | null
           sin_completar: boolean | null
+          facturado: number | null
+          sin_completar_al_anular: Json | null
         }[]
       }
       compras_de_la_factura: {
@@ -13730,6 +13735,7 @@ export type Database = {
       pago_que_cancela_la_compra: {
         Args: {
           p_compra: string | null
+          p_sin: string | null
         }
         Returns: {
           pago_id: string | null
@@ -14112,6 +14118,7 @@ export type Database = {
           p_ruta: string | null
           p_caja: string | null
           p_monto_cuenta: number | null
+          p_deja_pagada: boolean | null
         }
         Returns: string
       }

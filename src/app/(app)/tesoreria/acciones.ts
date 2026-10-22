@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { cajaTrasAnular, cajaTrasElPago } from '@/lib/datos/caja'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -408,7 +409,9 @@ function queQuedaTrasAnular(s: SituacionDePago | null): string {
  * Tesorería registra lo que el proveedor de una OC con boleta le devolvió de lo
  * pagado por la boleta (undécima vuelta): con su constancia ya subida a
  * `pagos-compras/{oc}/…` y la cuenta a la que entró; la base deja ahí su
- * ingreso y rehace lo que la factura toma. Mismo permiso que
+ * ingreso y rehace lo que la factura toma. Sin factura, si queda algo pagado
+ * sin llegar al total, Tesorería dice si con eso la OC queda pagada (`deja`:
+ * «si» o «no»; la base exige la respuesta). Mismo permiso que
  * `registrar_devolucion_compra` (`tesoreria.registrar_pagos`, y
  * `tesoreria.caja`, que mueve la caja). El id llega de la pantalla: un
  * reintento no registra otra.
@@ -428,6 +431,7 @@ export async function registrarDevolucionCompra(_previo: unknown, formulario: Fo
         .multipleOf(0.01, 'El importe va en dos decimales.'),
       operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
       ruta: z.string().min(1, 'Adjunta la constancia de la devolución.').max(200),
+      deja: z.enum(['', 'si', 'no'], 'Di si con lo que queda la OC queda pagada.'),
       ...camposDeLaCuenta('devolucion'),
     })
     .safeParse({
@@ -437,6 +441,7 @@ export async function registrarDevolucionCompra(_previo: unknown, formulario: Fo
       monto: dato(formulario, 'monto'),
       operacion: dato(formulario, 'operacion'),
       ruta: dato(formulario, 'ruta'),
+      deja: dato(formulario, 'deja'),
       ...leerCuenta(formulario),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la devolución.' }
@@ -452,6 +457,7 @@ export async function registrarDevolucionCompra(_previo: unknown, formulario: Fo
     p_ruta: d.ruta,
     p_caja: d.caja_id,
     p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
+    p_deja_pagada: d.deja === '' ? null : d.deja === 'si',
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La devolución no se registró. Recarga la pantalla.' }
@@ -461,7 +467,7 @@ export async function registrarDevolucionCompra(_previo: unknown, formulario: Fo
     situacionDeLaCompra(supabase, d.orden_compra_id),
   ])
   repintarPagosDeCompra()
-  return { ok: true, mensaje: `Devolución registrada. ${queQuedaTrasDevolver(situacion, true)} ${caja}`.trim() }
+  return { ok: true, mensaje: `Devolución registrada. ${queQuedaTrasDevolver(situacion)} ${caja}`.trim() }
 }
 
 /** Anular con su motivo una devolución mal registrada: su ingreso sale de la caja. Mismo permiso que `anular_devolucion_compra`. */
@@ -492,13 +498,12 @@ export async function anularDevolucionCompra(_previo: unknown, formulario: FormD
 
 /**
  * Lo que dice el aviso después de registrar o anular una devolución, leído de
- * la base: lo pagado de más que queda, lo que le falta a su factura, lo que
- * queda para la factura que falta o, sin factura, lo que le queda por pagar a
- * la OC. Si no se pudo leer, no se adivina. Al registrarla, si la OC queda
- * debiendo, dice también el otro camino: si el proveedor cobró de más o entregó
- * menos, Logística baja el total de la OC hasta lo pagado.
+ * la base: lo pagado de más que queda, lo que le falta a su factura (también a
+ * la de otra moneda que ya no espera nada de la boleta), lo que queda para la
+ * factura que falta o, sin factura, si la OC está pagada o lo que le queda por
+ * pagar. Si no se pudo leer, no se adivina.
  */
-function queQuedaTrasDevolver(s: SituacionDePago | null, alRegistrar = false): string {
+function queQuedaTrasDevolver(s: SituacionDePago | null): string {
   if (!s) return ''
   const m = s.moneda === 'USD' ? 'USD' : 'PEN'
   const deMas = Number(s.de_mas ?? 0)
@@ -511,6 +516,12 @@ function queQuedaTrasDevolver(s: SituacionDePago | null, alRegistrar = false): s
     if (saldo > 0) {
       return `Su factura ${s.factura} ahora toma ${moneda(Number(s.aplicado ?? 0), m)} y le faltan ${moneda(saldo, m)}, que se pagan en «Facturas por pagar».`
     }
+    // Su factura en otra moneda ya no espera nada de la boleta: debe lo suyo.
+    const otraSaldo = Number(s.otra_saldo ?? 0)
+    if (otraSaldo > 0 && s.otra_factura) {
+      const otra = m === 'USD' ? 'PEN' : 'USD'
+      return `Su factura ${s.otra_factura}, en ${nombreMoneda(otra)}, ya no espera nada de lo pagado por la boleta: le faltan ${moneda(otraSaldo, otra)}, que se pagan en «Facturas por pagar».`
+    }
     // Sus facturas la cubren en parte: nunca hubo nada pagado de más, lo que queda es para la que falta.
     if (!s.entera) {
       const sinTomar = Number(s.sin_tomar ?? 0)
@@ -520,9 +531,8 @@ function queQuedaTrasDevolver(s: SituacionDePago | null, alRegistrar = false): s
     }
     return 'Ya no queda nada pagado de más.'
   }
-  if (s.cancelada) return 'La OC sigue pagada.'
-  const debe = `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
-  return alRegistrar ? `${debe} Si te lo devolvió porque cobró de más o entregó menos, pídele a Logística que corrija la OC: su total baja hasta lo pagado.` : debe
+  if (s.cancelada) return 'La OC queda pagada.'
+  return `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
 }
 
 /**

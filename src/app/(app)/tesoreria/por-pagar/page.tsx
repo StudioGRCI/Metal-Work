@@ -370,8 +370,18 @@ function boletaParaLaCuenta(b: CompraConBoleta): BoletaParaDevolver {
     otraMoneda: Boolean(b.otra_moneda),
     otraFactura: b.otra_factura,
     sinCompletar: Boolean(b.sin_completar),
+    enCamino: Boolean(b.comprobante_en_camino_origen),
     entera: Boolean(b.entera),
   }
+}
+
+/**
+ * Lo que falta facturar de una OC con boleta cuyas facturas la cubren en parte:
+ * el total menos lo que facturan (o, si es más, lo que tomaron de la boleta: la
+ * factura en otra moneda no se convierte, y cuenta lo que tomó al cambio).
+ */
+function porFacturarDe(b: CompraConBoleta) {
+  return Math.max(redondear(Number(b.total ?? 0) - Math.max(Number(b.facturado ?? 0), Number(b.aplicado ?? 0))), 0)
 }
 
 /** Lo que la factura de la compra tomó al cambio de los pagos vigentes, sumado: la factura, y cuánto en cada moneda. */
@@ -451,9 +461,9 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
     }
     const alCambio = loTomadoAlCambio(b)
     const otraSaldo = Number(b.otra_saldo ?? 0)
-    // Sus facturas la cubren en parte: falta facturar el total menos lo que tomaron. De eso, lo pagado por la boleta
+    // Sus facturas la cubren en parte: falta facturar el total menos lo facturado. De eso, lo pagado por la boleta
     // que ninguna tomó lo tomará la que falta, y lo demás se paga por ella.
-    const porFacturar = Math.max(redondear(Number(b.total ?? 0) - aplicado), 0)
+    const porFacturar = porFacturarDe(b)
     const sinTomar = Number(b.sin_tomar ?? 0)
     const tomara = Math.min(sinTomar, porFacturar)
     const loDemas = redondear(porFacturar - tomara)
@@ -535,16 +545,19 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
     )
   }
   if (!b.comprobante_en_camino) {
-    // Sin factura, lo devuelto vuelve a deberse. Si fue porque cobró de más o entregó menos, no se paga otra vez:
-    // Logística baja el total de la OC hasta lo pagado (la base se lo permite mientras no haya factura).
+    // Sin factura, lo devuelto vuelve a deberse, salvo que Tesorería dijera al registrarlo que con lo que quedaba la
+    // OC quedaba pagada (el proveedor cobró de más o entregó menos): entonces está cancelada y no llega aquí.
     const devuelto = Number(b.devuelto ?? 0)
     const saldo = saldoDeLaBoleta(b)
     if (b.factura || devuelto <= 0 || saldo <= 0) return null
-    return (
+    return paga ? (
       <>
-        El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}. Si lo devolvió porque cobró de más o entregó menos,{' '}
-        {paga ? 'pídele a Logística que corrija la OC' : 'Logística corrige la OC'}: su total baja hasta lo pagado y deja de deber.{' '}
-        {paga ? 'Si no, lo que falta se paga aquí.' : 'Si no, Tesorería paga lo que falta.'}
+        El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}, que se pagan aquí. Si con lo que quedaba ya estaba
+        pagada, anula la devolución y regístrala de nuevo con «Sí, queda pagada».
+      </>
+    ) : (
+      <>
+        El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}: Tesorería paga lo que falta.
       </>
     )
   }
@@ -617,6 +630,16 @@ function anexoPorRevisar(b: CompraConBoleta) {
   return b.comprobante_en_camino_origen === 'REGISTRADA' && b.comprobante_en_camino_alcanza === false
 }
 
+/**
+ * Lo que la base diría de la OC sin factura si se anula esa devolución: si queda
+ * cancelada sin llegar al total (`compras_con_boleta_por_pagar` lo trae para
+ * cada devolución vigente). Con factura no cuenta: la factura dice cuánto se paga.
+ */
+function sinCompletarAlAnular(b: CompraConBoleta, devolucionId: string) {
+  const mapa = b.sin_completar_al_anular
+  return Boolean(mapa && typeof mapa === 'object' && !Array.isArray(mapa) && mapa[devolucionId] === true)
+}
+
 /** Lo que le falta pagar a una OC con boleta, sobre lo neto (lo pagado menos lo devuelto); una cancelada «a cuenta» ya no debe nada. */
 function saldoDeLaBoleta(b: CompraConBoleta) {
   return b.cancelada ? 0 : Math.max(Number(b.total ?? 0) - Number(b.pagado ?? 0), 0)
@@ -683,21 +706,26 @@ function Factura({
   const ultimaAMano = new Map(aManoVigentes.map((p) => [p.ordenCompraDeLaBoleta!, p.id]))
   const aManoDe = (oc: string) => redondear(aManoVigentes.filter((p) => p.ordenCompraDeLaBoleta === oc).reduce((s, p) => s + Number(p.monto), 0))
   // Tomaba de pagos por la boleta que se anularon por mal registrados: si ese dinero sí salió, se paga con el mismo
-  // voucher, no con otro. Una sola nota con todo lo que tomaban; lo que Tesorería registró en la factura después de
-  // la primera anulación se descuenta, y cuando lo cubre la nota ya no corre: lo que siga debiendo sí se transfiere.
+  // voucher, no con otro. Una sola nota con todo lo que tomaban. Lo que Tesorería registró en la factura después de
+  // la primera anulación se descuenta, y cuando llega a lo que tomaban la nota ya no corre: lo que siga debiendo sí
+  // se transfiere. Si la factura debía algo aparte de esas tomas (`deudaPropia`), no se sabe si lo registrado pagó
+  // eso o lo que tomaban: la nota no da la cifra del resto, que podría pagarse dos veces.
   const tomasAnuladas = c.pagos
     .filter((p) => p.pago_orden_compra_id && p.anulado_en && p.motivo_anulacion?.startsWith('Se anuló el pago de la boleta'))
     .sort((a, b) => (a.anulado_en! < b.anulado_en! ? -1 : 1))
   const tomabaDeAnulados = redondear(tomasAnuladas.reduce((s, p) => s + Number(p.monto), 0))
-  const registradoDespues =
-    tomasAnuladas.length > 0
-      ? redondear(
-          c.pagos
-            .filter((q) => !q.anulado_en && !q.pago_orden_compra_id && q.creado_en > tomasAnuladas[0].anulado_en!)
-            .reduce((s, q) => s + Number(q.monto), 0),
-        )
-      : 0
-  const faltaDeAnulados = saldo > 0 ? Math.min(redondear(tomabaDeAnulados - registradoDespues), saldo) : 0
+  const primeraAnulacion = tomasAnuladas[0]?.anulado_en ?? null
+  const sumar = (cumple: (q: CuentaPorPagar['pagos'][number]) => boolean) =>
+    redondear(c.pagos.filter((q) => !q.anulado_en && cumple(q)).reduce((s, q) => s + Number(q.monto), 0))
+  const registradoDespues = primeraAnulacion ? sumar((q) => !q.pago_orden_compra_id && q.creado_en > primeraAnulacion) : 0
+  const deudaPropia = primeraAnulacion
+    ? Math.max(
+        redondear(Number(c.total) - tomabaDeAnulados - sumar((q) => Boolean(q.pago_orden_compra_id)) - sumar((q) => !q.pago_orden_compra_id && q.creado_en <= primeraAnulacion)),
+        0,
+      )
+    : 0
+  const faltaDeAnulados = saldo > 0 && registradoDespues < tomabaDeAnulados ? Math.min(redondear(tomabaDeAnulados - registradoDespues), saldo) : 0
+  const mismoVoucher = tomasAnuladas.length > 1 ? 'esos mismos vouchers' : 'ese mismo voucher'
   const espera = saldo > 0 && esperaBoleta?.id ? esperaBoleta : null
   return (
     // El id es el ancla con que Adquisiciones salta a esta factura.
@@ -767,17 +795,22 @@ function Factura({
                 </>
               ) : (
                 <>
-                  Tomaba {moneda(tomabaDeAnulados, m)} de pagos por la boleta que se anularon:{' '}
-                  {tomasAnuladas.map((p) => `${moneda(p.monto, m)} (${p.referencia}). ${p.motivo_anulacion}.`).join(' ')}
+                  Tomaba {moneda(tomabaDeAnulados, m)} de {tomasAnuladas.length} pagos por la boleta que se anularon.{' '}
+                  {[...new Set(tomasAnuladas.map((p) => p.motivo_anulacion))].filter(Boolean).join('. ')}.
                 </>
               )}{' '}
-              {registradoDespues > 0 ? (
+              {registradoDespues <= 0 ? (
+                <>Si ese dinero sí salió, no transfieras otra vez: registra aquí el pago con {mismoVoucher}.</>
+              ) : deudaPropia > 0 ? (
                 <>
-                  Después se registraron {moneda(registradoDespues, m)} en esta factura. Si el resto, {moneda(faltaDeAnulados, m)}, también salió, no
-                  lo transfieras otra vez: regístralo aquí con su mismo voucher.
+                  Después se registraron {moneda(registradoDespues, m)} en esta factura. Si ese dinero sí salió, no lo transfieras otra vez: lo que
+                  de él no esté entre lo registrado, regístralo aquí con {mismoVoucher}.
                 </>
               ) : (
-                <>Si ese dinero sí salió, no transfieras otra vez: registra aquí el pago con ese mismo voucher.</>
+                <>
+                  Después se registraron {moneda(registradoDespues, m)} en esta factura. Si el resto, {moneda(faltaDeAnulados, m)}, también salió, no
+                  lo transfieras otra vez: regístralo aquí con {mismoVoucher}.
+                </>
               )}
             </p>
           )}
@@ -840,7 +873,7 @@ function Factura({
                     <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0">
                       <FileText aria-hidden className="size-3.5" />
                       {/* El descuento lleva su nota de crédito (DKS, 2026-10-21); lo que tomó sola, el voucher de la boleta. */}
-                      {deLaBoleta ? (p.archivo_ruta ? 'Nota de crédito o documento' : 'Voucher de la boleta') : 'Voucher'}
+                      {deLaBoleta ? (p.esNota ? 'Nota de crédito o documento' : 'Voucher de la boleta') : 'Voucher'}
                     </a>
                   )}
                   {!p.archivo_ruta && !deLaBoleta && !p.anulado_en && <span>sin voucher (anotado antes)</span>}
@@ -930,7 +963,7 @@ function CompraConBoletaFila({
   const alCambio = loTomadoAlCambio(b)
   const otraSaldo = Number(b.otra_saldo ?? 0)
   // Sus facturas la cubren en parte y les falta la otra: lo que tomaron no llega al total.
-  const esperaOtra = conFactura && !b.entera && Number(b.total ?? 0) - Number(b.aplicado ?? 0) >= 1
+  const esperaOtra = conFactura && !b.entera && porFacturarDe(b) >= 1
   const boleta = boletaParaLaCuenta(b)
   // Lo que el proveedor puede devolver: lo neto, menos lo que una factura tomó a mano.
   const puedeDevolver = paga && topeDeLaDevolucion(boleta) > 0
@@ -1173,6 +1206,8 @@ function CompraConBoletaFila({
                 <span className={d.anulado_en ? 'line-through' : undefined}>
                   Devolución del {fecha(d.fecha)} · <span className="tabular text-texto">{moneda(d.monto, m)}</span>
                   {d.operacion && ` · op. ${d.operacion}`}
+                  {/* Lo que Tesorería dijo al registrarla: con lo que quedaba, la OC quedó pagada. */}
+                  {d.deja_pagada && ' · con lo que quedaba, la OC quedó pagada'}
                 </span>
                 {/* Fuera del tachado, como en el pago: que su ingreso también se anuló es lo que se lee. */}
                 <CajaDeLaLinea cajas={cajasDevolucion} id={d.id} tipo="devolucion" monedaDocumento={m} />
@@ -1189,7 +1224,7 @@ function CompraConBoletaFila({
                   <AnularDevolucion
                     devolucionId={d.id}
                     etiqueta={`la devolución del ${fecha(d.fecha)} por ${moneda(d.monto, m)}`}
-                    queQueda={queQuedaTrasLaDevolucion(boleta, Number(d.monto), m)}
+                    queQueda={queQuedaTrasLaDevolucion({ ...boleta, sinCompletar: sinCompletarAlAnular(b, d.id) }, Number(d.monto), m)}
                   />
                 )}
               </span>

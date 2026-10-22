@@ -12,7 +12,7 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
+import { preguntaSiQuedaPagada, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
@@ -66,7 +66,10 @@ const leerMonto = (texto: string) => {
  * el día que entró, cuánto, la operación, la cuenta de la caja a la que entró
  * —la caja diaria se mueve sola— y la constancia, que sube primero a
  * `pagos-compras/{oc}/…`. Mientras se escribe el monto dice cómo queda la OC.
- * El id se decide al abrir la ventana: un reintento no registra otra.
+ * Sin factura, si queda algo pagado sin llegar al total, pregunta si con eso
+ * la OC queda pagada: el proveedor cobró de más o entregó menos, aunque el
+ * material ya esté en el almacén. El id se decide al abrir la ventana: un
+ * reintento no registra otra.
  */
 export function RegistrarDevolucion({
   ordenCompraId,
@@ -94,6 +97,7 @@ export function RegistrarDevolucion({
   const [devolucionId, setDevolucionId] = useState<string | null>(null)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
+  const [deja, setDeja] = useState('')
   const avisar = useAvisoDeLaCaja()
   const tope = topeDeLaDevolucion(boleta)
   const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
@@ -102,6 +106,7 @@ export function RegistrarDevolucion({
     avisar(null)
     setDia(hoy)
     setMonto(sugerido)
+    setDeja('')
     setDevolucionId(crypto.randomUUID())
   }
   useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
@@ -121,8 +126,11 @@ export function RegistrarDevolucion({
     avisar(r.mensaje ?? null)
   })
   const campo = (nombre: string) => `${nombre}-devolucion-${ordenCompraId}`
-  const escrito = leerMonto(monto)
-  const enVivo = escrito && escrito <= tope ? queQuedaTrasLaDevolucion(boleta, -escrito, codigoMoneda) : null
+  const escrito = leerMonto(monto) ?? 0
+  const valido = escrito > 0 && escrito <= tope
+  const pregunta = valido && preguntaSiQuedaPagada(boleta, escrito)
+  const queda = Math.round((boleta.neto - escrito) * 100) / 100
+  const enVivo = valido ? queQuedaTrasLaDevolucion(boleta, -escrito, codigoMoneda, deja === '' ? undefined : deja === 'si') : null
 
   return (
     <>
@@ -181,6 +189,22 @@ export function RegistrarDevolucion({
             </Campo>
             <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="devolucion" dia={dia} prefijo={`devolucion-${ordenCompraId}`} />
           </div>
+          {pregunta && (
+            <Campo
+              etiqueta="¿Con lo que queda, la OC queda pagada?"
+              htmlFor={campo('deja')}
+              requerido
+              ayuda="«Sí» si el proveedor cobró de más o entregó menos y lo que queda pagado es lo que vale la compra, aunque el material ya esté en el almacén. «No» si todavía se le debe el resto."
+            >
+              <Seleccion id={campo('deja')} name="deja" required value={deja} onChange={(e) => setDeja(e.target.value)}>
+                <option value="" disabled>
+                  Elige una
+                </option>
+                <option value="si">Sí, queda pagada con {moneda(queda, codigoMoneda)}</option>
+                <option value="no">No, queda debiendo {moneda(Math.round((boleta.total - queda) * 100) / 100, codigoMoneda)}</option>
+              </Seleccion>
+            </Campo>
+          )}
           <Campo
             etiqueta="Constancia de la devolución"
             htmlFor={campo('archivo')}

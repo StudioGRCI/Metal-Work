@@ -92,12 +92,13 @@ create or replace function pg_temp.avisos(p_clave text, p_titulo text) returns i
   select count(*)::integer from public.notificaciones
    where usuario_id = pg_temp.id(p_clave) and titulo like p_titulo || '%';
 $$;
--- Lo que el proveedor devolvió de lo pagado por la boleta, con su constancia, a la cuenta de la prueba.
+-- Lo que el proveedor devolvió de lo pagado por la boleta, con su constancia, a la cuenta de la prueba. Sin
+-- factura, `p_deja` es lo que Tesorería contesta a «¿con lo que queda, la OC queda pagada?».
 create or replace function pg_temp.devolver(p_dev text, p_oc text, p_monto numeric, p_ruta text, p_dia date default null,
-                                            p_op text default 'DEV-421')
+                                            p_op text default 'DEV-421', p_deja boolean default false)
 returns uuid language sql as $$
   select public.registrar_devolucion_compra(pg_temp.id(p_dev), pg_temp.id(p_oc), coalesce(p_dia, current_setting('prueba.hoy')::date),
-    p_monto, p_op, p_ruta, current_setting('prueba.caja')::uuid, null);
+    p_monto, p_op, p_ruta, current_setting('prueba.caja')::uuid, null, p_deja);
 $$;
 -- El ingreso vigente de esa devolución en la caja.
 create or replace function pg_temp.ingresos(p_dev text) returns integer language sql as $$
@@ -182,7 +183,7 @@ end $$;
 do $$
 declare f text;
 begin
-  foreach f in array array['public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric)',
+  foreach f in array array['public.registrar_devolucion_compra(uuid, uuid, date, numeric, text, text, uuid, numeric, boolean)',
                            'public.anular_devolucion_compra(uuid, text)',
                            'public.tomar_pago_de_la_boleta(uuid, uuid, uuid, numeric, numeric, text)',
                            'public.soltar_pago_de_la_boleta(uuid, uuid, text)',
@@ -195,6 +196,7 @@ begin
                        and not has_function_privilege('authenticated', 'public.libre_de_los_pagos_de_compra(uuid)', 'execute')
                        and not has_function_privilege('authenticated', 'public.fn_devolucion_compra_guardia()', 'execute')
                        and not has_function_privilege('authenticated', 'public.pago_que_cancela_la_compra(uuid)', 'execute')
+                       and not has_function_privilege('authenticated', 'public.pago_que_cancela_la_compra(uuid, uuid)', 'execute')
                        and not has_function_privilege('authenticated',
                              'public.caja_mover_por_pago(text, uuid, text, uuid, date, numeric, text, numeric, text, text, text)', 'execute')
                        and not has_function_privilege('authenticated', 'public.caja_anular_por_pago(text, uuid, text, text)', 'execute'),
@@ -528,6 +530,98 @@ begin
   raise exception using errcode = 'Q4211', message = 'deshacer';
 exception when sqlstate 'Q4211' then null;
 end $$;
+-- Manda lo último que dijo Tesorería (lo cobró la tercera pasada de la
+-- undécima auditoría): pagados S/ 100 a cuenta y S/ 200 con «Sí, queda pagada»,
+-- el proveedor devuelve esos 200. La marca seguía valiendo porque lo neto no
+-- llegaba a cero: la OC quedaba «Pagada» con S/ 100 y la base no dejaba pagar lo
+-- que faltaba. Ahora la devolución dice si con lo que queda la OC queda pagada,
+-- y sin factura la base exige la respuesta. Se deshace al final.
+do $$
+declare v text;
+begin
+  foreach v in array array['p4i', 'p4j', 'p4k', 'dv4d'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform pg_temp.pagar('p4i', 'oc4', 100, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform pg_temp.pagar('p4j', 'oc4', 200, true, pg_temp.subir('pagos-compras', 'oc4'));
+  perform test.afirmar((select cancelada and sin_completar and pago_que_cancela = pg_temp.id('p4j')
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'S/ 100 a cuenta y S/ 200 con «Sí, queda pagada»: la OC queda pagada y la cancela el de 200');
+  perform set_config('prueba.r4d', pg_temp.subir('pagos-compras', 'oc4'), true);
+  perform test.debe_fallar($q$ select public.registrar_devolucion_compra(pg_temp.id('dv4d'), pg_temp.id('oc4'),
+                                     current_setting('prueba.hoy')::date, 200, 'DEV-4217', current_setting('prueba.r4d'),
+                                     current_setting('prueba.caja')::uuid, null, null) $q$,
+    'sin factura, la devolución que deja algo pagado sin llegar al total pide la respuesta', 'Di si con los S/ 100.00 que quedan pagados');
+  perform pg_temp.devolver('dv4d', 'oc4', 200, current_setting('prueba.r4d'), null, 'DEV-4217', false);
+  perform test.afirmar((select not cancelada and pagado = 100 and devuelto = 200 and pago_que_cancela is null and not sin_completar
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select not cancelada and saldo = 261.50 from public.situacion_de_pago_de_compra(pg_temp.id('oc4')))
+                       and pg_temp.pago('oc4') = 'PAGO_PARCIAL',
+    'devuelto el pago que la daba por pagada, con «No», la OC debe S/ 261.50: la marca ya no vale aunque quede el pago a cuenta');
+  perform pg_temp.pagar('p4k', 'oc4', 261.50, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform test.afirmar((select cancelada and pagado = 361.50 and pago_que_cancela = pg_temp.id('p4k') and not sin_completar
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'y Tesorería paga lo que falta: la cancela ese pago');
+  reset role;
+  raise exception using errcode = 'Q4211', message = 'deshacer';
+exception when sqlstate 'Q4211' then null;
+end $$;
+-- «Sí, queda pagada» en la devolución: el proveedor cobró de más o entregó menos
+-- (aunque el material ya esté en el almacén y Logística no pueda corregir la OC).
+-- La OC queda pagada con lo que queda, no se le paga más, y la devolución es la
+-- que la cancela. Anulada esa devolución, vuelve lo de antes. No vale sin nada
+-- pagado; y con todo devuelto, la OC no baja a cero. Se deshace al final.
+do $$
+declare v text;
+begin
+  foreach v in array array['p4l', 'p4m', 'dv4g', 'dv4h', 'dv4i'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform pg_temp.pagar('p4l', 'oc4', 361.50, false, pg_temp.subir('pagos-compras', 'oc4'));
+  perform pg_temp.devolver('dv4g', 'oc4', 120.50, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4218', true);
+  perform test.afirmar((select deja_pagada from public.devoluciones_orden_compra where id = pg_temp.id('dv4g'))
+                       and (select cancelada and sin_completar and pago_que_cancela is null and pagado = 241
+                              from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select cancelada and neto = 241 from public.situacion_de_pago_de_compra(pg_temp.id('oc4')))
+                       and pg_temp.pago('oc4') = 'PAGADA'
+                       and (select count(*) filter (where (p->>'cancela')::boolean) = 0
+                              from public.trazabilidad_de_compras() t, jsonb_array_elements(t.pagos) p where t.id = pg_temp.id('oc4')),
+    'devueltos S/ 120.50 con «Sí, queda pagada»: la OC queda pagada con S/ 241, la cancela la devolución y ningún pago dice «cancela la OC»');
+  perform test.afirmar((select (sin_completar_al_anular ->> pg_temp.id('dv4g')::text)::boolean = false
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'y la lista dice qué pasaría al anularla: ya no estaría cancelada con menos');
+  perform test.debe_fallar($q$ select pg_temp.pagar('p4m', 'oc4', 1, false, pg_temp.subir('pagos-compras', 'oc4')) $q$,
+    'ya no se le paga más', 'ya está pagada');
+  perform public.anular_devolucion_compra(pg_temp.id('dv4g'), 'El proveedor la devolvió a otra cuenta');
+  perform test.afirmar((select cancelada and not sin_completar and pago_que_cancela = pg_temp.id('p4l') and pagado = 361.50
+                          from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'anulada esa devolución, la OC vuelve a estar pagada entera por su pago');
+  perform pg_temp.devolver('dv4h', 'oc4', 120.50, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4219', false);
+  perform test.afirmar((select not cancelada and pagado = 241 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
+                       and (select saldo = 120.50 from public.situacion_de_pago_de_compra(pg_temp.id('oc4'))),
+    'registrada de nuevo con «No», la OC debe los S/ 120.50');
+  perform test.debe_fallar($q$ select pg_temp.devolver('dv4i', 'oc4', 241, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4220', true) $q$,
+    'devuelto todo, no puede quedar pagada', 'no queda nada pagado por la boleta');
+  perform pg_temp.devolver('dv4i', 'oc4', 241, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4220', false);
+  reset role;
+  perform pg_temp.como('comprador');
+  set local role authenticated;
+  perform test.debe_fallar($q$ select pg_temp.corregir_precio('oc4', 0) $q$,
+    'con todo devuelto, Logística no deja la OC en cero: quedaría sin deber y sin pagar', 'su total puede bajar, pero no a cero');
+  perform pg_temp.corregir_precio('oc4', 100);
+  reset role;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform test.afirmar((select not cancelada and total = 300 and pagado = 0 from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
+    'pero sí la baja: debe los S/ 300 que vale ahora');
+  reset role;
+  raise exception using errcode = 'Q4211', message = 'deshacer';
+exception when sqlstate 'Q4211' then null;
+end $$;
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -814,7 +908,7 @@ begin
     foreach v in array array['gerente', 'contabilidad', 'comprador', 'almacenero'] loop
       perform pg_temp.como(v);
       set local role authenticated;
-      perform test.debe_fallar(format($q$ select public.registrar_devolucion_compra(gen_random_uuid(), %L, %L, 5, null, 'x', %L, null) $q$,
+      perform test.debe_fallar(format($q$ select public.registrar_devolucion_compra(gen_random_uuid(), %L, %L, 5, null, 'x', %L, null, null) $q$,
                                       pg_temp.id('oc1'), current_setting('prueba.hoy'), current_setting('prueba.caja')),
         v || ' no registra la devolución: la registra Tesorería', 'tesoreria.registrar_pagos');
       reset role;
@@ -2449,7 +2543,7 @@ declare v text;
 begin
   foreach v in array array['rq11', 'o11a', 'o11b', 'o11c', 'o11d', 'o11e', 'o11f', 'o11g', 'o11h', 'o11i', 'o11j',
                            'q11a', 'q11a2', 'q11b', 'q11c', 'q11d', 'q11e', 'q11f', 'q11g', 'q11h', 'q11i1', 'q11i2', 'q11j',
-                           'v11a', 'v11b', 'v11c', 'v11j', 'g11b', 'g11c', 'g11de', 'g11f', 'g11g', 'g11h', 'g11i',
+                           'v11a', 'v11b', 'v11b2', 'v11c', 'v11j', 'g11b', 'g11c', 'g11de', 'g11f', 'g11g', 'g11h', 'g11i',
                            'e11b', 'e11c'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
@@ -2528,6 +2622,8 @@ set local role authenticated;
 select test.afirmar((select factura = 'F111-1' and aplicado = 70 and factura_saldo = 30 and de_mas = 0 and not cancelada
                        from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11b')),
   'y la OC queda pendiente: su factura debe S/ 30');
+select test.debe_fallar($$ select pg_temp.devolver('v11b2', 'o11b', 10, pg_temp.subir('pagos-compras', 'o11b'), null, 'DEV-11B2', true) $$,
+  'con su factura, la devolución no la deja pagada: cuánto se paga lo dice la factura', 'ya tiene su factura');
 reset role;
 
 -- Todo devuelto: la factura de S/ 80 que tomó S/ 80 deja de tomarlo, vuelve a
@@ -2653,7 +2749,7 @@ select pg_temp.como('tesoreria');
 set local role authenticated;
 select pg_temp.pagar('q11j', 'o11j', 361.50, true, pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.hoy')::date - 2);
 select public.registrar_devolucion_compra(pg_temp.id('v11j'), pg_temp.id('o11j'), current_setting('prueba.hoy')::date - 1, 50, null,
-         pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.c11')::uuid, null);
+         pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.c11')::uuid, null, false);
 select public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.c11')::uuid, current_setting('prueba.hoy')::date - 1, 50, null);
 select public.anular_devolucion_compra(pg_temp.id('v11j'), 'La devolución era de otra OC del proveedor');
 reset role;

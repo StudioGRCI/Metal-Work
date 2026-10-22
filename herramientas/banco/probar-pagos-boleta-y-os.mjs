@@ -37,11 +37,13 @@
  *   3e. Contabilidad registra a mano, con ceros y en minúsculas, la factura que
  *      Logística anexó: entra una vez, ligada sola a su OC y al anexo, y el
  *      desplegable ya no la ofrece.
- *   3f. (undécima vuelta, segunda pasada) La OC 6, pagada entera y sin
- *      factura: el proveedor devuelve S/ 61.50 que cobró de más. La ventana, el
- *      aviso y la tarjeta dicen que la OC vuelve a deber y que, si fue por eso,
- *      Logística la corrige; Logística no puede bajarla de lo pagado, sí hasta
- *      lo pagado, y la OC queda pagada sin pagarse otra vez. La OC 7, pagada
+ *   3f. (undécima vuelta, tercera pasada) La OC 6, pagada entera y sin
+ *      factura: el proveedor devuelve S/ 61.50. La ventana pregunta si con lo
+ *      que queda la OC queda pagada. Con «No», debe lo que falta y se paga
+ *      aquí; anulada esa devolución, vuelve a estar pagada; registrada otra
+ *      vez con «Sí» (cobró de más), queda pagada con S/ 300 sin pagarse otra
+ *      vez, y la devolución lo dice. Nada manda a Logística a corregirla, pero
+ *      puede: no por debajo de lo pagado, sí hasta lo pagado. La OC 7, pagada
  *      entera, con una factura que cubre una parte: la tarjeta dice lo que
  *      tomó y lo que tomará la que falta, y la devolución dice lo que queda
  *      para esa factura, no «nada pagado de más».
@@ -176,7 +178,7 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 7) n))`,
+        from generate_series(1, 8) n))`,
   [rq, area, `Prueba de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
@@ -186,9 +188,10 @@ await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [
 // La 4, con boleta, recibe después la factura del proveedor: se paga por ella.
 // La 5, con boleta, se paga entera y después llega su factura (3d).
 // La 6 y la 7, con boleta, se pagan enteras: el proveedor devuelve parte de la 6, y la 7 tiene una factura por una parte (3f).
+// La 8, con boleta, pagada a cuenta, con una factura por una parte que se paga entera (3f).
 await como('logistica')
 const oc = []
-for (const n of [1, 2, 3, 4, 5, 6, 7]) {
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -471,9 +474,11 @@ let pagoId
   await registrar(20, `OP-NOTA-${SUFIJO}`)
   await t2.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const notaEnParte = limpio(await t2.pagina.locator(`article#factura-${otra}`).textContent().catch(() => ''))
-  comprobar(notaEnParte.includes('Después se registraron S/ 20.00 en esta factura') && notaEnParte.includes('Si el resto, S/ 30.00, también salió')
-      && notaEnParte.includes('regístralo aquí con su mismo voucher'),
-    `registrados S/ 20, la nota dice lo que entró y los S/ 30 que quedan por registrar: «${notaEnParte.slice(0, 320)}»`)
+  // La factura debía S/ 30 aparte de lo que tomaba: no se sabe si esos S/ 20 pagaron eso o lo que tomaba, y la nota no da
+  // la cifra del resto (la tercera pasada vio que contarlo todo como lo que tomaba hacía pagar dos veces la diferencia).
+  comprobar(notaEnParte.includes('Después se registraron S/ 20.00 en esta factura') && !notaEnParte.includes('Si el resto')
+      && notaEnParte.includes('lo que de él no esté entre lo registrado, regístralo aquí con ese mismo voucher'),
+    `registrados S/ 20, la nota dice lo que entró y no da una cifra que podría pagarse dos veces: «${notaEnParte.slice(-360)}»`)
   await registrar(30, `OP-NOTA2-${SUFIJO}`)
   await t2.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const notaDespues = limpio(await t2.pagina.locator(`article#factura-${otra}`).textContent().catch(() => ''))
@@ -678,7 +683,7 @@ let pagoId
   const [{ id: otraDevolucion }] = await consulta('select gen_random_uuid() as id')
   await como('tesoreria')
   const constancia = await subir('pagos-compras', `${oc[4]}/${otraDevolucion}.pdf`, 'tesoreria')
-  await consulta(`select public.registrar_devolucion_compra($1, $2, $3::date, 61.5, $4, $5, $6, null)`, [otraDevolucion, oc[4], hoy, `DEV2-${SUFIJO}`, constancia, caja])
+  await consulta(`select public.registrar_devolucion_compra($1, $2, $3::date, 61.5, $4, $5, $6, null, null)`, [otraDevolucion, oc[4], hoy, `DEV2-${SUFIJO}`, constancia, caja])
   await como(null)
   comprobar((await pagoSegunAdquisiciones(oc[4])) === 'PAGADA', 'registrada otra vez, Adquisiciones la vuelve a dar por pagada')
 }
@@ -744,12 +749,19 @@ let pagoId
     if ((await plegada.count()) > 0 && !(await plegada.first().evaluate((d) => d.open))) await plegada.first().locator('summary').click()
     return tarjeta
   }
-  /** Registra la devolución desde la tarjeta; devuelve lo que la ventana dijo en vivo y el aviso de después. */
-  const devolver = async (id, monto, op) => {
+  /**
+   * Registra la devolución desde la tarjeta; devuelve lo que la ventana dijo en vivo (antes y después de contestar
+   * si la OC queda pagada, si lo pregunta) y el aviso de después.
+   */
+  const devolver = async (id, monto, op, deja = null) => {
     await (await abrir(id)).locator('[data-registrar-devolucion]').click()
     const v = t.pagina.locator('[role="dialog"]')
     await v.waitFor()
     await v.locator('input[name="monto"]').fill(monto)
+    const pregunta = v.locator('select[name="deja"]')
+    const pregunto = (await pregunta.count()) === 1
+    const sinContestar = limpio(await v.textContent())
+    if (deja) await pregunta.selectOption(deja)
     const enVivo = limpio(await v.textContent())
     await v.locator('input[name="operacion"]').fill(op)
     await v.locator('select[name="caja_id"]').selectOption(await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value'))
@@ -757,24 +769,59 @@ let pagoId
     await v.getByRole('button', { name: 'Registrar la devolución' }).click()
     const error = await esperarVentana(t.pagina)
     const aviso = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => x.includes('Devolución registrada'), 5000))
-    return { enVivo, aviso, error }
+    return { pregunto, sinContestar, enVivo, aviso, error }
   }
+  const devolucionesDe = (id) =>
+    consulta(`select id, monto::float as monto, deja_pagada, anulado_en from devoluciones_orden_compra where orden_compra_id = $1 order by creado_en`, [id])
 
-  // La 6: devuelve S/ 61.50 que cobró de más.
+  // La 6: devuelve S/ 61.50. Tesorería contesta «No»: la OC debe lo que falta.
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
-  const dev = await devolver(ocDev, '61.50', `DEV6-${SUFIJO}`)
-  comprobar(dev.enVivo.includes('La OC queda debiendo S/ 61.50. Si te lo devolvió porque cobró de más o entregó menos, pídele a Logística que corrija la OC'),
-    `la ventana dice que la OC vuelve a deber y que, si cobró de más, Logística la corrige: «${dev.enVivo.slice(-260)}»`)
-  comprobar(!dev.error && dev.aviso.includes('A la OC le quedan S/ 61.50 por pagar') && dev.aviso.includes('pídele a Logística que corrija la OC'),
+  const dev = await devolver(ocDev, '61.50', `DEV6-${SUFIJO}`, 'no')
+  comprobar(dev.pregunto && dev.sinContestar.includes('¿Con lo que queda, la OC queda pagada?') && dev.sinContestar.includes('Sí, queda pagada con S/ 300.00')
+      && dev.sinContestar.includes('No, queda debiendo S/ 61.50') && !dev.sinContestar.includes('La OC queda debiendo'),
+    `la ventana pregunta si con lo que queda la OC queda pagada, con las dos cifras: «${dev.sinContestar.slice(-320)}»`)
+  comprobar(dev.enVivo.includes('La OC queda debiendo S/ 61.50.') && !dev.enVivo.includes('Logística'),
+    `con «No», dice que la OC queda debiendo, sin mandar a Logística: «${dev.enVivo.slice(-200)}»`)
+  comprobar(!dev.error && dev.aviso.includes('A la OC le quedan S/ 61.50 por pagar.') && !dev.aviso.includes('Logística'),
     `registra la devolución y el aviso dice lo mismo${dev.error ? ` (dijo «${dev.error}»)` : `: «${dev.aviso}»`}`)
+  const [primera] = await devolucionesDe(ocDev)
+  comprobar(primera?.monto === 61.5 && primera.deja_pagada === false, 'la base la guarda sin «queda pagada»')
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const tarjetaDev = await abrir(ocDev)
   const textoDev = limpio(await tarjetaDev.textContent())
-  comprobar(textoDev.includes('El proveedor devolvió S/ 61.50 de lo pagado y a la OC le faltan S/ 61.50') && textoDev.includes('pídele a Logística que corrija la OC')
+  comprobar(textoDev.includes('El proveedor devolvió S/ 61.50 de lo pagado y a la OC le faltan S/ 61.50, que se pagan aquí.') && !textoDev.includes('Logística')
       && (await tarjetaDev.locator('[data-pagar-compra]').count()) === 1,
     `la tarjeta lo dice y deja pagar lo que falta: «${textoDev.slice(0, 320)}»`)
 
-  // Logística la corrige: no por debajo de lo pagado; hasta lo pagado, sí.
+  // Se registró mal: era cobro de más. Anulada, la OC vuelve a estar pagada; registrada otra vez con «Sí», queda pagada.
+  await tarjetaDev.locator(`[data-anular-devolucion="${primera?.id}"]`).click()
+  const va = t.pagina.locator('[role="dialog"]')
+  await va.waitFor()
+  const alAnular = limpio(await va.textContent())
+  comprobar(alAnular.includes('La OC queda pagada.'), `la ventana de anular dice que la OC vuelve a quedar pagada: «${alAnular.slice(0, 260)}»`)
+  await va.locator('textarea[name="motivo"]').fill('Era cobro de más: la OC quedaba pagada con lo que quedaba')
+  await va.getByRole('button', { name: 'Anular' }).click()
+  const errorAnulada = await esperarVentana(t.pagina)
+  const avisoAnulada = limpio(await hasta(() => t.pagina.locator('p.sr-only[role="status"]').first().textContent().catch(() => ''), (x) => x.includes('Devolución anulada'), 5000))
+  comprobar(!errorAnulada && avisoAnulada.includes('Devolución anulada. La OC queda pagada.'),
+    `anulada, el aviso dice que la OC queda pagada${errorAnulada ? ` (dijo «${errorAnulada}»)` : `: «${avisoAnulada}»`}`)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const si = await devolver(ocDev, '61.50', `DEV6B-${SUFIJO}`, 'si')
+  comprobar(si.enVivo.includes('La OC queda pagada con S/ 300.00, lo que queda de lo pagado.'),
+    `con «Sí», la ventana dice que la OC queda pagada con S/ 300: «${si.enVivo.slice(-200)}»`)
+  comprobar(!si.error && si.aviso.includes('Devolución registrada. La OC queda pagada.'),
+    `y el aviso lo mismo${si.error ? ` (dijo «${si.error}»)` : `: «${si.aviso}»`}`)
+  const [, segunda] = await devolucionesDe(ocDev)
+  comprobar(segunda?.monto === 61.5 && segunda.deja_pagada === true && !segunda.anulado_en, 'la base la guarda con «queda pagada»')
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjetaSi = await abrir(ocDev)
+  const textoSi = limpio(await tarjetaSi.textContent())
+  comprobar(textoSi.includes('Pagada') && !textoSi.includes('le faltan') && (await tarjetaSi.locator('[data-pagar-compra]').count()) === 0
+      && textoSi.includes('con lo que quedaba, la OC quedó pagada') && !textoSi.includes('cancela la OC'),
+    `la OC queda «Pagada», sin «Registrar pago», y la devolución dice que la dejó pagada: «${textoSi.slice(0, 360)}»`)
+  comprobar((await pagoSegunAdquisiciones(ocDev)) === 'PAGADA', 'Adquisiciones la da por pagada con S/ 300')
+
+  // Logística puede corregirla igual: no por debajo de lo pagado; hasta lo pagado, sí.
   const l = await entrar('logistica')
   await l.pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
   const corregir = async (precio) => {
@@ -801,7 +848,7 @@ let pagoId
   const corregida = await abrir(ocDev)
   const textoCorregida = limpio(await corregida.textContent())
   comprobar(textoCorregida.includes('Pagada') && !textoCorregida.includes('le faltan') && (await corregida.locator('[data-pagar-compra]').count()) === 0,
-    `la OC queda pagada, sin pagarse otra vez: «${textoCorregida.slice(0, 220)}»`)
+    `corregida, la OC sigue pagada, sin pagarse otra vez: «${textoCorregida.slice(0, 220)}»`)
   comprobar((await pagoSegunAdquisiciones(ocDev)) === 'PAGADA', 'y Adquisiciones la da por pagada')
 
   // La 7: su factura cubre una parte.
@@ -819,6 +866,33 @@ let pagoId
   const textoParte2 = limpio(await (await abrir(ocParte)).textContent())
   comprobar(textoParte2.includes('Falta la factura por el resto, S/ 161.50: tomará los S/ 100.00 pagados por la boleta que ninguna factura tomó, y lo demás, S/ 61.50, se paga por ella'),
     `devueltos S/ 61.50, la que falta tomará S/ 100 y lo demás se paga por ella: «${textoParte2.slice(0, 360)}»`)
+
+  // La 8: S/ 100 por la boleta; su factura de S/ 200 es por una parte, toma esos 100 y se le pagan los otros 100. Falta
+  // facturar S/ 161.50 (lo que no facturó), no S/ 261.50 (lo que no tomó de la boleta): lo vio la tercera pasada.
+  const ocCuenta = oc[7]
+  const PARTE8 = `F004-${SUFIJO}`
+  const [{ id: pagoCuenta }, { id: parte8 }, { id: pagoParte8 }] = await consulta('select gen_random_uuid() as id from generate_series(1, 3)')
+  await como('tesoreria')
+  const v8 = await subir('pagos-compras', `${ocCuenta}/${pagoCuenta}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_compra($1, $2, $3::date, 100, false, null, null, $4, $5, null)`, [pagoCuenta, ocCuenta, hoy, v8, caja])
+  await como('contabilidad')
+  await consulta(
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 200, 'CONTADO')`,
+    [parte8, PROVEEDOR, PARTE8, hoy],
+  )
+  await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id, parcial) values ($1, $2, true)`, [parte8, ocCuenta])
+  await subir('comprobantes-financieros', `adquisiciones/${parte8}/comprobante.pdf`, 'contabilidad')
+  await consulta(`update adquisiciones set ruta_storage = $2, estado = 'REGISTRADA' where id = $1`, [parte8, `adquisiciones/${parte8}/comprobante.pdf`])
+  await como('tesoreria')
+  const vp8 = await subir('pagos-facturas', `${parte8}/${pagoParte8}.pdf`, 'tesoreria')
+  await consulta(`select public.registrar_pago_factura($1, $2, $3::date, 100, $4, $5, $6, null)`, [pagoParte8, parte8, hoy, `OP-F8-${SUFIJO}`, vp8, caja])
+  await como(null)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const textoCuenta = limpio(await (await abrir(ocCuenta)).textContent())
+  comprobar(textoCuenta.includes('Espera otra factura')
+      && textoCuenta.includes(`Su factura ${PARTE8} es por una parte de la OC y ya tomó S/ 100.00 de lo pagado por la boleta. Falta la factura por el resto, S/ 161.50`),
+    `con su factura parcial pagada, falta facturar S/ 161.50, no S/ 261.50: «${textoCuenta.slice(0, 360)}»`)
   await t.pagina.screenshot({ path: `${CAPTURAS}/boleta-3f-tesoreria.png`, fullPage: true })
   await t.contexto.close()
 }

@@ -279,7 +279,13 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
 const COLUMNAS_PAGO_FACTURA =
   'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, creado_en, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda)'
 
-/** El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago. */
+/**
+ * El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago.
+ * Lo descontado de lo pagado de más lleva la nota de crédito, que la base
+ * guarda en la primera fila del descuento: las demás filas del mismo descuento
+ * (misma factura, mismo momento, a mano y sin archivo) muestran esa nota, no el
+ * voucher de su pago.
+ */
 async function conVouchers(
   pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string; moneda: string } | null })[],
 ): Promise<PagoDeFactura[]> {
@@ -287,12 +293,22 @@ async function conVouchers(
     enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
     enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.boleta?.archivo_ruta ?? null)),
   ])
-  return pagos.map(({ boleta, ...p }) => ({
-    ...p,
-    url: (p.archivo_ruta ? propios.get(p.archivo_ruta) : boleta && deLaBoleta.get(boleta.archivo_ruta)) || null,
-    ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
-    monedaDeLaBoleta: boleta?.moneda ?? null,
-  }))
+  const notas = pagos.filter((p) => p.pago_orden_compra_id && p.monto_de_la_boleta !== null && p.archivo_ruta)
+  const notaDe = (p: PagoFacturaFila) =>
+    p.pago_orden_compra_id && p.monto_de_la_boleta !== null
+      ? (notas.find((n) => n.adquisicion_id === p.adquisicion_id && n.creado_en === p.creado_en) ?? null)
+      : null
+  return pagos.map(({ boleta, ...p }) => {
+    const nota = p.archivo_ruta ? null : notaDe(p)
+    const ruta = p.archivo_ruta ?? nota?.archivo_ruta ?? null
+    return {
+      ...p,
+      url: (ruta ? propios.get(ruta) : boleta && deLaBoleta.get(boleta.archivo_ruta)) || null,
+      esNota: Boolean(p.pago_orden_compra_id && ruta),
+      ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
+      monedaDeLaBoleta: boleta?.moneda ?? null,
+    }
+  })
 }
 
 /**
@@ -421,7 +437,13 @@ type PagoFacturaFila = Pick<
  * boleta de su OC (`pago_orden_compra_id`) lo anota el sistema: su voucher es el
  * de ese pago, y no se anula en la factura sino en la OC (migración 20261020210000).
  */
-export type PagoDeFactura = PagoFacturaFila & { url: string | null; ordenCompraDeLaBoleta: string | null; monedaDeLaBoleta: string | null }
+export type PagoDeFactura = PagoFacturaFila & {
+  url: string | null
+  /** Lo tomó de la boleta a mano con su nota de crédito o documento (la suya o la de su descuento): `url` lleva a ella. */
+  esNota: boolean
+  ordenCompraDeLaBoleta: string | null
+  monedaDeLaBoleta: string | null
+}
 /** Una cuenta activa del proveedor, para que Tesorería sepa a dónde transferir. */
 export type CuentaDelProveedor = Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>
 export type CuentaPorPagar = CuentaPagarFila & {
@@ -569,7 +591,7 @@ export type TomaDelPago = {
 }
 type DevolucionFila = Pick<
   Tablas<'devoluciones_orden_compra'>,
-  'id' | 'orden_compra_id' | 'fecha' | 'moneda' | 'monto' | 'operacion' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+  'id' | 'orden_compra_id' | 'fecha' | 'moneda' | 'monto' | 'operacion' | 'deja_pagada' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
 >
 export type CompraConBoleta = CompraConBoletaFila & {
   pagos: (PagoCompraFila & { url: string | null; tomas: TomaDelPago[] })[]
@@ -606,7 +628,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('devoluciones_orden_compra')
-        .select('id, orden_compra_id, fecha, moneda, monto, operacion, archivo_ruta, anulado_en, motivo_anulacion')
+        .select('id, orden_compra_id, fecha, moneda, monto, operacion, deja_pagada, archivo_ruta, anulado_en, motivo_anulacion')
         .in('orden_compra_id', tanda)
         .order('fecha')
         .order('creado_en')
