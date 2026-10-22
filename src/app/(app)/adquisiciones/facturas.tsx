@@ -838,7 +838,11 @@ function CeldaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
         <span className="tabular">{orden.numero ?? 'OC sin número'}</span>
       )}
       {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
-      {!orden.numero && orden.referencia && <p className="text-[11px] text-texto-suave">Ref. del proveedor: {orden.referencia}</p>}
+      {!orden.numero && orden.referencia && (
+        <p className="whitespace-normal text-[11px] text-texto-suave">
+          Ref. del proveedor: <span className="tabular whitespace-nowrap">{orden.referencia}</span>
+        </p>
+      )}
       <p className="tabular text-[11px] text-texto-suave">{orden.sin_precio ? 'Sin precio' : moneda(orden.total, codigo(orden.moneda))}</p>
     </TD>
   )

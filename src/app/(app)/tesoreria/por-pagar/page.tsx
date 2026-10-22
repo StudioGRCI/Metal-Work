@@ -1171,7 +1171,7 @@ function CompraConBoletaFila({
         <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-texto">
-              {b.proveedor} · <span className="tabular whitespace-nowrap">{nombre}</span>
+              {b.proveedor} · <span className={`tabular ${b.numero ? 'whitespace-nowrap' : ''}`}>{nombre}</span>
             </span>
             {insignia && <Insignia tono={insignia.tono}>{insignia.texto}</Insignia>}
             {b.sin_precio && <Insignia tono="aviso">Líneas sin precio</Insignia>}

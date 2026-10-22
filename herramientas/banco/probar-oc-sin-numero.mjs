@@ -15,13 +15,14 @@
  *      NÚMERO», sin pedir que la referencia se cite como número.
  *   3. Tesorería ve la factura en Cuentas por pagar con la OC nombrada así, y
  *      el PDF de la OC con el mismo nombre; en Facturas, «Pagar en Cuentas por
- *      pagar».
+ *      pagar». En el teléfono, la tarjeta de la OC con boleta no se desborda.
  *   4. Gerencia, que lee Cuentas por pagar y no paga, ve en Facturas «Ver en
  *      Cuentas por pagar».
  *
- * Siembra dos OC del RQ, aprobadas, y les quita el número como a una de antes
- * de la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre las
- * veces que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
+ * Siembra tres OC del RQ, aprobadas: dos con factura y una con boleta, para su
+ * tarjeta de Cuentas por pagar en el teléfono. Les quita el número como a una
+ * de antes de la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre
+ * las veces que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
  * CAPTURAS, BANCO_BASE, ARCHIVOS y el correo de cada cuenta si no es
  * `<puesto>.local@metalwork.test`. Lee el PDF con `pdftotext` (poppler).
  */
@@ -166,8 +167,11 @@ const [{ id: material }] = await consulta(
   [`SN-${SUFIJO}`, `Plancha LAC 1/8" (${SUFIJO})`, cat, und],
 )
 
-/** Una OC de su RQ, aprobada, de 295.00 con IGV, al contado y con factura; después, sin número y con `referencia`. */
-async function ocSinNumero(referencia) {
+/**
+ * Una OC de su RQ, aprobada, de 295.00 al contado, con factura (o con boleta si
+ * `conFactura` es false); después, sin número y con `referencia`.
+ */
+async function ocSinNumero(referencia, conFactura = true) {
   const [{ id: rq }] = await consulta(`select gen_random_uuid() as id`)
   await como('requerimientos')
   await consulta(
@@ -180,8 +184,8 @@ async function ocSinNumero(referencia) {
   await como('logistica')
   const [{ id: oc }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[1]::smallint[], $2, null,
-       jsonb_build_array(jsonb_build_object('material_id', $3::text, 'cantidad', 1, 'precio', 250::numeric)), null, 'CONTADO', 0, 'PEN', true) as id`,
-    [rq, proveedor, material],
+       jsonb_build_array(jsonb_build_object('material_id', $3::text, 'cantidad', 1, 'precio', 250::numeric)), null, 'CONTADO', 0, 'PEN', $4) as id`,
+    [rq, proveedor, material, conFactura],
   )
   await como('gerencia')
   await consulta(`select public.aprobar_compra($1)`, [oc])
@@ -191,16 +195,21 @@ async function ocSinNumero(referencia) {
   await base.query(`update ordenes_compra_materiales set numero = null, referencia = $2 where id = $1`, [oc, referencia])
   await base.query('commit')
   const [sembrada] = await consulta(`select numero, referencia, aprobacion, public.total_orden_compra(id)::float as total from ordenes_compra_materiales where id = $1`, [oc])
-  if (sembrada.numero !== null || sembrada.referencia !== referencia || sembrada.aprobacion !== 'APROBADA' || sembrada.total !== 295) {
-    throw new Error(`La siembra no dejó la OC aprobada, sin número y con 295.00: ${JSON.stringify(sembrada)}`)
+  const total = conFactura ? 295 : 250
+  if (sembrada.numero !== null || sembrada.referencia !== referencia || sembrada.aprobacion !== 'APROBADA' || sembrada.total !== total) {
+    throw new Error(`La siembra no dejó la OC aprobada, sin número y con ${total}.00: ${JSON.stringify(sembrada)}`)
   }
   return oc
 }
 const oc = await ocSinNumero(REFERENCIA)
 const oc2 = await ocSinNumero(REFERENCIA_2)
+// Con boleta, para su tarjeta en Cuentas por pagar; la referencia larga, como la de una proforma.
+const REFERENCIA_3 = `PROFORMA-${SUFIJO}-2026`
+const oc3 = await ocSinNumero(REFERENCIA_3, false)
 const NOMBRE = `OC sin número (ref. del proveedor ${REFERENCIA})`
 const NOMBRE_2 = `OC sin número (ref. del proveedor ${REFERENCIA_2})`
-console.log(`     sembradas dos OC sin número, con las referencias ${REFERENCIA} y ${REFERENCIA_2}`)
+const NOMBRE_3 = `OC sin número (ref. del proveedor ${REFERENCIA_3})`
+console.log(`     sembradas tres OC sin número: ${REFERENCIA} y ${REFERENCIA_2} con factura, ${REFERENCIA_3} con boleta`)
 
 const JUSTIFICANTE = join(ARCHIVOS, `justificante-sin-numero-${SUFIJO}.pdf`)
 writeFileSync(JUSTIFICANTE, pdfConTexto(['Correo del proveedor', 'La factura cubre las dos cotizaciones']))
@@ -344,6 +353,19 @@ writeFileSync(
   const enFacturas = limpio(await grupo(pagina, FACTURA))
   comprobar(enFacturas.includes('Pagar en Cuentas por pagar'), 'en Facturas, Tesorería tiene «Pagar en Cuentas por pagar»')
   await contexto.close()
+
+  // La OC con boleta, en el teléfono: su nombre largo se parte dentro de la tarjeta.
+  const tel = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
+  await tel.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const boleta = tel.pagina.locator(`#compra-${oc3}`)
+  await boleta.waitFor({ timeout: 15000 }).catch(() => {})
+  const textoBoleta = limpio(await boleta.textContent().catch(() => ''))
+  const medida = await boleta.evaluate((e) => ({ dentro: e.scrollWidth, caja: e.clientWidth })).catch(() => null)
+  const pagina390 = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(textoBoleta.includes(NOMBRE_3) && medida !== null && medida.dentro <= medida.caja && pagina390 <= 390,
+    `la tarjeta de la OC con boleta la nombra «${NOMBRE_3}» sin salirse (${medida ? `${medida.dentro} de ${medida.caja} px` : 'no está'}, página ${pagina390} px)`)
+  await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-tesoreria-telefono.png'), fullPage: true, caret: 'initial' })
+  await tel.contexto.close()
 }
 
 // ------------------------------------------------- 4. Gerencia, en Facturas

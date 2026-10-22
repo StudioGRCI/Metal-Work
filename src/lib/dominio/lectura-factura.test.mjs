@@ -169,6 +169,17 @@ test('el detector avisa lo que no calza y calla lo que sí', () => {
   assert.deepEqual(avisosDelDetector({ lectura: sinOc, total: 1770, moneda: 'PEN', numero: '', marcadas: disponibles }), [])
 })
 
+test('la OC sin número no se nombra con la referencia del proveedor como si fuera su número', () => {
+  // «Corregir» la cruza por las cifras de su referencia y le pasa cómo se llama.
+  const sinNumero = { numero: 'OC-0591', referencia: 'OC-0591', nombre: 'OC sin número (ref. del proveedor OC-0591)' }
+  const lectura = { ...leerFacturaDeTexto(SUNAT), ordenes: ['591'] }
+  const avisos = avisosDelDetector({ lectura, total: null, moneda: 'PEN', numero: '', marcadas: [], disponibles: [sinNumero] })
+  assert.deepEqual(avisos, [{ tipo: 'OC_NO_MARCADA', oc: 'OC sin número (ref. del proveedor OC-0591)', espera: true }])
+  // Al registrar no entra al cruce, porque no tiene número: no se la da por no mencionada.
+  const marcada = avisosDelDetector({ lectura: { ...lectura, ordenes: ['7'] }, total: null, moneda: 'PEN', numero: '', marcadas: [{ numero: null, referencia: 'OC-0591' }] })
+  assert.deepEqual(marcada, [{ tipo: 'OC_NO_MARCADA', oc: 'OC 7', espera: null }])
+})
+
 test('al adjuntar la factura a su OC se avisa si el total o la OC no son los de la orden', () => {
   const lectura = leerFacturaDeTexto(SUNAT)
   const dinero = (n, m) => `${m} ${n.toFixed(2)}`

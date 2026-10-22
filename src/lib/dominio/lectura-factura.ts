@@ -1,5 +1,3 @@
-import { nombreDeOc } from '@/lib/dominio/adquisiciones'
-
 /**
  * El detector de la factura de compra: lee el total, la moneda, el número y las
  * OC que menciona la factura, y avisa si no calzan con lo que se registra.
@@ -243,7 +241,9 @@ export type AvisoDelDetector =
   | { tipo: 'OC_NO_MARCADA'; oc: string; espera: boolean | null }
   | { tipo: 'OC_NO_MENCIONADA'; oc: string }
 
-const etiquetaOc = (o: OcParaDetector) => o.nombre ?? nombreDeOc(o)
+// Igual que `nombreDeOc` (dominio/adquisiciones), sin importarlo: las pruebas
+// de este archivo corren en Node, que no resuelve el alias `@/`.
+const etiquetaOc = (o: OcParaDetector) => o.nombre ?? o.numero ?? `OC sin número (ref. del proveedor ${o.referencia})`
 
 /**
  * Lo que no calza entre la factura leída y lo que se registra: el total, la

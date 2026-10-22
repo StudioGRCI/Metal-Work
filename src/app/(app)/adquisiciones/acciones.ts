@@ -248,11 +248,12 @@ async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createCli
   const filas = data ?? []
   if (filas.length === 0) return null
   // La base nombra la de antes de la serie «OC <referencia>», que pasa por un
-  // número de OC: se nombra con `nombreDeOc`. Si no se puede leer, queda el de la base.
+  // número de OC: se nombra con `nombreDeOc`. Si no se pueden leer, sin su número.
   const ids = filas.flatMap((f) => (f.compra_id ? [f.compra_id] : []))
-  const { data: ordenes } = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)
+  const { data: ordenes, error: errorOrdenes } = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)
+  if (errorOrdenes) console.error('No se pudieron leer las OC con boleta que tomó la factura', errorOrdenes)
   const nombres = new Map((ordenes ?? []).map((o) => [o.id, nombreDeOc(o)]))
-  const nombre = (f: (typeof filas)[number]) => (f.compra_id && nombres.get(f.compra_id)) || f.compra
+  const nombre = (f: (typeof filas)[number]) => (f.compra_id && nombres.get(f.compra_id)) || 'OC con boleta'
   // Con una OC la nombra; con varias, las suma.
   const oc = filas.length === 1 ? `la ${nombre(filas[0])}` : 'sus OC con boleta'
   const otra = filas.find((f) => f.otra_moneda)
