@@ -86,7 +86,8 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
     tabla.facturas.map(({ factura: f }) => [f.id, f.estado === 'BORRADOR' ? [] : avisosDeFacturaRegistrada(f, f.control)]),
   )
 
-  const porPagar = tabla.facturas.filter((f) => f.factura.saldo !== null && f.factura.saldo > 0)
+  // La que espera a Contabilidad pudo pagarse fuera: no es «por pagar» hasta que lo diga.
+  const porPagar = tabla.facturas.filter((f) => f.factura.saldo !== null && f.factura.saldo > 0 && !f.factura.enEspera)
   const porConfirmar = tabla.facturas.filter((f) => f.factura.enEspera)
   const noCalzan = tabla.facturas.filter((f) => f.factura.control?.control === 'NO_CALZA' || (avisosDe.get(f.factura.id)?.length ?? 0) > 0)
   const cuenta: Record<Vista, number> = {
@@ -124,11 +125,13 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
 
       <Vistas
         etiqueta="Qué facturas ver"
-        className="mb-3"
+        id="vistas-facturas"
+        className="mb-3 scroll-mt-20"
         vistas={VISTAS_DE_FACTURAS.map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
-          href: `/adquisiciones?vista=${v.valor}`,
+          // Con el ancla, en el teléfono la lista no vuelve arriba de «Nuevo comprobante» al cambiar de vista.
+          href: `/adquisiciones?vista=${v.valor}#vistas-facturas`,
           activa: vista === v.valor,
           cuenta: cuenta[v.valor],
         }))}
@@ -136,7 +139,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
 
       {/* Lo anotado de un pago por confirmar: la fila se va de «Pago por confirmar» y con ella el botón. */}
       <ConAvisosDeLoAnotado>
-      {noCalzan.length > 0 && vista !== 'sin-factura' && (
+      {noCalzan.length > 0 && (vista === 'facturas' || vista === 'no-calzan') && (
         <p className="mb-3 text-sm text-aviso">
           {noCalzan.length === 1 ? 'Una factura no calza' : `${noCalzan.length} facturas no calzan`} con sus OC o con lo que dice el papel: revisa
           si falta una OC, si cubre otra cosa o si hay que corregirla. Es solo un aviso.
@@ -435,7 +438,8 @@ function vacio(vista: Vista) {
     case 'por-confirmar':
       return {
         titulo: 'Ningún pago por confirmar',
-        descripcion: 'Cuando llega la factura de una OC con boleta que se dio por pagada fuera del sistema, sale aquí hasta que digas si ya se pagó.',
+        descripcion:
+          'Cuando llega la factura de una OC con boleta que se dio por pagada fuera del sistema, sale aquí hasta que Contabilidad diga si ya se pagó.',
       }
     case 'sin-factura':
       return { titulo: 'Ninguna OC espera su factura', descripcion: 'Cuando Gerencia aprueba una OC que va con factura, sale aquí hasta que Contabilidad la registra.' }
@@ -710,7 +714,7 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
         <Insignia tono="exito">Pagada</Insignia>
       ) : (
         <p className="tabular whitespace-nowrap text-texto">
-          {f.pagado && f.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(f.saldo, m)}
+          {f.enEspera ? 'Por confirmar' : f.pagado && f.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(f.saldo, m)}
         </p>
       )}
       {f.pagos.length > 0 && (

@@ -819,6 +819,18 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // Contabilidad: la factura de una OC que se dio por pagada fuera espera que
+  // diga si ya se pagó (migración 20261022175000); hasta entonces Tesorería no la paga.
+  if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
+    clave: 'facturas_por_confirmar', ruta: '/adquisiciones?vista=por-confirmar', tono: 'aviso',
+    texto: n => plural(n, 'factura espera que digas si su OC ya se pagó', 'facturas esperan que digas si su OC ya se pagó'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('facturas_en_espera', {})
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
+  })
+
   // Contabilidad: las compras que todavía no tienen su factura registrada.
   if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
     clave: 'compras_sin_factura', ruta: '/adquisiciones?situacion=por-facturar', tono: 'aviso',

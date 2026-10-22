@@ -85,7 +85,8 @@ export default async function PaginaPorPagar() {
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
   const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeLaOc(b)] as const] : [])))
-  const porPagar = cuentas.filter((c) => Number(c.saldo) > 0)
+  // Las que esperan a Contabilidad van al final: no se pagan hasta que lo diga.
+  const porPagar = [...cuentas.filter((c) => Number(c.saldo) > 0 && !c.enEspera), ...cuentas.filter((c) => Number(c.saldo) > 0 && c.enEspera)]
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
   // La pagada que pide algo (pedir la devolución, o la factura en otra moneda) o
   // que espera su comprobante va arriba, no en las pagadas.
@@ -803,7 +804,7 @@ function Factura({
             {definir(TIPO_COMPROBANTE, c.tipo ?? '').etiqueta} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'} ·{' '}
             {c.numero_ot ? `OT ${c.numero_ot}` : 'sin OT'} ·{' '}
             {/* Puede que ya se haya pagado fuera: no vence hasta que Contabilidad lo diga. */}
-            {c.enEspera && saldo > 0 ? 'vence cuando Contabilidad lo confirme' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
+            {c.enEspera && saldo > 0 ? 'sin vencimiento hasta que Contabilidad diga si se pagó' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
           </p>
           {ordenes.length > 0 && (
             <p className="text-xs text-texto-suave">

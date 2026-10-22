@@ -405,6 +405,8 @@ const CONFIRMAR_PAGO = z.discriminatedUnion('pagada', [
   z.object({
     compra: z.guid(),
     pagada: z.literal('si'),
+    // Solo para decir qué pasó si la factura no toma el pago: la base no lo decide por esto.
+    otra_moneda: z.enum(['si', 'no']).optional(),
     fecha: z.iso.date('Elige el día en que se pagó.'),
     monto: z.coerce.number().positive('Escribe lo que se pagó.').multipleOf(0.01, 'Lo pagado lleva como máximo dos decimales.'),
     nota: z.string().trim().min(10, 'Cuenta cómo lo sabes, en al menos 10 caracteres.').max(500),
@@ -442,12 +444,17 @@ export async function confirmarPagoDeBoleta(_previo: unknown, formulario: FormDa
   // En otra moneda la factura no toma sola lo pagado fuera: Tesorería lo pasa al cambio.
   const { count, error: errorToma } = await supabase.from('pagos_adquisicion')
     .select('id', { count: 'exact', head: true }).eq('pago_orden_compra_id', data).is('anulado_en', null)
-  if (errorToma) console.error('confirmarPagoDeBoleta: no se pudo ver si la factura tomó el pago', errorToma)
+  if (errorToma) {
+    console.error('confirmarPagoDeBoleta: no se pudo ver si la factura tomó el pago', errorToma)
+    return { ok: true, mensaje: 'Anotado. Mira en Cuentas por pagar cuánto tomó la factura de lo pagado fuera.' }
+  }
   return {
     ok: true,
     mensaje:
-      errorToma || (count ?? 0) > 0
+      (count ?? 0) > 0
         ? 'Anotado: la factura toma lo que se pagó fuera, y Tesorería paga lo que falte.'
-        : 'Anotado. La factura va en otra moneda y no toma sola lo pagado fuera: Tesorería lo pasa al cambio en Cuentas por pagar.',
+        : v.otra_moneda === 'si'
+          ? 'Anotado. La factura va en otra moneda y no toma sola lo pagado fuera: Tesorería lo pasa al cambio en Cuentas por pagar.'
+          : 'Anotado, pero la factura no tomó lo pagado fuera: Tesorería lo revisa en Cuentas por pagar.',
   }
 }

@@ -138,6 +138,17 @@ select test.afirmar((select count(*) from public.facturas_en_espera() e where e.
                         = (select (creado_en at time zone 'America/Lima')::date from public.ordenes_compra_materiales where id = pg_temp.id('oca')),
   'sin lista, salen todas las que esperan, aunque no estén entre las cien más nuevas, con el día desde el que pudo pagarse');
 reset role;
+-- La que deja de ser de esa OC (Logística anuló el anexo y Contabilidad le quitó
+-- la OC) deja de esperar por ella: esperaba para siempre por una OC ajena.
+savepoint sin_la_oc;
+set local session_replication_role = replica;
+update public.documentos_compra_material set anulado_en = now() where id = pg_temp.id('da');
+update public.adquisiciones_ordenes_compra set quitada_en = now() where adquisicion_id = pg_temp.id('fa');
+update public.adquisiciones set orden_compra_id = null, documento_compra_id = null where id = pg_temp.id('fa');
+set local session_replication_role = origin;
+select test.afirmar(pg_temp.en_espera('fa') is null and pg_temp.en_espera('fb') is not null,
+  'sin el anexo ni el vínculo, la factura ya no espera por esa OC; la otra sigue esperando');
+rollback to savepoint sin_la_oc;
 
 -- ============================================ 3. En espera, Tesorería no la paga
 select pg_temp.como('tesoreria');

@@ -86,6 +86,7 @@ export function ConfirmarPagoDeBoleta({
             <Formulario
               espera={espera}
               pagada={abierta}
+              otraMoneda={otraMoneda}
               hoy={hoy}
               alCancelar={() => setAbierta(null)}
               alTerminar={(mensaje) => {
@@ -104,12 +105,14 @@ export function ConfirmarPagoDeBoleta({
 function Formulario({
   espera,
   pagada,
+  otraMoneda,
   hoy,
   alCancelar,
   alTerminar,
 }: {
   espera: EsperaDeLaFactura
   pagada: 'si' | 'no'
+  otraMoneda: boolean
   hoy: string
   alCancelar: () => void
   alTerminar: (mensaje: string) => void
@@ -120,6 +123,7 @@ function Formulario({
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="compra" value={espera.ordenCompraId} />
       <input type="hidden" name="pagada" value={pagada} />
+      {pagada === 'si' && <input type="hidden" name="otra_moneda" value={otraMoneda ? 'si' : 'no'} />}
       {pagada === 'si' && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo

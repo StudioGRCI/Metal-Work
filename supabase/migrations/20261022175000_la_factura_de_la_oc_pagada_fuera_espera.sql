@@ -90,7 +90,10 @@ select public.activar_registro_de_prueba('compras_pagadas_fuera_confirmadas');
 
 -- 2. ¿La factura espera a Contabilidad? -------------------------------------------------
 -- La primera OC de la factura que va con boleta, está aprobada y se dio por pagada
--- fuera: mientras exista, la factura no se paga.
+-- fuera: mientras exista, la factura no se paga. «De la factura» es lo que dice
+-- `facturas_de_la_compra` (cabecera, vínculo vigente o anexo que alcanza), lo
+-- mismo que mira `confirmar_pago_de_la_boleta`: con un vínculo quitado la factura
+-- esperaba por una OC que ya no era suya, y Contabilidad no podía sacarla.
 create or replace function public.compra_pagada_fuera_de_la_factura(p_factura public.adquisiciones)
 returns table (orden_compra_id uuid, compra text, total numeric, moneda text)
 language sql
@@ -102,6 +105,7 @@ as $$
     from public.ordenes_compra_materiales c
    where c.id = any(public.compras_de_la_factura(p_factura))
      and not c.con_factura and not c.pago_en_tesoreria and c.aprobacion in ('APROBADA', 'NO_REQUERIDA')
+     and exists (select 1 from public.facturas_de_la_compra(c.id) f where f.adquisicion_id = p_factura.id)
    order by c.numero, c.id
    limit 1;
 $$;
@@ -109,8 +113,9 @@ revoke all on function public.compra_pagada_fuera_de_la_factura(public.adquisici
 
 -- Para las pantallas: de estas facturas registradas, cuáles esperan y por qué OC.
 -- Sin lista (`null`), todas las que esperan: Contabilidad las ve aunque queden
--- detrás de las cien facturas más nuevas de su pestaña. Solo se buscan mientras
--- quede alguna OC con boleta dada por pagada fuera, que ya no se crean.
+-- detrás de las cien facturas más nuevas de su pestaña. Se buscan desde las OC
+-- aprobadas dadas por pagadas fuera, que ya no se crean: corre en cada pantalla
+-- (los pendientes) y no recorre todas las facturas.
 -- `desde`: el día que se emitió la OC, antes del cual no pudo pagarse.
 create or replace function public.facturas_en_espera(p_facturas uuid[] default null)
 returns table (adquisicion_id uuid, orden_compra_id uuid, compra text, total numeric, moneda text, desde date)
@@ -124,8 +129,11 @@ as $$
    cross join lateral public.compra_pagada_fuera_de_la_factura(a) x
     join public.ordenes_compra_materiales c on c.id = x.orden_compra_id
    where (case when p_facturas is null
-               then exists (select 1 from public.ordenes_compra_materiales o
-                             where not o.con_factura and not o.pago_en_tesoreria)
+               then a.id in (select f.adquisicion_id
+                               from public.ordenes_compra_materiales o
+                              cross join lateral public.facturas_de_la_compra(o.id) f
+                              where not o.con_factura and not o.pago_en_tesoreria
+                                and o.aprobacion in ('APROBADA', 'NO_REQUERIDA'))
                else a.id = any(p_facturas) end)
      and a.estado = 'REGISTRADA'
      and (public.es_admin() or public.tiene_permiso('adquisiciones.ver') or public.tiene_permiso('adquisiciones.registrar')
@@ -154,8 +162,9 @@ begin
   -- Lo que toma del pago de una de sus propias OC pasa (es el «ya se pagó» de una
   -- factura de dos OC); un descuento de lo pagado de más en otra OC, no.
   if new.pago_orden_compra_id is not null
-     and (select p.orden_compra_id from public.pagos_orden_compra p where p.id = new.pago_orden_compra_id)
-         = any(public.compras_de_la_factura(v_adq)) then
+     and exists (select 1 from public.pagos_orden_compra p
+                  cross join lateral public.facturas_de_la_compra(p.orden_compra_id) f
+                  where p.id = new.pago_orden_compra_id and f.adquisicion_id = v_adq.id) then
     return new;
   end if;
   select * into v_oc from public.compra_pagada_fuera_de_la_factura(v_adq);
