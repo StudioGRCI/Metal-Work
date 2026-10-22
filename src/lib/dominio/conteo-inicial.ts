@@ -12,6 +12,24 @@ export const FILA_ENCABEZADO_CONTEO = 4
 /** Cuántas filas registra cada llamada: la pantalla las manda por tandas y muestra el avance. */
 export const TANDA_CONTEO = 100
 
+/** Lo más viejo que puede ser un conteo: lo que pasó desde entonces ya movió los saldos. */
+export const DIAS_DEL_CONTEO = 31
+
+/**
+ * Por qué la fecha del conteo no sirve; `null` si sirve. La pantalla lo dice en
+ * la fecha antes de leer el Excel y el servidor lo vuelve a mirar con las mismas
+ * palabras: el rechazo salía en el campo del archivo y quien lo veía cambiaba un
+ * Excel que estaba bien (auditoría del 2026-10-22).
+ */
+export function motivoDeFechaDeConteo(fecha: string, hoy: string, desde: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return 'Indica la fecha en que se hizo el conteo.'
+  if (fecha > hoy) return 'La fecha del conteo es posterior a hoy.'
+  if (fecha < desde) {
+    return `El conteo es de hace más de ${DIAS_DEL_CONTEO} días: lo que pasó desde entonces ya movió los saldos. Vuelve a contar.`
+  }
+  return null
+}
+
 export type FilaConteoLeida = {
   /** La fila de Excel, para que quien contó la encuentre en su archivo. */
   fila: number

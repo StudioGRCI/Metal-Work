@@ -9,6 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
+import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
@@ -234,7 +235,7 @@ export function CorregirCotizacion({
           .from('cotizaciones-pdf')
           .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. Revisa la señal y vuelve a intentar.`)
+          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -320,6 +321,7 @@ export function CorregirCotizacion({
             <ElegirArchivo
               ref={campoArchivo}
               id={`corregir-archivo-${id}`}
+              required
               accept={ACEPTA_COTIZACION}
               texto="Elegir el archivo corregido"
               hastaMb={MAXIMO_ADJUNTO_MB}
@@ -539,7 +541,7 @@ export function AprobarConOt({
           .from('adjuntos-ot')
           .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
         if (falla) {
-          setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -616,6 +618,7 @@ export function AprobarConOt({
             <ElegirArchivo
               ref={campoPdf}
               id={`aprobar-pdf-${cotizacionId}`}
+              required
               accept="application/pdf,.pdf"
               texto="Elegir el PDF de la OT"
               hastaMb={MAXIMO_ADJUNTO_MB}

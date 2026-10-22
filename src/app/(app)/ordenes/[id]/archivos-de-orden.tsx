@@ -2,14 +2,15 @@
 
 import { FileSpreadsheet, FileText, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
+import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { useEnvio } from '@/lib/envio'
-import { fecha as fmtFecha } from '@/lib/format'
+import { fechaHora } from '@/lib/format'
 
 import { quitarAdjunto } from './acciones-adjuntos'
 
@@ -71,6 +72,29 @@ export function ArchivosDeOrden({
   const [cambiando, setCambiando] = useState(false)
   const pide = sube && (!tieneOrden || cambiando || Boolean(elegido))
   const textoCampo = tieneOrden ? 'Subir el PDF corregido' : 'Subir el PDF de la orden'
+  // Subir el corregido no quita el anterior (el último PDF lo cuida la base):
+  // con dos, el más nuevo es el que vale y se dice que el otro hay que quitarlo.
+  const pdfs = adjuntos.filter((a) => a.tipo === 'ORDEN')
+  const vigente = pdfs.length > 1 ? pdfs.reduce((a, b) => (b.creado_en > a.creado_en ? b : a)) : null
+  const anteriores = vigente ? pdfs.filter((a) => a.id !== vigente.id) : []
+
+  // El foco no se pierde al abrir o cerrar el campo: va al campo al abrirlo y
+  // vuelve a «Cambiar el PDF» al cerrarlo o al terminar la subida.
+  const campo = useRef<HTMLInputElement>(null)
+  const botonCambiar = useRef<HTMLButtonElement>(null)
+  const focoA = useRef<'campo' | 'boton' | null>(null)
+  useEffect(() => {
+    const quien = focoA.current
+    const destino = quien === 'campo' ? campo.current : quien === 'boton' ? botonCambiar.current : null
+    if (!destino) return
+    focoA.current = null
+    // Al volver, solo si el foco se quedó sin lugar: no se le quita a otra cosa.
+    const activo = document.activeElement
+    if (quien === 'boton' && activo && activo !== document.body && activo !== campo.current) return
+    destino.focus()
+    // En el teléfono el campo se abre debajo de la barra de abajo: se trae al centro.
+    destino.scrollIntoView({ block: quien === 'campo' ? 'center' : 'nearest' })
+  }, [pide])
 
   async function subir(archivo: File | undefined) {
     if (!archivo || enCurso.current) return
@@ -91,7 +115,9 @@ export function ArchivosDeOrden({
       }
       setElegido(null)
       setCambiando(false)
-      setAviso(r.mensaje ?? 'PDF guardado en la orden.')
+      focoA.current = 'boton'
+      // Qué falta quitar lo dice la nota de abajo, que se queda mientras haya dos.
+      setAviso(tieneOrden ? 'PDF corregido guardado.' : (r.mensaje ?? 'PDF guardado en la orden.'))
       iniciar(() => router.refresh())
     } catch {
       setAvisoSubida('No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
@@ -109,7 +135,15 @@ export function ArchivosDeOrden({
         acciones={
           sube &&
           !pide && (
-            <Boton variante="secundario" tamano="sm" onClick={() => setCambiando(true)}>
+            <Boton
+              ref={botonCambiar}
+              variante="secundario"
+              tamano="sm"
+              onClick={() => {
+                focoA.current = 'campo'
+                setCambiando(true)
+              }}
+            >
               <RefreshCw aria-hidden className="size-3.5" />
               Cambiar el PDF
             </Boton>
@@ -129,7 +163,7 @@ export function ArchivosDeOrden({
         ) : (
           <ul className="divide-y divide-borde">
             {adjuntos.map((a) => (
-              <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} alQuedarArchivo={setError} />
+              <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} vigente={a.id === vigente?.id} alQuedarArchivo={setError} />
             ))}
           </ul>
         )}
@@ -137,6 +171,7 @@ export function ArchivosDeOrden({
           <div className="space-y-1.5">
             {/* Se guarda en la orden apenas se elige, por eso dice «Subir». */}
             <ElegirArchivo
+              ref={campo}
               id={`subir-pdf-${ordenId}`}
               aria-label={textoCampo}
               accept="application/pdf,.pdf"
@@ -153,6 +188,7 @@ export function ArchivosDeOrden({
                 variante="fantasma"
                 tamano="sm"
                 onClick={() => {
+                  focoA.current = 'boton'
                   setCambiando(false)
                   setElegido(null)
                   setAvisoSubida(null)
@@ -163,9 +199,17 @@ export function ArchivosDeOrden({
             )}
           </div>
         )}
-        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
-        {sube && adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
-          <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
+        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia
+            mientras se cambia, y cuál falta quitar mientras haya dos. */}
+        {pide && tieneOrden && (
+          <p className="text-xs text-texto-suave">Sube el correcto; después quita el anterior de la lista.</p>
+        )}
+        {anteriores.some((a) => a.quitable) && (
+          <p className="text-xs font-medium text-aviso wrap-anywhere">
+            Vale el marcado «Vigente». Quita{' '}
+            {anteriores.length === 1 ? `el anterior (${anteriores[0].nombre_archivo})` : 'los anteriores'} para que el
+            taller no abra el viejo.
+          </p>
         )}
 
         {error && (
@@ -188,10 +232,13 @@ export function ArchivosDeOrden({
 function FilaAdjunto({
   adjunto: a,
   ordenId,
+  vigente,
   alQuedarArchivo,
 }: {
   adjunto: AdjuntoEnPantalla
   ordenId: string
+  /** El PDF de la orden que vale, cuando hay más de uno. */
+  vigente: boolean
   // La fila se va con el refresco: el aviso de que el archivo quedó guardado
   // lo muestra la tarjeta, que se queda.
   alQuedarArchivo: (mensaje: string) => void
@@ -219,10 +266,12 @@ function FilaAdjunto({
           ) : (
             <p className="truncate text-sm font-medium text-texto">{a.nombre_archivo}</p>
           )}
-          <p className="text-[11px] text-texto-suave">
-            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : 'Orden de trabajo', tamano(a.tamano_bytes), fmtFecha(a.creado_en)]
+          <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-texto-suave">
+            {/* Con la hora: dos PDF del mismo día se veían iguales. */}
+            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : 'Orden de trabajo', tamano(a.tamano_bytes), fechaHora(a.creado_en)]
               .filter(Boolean)
               .join(' · ')}
+            {vigente && <Insignia tono="exito">Vigente</Insignia>}
           </p>
         </div>
         {a.quitable && !confirmando && (

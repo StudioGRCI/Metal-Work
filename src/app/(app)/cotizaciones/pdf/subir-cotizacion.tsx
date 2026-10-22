@@ -11,6 +11,7 @@ import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
+import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import {
@@ -241,8 +242,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           .from('cotizaciones-pdf')
           .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
         if (falla) {
-          const motivo = falla.message || 'Error desconocido de almacenamiento.'
-          setError(`No se pudo subir el ${tipo.etiqueta}: ${motivo}. Comprueba el archivo y vuelve a intentar.`)
+          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -312,6 +312,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             <ElegirArchivo
               ref={campoArchivo}
               id="cot-archivo"
+              required
               accept={ACEPTA_COTIZACION}
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={archivo}

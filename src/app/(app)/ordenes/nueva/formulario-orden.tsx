@@ -9,6 +9,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { createClient } from '@/lib/supabase/client'
@@ -167,7 +168,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           .from('adjuntos-ot')
           .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
         if (falla) {
-          setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -451,6 +452,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
             <ElegirArchivo
               ref={campoPdf}
               id="pdf_orden"
+              required
               accept={ACEPTA_PDF}
               texto="Elegir el PDF de la orden"
               hastaMb={MAXIMO_ADJUNTO_MB}

@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { materialesDelKardex, materialesParaPlanilla, type MaterialParaPlanilla } from '@/lib/datos/kardex'
-import { leerHojaConteo, motivoConteoInicial, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { DIAS_DEL_CONTEO, leerHojaConteo, motivoConteoInicial, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
 import { leerHoja, normalizarNombre, similitud, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
 import { cantidad, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -540,8 +540,8 @@ export async function leerConteoInicial(_previo: unknown, datos: FormData): Prom
   const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
   if (!fecha.success) return { ok: false, error: 'Indica la fecha en que se hizo el conteo.' }
   const hoy = hoyLima()
-  if (fecha.data > hoy) return { ok: false, error: 'La fecha del conteo es posterior a hoy.' }
-  if (fecha.data < sumarDias(hoy, -31)) return { ok: false, error: 'El conteo es de hace más de 31 días: lo que pasó desde entonces ya movió los saldos. Vuelve a contar.' }
+  const fueraDeFecha = motivoDeFechaDeConteo(fecha.data, hoy, sumarDias(hoy, -DIAS_DEL_CONTEO))
+  if (fueraDeFecha) return { ok: false, error: fueraDeFecha }
 
   const abierto = await abrirLibro(datos.get('archivo'), 'el formato del conteo')
   if ('error' in abierto) return { ok: false, error: abierto.error }

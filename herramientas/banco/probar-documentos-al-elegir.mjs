@@ -209,6 +209,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     comprobar(await oculto(campo), `[Ventas ${tam}] el botón del navegador no se ve`)
     comprobar((await dice(campo)).includes('Elegir el PDF o el Word') && (await dice(campo)).includes('PDF o Word, hasta 20 MB'),
       `[Ventas ${tam}] «Subir cotización» dice qué pide y el tope: «${await dice(campo)}»`)
+    // Con todo vacío, el navegador revisa en el orden en que se ve: primero la cotización.
+    await v.getByRole('button', { name: 'Subir y mandar a Gerencia' }).click()
+    await esperarQueDiga(campo, 'Falta', 5000)
+    comprobar((await dice(campo)).includes('Falta la cotización') || (await dice(campo)).includes('Falta el PDF o el Word'),
+      `[Ventas ${tam}] sin nada, lo primero que dice que falta es la cotización, en su campo: «${await dice(campo)}»`)
+    comprobar(await campo.evaluate((e) => e === document.activeElement) && (await invalido(campo)), `[Ventas ${tam}] y el foco queda ahí`)
     await campo.setInputFiles(TXT)
     await esperarQueDiga(campo, `No es un PDF ni un Word: ${accion} para elegir otro`, 5000)
     comprobar((await dice(campo)).includes(`NOTAS-DE-LA-COTIZACION-${sello}.txt`) && (await dice(campo)).includes('No es un PDF ni un Word'),
@@ -289,8 +295,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       comprobar((await campo.count()) === 0 && (await cambiar.count()) === 1,
         `[Administración ${tam}] la orden ${orden.numero} ya tiene su PDF: no pide otro, ofrece «Cambiar el PDF»`)
       await cambiar.click()
+      await campo.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {})
+      comprobar(await campo.evaluate((e) => e === document.activeElement).catch(() => false), `[Administración ${tam}] «Cambiar el PDF» lleva el foco al campo`)
       await pagina.getByRole('button', { name: 'No cambiarlo' }).click()
       comprobar((await campo.count()) === 0, `[Administración ${tam}] «No cambiarlo» lo vuelve a cerrar`)
+      comprobar(await cambiar.evaluate((e) => e === document.activeElement).catch(() => false), `[Administración ${tam}] y el foco vuelve a «Cambiar el PDF»`)
       await cambiar.click()
     }
     await campo.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {})
@@ -317,6 +326,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     comprobar(fila.n === 1, `[Administración ${tam}] el bueno se sube apenas se elige y queda en la orden`)
     await cambiar.waitFor({ timeout: 15000 }).catch(() => {})
     comprobar((await campo.count()) === 0 && (await cambiar.count()) === 1, `[Administración ${tam}] y el campo se cierra: queda «Cambiar el PDF»`)
+    if (tenia) {
+      await pagina.getByText('Vigente', { exact: true }).waitFor({ timeout: 15000 }).catch(() => {})
+      const filaNueva = pagina.locator('li').filter({ hasText: nombre })
+      const tarjeta = limpio(await pagina.locator('ul').filter({ hasText: nombre }).locator('xpath=..').innerText())
+      comprobar((await filaNueva.getByText('Vigente', { exact: true }).count()) === 1 && /Quita (el anterior|los anteriores)/.test(tarjeta),
+        `[Administración ${tam}] el corregido sale «Vigente» y dice qué quitar: «${(tarjeta.match(/Vale el marcado[^.]*\./) ?? [''])[0]}»`)
+    }
     comprobar((await desborde(pagina)) <= 0, `[Administración ${tam}] sin desborde`)
     await pagina.locator('ul').getByText(nombre).evaluate((e) => e.scrollIntoView({ block: 'center' }))
     await pagina.screenshot({ path: `${CAPTURAS}/doc-administracion-pdf-orden-${tam}.png` })
@@ -375,6 +391,24 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       comprobar(totalDespues === guardadosAntes + 1 && guardado.n >= 1 && !avisoCarga.includes('no quedó guardado'),
         `[Diseño ${tam}] carga el cronograma y su Excel queda guardado en la orden${avisoCarga.includes('no quedó guardado') ? `: «${avisoCarga.match(/El Excel no quedó[^.]*\.[^.]*\./)?.[0]}»` : ''}`)
       await pagina.screenshot({ path: `${CAPTURAS}/doc-diseno-cronograma-guardado-${tam}.png` })
+    }
+
+    // Un campo que la pantalla no guarda (el plano de un código) también mira por dentro.
+    const conCodigo = await uno(`select u.codigo_interno from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+                                  where o.estado not in ('ANULADA', 'ENTREGADA', 'FACTURADA', 'BORRADOR') and u.codigo_interno is not null
+                                  order by o.numero limit 1`)
+    await ir(pagina, `/diseno/codigo?codigo=${encodeURIComponent(conCodigo?.codigo_interno ?? '')}`)
+    const plano = pagina.locator('#plano-pdf')
+    if (await plano.count()) {
+      await plano.setInputFiles(WORD_COMO_PDF)
+      await esperarQueDiga(plano, 'Está dañado o no es un PDF de verdad', 5000)
+      comprobar((await dice(plano)).includes('Está dañado o no es un PDF de verdad') && (await invalido(plano)),
+        `[Diseño ${tam}] el plano: un Word con nombre «.pdf» queda en rojo, no en verde: «${await dice(plano)}»`)
+      await plano.setInputFiles(PDF_OT)
+      await esperarQueDiga(plano, listo, 5000)
+      comprobar(listo.test(await dice(plano)) && !(await invalido(plano)), `[Diseño ${tam}] y un PDF de verdad queda en verde`)
+    } else {
+      comprobar(false, `[Diseño ${tam}] el código ${conCodigo?.codigo_interno} ofrece cargar un plano`)
     }
     await contexto.close()
   }

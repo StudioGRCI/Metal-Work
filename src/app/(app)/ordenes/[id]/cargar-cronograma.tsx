@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertTriangle, CalendarRange, Download } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 
@@ -38,6 +39,8 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   // Por qué el Excel elegido no se pudo leer: va en su campo, no con los errores de cargar.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  // Lo del Excel va aparte: si no quedó, se lee como aviso y no como el éxito del cronograma.
+  const [excel, setExcel] = useState<{ ok: true } | { ok: false; error: string } | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
 
@@ -47,6 +50,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     setError(null)
     setAvisoArchivo(null)
     setAviso(null)
+    setExcel(null)
     setGuardarExcel(true)
     setAbierto(true)
   }
@@ -111,18 +115,17 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
         // El cronograma ya entró: lo del Excel es de más, y si falla se dice,
         // pero no se pierde el aviso de lo que sí quedó.
-        let mensaje = r.mensaje ?? 'Cronograma cargado.'
+        let guardado: typeof excel = null
         if (guardarExcel && archivo) {
           try {
-            const guardado = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
-            mensaje += guardado.ok
-              ? ' El Excel quedó guardado en la orden.'
-              : ` El Excel no quedó guardado en la orden: ${guardado.error}`
+            const subida = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
+            guardado = subida.ok ? { ok: true } : { ok: false, error: subida.error }
           } catch {
-            mensaje += ' El Excel no quedó guardado en la orden.'
+            guardado = { ok: false, error: 'No llegó la respuesta. Mira en Resumen si quedó antes de volver a subirlo.' }
           }
         }
-        setAviso(mensaje)
+        setAviso(r.mensaje ?? 'Cronograma cargado.')
+        setExcel(guardado)
         setAbierto(false)
         iniciar(() => router.refresh())
       } catch (e) {
@@ -143,8 +146,20 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           Subir cronograma
         </Boton>
         {aviso && (
-          <span role="status" className="text-xs font-medium text-exito">
-            {aviso}
+          <span role="status" className="text-xs">
+            <span className="font-medium text-exito">{aviso}</span>
+            {excel?.ok && (
+              <>
+                {' '}El Excel quedó guardado en la orden:{' '}
+                <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
+                  verlo en Resumen
+                </Link>
+                .
+              </>
+            )}
+            {excel && !excel.ok && (
+              <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
+            )}
           </span>
         )}
       </span>

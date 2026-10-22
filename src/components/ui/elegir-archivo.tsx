@@ -151,8 +151,9 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  * decía «Please select a file.».
  *
  * Lo que dice cambia con lo elegido: el nombre entero y su peso, o el motivo
- * —no es del tipo, pasa del tope, está vacío— antes de enviar. Avisa, no
- * bloquea: el que decide es el servidor. Es el mismo en todo lugar que pide
+ * —no es del tipo, pasa del tope, está vacío, no lo es por dentro— antes de
+ * enviar. Avisa, no bloquea: el que decide es el servidor. Lo que sí traba es
+ * que falte, y entonces lo dice también en la caja. Es el mismo en todo lugar que pide
  * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
  * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
  * 2026-10-21). Con `archivo`, el campo se vacía solo al abrirse: la pantalla
@@ -180,9 +181,27 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   ref,
 ) {
   const [delCampo, setDelCampo] = React.useState<File | null>(null)
+  // Lo que `revisarArchivo` vio por dentro del que eligió el campo, cuando la
+  // pantalla no lo guarda: un Word con nombre «.pdf» no puede quedar en verde.
+  const [revisado, setRevisado] = React.useState<{ archivo: File; aviso: string | null } | null>(null)
+  // Se intentó enviar sin archivo: «Falta…» se dice en la caja, no solo en el globo.
+  const [falta, setFalta] = React.useState(false)
   const propio = React.useRef<HTMLInputElement | null>(null)
   const idEstado = React.useId()
   const tipo = tipoDe(accept, Boolean(capture))
+  const principal = texto ?? tipo.que
+  const controlado = archivoDeLaPantalla !== undefined
+
+  const revisarDelCampo = React.useCallback(
+    (elegido: File | null) => {
+      setRevisado(null)
+      if (!elegido || controlado) return
+      void revisarArchivo(elegido, accept, hastaMb).then((aviso) =>
+        setRevisado((antes) => (propio.current?.files?.[0] === elegido ? { archivo: elegido, aviso } : antes)),
+      )
+    },
+    [accept, hastaMb, controlado],
+  )
 
   // Se conecta al montar y no en un efecto: así toma también el archivo que se
   // eligió antes de que la página terminara de cargar, y se entera cuando el
@@ -194,10 +213,13 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
       else if (ref) ref.current = input
       if (!input) return
       setDelCampo(input.files?.[0] ?? null)
+      revisarDelCampo(input.files?.[0] ?? null)
       const form = input.form
       const alVaciar = () => {
         input.setCustomValidity('')
         setDelCampo(null)
+        setRevisado(null)
+        setFalta(false)
       }
       form?.addEventListener('reset', alVaciar)
       return () => {
@@ -207,17 +229,27 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         else if (ref) ref.current = null
       }
     },
-    [ref],
+    [ref, revisarDelCampo],
   )
 
   // Si deja de ser obligatorio (la captura de la caja depende del tipo de
   // cuenta), el «Falta…» de un intento anterior no puede seguir trabando el envío.
+  // Cuando la pantalla guarda el archivo, el campo se vacía al tocarlo y el
+  // `required` del navegador no sabría que ya hay uno: «Falta…» sale de lo que
+  // tiene la pantalla. Así el navegador lo revisa en su orden, antes que los
+  // campos de abajo, y no al final.
   React.useEffect(() => {
-    if (!required) propio.current?.setCustomValidity('')
-  }, [required])
+    const input = propio.current
+    if (!input) return
+    if (!required) input.setCustomValidity('')
+    else if (controlado) input.setCustomValidity(archivoDeLaPantalla ? '' : faltaDe(principal))
+  }, [required, controlado, archivoDeLaPantalla, principal])
 
-  const archivo = archivoDeLaPantalla !== undefined ? archivoDeLaPantalla : delCampo
-  const aviso = avisoDeLaPantalla || (archivo ? avisoDeArchivo(archivo, accept, hastaMb) : null)
+  const archivo = controlado ? archivoDeLaPantalla : delCampo
+  const avisoPorDentro = !controlado && archivo && revisado?.archivo === archivo ? revisado.aviso : null
+  const aviso =
+    avisoDeLaPantalla ||
+    (archivo ? avisoDeArchivo(archivo, accept, hastaMb) ?? avisoPorDentro : falta && required ? faltaDe(principal) : null)
   const limite = hastaMb ? `hasta ${hastaMb} MB` : ''
   const pie =
     aviso ??
@@ -231,7 +263,6 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   // `disabled` lo pierde, cae al <body> y Escape ya no cierra la ventana. Queda
   // enfocable y no abre nada ni acepta un archivo soltado encima.
   const quieto = Boolean(disabled) && ocupado
-  const principal = texto ?? tipo.que
 
   return (
     <div
@@ -288,13 +319,14 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         capture={capture}
         disabled={disabled && !quieto}
         aria-disabled={quieto || undefined}
-        required={required}
+        required={required && !controlado}
         aria-describedby={descrito ? `${descrito} ${idEstado}` : idEstado}
         aria-invalid={mal || undefined}
         aria-busy={ocupado || undefined}
         className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed file:cursor-pointer aria-disabled:cursor-progress"
         onInvalid={(e) => {
           if (e.currentTarget.validity.valueMissing) e.currentTarget.setCustomValidity(faltaDe(principal))
+          if (!archivo) setFalta(true)
           onInvalid?.(e)
         }}
         onClick={(e) => {
@@ -305,7 +337,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
           // Cuando la pantalla guarda el archivo, el campo se vacía al abrirse y
           // no al elegir: así sigue diciendo qué tiene elegido (el lector de
           // pantalla leía «No file chosen») y elegir el mismo otra vez avisa.
-          if (archivoDeLaPantalla !== undefined) e.currentTarget.value = ''
+          if (controlado) e.currentTarget.value = ''
           onClick?.(e)
         }}
         onDragOver={(e) => {
@@ -316,7 +348,9 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         }}
         onChange={(e) => {
           e.currentTarget.setCustomValidity('')
+          setFalta(false)
           setDelCampo(e.currentTarget.files?.[0] ?? null)
+          revisarDelCampo(e.currentTarget.files?.[0] ?? null)
           onChange?.(e)
         }}
         {...props}

@@ -536,7 +536,7 @@ function AvisoDeMonto({
 }
 
 export function CompletarAdquisicion({ id }: { id: string }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(completarAdquisicion)
+  const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion)
   // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
   const [leyendo, setLeyendo] = useState<string | null>(null)
@@ -555,6 +555,8 @@ export function CompletarAdquisicion({ id }: { id: string }) {
     }
     setLectura(null)
     setAvisoPdf(null)
+    // El rechazo del envío anterior era de otro PDF.
+    limpiar()
     anotar(null)
     if (!archivo) return
     // Un Word con el nombre cambiado a «.pdf» queda en rojo y no se lee.

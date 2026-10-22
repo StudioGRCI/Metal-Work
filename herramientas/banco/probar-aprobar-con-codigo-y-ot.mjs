@@ -273,7 +273,7 @@ const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextCon
   const campoPdf = v.locator('input[type="file"]')
   await pagina.waitForTimeout(300)
   const sinPdf = limpio(await campoPdf.locator('xpath=..').innerText())
-  comprobar(sinPdf.includes('Falta el PDF de la OT: sin él no se aprueba') && (await campoPdf.getAttribute('aria-invalid')) === 'true'
+  comprobar(sinPdf.includes('Falta el PDF de la OT') && (await campoPdf.getAttribute('aria-invalid')) === 'true'
     && (await campoPdf.evaluate((e) => e === document.activeElement)), `sin el PDF no envía: su campo dice que falta y el foco queda ahí («${sinPdf}»)`)
 
   // Con el PDF, pero con el número de una OT que ya existe: se rechaza y el PDF no queda suelto.

@@ -28,10 +28,10 @@ alter policy crear_ot_adjuntos on public.ot_adjuntos
               and public.puede_ver_orden(orden_id)
               and subido_por = public.usuario_actual());
 
--- La de la migración 20261020206000, con Diseño y su `.xlsx`.
-drop policy if exists mw_subir_adjuntos_ot on storage.objects;
-create policy mw_subir_adjuntos_ot on storage.objects
-  for insert to authenticated
+-- La de la migración 20261020206000, con Diseño y su `.xlsx`. Con `alter
+-- policy` y no `drop`/`create`: un DROP cuelga el conector de Supabase (skill
+-- `datos`), y así la migración entra igual por cualquier camino.
+alter policy mw_subir_adjuntos_ot on storage.objects
   with check (bucket_id = 'adjuntos-ot'
               and public.orden_de_ruta(name) is not null
               and public.puede_ver_orden(public.orden_de_ruta(name))

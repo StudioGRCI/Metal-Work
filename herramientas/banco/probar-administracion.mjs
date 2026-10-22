@@ -361,7 +361,10 @@ let ordenId = ''
   comprobar(vista.includes('Orden registrada con su PDF'), 'la orden dice que se registró con su PDF')
   comprobar(vista.includes(`OT-banco-${sello}.pdf`), 'y Administración ve su PDF en la orden')
   comprobar((await pagina.getByRole('button', { name: `Quitar OT-banco-${sello}.pdf` }).count()) === 0, 'sin botón para quitar el único PDF de la orden')
-  comprobar(await pagina.getByText('Para cambiarlo, sube el correcto y después quita este.').isVisible(), 'y dice cómo se cambia')
+  // Con su PDF puesto no hay un campo vacío: «Cambiar el PDF» lo abre y dice cómo se cambia.
+  await pagina.getByRole('button', { name: 'Cambiar el PDF' }).click()
+  comprobar(await pagina.getByText('Sube el correcto; después quita el anterior de la lista.').isVisible(), 'y dice cómo se cambia')
+  await pagina.getByRole('button', { name: 'No cambiarlo' }).click()
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-registrada.png`, fullPage: true })
   await contexto.close()
 }

@@ -12,7 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
 import { cantidad } from '@/lib/format'
-import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { leerPlanillaAlmacen, registrarFilaPlanilla, type FilaPlanilla } from './acciones'
@@ -214,6 +214,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             <ul className="max-h-[55vh] divide-y divide-borde overflow-y-auto rounded-[var(--radius-base)] border border-borde">
               {filas.map((f) => {
                 const r = resultados[f.id]
+                // Si lo que no entró fue la foto, se dice en su campo y no debajo de la fila.
+                const avisoFoto = r?.estado === 'error' && r.mensaje.startsWith(NO_SE_CARGO_EL_ARCHIVO) ? r.mensaje : null
                 return (
                   <li key={`${f.hoja}-${f.fila}`} className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <div className="min-w-0">
@@ -257,7 +259,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                           </Seleccion>
                         </div>
                       )}
-                      {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                      {r?.estado === 'error' && !avisoFoto && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
                     </div>
                     <div className="flex items-center gap-2 sm:justify-end">
                       {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
@@ -266,7 +268,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
                       {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
                         <ElegirArchivo accept={ACEPTA_FOTO} texto="Elegir la foto de la salida" hastaMb={MAXIMO_MB_FOTO}
-                          archivo={elegidas[f.id] ?? null} disabled={registrando} className="w-full sm:w-64"
+                          archivo={elegidas[f.id] ?? null} aviso={avisoFoto} disabled={registrando} className="w-full sm:w-64"
                           aria-label={`Elegir la foto de la salida de la fila ${f.fila}`}
                           onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
                       )}

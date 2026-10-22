@@ -1,5 +1,5 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
-import { mensajeDeArchivo, type ResultadoAccion } from '@/lib/acciones'
+import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { createClient } from '@/lib/supabase/client'
 
 /**
@@ -36,16 +36,7 @@ export async function subirAdjunto(
   const supabase = createClient()
 
   const { error } = await supabase.storage.from('adjuntos-ot').upload(ruta, archivo, { contentType, upsert: false })
-  if (error) {
-    // La señal, solo cuando no hubo respuesta. Si Storage contestó, se dice lo
-    // que contestó: a Diseño le decía «revisa la señal» cuando le faltaba el
-    // permiso (2026-10-21).
-    const sinRespuesta = /fetch|network|load failed|timed? ?out|aborted/i.test(error.message)
-    return {
-      ok: false,
-      error: sinRespuesta ? 'No se pudo subir el archivo. Revisa la señal y vuelve a intentar.' : mensajeDeArchivo(error),
-    }
-  }
+  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   const datos = new FormData()
   datos.set('orden_id', ordenId)

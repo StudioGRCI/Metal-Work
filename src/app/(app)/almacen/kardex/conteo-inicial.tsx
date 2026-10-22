@@ -9,8 +9,8 @@ import { Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
-import { TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { cantidad, hoyLima } from '@/lib/format'
+import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
 
@@ -37,6 +37,12 @@ export function ConteoInicial() {
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
   const [fechaLeida, setFechaLeida] = useState('')
+  // Lo que la fecha tiene mal se dice en la fecha, antes de leer el Excel; si
+  // el servidor la rechaza igual (pasó la medianoche), también va ahí.
+  const [avisoFechaServidor, setAvisoFechaServidor] = useState<string | null>(null)
+  const hoy = hoyLima()
+  const desde = sumarDias(hoy, -DIAS_DEL_CONTEO)
+  const avisoFecha = motivoDeFechaDeConteo(fecha, hoy, desde) ?? avisoFechaServidor
   const enCurso = useRef(false)
   // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
   // no es de esta ventana, y al abrirla de nuevo no aparece.
@@ -84,7 +90,10 @@ export function ConteoInicial() {
       datos.set('fecha', fecha)
       const r = await leerConteoInicial(null, datos)
       if (esta !== vuelta.current) return
-      if (!r.ok) setAvisoArchivo(r.error)
+      if (!r.ok && /fecha del conteo|conteo es de hace|fecha en que se hizo/i.test(r.error)) {
+        setArchivo(null)
+        setAvisoFechaServidor(r.error)
+      } else if (!r.ok) setAvisoArchivo(r.error)
       else {
         setFilas(r.datos?.filas ?? [])
         setFechaLeida(fecha)
@@ -154,11 +163,12 @@ export function ConteoInicial() {
                 <FileSpreadsheet aria-hidden className="size-4" />Descargar formato de conteo
               </a>
               <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
-                <Campo etiqueta="Fecha del conteo" htmlFor="conteo-inicial-fecha" requerido>
-                  <Entrada id="conteo-inicial-fecha" type="date" value={fecha} max={hoyLima()} disabled={leyendo}
+                <Campo etiqueta="Fecha del conteo" htmlFor="conteo-inicial-fecha" requerido error={avisoFecha ?? undefined}>
+                  <Entrada id="conteo-inicial-fecha" type="date" value={fecha} min={desde} max={hoy} disabled={leyendo}
                     onChange={(e) => {
                       setFecha(e.target.value)
-                      // El servidor lo rechazó con la otra fecha («de hace más de 31 días»): con esta se elige de nuevo.
+                      setAvisoFechaServidor(null)
+                      // El que se rechazó con la otra fecha se elige de nuevo con esta.
                       setArchivo(null)
                       setAvisoArchivo(null)
                     }} />
@@ -166,7 +176,7 @@ export function ConteoInicial() {
                 <Campo etiqueta="Formato de conteo, ya lleno" htmlFor="conteo-inicial-archivo">
                   <ElegirArchivo id="conteo-inicial-archivo" accept={ACEPTA_EXCEL} hastaMb={MAXIMO_MB_EXCEL}
                     archivo={archivo} aviso={avisoArchivo} estado={leyendo ? 'Leyendo el conteo…' : null}
-                    disabled={leyendo || !fecha} onChange={(e) => void leer(e.target.files?.[0])} />
+                    disabled={leyendo || Boolean(avisoFecha)} onChange={(e) => void leer(e.target.files?.[0])} />
                 </Campo>
               </div>
             </>
