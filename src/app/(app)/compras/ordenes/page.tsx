@@ -3,11 +3,12 @@ import { FileDown } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta } from '@/components/ui/tarjeta'
+import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { devolucionesPorReponer } from '@/lib/datos/kardex'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
@@ -15,6 +16,8 @@ import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/lo
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+
+import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
 import { AccionesCompra } from './acciones-compra'
 import { NuevaCompraDirecta } from './formulario-directa'
@@ -29,11 +32,13 @@ export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
   const emite = puede(perfil, 'compras.crear')
   const verAdquisiciones = puede(perfil, 'adquisiciones.ver')
-  const [compras, proveedores, materiales, codigos] = await Promise.all([
+  const [compras, proveedores, materiales, codigos, porReponer] = await Promise.all([
     cargarOrdenesCompra(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
     emite ? catalogoDeAlmacen() : Promise.resolve([]),
     emite ? codigosParaElegir() : Promise.resolve(null),
+    // Lo que Almacén devolvió al proveedor y espera reposición: Logística dice si ya no viene.
+    puede(perfil, ['compras.crear', 'almacen.ver']) ? devolucionesPorReponer() : Promise.resolve([]),
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
   const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
@@ -64,6 +69,18 @@ export default async function PaginaOrdenesCompra() {
             ? 'orden sigue sin su comprobante adjunto (factura, o boleta si es sin factura).'
             : 'órdenes siguen sin su comprobante adjunto (factura, o boleta si es sin factura).'}
         </p>
+      )}
+
+      {porReponer.length > 0 && (
+        <Tarjeta className="mb-4">
+          <TarjetaCabecera
+            titulo={`Devuelto al proveedor · ${porReponer.length === 1 ? '1 espera reposición' : `${porReponer.length} esperan reposición`}`}
+            ayuda="Almacén devolvió lo que llegó malo y el proveedor dijo que lo repone. Si ya no viene, dilo: lo que falta vuelve a la lista para comprarlo en otra OC."
+          />
+          <TarjetaCuerpo>
+            <EsperanReposicion devoluciones={porReponer} puedeRecibir={false} puedeDejar={emite} />
+          </TarjetaCuerpo>
+        </Tarjeta>
       )}
 
       <Tarjeta className="overflow-hidden">

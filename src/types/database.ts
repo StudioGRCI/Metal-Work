@@ -3591,6 +3591,13 @@ export type Database = {
           formato_cerrado_por: string | null
           numero_salida: string | null
           de_la_unidad: number | null
+          devuelve_ingreso: string | null
+          se_repone: boolean | null
+          motivo_devolucion: string | null
+          repone_devolucion: string | null
+          reposicion_cancelada_en: string | null
+          reposicion_cancelada_por: string | null
+          reposicion_cancelada_motivo: string | null
         }
         Insert: {
           id: string
@@ -3622,6 +3629,13 @@ export type Database = {
           formato_cerrado_por?: string | null
           numero_salida?: string | null
           de_la_unidad?: number | null
+          devuelve_ingreso?: string | null
+          se_repone?: boolean | null
+          motivo_devolucion?: string | null
+          repone_devolucion?: string | null
+          reposicion_cancelada_en?: string | null
+          reposicion_cancelada_por?: string | null
+          reposicion_cancelada_motivo?: string | null
         }
         Update: {
           id?: string
@@ -3653,6 +3667,13 @@ export type Database = {
           formato_cerrado_por?: string | null
           numero_salida?: string | null
           de_la_unidad?: number | null
+          devuelve_ingreso?: string | null
+          se_repone?: boolean | null
+          motivo_devolucion?: string | null
+          repone_devolucion?: string | null
+          reposicion_cancelada_en?: string | null
+          reposicion_cancelada_por?: string | null
+          reposicion_cancelada_motivo?: string | null
         }
         Relationships: [
           {
@@ -3672,6 +3693,13 @@ export type Database = {
           {
             foreignKeyName: "movimientos_materiales_devolucion_de_fkey"
             columns: ["devolucion_de"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_devuelve_ingreso_fkey"
+            columns: ["devuelve_ingreso"]
             isOneToOne: false
             referencedRelation: "movimientos_materiales"
             referencedColumns: ["id"]
@@ -3700,6 +3728,20 @@ export type Database = {
           {
             foreignKeyName: "movimientos_materiales_registrado_por_fkey"
             columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_repone_devolucion_fkey"
+            columns: ["repone_devolucion"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_reposicion_cancelada_por_fkey"
+            columns: ["reposicion_cancelada_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -8666,6 +8708,8 @@ export type Database = {
           material_nuevo: boolean
           orden_compra_detalle_id: string | null
           sin_salida_al_entregar: number | null
+          recompra_de: string | null
+          recompra_por: string | null
         }
         Insert: {
           id?: string
@@ -8687,6 +8731,8 @@ export type Database = {
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
           sin_salida_al_entregar?: number | null
+          recompra_de?: string | null
+          recompra_por?: string | null
         }
         Update: {
           id?: string
@@ -8708,6 +8754,8 @@ export type Database = {
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
           sin_salida_al_entregar?: number | null
+          recompra_de?: string | null
+          recompra_por?: string | null
         }
         Relationships: [
           {
@@ -8743,6 +8791,20 @@ export type Database = {
             columns: ["orden_compra_id"]
             isOneToOne: false
             referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_recompra_de_fkey"
+            columns: ["recompra_de"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_lineas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_recompra_por_fkey"
+            columns: ["recompra_por"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
             referencedColumns: ["id"]
           },
           {
@@ -11359,6 +11421,17 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_a_permiso: {
+        Args: {
+          p_permiso: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+        }
+        Returns: null
+      }
       avisar_a_quien_tiene: {
         Args: {
           p_permiso: string | null
@@ -11527,6 +11600,12 @@ export type Database = {
           p_operacion?: string | null
         }
         Returns: number
+      }
+      cantidad_en_texto: {
+        Args: {
+          p: number | null
+        }
+        Returns: string
       }
       cargar_cronograma: {
         Args: {
@@ -12756,6 +12835,16 @@ export type Database = {
         }
         Returns: string
       }
+      cuenta_de_la_linea_de_compra: {
+        Args: {
+          p_detalle: string | null
+        }
+        Returns: {
+          neto: number | null
+          sin_reponer: number | null
+          por_reponer: number | null
+        }[]
+      }
       dar_por_terminada_la_garantia: {
         Args: {
           p_orden: string | null
@@ -12802,6 +12891,13 @@ export type Database = {
           p_config: Json | null
         }
         Returns: number
+      }
+      dejar_de_esperar_reposicion: {
+        Args: {
+          p_devolucion: string | null
+          p_motivo: string | null
+        }
+        Returns: string
       }
       despachar_material: {
         Args: {
@@ -12852,6 +12948,33 @@ export type Database = {
           minimo: number | null
           motivo: string | null
         }
+      }
+      devoluciones_por_reponer: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          devolucion_id: string | null
+          fecha: string | null
+          compra: string | null
+          orden_compra_id: string | null
+          proveedor: string | null
+          material: string | null
+          unidad: string | null
+          devuelto: number | null
+          repuesto: number | null
+          documento: string | null
+          motivo: string | null
+        }[]
+      }
+      devolver_al_proveedor: {
+        Args: {
+          p_id: string | null
+          p_ingreso: string | null
+          p_cantidad: number | null
+          p_documento: string | null
+          p_motivo: string | null
+          p_se_repone: boolean | null
+        }
+        Returns: string
       }
       dias_de_taller: {
         Args: {
@@ -13481,6 +13604,21 @@ export type Database = {
           urgentes: number | null
           total: number | null
           por_estado: Json | null
+        }[]
+      }
+      ingresos_para_devolver: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          ingreso_id: string | null
+          fecha: string | null
+          compra: string | null
+          proveedor: string | null
+          material_id: string | null
+          material: string | null
+          unidad: string | null
+          ingresado: number | null
+          se_puede: number | null
+          documento: string | null
         }[]
       }
       ingresos_por_validar: {
@@ -14285,6 +14423,15 @@ export type Database = {
         }
         Returns: string
       }
+      reabrir_rq_por_lo_devuelto: {
+        Args: {
+          p_detalle: string | null
+          p_neto_antes: number | null
+          p_neto_despues: number | null
+          p_compra: string | null
+        }
+        Returns: null
+      }
       recalcular_etapa_desde_actividades: {
         Args: {
           p_etapa_id: string | null
@@ -14311,11 +14458,27 @@ export type Database = {
         }
         Returns: string
       }
+      recibir_reposicion: {
+        Args: {
+          p_id: string | null
+          p_devolucion: string | null
+          p_cantidad: number | null
+          p_documento: string | null
+        }
+        Returns: string
+      }
       recibir_version_plano: {
         Args: {
           p_id: string | null
         }
         Returns: string
+      }
+      recomprar_lo_devuelto: {
+        Args: {
+          p_detalle: string | null
+          p_devolucion: string | null
+        }
+        Returns: number
       }
       reemplazar_etapas_historicas: {
         Args: {

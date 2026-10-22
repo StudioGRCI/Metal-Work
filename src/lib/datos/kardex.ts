@@ -63,7 +63,7 @@ function consultaKardex(db: Awaited<ReturnType<typeof createClient>>, filtros: O
   let consulta = db.from('v_kardex_almacen').select(COLUMNAS, contar ? { count: 'exact' } : undefined)
   if (filtros.material) consulta = consulta.eq('material_id', filtros.material)
   if (filtros.tipo === 'INGRESO') consulta = consulta.eq('movimiento', 'INGRESO')
-  if (filtros.tipo === 'SALIDA') consulta = consulta.in('movimiento', ['SALIDA', 'DESPACHO'])
+  if (filtros.tipo === 'SALIDA') consulta = consulta.in('movimiento', ['SALIDA', 'DESPACHO', 'DEVOLUCION_PROVEEDOR'])
   if (filtros.tipo === 'AJUSTE') consulta = consulta.eq('movimiento', 'AJUSTE')
   // Los días son de Lima: el 30 de setiembre termina a medianoche de Lima, no
   // de Greenwich, o las salidas de la tarde caerían en el día siguiente.
@@ -369,4 +369,23 @@ export async function materialesParaPlanilla(): Promise<MaterialParaPlanilla[]> 
     ultimo = data[data.length - 1].id
   }
   return materiales
+}
+
+export type IngresoParaDevolver = Database['public']['Functions']['ingresos_para_devolver']['Returns'][number]
+export type DevolucionPorReponer = Database['public']['Functions']['devoluciones_por_reponer']['Returns'][number]
+
+/** Los ingresos de compra que todavía se pueden devolver al proveedor (solo quien recibe en Almacén). */
+export async function ingresosParaDevolver(): Promise<IngresoParaDevolver[]> {
+  const db = await createClient()
+  const { data, error } = await db.rpc('ingresos_para_devolver')
+  if (error) throw new Error('No se pudieron cargar los ingresos que se pueden devolver.')
+  return data ?? []
+}
+
+/** Lo devuelto al proveedor que todavía espera su reposición. */
+export async function devolucionesPorReponer(): Promise<DevolucionPorReponer[]> {
+  const db = await createClient()
+  const { data, error } = await db.rpc('devoluciones_por_reponer')
+  if (error) throw new Error('No se pudieron cargar las devoluciones que esperan reposición.')
+  return data ?? []
 }
