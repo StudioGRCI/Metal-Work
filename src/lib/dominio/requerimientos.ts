@@ -19,6 +19,30 @@ export const ESTADO_REQUERIMIENTO: Record<string, Def> = {
 }
 
 /**
+ * Entregado, pero parte no salió del kardex porque ya no iba a salir: Almacén
+ * lo cerró con su motivo (migración 20261020196000). Quien lo pidió tiene que
+ * verlo distinto de uno que salió entero.
+ */
+export const ENTREGADO_CON_FALTANTE: Def = {
+  etiqueta: 'Entregado con faltante',
+  tono: 'aviso',
+  descripcion: 'Almacén lo entregó; una parte no salió del kardex, con su motivo.',
+}
+
+/** El estado como se muestra: el entregado con faltante se dice aparte. */
+export function estadoDelRequerimiento(rq: { estado: string; faltante_al_entregar: string | null }): Def | undefined {
+  if (rq.estado === 'ENTREGADO' && rq.faltante_al_entregar) return ENTREGADO_CON_FALTANTE
+  return ESTADO_REQUERIMIENTO[rq.estado]
+}
+
+/**
+ * Los estados como los devuelven las funciones del código interno
+ * (`codigo_interno_documentos`, `codigo_interno_lo_pedido`), que ya dicen
+ * aparte el entregado con faltante (migración 20261020196000).
+ */
+export const ESTADO_REQUERIMIENTO_DEL_CODIGO: Record<string, Def> = { ...ESTADO_REQUERIMIENTO, ENTREGADO_CON_FALTANTE }
+
+/**
  * Los dos requerimientos (migración 20261015162000). El de operación lo piden
  * Maestranza, Producción, Acabados y Almacén y su OC la hace Logística; el de
  * Administración es de oficina, lo lleva la administradora y ella hace su OC.
@@ -129,13 +153,15 @@ export type PartesDelInsumo = { entregado: number; recoger: number; porLlegar: n
 const LLEGO_AL_ALMACEN = ['EN_KARDEX', 'EN_STOCK', 'LISTO_EN_ALMACEN', 'ENTREGADO']
 
 export function partesDelInsumo(
-  l: { cantidad: number; en_stock: number | null; etapa: string | null; entregado: number | null; llegado: number | null },
+  l: { cantidad: number; en_stock: number | null; etapa: string | null; entregado: number | null; llegado: number | null; sin_salida?: number | null },
   estadoRq: string,
 ): PartesDelInsumo | null {
   // Sin lo entregado no se parte: no se sabe cuánto de lo llegado ya se llevaron.
   if (estadoRq === 'ANULADO' || l.entregado === null) return null
   const pedido = Math.max(l.cantidad, 0)
-  if (estadoRq === 'ENTREGADO') return { entregado: pedido, recoger: 0, porLlegar: 0, revisar: 0 }
+  // Entregado con faltante (migración 20261020196000): lo que no salió del
+  // kardex no se entregó, y la tarjeta lo dice aparte.
+  if (estadoRq === 'ENTREGADO') return { entregado: pedido - Math.min(Math.max(l.sin_salida ?? 0, 0), pedido), recoger: 0, porLlegar: 0, revisar: 0 }
   const entregado = Math.min(Math.max(l.entregado, 0), pedido)
   if (estadoRq === 'POR_ATENDER') return { entregado, recoger: 0, porLlegar: 0, revisar: pedido - entregado }
   // Lo que Almacén separó de su stock más lo que ya entró de su compra.

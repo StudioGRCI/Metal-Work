@@ -67,7 +67,7 @@ export const ALMACENES: Record<Almacen, Def & { regla: string; formato: string |
   ACCESORIOS: {
     etiqueta: 'Accesorios', tono: 'info',
     descripcion: 'Sistemas y accesorios de la unidad: hidráulico, eléctrico, frenos, suspensión.',
-    regla: 'Sale solo para una unidad con código interno. Lo que entró para una unidad no sale para otra.',
+    regla: 'Sale para una unidad con código interno, o a PLANTA u OFICINA solo si su requerimiento lo pide. Lo que entró para una unidad no sale para otra.',
     formato: null,
   },
   MATERIA_PRIMA: {
@@ -98,4 +98,24 @@ export function almacenEnFrase(almacen: Almacen) {
 /** Un almacén cuya salida se cierra con un formato firmado. */
 export function exigeFormato(almacen: string | null | undefined) {
   return almacen === 'MATERIA_PRIMA' || almacen === 'EPP'
+}
+
+/**
+ * Las cantidades del almacén llevan hasta tres decimales, y la base rechaza una
+ * con más (registrar_salida_material). Toda suma o resta de cantidades que hace
+ * la pantalla pasa por aquí: en el navegador 5.3 − 2.1 da 3.1999999999999997, y
+ * esa cifra iba al tope y a la propuesta de la salida, que la base rechazaba.
+ */
+export function redondearCantidad(n: number) {
+  return Math.round(n * 1000) / 1000
+}
+
+/**
+ * Lo más que puede salir, a los tres decimales de la base y sin pasarse de lo
+ * que hay. La recepción guarda hasta cuatro: con 1.0005, redondear daba 1.001
+ * y la base lo rechazaba («Solo hay 1.0005 libre»). Primero quita el ruido de
+ * la suma (3.1999999999999997 es 3.2) y después corta.
+ */
+export function topeDeCantidad(n: number) {
+  return Math.floor(Math.round(n * 1e6) / 1000) / 1000
 }

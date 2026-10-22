@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -9,7 +9,10 @@ import { cn } from '@/lib/utils'
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
  * foco al primer control al abrir, y hacer que el tabulador dé la vuelta
- * adentro en vez de escaparse a la página de atrás.
+ * adentro en vez de escaparse a la página de atrás. Lo que lleva
+ * `tabindex="-1"` no cuenta: el tabulador no pasa por ahí, como el `<select>`
+ * transparente con que `SeleccionBuscable` envía su valor, que se llevaba el
+ * foco al abrir la salida del kardex.
  */
 const ENFOCABLES = [
   'a[href]',
@@ -17,8 +20,10 @@ const ENFOCABLES = [
   'input:not([disabled]):not([type="hidden"])',
   'select:not([disabled])',
   'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ')
+  '[tabindex]',
+]
+  .map((s) => `${s}:not([tabindex="-1"])`)
+  .join(', ')
 
 const ANCHOS = {
   sm: 'max-w-md',
@@ -29,6 +34,9 @@ const ANCHOS = {
 } as const
 
 export type AnchoVentana = keyof typeof ANCHOS
+
+/** El documento no cambia: solo importa si ya se está en el navegador. */
+const sinSuscripcion = () => () => {}
 
 /**
  * La ventana del sistema: una sola, en lugar de las catorce que había copiadas.
@@ -80,12 +88,18 @@ export function Ventana({
   const contenido = useRef<HTMLDivElement>(null)
   const idTitulo = useId()
   const idDescripcion = useId()
+  // En el servidor no hay documento al que colgar el portal, así que la
+  // ventana no se pinta hasta que la página está hidratada. Una que nace
+  // abierta (la salida que llega desde un RQ, `/almacen/kardex?rq=`) se pintaba
+  // en la primera pasada del navegador, React no la encontraba en el HTML del
+  // servidor y rehacía la página entera («Hydration failed»).
+  const hidratada = useSyncExternalStore(sinSuscripcion, () => true, () => false)
 
   // Al abrir: se guarda quién tenía el foco, se lleva el foco adentro y se
   // traba el rodado de la página. Al cerrar, todo vuelve como estaba. No hay
   // estado que sincronizar acá, solo el documento.
   useEffect(() => {
-    if (!abierta) return
+    if (!abierta || !hidratada) return
 
     const veniaDe = document.activeElement as HTMLElement | null
     const rodadoPrevio = document.body.style.overflow
@@ -101,13 +115,12 @@ export function Ventana({
 
     return () => {
       document.body.style.overflow = rodadoPrevio
-      veniaDe?.focus()
+      // Una ventana que nace abierta no tiene botón al que volver.
+      if (veniaDe && veniaDe !== document.body) veniaDe.focus()
     }
-  }, [abierta])
+  }, [abierta, hidratada])
 
-  // En el servidor no hay documento al que colgar el portal, y en la primera
-  // pintada la ventana siempre nace cerrada.
-  if (!abierta || typeof document === 'undefined') return null
+  if (!abierta || !hidratada) return null
 
   function alTeclado(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {

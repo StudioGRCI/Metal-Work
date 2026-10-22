@@ -44,6 +44,46 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.' || p_clave), 'role', 'authenticated')::text, true);
 end $$;
 
+-- Desde la migración 20261020196000, «Entregado» pide antes la salida del kardex
+-- de cada insumo, y la salida pide que haya saldo. Como dueño de las tablas se
+-- monta el armazón: lo que el almacén ya tenía o lo que llegó de la compra entra
+-- al kardex (la recepción tiene sus checks), y la foto se sube. La salida la
+-- registra Almacén con su función y su rol (la salida tiene su check, el 416).
+create or replace function pg_temp.sacar_del_kardex(p_rq text) returns void language plpgsql as $$
+declare
+  v_alm text := current_setting('prueba.almacenero');
+  v_sesion text[] := array[current_setting('request.jwt.claim.sub', true), current_setting('request.jwt.claim.role', true),
+                           current_setting('request.jwt.claims', true)];
+  v_id uuid;
+  l record;
+begin
+  for l in
+    select x.linea_id, x.pendiente, rl.orden_compra_detalle_id,
+           coalesce(x.material_comprado, d.material_id, x.material_id) as material
+      from public.v_rq_lineas_para_salida x
+      join public.requerimiento_lineas rl on rl.id = x.linea_id
+      left join public.orden_compra_material_detalles d on d.id = rl.orden_compra_detalle_id
+     where x.requerimiento_id = current_setting('prueba.' || p_rq)::uuid and x.pendiente > 0
+  loop
+    insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por,
+                                               orden_compra_detalle_id)
+    values (gen_random_uuid(), 'INGRESO', l.material, l.pendiente,
+            case when l.orden_compra_detalle_id is null then 'INGRESO_GENERAL' else 'COMPRA' end,
+            'Ingreso de la prueba', v_alm::uuid, l.orden_compra_detalle_id);
+    v_id := gen_random_uuid();
+    insert into storage.objects (bucket_id, name, owner_id, metadata)
+    values ('evidencias-almacen', v_alm || '/' || v_id || '.jpg', v_alm, '{"mimetype": "image/jpeg", "size": 2048}');
+    perform pg_temp.como('almacenero');
+    set local role authenticated;
+    perform public.registrar_salida_material(v_id, l.material, l.pendiente, null, null, 'Salida de la prueba',
+      'Supervisor de Maestranza', v_alm || '/' || v_id || '.jpg', l.linea_id);
+    reset role;
+  end loop;
+  perform set_config('request.jwt.claim.sub', coalesce(v_sesion[1], ''), true);
+  perform set_config('request.jwt.claim.role', coalesce(v_sesion[2], ''), true);
+  perform set_config('request.jwt.claims', coalesce(v_sesion[3], ''), true);
+end $$;
+
 create or replace function pg_temp.lineas() returns jsonb language sql as $$
   select jsonb_build_array(
     jsonb_build_object('descripcion', 'Plancha LAF 2 mm 4x8', 'cantidad', 3,
@@ -250,6 +290,9 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.rq_marcar_listo_en_almacen(current_setting('prueba.rq')::uuid, 'Llegó con el conductor');
 select test.afirmar(pg_temp.pct() = 90 and pg_temp.etapa() = 'LISTO_EN_ALMACEN', 'listo en almacén: 90 %');
+reset role;
+select pg_temp.sacar_del_kardex('rq');
+set local role authenticated;
 select public.rq_marcar_entregado(current_setting('prueba.rq')::uuid, 'Supervisor de Maestranza');
 select test.afirmar(pg_temp.pct() = 100 and pg_temp.etapa() = 'ENTREGADO', 'entregado: 100 %');
 reset role;

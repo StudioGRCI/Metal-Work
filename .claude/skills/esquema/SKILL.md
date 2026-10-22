@@ -214,6 +214,33 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
   check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
   pantalla pinte las partes que da la base en vez de recalcularlas.
+  Volvió a pasar con el stock (sección 8 de la `20261020196000`): una salida con
+  un RQ de PLANTA hacia una unidad se le descontaba al RQ por su línea y a la
+  unidad por su código, y sacar 2 bajaba lo separado en 4. Un movimiento que
+  lleva dos llaves de dueño se reparte entre ellos una sola vez; el check 416 lo
+  prueba con la existencia, lo libre y lo de cada código escritos a mano antes
+  y después.
+  Y el reparto **se anota en el movimiento al registrarlo**
+  (`movimientos_materiales.de_la_unidad`), no se recalcula al leer. La primera
+  versión lo deducía después con lo que el RQ es hoy, y una revisión dio seis
+  contraejemplos: marcar el RQ «Listo», corregir su código o devolver parte
+  cambiaba lo ya descontado sin ningún movimiento, y el orden de dos salidas de
+  la misma línea dependía del alfabeto. Si una cuenta depende del estado de otro
+  documento en el momento del movimiento, ese estado se congela en el movimiento.
+  **Y las filas de antes de esa columna se anotan una vez, en la misma
+  migración, no se estiman al leer.** Con `de_la_unidad` se estimó al leer tres
+  vueltas seguidas y las tres fallaron: cada función que la usaba daba otra
+  cifra (lo libre subía), y la estimación cambiaba con lo que pasaba después
+  (un ingreso para la unidad, el código del RQ corregido). Se arregló con
+  `anotar_salidas_de_antes()`, que es idempotente. La condición de qué filas
+  anotar se mira **con el estado que tenían al moverse**, no con el de hoy: un
+  RQ cuyo código se corrigió después quedaba fuera, y el historial de
+  `audit_log` dice qué código tenía (la octava vuelta lo encontró). Si la regla
+  no se puede reconstruir exacta, se dice en qué casos difiere y hacia dónde,
+  sin prometer un sentido que no se probó («lo libre menor, nunca mayor» salió
+  falso dos vueltas seguidas), y se prueba con los datos que de verdad hay:
+  buscar quién escribe las columnas de las que depende (`grep` en las
+  migraciones) y poner en el check el caso común, el raro y el límite conocido.
 
 - **Dos caminos que se excluyen se cierran desde los dos lados, en cada entrada.**
   En la `20261020210000` la OC con boleta empezó a pagarse directo, y la función

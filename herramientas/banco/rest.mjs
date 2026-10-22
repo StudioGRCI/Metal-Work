@@ -515,7 +515,14 @@ export function construirLlamada(nombre, argumentos, json = new Set(), busqueda 
   // Como PostgREST: el orden, el límite y el salto de `.order()` y `.range()`
   // valen también sobre lo que devuelve la función, y el tope de filas también.
   const orden = construirOrden(busqueda.get('order'), 't')
+  // Y los filtros (`.gt('separado', 0)`), como PostgREST sobre una función que
+  // devuelve filas: el banco los ignoraba y entregaba todas, y una pantalla que
+  // filtra en la base salía aquí con filas que en Supabase no llegan.
+  const { propios, incrustados } = repartirFiltros(busqueda)
+  if (incrustados.size) throw new ErrorNoSoportado(`Filtro sobre una incrustación en la función «${nombre}»`)
+  const donde = construirDonde(propios, ctx, 't')
   let texto = `select * from public.${comillas(nombre)}(${parametros.join(', ')}) t`
+  if (donde.length) texto += ` where ${donde.join(' and ')}`
   if (orden.length) texto += ` order by ${orden.join(', ')}`
   texto += paginar(busqueda, {})
   return { texto, valores: ctx.valores }

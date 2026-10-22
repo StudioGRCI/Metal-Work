@@ -1,6 +1,7 @@
 import { Download, X } from 'lucide-react'
 import Link from 'next/link'
 
+import { SeparadoPara } from '@/components/almacen/separado-para'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
@@ -11,9 +12,12 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
+import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
-import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
-import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato } from '@/lib/dominio/almacen'
+import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
+import { separadoEnAlmacen, stockEnAlmacen } from '@/lib/datos/stock-almacen'
+import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato, topeDeCantidad } from '@/lib/dominio/almacen'
+import { normalizarCodigo, vehiculosDeLaPlaca } from '@/lib/dominio/codigos-internos'
 import { cantidad, fechaHora } from '@/lib/format'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -57,7 +61,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const abreOt = seccionesDeOrden(perfil).length > 0
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -80,15 +84,54 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     salidasPorCerrar(),
     // Lo que piden los requerimientos vivos, para atenderlo desde la salida.
     puedeSalida ? lineasDeRequerimientoParaSalida() : Promise.resolve([]),
+    // La lista de códigos internos para la salida sin RQ, la misma del RQ.
+    puedeSalida ? codigosParaElegir(db) : Promise.resolve(null),
+    // Lo que ya es de cada código, con la cuenta de «Stock en almacén»: la
+    // salida lo necesita de todo material que tenga algo separado o apartado
+    // para un pedido de OT; la ficha de quien solo mira, del elegido. Un
+    // material que no viene no tiene nada de nadie. Si no se puede leer, la
+    // pantalla lo dice y muestra lo del kardex.
+    (puedeSalida ? separadoEnAlmacen() : filtros.material ? stockEnAlmacen([filtros.material]) : Promise.resolve(null))
+      .catch((e: unknown) => {
+        console.error('No se pudo leer lo separado del stock:', e instanceof Error ? e.message : e)
+        return null
+      }),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
+  // Un RQ cuyo código es la placa de un vehículo que tiene otro código: la
+  // salida avisa que el gasto no va al de él y, si todavía se puede, que
+  // Requerimientos corrija el RQ a ese código. Con una salida cargada a otro ya
+  // no se puede. El vehículo se busca como en la salida: la placa tal cual y,
+  // si ninguno la tiene así, por sus letras y números. Casi nunca hay uno: sin
+  // él no se consulta nada.
+  const rqEnPlacaAjena = new Map<string, string>()
+  for (const l of lineasRq) {
+    const c = normalizarCodigo(l.codigo_interno)
+    if (unidades.some((u) => u.codigo_interno && normalizarCodigo(u.codigo_interno) === c)) continue
+    const suyos = vehiculosDeLaPlaca(unidades, c)
+    const codigo = suyos.length === 1 ? normalizarCodigo(suyos[0].codigo_interno ?? '') : ''
+    if (codigo) rqEnPlacaAjena.set(l.requerimiento_id, codigo)
+  }
+  const rqConSalida = await requerimientosConSalidaCargada([...rqEnPlacaAjena].map(([requerimiento_id, codigo]) => ({ requerimiento_id, codigo })))
   const lineasPorValidar = porValidar.reduce((s, e) => s + e.lineas.length, 0)
 
   const { filas, total, cronologico, pagina } = kardex
   const saldoPorMaterial = new Map(materiales.map((m) => [m.material_id, m.existencia]))
   const elegido = filtros.material ? materiales.find((m) => m.material_id === filtros.material) : undefined
   const minimoElegido = elegido ? minimos.get(elegido.material_id) ?? null : null
+  const stockLeido = stock !== null
+  const stockPorMaterial = new Map((stock ?? []).map((s) => [s.material_id, s]))
+  // El elegido, si tiene algo separado o apartado; si no viene, todo lo que hay está libre.
+  const stockElegido = elegido && stockLeido ? stockPorMaterial.get(elegido.material_id) : undefined
+  // Cómo sale lo que tiene dueño: lo de un RQ solo se descuenta con una salida de ese RQ.
+  const notaDeDueno = stockElegido
+    ? [
+        stockElegido.por_codigo.some((c) => c.de_requerimientos > 0) && 'Lo separado para un RQ sale con ese RQ.',
+        stockElegido.por_codigo.some((c) => c.cantidad > c.de_requerimientos) && 'Lo de una unidad sin RQ sale para esa unidad.',
+        stockElegido.reservado_ot > 0 && 'Lo de pedidos de OT sale con su despacho.',
+      ].filter(Boolean).join(' ')
+    : ''
   // Los que están por debajo de su mínimo, el más corto primero (en proporción).
   const bajoMinimo = materiales
     .filter((m) => minimos.has(m.material_id) && m.existencia < (minimos.get(m.material_id) ?? 0))
@@ -128,11 +171,29 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         <div className="-mt-3 mb-4 flex flex-wrap items-start gap-2">
           {puedeSalida && (
             <NuevaSalida
-              materiales={materiales.map((m) => ({ id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, disponible: m.disponible, almacen: m.almacen }))}
+              materiales={materiales.map((m) => {
+                const s = stockPorMaterial.get(m.material_id)
+                return {
+                  id: m.material_id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, almacen: m.almacen,
+                  // Lo apartado para pedidos de OT no sale por aquí (la base lo
+                  // rechaza): la cuenta de la función, porque la del kardex no
+                  // se lo cuenta a Almacén, que no ve las OT. A tres decimales,
+                  // cortado: la salida no lleva cuatro.
+                  disponible: s ? s.disponible : topeDeCantidad(m.disponible),
+                  reservadoOt: s ? s.reservado_ot : 0,
+                  libre: s ? s.libre : m.disponible,
+                  separado: s ? s.separado : 0,
+                  deMas: s ? s.de_mas : 0,
+                  porCodigo: s ? s.por_codigo : [],
+                }
+              })}
+              stockLeido={stockLeido}
               lineasRq={lineasRq}
+              rqConSalida={rqConSalida}
+              codigos={codigos}
               rqInicial={rqInicial}
               unidades={unidades.filter((u): u is typeof u & { id: string } => Boolean(u.id)).map((u) => ({
-                id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes,
+                id: u.id, nombre: u.nombre ?? 'Unidad', vehiculo: u.vehiculo, ordenes: u.ordenes, codigo_interno: u.codigo_interno, placa: u.placa,
               }))}
             />
           )}
@@ -285,10 +346,24 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           <dl className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Cifra etiqueta={`Saldo en almacén (${elegido.unidad ?? 's/u'})`} valor={cantidad(elegido.existencia)}
               alerta={minimoElegido !== null && elegido.existencia < minimoElegido ? `Bajo el mínimo de ${cantidad(minimoElegido)}` : undefined} />
-            <Cifra etiqueta="Libre para salidas" valor={cantidad(elegido.disponible)} acento />
+            {/* Lo libre con la misma cuenta que «Stock en almacén»: lo que no es de ningún código. */}
+            {stockLeido
+              ? <Cifra etiqueta="Libre, sin código" valor={cantidad(stockElegido ? stockElegido.libre : elegido.disponible)} acento />
+              : <Cifra etiqueta="Libre para salidas" valor={cantidad(elegido.disponible)} acento />}
             <Cifra etiqueta={total > filas.length ? 'Entradas en lo mostrado' : 'Entradas del periodo'} valor={cantidad(entradas)} />
             <Cifra etiqueta={total > filas.length ? 'Egresos en lo mostrado' : 'Egresos del periodo'} valor={cantidad(salidas)} />
           </dl>
+          {/* De quién es lo que no está libre, igual que en «Stock en almacén». */}
+          {stockElegido && (stockElegido.separado > 0 || stockElegido.reservado_ot > 0) && (
+            <div className="-mt-1 mb-4 rounded-[var(--radius-base)] border border-borde px-3 py-2" data-ya-tiene-dueno>
+              <p className="mb-1 text-xs font-medium text-texto">Ya tiene dueño</p>
+              <SeparadoPara material={stockElegido} className="text-sm" />
+              {notaDeDueno && <p className="mt-1 text-xs text-texto-suave">{notaDeDueno}</p>}
+            </div>
+          )}
+          {!stockLeido && (
+            <p className="-mt-1 mb-4 text-xs text-aviso">No se pudo leer lo separado para cada código: «Libre para salidas» incluye lo que ya es de algún RQ.</p>
+          )}
           {puedeIngreso ? (
             <div className="mb-4">
               <FijarStockMinimo key={`${elegido.material_id}-${minimoElegido}`} materialId={elegido.material_id} minimo={minimoElegido} unidad={elegido.unidad} />
@@ -376,13 +451,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
                   )}
                   {f.con_foto && (
-                    <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
+                    <a href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</a>
                   )}
                   {f.formato_pendiente && (
                     <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
                   )}
                   {f.con_formato && exigeFormato(f.almacen) && (
-                    <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
+                    <a href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</a>
                   )}
                 </>
               )

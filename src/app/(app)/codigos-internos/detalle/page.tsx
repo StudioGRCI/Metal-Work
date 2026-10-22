@@ -55,7 +55,7 @@ import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
-import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
+import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
@@ -1461,7 +1461,7 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
   }
   const estado = (tipo: string, valor: string) =>
     tipo === 'REQUERIMIENTO'
-      ? definir(ESTADO_REQUERIMIENTO, valor)
+      ? definir(ESTADO_REQUERIMIENTO_DEL_CODIGO, valor)
       : tipo === 'OT'
         ? definir(ESTADO_OT, valor)
         : tipo === 'SERVICIO'

@@ -10,7 +10,7 @@ import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListad
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import {
   COMPRA_CORTA,
-  ESTADO_REQUERIMIENTO,
+  estadoDelRequerimiento,
   ESTADOS_RQ_ABIERTOS,
   ETAPA_AVANCE_RQ,
   ETAPAS_DE_RECOJO,
@@ -216,7 +216,7 @@ export function TarjetaRequerimiento({
   correcciones: CorreccionVista[] | undefined
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
-  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : soloFaltaLoNoComprado(rq) ? FALTA_LO_NO_COMPRADO : ESTADO_REQUERIMIENTO[rq.estado]
+  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : soloFaltaLoNoComprado(rq) ? FALTA_LO_NO_COMPRADO : estadoDelRequerimiento(rq)
   const plazo = abierto(rq.estado) ? diasHasta(rq.fecha_requerida) : null
   const corrige = anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO'
   const anulable = anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK')
@@ -279,6 +279,19 @@ export function TarjetaRequerimiento({
               Entregado {fechaHora(rq.entregado_en)}
               {rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}
             </p>
+          )}
+          {/* Entregado con faltante: qué no salió del kardex y por qué, para quien lo pidió. */}
+          {rq.faltante_al_entregar && (
+            <div className="space-y-0.5" data-faltante>
+              <p className="break-words text-texto">
+                <span className="font-medium text-aviso">No salió del kardex:</span> {rq.faltante_al_entregar}
+              </p>
+              {rq.motivo_del_faltante && (
+                <p className="break-words">
+                  <span className="font-medium text-texto">Motivo:</span> {rq.motivo_del_faltante}
+                </p>
+              )}
+            </div>
           )}
           <HistorialDeCorrecciones correcciones={correcciones} />
         </div>
@@ -376,6 +389,7 @@ function InsumosConPartes({ rq, abierto: abiertoPorDefecto }: { rq: Requerimient
     { n: cuenta('porLlegar'), texto: 'por llegar', tono: 'aviso' as Tono },
     { n: cuenta('revisar'), texto: 'por revisar', tono: 'neutro' as Tono },
     { n: cuenta('entregado'), texto: cuenta('entregado') === 1 ? 'entregado' : 'entregados', tono: 'neutro' as Tono },
+    { n: rq.lineas.filter((l) => sinSalida(l, rq) > 0).length, texto: 'no salió del kardex', tono: 'aviso' as Tono },
   ].filter((f) => f.n > 0)
   const total = rq.lineas.length
   return (
@@ -406,8 +420,12 @@ function InsumosConPartes({ rq, abierto: abiertoPorDefecto }: { rq: Requerimient
   )
 }
 
+/** Lo que no salió del kardex al entregar el RQ con faltante; 0 en los demás. */
+const sinSalida = (l: LineaRequerimiento, rq: RequerimientoListado) => (rq.estado === 'ENTREGADO' ? Math.max(l.sin_salida ?? 0, 0) : 0)
+
 function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; partes: PartesDelInsumo | null; rq: RequerimientoListado }) {
   const tono = tonoPorLlegar(l, partes)
+  const noSalio = sinSalida(l, rq)
   const corta = partes !== null && laCompraQuedoCorta(l, partes)
   const etapa = corta ? COMPRA_CORTA : l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : null
   const u = l.unidad
@@ -425,7 +443,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
       </p>
       {partes && (
         <>
-          <BarraDePartes partes={partes} tonoPorLlegar={tono} />
+          <BarraDePartes partes={partes} tonoPorLlegar={tono} noSalio={noSalio} />
           <ul className="mt-1.5 flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:gap-x-5">
             {partes.recoger > 0 && (
               <Parte color="bg-exito" cifra={`${cantidad(partes.recoger)} ${u}`} data-parte="recoger">
@@ -468,6 +486,12 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
                 <span className="text-texto-suave">{partes.entregado === 1 ? 'ya se entregó' : 'ya se entregaron'}</span>
               </Parte>
             )}
+            {noSalio > 0 && (
+              <Parte color="bg-aviso" cifra={`${cantidad(noSalio)} ${u}`} data-parte="no-salio">
+                <span className="font-medium text-aviso">no salió del kardex</span>
+                <span className="text-texto-suave"> · entregado con faltante</span>
+              </Parte>
+            )}
           </ul>
         </>
       )}
@@ -480,15 +504,17 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
  * que falta. Primero lo entregado, apagado porque ya no pide nada (en el color
  * del texto, en modo oscuro era el tramo blanco y el que más llamaba); después
  * lo que se recoge, lo que falta y lo que Almacén revisa, al otro extremo para
- * que su gris no se junte con el de lo entregado. Es solo para el ojo: la
+ * que su gris no se junte con el de lo entregado; en un RQ entregado con
+ * faltante, al final lo que no salió del kardex. Es solo para el ojo: la
  * leyenda de abajo dice lo mismo con números, primero lo que pide ir a Almacén.
  */
-function BarraDePartes({ partes, tonoPorLlegar }: { partes: PartesDelInsumo; tonoPorLlegar: Tono }) {
+function BarraDePartes({ partes, tonoPorLlegar, noSalio }: { partes: PartesDelInsumo; tonoPorLlegar: Tono; noSalio: number }) {
   const tramos = [
     { n: partes.entregado, clase: 'bg-texto-suave' },
     { n: partes.recoger, clase: 'bg-exito' },
     { n: partes.porLlegar, clase: BARRA[tonoPorLlegar] },
     { n: partes.revisar, clase: 'bg-borde-fuerte' },
+    { n: noSalio, clase: 'bg-aviso' },
   ].filter((t) => t.n > 0)
   return (
     <div aria-hidden className="mt-2 flex h-2.5 w-full max-w-xl gap-0.5 overflow-hidden rounded-full bg-neutro-suave">

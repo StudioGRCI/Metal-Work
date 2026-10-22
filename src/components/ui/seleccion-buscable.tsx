@@ -71,6 +71,8 @@ export function SeleccionBuscable({
   const listaRef = useRef<HTMLUListElement>(null)
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
+  // Elegida pero no vale (el Campo trae un error): sin la marca de «bien elegido».
+  const noVale = invalido === true || invalido === 'true'
   const conEquis = Boolean(elegida) && permiteVaciar && !deshabilitado
 
   // Como todo buscador: «grua» encuentra «Grúa», «sac» a «S.A.C.» y
@@ -234,10 +236,12 @@ export function SeleccionBuscable({
           // siempre dejaba al cliente elegido en «TRANS…» en el teléfono.
           conEquis ? 'pr-20 sm:pr-14' : 'pr-9',
           'disabled:cursor-not-allowed disabled:opacity-60',
-          elegida ? 'border-acento bg-acento-suave font-medium text-acento' : 'border-borde-fuerte bg-superficie text-texto-tenue',
+          elegida
+            ? noVale ? 'border-peligro bg-peligro-suave font-medium text-peligro' : 'border-acento bg-acento-suave font-medium text-acento'
+            : 'border-borde-fuerte bg-superficie text-texto-tenue',
         )}
       >
-        {elegida && <Check aria-hidden className="size-4 shrink-0" />}
+        {elegida && !noVale && <Check aria-hidden className="size-4 shrink-0" />}
         <span className="line-clamp-2 min-w-0 flex-1 sm:line-clamp-1 sm:truncate">{elegida ? elegida.etiqueta : marcador}</span>
       </button>
 
