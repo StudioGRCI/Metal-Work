@@ -255,8 +255,11 @@ select test.como_usuario(:'req_id');
 set local role authenticated;
 select public.registrar_ingreso_vehiculo(pg_temp.id('c'), null, null, 'CHK416_C_26/56', 'Camión', 'QA', 'COCHERA', null, null,
   pg_temp.foto('c', 'ingreso'));
-select test.afirmar((select motivo = 'COCHERA' from public.registro_vehiculos where id = pg_temp.id('c')),
-  'con su garantía terminada, la unidad entra a la cochera');
+select test.afirmar((select motivo = 'COCHERA' and unidad_id = :'unidad_c'::uuid from public.registro_vehiculos where id = pg_temp.id('c')),
+  'con su garantía terminada, la unidad entra a la cochera, anotada con su unidad');
+select set_config('prueba.c2', gen_random_uuid()::text, true);
+select test.debe_fallar(pg_temp.ingreso_sql('c2', 'CHK416_C_26/56', 'MANTENIMIENTO'),
+  'y mientras está en la cochera no entra otra vez por trabajo', 'ya está en la planta');
 reset role;
 
 -- La OT de garantía va con su unidad, y la unidad con su código.

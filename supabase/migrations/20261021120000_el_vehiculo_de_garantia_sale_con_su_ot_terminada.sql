@@ -342,6 +342,21 @@ begin
   if char_length(coalesce(p_observacion, '')) > 500 then
     raise exception 'La observación pasa de 500 caracteres.' using errcode = 'check_violation';
   end if;
+  -- Por cochera u «otro» con el código de una unidad: se anota la unidad. Sin
+  -- eso el mismo vehículo podía estar dos veces en la planta —en cochera y en
+  -- trabajo— y salir por el registro de cochera, sin el avance ni Tesorería.
+  if v_unidad.id is null and v_codigo is not null then
+    select u.* into v_unidad from public.unidades u
+     where upper(regexp_replace(btrim(coalesce(u.codigo_interno, '')), '[^A-Za-z0-9]', '', 'g'))
+           = upper(regexp_replace(v_codigo, '[^A-Za-z0-9]', '', 'g'))
+       and u.activo
+     limit 1;
+    if v_unidad.id is not null and exists (select 1 from public.registro_vehiculos
+                                            where unidad_id = v_unidad.id and salida_en is null and anulado_en is null) then
+      raise exception 'El vehículo del código % ya está en la planta: marca primero su salida.', v_codigo
+        using errcode = 'unique_violation';
+    end if;
+  end if;
   if v_placa is not null and exists (select 1 from public.registro_vehiculos
                                        where placa = v_placa and salida_en is null and anulado_en is null) then
     raise exception 'El vehículo de placa % ya está en la planta: marca primero su salida.', v_placa
