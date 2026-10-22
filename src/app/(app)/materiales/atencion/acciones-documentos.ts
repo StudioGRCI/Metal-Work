@@ -20,7 +20,20 @@ const FORMATO = z.object({
   // Contabilidad la registra con ellos.
   factura_numero: z.string().trim().max(40).optional(),
   factura_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
+  // La boleta de una parte de la OC que llega en partes (migración 20261022200000):
+  // su número, su fecha y su monto; el resto llega con factura.
+  parte: z.literal('si').optional(),
+  parte_numero: z.string().trim().max(40).optional(),
+  parte_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
+  parte_monto: z.string().trim().max(20).optional(),
 })
+
+/** El número de una boleta, nota de venta o recibo: serie y número como B001-45, o como viene si es otro formato. */
+function numeroDeComprobante(texto: string): string | null {
+  const limpio = texto.replace(/\s/g, '').toUpperCase()
+  if (!/^[A-Z0-9][A-Z0-9-]{2,39}$/.test(limpio)) return null
+  return normalizarNumeroFactura(limpio) ?? limpio
+}
 
 const campo = (formulario: FormData, nombre: string) => {
   const v = formulario.get(nombre)
@@ -42,11 +55,17 @@ export async function registrarDocumentoCompra(
     nombre_archivo: formulario.get('nombre_archivo'),
     factura_numero: campo(formulario, 'factura_numero'),
     factura_fecha: campo(formulario, 'factura_fecha'),
+    parte: campo(formulario, 'parte'),
+    parte_numero: campo(formulario, 'parte_numero'),
+    parte_fecha: campo(formulario, 'parte_fecha'),
+    parte_monto: campo(formulario, 'parte_monto'),
   })
   if (!datos.success) {
     return {
       ok: false,
-      error: datos.error.issues[0]?.path[0] === 'factura_fecha' ? 'Revisa la fecha de la factura.' : 'Selecciona el tipo de documento y un PDF.',
+      error: datos.error.issues[0]?.path[0] === 'factura_fecha' ? 'Revisa la fecha de la factura.'
+        : datos.error.issues[0]?.path[0] === 'parte_fecha' ? 'Revisa la fecha de la boleta.'
+        : 'Selecciona el tipo de documento y un PDF.',
     }
   }
   const esFactura = datos.data.tipo === 'FACTURA'
@@ -55,6 +74,15 @@ export async function registrarDocumentoCompra(
   if (esFactura && !numeroFactura) return { ok: false, error: 'Escribe el número de la factura con su serie y su número, como F001-123.' }
   if (esFactura && !fechaFactura) return { ok: false, error: 'Escribe la fecha de la factura.' }
   if (fechaFactura && fechaFactura > hoyLima()) return { ok: false, error: 'La fecha de la factura no puede ser posterior a hoy.' }
+  const esParte = datos.data.tipo === 'COMPROBANTE' && datos.data.parte === 'si'
+  const numeroParte = esParte ? numeroDeComprobante(datos.data.parte_numero ?? '') : null
+  const fechaParte = esParte ? datos.data.parte_fecha || null : null
+  const textoMonto = esParte ? (datos.data.parte_monto ?? '').replace(',', '.') : ''
+  const montoParte = esParte && /^\d{1,9}(\.\d{1,2})?$/.test(textoMonto) ? Number(textoMonto) : null
+  if (esParte && !numeroParte) return { ok: false, error: 'Escribe el número de la boleta con su serie y su número, como B001-45.' }
+  if (esParte && !fechaParte) return { ok: false, error: 'Escribe la fecha de la boleta.' }
+  if (fechaParte && fechaParte > hoyLima()) return { ok: false, error: 'La fecha de la boleta no puede ser posterior a hoy.' }
+  if (esParte && !(montoParte && montoParte > 0)) return { ok: false, error: 'Escribe el monto de la boleta, mayor que cero y con hasta dos decimales.' }
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
@@ -112,9 +140,10 @@ export async function registrarDocumentoCompra(
     mime_type: 'application/pdf',
     tamano_bytes: archivo.size,
     subido_por: perfil.id,
-    numero_documento: numeroFactura,
-    fecha_emision: fechaFactura,
-  }).select('id').maybeSingle()
+    numero_documento: numeroFactura ?? numeroParte,
+    fecha_emision: fechaFactura ?? fechaParte,
+    monto_de_la_parte: montoParte,
+  }).select('id, orden:ordenes_compra_materiales(moneda)').maybeSingle()
   if (error) {
     if (error.code === '23505') {
       const repetido = await supabase.from('documentos_compra_material')
@@ -138,6 +167,12 @@ export async function registrarDocumentoCompra(
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  if (numeroParte && montoParte) {
+    return {
+      ok: true,
+      mensaje: `Boleta ${numeroParte} adjuntada por ${moneda(montoParte, guardado.orden?.moneda === 'USD' ? 'USD' : 'PEN')}: Tesorería la paga en «Boletas de una parte» y lo demás de la OC se paga por su factura.`,
+    }
+  }
   if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
   // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
   // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se

@@ -12,9 +12,10 @@ import {
   useDetectorDeFactura,
 } from '@/app/(app)/compras/ordenes/detector-oc'
 import { Boton } from '@/components/ui/boton'
-import { Campo, Seleccion } from '@/components/ui/campos'
+import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
+import { hoyLima } from '@/lib/format'
 import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -44,6 +45,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
 }) {
   const [id, setId] = useState(solicitudId)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
+  // La OC que llega en partes: esta boleta es solo de una parte y el resto llega con factura.
+  const [parte, setParte] = useState(false)
   const detector = useDetectorDeFactura(ACEPTA_PDF, 20)
   const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
@@ -62,6 +65,12 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     // El número y la fecha se revisan antes de subir el PDF, no después.
     const falta = tipo === 'FACTURA' ? faltaEnLaFactura(factura.numero, factura.fecha) : null
     if (falta) return { ok: false, error: falta }
+    if (tipo === 'COMPROBANTE' && parte) {
+      if (!String(datos.get('parte_numero') ?? '').trim()) return { ok: false, error: 'Escribe el número de la boleta, como B001-45.' }
+      if (!/^\d{1,9}([.,]\d{1,2})?$/.test(String(datos.get('parte_monto') ?? '').trim())) {
+        return { ok: false, error: 'Escribe el monto de la boleta, mayor que cero y con hasta dos decimales.' }
+      }
+    }
     datos.delete('archivo')
     datos.set('nombre_archivo', archivo.name.trim().slice(0, 200))
     return subirArchivoPrivado({
@@ -73,6 +82,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     setRevisar(r.datos?.revisar ?? false)
     setAvisaTesoreria(r.datos?.avisaTesoreria ?? false)
     setId(crypto.randomUUID())
+    setParte(false)
     factura.vaciar()
     void detector.leer(undefined)
   })
@@ -104,6 +114,31 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
             moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
         </div>
       </>
+    )}
+    {tipo === 'COMPROBANTE' && (
+      <div className="grid gap-4 sm:col-span-3 sm:grid-cols-3">
+        <label className="flex items-start gap-2 text-sm sm:col-span-3">
+          <input type="checkbox" name="parte" value="si" className="mt-0.5 size-4" checked={parte} disabled={enviando}
+            onChange={(e) => setParte(e.target.checked)} />
+          <span>Es la boleta de solo una parte: lo demás de la OC llega con factura</span>
+        </label>
+        {parte && (
+          <>
+            <Campo etiqueta="Número de la boleta" htmlFor={`parte-numero-${ordenCompraId}`} requerido ayuda="Serie y número, como B001-45.">
+              <Entrada id={`parte-numero-${ordenCompraId}`} name="parte_numero" required disabled={enviando} minLength={3} maxLength={40}
+                autoComplete="off" placeholder="B001-45" className="tabular" />
+            </Campo>
+            <Campo etiqueta="Fecha de la boleta" htmlFor={`parte-fecha-${ordenCompraId}`} requerido>
+              <Entrada id={`parte-fecha-${ordenCompraId}`} name="parte_fecha" type="date" required disabled={enviando} max={hoyLima()} />
+            </Campo>
+            <Campo etiqueta={`Monto de la boleta (${orden?.moneda === 'USD' ? 'US$' : 'S/'})`} htmlFor={`parte-monto-${ordenCompraId}`} requerido
+              ayuda="Lo que dice la boleta. Tesorería le paga esto y lo demás de la OC se paga por su factura.">
+              <Entrada id={`parte-monto-${ordenCompraId}`} name="parte_monto" inputMode="decimal" required disabled={enviando}
+                autoComplete="off" placeholder="0.00" className="tabular" pattern="\d{1,9}([.,]\d{1,2})?" />
+            </Campo>
+          </>
+        )}
+      </div>
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     {mensaje && (

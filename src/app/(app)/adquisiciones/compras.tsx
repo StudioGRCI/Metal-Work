@@ -33,7 +33,7 @@ import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, compraConPdf, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
-import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
+import { cantidad, fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
@@ -456,6 +456,19 @@ function Archivo({ url, children }: { url: string | undefined; children: ReactNo
  * remisión y, de la OS, su factura y su contrato, y el número del comprobante
  * que Tesorería anotó al pagar si nadie adjuntó ese comprobante.
  */
+/** La boleta de una parte: lo que dice y lo que Tesorería le pagó (migración 20261022200000). */
+function DeUnaParte({ d, m }: { d: Documento; m: CodigoMoneda }) {
+  const monto = d.monto_de_la_parte ?? 0
+  const pagado = (d.pagos_de_la_parte ?? []).reduce((suma, p) => suma + p.monto, 0)
+  return (
+    <span className="tabular text-texto-suave">
+      {' · una parte, '}
+      <span className="whitespace-nowrap">{moneda(monto, m)}</span>
+      {pagado >= monto ? ' · pagada' : pagado > 0 ? <> · pagado <span className="whitespace-nowrap">{moneda(pagado, m)}</span></> : ' · por pagar'}
+    </span>
+  )
+}
+
 function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
   // La factura que Contabilidad registró sobre el PDF que anexó Logística es un solo archivo.
   const deFacturas = new Set(f.facturas.flatMap((x) => (x.bucket === 'documentos-compras' && x.ruta ? [x.ruta] : [])))
@@ -523,6 +536,7 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
                 {d.numero && <span className="tabular"> {d.numero}</span>}
               </Archivo>
               <span className="tabular text-texto-suave"> · {fecha(d.creado_en)}</span>
+              {d.monto_de_la_parte !== null && <DeUnaParte d={d} m={codigo(f.moneda)} />}
             </span>
             <AnulaElAnexo f={f} d={d} acceso={acceso} />
           </li>

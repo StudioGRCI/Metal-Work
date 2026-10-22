@@ -23,6 +23,7 @@ export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   PAGO_ADQUISICION: 'Pago de factura de compra',
   PAGO_ORDEN_SERVICIO: 'Pago de orden de servicio',
   PAGO_ORDEN_COMPRA: 'Pago de OC con boleta',
+  PAGO_PARTE_BOLETA: 'Pago de la boleta de una parte de una OC',
   PAGO_RECIBO_HONORARIOS: 'Pago de recibo por honorarios',
   PAGO_PLANILLA_DIARIA: 'Pago de planilla diaria',
   COBRO_FACTURA_VENTA: 'Cobro de factura de venta',
@@ -38,6 +39,7 @@ export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string 
   PAGO_ADQUISICION: { ruta: '/tesoreria/por-pagar', nombre: 'Cuentas por pagar' },
   PAGO_ORDEN_SERVICIO: { ruta: '/tesoreria/pagos-de-servicio', nombre: 'Pagos de servicio' },
   PAGO_ORDEN_COMPRA: { ruta: '/tesoreria/por-pagar#compras-con-boleta', nombre: 'Cuentas por pagar' },
+  PAGO_PARTE_BOLETA: { ruta: '/tesoreria/por-pagar#partes-con-boleta', nombre: 'Cuentas por pagar' },
   // Un recibo pagado sale, con su botón de anular, en la vista de pagados.
   PAGO_RECIBO_HONORARIOS: { ruta: '/tesoreria/recibos-por-honorarios?ver=pagados', nombre: 'Recibos por honorarios' },
   PAGO_PLANILLA_DIARIA: { ruta: '/planilla-diaria', nombre: 'Planilla diaria' },
