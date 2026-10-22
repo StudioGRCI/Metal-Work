@@ -160,7 +160,7 @@ Las reglas de negocio se prueban contra un Postgres real, no contra dobles:
 ```bash
 # Levantar un Postgres de pruebas (una sola vez)
 initdb -D /var/lib/pgtest -U postgres --auth=trust
-pg_ctl -D /var/lib/pgtest -o "-p 5433 -k /tmp" start
+pg_ctl -D /var/lib/pgtest -o "-p 5433 -k /tmp -c jit=off" start   # sin JIT, como Supabase
 
 ./scripts/db-test.sh
 ```
