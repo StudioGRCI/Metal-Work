@@ -97,6 +97,23 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+/**
+ * Abre el desplegable que guarda una tarjeta cuando React ya hidrató la página.
+ * Abrirlo antes cambia el `open` que trajo el servidor: `next dev` levanta su
+ * aviso de hidratación, que también es un [role="dialog"], y la ventana de la
+ * prueba deja de ser la única. Con la lista de Tesorería lenta (20 s con la base
+ * recién arrancada) el toque llegaba antes que React.
+ */
+async function abrirPlegada(plegada) {
+  if (!(await plegada.count())) return
+  const d = plegada.first()
+  await d.evaluate((el) => new Promise((listo) => {
+    const mira = () => (Object.keys(el).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+    mira()
+  }))
+  if (!(await d.evaluate((el) => el.open))) await d.locator('summary').click()
+}
+
 async function hasta(leer, cumple, ms = 15000) {
   const fin = Date.now() + ms
   let v = await leer()
@@ -683,7 +700,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   // Todo lo pagado lo tomó a mano la factura: «me lo devolvió» manda a deshacer la toma primero, sin un botón a una ventana que no está.
   const laH = pagina.locator(`article#compra-${oc.H}`)
   const plegadaH = pagina.locator('details', { has: laH })
-  if ((await plegadaH.count()) > 0 && !(await plegadaH.first().evaluate((d) => d.open))) await plegadaH.first().locator('summary').click()
+  await abrirPlegada(plegadaH)
   await laH.locator(`[data-anular-pago-compra="${pagoH}"]`).click()
   const va = pagina.locator('[role="dialog"]')
   await va.locator('input[name="que_paso"][value="devolvio"]').check()
@@ -695,7 +712,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
 
   // Deshacer, con su motivo: vuelve a esperar.
   const detalles = pagina.locator('details', { has: enFactura })
-  if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
+  await abrirPlegada(detalles)
   await enFactura.locator('[data-soltar-toma]').click()
   const vs = pagina.locator('[role="dialog"]')
   await vs.locator('textarea[name="motivo"]').fill('El proveedor reconoce otro cambio')
@@ -772,7 +789,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
     `la OC A ya no está pagada de más: «${laA.slice(0, 220)}»`)
   const enD = pagina.locator(`article#factura-${facturaD}`)
   const plegadaD = pagina.locator('details', { has: enD })
-  if ((await plegadaD.count()) > 0 && !(await plegadaD.first().evaluate((d) => d.open))) await plegadaD.first().locator('summary').click()
+  await abrirPlegada(plegadaD)
   const textoD = limpio(await enD.textContent().catch(() => ''))
   comprobar(textoD.includes('Descontado de lo pagado de más por la boleta') && textoD.includes(`Saldo S/ ${cifra(500 - total)}`),
     `la factura ${FD} muestra el descuento y debe el resto: «${textoD.slice(0, 260)}»`)
@@ -811,7 +828,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const enD2 = pagina.locator(`article#factura-${facturaD2}`)
   const plegada = pagina.locator('details', { has: enD2 })
-  if ((await plegada.count()) > 0 && !(await plegada.first().evaluate((d) => d.open))) await plegada.first().locator('summary').click()
+  await abrirPlegada(plegada)
   const enTesoreria = await etiquetas(enD2)
   comprobar(enTesoreria.length === 2 && enTesoreria.every((t) => t.startsWith('Nota de crédito o documento')),
     `en Tesorería, las dos tomas dicen «Nota de crédito o documento»: ${JSON.stringify(enTesoreria)}`)

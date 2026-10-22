@@ -110,6 +110,23 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+/**
+ * Abre el desplegable que guarda una tarjeta cuando React ya hidrató la página.
+ * Abrirlo antes cambia el `open` que trajo el servidor: `next dev` levanta su
+ * aviso de hidratación, que también es un [role="dialog"], y la ventana de la
+ * prueba deja de ser la única. Con la lista de Tesorería lenta (20 s con la base
+ * recién arrancada) el toque llegaba antes que React.
+ */
+async function abrirPlegada(plegada) {
+  if (!(await plegada.count())) return
+  const d = plegada.first()
+  await d.evaluate((el) => new Promise((listo) => {
+    const mira = () => (Object.keys(el).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+    mira()
+  }))
+  if (!(await d.evaluate((el) => el.open))) await d.locator('summary').click()
+}
+
 async function hasta(leer, cumple, ms = 15000) {
   const fin = Date.now() + ms
   let v = await leer()
@@ -387,7 +404,7 @@ let pagoId
   // 3. Anular el pago.
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const detalles = pagina.locator('details', { has: pagina.locator(`article#compra-${oc[0]}`) })
-  if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
+  await abrirPlegada(detalles)
   await pagina.locator(`[data-anular-pago-compra="${pagoId}"]`).click()
   await v.waitFor()
   // Primero pregunta qué pasó (undécima vuelta): el motivo sale solo con «No salió».
@@ -678,7 +695,7 @@ let pagoId
   // Anular la devolución mal registrada: vuelve lo pagado de más, y su ingreso se anula.
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const detalles = t.pagina.locator('details', { has: t.pagina.locator(`article#compra-${oc[4]}`) })
-  if ((await detalles.count()) > 0 && !(await detalles.first().evaluate((d) => d.open))) await detalles.first().locator('summary').click()
+  await abrirPlegada(detalles)
   await t.pagina.locator(`[data-anular-devolucion="${devolucionId}"]`).click()
   const va = t.pagina.locator('[role="dialog"]')
   await va.waitFor()
@@ -762,7 +779,7 @@ let pagoId
   const abrir = async (id) => {
     const tarjeta = t.pagina.locator(`article#compra-${id}`)
     const plegada = t.pagina.locator('details', { has: tarjeta })
-    if ((await plegada.count()) > 0 && !(await plegada.first().evaluate((d) => d.open))) await plegada.first().locator('summary').click()
+    await abrirPlegada(plegada)
     return tarjeta
   }
   /**
@@ -1118,7 +1135,7 @@ let pagoId
   await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const tarjetaG = g.pagina.locator(`article#compra-${ocToda}`)
   const plegadaG = g.pagina.locator('details', { has: tarjetaG })
-  if ((await plegadaG.count()) > 0 && !(await plegadaG.first().evaluate((d) => d.open))) await plegadaG.first().locator('summary').click()
+  await abrirPlegada(plegadaG)
   const textoG = limpio(await tarjetaG.textContent())
   comprobar(textoG.includes('El proveedor ya devolvió todo lo que se pagó por su boleta: Tesorería la paga de nuevo solo si se la vuelve a cobrar.'),
     `Gerencia lee lo mismo, dicho para quien no paga: «${textoG.slice(0, 320)}»`)
