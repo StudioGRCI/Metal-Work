@@ -1,11 +1,14 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import Link from 'next/link'
+import { UserMinus } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Ventana } from '@/components/ui/ventana'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { useEnvio } from '@/lib/envio'
-import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla, repartirEnPartesIguales } from './acciones'
+import { crearPlanilla, agregarPersona, distribuirPersona, cerrarPlanilla, repartirEnPartesIguales, quitarPersona } from './acciones'
 
 type Orden={id:string;numero:string;unidad:string}
 
@@ -110,4 +113,36 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
     {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}
     <Boton type="submit" tamano="sm" cargando={enviando} disabled={!marcadas.length}>Repartir en partes iguales</Boton>
   </form>
+}
+
+/**
+ * Quitar a alguien de la planilla en borrador: corrige una carga equivocada
+ * —se eligió a quien no iba, o entró con el nombre mal escrito—. Se va con su
+ * reparto entre las OT. Quien dejó de trabajar se da de baja en Personal.
+ */
+export function QuitarPersona({ personaId, nombre, reparto }: { personaId: string; nombre: string; reparto: string[] }) {
+  const [abierta, setAbierta] = useState(false)
+  const { alEnviar, enviando, error } = useEnvio(quitarPersona, () => setAbierta(false))
+  return <>
+    <Boton type="button" tamano="sm" variante="contornoPeligro" onClick={() => setAbierta(true)} aria-label={`Quitar a ${nombre} de la planilla`}>
+      <UserMinus aria-hidden className="size-4" />Quitar de la planilla
+    </Boton>
+    <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Quitar a ${nombre}`}
+      descripcion="Sale de esta planilla con su reparto entre las OT. Es para corregir una carga equivocada.">
+      <form onSubmit={alEnviar} className="space-y-4">
+        <p className="text-sm text-texto">
+          {reparto.length ? <>Reparto que se va: {reparto.join(' · ')}.</> : 'Todavía no tiene reparto entre las OT.'}
+        </p>
+        <p className="text-sm text-texto-suave">
+          Si dejó de trabajar, no la quites: dale de baja en <Link href="/rrhh/personal" className="font-medium text-acento underline underline-offset-2">Personal</Link>.
+        </p>
+        <input type="hidden" name="persona_id" value={personaId} />
+        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Boton type="button" variante="secundario" onClick={() => setAbierta(false)}>Cancelar</Boton>
+          <Boton type="submit" variante="peligro" cargando={enviando}>Quitar de la planilla</Boton>
+        </div>
+      </form>
+    </Ventana>
+  </>
 }

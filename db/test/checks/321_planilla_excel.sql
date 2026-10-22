@@ -10,7 +10,8 @@
 -- con eso la planilla cierra; cerrada, el reparto ya no cambia. Quien no es de
 -- RR. HH. no importa. El Excel corregido con las filas corridas se vuelve a
 -- cargar en la misma planilla aunque la persona nueva caiga en la fila que ya
--- tenía otra de la primera carga.
+-- tenía otra de la primera carga. En borrador, RR. HH. quita a quien entró por
+-- error, con su reparto; cerrada, no.
 begin;
 
 select id as sede_id from public.sedes order by nombre limit 1 \gset
@@ -151,6 +152,20 @@ select test.afirmar(
              from public.planilla_distribuciones d join public.planilla_personas p on p.id = d.persona_id
             where p.planilla_id = current_setting('prueba.p.taller')::uuid group by d.persona_id) r),
   'cada persona queda con 33.33 + 33.33 + 33.34 en las tres OT');
+-- Quitar a quien entró por error, en borrador: se va con su reparto
+-- (migración 20261022100000). Quien no es de RR. HH. no quita.
+select set_config('prueba.p.julio', (select id::text from public.planilla_personas
+  where planilla_id = current_setting('prueba.p.taller')::uuid and nombre = 'Torres Lazo, Julio'), true);
+select test.como_usuario(:'ventas_id');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid)$$,
+  'quien no es de RR. HH. no quita a nadie de la planilla', 'rrhh.gestionar_planillas');
+select test.como_usuario(:'rrhh_id');
+select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid);
+select test.afirmar(not exists (select 1 from public.planilla_personas where id = current_setting('prueba.p.julio')::uuid)
+  and not exists (select 1 from public.planilla_distribuciones where persona_id = current_setting('prueba.p.julio')::uuid),
+  'en borrador, RR. HH. quita a una persona con su reparto entre las OT');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid)$$,
+  'quitar otra vez a quien ya no está lo dice', 'ya no está');
 select public.cerrar_planilla(current_setting('prueba.p.taller')::uuid);
 select test.afirmar((select estado = 'CERRADA' from public.planillas where id = current_setting('prueba.p.taller')::uuid),
   'con el 100 % repartido la planilla cierra');
@@ -158,6 +173,9 @@ select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(curr
   array(select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid),
   array[current_setting('prueba.p.ot1')::uuid])$$,
   'cerrada, el reparto ya no cambia', 'cerrada');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(
+  (select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid limit 1))$$,
+  'cerrada, nadie se quita', 'cerrada');
 
 reset role;
 select 'OK: planilla desde varias hojas con su empresa, sin duplicados en el mes y con reparto en partes iguales. Ensayo revertido.' as comprobacion;
