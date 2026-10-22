@@ -107,9 +107,9 @@ begin
 
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
   set local role authenticated;
-  perform test.debe_fallar('select * from public.compras_sin_factura()', 'Ventas no ve las OC sin factura', 'Contabilidad, Tesorería y Logística');
+  perform test.debe_fallar('select * from public.compras_sin_factura()', 'Ventas no ve las OC sin factura', 'No tienes permiso para ver Adquisiciones');
   perform test.debe_fallar(format('select * from public.adquisiciones_control(array[%L]::uuid[])', current_setting('prueba.a1')),
-    'ni el aviso de Adquisiciones', 'Contabilidad, Tesorería y Logística');
+    'ni el aviso de Adquisiciones', 'No tienes permiso para ver Adquisiciones');
   reset role;
 end $$;
 

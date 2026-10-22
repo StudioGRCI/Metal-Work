@@ -6,7 +6,9 @@
  * cuenta de cada puesto (nunca ADMIN), consultando la base después del clic:
  *
  *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
- *      sale «OC sin número» con su referencia aparte.
+ *      sale «OC sin número» con su referencia aparte. En Aprobación, la lista de
+ *      las que puede anular la nombra igual, porque el nombre lo arma la base
+ *      (migración 20261022200000), y en el teléfono no ensancha la página.
  *   2. Contabilidad la ve igual en el formulario (también el aviso de otro
  *      RUC), registra su factura, y la tabla la nombra igual. En «Corregir»,
  *      la lista también; el detector, al leer un PDF que menciona la otra OC
@@ -246,7 +248,19 @@ writeFileSync(
   const fila = limpio(await pagina.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
   comprobar(fila.includes('OC sin número') && fila.includes(`Ref. del proveedor: ${REFERENCIA}`), 'la OC sin número sale «OC sin número», con su referencia aparte')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-gerencia.png'), fullPage: true, caret: 'initial' })
+  // En Aprobación, las que puede anular: el nombre lo arma la base (migración 20261022200000).
+  await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  const anulables = await pagina.locator('tr[data-anulable]').evaluateAll((filas) => filas.map((f) => f.getAttribute('data-anulable')))
+  comprobar(anulables.includes(NOMBRE) && !anulables.includes(REFERENCIA) && !anulables.includes(`OC ${REFERENCIA}`),
+    `en «Aprobadas que se pueden anular» la base la nombra «${NOMBRE}»`)
   await contexto.close()
+  const tel = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
+  await tel.pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  const enTelefono = limpio(await tel.pagina.locator('main').textContent().catch(() => ''))
+  const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(enTelefono.includes(NOMBRE_3) && ancho <= 390, `en el teléfono, el nombre largo («${NOMBRE_3}») no ensancha la página (${ancho} px)`)
+  await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-aprobacion-telefono.png'), fullPage: true, caret: 'initial' })
+  await tel.contexto.close()
 }
 
 // ------------------------------------------------------------- 2. Contabilidad

@@ -138,7 +138,7 @@ reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar(format($q$select * from public.facturado_de_compras(array['%s']::uuid[])$q$, current_setting('prueba.ocA')),
-  'Ventas no ve lo facturado de las OC', 'Contabilidad, Tesorería y Logística');
+  'Ventas no ve lo facturado de las OC', 'No tienes permiso para ver Adquisiciones');
 reset role;
 
 -- ============================================ 2. La segunda entrega completa la OC

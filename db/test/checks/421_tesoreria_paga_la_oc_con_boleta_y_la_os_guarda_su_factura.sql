@@ -635,7 +635,7 @@ reset role;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.situacion_de_pago_de_compra(pg_temp.id('oc4')) $$,
-  'Contabilidad no: no paga ni emitió la OC', 'Tesorería y Logística');
+  'Contabilidad no: no paga ni emitió la OC', 'No tienes permiso para ver el pago de la OC');
 reset role;
 
 -- ============================================ 7. Dos caminos son dos pagos
@@ -1055,7 +1055,7 @@ begin
     perform pg_temp.como('almacenero');
     set local role authenticated;
     perform test.debe_fallar($q$ select * from public.pago_directo_de_la_factura(pg_temp.id('fh')) $q$,
-      'Almacén no', 'Adquisiciones la ven');
+      'Almacén no', 'No tienes permiso para ver Adquisiciones');
     reset role;
     raise exception using errcode = 'Q4210', message = 'deshacer';
   exception when sqlstate 'Q4210' then null;
@@ -1623,7 +1623,7 @@ reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.situacion_de_facturas_anexadas(array[pg_temp.id('dfac')]) $$,
-  'el desplegable es de quien ve Adquisiciones', 'Adquisiciones la ven');
+  'el desplegable es de quien ve Adquisiciones', 'No tienes permiso para ver Adquisiciones');
 reset role;
 
 -- Pagada de más: la factura se registró y se pagó en parte (S/ 300) sin anexo,

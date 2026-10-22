@@ -1089,7 +1089,9 @@ function Factura({
         {c.enEspera ? (
           // La OC con boleta se dio por pagada fuera: la base no deja pagarla hasta que Contabilidad lo diga (migración 20261022175000).
           <p className="text-xs text-aviso">
-            Espera a Contabilidad: la <span className="whitespace-nowrap">{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
+            {/* La base la nombra con `nombre_de_oc`: «OC sin número (ref. del proveedor …)» es largo y tiene que poder partirse. */}
+            Espera a Contabilidad: la{' '}
+            <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
           </p>
         ) : espera ? (
