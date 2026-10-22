@@ -88,6 +88,12 @@ En la misma migración que la crea, sin excepción:
   `audit_log`. La misma puerta sigue abierta desde antes en `cotizaciones_pdf`,
   que está auditada y guarda el monto de venta.
 
+- **`es_admin() or` delante de una política de «quitar suelto».** Las de
+  borrado de Storage dejan quitar solo el archivo que ninguna fila nombra, y la
+  pantalla se apoya en eso para limpiar sin miedo. En `cotizaciones-pdf` el
+  administrador saltaba la condición y podía borrar el PDF de una cotización
+  registrada; la `20261022141500` la puso para todos. El permiso va dentro del
+  paréntesis y el «ninguna fila lo nombra», fuera.
 - **El blindaje reescribe funciones.** `20260101000013_blindaje.sql` reescribe
   `fn_ot_despues_update` para que use la bitácora interna. Si otra migración
   vuelve a definir esa función con el texto original, reabre la guarda sin
@@ -125,6 +131,12 @@ En la misma migración que la crea, sin excepción:
   no confiar en que la pantalla escondió el botón.
 - Los errores de Postgres pasan por `mensajeDeError` — no filtrar el mensaje
   crudo del motor al usuario.
+- Un archivo que el navegador sube a Storage se anota con
+  `anotarSinDejarloSuelto` (`src/lib/subida-privada.ts`), no con un `try/catch`
+  propio: si la respuesta se pierde, pregunta otra vez con la misma ruta y solo
+  quita el archivo si ninguna fila lo nombra. Antes unas pantallas lo dejaban
+  suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
+  aunque hubiera quedado.
 - El navegador nunca recibe la clave de servicio: `src/lib/supabase/server.ts`
   es `server-only`.
 

@@ -24,13 +24,16 @@ const esquemaAdjunto = z.object({
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: z.string().max(120).optional(),
-  tamano_bytes: z.coerce.number().int().min(0).optional(),
+  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
 })
 
 export async function registrarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   const analisis = esquemaAdjunto.safeParse(Object.fromEntries(datos))
-  if (!analisis.success) return { ok: false, error: 'No se pudo leer el archivo.' }
+  if (!analisis.success) {
+    const vacio = analisis.error.issues.find((i) => i.path[0] === 'tamano_bytes')
+    return { ok: false, error: vacio?.message ?? 'No se pudo leer el archivo.' }
+  }
   const v = analisis.data
 
   if (!puede(perfil, v.tipo === 'CRONOGRAMA' ? PUEDEN_SUBIR_CRONOGRAMA : PUEDEN_SUBIR)) {

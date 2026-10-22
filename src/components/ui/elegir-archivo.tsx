@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Camera, FileCode, FileSpreadsheet, FileText, FileUp, ImageIcon, type LucideIcon } from 'lucide-react'
 
+import { Boton } from '@/components/ui/boton'
 import { tamanoArchivo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -164,7 +165,9 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
  * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
  * 2026-10-21). Con `archivo`, el campo se vacía solo al abrirse: la pantalla
- * no tiene que vaciarlo.
+ * no tiene que vaciarlo. Sin `archivo` ni `required`, el elegido lleva
+ * «Quitar»: el campo vuelve a quedar vacío y la pantalla se entera por su
+ * `onChange`, como si hubieran elegido «nada».
  */
 export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoProps>(function ElegirArchivo(
   {
@@ -282,6 +285,19 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     (archivo ? `${tamanoArchivo(archivo.size)} · toca para cambiarlo` : [tipo.formato, limite].filter(Boolean).join(', '))
   const invalido = invalidoDesdeAfuera === true || invalidoDesdeAfuera === 'true'
   const mal = Boolean(aviso) || invalido
+  // Un campo opcional tiene que poder quedar vacío otra vez: la OC directa
+  // decía «Quítalo para adjuntarlo después» y no había cómo. Donde la pantalla
+  // guarda el archivo, lo vacía ella.
+  const quitable = !required && !controlado && !disabled
+
+  function quitar() {
+    const input = propio.current
+    if (!input) return
+    input.value = ''
+    // La pantalla se entera como si hubieran elegido «nada», y vacía lo que leyó.
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    input.focus()
+  }
   // Mientras se lee o se sube todavía no se sabe si sirve: ni verde ni apagado.
   const ocupado = Boolean(estado) && !mal
   // Apagado mientras se lee o se sube, pero sin soltar el foco: un campo
@@ -380,6 +396,19 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         }}
         {...props}
       />
+      {quitable && archivo && (
+        // Encima del campo transparente: tocarlo no abre el selector.
+        <Boton
+          type="button"
+          variante="fantasma"
+          tamano="sm"
+          className="relative z-10 -my-1 shrink-0"
+          aria-label={`Quitar ${archivo.name}`}
+          onClick={quitar}
+        >
+          Quitar
+        </Boton>
+      )}
     </div>
   )
 })

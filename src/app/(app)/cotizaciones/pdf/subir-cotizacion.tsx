@@ -22,6 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { registrarCotizacionPdf } from './acciones'
@@ -260,20 +261,25 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await registrarCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la cotización no quedó, el
+        // archivo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => registrarCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la cotización quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
         iniciar(() => router.refresh())
       } catch {
-        // Si la anotación se cae por el camino, el archivo se quita: uno que
-        // ninguna fila nombra no lo ve nadie y no lo borra nadie.
+        // Lo único que puede caerse acá es la carrocería nueva o la subida:
+        // la cotización todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo registrar la cotización. Vuelve a intentar.')
       } finally {

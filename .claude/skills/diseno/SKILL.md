@@ -41,7 +41,10 @@ En `src/components/ui/`:
   salta al primer campo vacío de abajo con el rojo fuera de la vista. Con dos
   documentos del mismo nombre, se distinguen por la hora (la nota, el
   `aria-label` de «Quitar» y su confirmación), y al quitar uno el foco vuelve
-  a la tarjeta. Lo único aparte es `SelectorFotos` (avance, vehículos,
+  a la tarjeta. Un campo opcional sin `archivo` lleva «Quitar» con el elegido
+  (la OC directa decía «Quítalo» y no había cómo): vacía el campo, la
+  pantalla se entera por su `onChange` con «nada» y vacía lo que leyó; el
+  obligatorio no lo lleva, se cambia eligiendo otro. Lo único aparte es `SelectorFotos` (avance, vehículos,
   reportes, trabajos): varias fotos a la vez, cada una con su miniatura, su
   subida y su «Reintentar», HEIC y achicadas en el teléfono, cámara y
   galería. Habla igual: formatos y tope antes de elegir, el motivo con las

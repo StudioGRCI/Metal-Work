@@ -56,6 +56,8 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
   if (error.code?.startsWith('42')) return 'El sistema no pudo guardar esto. Avisa al administrador.'
 
   const check = /violates check constraint "([^"]+)"/.exec(m)
+  // Migración 20261022141500: un archivo de 0 bytes no es un documento.
+  if (check?.[1].endsWith('_tamano_no_vacio')) return 'El archivo está vacío: elige otro.'
   if (check) return `El dato no cumple la regla ${check[1]}.`
 
   const dominio = /value for domain (\w+) violates/.exec(m)

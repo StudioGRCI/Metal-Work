@@ -16,6 +16,7 @@ import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { aprobarCotizacionConOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
@@ -254,19 +255,23 @@ export function CorregirCotizacion({
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await corregirCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la corrección no quedó, el
+        // archivo nuevo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => corregirCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la corrección quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAbierto(false)
         iniciar(() => router.refresh())
       } catch {
-        // Si la anotación se cae, el archivo nuevo se quita: uno que ninguna
-        // fila nombra no lo ve nadie y no lo borra nadie.
+        // Lo que se cae acá es la subida: la corrección todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo subir la corrección. Vuelve a intentar.')
       } finally {
@@ -552,19 +557,24 @@ export function AprobarConOt({
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
 
-        const r = await aprobarCotizacionConOt(null, datos)
+        // Si no se aprobó, el PDF que ya viajó se quita, para que no quede un
+        // archivo que ninguna OT nombra. Sin respuesta se pregunta otra vez con
+        // la misma orden: si la primera entró, la base no crea otra.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'adjuntos-ot',
+          ruta,
+          anotar: () => aprobarCotizacionConOt(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la cotización quedó aprobada antes de volver a intentar.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('adjuntos-ot').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAbierto(false)
         iniciar(() => router.refresh())
       } catch {
-        // No se aprobó: el PDF que ya viajó se quita, para que no quede un
-        // archivo que ninguna OT nombra.
+        // Lo que se cae acá es la subida: todavía no se aprobó.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
         setError('No se pudo aprobar con la OT. Vuelve a intentar.')
       } finally {

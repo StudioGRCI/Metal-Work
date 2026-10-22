@@ -1,6 +1,7 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { createClient } from '@/lib/supabase/client'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
 /**
  * Subir un archivo a la orden, desde el navegador (migración 099).
@@ -8,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
  * El archivo va directo a Storage —bucket `adjuntos-ot`, ruta `ot/{orden}/…`,
  * que es de donde las políticas sacan de qué orden es— y después una acción lo
  * anota en `ot_adjuntos`. Si la anotación falla, el archivo se quita: no queda
- * un archivo suelto que nadie ve.
+ * un archivo suelto que nadie ve (`anotarSinDejarloSuelto`).
  */
 export const MAXIMO_ADJUNTO_MB = 20
 
@@ -51,14 +52,12 @@ export async function subirAdjunto(
 
   // Si la base dice que no, el archivo se quita: un archivo en Storage que
   // ninguna fila nombra no lo ve nadie más que quien lo subió. Pasó una vez con
-  // el Excel de un cronograma.
-  try {
-    const resultado = await registrarAdjunto(null, datos)
-    if (!resultado.ok) await supabase.storage.from('adjuntos-ot').remove([ruta])
-    return resultado
-  } catch {
-    // Sin respuesta no se sabe si quedó anotado: el archivo no se toca, y
-    // reintentar a ciegas lo subiría dos veces.
-    return { ok: false, error: NO_SE_SABE_SI_QUEDO }
-  }
+  // el Excel de un cronograma. Sin respuesta se pregunta otra vez con la misma
+  // ruta, que `ot_adjuntos` no deja repetir.
+  return anotarSinDejarloSuelto({
+    bucket: 'adjuntos-ot',
+    ruta,
+    anotar: () => registrarAdjunto(null, datos),
+    sinRespuesta: NO_SE_SABE_SI_QUEDO,
+  })
 }

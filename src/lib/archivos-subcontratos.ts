@@ -1,6 +1,7 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_SUBCONTRATOS, MAXIMO_MB_SUBCONTRATOS, TIPOS_ARCHIVO_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { createClient } from '@/lib/supabase/client'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
 /**
  * Subir un recibo por honorarios (Administración) o un voucher de pago
@@ -26,12 +27,12 @@ export async function subirArchivoSubcontrato(
   const { error } = await supabase.storage.from(BUCKET_SUBCONTRATOS).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
-  try {
-    const resultado = await anotar(ruta)
-    if (!resultado.ok) await supabase.storage.from(BUCKET_SUBCONTRATOS).remove([ruta])
-    return resultado
-  } catch {
-    await supabase.storage.from(BUCKET_SUBCONTRATOS).remove([ruta])
-    return { ok: false, error: 'No se pudo registrar el archivo. Vuelve a intentar.' }
-  }
+  // Sin respuesta, antes se quitaba a ciegas: si la fila había entrado, la
+  // política no lo dejaba, pero la pantalla decía «No se pudo registrar».
+  return anotarSinDejarloSuelto({
+    bucket: BUCKET_SUBCONTRATOS,
+    ruta,
+    anotar: () => anotar(ruta),
+    sinRespuesta: 'No llegó la respuesta. Recarga la pantalla y mira si quedó registrado antes de volver a intentar.',
+  })
 }

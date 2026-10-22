@@ -1,6 +1,7 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANILLA_DIARIA, MAXIMO_MB_PLANILLA, TIPOS_ARCHIVO_PLANILLA } from '@/lib/dominio/planilla-diaria'
 import { createClient } from '@/lib/supabase/client'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
 /**
  * Subir un comprobante de pago o una boleta de la planilla diaria, desde el
@@ -26,12 +27,12 @@ export async function subirArchivoPlanilla(
   const { error } = await supabase.storage.from(BUCKET_PLANILLA_DIARIA).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
-  try {
-    const resultado = await anotar(ruta)
-    if (!resultado.ok) await supabase.storage.from(BUCKET_PLANILLA_DIARIA).remove([ruta])
-    return resultado
-  } catch {
-    await supabase.storage.from(BUCKET_PLANILLA_DIARIA).remove([ruta])
-    return { ok: false, error: 'No se pudo registrar el archivo. Vuelve a intentar.' }
-  }
+  // Sin respuesta, antes se quitaba a ciegas: si la fila había entrado, la
+  // política no lo dejaba, pero la pantalla decía «No se pudo registrar».
+  return anotarSinDejarloSuelto({
+    bucket: BUCKET_PLANILLA_DIARIA,
+    ruta,
+    anotar: () => anotar(ruta),
+    sinRespuesta: 'No llegó la respuesta. Recarga la pantalla y mira si quedó registrado antes de volver a intentar.',
+  })
 }

@@ -12,6 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { etiquetasDePuesto } from '@/lib/format'
@@ -161,7 +162,6 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       // El PDF viaja a la carpeta de la orden antes de que exista; la base
       // registra la orden y su PDF juntos, o ninguno.
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
-      let subido = false
       let listo = false
       try {
         const { error: falla } = await supabase.storage
@@ -171,19 +171,23 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
-        subido = true
 
         datos.set('orden_id', ordenId)
         datos.set('ruta_pdf', ruta)
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
-        const r = await crearOrden(null, datos)
+        // Si la base dice que no, la orden no existe y el PDF que ya viajó se
+        // quita, para que no quede un archivo que ninguna orden nombra. Quien
+        // lo subió lo borra mientras ninguna fila lo nombre (migración
+        // 20261017402000). Sin respuesta se pregunta otra vez: si quedó, la
+        // base reconoce la misma orden y no la duplica.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'adjuntos-ot',
+          ruta,
+          anotar: () => crearOrden(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Revisa en Órdenes de trabajo si la orden quedó registrada antes de volver a intentar.',
+        })
         if (!r.ok) {
-          // La base dijo que no: la orden no existe y el PDF que ya viajó se
-          // quita, para que no quede un archivo que ninguna orden nombra. Quien
-          // lo subió lo ve y lo borra mientras ninguna fila lo nombre (migración
-          // 20261017402000).
-          await supabase.storage.from('adjuntos-ot').remove([ruta])
           if (/número de la (OT|orden)|^Ya hay una orden de trabajo/.test(r.error)) {
             setErrorNumero(r.error)
             campoNumero.current?.focus()
@@ -196,13 +200,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         listo = true
         router.push(`/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
       } catch {
-        // Sin respuesta no se sabe si quedó registrada: el PDF no se toca. Si
-        // quedó, reintentar no la duplica (la base reconoce la misma orden).
-        setError(
-          subido
-            ? 'No llegó la respuesta. Revisa en Órdenes de trabajo si la orden quedó registrada antes de volver a intentar.'
-            : 'No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.',
-        )
+        // Lo que se cae acá es la subida: la orden todavía no se registró.
+        setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
       } finally {
         if (!listo) enCurso.current = false
       }
