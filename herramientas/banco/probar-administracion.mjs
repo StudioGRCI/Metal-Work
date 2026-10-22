@@ -64,6 +64,14 @@ const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
  * Se espera la carga completa y, a lo sumo diez segundos, la red quieta.
  */
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+async function esperar(fn, ms = 15000) {
+  const hasta = Date.now() + ms
+  while (Date.now() < hasta) {
+    if (await fn().catch(() => false)) return true
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return false
+}
 async function ir(pagina, url) {
   await pagina.goto(url, { waitUntil: 'load' })
   await quieta(pagina)
@@ -317,9 +325,11 @@ let ordenId = ''
     await pagina.getByText(`Ya hay una orden de trabajo ${repetido}`).waitFor({ timeout: 30000 }).catch(() => {})
     comprobar(limpio(await pagina.locator('main').innerText()).includes(`Ya hay una orden de trabajo ${repetido}`),
       `con el número ${repetido}, que ya es de otra orden, no se registra y lo dice`)
-    comprobar((await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
-              && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero',
-      'el rechazo queda en el campo del número, con el cursor ahí')
+    // Mientras envía, los campos están trabados: el cursor llega al número cuando se liberan.
+    const enElNumero = async () => (await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
+      && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero'
+    const llego = await esperar(enElNumero, 3000)
+    comprobar(llego, `el rechazo queda en el campo del número, con el cursor ahí (${await pagina.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`)})`)
     // El de su campo también es `role="alert"`: se cuentan los que lo dicen.
     comprobar((await pagina.locator('[role="alert"]', { hasText: 'Ya hay una orden de trabajo' }).count()) === 1,
       'y no se repite en el aviso de abajo')
