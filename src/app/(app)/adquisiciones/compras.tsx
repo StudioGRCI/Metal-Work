@@ -607,9 +607,9 @@ function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso 
   const neto = f.pagos.reduce((suma, p) => suma + p.monto, 0) - f.devoluciones.filter((x) => !x.anulado_en).reduce((suma, x) => suma + x.monto, 0)
   const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo({ con_factura: f.con_factura, neto }, d, tomo)
   if (bloqueo) return <span className="basis-full text-texto-suave">{bloqueo}</span>
-  // La boleta de una parte con un pago vigente: la base no la anula hasta que Tesorería anule ese pago.
+  // La boleta de una parte con un pago vigente: la base no la anula, ni al administrador, hasta que Tesorería anule ese pago.
   const pagadoDeLaParte = (d.pagos_de_la_parte ?? []).reduce((suma, p) => suma + p.monto, 0)
-  if (d.monto_de_la_parte !== null && pagadoDeLaParte > 0 && !acceso.esAdmin) {
+  if (d.monto_de_la_parte !== null && pagadoDeLaParte > 0) {
     return (
       <span className="basis-full text-texto-suave">
         No se anula: Tesorería ya le pagó {moneda(pagadoDeLaParte, codigo(f.moneda))}; primero Tesorería anula ese pago, con su motivo.

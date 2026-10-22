@@ -276,6 +276,13 @@ async function pagar(pagina, monto, toques = 1) {
   comprobar(texto.includes(`Boleta ${BA}`) && texto.includes(nombre(oc.A)) && texto.includes(`Saldo S/ ${cifra(118)}`) && texto.includes(`OC S/ ${cifra(354)}`),
     'Tesorería la ve en «Boletas de una parte», con la OC, la boleta y su saldo')
   comprobar(texto.includes(CUENTA_PROVEEDOR), 'con la cuenta del proveedor')
+  // El globo del menú cuenta las boletas de una parte con saldo, además de lo demás que se debe.
+  const [{ n: conSaldo }] = await consulta(`select count(*)::int as n from documentos_compra_material d
+     where d.monto_de_la_parte is not null and d.anulado_en is null
+       and d.monto_de_la_parte > coalesce((select sum(y.monto) from pagos_parte_con_boleta y where y.documento_compra_id = d.id and y.anulado_en is null), 0)`)
+  const globo = (await pagina.locator('a[href="/tesoreria/por-pagar"]').first().getAttribute('aria-label')) ?? ''
+  const enGlobo = Number(globo.match(/(\d+) pendientes?/)?.[1] ?? 0)
+  comprobar(conSaldo > 0 && enGlobo >= conSaldo, `el menú cuenta las boletas de una parte por pagar: «${globo}» (con saldo: ${conSaldo})`)
   const encabezado = limpio(await pagina.locator('main').first().innerText()).slice(0, 400)
   comprobar(/Por pagar: S\/ [\d,.]+/.test(encabezado), `el encabezado suma lo que se debe: ${encabezado.match(/Por pagar:[^·.]*/)?.[0] ?? encabezado.slice(0, 120)}`)
 

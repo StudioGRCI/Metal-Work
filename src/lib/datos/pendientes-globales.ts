@@ -875,9 +875,9 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde
   // el 2026-10-15), y Tesorería, Gerencia y Contabilidad tampoco lo ven.
   const enMenu = new Set(
-    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])),
+    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split(/[?#]/)[0])),
   )
-  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split('?')[0]))
+  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 
@@ -886,12 +886,12 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
-      sinComprobar.add(t.ruta.split('?')[0])
+      sinComprobar.add(t.ruta.split(/[?#]/)[0])
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
-    const base = t.ruta.split('?')[0]
+    const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
   })
 

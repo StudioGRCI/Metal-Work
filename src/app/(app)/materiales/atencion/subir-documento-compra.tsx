@@ -87,7 +87,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     factura.vaciar()
     void detector.leer(undefined)
   })
-  return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] sm:items-end">
+  return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-2 sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
@@ -119,8 +119,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     )}
     {tipo === 'COMPROBANTE' && (
       <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
-        <label className="flex items-start gap-2 text-sm sm:col-span-3">
-          <input type="checkbox" name="parte" value="si" className="mt-0.5 size-4" checked={parte} disabled={enviando}
+        <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-3">
+          <input type="checkbox" name="parte" value="si" className="size-4" checked={parte} disabled={enviando}
             onChange={(e) => setParte(e.target.checked)} />
           <span>Es la boleta de solo una parte de la OC</span>
         </label>

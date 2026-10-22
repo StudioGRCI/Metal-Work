@@ -340,6 +340,17 @@ select test.debe_fallar($$ insert into public.adquisiciones (id, tipo, proveedor
                           values (pg_temp.id('fx'), 'OTRO', 'Proveedor de prueba 429', current_setting('prueba.ruc'), 'B001-004291',
                                   current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 118, 'CONTADO') $$,
   'la boleta de una parte no se registra además como comprobante en Adquisiciones', 'No se registra otra vez');
+-- Al revés: el comprobante que Contabilidad ya registró no se anexa después como boleta de una parte.
+select set_config('prueba.fy', gen_random_uuid()::text, true);
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                  condicion_pago)
+values (pg_temp.id('fy'), 'OTRO', 'Proveedor de prueba 429', current_setting('prueba.ruc'), 'B001-4299',
+        current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 10, 'CONTADO');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.anexar('bx', 'oc1', 'COMPROBANTE', 'b001-04299', current_setting('prueba.hoy')::date, 10) $$,
+  'ni el comprobante ya registrado en Adquisiciones se anexa después como boleta de una parte', 'ya está registrado en Adquisiciones');
 reset role;
 select test.afirmar(public.motivo_para_no_anular_compra(pg_temp.id('oc3')) = 'La OC-' || split_part((select numero from public.ordenes_compra_materiales where id = pg_temp.id('oc3')), '-', 2)
                       || '-MW tiene anexada la boleta B001-4293 de una parte: que Logística la anule antes.',

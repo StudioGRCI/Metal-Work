@@ -276,6 +276,17 @@ begin
                 and public.clave_numero_comprobante(d.numero_documento) = public.clave_numero_comprobante(new.numero_documento)) then
     raise exception 'La boleta % ya está anexada a la % como la de una parte.', new.numero_documento, v_nombre using errcode = 'check_violation';
   end if;
+  -- Ni es un comprobante que Contabilidad ya registró en Adquisiciones: se pagaría por él y aquí.
+  -- El mismo candado que toma `fn_adquisicion_no_es_boleta_de_una_parte`: las dos no se cruzan.
+  perform pg_advisory_xact_lock(hashtextextended('parte|' || public.clave_numero_comprobante(new.numero_documento), 0));
+  if exists (select 1 from public.adquisiciones a
+              left join public.proveedores p on p.id = v_oc.proveedor_id
+              where public.clave_numero_comprobante(a.numero_documento) = public.clave_numero_comprobante(new.numero_documento)
+                and (case when a.ruc_proveedor is not null and p.numero_documento is not null then a.ruc_proveedor = p.numero_documento
+                          else public.mismo_proveedor(a.proveedor, v_oc.proveedor) end)) then
+    raise exception 'El comprobante % ya está registrado en Adquisiciones: se paga por ahí. Si es la boleta de una parte, Contabilidad lo corrige primero.',
+      new.numero_documento using errcode = 'check_violation';
+  end if;
   if not v_oc.con_factura
      and exists (select 1 from public.pagos_orden_compra p where p.orden_compra_id = v_oc.id and p.anulado_en is null) then
     raise exception 'Tesorería ya empezó a pagar la % por su boleta entera: ese pago cuenta para la factura que llegue. Si la entrega fue mixta, Tesorería anula ese pago con su motivo y la boleta de la parte se anexa antes de pagarla.',
@@ -731,6 +742,7 @@ begin
          and new.proveedor is not distinct from old.proveedor and new.ruc_proveedor is not distinct from old.ruc_proveedor) then
     return new;
   end if;
+  perform pg_advisory_xact_lock(hashtextextended('parte|' || v_numero, 0));
   select d.numero_documento, coalesce(c.numero, 'OC ' || c.referencia) as compra into v_doc
     from public.documentos_compra_material d
     join public.ordenes_compra_materiales c on c.id = d.orden_compra_id
