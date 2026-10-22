@@ -3615,6 +3615,13 @@ export type Database = {
           formato_cerrado_por: string | null
           numero_salida: string | null
           de_la_unidad: number | null
+          devuelve_ingreso: string | null
+          se_repone: boolean | null
+          motivo_devolucion: string | null
+          repone_devolucion: string | null
+          reposicion_cancelada_en: string | null
+          reposicion_cancelada_por: string | null
+          reposicion_cancelada_motivo: string | null
         }
         Insert: {
           id: string
@@ -3646,6 +3653,13 @@ export type Database = {
           formato_cerrado_por?: string | null
           numero_salida?: string | null
           de_la_unidad?: number | null
+          devuelve_ingreso?: string | null
+          se_repone?: boolean | null
+          motivo_devolucion?: string | null
+          repone_devolucion?: string | null
+          reposicion_cancelada_en?: string | null
+          reposicion_cancelada_por?: string | null
+          reposicion_cancelada_motivo?: string | null
         }
         Update: {
           id?: string
@@ -3677,6 +3691,13 @@ export type Database = {
           formato_cerrado_por?: string | null
           numero_salida?: string | null
           de_la_unidad?: number | null
+          devuelve_ingreso?: string | null
+          se_repone?: boolean | null
+          motivo_devolucion?: string | null
+          repone_devolucion?: string | null
+          reposicion_cancelada_en?: string | null
+          reposicion_cancelada_por?: string | null
+          reposicion_cancelada_motivo?: string | null
         }
         Relationships: [
           {
@@ -3696,6 +3717,13 @@ export type Database = {
           {
             foreignKeyName: "movimientos_materiales_devolucion_de_fkey"
             columns: ["devolucion_de"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_devuelve_ingreso_fkey"
+            columns: ["devuelve_ingreso"]
             isOneToOne: false
             referencedRelation: "movimientos_materiales"
             referencedColumns: ["id"]
@@ -3729,6 +3757,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "movimientos_materiales_repone_devolucion_fkey"
+            columns: ["repone_devolucion"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_materiales_reposicion_cancelada_por_fkey"
+            columns: ["reposicion_cancelada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "movimientos_materiales_requerimiento_detalle_id_fkey"
             columns: ["requerimiento_detalle_id"]
             isOneToOne: false
@@ -3754,6 +3796,104 @@ export type Database = {
             columns: ["unidad_id"]
             isOneToOne: false
             referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      notas_credito_compra: {
+        Row: {
+          id: string
+          adquisicion_id: string
+          numero: string
+          proveedor: string
+          ruc_proveedor: string | null
+          fecha_emision: string
+          moneda: string
+          monto: number
+          tipo: string
+          devolucion_id: string | null
+          motivo: string
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }
+        Insert: {
+          id?: string
+          adquisicion_id: string
+          numero: string
+          proveedor: string
+          ruc_proveedor?: string | null
+          fecha_emision: string
+          moneda: string
+          monto: number
+          tipo: string
+          devolucion_id?: string | null
+          motivo: string
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Update: {
+          id?: string
+          adquisicion_id?: string
+          numero?: string
+          proveedor?: string
+          ruc_proveedor?: string | null
+          fecha_emision?: string
+          moneda?: string
+          monto?: number
+          tipo?: string
+          devolucion_id?: string | null
+          motivo?: string
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_credito_compra_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "adquisiciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_devolucion_id_fkey"
+            columns: ["devolucion_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -6626,6 +6766,7 @@ export type Database = {
           actualizado_en: string
           pago_orden_compra_id: string | null
           monto_de_la_boleta: number | null
+          nota_credito_id: string | null
         }
         Insert: {
           id?: string
@@ -6644,6 +6785,7 @@ export type Database = {
           actualizado_en?: string
           pago_orden_compra_id?: string | null
           monto_de_la_boleta?: number | null
+          nota_credito_id?: string | null
         }
         Update: {
           id?: string
@@ -6662,6 +6804,7 @@ export type Database = {
           actualizado_en?: string
           pago_orden_compra_id?: string | null
           monto_de_la_boleta?: number | null
+          nota_credito_id?: string | null
         }
         Relationships: [
           {
@@ -6676,6 +6819,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_nota_credito_id_fkey"
+            columns: ["nota_credito_id"]
+            isOneToOne: false
+            referencedRelation: "notas_credito_compra"
             referencedColumns: ["id"]
           },
           {
@@ -8027,6 +8177,82 @@ export type Database = {
           }
         ]
       }
+      reembolsos_nota_credito: {
+        Row: {
+          id: string
+          nota_credito_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          operacion: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }
+        Insert: {
+          id?: string
+          nota_credito_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          operacion?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Update: {
+          id?: string
+          nota_credito_id?: string
+          fecha?: string
+          moneda?: string
+          monto?: number
+          operacion?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reembolsos_nota_credito_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_nota_credito_nota_credito_id_fkey"
+            columns: ["nota_credito_id"]
+            isOneToOne: false
+            referencedRelation: "notas_credito_compra"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_nota_credito_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       registro_vehiculo_fichas: {
         Row: {
           id: string
@@ -8690,6 +8916,8 @@ export type Database = {
           material_nuevo: boolean
           orden_compra_detalle_id: string | null
           sin_salida_al_entregar: number | null
+          recompra_de: string | null
+          recompra_por: string | null
         }
         Insert: {
           id?: string
@@ -8711,6 +8939,8 @@ export type Database = {
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
           sin_salida_al_entregar?: number | null
+          recompra_de?: string | null
+          recompra_por?: string | null
         }
         Update: {
           id?: string
@@ -8732,6 +8962,8 @@ export type Database = {
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
           sin_salida_al_entregar?: number | null
+          recompra_de?: string | null
+          recompra_por?: string | null
         }
         Relationships: [
           {
@@ -8767,6 +8999,20 @@ export type Database = {
             columns: ["orden_compra_id"]
             isOneToOne: false
             referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_recompra_de_fkey"
+            columns: ["recompra_de"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_lineas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_lineas_recompra_por_fkey"
+            columns: ["recompra_por"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
             referencedColumns: ["id"]
           },
           {
@@ -11190,6 +11436,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_orden_compra: {
         Args: {
           p_compra: string | null
@@ -11247,6 +11500,13 @@ export type Database = {
         Returns: string
       }
       anular_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_reembolso_nota_credito: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -11383,6 +11643,17 @@ export type Database = {
       }
       avisar_a_diseno: {
         Args: {
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+        }
+        Returns: null
+      }
+      avisar_a_permiso: {
+        Args: {
+          p_permiso: string | null
           p_titulo: string | null
           p_cuerpo: string | null
           p_ruta: string | null
@@ -11559,6 +11830,12 @@ export type Database = {
           p_operacion?: string | null
         }
         Returns: number
+      }
+      cantidad_en_texto: {
+        Args: {
+          p: number | null
+        }
+        Returns: string
       }
       cargar_cronograma: {
         Args: {
@@ -11951,6 +12228,27 @@ export type Database = {
         }[]
       }
       codigo_interno_lineas_gastos_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_nota_credito: {
         Args: {
           p_codigo: string | null
         }
@@ -12794,6 +13092,16 @@ export type Database = {
         }
         Returns: string
       }
+      cuenta_de_la_linea_de_compra: {
+        Args: {
+          p_detalle: string | null
+        }
+        Returns: {
+          neto: number | null
+          sin_reponer: number | null
+          por_reponer: number | null
+        }[]
+      }
       dar_por_terminada_la_garantia: {
         Args: {
           p_orden: string | null
@@ -12840,6 +13148,21 @@ export type Database = {
           p_config: Json | null
         }
         Returns: number
+      }
+      dejar_de_esperar_reposicion: {
+        Args: {
+          p_devolucion: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      descontar_nota_credito: {
+        Args: {
+          p_nota: string | null
+          p_factura: string | null
+          p_monto: number | null
+        }
+        Returns: string
       }
       despachar_material: {
         Args: {
@@ -12890,6 +13213,50 @@ export type Database = {
           minimo: number | null
           motivo: string | null
         }
+      }
+      devoluciones_por_reponer: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          devolucion_id: string | null
+          fecha: string | null
+          compra: string | null
+          orden_compra_id: string | null
+          proveedor: string | null
+          material: string | null
+          unidad: string | null
+          devuelto: number | null
+          repuesto: number | null
+          documento: string | null
+          motivo: string | null
+        }[]
+      }
+      devoluciones_sin_nota_credito: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          devolucion_id: string | null
+          fecha: string | null
+          compra: string | null
+          orden_compra_id: string | null
+          proveedor: string | null
+          material: string | null
+          unidad: string | null
+          cantidad: number | null
+          importe: number | null
+          moneda: string | null
+          documento: string | null
+          facturas: Json | null
+        }[]
+      }
+      devolver_al_proveedor: {
+        Args: {
+          p_id: string | null
+          p_ingreso: string | null
+          p_cantidad: number | null
+          p_documento: string | null
+          p_motivo: string | null
+          p_se_repone: boolean | null
+        }
+        Returns: string
       }
       dias_de_taller: {
         Args: {
@@ -13103,6 +13470,12 @@ export type Database = {
         }
         Returns: string
       }
+      en_mano_de_la_linea_de_compra: {
+        Args: {
+          p_detalle: string | null
+        }
+        Returns: number
+      }
       entregado_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -13265,6 +13638,18 @@ export type Database = {
           numero: string | null
           moneda: string | null
           fecha_emision: string | null
+          total: number | null
+          saldo: number | null
+        }[]
+      }
+      facturas_para_la_nota: {
+        Args: {
+          p_nota: string | null
+        }
+        Returns: {
+          factura_id: string | null
+          numero: string | null
+          fecha: string | null
           total: number | null
           saldo: number | null
         }[]
@@ -13534,6 +13919,21 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
+      ingresos_para_devolver: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          ingreso_id: string | null
+          fecha: string | null
+          compra: string | null
+          proveedor: string | null
+          material_id: string | null
+          material: string | null
+          unidad: string | null
+          ingresado: number | null
+          se_puede: number | null
+          documento: string | null
+        }[]
+      }
       ingresos_por_validar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13616,6 +14016,19 @@ export type Database = {
           devuelto: number | null
           para_repartir: number | null
           tomado_solo: number | null
+        }[]
+      }
+      llegado_de_la_linea_de_compra: {
+        Args: {
+          p_detalle: string | null
+          p_neto: number | null
+        }
+        Returns: {
+          linea_id: string | null
+          requerimiento_id: string | null
+          falta: number | null
+          entregado: number | null
+          llegado: number | null
         }[]
       }
       lote_de_prueba: {
@@ -13826,6 +14239,23 @@ export type Database = {
           p: string | null
         }
         Returns: string
+      }
+      notas_credito_a_favor: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          nota_id: string | null
+          numero: string | null
+          proveedor: string | null
+          ruc_proveedor: string | null
+          factura_id: string | null
+          factura: string | null
+          fecha: string | null
+          moneda: string | null
+          monto: number | null
+          a_favor: number | null
+          archivo_ruta: string | null
+          usado: Json | null
+        }[]
       }
       notificar_a_permiso: {
         Args: {
@@ -14306,6 +14736,13 @@ export type Database = {
         }
         Returns: string
       }
+      quitar_descuento_nota_credito: {
+        Args: {
+          p_pago: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       quitar_etapa_codigo: {
         Args: {
           p_id: string | null
@@ -14344,6 +14781,15 @@ export type Database = {
         }
         Returns: string
       }
+      reabrir_rq_por_lo_devuelto: {
+        Args: {
+          p_detalle: string | null
+          p_neto_antes: number | null
+          p_neto_despues: number | null
+          p_compra: string | null
+        }
+        Returns: null
+      }
       recalcular_etapa_desde_actividades: {
         Args: {
           p_etapa_id: string | null
@@ -14370,11 +14816,27 @@ export type Database = {
         }
         Returns: string
       }
+      recibir_reposicion: {
+        Args: {
+          p_id: string | null
+          p_devolucion: string | null
+          p_cantidad: number | null
+          p_documento: string | null
+        }
+        Returns: string
+      }
       recibir_version_plano: {
         Args: {
           p_id: string | null
         }
         Returns: string
+      }
+      recomprar_lo_devuelto: {
+        Args: {
+          p_detalle: string | null
+          p_devolucion: string | null
+        }
+        Returns: number
       }
       reemplazar_etapas_historicas: {
         Args: {
@@ -14557,6 +15019,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_factura: string | null
+          p_numero: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_tipo: string | null
+          p_devolucion: string | null
+          p_motivo: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_orden_sin_cotizacion: {
         Args: {
           p_orden: string | null
@@ -14681,6 +15157,19 @@ export type Database = {
           p_monto_bruto: number | null
           p_retencion: boolean | null
           p_ruta: string | null
+        }
+        Returns: string
+      }
+      registrar_reembolso_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_operacion: string | null
+          p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -15326,6 +15815,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      saldo_de_la_nota_credito: {
+        Args: {
+          p_nota: string | null
+        }
+        Returns: number
+      }
       saldo_horas_de: {
         Args: {
           p_trabajador_id: string | null
@@ -15657,6 +16152,13 @@ export type Database = {
         Args: {
           p_desde: string | null
           p_dias: number | null
+        }
+        Returns: string
+      }
+      texto_monto: {
+        Args: {
+          p_moneda: string | null
+          p_monto: number | null
         }
         Returns: string
       }

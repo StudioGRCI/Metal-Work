@@ -147,7 +147,7 @@ async function Materiales({ codigo }: { codigo: string }) {
           ) : (
             <>
               {lineas.map((l, i) => (
-                <TR key={`${l.referencia_id ?? i}`}>
+                <TR key={`${l.referencia_id ?? ''}-${l.documento ?? ''}-${i}`}>
                   <TD className="tabular align-top whitespace-nowrap">{fecha(l.fecha)}</TD>
                   <TD className="align-top">
                     <p className="text-texto">{l.concepto}</p>

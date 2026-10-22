@@ -32,6 +32,11 @@ export function ConAvisosDeLoAnotado({ children }: { children: React.ReactNode }
   )
 }
 
+/** Para otro botón de la lista que también anota algo y deja su aviso arriba (la nota de crédito). */
+export function useAvisoDeLoAnotado() {
+  return useContext(Avisar)
+}
+
 /**
  * La factura de una OC con boleta que se dio por pagada fuera espera que
  * Contabilidad diga si esa OC ya se pagó o si falta pagarla (decisión de DKS del

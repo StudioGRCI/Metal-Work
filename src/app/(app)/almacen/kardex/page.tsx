@@ -14,7 +14,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
-import { cargarKardex, FILAS_POR_PAGINA, filtrosDeKardex, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
+import { cargarKardex, devolucionesPorReponer, FILAS_POR_PAGINA, filtrosDeKardex, ingresosParaDevolver, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
 import { separadoEnAlmacen, stockEnAlmacen } from '@/lib/datos/stock-almacen'
 import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato, topeDeCantidad } from '@/lib/dominio/almacen'
 import { normalizarCodigo, vehiculosDeLaPlaca } from '@/lib/dominio/codigos-internos'
@@ -25,6 +25,7 @@ import { createClient } from '@/lib/supabase/server'
 
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
+import { DevolverAlProveedor, EsperanReposicion } from './devolucion-proveedor'
 import { FiltroMaterial } from './filtro-material'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
@@ -61,7 +62,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const abreOt = seccionesDeOrden(perfil).length > 0
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -96,6 +97,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         console.error('No se pudo leer lo separado del stock:', e instanceof Error ? e.message : e)
         return null
       }),
+    // Lo que llegó de una compra y se puede devolver al proveedor, y lo devuelto que espera reposición.
+    puedeIngreso ? ingresosParaDevolver() : Promise.resolve([]),
+    devolucionesPorReponer(),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
@@ -213,6 +217,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               }))}
             />
           )}
+          {puedeIngreso && <DevolverAlProveedor ingresos={paraDevolver} />}
           {/* En la esquina, aparte del trabajo diario: se usa solo cuando se cae la señal. */}
           <div className="ml-auto">
             <SinInternet />
@@ -300,6 +305,22 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           />
           <TarjetaCuerpo>
             <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && (porReponer.length > 0 || puedeIngreso) && (
+        <Tarjeta id="por-reponer" className="mb-4">
+          <TarjetaCabecera
+            titulo={porReponer.length === 0 ? 'Esperan reposición' : `Esperan reposición · ${porReponer.length === 1 ? '1 devolución' : `${porReponer.length} devoluciones`}`}
+            ayuda="Lo devuelto al proveedor que dijo que lo repone. Cuando llegue, recíbelo aquí; si ya no viene, lo que falta vuelve a la lista de Logística."
+            acciones={porReponer.length > 0 ? <Insignia tono="aviso">Por reponer</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            {porReponer.length === 0 && (
+              <p className="mb-2 text-sm text-texto-suave">Nada devuelto espera reposición. Cuando devuelvas algo que el proveedor repone, aparece aquí para recibirlo.</p>
+            )}
+            <EsperanReposicion devoluciones={porReponer} puedeRecibir={puedeIngreso} puedeDejar={puedeIngreso} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}

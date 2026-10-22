@@ -15,6 +15,7 @@ import {
   type OcEnTabla,
 } from '@/lib/datos/adquisiciones'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
+import { devolucionesSinNota, notasDeLasFacturas, type DevolucionSinNota, type NotaDeLaFactura } from '@/lib/datos/notas-credito'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda } from '@/lib/format'
@@ -24,6 +25,7 @@ import { createClient } from '@/lib/supabase/server'
 import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
+import { AnularNotaCredito, RegistrarNotaCredito, type DevolucionParaLaNota } from './nota-credito'
 import { ConAvisosDeLoAnotado, ConfirmarPagoDeBoleta } from './pago-de-boleta'
 
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
@@ -46,6 +48,18 @@ type Params = Record<string, string | string[] | undefined>
 type Acceso = { rq: boolean; oc: boolean; proveedor: boolean; porPagar: boolean; codigo: boolean }
 
 const enlace = 'font-medium text-acento hover:underline'
+
+/**
+ * Las notas de crédito de cada factura y, para Contabilidad, lo devuelto que
+ * espera la suya por factura (migración 20261022190000). `devolucionesDe` es
+ * null para quien solo consulta: no registra notas.
+ */
+type NotasDeLaTabla = { notas: Map<string, NotaDeLaFactura[]>; devolucionesDe: Map<string, DevolucionParaLaNota[]> | null; hoy: string }
+
+/** Cómo se lee una devolución en la lista de la nota: qué, cuánto, de qué OC y con qué guía. */
+function textoDeLaDevolucion(d: DevolucionSinNota) {
+  return `${d.material}: ${Number(d.cantidad)} ${d.unidad ?? ''} de la ${d.compra}${d.documento ? ` (${d.documento})` : ''}, del ${fecha(d.fecha)}`.replace(/\s+/g, ' ')
+}
 
 /**
  * La pestaña Facturas: de izquierda a derecha el RQ, la OC que lo compró, la
@@ -80,7 +94,21 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
   const porRegistrar = deLogistica.filter((d) => !d.registrada)
   const porRegistrarDe = new Map<string, FacturaDeLogistica[]>()
   for (const d of porRegistrar) porRegistrarDe.set(d.orden_compra_id, [...(porRegistrarDe.get(d.orden_compra_id) ?? []), d])
-  const correcciones = await correccionesDe('FACTURA_COMPRA', tabla.facturas.map((f) => f.factura.id))
+  const [correcciones, notas, devoluciones] = await Promise.all([
+    correccionesDe('FACTURA_COMPRA', tabla.facturas.map((f) => f.factura.id)),
+    notasDeLasFacturas(tabla.facturas.map((f) => f.factura.id)),
+    registra ? devolucionesSinNota() : Promise.resolve([]),
+  ])
+  // Lo devuelto sin reposición, en cada factura de su OC: la nota se registra contra una de ellas.
+  const devolucionesDe = new Map<string, DevolucionParaLaNota[]>()
+  for (const d of devoluciones) {
+    for (const f of d.facturas) {
+      devolucionesDe.set(f.id, [...(devolucionesDe.get(f.id) ?? []), { id: d.devolucion_id, texto: textoDeLaDevolucion(d), importe: Number(d.importe) }])
+    }
+  }
+  const hoy = hoyLima()
+  const nc: NotasDeLaTabla = { notas, devolucionesDe: registra ? devolucionesDe : null, hoy }
+  const facturaDe = new Map(tabla.facturas.map(({ factura: f }) => [f.id, f]))
   // Lo que el detector leyó del papel frente a lo registrado y a sus OC (#98).
   const avisosDe = new Map(
     tabla.facturas.map(({ factura: f }) => [f.id, f.estado === 'BORRADOR' ? [] : avisosDeFacturaRegistrada(f, f.control)]),
@@ -130,6 +158,13 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         </Tarjeta>
       )}
 
+
+      {/* Lo anotado de un pago por confirmar o de una nota de crédito: la fila se va de su lista y con ella el botón. */}
+      <ConAvisosDeLoAnotado>
+      {registra && devoluciones.length > 0 && (
+        <EsperanNotaCredito devoluciones={devoluciones} facturaDe={facturaDe} hoy={hoy} devolucionesDe={devolucionesDe} />
+      )}
+
       <Vistas
         etiqueta="Qué facturas ver"
         id="vistas-facturas"
@@ -144,8 +179,6 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         }))}
       />
 
-      {/* Lo anotado de un pago por confirmar: la fila se va de «Pago por confirmar» y con ella el botón. */}
-      <ConAvisosDeLoAnotado>
       {noCalzan.length > 0 && (vista === 'facturas' || vista === 'no-calzan') && (
         <p className="mb-3 text-sm text-aviso">
           {noCalzan.length === 1 ? 'Una factura no calza' : `${noCalzan.length} facturas no calzan`} con sus OC o con lo que dice el papel: revisa
@@ -164,6 +197,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         correcciones={correcciones}
         corrige={registra ? sinFactura : null}
         porRegistrarDe={porRegistrarDe}
+        nc={nc}
       />
 
       <Tarjeta className="hidden overflow-hidden sm:block">
@@ -197,6 +231,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
                       avisos={avisosDe.get(factura.id) ?? []}
                       correcciones={correcciones.get(factura.id)}
                       corrige={registra ? sinFactura : null}
+                      nc={nc}
                     />
                   ))}
               {esperan.length > 0 && (
@@ -253,6 +288,93 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
 }
 
 /**
+ * Lo que Almacén devolvió al proveedor sin reposición y todavía no tiene su nota
+ * de crédito (decisión de DKS del 22/10, migración 20261022190000). Es lo que
+ * espera a Contabilidad: va arriba, y el aviso que le llega trae aquí. Cada
+ * fila registra la nota contra una factura de su OC, con la devolución ya elegida.
+ */
+function EsperanNotaCredito({
+  devoluciones,
+  facturaDe,
+  devolucionesDe,
+  hoy,
+}: {
+  devoluciones: DevolucionSinNota[]
+  facturaDe: Map<string, FacturaEnTabla>
+  devolucionesDe: Map<string, DevolucionParaLaNota[]>
+  hoy: string
+}) {
+  // Primero las que ya se pueden registrar: tienen la factura de su OC.
+  const listas = devoluciones.filter((d) => d.facturas.length > 0)
+  const sinFactura = devoluciones.filter((d) => d.facturas.length === 0)
+  return (
+    <Tarjeta id="notas-credito" className="mb-5 scroll-mt-20">
+      <TarjetaCabecera
+        titulo="Esperan nota de crédito"
+        descripcion={devoluciones.length === 1 ? 'Una devolución al proveedor.' : `${devoluciones.length} devoluciones al proveedor.`}
+        ayuda="Lo que Almacén devolvió al proveedor y no se repone. Cuando llegue la nota de crédito, regístrala contra la factura de esa OC: la factura baja sola y, si ya estaba pagada, lo que sobra queda a favor para Tesorería."
+      />
+      <TarjetaCuerpo>
+        {listas.length === 0 && <p className="text-sm text-texto-suave">Ninguna tiene todavía su factura registrada: van abajo.</p>}
+        <ul className="divide-y divide-borde" aria-label="Devoluciones que esperan nota de crédito">
+          {listas.map((d) => {
+            const m = codigo(d.moneda)
+            return (
+              <li key={d.devolucion_id} data-espera-nota={d.compra} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium text-texto">
+                    {d.material}: <span className="tabular">{Number(d.cantidad)}</span> {d.unidad}
+                  </p>
+                  <p className="text-xs text-texto-suave">
+                    {d.proveedor} · {d.compra} · devuelto el <span className="tabular">{fecha(d.fecha)}</span>
+                    {d.documento ? ` con ${d.documento}` : ''} · <span className="tabular">{moneda(Number(d.importe), m)}</span> al precio de la OC
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {d.facturas.map((ref) => {
+                      const f = facturaDe.get(ref.id)
+                      return f ? (
+                        <RegistrarNotaCredito
+                          key={ref.id}
+                          factura={{ id: f.id, numero: f.numero_documento, proveedor: f.proveedor, moneda: f.moneda, fecha: f.fecha_emision }}
+                          devoluciones={devolucionesDe.get(f.id) ?? []}
+                          devolucionInicial={d.devolucion_id}
+                          hoy={hoy}
+                          principal
+                        />
+                      ) : (
+                        <p key={ref.id} className="text-xs text-texto-suave">
+                          Factura {ref.numero}: búscala en «Todas».
+                        </p>
+                      )
+                    })}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+        {sinFactura.length > 0 && (
+          // Las que todavía no tienen factura no se pueden atender aquí: plegadas, para que no empujen la lista de facturas.
+          <details className="mt-3 border-t border-borde pt-3 text-sm">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto sm:min-h-0">
+              {sinFactura.length === 1 ? 'Una espera' : `${sinFactura.length} esperan`} que se registre la factura de su OC
+            </summary>
+            <ul className="mt-2 space-y-1.5 text-xs text-texto-suave" aria-label="Devoluciones cuya OC no tiene factura registrada">
+              {sinFactura.map((d) => (
+                <li key={d.devolucion_id} data-espera-nota={d.compra}>
+                  {d.compra} · {d.proveedor} · {d.material}: <span className="tabular">{Number(d.cantidad)}</span> {d.unidad} ·{' '}
+                  <span className="tabular">{moneda(Number(d.importe), codigo(d.moneda))}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+/**
  * Lo mismo que la tabla, para el teléfono: cada factura con su proveedor, su
  * total, sus OC y su pago; al final, las OC que esperan su factura.
  */
@@ -266,6 +388,7 @@ function ComprasEnTelefono({
   correcciones,
   corrige,
   porRegistrarDe,
+  nc,
 }: {
   facturas: { factura: FacturaEnTabla; ordenes: OcEnTabla[] }[]
   esperan: { compra: CompraSinFactura; orden: OcEnTabla }[]
@@ -276,6 +399,7 @@ function ComprasEnTelefono({
   correcciones: Map<string, CorreccionVista[]>
   corrige: CompraSinFactura[] | null
   porRegistrarDe: Map<string, FacturaDeLogistica[]>
+  nc: NotasDeLaTabla
 }) {
   if (vacio) {
     return (
@@ -313,6 +437,7 @@ function ComprasEnTelefono({
                     avisos={avisosDe.get(f.id) ?? []}
                     correcciones={correcciones.get(f.id)}
                     corrige={corrige}
+                    nc={nc}
                   />
                   {ordenes.length > 0 && (
                     <ul className="space-y-0.5 text-xs text-texto-suave">
@@ -471,6 +596,7 @@ function GrupoFactura({
   avisos,
   correcciones,
   corrige,
+  nc,
 }: {
   factura: FacturaEnTabla
   ordenes: OcEnTabla[]
@@ -482,6 +608,7 @@ function GrupoFactura({
   correcciones: CorreccionVista[] | undefined
   /** Contabilidad la corrige con las OC que esperan factura; null para quien solo consulta. */
   corrige: CompraSinFactura[] | null
+  nc: NotasDeLaTabla
 }) {
   const filas: (OcEnTabla | null)[] = ordenes.length > 0 ? ordenes : [null]
   const alto = filas.length
@@ -504,7 +631,7 @@ function GrupoFactura({
           {i === 0 && (
             <>
               <TD rowSpan={alto} className="align-top">
-                <DatosDeFactura factura={f} propia={propia} avisos={avisos} correcciones={correcciones} corrige={corrige} />
+                <DatosDeFactura factura={f} propia={propia} avisos={avisos} correcciones={correcciones} corrige={corrige} nc={nc} />
               </TD>
               <TD rowSpan={alto} className="align-top whitespace-nowrap">
                 <span className="tabular">{fecha(f.fecha_emision)}</span>
@@ -540,6 +667,7 @@ function DatosDeFactura({
   avisos,
   correcciones,
   corrige,
+  nc,
 }: {
   factura: FacturaEnTabla
   /** En el teléfono el número encabeza la tarjeta, junto al total. */
@@ -548,8 +676,13 @@ function DatosDeFactura({
   avisos: string[]
   correcciones: CorreccionVista[] | undefined
   corrige: CompraSinFactura[] | null
+  nc: NotasDeLaTabla
 }) {
   const m = codigo(f.moneda)
+  const notas = nc.notas.get(f.id) ?? []
+  // La nota va contra una factura: el recibo por honorarios y «otro» no la llevan.
+  const llevaNota = nc.devolucionesDe !== null && f.estado === 'REGISTRADA' && f.tipo !== 'RECIBO_HONORARIOS' && f.tipo !== 'OTRO'
+  const devolucionesDeEsta = nc.devolucionesDe?.get(f.id) ?? []
   return (
     <>
       {conNumero && (
@@ -589,6 +722,39 @@ function DatosDeFactura({
       </div>
       {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} pideRuc={f.tipo === 'FACTURA_COMPRA' && !f.ruc_proveedor} />}
       <HistorialDeCorrecciones correcciones={correcciones} />
+      {notas.length > 0 && (
+        <ul className="mt-1 max-w-72 space-y-1 text-xs" aria-label={`Notas de crédito de la factura ${f.numero_documento}`}>
+          {notas.map((n) => (
+            <li key={n.id} data-nota-credito={n.numero} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={n.anulada ? 'text-texto-suave line-through' : 'text-texto'}>
+                {n.url ? (
+                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
+                    Nota {n.numero}
+                  </a>
+                ) : (
+                  <span className="tabular">Nota {n.numero}</span>
+                )}{' '}
+                <span className="tabular">−{moneda(n.monto, codigo(n.moneda))}</span> · {n.tipo === 'DEVOLUCION' ? 'por lo devuelto' : 'descuento'}
+              </span>
+              {n.anulada ? (
+                <span className="basis-full text-peligro">Anulada: {n.anulada.motivo}</span>
+              ) : (
+                llevaNota && <AnularNotaCredito nota={{ id: n.id, numero: n.numero, fecha: n.fecha }} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {llevaNota && (
+        <div className="mt-1">
+          <RegistrarNotaCredito
+            factura={{ id: f.id, numero: f.numero_documento, proveedor: f.proveedor, moneda: f.moneda, fecha: f.fecha_emision }}
+            devoluciones={devolucionesDeEsta}
+            hoy={nc.hoy}
+            principal={devolucionesDeEsta.length > 0}
+          />
+        </div>
+      )}
       {corrige && f.estado === 'REGISTRADA' && (
         <div className="mt-1">
           <CorregirFactura
@@ -731,8 +897,10 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
               {/* Lo que tomó de lo pagado por la boleta de una OC lleva el voucher de ese pago; el que Tesorería pasó a mano dice cómo. */}
               {p.url ? (
                 <a href={p.url} target="_blank" rel="noreferrer" className={enlace}>
-                  {p.pago_orden_compra_id ? (p.esNota ? 'Nota de crédito o documento' : 'Voucher de la boleta') : 'Voucher'}
-                  {f.pagos.length > 1 ? ` ${i + 1}` : ''}
+                  {/* Lo que bajó una nota de crédito no es un pago: se nombra por su nota (migración 20261022190000). */}
+                  {p.notaCredito
+                    ? `Nota de crédito ${p.notaCredito.numero}`
+                    : `${p.pago_orden_compra_id ? (p.esNota ? 'Nota de crédito o documento' : 'Voucher de la boleta') : 'Voucher'}${f.pagos.length > 1 ? ` ${i + 1}` : ''}`}
                 </a>
               ) : (
                 'Sin voucher'

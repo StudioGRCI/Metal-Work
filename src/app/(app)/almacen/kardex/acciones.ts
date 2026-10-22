@@ -771,3 +771,94 @@ export async function validarIngresosCompra(_previo: unknown, formulario: FormDa
       : 'Ingreso validado: ya está en el kardex con su saldo.',
   }
 }
+
+const DEVOLVER = z.object({
+  id: z.guid(),
+  ingreso: z.guid('Elige el ingreso de la compra que se devuelve.'),
+  cantidad: z.coerce.number('Escribe cuánto vuelve al proveedor.').positive('Escribe cuánto vuelve al proveedor.')
+    .refine((n) => Math.round(n * 1000) === n * 1000, 'La cantidad lleva hasta tres decimales.'),
+  documento: z.string().trim().min(2, 'Escribe la guía o el documento con que sale lo devuelto.').max(100),
+  motivo: z.string().trim().min(10, 'Cuenta por qué se devuelve (de 10 a 500 letras).').max(500, 'El motivo puede tener hasta 500 letras.'),
+  se_repone: z.enum(['si', 'no'], 'Di si el proveedor lo repone.'),
+})
+
+/**
+ * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
+ * 22/10). Sale del kardex; si el proveedor lo repone, la OC lo vuelve a esperar,
+ * y si no, lo que falte vuelve a la lista de Logística (`devolver_al_proveedor`).
+ */
+export async function devolverAlProveedor(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Lo devuelve al proveedor quien recibe en Almacén.' }
+  const v = DEVOLVER.safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa lo que se devuelve.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('devolver_al_proveedor', {
+    p_id: v.data.id,
+    p_ingreso: v.data.ingreso,
+    p_cantidad: v.data.cantidad,
+    p_documento: v.data.documento,
+    p_motivo: v.data.motivo,
+    p_se_repone: v.data.se_repone === 'si',
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.id) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/almacen/kardex')
+  revalidatePath('/compras')
+  revalidatePath('/requerimientos')
+  return {
+    ok: true,
+    mensaje: v.data.se_repone === 'si'
+      ? 'Devuelto al proveedor: la OC vuelve a esperar lo que repone.'
+      : 'Devuelto al proveedor: lo que falte vuelve a la lista de Logística y Contabilidad espera la nota de crédito.',
+  }
+}
+
+const REPOSICION = z.object({
+  id: z.guid(),
+  devolucion: z.guid(),
+  cantidad: z.coerce.number('Escribe cuánto llegó.').positive('Escribe cuánto llegó.')
+    .refine((n) => Math.round(n * 1000) === n * 1000, 'La cantidad lleva hasta tres decimales.'),
+  documento: z.string().trim().min(2, 'Escribe la guía o el documento con que llegó.').max(100),
+})
+
+/** Llegó lo que el proveedor repone: entra al kardex contra su devolución (`recibir_reposicion`). */
+export async function recibirReposicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'La reposición la recibe Almacén.' }
+  const v = REPOSICION.safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa lo que llegó.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('recibir_reposicion', {
+    p_id: v.data.id, p_devolucion: v.data.devolucion, p_cantidad: v.data.cantidad, p_documento: v.data.documento,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.id) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/almacen/kardex')
+  revalidatePath('/compras')
+  revalidatePath('/requerimientos')
+  return { ok: true, mensaje: 'La reposición entró al kardex.' }
+}
+
+const YA_NO = z.object({
+  devolucion: z.guid(),
+  motivo: z.string().trim().min(10, 'Cuenta por qué ya no se espera (de 10 a 500 letras).').max(500, 'El motivo puede tener hasta 500 letras.'),
+})
+
+/** El proveedor no repone lo devuelto: lo que falte vuelve a la lista de Logística (`dejar_de_esperar_reposicion`). */
+export async function dejarDeEsperarReposicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.recibir') && !puede(perfil, 'compras.crear')) {
+    return { ok: false, error: 'Lo dice Almacén o Logística.' }
+  }
+  const v = YA_NO.safeParse(Object.fromEntries(formulario))
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el motivo.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('dejar_de_esperar_reposicion', { p_devolucion: v.data.devolucion, p_motivo: v.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== v.data.devolucion) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/almacen/kardex')
+  revalidatePath('/compras')
+  revalidatePath('/requerimientos')
+  return { ok: true, mensaje: 'Ya no se espera: lo que falte vuelve a la lista de Logística y Contabilidad espera la nota de crédito.' }
+}
