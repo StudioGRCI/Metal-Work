@@ -113,9 +113,25 @@ export default async function PaginaPorPagar() {
   )
   const pendientesCredito = pendientes.data ?? []
   const planillasPorOt = planillas.data ?? []
+  // La que espera no le pide nada a Tesorería: va en el tono de aviso y lleva a la primera.
+  const primeraEnEspera = porPagar.find((c) => c.enEspera)
+  const enEspera = porPagar.length - exigibles.length
   const avisos = [
-    deMas > 0 ? (deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`) : null,
-    otraMoneda > 0 ? (otraMoneda === 1 ? 'una OC con factura en otra moneda' : `${otraMoneda} OC con factura en otra moneda`) : null,
+    primeraEnEspera
+      ? {
+          texto: enEspera === 1 ? 'una espera a Contabilidad' : `${enEspera} esperan a Contabilidad`,
+          href: `#factura-${primeraEnEspera.id}`,
+          tono: 'text-aviso',
+        }
+      : null,
+    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: '#compras-con-boleta', tono: 'text-peligro' } : null,
+    otraMoneda > 0
+      ? {
+          texto: otraMoneda === 1 ? 'una OC con factura en otra moneda' : `${otraMoneda} OC con factura en otra moneda`,
+          href: '#compras-con-boleta',
+          tono: 'text-peligro',
+        }
+      : null,
   ].filter((a) => a !== null)
 
   return (
@@ -127,10 +143,10 @@ export default async function PaginaPorPagar() {
             <>
               {resumen && `Por pagar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'uno vencido' : `${vencidas} vencidos`}` : ''}`}
               {avisos.map((a, i) => (
-                <span key={a}>
+                <span key={a.texto}>
                   {(resumen || i > 0) && ' · '}
-                  <a href="#compras-con-boleta" className="font-medium text-peligro underline-offset-2 hover:underline">
-                    {a}
+                  <a href={a.href} className={`font-medium underline-offset-2 hover:underline ${a.tono}`}>
+                    {a.texto}
                   </a>
                 </span>
               ))}
@@ -785,7 +801,9 @@ function Factura({
           </p>
           <p className="text-xs text-texto-suave">
             {definir(TIPO_COMPROBANTE, c.tipo ?? '').etiqueta} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'} ·{' '}
-            {c.numero_ot ? `OT ${c.numero_ot}` : 'sin OT'} · <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />
+            {c.numero_ot ? `OT ${c.numero_ot}` : 'sin OT'} ·{' '}
+            {/* Puede que ya se haya pagado fuera: no vence hasta que Contabilidad lo diga. */}
+            {c.enEspera && saldo > 0 ? 'vence cuando Contabilidad lo confirme' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
           </p>
           {ordenes.length > 0 && (
             <p className="text-xs text-texto-suave">
@@ -810,7 +828,9 @@ function Factura({
         </div>
         {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
         <div className="sm:text-right">
-          <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : moneda(c.total, m)}</p>
+          <p className="tabular text-sm font-semibold text-texto">
+            {saldo > 0 ? `${c.enEspera ? 'Saldo por confirmar' : 'Saldo'} ${moneda(saldo, m)}` : moneda(c.total, m)}
+          </p>
           <p className="tabular text-xs text-texto-suave">
             Total {moneda(c.total, m)}
             {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}`}

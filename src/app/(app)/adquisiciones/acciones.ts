@@ -103,6 +103,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (v.fecha_vencimiento < v.fecha_emision || (v.condicion_pago === 'CONTADO' && v.fecha_vencimiento !== v.fecha_emision)) {
     return { ok: false, error: 'Revisa la fecha de vencimiento y la condición de pago.' }
   }
+  // Sin él, el borrador de una factura de compra no se podría completar nunca.
+  if (v.tipo === 'FACTURA_COMPRA' && !v.ruc_proveedor) {
+    return { ok: false, error: 'Anota el RUC de quien emitió la factura, tal como sale en ella.' }
+  }
   const id = crypto.randomUUID()
   const supabase = await createClient()
   let ordenes = marcadas.data
@@ -270,6 +274,9 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   const perfil = await exigirPermiso('adquisiciones.registrar')
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'El borrador no es válido.' }
+  // El borrador de antes de la migración 20261022170000 pudo quedar sin RUC: se anota al completarlo.
+  const ruc = RUC.optional().safeParse(formulario.get('ruc_proveedor') ?? undefined)
+  if (!ruc.success) return { ok: false, error: ruc.error.issues[0]?.message ?? 'Revisa el RUC.' }
   const archivo = formulario.get('pdf')
   if (!(archivo instanceof File) || archivo.size < 5 || archivo.size > 10 * 1024 * 1024 || archivo.type !== 'application/pdf') {
     return { ok: false, error: 'Adjunta un PDF de hasta 10 MB.' }
@@ -296,7 +303,7 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   // Lo que el detector leyó del PDF pendiente; si no leyó nada, queda lo que había.
   const lectura = lecturaDelFormulario(formulario)
   const { data, error } = await db.from('adquisiciones')
-    .update({ ruta_storage: ruta, estado: 'REGISTRADA', ...(lectura.lectura_fuente ? lectura : {}) })
+    .update({ ruta_storage: ruta, estado: 'REGISTRADA', ...(ruc.data ? { ruc_proveedor: ruc.data } : {}), ...(lectura.lectura_fuente ? lectura : {}) })
     .eq('id', id.data).select('id').maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
@@ -431,11 +438,16 @@ export async function confirmarPagoDeBoleta(_previo: unknown, formulario: FormDa
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  if (v.pagada === 'no') return { ok: true, mensaje: 'Anotado: Tesorería paga la factura en Cuentas por pagar.' }
+  // En otra moneda la factura no toma sola lo pagado fuera: Tesorería lo pasa al cambio.
+  const { count, error: errorToma } = await supabase.from('pagos_adquisicion')
+    .select('id', { count: 'exact', head: true }).eq('pago_orden_compra_id', data).is('anulado_en', null)
+  if (errorToma) console.error('confirmarPagoDeBoleta: no se pudo ver si la factura tomó el pago', errorToma)
   return {
     ok: true,
     mensaje:
-      v.pagada === 'si'
+      errorToma || (count ?? 0) > 0
         ? 'Anotado: la factura toma lo que se pagó fuera, y Tesorería paga lo que falte.'
-        : 'Anotado: Tesorería paga la factura en Cuentas por pagar.',
+        : 'Anotado. La factura va en otra moneda y no toma sola lo pagado fuera: Tesorería lo pasa al cambio en Cuentas por pagar.',
   }
 }

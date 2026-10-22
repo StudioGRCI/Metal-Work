@@ -143,17 +143,23 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
  * paga hasta que Contabilidad diga si esa OC ya se pagó o si falta pagarla
  * (migración 20261022175000).
  */
-export type EsperaDeLaFactura = { ordenCompraId: string; compra: string; total: number; moneda: string }
+/** `desde`: el día que se emitió la OC; lo pagado fuera no puede ser de antes. */
+export type EsperaDeLaFactura = { ordenCompraId: string; compra: string; total: number; moneda: string; desde: string | null }
 
-/** De estas facturas, las que esperan a Contabilidad y por qué OC. */
-async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]): Promise<Map<string, EsperaDeLaFactura>> {
-  if (ids.length === 0) return new Map()
+/** De estas facturas (o de todas, con `null`), las que esperan a Contabilidad y por qué OC. */
+async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[] | null): Promise<Map<string, EsperaDeLaFactura>> {
+  if (ids?.length === 0) return new Map()
   const { data, error } = await supabase.rpc('facturas_en_espera', { p_facturas: ids })
   if (error) throw new Error(`No se pudo ver qué facturas esperan a Contabilidad: ${error.message}`)
   return new Map(
     (data ?? []).flatMap((f) =>
       f.adquisicion_id && f.orden_compra_id
-        ? [[f.adquisicion_id, { ordenCompraId: f.orden_compra_id, compra: f.compra ?? 'su OC', total: Number(f.total ?? 0), moneda: f.moneda ?? 'PEN' }] as const]
+        ? [
+            [
+              f.adquisicion_id,
+              { ordenCompraId: f.orden_compra_id, compra: f.compra ?? 'su OC', total: Number(f.total ?? 0), moneda: f.moneda ?? 'PEN', desde: f.desde ?? null },
+            ] as const,
+          ]
         : [],
     ),
   )
@@ -369,17 +375,21 @@ async function conVouchers(
  */
 export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Promise<TablaDeAdquisiciones> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('adquisiciones')
-    .select(
-      'id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
-    )
-    .order('creado_en', { ascending: false })
-    .limit(100)
+  const columnas =
+    'id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes'
+  // Las que esperan a Contabilidad salen aunque queden detrás de las cien más
+  // nuevas: solo ella las saca de la espera, y Tesorería no las paga mientras tanto.
+  const [{ data, error }, espera] = await Promise.all([
+    supabase.from('adquisiciones').select(columnas).order('creado_en', { ascending: false }).limit(100),
+    facturasEnEspera(supabase, null),
+  ])
   if (error) throw new Error(`No se pudieron leer adquisiciones: ${error.message}`)
-  const filas = data ?? []
+  const faltan = [...espera.keys()].filter((id) => !(data ?? []).some((a) => a.id === id))
+  const atrasadas = faltan.length ? await supabase.from('adquisiciones').select(columnas).in('id', faltan) : { data: [], error: null }
+  if (atrasadas.error) throw new Error(`No se pudieron leer las facturas que esperan a Contabilidad: ${atrasadas.error.message}`)
+  const filas = [...(data ?? []), ...(atrasadas.data ?? [])]
   const ids = filas.map((a) => a.id)
-  const [controles, urls, saldos, pagos, espera] = await Promise.all([
+  const [controles, urls, saldos, pagos] = await Promise.all([
     controlDeFacturas(ids),
     enlacesDeComprobantes(filas),
     ids.length ? supabase.from('v_cuentas_pagar').select('id, pagado, saldo').in('id', ids) : Promise.resolve({ data: [], error: null }),
@@ -391,7 +401,6 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
           .is('anulado_en', null)
           .order('fecha')
       : Promise.resolve({ data: [], error: null }),
-    facturasEnEspera(supabase, ids),
   ])
   if (saldos.error) throw new Error(`No se pudo leer lo pagado de cada factura: ${saldos.error.message}`)
   if (pagos.error) throw new Error(`No se pudieron leer los pagos de las facturas: ${pagos.error.message}`)

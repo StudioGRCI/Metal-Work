@@ -13143,7 +13143,7 @@ export type Database = {
       }
       facturas_en_espera: {
         Args: {
-          p_facturas: string[] | null
+          p_facturas?: string[] | null
         }
         Returns: {
           adquisicion_id: string | null
@@ -13151,6 +13151,7 @@ export type Database = {
           compra: string | null
           total: number | null
           moneda: string | null
+          desde: string | null
         }[]
       }
       facturas_para_descontar: {

@@ -24,7 +24,7 @@ import { createClient } from '@/lib/supabase/server'
 import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
-import { ConfirmarPagoDeBoleta } from './pago-de-boleta'
+import { ConAvisosDeLoAnotado, ConfirmarPagoDeBoleta } from './pago-de-boleta'
 
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
@@ -36,6 +36,8 @@ export const VISTAS_DE_FACTURAS = [
   // «Sin factura» es la OC que va con boleta (así se elige al emitirla); esta
   // vista es la de las que esperan la suya.
   { valor: 'sin-factura', titulo: 'Esperan su factura' },
+  // La factura de una OC con boleta que se dio por pagada fuera: espera que Contabilidad diga si se pagó (20261022175000).
+  { valor: 'por-confirmar', titulo: 'Pago por confirmar' },
 ] as const
 type Vista = (typeof VISTAS_DE_FACTURAS)[number]['valor']
 type Params = Record<string, string | string[] | undefined>
@@ -85,14 +87,25 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
   )
 
   const porPagar = tabla.facturas.filter((f) => f.factura.saldo !== null && f.factura.saldo > 0)
+  const porConfirmar = tabla.facturas.filter((f) => f.factura.enEspera)
   const noCalzan = tabla.facturas.filter((f) => f.factura.control?.control === 'NO_CALZA' || (avisosDe.get(f.factura.id)?.length ?? 0) > 0)
   const cuenta: Record<Vista, number> = {
     facturas: tabla.facturas.length + tabla.sinFactura.length,
     'por-pagar': porPagar.length,
     'no-calzan': noCalzan.length,
     'sin-factura': tabla.sinFactura.length,
+    'por-confirmar': porConfirmar.length,
   }
-  const facturas = vista === 'por-pagar' ? porPagar : vista === 'no-calzan' ? noCalzan : vista === 'sin-factura' ? [] : tabla.facturas
+  const facturas =
+    vista === 'por-pagar'
+      ? porPagar
+      : vista === 'no-calzan'
+        ? noCalzan
+        : vista === 'por-confirmar'
+          ? porConfirmar
+          : vista === 'sin-factura'
+            ? []
+            : tabla.facturas
   const esperan = vista === 'facturas' || vista === 'sin-factura' ? tabla.sinFactura : []
 
   return (
@@ -121,6 +134,8 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         }))}
       />
 
+      {/* Lo anotado de un pago por confirmar: la fila se va de «Pago por confirmar» y con ella el botón. */}
+      <ConAvisosDeLoAnotado>
       {noCalzan.length > 0 && vista !== 'sin-factura' && (
         <p className="mb-3 text-sm text-aviso">
           {noCalzan.length === 1 ? 'Una factura no calza' : `${noCalzan.length} facturas no calzan`} con sus OC o con lo que dice el papel: revisa
@@ -222,6 +237,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
           )}
         </Tabla>
       </Tarjeta>
+      </ConAvisosDeLoAnotado>
     </>
   )
 }
@@ -416,6 +432,11 @@ function vacio(vista: Vista) {
       return { titulo: 'Ninguna factura por pagar', descripcion: 'Las facturas que registra Contabilidad salen aquí hasta que Tesorería las paga.' }
     case 'no-calzan':
       return { titulo: 'Todas las facturas calzan con sus OC', descripcion: 'Si el total de una factura no calza con el de sus OC, sale aquí.' }
+    case 'por-confirmar':
+      return {
+        titulo: 'Ningún pago por confirmar',
+        descripcion: 'Cuando llega la factura de una OC con boleta que se dio por pagada fuera del sistema, sale aquí hasta que digas si ya se pagó.',
+      }
     case 'sin-factura':
       return { titulo: 'Ninguna OC espera su factura', descripcion: 'Cuando Gerencia aprueba una OC que va con factura, sale aquí hasta que Contabilidad la registra.' }
     default:
@@ -533,19 +554,20 @@ function DatosDeFactura({
             {CONTROL_FACTURA_COMPRA[f.control.control]?.etiqueta ?? f.control.control}
           </Insignia>
         )}
-        {f.enEspera && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
+        {f.enEspera && <Insignia tono="aviso">{corrige ? 'Di si se pagó' : 'Espera a Contabilidad'}</Insignia>}
         <InsigniaDelDetector avisos={avisos} />
       </p>
       {/* La OC con boleta se dio por pagada fuera: hasta que Contabilidad lo diga, Tesorería no la paga (migración 20261022175000). */}
+      {f.ruc_proveedor && <p className="tabular text-[11px] text-texto-suave">RUC {f.ruc_proveedor}</p>}
       {f.enEspera && (
-        <div className="mt-1 max-w-72">
-          <p className="text-xs text-aviso">
-            La {f.enEspera.compra} va con boleta y se dio por pagada fuera del sistema: Tesorería no paga esta factura hasta que Contabilidad diga
-            si esa OC ya se pagó o si falta pagarla.
-          </p>
-          {corrige && <ConfirmarPagoDeBoleta espera={f.enEspera} factura={f.numero_documento} hoy={hoyLima()} />}
-        </div>
+        <p className="mt-1 max-w-72 text-xs text-aviso">
+          {corrige
+            ? `Di si la ${f.enEspera.compra} ya se pagó fuera del sistema o si falta pagarla: hasta entonces Tesorería no paga esta factura.`
+            : `La ${f.enEspera.compra} va con boleta y se dio por pagada fuera del sistema: Tesorería no paga esta factura hasta que Contabilidad diga si esa OC ya se pagó o si falta pagarla.`}
+        </p>
       )}
+      {/* Fuera de la espera, para que lo anotado se quede a la vista cuando la fila deja de esperar. */}
+      {corrige && f.estado === 'REGISTRADA' && <ConfirmarPagoDeBoleta espera={f.enEspera} factura={f.numero_documento} monedaFactura={f.moneda} hoy={hoyLima()} />}
       {f.control && detalleDelControl(f.control, (n) => moneda(n, m)) && (
         <p className={`mt-1 max-w-56 text-xs ${f.control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
           {detalleDelControl(f.control, (n) => moneda(n, m))}
@@ -554,7 +576,7 @@ function DatosDeFactura({
       <div className="max-w-64">
         <AvisosDelDetector avisos={avisos} />
       </div>
-      {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} />}
+      {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} pideRuc={f.tipo === 'FACTURA_COMPRA' && !f.ruc_proveedor} />}
       <HistorialDeCorrecciones correcciones={correcciones} />
       {corrige && f.estado === 'REGISTRADA' && (
         <div className="mt-1">

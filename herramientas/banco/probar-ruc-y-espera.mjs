@@ -174,12 +174,25 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 
   // ----------------------------------------------- 2. El anexo de la OC con boleta de antes
   await pagina.locator('#adq-documento').selectOption(doc)
-  comprobar((await pagina.locator('#adq-ruc').inputValue()) === RUC_DOS && (await pagina.locator('#adq-ruc').getAttribute('readonly')) !== null,
-    'elegido el anexo, el RUC es el del proveedor de su OC y no se escribe')
+  comprobar((await pagina.locator('#adq-ruc').inputValue()) === RUC_DOS, 'elegido el anexo, el RUC sale del proveedor de su OC')
   comprobar((await pagina.locator('#adq-numero').inputValue()) === FB, 'el número sale del anexo')
   await pagina.locator('#adq-total').fill((Number(dos.total) + 20).toFixed(2))
   await pagina.locator('#adq-emision').fill(hoy)
   await pagina.locator('#adq-vencimiento').fill(hoy)
+  // Si Logística anexó la factura de otra empresa, el RUC se corrige y el campo lo dice sin enviar nada.
+  await pagina.locator('#adq-ruc').fill(RUC_UNO)
+  const deOtra = limpio(await pagina.locator('#adq-ruc-otro').textContent({ timeout: 3000 }).catch(() => ''))
+  comprobar(deOtra.includes(dos.numero) && deOtra.includes(RUC_DOS), `con el RUC de otra empresa, dice que la OC del anexo es de otro RUC («${deOtra}»)`)
+  let envios = 0
+  const contar = (r) => {
+    if (r.method() === 'POST' && r.url().includes('/adquisiciones')) envios++
+  }
+  pagina.on('request', contar)
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  await pagina.waitForTimeout(800)
+  pagina.off('request', contar)
+  comprobar(envios === 0 && (await pagina.locator('#adq-ruc').evaluate((e) => e === document.activeElement)), 'y no se envía: el foco vuelve al RUC')
+  await pagina.locator('#adq-ruc').fill(RUC_DOS)
   await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
   await pagina.getByText(`Comprobante ${FB} registrado`).waitFor({ timeout: 30000 }).catch(() => {})
   const mensaje = limpio(await pagina.getByText(`Comprobante ${FB} registrado`).textContent({ timeout: 500 }).catch(() => ''))
@@ -201,7 +214,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.locator('article', { hasText: FB }).first()
   const texto = limpio(await tarjeta.textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(texto.includes('Espera a Contabilidad') && texto.includes(dos.numero), 'Tesorería la ve «Espera a Contabilidad», con su OC')
+  comprobar(texto.includes('Espera a Contabilidad') && texto.includes(dos.numero) && texto.includes('Saldo por confirmar'),
+    'Tesorería la ve «Espera a Contabilidad», con su OC y el saldo por confirmar')
+  const cabeza = limpio(await pagina.getByText(/^Por pagar:/).first().textContent({ timeout: 3000 }).catch(() => ''))
+  comprobar(/esperan? a Contabilidad/.test(cabeza), `el encabezado cuenta las que esperan a Contabilidad («${cabeza}»)`)
   comprobar((await tarjeta.getByRole('button', { name: 'Registrar pago' }).count()) === 0, 'y no tiene botón para pagarla')
   await pagina.screenshot({ path: join(CAPTURAS, '2-tesoreria-en-espera.png'), fullPage: true })
   await contexto.close()
@@ -211,8 +227,15 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 {
   const { pagina, contexto } = await entrar(CUENTAS.contabilidad, { width: 390, height: 844 })
   await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
-  const boton = pagina.getByRole('button', { name: 'Ya se pagó' }).first()
-  comprobar((await pagina.getByText('Espera a Contabilidad').count()) > 0 && (await boton.count()) === 1, 'en el teléfono, la factura dice que espera y ofrece «Ya se pagó»')
+  const vista = limpio(await pagina.getByRole('link', { name: /Pago por confirmar/ }).first().textContent({ timeout: 3000 }).catch(() => ''))
+  comprobar(/\d/.test(vista), `la pestaña «Pago por confirmar» cuenta las que esperan («${vista}»)`)
+  await pagina.goto(`${BASE}/adquisiciones?vista=por-confirmar`, { waitUntil: 'networkidle' })
+  // El elemento más hondo que tiene esta factura y su botón: hay otras en espera de vueltas anteriores.
+  const yaSePago = pagina.locator('button:visible', { hasText: 'Ya se pagó' })
+  const fila = pagina.locator('*:visible', { hasText: FB, has: yaSePago }).last()
+  const boton = fila.locator(yaSePago)
+  comprobar((await fila.getByText('Di si se pagó').count()) > 0 && (await boton.count()) === 1,
+    'en el teléfono, en «Pago por confirmar», la factura le pide a Contabilidad que diga si se pagó')
   await boton.click()
   const v = pagina.locator('[role="dialog"]')
   comprobar((await v.locator('#pb-monto').inputValue()) === Number(dos.total).toFixed(2), 'lo pagado sale con el total de la OC')
@@ -225,6 +248,8 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   await v.waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {})
   const anotado = limpio(await pagina.getByText('Anotado:').first().textContent({ timeout: 3000 }).catch(() => ''))
   comprobar(anotado.includes('toma lo que se pagó fuera'), `la pantalla lo confirma («${anotado}»)`)
+  await pagina.waitForTimeout(3000)
+  comprobar((await pagina.getByText('Anotado:').count()) > 0, 'y lo anotado sigue a la vista cuando la fila deja de esperar')
   const [pago] = await consulta(`select monto, pagado_fuera, archivo_ruta from pagos_orden_compra where orden_compra_id = $1 and anulado_en is null`, [ocDos])
   comprobar(pago && Number(pago.monto) === Number(dos.total) && pago.pagado_fuera?.includes(SUFIJO) && pago.archivo_ruta === null,
     'queda el pago de la OC hecho fuera, sin voucher, con la nota')

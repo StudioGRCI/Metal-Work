@@ -133,6 +133,10 @@ update public.adquisiciones set ruta_storage = 'adquisiciones/' || id || '/compr
  where id in (pg_temp.id('fa'), pg_temp.id('fb'));
 select test.afirmar(pg_temp.en_espera('fa') is not null and pg_temp.en_espera('fb') is not null,
   'Contabilidad ve que las dos facturas esperan que diga si su OC ya se pagó');
+select test.afirmar((select count(*) from public.facturas_en_espera() e where e.adquisicion_id in (pg_temp.id('fa'), pg_temp.id('fb'))) = 2
+                    and (select desde from public.facturas_en_espera() e where e.adquisicion_id = pg_temp.id('fa'))
+                        = (select (creado_en at time zone 'America/Lima')::date from public.ordenes_compra_materiales where id = pg_temp.id('oca')),
+  'sin lista, salen todas las que esperan, aunque no estén entre las cien más nuevas, con el día desde el que pudo pagarse');
 reset role;
 
 -- ============================================ 3. En espera, Tesorería no la paga
@@ -175,6 +179,8 @@ select test.afirmar(pg_temp.avisos('Se pagó fuera:') = 1, 'a Tesorería le lleg
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.afirmar(pg_temp.en_espera('fa') is null, 'la factura ya no espera');
+select test.afirmar(not exists (select 1 from public.facturas_en_espera() e where e.adquisicion_id = pg_temp.id('fa')),
+  'ni en la lista de todas las que esperan');
 select test.debe_fallar($$ select public.confirmar_pago_de_la_boleta(pg_temp.id('oca'), false, null, null, 'Me equivoqué, no se pagó') $$,
   'y no se vuelve a decidir', 'ya la lleva Tesorería');
 reset role;
@@ -187,6 +193,12 @@ select pg_temp.pagar('fa', 50);
 reset role;
 select test.afirmar(pg_temp.saldo('fa') = 0, 'con la diferencia, la factura queda pagada');
 
+-- Mientras la otra espera, lo pagado fuera por la primera OC no se descuenta en ella.
+select test.debe_fallar($$ insert into public.pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por, pago_orden_compra_id)
+                           values (pg_temp.id('fb'), current_setting('prueba.hoy')::date, 1, 'Descuento 425', pg_temp.id('tesoreria'),
+                                   pg_temp.id('pago_fuera')) $$,
+  'en la factura que espera no se descuenta lo pagado en otra OC', 'espera que Contabilidad diga');
+
 -- ============================================ 6. Contabilidad: «Falta pagarla»
 select pg_temp.como('contabilidad');
 set local role authenticated;
@@ -197,6 +209,20 @@ select test.afirmar((select pago_en_tesoreria from public.ordenes_compra_materia
                     and not exists (select 1 from public.pagos_orden_compra where orden_compra_id = pg_temp.id('ocb'))
                     and pg_temp.avisos('Falta pagar:') = 1,
   'la OC pasa a Tesorería sin pago anotado, y a Tesorería le llega el aviso');
+select test.afirmar((select count(*) from public.notificaciones
+                      where usuario_id = pg_temp.id('tesoreria') and titulo like 'Falta pagar:%' and cuerpo like '%nunca le pagaron%') = 1,
+  'el aviso trae la nota de Contabilidad');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select ya_pagada and pago_id = pg_temp.id('pago_fuera') from public.compras_pagadas_fuera_confirmadas
+                      where orden_compra_id = pg_temp.id('oca'))
+                    and (select not ya_pagada and pago_id is null and nota = 'El proveedor dice que nunca le pagaron'
+                           and confirmada_por = pg_temp.id('contabilidad')
+                           from public.compras_pagadas_fuera_confirmadas where orden_compra_id = pg_temp.id('ocb')),
+  'Tesorería lee lo que dijo Contabilidad de cada OC, con su nota y quién lo dijo');
+select test.debe_fallar($$ update public.compras_pagadas_fuera_confirmadas set nota = 'Otra cosa distinta' $$,
+  'y nadie lo cambia', 'permission denied');
+reset role;
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select pg_temp.pagar('fb', current_setting('prueba.total')::numeric + 50);

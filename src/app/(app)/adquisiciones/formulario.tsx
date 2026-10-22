@@ -109,7 +109,13 @@ function Formulario({
   const encaja = (c: CompraSinFactura) => !base || (mismoEmisor(c, base) && c.condicion_pago === base.condicion_pago)
   // Con el RUC escrito, la OC de otro RUC no se liga (migración 20261022170000): se dice antes de registrar.
   const rucEscrito = soloDigitos(ruc)
-  const deOtroRuc = rucEscrito.length === 11 ? elegidas.find((c) => c.ruc && c.ruc !== rucEscrito) : undefined
+  // La OC del anexo de Logística también: su RUC sale lleno, pero se puede corregir
+  // si Logística anexó la factura de otra empresa, y entonces se avisa aquí.
+  const conRuc = [
+    ...(elegida?.ruc ? [{ nombre: elegida.oc, ruc: elegida.ruc }] : []),
+    ...elegidas.map((c) => ({ nombre: c.numero ?? c.referencia, ruc: c.ruc })),
+  ]
+  const deOtroRuc = rucEscrito.length === 11 ? conRuc.find((c) => c.ruc && c.ruc !== rucEscrito) : undefined
   const lectura = lecturas.xml ?? lecturas.pdf ?? lecturas.logistica ?? null
   const enCurso = Object.values(leyendo).some(Boolean)
   const sinLeer = (['xml', 'pdf', 'logistica'] as const).some((f) => lecturas[f] === null) && !lectura && !enCurso
@@ -225,7 +231,18 @@ function Formulario({
   }
 
   return (
-    <form onSubmit={alEnviar} onChange={alEscribir} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <form
+      onSubmit={(e) => {
+        // Con el RUC de otra OC, el aviso del campo ya dice por qué: no se envía para recibir el mismo rechazo.
+        if (deOtroRuc) {
+          e.preventDefault()
+          return document.getElementById('adq-ruc')?.focus()
+        }
+        return alEnviar(e)
+      }}
+      onChange={alEscribir}
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+    >
       <Campo etiqueta="Tipo de comprobante" htmlFor="adq-tipo" requerido>
         <Seleccion id="adq-tipo" name="tipo" required value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="FACTURA_COMPRA">Factura de compra</option>
@@ -260,7 +277,7 @@ function Formulario({
         requerido={tipo === 'FACTURA_COMPRA'}
         ayuda={
           elegida?.ruc
-            ? `El del proveedor de la ${elegida.oc}.`
+            ? `El del proveedor de la ${elegida.oc}: corrígelo si la factura es de otra empresa.`
             : 'El de quien emitió la factura, tal como sale en ella: la factura se liga solo a las OC de ese RUC.'
         }
       >
@@ -275,14 +292,13 @@ function Formulario({
           required={tipo === 'FACTURA_COMPRA'}
           aria-invalid={deOtroRuc ? true : undefined}
           aria-describedby={deOtroRuc ? 'adq-ruc-otro' : undefined}
-          className="tabular read-only:cursor-default read-only:bg-superficie-2"
+          className="tabular"
           value={ruc}
-          readOnly={Boolean(elegida?.ruc)}
           onChange={(e) => setRuc(e.target.value)}
         />
         {deOtroRuc && (
           <p id="adq-ruc-otro" role="alert" className="text-xs text-peligro">
-            La {deOtroRuc.numero ?? deOtroRuc.referencia} es del RUC {deOtroRuc.ruc}: una factura se liga solo a las OC de su RUC.
+            La {deOtroRuc.nombre} es del RUC {deOtroRuc.ruc}: una factura se liga solo a las OC de su RUC.
           </p>
         )}
       </Campo>
@@ -640,7 +656,8 @@ function AvisoDeMonto({
   )
 }
 
-export function CompletarAdquisicion({ id }: { id: string }) {
+/** `pideRuc`: la factura de compra que quedó en borrador sin RUC no se registra sin él. */
+export function CompletarAdquisicion({ id, pideRuc = false }: { id: string; pideRuc?: boolean }) {
   const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion)
   // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
@@ -651,6 +668,7 @@ export function CompletarAdquisicion({ id }: { id: string }) {
   // Con `useId` y no con el id de la factura: la página la dibuja dos veces —en la
   // tabla del monitor y en la tarjeta del teléfono— y la etiqueta apuntaba al campo oculto.
   const campo = `pdf-${useId()}`
+  const campoRuc = `ruc-${useId()}`
 
   async function leerPdf(archivo: File | undefined) {
     const vez = ++turno.current
@@ -681,6 +699,21 @@ export function CompletarAdquisicion({ id }: { id: string }) {
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
         <input key={nombre} type="hidden" name={nombre} value={valor} />
       ))}
+      {pideRuc && (
+        <Campo etiqueta="RUC del emisor" htmlFor={campoRuc} requerido>
+          <Entrada
+            id={campoRuc}
+            name="ruc_proveedor"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={13}
+            pattern={'\\D*(\\d\\D*){11}'}
+            title="Los 11 dígitos del RUC."
+            required
+            className="tabular"
+          />
+        </Campo>
+      )}
       <Campo etiqueta="PDF pendiente" htmlFor={campo} requerido>
         <ElegirArchivo
           id={campo}
