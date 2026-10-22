@@ -1125,7 +1125,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
             ) : (
               <>
                 {materiales.map((l, i) => (
-                  <TR key={`${l.fuente}-${l.referencia_id ?? i}-${l.moneda ?? ''}`} data-material={l.fuente}>
+                  <TR key={`${l.fuente}-${l.referencia_id ?? ''}-${l.documento ?? ''}-${i}`} data-material={l.fuente}>
                     <TD className="tabular align-top whitespace-nowrap">{fecha(l.fecha)}</TD>
                     <TD className="align-top">
                       <p className="text-texto">{l.concepto}</p>

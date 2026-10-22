@@ -20,6 +20,8 @@ export type LineaRequerimiento = {
   material_nombre: string | null
   /** Se pidió como material nuevo, porque no estaba en el catálogo. */
   material_nuevo: boolean
+  /** Salió de otro insumo: el proveedor no repuso lo devuelto y se compra otra vez (migración 20261022185000). */
+  recompra: boolean
   /** La unidad del material es provisional: Almacén la confirma con la de este insumo al revisarlo. */
   material_unidad_pendiente: boolean
   /** La OC que Logística generó para este insumo (OC-5583-MW); vacía mientras no se compra. */
@@ -101,7 +103,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -195,6 +197,7 @@ export async function cargarRequerimientos(
             material_codigo: l.material?.codigo ?? null,
             material_nombre: l.material?.descripcion ?? null,
             material_nuevo: l.material_nuevo,
+            recompra: l.recompra_de != null,
             material_unidad_pendiente: l.material?.unidad_pendiente ?? false,
             orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null),
             compra_rechazada: deLinea ? deLinea.rechazada : ['RECHAZADA', 'ANULADA'].includes(l.orden_compra?.aprobacion ?? ''),

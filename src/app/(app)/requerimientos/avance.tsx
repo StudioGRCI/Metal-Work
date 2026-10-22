@@ -42,9 +42,11 @@ export function MaterialDelInsumo({ linea: l }: { linea: LineaRequerimiento }) {
   if (l.material_nuevo && !l.material_id) {
     return <span className="font-medium text-aviso">Material nuevo: Almacén lo da de alta al revisarlo · </span>
   }
-  if (!l.material_codigo) return null
+  const recompra = l.recompra && <span className="font-medium text-aviso">Se compra otra vez: el proveedor no repuso lo devuelto · </span>
+  if (!l.material_codigo) return recompra || null
   return (
     <>
+      {recompra}
       <span className="tabular">{l.material_codigo}</span>
       {l.material_nuevo && <span className="text-texto"> (pedido como material nuevo)</span>}
       {' · '}

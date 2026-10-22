@@ -27,6 +27,7 @@ export const ORIGEN_MOVIMIENTO: Record<string, string> = {
   PAGO_PLANILLA_DIARIA: 'Pago de planilla diaria',
   COBRO_FACTURA_VENTA: 'Cobro de factura de venta',
   DEVOLUCION_ORDEN_COMPRA: 'Devolución de proveedor (OC con boleta)',
+  REEMBOLSO_NOTA_CREDITO: 'Devolución de proveedor (nota de crédito)',
 }
 
 /**
@@ -43,12 +44,15 @@ export const PANTALLA_DEL_ORIGEN: Record<string, { ruta: string; nombre: string 
   COBRO_FACTURA_VENTA: { ruta: '/tesoreria/por-cobrar', nombre: 'Cuentas por cobrar' },
   // La devolución del proveedor se registra y se anula en la tarjeta de su OC con boleta.
   DEVOLUCION_ORDEN_COMPRA: { ruta: '/tesoreria/por-pagar#compras-con-boleta', nombre: 'Cuentas por pagar' },
+  // Lo que el proveedor devolvió de una nota de crédito, en la tarjeta de las notas (migración 20261022190000).
+  REEMBOLSO_NOTA_CREDITO: { ruta: '/tesoreria/por-pagar#notas-credito', nombre: 'Cuentas por pagar' },
 }
 
 /** Los orígenes que entran a la caja; los demás salen. */
 const TIPO_PROPIO_DEL_ORIGEN: Record<string, 'INGRESO' | 'EGRESO'> = {
   COBRO_FACTURA_VENTA: 'INGRESO',
   DEVOLUCION_ORDEN_COMPRA: 'INGRESO',
+  REEMBOLSO_NOTA_CREDITO: 'INGRESO',
 }
 
 /** El tipo del movimiento que deja cada origen: el cobro y la devolución del proveedor entran, el pago sale. */

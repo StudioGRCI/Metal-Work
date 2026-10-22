@@ -3,7 +3,7 @@ import 'server-only'
 import { z } from 'zod'
 
 import { enlaces } from '@/lib/datos/facturacion'
-import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
+import { BUCKET_NOTAS_CREDITO, BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { rucEsValido } from '@/lib/dominio/proveedores'
 import { createClient } from '@/lib/supabase/server'
@@ -332,7 +332,7 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
  * la moneda de la OC.
  */
 const COLUMNAS_PAGO_FACTURA =
-  'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, creado_en, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda)'
+  'id, adquisicion_id, fecha, monto, monto_de_la_boleta, referencia, archivo_ruta, anulado_en, motivo_anulacion, pago_orden_compra_id, creado_en, nota_credito_id, boleta:pagos_orden_compra!pagos_adquisicion_pago_orden_compra_id_fkey(orden_compra_id, archivo_ruta, moneda), nota:notas_credito_compra!pagos_adquisicion_nota_credito_id_fkey(numero, archivo_ruta, adquisicion_id)'
 
 /**
  * El voucher de cada pago: el suyo o, si lo tomó de la boleta, el de ese pago.
@@ -343,24 +343,35 @@ const COLUMNAS_PAGO_FACTURA =
  */
 async function conVouchers(
   // Sin voucher, el pago de la boleta que Contabilidad anotó como hecho fuera del sistema (migración 20261022175000).
-  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string | null; moneda: string } | null })[],
+  // Lo que bajó una nota de crédito lleva su nota (migración 20261022190000).
+  pagos: (PagoFacturaFila & {
+    boleta: { orden_compra_id: string; archivo_ruta: string | null; moneda: string } | null
+    nota: { numero: string; archivo_ruta: string; adquisicion_id: string } | null
+  })[],
 ): Promise<PagoDeFactura[]> {
-  const [propios, deLaBoleta] = await Promise.all([
+  const [propios, deLaBoleta, deLaNota] = await Promise.all([
     enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
     enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.boleta?.archivo_ruta ?? null)),
+    enlaces(BUCKET_NOTAS_CREDITO, pagos.map((p) => p.nota?.archivo_ruta ?? null)),
   ])
   const notas = pagos.filter((p) => p.pago_orden_compra_id && p.monto_de_la_boleta !== null && p.archivo_ruta)
   const notaDe = (p: PagoFacturaFila) =>
     p.pago_orden_compra_id && p.monto_de_la_boleta !== null
       ? (notas.find((n) => n.adquisicion_id === p.adquisicion_id && n.creado_en === p.creado_en) ?? null)
       : null
-  return pagos.map(({ boleta, ...p }) => {
+  return pagos.map(({ boleta, nota: notaCredito, ...p }) => {
     const nota = p.archivo_ruta ? null : notaDe(p)
     const ruta = p.archivo_ruta ?? nota?.archivo_ruta ?? null
     return {
       ...p,
-      url: (ruta ? propios.get(ruta) : boleta?.archivo_ruta && deLaBoleta.get(boleta.archivo_ruta)) || null,
+      url:
+        (notaCredito
+          ? deLaNota.get(notaCredito.archivo_ruta)
+          : ruta
+            ? propios.get(ruta)
+            : boleta?.archivo_ruta && deLaBoleta.get(boleta.archivo_ruta)) || null,
       esNota: Boolean(p.pago_orden_compra_id && ruta),
+      notaCredito: notaCredito ? { numero: notaCredito.numero, deOtraFactura: notaCredito.adquisicion_id !== p.adquisicion_id } : null,
       ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
       monedaDeLaBoleta: boleta?.moneda ?? null,
     }
@@ -492,7 +503,7 @@ type CuentaPagarFila = Pick<
 type PagoFacturaFila = Pick<
   Tablas<'pagos_adquisicion'>,
   | 'id' | 'adquisicion_id' | 'fecha' | 'monto' | 'monto_de_la_boleta' | 'referencia' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
-  | 'pago_orden_compra_id' | 'creado_en'
+  | 'pago_orden_compra_id' | 'creado_en' | 'nota_credito_id'
 >
 /**
  * Un pago de la factura con su voucher. El que la factura tomó del pago por la
@@ -505,6 +516,13 @@ export type PagoDeFactura = PagoFacturaFila & {
   esNota: boolean
   ordenCompraDeLaBoleta: string | null
   monedaDeLaBoleta: string | null
+  /**
+   * Lo bajó una nota de crédito del proveedor: no es dinero que salió ni se anula
+   * como un pago. La de su propia factura se quita anulando la nota en
+   * Adquisiciones; la descontada de otra factura, en la tarjeta de las notas de
+   * Cuentas por pagar. `url` lleva al PDF de la nota.
+   */
+  notaCredito: { numero: string; deOtraFactura: boolean } | null
 }
 /** Una cuenta activa del proveedor, para que Tesorería sepa a dónde transferir. */
 export type CuentaDelProveedor = Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>

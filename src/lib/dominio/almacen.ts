@@ -41,6 +41,7 @@ export const MOVIMIENTO_KARDEX: Record<string, Def> = {
   DESPACHO: { etiqueta: 'Despacho a OT', tono: 'acento', descripcion: 'Entrega de una solicitud de material de la OT' },
   SALIDA: { etiqueta: 'Salida', tono: 'aviso', descripcion: 'Retiro sin solicitud, vinculado a una unidad' },
   AJUSTE: { etiqueta: 'Ajuste', tono: 'info', descripcion: 'Corrección por conteo físico' },
+  DEVOLUCION_PROVEEDOR: { etiqueta: 'Devuelto al proveedor', tono: 'aviso', descripcion: 'Lo que llegó de una compra y volvió a quien lo vendió' },
 }
 
 /** De dónde vino cada movimiento. */
@@ -52,6 +53,7 @@ export const ORIGEN_KARDEX: Record<string, string> = {
   DESPACHO: 'Solicitud de OT',
   SALIDA_GENERAL: 'Salida por unidad',
   CONTEO: 'Conteo físico',
+  DEVOLUCION_PROVEEDOR: 'Compra que llegó mal',
 }
 
 /** Los cuatro almacenes de la empresa. Cada uno sale con su propia regla. */
