@@ -320,7 +320,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
             : 'border-dashed border-borde-fuerte',
         // El campo de verdad es transparente: su anillo de foco (globals.css)
         // no se vería, así que lo lleva la caja, con el mismo grosor y color.
-        'has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco',
+        'has-[input:focus-visible]:border-acento has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-anillo-foco',
         // Con aviso, el fondo rojo se queda aunque pase el ratón. Ocupado no se
         // apaga: «Subiendo…» se tiene que leer.
         disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : !mal && 'hover:bg-superficie-2',

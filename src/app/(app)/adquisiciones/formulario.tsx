@@ -15,6 +15,24 @@ import { completarAdquisicion, enlaceDeFacturaDeLogistica, registrarAdquisicion 
 
 type Fuente = 'xml' | 'pdf' | 'logistica'
 
+type Dato = 'total' | 'numero' | 'emision'
+const DATOS: Dato[] = ['total', 'numero', 'emision']
+/** Cada dato y la fuente que lo llenó; `null` si lo escribió la persona o está vacío. */
+type Llenado = Record<Dato, { valor: string; fuente: Fuente | null }>
+const VACIO = { valor: '', fuente: null }
+const SIN_LLENAR: Llenado = { total: VACIO, numero: VACIO, emision: VACIO }
+
+/** Lo que está vacío se llena con lo que trae la fuente, y queda anotado que vino de ella. */
+function llenarCon(d: Llenado, fuente: Fuente, valores: Partial<Record<Dato, string | null | undefined>>): Llenado {
+  let n = d
+  for (const k of DATOS) {
+    const v = valores[k]
+    if (v && !n[k].valor) n = { ...n, [k]: { valor: v, fuente } }
+  }
+  return n
+}
+const valoresDe = (l: LecturaFactura) => ({ total: l.total !== null ? l.total.toFixed(2) : null, numero: l.numero, emision: l.fecha_emision })
+
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
 type Props = {
@@ -80,10 +98,13 @@ function Formulario({
   const [proveedor, setProveedor] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [monedaFactura, setMonedaFactura] = useState('PEN')
-  const [total, setTotal] = useState('')
   const [ot, setOt] = useState('')
-  const [numero, setNumero] = useState('')
-  const [emision, setEmision] = useState('')
+  // El total, el número y la emisión, con la fuente que los llenó: lo que llenó un
+  // archivo se va con él si nadie lo cambió (`soltar`).
+  const [llenado, setLlenado] = useState<Llenado>(SIN_LLENAR)
+  const { total, numero, emision } = { total: llenado.total.valor, numero: llenado.numero.valor, emision: llenado.emision.valor }
+  // Lo que escribe la persona ya no es de ninguna fuente: quitar un archivo no lo toca.
+  const escribir = (dato: Dato, valor: string) => setLlenado((d) => ({ ...d, [dato]: { valor, fuente: null } }))
   // Lo que leyó el detector de cada fuente; manda el XML, después el PDF, después el de Logística.
   const [lecturas, setLecturas] = useState<Record<Fuente, LecturaFactura | null | undefined>>({ xml: undefined, pdf: undefined, logistica: undefined })
   // Lo que está leyendo cada fuente: el PDF y el XML lo dicen en su campo; la de Logística, abajo.
@@ -122,9 +143,7 @@ function Formulario({
     anotar(null)
     setLecturas((l) => ({ ...l, [fuente]: leida }))
     if (!leida) return
-    if (leida.total !== null) setTotal((t) => t || leida.total!.toFixed(2))
-    if (leida.numero) setNumero((n) => n || leida.numero!)
-    if (leida.fecha_emision) setEmision((e) => e || leida.fecha_emision!)
+    setLlenado((d) => llenarCon(d, fuente, valoresDe(leida)))
     if (!sinMarcar) return
     // Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera.
     const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
@@ -140,10 +159,33 @@ function Formulario({
   }
 
   /**
+   * Lo que llenó una fuente se va con su archivo (quitado o cambiado por otro), si
+   * nadie lo cambió: se vacía y se vuelve a llenar con lo que leyeron las demás.
+   */
+  function soltar(fuente: Fuente) {
+    const otras = (['xml', 'pdf', 'logistica'] as const).flatMap((f) => {
+      const l = f !== fuente ? lecturas[f] : null
+      return l ? [[f, l] as const] : []
+    })
+    setLlenado((d) => {
+      const sueltos = DATOS.filter((k) => d[k].fuente === fuente)
+      if (sueltos.length === 0) return d
+      let n = d
+      for (const k of sueltos) n = { ...n, [k]: VACIO }
+      for (const [f, l] of otras) {
+        const valores = valoresDe(l)
+        n = llenarCon(n, f, Object.fromEntries(sueltos.map((k) => [k, valores[k]])))
+      }
+      return n
+    })
+  }
+
+  /**
    * El PDF o el XML que se eligió: antes de leerlo se mira que sea lo que dice. Un
    * Word con el nombre cambiado a «.pdf» queda en rojo en su campo y no se lee.
    */
   async function elegirArchivo(fuente: 'xml' | 'pdf', archivo: File | undefined, accept: string, hastaMb: number) {
+    soltar(fuente)
     void detectar(fuente, null)
     setAvisoArchivo((a) => ({ ...a, [fuente]: null }))
     if (!archivo) return
@@ -183,8 +225,8 @@ function Formulario({
   /** La factura de Logística trae su número, su fecha y su OC: se llenan si están vacíos. */
   function elegirDeLogistica(id: string) {
     const d = documentos.find((x) => x.id === id)
-    if (d?.numero) setNumero((n) => n || d.numero!)
-    if (d?.fecha) setEmision((e) => e || d.fecha!)
+    soltar('logistica')
+    if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha }))
     const c = d && compras.find((x) => x.orden_compra_id === d.orden_compra_id)
     if (c && !marcadas.includes(c.orden_compra_id) && encaja(c)) marcar(c, true)
     void detectar(
@@ -222,7 +264,7 @@ function Formulario({
           autoComplete="off"
           className="tabular"
           value={numero}
-          onChange={(e) => setNumero(e.target.value)}
+          onChange={(e) => escribir('numero', e.target.value)}
         />
       </Campo>
 
@@ -313,7 +355,7 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="Fecha de emisión" htmlFor="adq-emision" requerido>
-        <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => setEmision(e.target.value)} />
+        <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => escribir('emision', e.target.value)} />
       </Campo>
       <Campo etiqueta="Condición de pago" htmlFor="adq-condicion">
         <Seleccion id="adq-condicion" name="condicion_pago" value={condicion} onChange={(e) => setCondicion(e.target.value)}>
@@ -340,7 +382,7 @@ function Formulario({
           required
           className="tabular"
           value={total}
-          onChange={(e) => setTotal(e.target.value)}
+          onChange={(e) => escribir('total', e.target.value)}
         />
       </Campo>
       <AvisoDeMonto elegidas={elegidas} enParte={enParte} total={total} monedaFactura={monedaFactura} />
@@ -378,6 +420,7 @@ function Formulario({
           name="pdf"
           accept={ACEPTA_PDF}
           hastaMb={10}
+          disabled={enviando}
           aviso={avisoArchivo.pdf}
           estado={leyendo.pdf}
           onChange={(e) => void elegirArchivo('pdf', e.target.files?.[0], ACEPTA_PDF, 10)}
@@ -392,6 +435,7 @@ function Formulario({
           id="adq-xml"
           accept={ACEPTA_XML_FACTURA}
           hastaMb={20}
+          disabled={enviando}
           aviso={avisoArchivo.xml}
           estado={leyendo.xml}
           onChange={(e) => void elegirArchivo('xml', e.target.files?.[0], ACEPTA_XML_FACTURA, 20)}

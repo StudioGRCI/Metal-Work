@@ -59,11 +59,30 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
     .select('id')
     .maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  const guardado = v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.'
+  if (error) {
+    // La misma subida otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`). Si su ruta —única, con un
+    // uuid de esta subida— ya está anotada en esta orden, por quien sube y con
+    // este archivo, quedó: se dice como la primera vez, sin duplicarla.
+    if (error.code === '23505') {
+      const { data: ya } = await supabase
+        .from('ot_adjuntos')
+        .select('orden_id, tipo, subido_por, nombre_archivo, tamano_bytes')
+        .eq('ruta_storage', v.ruta_storage)
+        .maybeSingle()
+      if (ya && ya.orden_id === v.orden_id && ya.tipo === v.tipo && ya.subido_por === perfil.id
+        && ya.nombre_archivo === v.nombre_archivo && (ya.tamano_bytes === null ? null : Number(ya.tamano_bytes)) === (v.tamano_bytes ?? null)) {
+        revalidatePath(`/ordenes/${v.orden_id}`)
+        return { ok: true, mensaje: guardado }
+      }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.' }
+  return { ok: true, mensaje: guardado }
 }
 
 const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })

@@ -281,11 +281,19 @@ export function textoDelAviso(
 /**
  * La factura frente a su orden de compra, cuando Logística la adjunta: si el
  * total no calza con el de la orden (con IGV, la misma tolerancia de S/ 1 que
- * Adquisiciones), si está en otra moneda o si nombra otra OC. Para que el error
- * se vea en la orden antes de que llegue a Contabilidad.
+ * Adquisiciones), si está en otra moneda, si nombra otra OC o si el número que
+ * se escribió no es el suyo. Para que el error se vea en la orden antes de que
+ * llegue a Contabilidad.
  */
 export function avisosDeLaOrden(
-  entrada: { lectura: LecturaFactura; total: number | null; moneda: string; numero?: string | null },
+  entrada: {
+    lectura: LecturaFactura
+    total: number | null
+    moneda: string
+    numero?: string | null
+    /** El número de la factura que se escribió en el formulario. */
+    anotada?: string | null
+  },
   dinero: (monto: number, moneda: 'PEN' | 'USD') => string,
 ): string[] {
   const { lectura: l } = entrada
@@ -297,6 +305,10 @@ export function avisosDeLaOrden(
     avisos.push(
       `La factura dice ${dinero(l.total, m)} y la orden suma ${dinero(entrada.total, m)}: revisa cantidades y precios, o si la factura es de otra compra.`,
     )
+  }
+  const escrita = numeroDeFactura(entrada.anotada)
+  if (l.numero && escrita && l.numero !== escrita) {
+    avisos.push(`La factura es la ${l.numero} y se anotó como ${escrita}: revisa el número.`)
   }
   const propia = numeroDeOc(entrada.numero)
   if (propia && l.ordenes.length > 0 && !l.ordenes.includes(propia)) {

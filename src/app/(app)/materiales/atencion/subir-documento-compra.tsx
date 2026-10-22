@@ -76,7 +76,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
       {/* Se lee sea cual sea el tipo, por si después se elige «Factura»; el «Leyendo…» solo se dice para la factura. */}
       <ElegirArchivo id={`archivo-compra-${ordenCompraId}`} name="archivo" accept={ACEPTA_PDF} hastaMb={20} required disabled={enviando}
         aviso={detector.aviso} estado={tipo === 'FACTURA' ? detector.leyendo : null}
-        onChange={(e) => void detector.leer(e.target.files?.[0]).then(factura.completar)} />
+        onChange={(e) => {
+          // Lo leído del archivo anterior se va con él; lo escrito a mano se queda.
+          factura.soltarLeido()
+          void detector.leer(e.target.files?.[0]).then(factura.completar)
+        }} />
     </Campo>
     <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
       <FileUp aria-hidden className="size-4" />Adjuntar
@@ -88,7 +92,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         </div>
         <div className="sm:col-span-3">
           <AvisoFacturaDeLaOrden lectura={detector.lectura} total={orden?.total ?? null}
-            moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
+            moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} anotada={factura.numero} parcialPosible />
         </div>
       </>
     )}

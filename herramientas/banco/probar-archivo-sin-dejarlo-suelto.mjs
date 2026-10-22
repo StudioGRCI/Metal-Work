@@ -7,14 +7,21 @@
  *      puede quitar. «Quitar» nombra el archivo, se alcanza con el teclado,
  *      vacía el campo y lo que se leyó de él, y deja el foco en el campo. Un
  *      campo obligatorio (RR. HH., «Importar del Excel») no lo lleva.
+ *      Lo leído se va con el archivo: el número y la fecha de la factura
+ *      quitada no se quedan para la siguiente (Logística), ni el total, el
+ *      número y la emisión en el registro de Contabilidad; lo que la persona
+ *      escribió a mano, sí, y si no calza con lo leído se avisa.
  *   2. Administración, el PDF de una orden, cuando se pierde la conexión al
  *      anotarlo (`anotarSinDejarloSuelto`):
  *      - el pedido no llegó: se pregunta otra vez y queda una sola fila;
  *      - llegó y se perdió la respuesta: la segunda vez la base no lo duplica,
- *        el archivo se queda porque una fila lo nombra, y la pantalla dice que
- *        no se sabe en vez de afirmar que no quedó;
+ *        la acción reconoce su propia ruta y responde que quedó, y el archivo
+ *        se queda;
  *      - sin señal las dos veces: no queda fila ni archivo suelto en Storage, y
  *        la pantalla dice que no quedó.
+ *   3. Administración, «Nueva orden de trabajo», cuando se pierde la respuesta
+ *      al registrarla: la segunda vez la acción reconoce su propio PDF, abre la
+ *      orden y no hay otra. (En el monitor; deja una orden de banco.)
  *
  * Arma lo suyo con el sello QA-SUELTO-… en la base del banco y lo retira al
  * terminar. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -96,6 +103,31 @@ const enfocado = (pagina) => pagina.evaluate(() => ({
   etiqueta: document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent?.trim() ?? '',
 }))
 
+/** Un PDF de una página con estas líneas: el detector lo lee como una factura. */
+function pdfConTexto(lineas) {
+  const texto = lineas.map((l, i) => `BT /F1 11 Tf 50 ${780 - i * 18} Td (${l.replace(/[()\\]/g, '')}) Tj ET`).join('\n')
+  const objetos = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(texto, 'latin1')} >>\nstream\n${texto}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const posiciones = []
+  objetos.forEach((o, i) => {
+    posiciones.push(Buffer.byteLength(pdf, 'latin1'))
+    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(pdf, 'latin1')
+  pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`
+  pdf += posiciones.map((p) => `${String(p).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf, 'latin1')
+}
+const FACTURA_A = pdfConTexto(['FACTURA ELECTRONICA', 'F001-00000111', 'FECHA DE EMISION: 10/10/2026', 'IMPORTE TOTAL: S/ 118.00'])
+const FACTURA_B = pdfConTexto(['FACTURA ELECTRONICA', 'F002-00000222', 'FECHA DE EMISION: 12/10/2026', 'IMPORTE TOTAL: S/ 236.00'])
+
 const sello = Date.now().toString().slice(-6)
 const PDF_MINIMO = (relleno) =>
   Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n%${'x'.repeat(relleno)}\ntrailer<</Root 1 0 R>>\n%%EOF\n`)
@@ -152,6 +184,58 @@ async function quitarElOpcional(viewport) {
   await rrhh.pagina.waitForTimeout(600)
   comprobar((await excel.locator('xpath=..').getByRole('button', { name: /^Quitar / }).count()) === 0, `[RR. HH. ${tam}] el obligatorio no ofrece «Quitar»`)
   await rrhh.contexto.close()
+}
+
+// ------------------------------------------------- 1b. lo leído se va con el archivo
+async function loLeidoSeVaConElArchivo(viewport) {
+  const tam = nombreDe(viewport)
+  const valor = (pagina, id) => pagina.locator(id).inputValue().catch(() => '—')
+
+  // Logística: la factura A se lee, se quita, y la B trae lo suyo.
+  const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
+  await ir(p, '/compras/ordenes')
+  await p.getByRole('button', { name: /Nueva OC directa/ }).first().click()
+  const d = p.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  const campo = d.locator('#ocd-factura')
+  await campo.waitFor({ state: 'attached', timeout: 20000 })
+  const caja = campo.locator('xpath=..')
+  await campo.setInputFiles({ name: `QA-LEIDA-A-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_A })
+  comprobar(await esperar(async () => (await valor(d, '#ocd-factura-numero')) === 'F001-111', 20000),
+    `[Logística ${tam}] la factura A se lee: «${await valor(d, '#ocd-factura-numero')}» del ${await valor(d, '#ocd-factura-fecha')}`)
+  await caja.getByRole('button', { name: /^Quitar / }).click()
+  await campo.setInputFiles({ name: `QA-LEIDA-B-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
+  comprobar(await esperar(async () => (await valor(d, '#ocd-factura-numero')) === 'F002-222' && (await valor(d, '#ocd-factura-fecha')) === '2026-10-12', 20000),
+    `[Logística ${tam}] quitada la A, la B trae su número y su fecha: «${await valor(d, '#ocd-factura-numero')}» del ${await valor(d, '#ocd-factura-fecha')}`)
+  // Lo escrito a mano se queda al cambiar de archivo, y si no calza se avisa.
+  await d.locator('#ocd-factura-numero').fill('F009-999')
+  await caja.getByRole('button', { name: /^Quitar / }).click()
+  await campo.setInputFiles({ name: `QA-LEIDA-A2-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_A })
+  const avisa = await esperar(async () => (await d.getByText('La factura es la F001-111 y se anotó como F009-999: revisa el número.').count()) > 0, 20000)
+  comprobar(avisa && (await valor(d, '#ocd-factura-numero')) === 'F009-999',
+    `[Logística ${tam}] el número escrito a mano se queda y se avisa que no es el de la factura («${await valor(d, '#ocd-factura-numero')}»)`)
+  await d.locator('#ocd-factura-numero').scrollIntoViewIfNeeded()
+  await p.screenshot({ path: join(CAPTURAS, `suelto-leido-oc-${tam}.png`) })
+  await p.keyboard.press('Escape')
+  await contexto.close()
+
+  // Contabilidad: lo que llenó el PDF quitado se vacía; lo escrito a mano, no.
+  const c = await entrar('contabilidad.local@metalwork.test', viewport)
+  await ir(c.pagina, '/adquisiciones')
+  const pdf = c.pagina.locator('#adq-pdf')
+  await pdf.waitFor({ state: 'attached', timeout: 20000 })
+  const datos = async () => [await valor(c.pagina, '#adq-total'), await valor(c.pagina, '#adq-numero'), await valor(c.pagina, '#adq-emision')].join(' · ')
+  await pdf.setInputFiles({ name: `QA-LEIDA-A-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_A })
+  comprobar(await esperar(async () => (await datos()) === '118.00 · F001-111 · 2026-10-10', 20000), `[Contabilidad ${tam}] el PDF A llena el total, el número y la emisión: ${await datos()}`)
+  await pdf.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
+  comprobar(await esperar(async () => (await datos()) === ' ·  · ', 5000), `[Contabilidad ${tam}] al quitarlo se vacían: «${await datos()}»`)
+  await c.pagina.locator('#adq-total').fill('50.00')
+  await pdf.setInputFiles({ name: `QA-LEIDA-B-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
+  comprobar(await esperar(async () => (await datos()) === '50.00 · F002-222 · 2026-10-12', 20000),
+    `[Contabilidad ${tam}] con el PDF B, el total escrito a mano se queda y lo demás es de la B: ${await datos()}`)
+  await c.pagina.locator('#adq-total').scrollIntoViewIfNeeded()
+  await c.pagina.screenshot({ path: join(CAPTURAS, `suelto-leido-adquisiciones-${tam}.png`) })
+  await c.contexto.close()
 }
 
 // ------------------------------------------------- 2. la conexión que se pierde al anotar
@@ -212,8 +296,8 @@ async function conexionQueSePierde(viewport) {
       comprobar(estado, `[Administración ${tam}] ${caso}: dice que quedó`)
     } else if (caso === 'se perdió la respuesta') {
       comprobar(filas === 1 && enStorage === 1, `[Administración ${tam}] ${caso}: la base no lo duplica y el archivo anotado se queda (filas ${filas}, archivo ${enStorage})`)
-      const texto = await dice(campo)
-      comprobar(texto.includes('No llegó la respuesta. Recarga la orden y mira si el archivo quedó'), `[Administración ${tam}] ${caso}: no afirma que no quedó: «${texto}»`)
+      const estado = await esperar(async () => (await p.locator('[role=status]').filter({ hasText: /PDF (corregido )?guardado/ }).count()) > 0, 10000)
+      comprobar(estado, `[Administración ${tam}] ${caso}: la segunda vez la acción reconoce lo suyo y dice que quedó`)
     } else {
       comprobar(filas === 0 && enStorage === 0, `[Administración ${tam}] ${caso}: no queda fila ni archivo suelto (filas ${filas}, archivo ${enStorage})`)
       const texto = await dice(campo)
@@ -224,9 +308,54 @@ async function conexionQueSePierde(viewport) {
   await contexto.close()
 }
 
+// ------------------------------------------------- 3. la orden nueva cuya respuesta se pierde
+async function ordenNuevaSinRespuesta(viewport) {
+  const tam = nombreDe(viewport)
+  const cliente = (await uno('select razon_social from public.clientes order by razon_social limit 1'))?.razon_social
+  if (!cliente) return comprobar(false, `[Administración ${tam}] hay un cliente para la orden`)
+  const descripcion = `QA-SUELTO orden sin respuesta ${sello}`
+  const { pagina: p, contexto } = await entrar('administracion.local@metalwork.test', viewport)
+  await ir(p, '/ordenes/nueva')
+  await p.locator('#cliente_id').click()
+  await p.getByRole('searchbox').fill(cliente)
+  await p.locator('[role="option"]').first().click()
+  await p.locator('#tipo_trabajo').selectOption('REPARACION')
+  await p.locator('#descripcion').fill(descripcion)
+  await p.locator('#numero').fill(`9${sello.slice(-3)}`)
+  await p.locator('#pdf_orden').setInputFiles({ name: `QA-ORDEN-SIN-RESPUESTA-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO ${sello}`]) })
+  let registros = 0
+  await p.route((url) => url.pathname.startsWith('/ordenes/nueva'), async (r) => {
+    const pedido = r.request()
+    const cuerpo = pedido.method() === 'POST' && pedido.headers()['next-action'] ? pedido.postData() ?? '' : ''
+    if (!cuerpo.includes('ruta_pdf')) return r.continue()
+    registros += 1
+    try {
+      if (registros === 1) {
+        await r.fetch({ timeout: 60000 })
+        return await r.abort('failed')
+      }
+      return await r.continue()
+    } catch {
+      await r.abort('failed').catch(() => {})
+    }
+  })
+  await p.getByRole('button', { name: 'Registrar orden' }).click()
+  const abrio = await esperar(async () => /\/ordenes\/[0-9a-f-]{36}/.test(p.url()), 40000)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const ordenes = await base.query(`select o.id, (select count(*)::int from public.ot_adjuntos a where a.orden_id = o.id and a.tipo = 'ORDEN') as pdfs
+                                      from public.ordenes_trabajo o where o.descripcion = $1`, [descripcion])
+  comprobar(registros === 2, `[Administración ${tam}] orden nueva sin respuesta: se pregunta otra vez (${registros} veces)`)
+  comprobar(ordenes.rows.length === 1 && ordenes.rows[0].pdfs === 1, `[Administración ${tam}] queda una sola orden, con su PDF (${ordenes.rows.length} órdenes, ${ordenes.rows[0]?.pdfs ?? 0} PDF)`)
+  comprobar(abrio && p.url().includes(ordenes.rows[0]?.id ?? '—'), `[Administración ${tam}] y la pantalla abre esa orden en vez de decir que no se sabe (${new URL(p.url()).pathname})`)
+  await p.screenshot({ path: join(CAPTURAS, `suelto-orden-nueva-${tam}.png`) })
+  await contexto.close()
+}
+
 try {
+  await ordenNuevaSinRespuesta(MONITOR)
   for (const viewport of [MONITOR, TELEFONO]) {
     await quitarElOpcional(viewport)
+    await loLeidoSeVaConElArchivo(viewport)
     await conexionQueSePierde(viewport)
   }
 } finally {

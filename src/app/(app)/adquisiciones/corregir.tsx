@@ -285,6 +285,7 @@ function Formulario({
             name="pdf"
             accept={ACEPTA_PDF}
             hastaMb={10}
+            disabled={enviando}
             aviso={avisoPdf}
             estado={leyendo}
             onChange={(e) => void leerPdf(e.target.files?.[0])}

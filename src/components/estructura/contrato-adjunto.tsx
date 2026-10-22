@@ -16,14 +16,14 @@ import { fecha } from '@/lib/format'
 type Adjuntar = (datos: { id: string; ruta: string; nombre: string }) => Promise<ResultadoAccion>
 
 /** El campo opcional del contrato en un formulario de alta: el archivo se sube después de registrar. */
-export function CampoContrato({ id }: { id: string }) {
+export function CampoContrato({ id, disabled }: { id: string; disabled?: boolean }) {
   return (
     <Campo
       etiqueta="Contrato (opcional)"
       htmlFor={id}
       ayuda="El contrato firmado. Si todavía no lo tienes, adjúntalo después."
     >
-      <ElegirArchivo id={id} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} />
+      <ElegirArchivo id={id} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} disabled={disabled} />
     </Campo>
   )
 }

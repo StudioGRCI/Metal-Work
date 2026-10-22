@@ -184,7 +184,7 @@ function FormularioSubcontrato({
           <Entrada id="sc-fin" name="fecha_fin" type="date" />
         </Campo>
       </div>
-      <CampoContrato id="sc-contrato" />
+      <CampoContrato id="sc-contrato" disabled={enviando} />
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}

@@ -52,19 +52,44 @@ export function useDetectorDeFactura(accept: string, hastaMb: number) {
 /**
  * El número y la fecha de la factura que se anexa a la OC. El detector los llena
  * si están vacíos; lo que la persona ya escribió no se toca.
+ *
+ * Lo que puso el detector es del archivo que se leyó: `soltarLeido` va en el
+ * `onChange` del campo, antes de leer, y vacía lo que el detector puso y nadie
+ * cambió. Así, al quitar el PDF o elegir otro, no se queda el número de la
+ * factura anterior.
  */
 export function useDatosDeFactura() {
-  const [numero, setNumero] = useState('')
-  const [fecha, setFecha] = useState('')
+  const [datos, setDatos] = useState({ numero: '', fecha: '', numeroLeido: '', fechaLeida: '' })
   function completar(lectura: LecturaFactura | null) {
-    if (lectura?.numero) setNumero((n) => n || lectura.numero!)
-    if (lectura?.fecha_emision && lectura.fecha_emision <= hoyLima()) setFecha((f) => f || lectura.fecha_emision!)
+    if (!lectura) return
+    const fechaLeida = lectura.fecha_emision && lectura.fecha_emision <= hoyLima() ? lectura.fecha_emision : ''
+    setDatos((d) => ({
+      numero: d.numero || lectura.numero || '',
+      fecha: d.fecha || fechaLeida,
+      numeroLeido: d.numero ? d.numeroLeido : lectura.numero || '',
+      fechaLeida: d.fecha ? d.fechaLeida : fechaLeida,
+    }))
+  }
+  function soltarLeido() {
+    setDatos((d) => ({
+      numero: d.numero === d.numeroLeido ? '' : d.numero,
+      fecha: d.fecha === d.fechaLeida ? '' : d.fecha,
+      numeroLeido: '',
+      fechaLeida: '',
+    }))
   }
   function vaciar() {
-    setNumero('')
-    setFecha('')
+    setDatos({ numero: '', fecha: '', numeroLeido: '', fechaLeida: '' })
   }
-  return { numero, setNumero, fecha, setFecha, completar, vaciar }
+  return {
+    numero: datos.numero,
+    setNumero: (numero: string) => setDatos((d) => ({ ...d, numero })),
+    fecha: datos.fecha,
+    setFecha: (fecha: string) => setDatos((d) => ({ ...d, fecha })),
+    completar,
+    soltarLeido,
+    vaciar,
+  }
 }
 
 /** Lo que falta para anexar la factura; null si el número y la fecha están bien. */
@@ -129,6 +154,7 @@ export function AvisoFacturaDeLaOrden({
   total,
   moneda,
   numero,
+  anotada,
   parcialPosible,
 }: {
   lectura: LecturaFactura | null
@@ -137,11 +163,13 @@ export function AvisoFacturaDeLaOrden({
   moneda: string
   /** El número de la orden, si ya lo tiene. */
   numero?: string | null
+  /** El número de la factura que se escribió: si no es el leído, se avisa. */
+  anotada?: string | null
   /** La OC puede ir en varias facturas: si el total no calza, se dice que puede ser una parte. */
   parcialPosible?: boolean
 }) {
   if (!lectura) return null
-  const avisos = avisosDeLaOrden({ lectura, total, moneda, numero }, (monto, m) => dinero(monto, m))
+  const avisos = avisosDeLaOrden({ lectura, total, moneda, numero, anotada }, (monto, m) => dinero(monto, m))
   if (avisos.length === 0) {
     if (lectura.total === null) return null
     const leido = dinero(lectura.total, lectura.moneda ?? (moneda === 'USD' ? 'USD' : 'PEN'))

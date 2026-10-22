@@ -13,6 +13,7 @@ import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adju
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { explicarFallo } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
+import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
 import { cargarCronograma } from './acciones-actividades'
 
@@ -26,7 +27,8 @@ const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spread
 function motivoDelExcel(error: string): string {
   const motivo = error.replace(/^No se pudo subir el archivo\. /, '')
   const otraVez = 'sube otra vez el cronograma con el mismo Excel; las actividades no se duplican.'
-  if (motivo.startsWith('Revisa la señal')) return `Revisa la señal y ${otraVez}`
+  // Sin respuesta dos veces y el Excel retirado: no quedó, y se sube otra vez igual.
+  if (motivo.startsWith('Revisa la señal') || motivo === NO_QUEDO_SIN_RESPUESTA) return `Revisa la señal y ${otraVez}`
   if (motivo.startsWith('Inténtalo de nuevo')) return `Para guardarlo, ${otraVez} Si vuelve a pasar, avisa al administrador.`
   return motivo
 }

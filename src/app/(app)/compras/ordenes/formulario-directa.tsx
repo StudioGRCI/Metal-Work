@@ -518,6 +518,8 @@ function FormularioCompraDirecta({
             onChange={(e) => {
               const archivo = e.target.files?.[0]
               setHayFactura(Boolean(archivo))
+              // Lo leído del archivo anterior se va con él; lo escrito a mano se queda.
+              datosFactura.soltarLeido()
               // El comprobante sin factura también se revisa, pero no se lee.
               void detector.leer(archivo, !conFactura).then(datosFactura.completar)
             }}
@@ -533,6 +535,7 @@ function FormularioCompraDirecta({
             lectura={detector.lectura}
             total={total > 0 ? Math.round((total + igvCompra(total)) * 100) / 100 : null}
             moneda={divisa}
+            anotada={datosFactura.numero}
           />
         )}
 

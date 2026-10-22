@@ -158,4 +158,11 @@ test('al adjuntar la factura a su OC se avisa si el total o la OC no son los de 
     'La factura menciona la OC 5583, y esta es la OC-5584-MW: revisa que sea su factura.',
   ])
   assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180, moneda: 'USD' }, dinero), ['La factura está en soles y la orden en dólares.'])
+  // El número escrito a mano se compara con el leído, con o sin ceros a la izquierda.
+  assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180.4, moneda: 'PEN', anotada: 'e001-000482' }, dinero), [])
+  assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180.4, moneda: 'PEN', anotada: 'F001-111' }, dinero), [
+    'La factura es la E001-482 y se anotó como F001-111: revisa el número.',
+  ])
+  // A medio escribir no se avisa.
+  assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180.4, moneda: 'PEN', anotada: 'F00' }, dinero), [])
 })
