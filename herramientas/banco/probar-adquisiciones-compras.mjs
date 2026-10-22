@@ -139,9 +139,9 @@ const [{ id: factura }] = await consulta(`select gen_random_uuid() as id`)
 const [{ total: totalOc2 }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[1]])
 await como('contabilidad')
 await consulta(
-  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-   values ($1, 'FACTURA_COMPRA', $2, $3, (now() at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date, 'PEN', $4, 'CONTADO')`,
-  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalOc2],
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+   values ($1, 'FACTURA_COMPRA', $2, $3, (now() at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date, 'PEN', $4, 'CONTADO', $5)`,
+  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalOc2, ruc.n],
 )
 await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [factura, oc[1]])
 await subir('comprobantes-financieros', `adquisiciones/${factura}/comprobante.pdf`, 'contabilidad')
@@ -216,7 +216,7 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   await pagina.waitForLoadState('networkidle')
   return { pagina, contexto }
 }
-const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
+const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
 const buscar = `q=${SUFIJO}`
 const fila = (pagina, id) => pagina.locator(`tbody tr[data-orden="${id.startsWith('QA-OS') ? id : nombre(id)}"]`)

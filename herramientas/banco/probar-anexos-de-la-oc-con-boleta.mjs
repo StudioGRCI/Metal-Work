@@ -237,9 +237,9 @@ async function registrar(numero, [principal = null, ...resto], { documento = nul
   const id = await nuevoId()
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, $8, $5, 'CONTADO', $6, $7)`,
-    [id, PROVEEDOR, numero, hoy, monto, principal, documento, moneda],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, $8, $5, 'CONTADO', $6, $7, $9)`,
+    [id, PROVEEDOR, numero, hoy, monto, principal, documento, moneda, ruc.n],
   )
   for (const o of resto) await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [id, o])
   const ruta = documento ? null : await subir('comprobantes-financieros', `adquisiciones/${id}/comprobante.pdf`, 'contabilidad')

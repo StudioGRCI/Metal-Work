@@ -258,9 +258,9 @@ const [{ id: factura }] = await consulta(`select gen_random_uuid() as id`)
 const [{ total: totalFactura }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[1]])
 await como('contabilidad')
 await consulta(
-  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-   values ($1, 'FACTURA_COMPRA', $2, $3, $5::date, $5::date, 'PEN', $4, 'CONTADO')`,
-  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalFactura, hoy],
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+   values ($1, 'FACTURA_COMPRA', $2, $3, $5::date, $5::date, 'PEN', $4, 'CONTADO', $6)`,
+  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalFactura, hoy, ruc.n],
 )
 await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [factura, oc[1]])
 await subir('comprobantes-financieros', `adquisiciones/${factura}/comprobante.pdf`, 'contabilidad')
@@ -600,9 +600,9 @@ let pagoId
   await como('contabilidad')
   const [{ id: otra }] = await consulta('select gen_random_uuid() as id')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 80, 'CONTADO')`,
-    [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 80, 'CONTADO', $5)`,
+    [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy, ruc.n],
   )
   const rechazo = await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [otra, oc[2]])
     .then(() => '')
@@ -712,9 +712,9 @@ let pagoId
   const [{ id: registrada }] = await consulta('select gen_random_uuid() as id')
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7)`,
-    [registrada, PROVEEDOR, `F010-${SUFIJO}`, hoy, totalFactura, oc[4], facturaTarde],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7, $8)`,
+    [registrada, PROVEEDOR, `F010-${SUFIJO}`, hoy, totalFactura, oc[4], facturaTarde, ruc.n],
   )
   await consulta(`update adquisiciones set estado = 'REGISTRADA' where id = $1`, [registrada])
   await como(null)
@@ -894,9 +894,9 @@ let pagoId
   const [{ id: parcial }] = await consulta('select gen_random_uuid() as id')
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 200, 'CONTADO')`,
-    [parcial, PROVEEDOR, PARCIAL, hoy],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 200, 'CONTADO', $5)`,
+    [parcial, PROVEEDOR, PARCIAL, hoy, ruc.n],
   )
   await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id, parcial) values ($1, $2, true)`, [parcial, ocParte])
   await subir('comprobantes-financieros', `adquisiciones/${parcial}/comprobante.pdf`, 'contabilidad')

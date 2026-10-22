@@ -118,7 +118,7 @@ async function abrir(pagina, href) {
   return { estado: r.status(), tipo: r.headers()['content-type'] ?? '' }
 }
 
-const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
+const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 
 // ---------------------------------------------------------------- siembra
