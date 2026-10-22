@@ -62,8 +62,10 @@ BANCO_CLAVE='...' node herramientas/banco/recorrer.mjs  # todas las pantallas
 npx tsc --noEmit && npx eslint && npx next build
 ```
 
-- Postgres local corre en el socket `/tmp` puerto `5433`; si no responde:
-  `/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/main -o "-p 5433 -k /tmp" start`.
+- Postgres local corre en el socket `/tmp` puerto `5433`; si no responde (en la
+  nube, `pg_ctl` no corre como root y sin `config_file` no encuentra su
+  configuración; `jit=off`, como Supabase, ver la skill `datos` › Rendimiento):
+  `su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/main -o '-c config_file=/etc/postgresql/16/main/postgresql.conf -c jit=off -p 5433 -k /tmp' -w -t 120 start"`.
 - Columna nueva en una tabla → regenerar tipos **y** agregarla al `select`
   de la consulta que la necesita (`src/lib/datos/*`): el select es explícito.
 - Tabla nueva con relación → el banco (PostgREST propio en
