@@ -317,7 +317,7 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
           <Text style={s.pieTexto}>
             {`Si tiene problemas o consultas relacionados a esta orden de compra comunicarse con ${EMPRESA.consultas.area} - ${EMPRESA.consultas.telefono} - ${EMPRESA.consultas.correo}`}
           </Text>
-          <Text style={s.pieTexto} render={({ pageNumber, totalPages }) => `${c.numero} · página ${pageNumber} de ${totalPages}`} />
+          <Text style={s.pieTexto} render={({ pageNumber, totalPages }) => `${c.numero}${c.anulacion ? ' · ANULADA' : ''} · página ${pageNumber} de ${totalPages}`} />
         </View>
       </Page>
     </Document>
