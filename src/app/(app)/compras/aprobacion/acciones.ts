@@ -117,3 +117,32 @@ export async function rechazarCompra(_previo: unknown, datos: FormData): Promise
         : 'Compra rechazada. Logística recibió el motivo; si venía de un requerimiento, sus insumos volvieron a quedar por comprar.',
   }
 }
+
+// Anular, como aprobar y rechazar, lo comprueba la base (`es_aprobador_compras`)
+// y además que la OC no tenga nada entrado ni pagado (`motivo_para_no_anular_compra`).
+export async function anularCompra(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  await exigirSesion()
+  const analisis = z
+    .object({
+      id: z.guid(),
+      motivo: z
+        .string()
+        .trim()
+        .min(10, 'Cuenta por qué se anula, en al menos 10 caracteres: queda en la OC y le llega a Logística.')
+        .max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: datos.get('id'), motivo: datos.get('motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el motivo.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('anular_orden_compra', { p_compra: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+
+  refrescar()
+  revalidatePath('/adquisiciones')
+  revalidatePath('/requerimientos')
+  return {
+    ok: true,
+    mensaje: 'Compra anulada. Logística recibió el motivo; si venía de un requerimiento, sus insumos volvieron a quedar por comprar. Su PDF sale como ANULADA.',
+  }
+}

@@ -4015,6 +4015,10 @@ export type Database = {
           en_recojo_en: string | null
           en_recojo_por: string | null
           pago_en_tesoreria: boolean
+          anulada_por: string | null
+          anulada_en: string | null
+          motivo_anulacion: string | null
+          lineas_anuladas: Json | null
         }
         Insert: {
           id?: string
@@ -4056,6 +4060,10 @@ export type Database = {
           en_recojo_en?: string | null
           en_recojo_por?: string | null
           pago_en_tesoreria?: boolean
+          anulada_por?: string | null
+          anulada_en?: string | null
+          motivo_anulacion?: string | null
+          lineas_anuladas?: Json | null
         }
         Update: {
           id?: string
@@ -4097,8 +4105,19 @@ export type Database = {
           en_recojo_en?: string | null
           en_recojo_por?: string | null
           pago_en_tesoreria?: boolean
+          anulada_por?: string | null
+          anulada_en?: string | null
+          motivo_anulacion?: string | null
+          lineas_anuladas?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ordenes_compra_materiales_anulada_por_fkey"
+            columns: ["anulada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ordenes_compra_materiales_aprobado_por_fkey"
             columns: ["aprobado_por"]
@@ -11078,6 +11097,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_orden_compra: {
+        Args: {
+          p_compra: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_pago_compra: {
         Args: {
           p_id: string | null
@@ -12414,6 +12440,24 @@ export type Database = {
           lineas: Json | null
         }[]
       }
+      compras_que_se_pueden_anular: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          proveedor: string | null
+          moneda: string | null
+          monto: number | null
+          con_factura: boolean | null
+          aprobacion: string | null
+          aprobado_en: string | null
+          creado_en: string | null
+          recojo: string | null
+          ordenes: string[] | null
+          codigos: string[] | null
+          impide: string | null
+        }[]
+      }
       compras_sin_factura: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13560,6 +13604,12 @@ export type Database = {
           p_otro: string | null
         }
         Returns: boolean
+      }
+      motivo_para_no_anular_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: string
       }
       mover_etapa_codigo: {
         Args: {

@@ -32,7 +32,7 @@ import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
-import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
+import { APROBACION_COMPRA, compraConPdf, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
@@ -309,8 +309,8 @@ function nombreDe(f: CompraTrazada) {
 }
 
 function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
-  // El PDF de la OC no sale mientras espera a Gerencia o si la rechazó (compras/[id]/pdf).
-  const conPdf = f.tipo === 'OC' && acceso.oc && f.aprobacion !== 'POR_APROBAR' && f.aprobacion !== 'RECHAZADA'
+  // El PDF de la OC no sale mientras espera a Gerencia o si la rechazó; la anulada sale con su marca (compras/[id]/pdf).
+  const conPdf = f.tipo === 'OC' && acceso.oc && compraConPdf(f.aprobacion)
   return (
     <div className="space-y-0.5">
       <p className="flex flex-wrap items-center gap-1.5">
@@ -408,7 +408,7 @@ function Total({ f }: { f: CompraTrazada }) {
 /** La aprobación de Gerencia y en qué va: el recojo y el almacén de la OC, la ejecución de la OS. */
 function EnQueVa({ f }: { f: CompraTrazada }) {
   const aprobacion = definir(APROBACION_COMPRA, f.aprobacion)
-  const detenida = f.aprobacion === 'POR_APROBAR' || f.aprobacion === 'RECHAZADA'
+  const detenida = compraDetenida(f.aprobacion)
   const avance =
     f.tipo === 'OS'
       ? f.estado && f.estado !== 'EMITIDA'

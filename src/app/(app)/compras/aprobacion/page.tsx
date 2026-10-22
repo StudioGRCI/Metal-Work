@@ -4,14 +4,20 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cargarAprobacionCompras, esAprobadorDeCompras, type CompraParaAprobar } from '@/lib/datos/aprobacion-compras'
+import {
+  cargarAprobacionCompras,
+  cargarComprasAnulables,
+  esAprobadorDeCompras,
+  type CompraAnulable,
+  type CompraParaAprobar,
+} from '@/lib/datos/aprobacion-compras'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
-import { ORIGEN_COMPRA } from '@/lib/dominio/logistica'
+import { ORIGEN_COMPRA, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, fechaHora, moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
-import { DecisionCompra, FormularioRegla } from './controles'
+import { AnularCompra, DecisionCompra, FormularioRegla } from './controles'
 
 export const metadata = { title: 'Aprobación de compras' }
 
@@ -28,7 +34,10 @@ export default async function PaginaAprobacionCompras() {
   // Las mismas tres puertas que `documentos_por_aprobar` en la base.
   if (!aprueba && !configura && !puede(perfil, 'compras.ver')) redirect('/sin-permiso')
 
-  const { regla, compras, puestos } = await cargarAprobacionCompras({ puestos: configura })
+  const [{ regla, compras, puestos }, anulables] = await Promise.all([
+    cargarAprobacionCompras({ puestos: configura }),
+    aprueba ? cargarComprasAnulables() : Promise.resolve([]),
+  ])
   const pendientes = compras.filter((c) => c.aprobacion === 'POR_APROBAR')
   const decididas = compras.filter((c) => c.aprobacion !== 'POR_APROBAR')
 
@@ -84,6 +93,8 @@ export default async function PaginaAprobacionCompras() {
           )}
         </section>
 
+        {anulables.length > 0 && <ComprasAnulables compras={anulables} />}
+
         {decididas.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-texto">Decididas en los últimos 30 días</h2>
@@ -125,6 +136,85 @@ export default async function PaginaAprobacionCompras() {
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * Las OC aprobadas que todavía no llegan a Almacén: las que se pueden anular,
+ * con su botón, y aparte las que ya no, con lo que lo impide.
+ */
+function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
+  const se = compras.filter((c) => c.impide === null)
+  const no = compras.filter((c) => c.impide !== null)
+  return (
+    <section className="space-y-3" id="anular">
+      <Tarjeta className="overflow-hidden">
+        <TarjetaCabecera
+          titulo="Aprobadas que se pueden anular"
+          descripcion={`${se.length} ${se.length === 1 ? 'compra' : 'compras'} sin nada entrado ni pagado`}
+          ayuda="Una OC aprobada se anula con su motivo mientras el conductor no la recogió, no entró a Almacén, no tiene factura y Tesorería no le pagó nada (o el proveedor ya devolvió todo lo pagado). Sus insumos vuelven a quedar por comprar y Logística recibe el motivo. La OC no se borra: queda anulada como evidencia."
+        />
+        {se.length === 0 ? (
+          <SinDatos enTabla={false} titulo="Ninguna se puede anular hoy" descripcion="Las aprobadas que ya avanzaron están abajo, con lo que lo impide." />
+        ) : (
+          <Tabla>
+            <TablaCabecera>
+              <tr>
+                <TH>Orden</TH>
+                <TH className="text-right">Monto</TH>
+                <TH className="hidden sm:table-cell">En qué va</TH>
+                <TH className="text-right">
+                  <span className="sr-only">Anular</span>
+                </TH>
+              </tr>
+            </TablaCabecera>
+            <tbody>
+              {se.map((c) => {
+                const situacion = situacionCompra({ aprobacion: c.aprobacion, recojo: c.recojo, entregado_almacen_en: null })
+                return (
+                  <TR key={c.id} data-anulable={c.numero}>
+                    <TD>
+                      <p className="font-medium text-texto">
+                        {c.numero} · {c.proveedor}
+                      </p>
+                      <p className="text-[11px] text-texto-suave">
+                        {[c.codigos.join(', '), c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, c.con_factura ? 'Con factura' : 'Con boleta', c.aprobado_en && `aprobada ${fecha(c.aprobado_en)}`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </TD>
+                    <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
+                    <TD className="hidden sm:table-cell">
+                      <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+                    </TD>
+                    <TD className="text-right">
+                      <AnularCompra id={c.id} numero={c.numero} />
+                    </TD>
+                  </TR>
+                )
+              })}
+            </tbody>
+          </Tabla>
+        )}
+      </Tarjeta>
+      {no.length > 0 && (
+        <details className="rounded-md border border-borde bg-superficie p-3 text-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto">
+            {no.length} {no.length === 1 ? 'aprobada que ya no se anula' : 'aprobadas que ya no se anulan'}, y por qué
+          </summary>
+          <ul className="mt-3 space-y-2">
+            {no.map((c) => (
+              <li key={c.id}>
+                <span className="font-medium text-texto">
+                  {c.numero} · {c.proveedor}
+                </span>
+                <p className="text-xs text-texto-suave">{c.impide}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
   )
 }
 

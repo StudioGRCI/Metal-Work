@@ -60,6 +60,46 @@ export type ReglaAprobacion = {
 
 export type PuestoAprobador = { id: string; nombre: string }
 
+/** Una OC aprobada (o sin aprobación) que todavía no llegó a Almacén: Gerencia la anula, o la base dice por qué ya no. */
+export type CompraAnulable = {
+  id: string
+  numero: string
+  proveedor: string
+  moneda: string
+  monto: number
+  con_factura: boolean
+  aprobacion: string
+  aprobado_en: string | null
+  creado_en: string | null
+  recojo: string | null
+  ordenes: string[]
+  codigos: string[]
+  /** Lo que impide anularla (algo entró, se recogió, se facturó o quedó pagado); null si se puede. */
+  impide: string | null
+}
+
+/** Las OC que el puesto que aprueba las compras puede anular hoy, y las que ya no, con su motivo. */
+export async function cargarComprasAnulables(): Promise<CompraAnulable[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('compras_que_se_pueden_anular')
+  if (error) throw new Error(`No se pudieron leer las compras que se pueden anular: ${error.message}`)
+  return (data ?? []).map((c) => ({
+    id: c.id ?? '',
+    numero: c.numero ?? '',
+    proveedor: c.proveedor ?? '',
+    moneda: c.moneda ?? 'PEN',
+    monto: Number(c.monto ?? 0),
+    con_factura: c.con_factura ?? false,
+    aprobacion: c.aprobacion ?? 'APROBADA',
+    aprobado_en: c.aprobado_en,
+    creado_en: c.creado_en,
+    recojo: c.recojo,
+    ordenes: c.ordenes ?? [],
+    codigos: c.codigos ?? [],
+    impide: c.impide,
+  }))
+}
+
 /** ¿La persona en sesión es quien aprueba las compras? Lo decide la base. */
 export async function esAprobadorDeCompras(): Promise<boolean> {
   const supabase = await createClient()
