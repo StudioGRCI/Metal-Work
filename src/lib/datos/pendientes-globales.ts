@@ -3,6 +3,7 @@ import 'server-only'
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima, mesLargo } from '@/lib/format'
@@ -745,7 +746,8 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
         if (error) throw new Error('No se pudo consultar el pendiente.')
         const filas = data ?? []
         return {
-          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino && !c.factura).length,
+          // La que el proveedor devolvió entera no se debe hasta que la vuelva a cobrar.
+          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino && !c.factura && !devueltaEntera(c)).length,
           deMas: filas.filter((c) => Number(c.de_mas ?? 0) > 0 || c.otra_moneda).length,
         }
       })())

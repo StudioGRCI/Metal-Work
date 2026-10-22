@@ -1,7 +1,6 @@
 'use client'
 
 import { ArrowLeftRight, Ban, HandCoins, Undo2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
@@ -13,7 +12,13 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { preguntaSiQuedaPagada, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
+import {
+  facturaSegunElRechazo,
+  preguntaSiQuedaPagada,
+  queQuedaTrasLaDevolucion,
+  topeDeLaDevolucion,
+  type BoletaParaDevolver,
+} from '@/lib/dominio/pago-de-boleta'
 import { useEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
@@ -100,7 +105,12 @@ export function RegistrarDevolucion({
   const [monto, setMonto] = useState('')
   const [deja, setDeja] = useState('')
   const avisar = useAvisoDeLaCaja()
-  const router = useRouter()
+  // La OC cambió con la ventana abierta (Logística anexó o anuló su factura) y la base pide la respuesta, o la
+  // rechaza: la ventana se corrige con lo que dijo la base. Repintar la página la cerraba con todo lo escrito,
+  // porque la tarjeta pasa a otra lista. Vale hasta que la página traiga otra `boleta`.
+  const [rechazo, setRechazo] = useState<{ para: BoletaParaDevolver; enCamino: boolean } | null>(null)
+  const vigente: BoletaParaDevolver =
+    rechazo?.para === boleta ? { ...boleta, enCamino: rechazo.enCamino, factura: rechazo.enCamino ? boleta.factura : null } : boleta
   const tope = topeDeLaDevolucion(boleta)
   const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
 
@@ -122,9 +132,10 @@ export function RegistrarDevolucion({
       datos.set('ruta', ruta)
       return registrarDevolucionCompra(null, datos)
     })
-    // Si la OC cambió con la ventana abierta (Logística anexó o anuló su factura), la base pide la pregunta o la
-    // rechaza: se repinta para que la ventana la muestre, o la quite, sin perder lo escrito.
-    if (!r.ok) router.refresh()
+    if (!r.ok) {
+      const enCamino = facturaSegunElRechazo(r.error)
+      if (enCamino !== null) setRechazo({ para: boleta, enCamino })
+    }
     return r
   }
   const { alEnviar, enviando, error } = useEnvio(registrar, (r) => {
@@ -134,9 +145,9 @@ export function RegistrarDevolucion({
   const campo = (nombre: string) => `${nombre}-devolucion-${ordenCompraId}`
   const escrito = leerMonto(monto) ?? 0
   const valido = escrito > 0 && escrito <= tope
-  const pregunta = valido && preguntaSiQuedaPagada(boleta, escrito)
+  const pregunta = valido && preguntaSiQuedaPagada(vigente, escrito)
   const queda = Math.round((boleta.neto - escrito) * 100) / 100
-  const enVivo = valido ? queQuedaTrasLaDevolucion(boleta, -escrito, codigoMoneda, deja === '' ? undefined : deja === 'si') : null
+  const enVivo = valido ? queQuedaTrasLaDevolucion(vigente, -escrito, codigoMoneda, deja === '' ? undefined : deja === 'si') : null
 
   return (
     <>
@@ -245,8 +256,20 @@ export function RegistrarDevolucion({
  * Anular con su motivo una devolución mal registrada. `queQueda` lo arma la
  * página con la misma cuenta que la ventana de registrarla, con el monto de
  * vuelta. `etiqueta` dice cuál: con dos, el lector de pantalla leía «Anular» dos veces.
+ * `noSeAnula` es por qué la base no la dejaría anular: la ventana lo dice en vez
+ * de prometer cómo queda la OC.
  */
-export function AnularDevolucion({ devolucionId, etiqueta, queQueda }: { devolucionId: string; etiqueta: string; queQueda: string }) {
+export function AnularDevolucion({
+  devolucionId,
+  etiqueta,
+  queQueda,
+  noSeAnula,
+}: {
+  devolucionId: string
+  etiqueta: string
+  queQueda: string
+  noSeAnula: string | null
+}) {
   const [abierta, setAbierta] = useState(false)
   const avisar = useAvisoDeLaCaja()
   const { alEnviar, enviando, error } = useEnvio(anularDevolucionCompra, (r) => {
@@ -270,28 +293,39 @@ export function AnularDevolucion({ devolucionId, etiqueta, queQueda }: { devoluc
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular la devolución"
-        descripcion={`Queda en el historial con su motivo y su constancia, y la caja diaria anula su ingreso; si su día ya está cerrado, hoy sale de esa cuenta lo que entró. ${queQueda}`}
+        descripcion={
+          noSeAnula ??
+          `Queda en el historial con su motivo y su constancia, y la caja diaria anula su ingreso; si su día ya está cerrado, hoy sale de esa cuenta lo que entró. ${queQueda}`
+        }
         ancho="md"
       >
-        <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={devolucionId} />
-          <Campo etiqueta="Motivo" htmlFor={`anular-devolucion-${devolucionId}`} requerido>
-            <AreaTexto id={`anular-devolucion-${devolucionId}`} name="motivo" required minLength={10} maxLength={500} />
-          </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
+        {noSeAnula ? (
+          <div className="flex justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
+              Cerrar
             </Boton>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={alEnviar} className="space-y-4">
+            <input type="hidden" name="id" value={devolucionId} />
+            <Campo etiqueta="Motivo" htmlFor={`anular-devolucion-${devolucionId}`} requerido>
+              <AreaTexto id={`anular-devolucion-${devolucionId}`} name="motivo" required minLength={10} maxLength={500} />
+            </Campo>
+            {error && (
+              <p role="alert" className="text-sm text-peligro">
+                {error}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+                Cancelar
+              </Boton>
+              <Boton type="submit" variante="peligro" cargando={enviando}>
+                Anular
+              </Boton>
+            </div>
+          </form>
+        )}
       </Ventana>
     </>
   )

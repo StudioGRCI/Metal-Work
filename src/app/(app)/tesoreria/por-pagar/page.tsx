@@ -22,7 +22,7 @@ import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
-import { queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
+import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -92,7 +92,8 @@ export default async function PaginaPorPagar() {
   const boletasPorPagar = boletas.filter((b) => !b.cancelada || b.comprobante_en_camino || pideAlgo(b))
   const boletasPagadas = boletas.filter((b) => b.cancelada && !b.comprobante_en_camino && !pideAlgo(b))
   // La que espera su comprobante o ya tiene su factura se paga por ella: no suma al «Por pagar» ni a lo vencido.
-  const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino && !b.factura)
+  // Tampoco la que el proveedor devolvió entera: no se le debe hasta que la vuelva a cobrar.
+  const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino && !b.factura && !devueltaEntera(b))
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
   const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
   const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
@@ -526,7 +527,8 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
         </>
       )
     }
-    if (falta <= 0) return <>Pagada por su factura {factura}, que tomó lo pagado por la boleta.</>
+    // Si lo pagado por la boleta se descontó en otra factura, esta se pagó aparte: la línea de lo descontado lo dice.
+    if (falta <= 0) return aplicado > 0 ? <>Pagada por su factura {factura}, que tomó lo pagado por la boleta.</> : <>Pagada por su factura {factura}.</>
     // Un pago la dio por cancelada con menos: la diferencia es un descuento que la factura no trae.
     const sinCompletar = Boolean(b.sin_completar)
     return (
@@ -541,6 +543,8 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
             pide al proveedor la nota de crédito por {monto(falta)} y no {paga ? 'pagues' : 'paga'} esa diferencia.
           </>
         )}
+        {/* Su factura es por una parte: lo que no factura espera la que falta. */}
+        {!b.entera && porFacturar >= 1 && <> {laQueFalta}</>}
       </>
     )
   }
@@ -558,12 +562,20 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
         <>El proveedor ya devolvió todo lo que se pagó por su boleta: Tesorería la paga de nuevo solo si se la vuelve a cobrar.</>
       )
     }
-    // Anular la devolución solo entra si sin ella lo pagado no pasa del total.
-    const seAnula = redondear(neto + devuelto) <= Number(b.total ?? 0)
+    // Anular la devolución solo entra si sin ella lo pagado no pasa del total; con varias, la que decide es la última.
+    const devoluciones = b.devoluciones.filter((d) => !d.anulado_en)
+    const ultima = devoluciones.at(-1)
+    const seAnula = ultima !== undefined && redondear(neto + Number(ultima.monto)) <= Number(b.total ?? 0)
     return paga ? (
       <>
         El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}, que se pagan aquí.
-        {seAnula && <> Si con lo que quedaba ya estaba pagada, anula la devolución y regístrala de nuevo con «Sí, queda pagada».</>}
+        {seAnula && (
+          <>
+            {' '}
+            Si con lo que quedaba ya estaba pagada, anula {devoluciones.length > 1 ? 'la última devolución' : 'la devolución'} y regístrala de nuevo con «Sí,
+            queda pagada».
+          </>
+        )}
       </>
     ) : (
       <>
@@ -648,6 +660,17 @@ function anexoPorRevisar(b: CompraConBoleta) {
 function sinCompletarAlAnular(b: CompraConBoleta, devolucionId: string) {
   const mapa = b.sin_completar_al_anular
   return Boolean(mapa && typeof mapa === 'object' && !Array.isArray(mapa) && mapa[devolucionId] === true)
+}
+
+/**
+ * Por qué la base no deja anular la devolución: sin ella, lo pagado por la boleta
+ * pasaría de su total (por los pagos de después, o porque el total bajó). Null si entra.
+ */
+function noSeAnulaLaDevolucion(b: CompraConBoleta, monto: number, m: CodigoMoneda): string | null {
+  const sinElla = redondear(Number(b.pagado ?? 0) + monto)
+  const total = Number(b.total ?? 0)
+  if (sinElla <= total) return null
+  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta y después anula esta.`
 }
 
 /** Lo que le falta pagar a una OC con boleta, sobre lo neto (lo pagado menos lo devuelto); una cancelada «a cuenta» ya no debe nada. */
@@ -987,7 +1010,8 @@ function CompraConBoletaFila({
   // Solo uno de sus pagos la canceló, el que dice la base; con su comprobante o su factura, la cancela la factura.
   const cancela = b.cancelada && !enCamino && !conFactura ? b.pago_que_cancela : null
   const condicion = b.condicion_pago === 'CREDITO' ? `crédito a ${b.dias_credito ?? 0} días` : 'contado'
-  const insignia: { tono: 'exito' | 'aviso' | 'peligro'; texto: string } | null = anexoPorRevisar(b)
+  const devuelta = devueltaEntera(b)
+  const insignia: { tono: 'exito' | 'aviso' | 'peligro' | 'neutro'; texto: string } | null = anexoPorRevisar(b)
     ? { tono: 'aviso', texto: 'Anexo por revisar' }
     : deMas > 0
       ? { tono: 'peligro', texto: 'Pagada de más' }
@@ -1003,7 +1027,9 @@ function CompraConBoletaFila({
             ? { tono: 'aviso', texto: b.comprobante_en_camino_origen === 'LOGISTICA' ? 'Llegó factura' : 'En Contabilidad' }
             : b.cancelada
               ? { tono: 'exito', texto: 'Pagada' }
-              : neto > 0
+              : devuelta
+                ? { tono: 'neutro', texto: 'Devuelta' }
+                : neto > 0
                 ? { tono: 'aviso', texto: 'Pagada en parte' }
                 : null
   const enLaFactura = anexoPorRevisar(b) ? (
@@ -1041,7 +1067,18 @@ function CompraConBoletaFila({
           <p className="text-xs text-texto-suave">
             {enCamino || conFactura ? 'Iba con boleta' : 'Boleta'} · {condicion}
             {b.codigo_interno && ` · ${b.codigo_interno}`}
-            {!enCamino && !conFactura && (b.cancelada ? ` · Pagada el ${fecha(b.ultimo_pago)}` : <> · <Vencimiento dia={b.vence} saldo={saldo} /></>)}
+            {!enCamino &&
+              !conFactura &&
+              (b.cancelada ? (
+                ` · Pagada el ${fecha(b.ultimo_pago)}`
+              ) : devuelta ? (
+                ` · Devuelta el ${fecha(b.devoluciones.filter((d) => !d.anulado_en).at(-1)?.fecha)}`
+              ) : (
+                <>
+                  {' '}
+                  · <Vencimiento dia={b.vence} saldo={saldo} />
+                </>
+              ))}
           </p>
           {aviso ? (
             <p className={`text-xs ${deMas > 0 ? 'text-peligro' : 'text-aviso'}`}>{aviso}</p>
@@ -1234,6 +1271,7 @@ function CompraConBoletaFila({
                     devolucionId={d.id}
                     etiqueta={`la devolución del ${fecha(d.fecha)} por ${moneda(d.monto, m)}`}
                     queQueda={queQuedaTrasLaDevolucion({ ...boleta, sinCompletar: sinCompletarAlAnular(b, d.id) }, Number(d.monto), m)}
+                    noSeAnula={noSeAnulaLaDevolucion(b, Number(d.monto), m)}
                   />
                 )}
               </span>

@@ -84,6 +84,28 @@ export function preguntaSiQuedaPagada(b: Pick<BoletaParaDevolver, 'factura' | 'e
 }
 
 /**
+ * Sin factura ni comprobante en camino, el proveedor devolvió todo lo pagado
+ * por la boleta: no se le debe hasta que la vuelva a cobrar. No suma al «Por
+ * pagar» ni vence.
+ */
+export function devueltaEntera(b: { factura: string | null; comprobante_en_camino: string | null; devuelto: number | null; pagado: number | null }): boolean {
+  return !b.factura && !b.comprobante_en_camino && Number(b.devuelto ?? 0) > 0 && Number(b.pagado ?? 0) <= 0
+}
+
+/**
+ * Lo que dice el rechazo de `registrar_devolucion_compra` cuando la OC cambió
+ * con la ventana abierta: `false` si ya no tiene factura y la base pide decir si
+ * queda pagada («Di si con los S/ X que quedan pagados…»), `true` si ahora la
+ * tiene («…ya tiene su factura…»), null si es otro rechazo. Son los textos de
+ * la migración 20261020210000, que el check 421 exige.
+ */
+export function facturaSegunElRechazo(error: string): boolean | null {
+  if (/^Di si con los .+ que quedan pagados /.test(error)) return false
+  if (error.includes(' ya tiene su factura: ')) return true
+  return null
+}
+
+/**
  * Cómo queda la OC con `delta` más de lo neto: −monto al registrar una
  * devolución, +monto al anularla. Al registrarla, `dejaPagada` es lo que
  * Tesorería contestó a `preguntaSiQuedaPagada`; sin respuesta todavía, no dice

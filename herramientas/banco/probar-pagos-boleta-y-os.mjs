@@ -47,8 +47,8 @@
  *      entera, con una factura que cubre una parte: la tarjeta dice lo que
  *      tomó y lo que tomará la que falta, y la devolución dice lo que queda
  *      para esa factura, no «nada pagado de más».
- *   3g. (duodécima vuelta, cuarta pasada) La OC 9, pagada entera con la
- *      factura anexada: la ventana de la devolución no pregunta. Con ella
+ *   3g. (duodécima vuelta, cuarta pasada) La OC 9, pagada entera, y
+ *      después con la factura anexada: la ventana de la devolución no pregunta. Con ella
  *      abierta, Logística anula el anexo: la base pide la respuesta y la
  *      ventana la muestra sin recargar ni perder lo escrito. La tarjeta solo
  *      ofrece anular la devolución y registrarla con «Sí» si anularla entra; y
@@ -196,8 +196,8 @@ await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [
 // La 5, con boleta, se paga entera y después llega su factura (3d).
 // La 6 y la 7, con boleta, se pagan enteras: el proveedor devuelve parte de la 6, y la 7 tiene una factura por una parte (3f).
 // La 8, con boleta, pagada a cuenta, con una factura por una parte que se paga entera (3f).
-// La 9, con boleta y la factura anexada, se paga entera; Logística anula el anexo con la ventana abierta y el proveedor
-// termina devolviéndolo todo (3g).
+// La 9, con boleta, se paga entera y Logística le anexa la factura; la anula con la ventana de la devolución abierta, y
+// el proveedor termina devolviéndolo todo (3g).
 await como('logistica')
 const oc = []
 for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
@@ -223,13 +223,6 @@ await consulta(
   `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
    values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
   [facturaAnexada, oc[3], `compra/${oc[3]}/${facturaAnexada}.pdf`, PDF.length, ids[CUENTAS.logistica], `F009-${SUFIJO}`, hoy],
-)
-const [{ id: anexo9 }] = await consulta(`select gen_random_uuid() as id`)
-await subir('documentos-compras', `compra/${oc[8]}/${anexo9}.pdf`, 'logistica')
-await consulta(
-  `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
-   values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
-  [anexo9, oc[8], `compra/${oc[8]}/${anexo9}.pdf`, PDF.length, ids[CUENTAS.logistica], `F010-${SUFIJO}`, hoy],
 )
 await como('gerencia')
 for (const id of oc) await consulta(`select public.aprobar_compra($1)`, [id])
@@ -925,6 +918,16 @@ let pagoId
     return limpio(await (await abrir(ocToda)).textContent())
   }
   await pagar9(total)
+  // Pagada entera por su boleta, el proveedor entrega factura y Logística la anexa.
+  const [{ id: anexo9 }] = await consulta(`select gen_random_uuid() as id`)
+  await como('logistica')
+  await subir('documentos-compras', `compra/${ocToda}/${anexo9}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+     values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+    [anexo9, ocToda, `compra/${ocToda}/${anexo9}.pdf`, PDF.length, ids[CUENTAS.logistica], `F090-${SUFIJO}`, hoy],
+  )
+  await como(null)
   await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   await (await abrir(ocToda)).locator('[data-registrar-devolucion]').click()
   const vv = t.pagina.locator('[role="dialog"]')
@@ -949,6 +952,10 @@ let pagoId
   comprobar(rechazo.includes('Di si con los S/ 261.50') && preguntaTras === 1 && escrito.monto === '100' && escrito.operacion === `DEV9-${SUFIJO}`
       && escrito.archivos === 1 && (await devolucionesDe(ocToda)).length === 0,
     `anulado el anexo con la ventana abierta, la base pide la respuesta y la ventana la muestra sin perder lo escrito («${rechazo}», pregunta ${preguntaTras}, ${JSON.stringify(escrito)})`)
+  // No se repinta la página: la tarjeta pasaría a otra lista y la ventana se cerraría sola con lo escrito.
+  await t.pagina.waitForTimeout(4000)
+  comprobar((await vv.isVisible()) && (await vv.locator('select[name="deja"]').count()) === 1 && (await vv.locator('input[name="monto"]').inputValue()) === '100',
+    'unos segundos después, la ventana sigue abierta, con la pregunta y lo escrito')
   await vv.locator('select[name="deja"]').selectOption('no')
   await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
   const errorNo = await esperarVentana(t.pagina)
@@ -964,6 +971,15 @@ let pagoId
   comprobar(sinConsejo.includes('El proveedor devolvió S/ 100.00 de lo pagado y a la OC le faltan S/ 50.00, que se pagan aquí.')
       && !sinConsejo.includes('Si con lo que quedaba'),
     `pagado después lo que faltaba en parte, ya no ofrece anular la devolución, que la base rechazaría: «${sinConsejo.slice(0, 320)}»`)
+  await (await abrir(ocToda)).locator(`[data-anular-devolucion="${devs9[0].id}"]`).click()
+  const vn = t.pagina.locator('[role="dialog"]')
+  await vn.waitFor()
+  const noSe = limpio(await vn.textContent())
+  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50).')
+      && !noSe.includes('La OC queda pagada') && (await vn.getByRole('button', { name: 'Anular', exact: true }).count()) === 0,
+    `la ventana de anularla dice por qué no se puede, en vez de prometer cómo queda la OC: «${noSe.slice(0, 300)}»`)
+  await vn.getByRole('button', { name: 'Cerrar', exact: true }).last().click()
+  const porPagarAntes = await t.pagina.locator('p', { hasText: 'Por pagar: S/' }).first().textContent().catch(() => '')
   const todo = await devolver(ocToda, '311.50', `DEV9B-${SUFIJO}`)
   comprobar(!todo.pregunto && !todo.error && todo.aviso.includes('Devolución registrada'),
     `el proveedor devuelve lo que quedaba: no pregunta y entra${todo.error ? ` (dijo «${todo.error}»)` : ''}`)
@@ -971,6 +987,12 @@ let pagoId
   comprobar(devuelta.includes('El proveedor ya devolvió todo lo que se pagó por su boleta: págala de nuevo solo si te la vuelve a cobrar.')
       && !devuelta.includes('Si con lo que quedaba'),
     `devuelto todo, la tarjeta no pide un «Sí» imposible: «${devuelta.slice(0, 320)}»`)
+  comprobar(devuelta.includes('Devuelta') && devuelta.includes('Devuelta el ') && !devuelta.includes('Vence') && !devuelta.includes('Venció'),
+    `y no se cuenta como deuda que vence: dice «Devuelta el …» en vez del vencimiento: «${devuelta.slice(0, 200)}»`)
+  const porPagarDespues = await t.pagina.locator('p', { hasText: 'Por pagar: S/' }).first().textContent().catch(() => '')
+  const soles = (t) => Number(/Por pagar: S\/ ([\d,]+\.\d{2})/.exec(t ?? '')?.[1]?.replace(/,/g, '') ?? NaN)
+  comprobar(Math.round((soles(porPagarAntes) - soles(porPagarDespues)) * 100) / 100 === 50,
+    `el «Por pagar» del encabezado deja de contar los S/ 50 que debía y no suma lo devuelto (${soles(porPagarAntes)} → ${soles(porPagarDespues)})`)
   await t.contexto.close()
   const g = await entrar('gerencia')
   await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
