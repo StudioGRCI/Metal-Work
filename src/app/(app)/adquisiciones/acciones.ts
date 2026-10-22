@@ -60,17 +60,17 @@ function lecturaDelFormulario(formulario: FormData) {
 
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
-/**
- * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
- * chocaría con su propio número: se completa en su fila, que la lista muestra
- * primero, salvo que falte el permiso, que desde la lista tampoco alcanza.
- */
 /** Lo que queda en borrador se ve en la lista sin recargar: el aviso manda ahí. */
 function enBorrador(error: string): ResultadoAccion {
   revalidatePath('/adquisiciones')
   return { ok: false, error }
 }
 
+/**
+ * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
+ * chocaría con su propio número: se completa en su fila, que la lista muestra
+ * primero, salvo que falte el permiso, que desde la lista tampoco alcanza.
+ */
 function borradorSinPdf(motivo: string) {
   const sinPdf = 'El comprobante quedó en borrador sin su PDF'
   const enSuFila = 'Complétalo en su fila de la lista, en «PDF pendiente»'

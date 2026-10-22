@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -83,8 +83,12 @@ const pendiente = (c: CompraSinFactura) => Math.max(Math.round((Number(c.total) 
  */
 export function FormularioAdquisicion(props: Props) {
   // Al registrar, el formulario se vuelve a montar vacío y el aviso queda arriba.
+  // Si el comprobante quedó en borrador, también: lo escrito ya está en él, y
+  // volver a enviarlo chocaría con su propio número. Su aviso sigue abajo,
+  // donde estaba, hasta que la persona empiece el siguiente.
   const [vuelta, setVuelta] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [borrador, setBorrador] = useState<string | null>(null)
   return (
     <>
       {aviso && (
@@ -95,23 +99,43 @@ export function FormularioAdquisicion(props: Props) {
       <Formulario
         key={vuelta}
         {...props}
+        borrador={borrador}
         alRegistrar={(mensaje) => {
           setAviso(mensaje)
+          setBorrador(null)
           setVuelta((v) => v + 1)
         }}
-        alEscribir={() => setAviso(null)}
+        alQuedarEnBorrador={(mensaje) => {
+          setAviso(null)
+          setBorrador(mensaje)
+          setVuelta((v) => v + 1)
+        }}
+        alEscribir={() => {
+          setAviso(null)
+          setBorrador(null)
+        }}
       />
     </>
   )
 }
 
+/** Los avisos de la acción que dejan el comprobante creado, en borrador. */
+const quedoEnBorrador = (error: string) => /\bborrador\b/.test(error)
+
 function Formulario({
   ordenes,
   compras,
   documentos,
+  borrador,
   alRegistrar,
+  alQuedarEnBorrador,
   alEscribir,
-}: Props & { alRegistrar: (mensaje: string) => void; alEscribir: () => void }) {
+}: Props & {
+  borrador: string | null
+  alRegistrar: (mensaje: string) => void
+  alQuedarEnBorrador: (mensaje: string) => void
+  alEscribir: () => void
+}) {
   const [marcadas, setMarcadas, marcadasAhora] = useEstadoAlDia<string[]>([])
   const [parciales, setParciales] = useState<string[]>([])
   const [proveedor, setProveedor, proveedorAhora] = useEstadoAlDia('')
@@ -147,15 +171,27 @@ function Formulario({
   // Por qué el PDF o el XML elegido no sirve: va en su campo, y no se lee.
   const [avisoArchivo, setAvisoArchivo] = useState<Record<'xml' | 'pdf', string | null>>({ xml: null, pdf: null })
   const turno = useRef<Record<Fuente, number>>({ xml: 0, pdf: 0, logistica: 0 })
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const resultado = await registrarAdquisicion(previo, datos)
+      if (!resultado.ok && quedoEnBorrador(resultado.error)) alQuedarEnBorrador(resultado.error)
+      return resultado
+    },
+    (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'),
+  )
   const campoPdf = useRef<HTMLInputElement>(null)
   const avisoError = useRef<HTMLParagraphElement>(null)
   // Lo que es del PDF se dice en su campo, que se marca, y no se repite abajo.
   // Lo que dejó un borrador no se arregla eligiendo otro PDF: se completa en su
   // fila de la lista, así que su aviso va abajo.
   const [faltaPdf, setFaltaPdf] = useState(false)
-  const errorPdf = error && /\bPDF\b/.test(error) && !/\bborrador\b/.test(error) ? error : null
+  const errorPdf = error && /\bPDF\b/.test(error) && !quedoEnBorrador(error) ? error : null
+  const avisoAbajo = error && !errorPdf ? error : borrador
   useCursorAlRechazo(enviando, error, () => (errorPdf ? campoPdf.current : avisoError.current))
+  // El formulario vuelve vacío con el aviso del borrador: el cursor, en el aviso.
+  useEffect(() => {
+    if (borrador) avisoError.current?.focus()
+  }, [borrador])
   // Al elegir o quitar el PDF, o la factura de Logística, el aviso del PDF ya no vale.
   const yaNoFaltaPdf = () => {
     setFaltaPdf(false)
@@ -678,9 +714,9 @@ function Formulario({
         <Boton type="submit" cargando={enviando}>
           Registrar comprobante
         </Boton>
-        {error && !errorPdf && (
+        {avisoAbajo && (
           <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
-            {error}
+            {avisoAbajo}
           </p>
         )}
       </div>

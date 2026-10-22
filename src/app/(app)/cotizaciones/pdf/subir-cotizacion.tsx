@@ -422,7 +422,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   }} inputMode="decimal" placeholder="0.00" required />
               </Campo>
               {totalDelDocumento && (
-                <p role="status" className="text-xs text-aviso">
+                <p role="status" className="text-xs text-pretty text-aviso">
                   El documento dice {totalDelDocumento}: revisa el total.
                 </p>
               )}

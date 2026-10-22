@@ -163,6 +163,13 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
   lugar de «Cancelar» tras el éxito.
+- **Un rechazo que deja el registro creado** (el comprobante que entró en
+  borrador y su PDF no subió) vacía el formulario como al registrar, con el
+  aviso donde estaba y el cursor en él, hasta que se empieza el siguiente: lo
+  escrito ya está en el borrador, y volver a enviarlo choca con su propio
+  número. Lleno, invitaba a «Registrar» otra vez después de completarlo en la
+  lista (`adquisiciones/formulario.tsx`). Se detecta envolviendo la acción que
+  recibe `useEnvio`, no con un efecto sobre el resultado.
 - Marcar de a uno (un check, un V°B°) es un `<form>` mínimo por casilla con
   campos ocultos — sin modal, sin recargar el formulario entero (ver
   `ficha-taller.tsx`).

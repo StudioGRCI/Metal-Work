@@ -291,6 +291,53 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   comprobar(conFoto && foto?.nombre === nombreF && foto.ruta.endsWith('.png') && suelto === 0,
     `[Administración ${tam}] con una foto después del PDF que no quedó, entra la foto y el PDF no queda suelto (${foto?.nombre ?? 'ninguno'}, ${suelto} PDF suelto)`)
 
+  // V6c: el PDF sí quedó (las dos respuestas se pierden), la foto no entra
+  // porque ese envío ya quedó con el PDF, y después se elige otro PDF: volver a
+  // la ruta del PDF no lo da por adjunto; dice cuál quedó, sin llamar a la base.
+  await ir(p, `/subcontratos/${sc.id}`)
+  const vueltas = { acciones: 0 }
+  await p.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sc.id)) {
+      vueltas.acciones++
+      if (vueltas.acciones <= 2) {
+        await r.fetch().catch(() => {})
+        return r.abort('failed')
+      }
+    }
+    return r.continue()
+  })
+  await p.locator('[data-adjuntar-contrato]').click()
+  const g = p.getByRole('dialog').first()
+  await g.waitFor({ timeout: 20000 })
+  const nombreG = `QA-OTRO-G-${sello}.pdf`
+  const pdfG = PDF_MINIMO(300)
+  const alertaG = g.locator('[role=alert]')
+  await g.locator('input[name="contrato"]').setInputFiles({ name: nombreG, mimeType: 'application/pdf', buffer: pdfG })
+  await g.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /Conserva el archivo/.test(await alertaG.innerText().catch(() => '')), 30000)
+  await g.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-H-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
+  await g.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /ya quedó adjuntado con otro archivo/.test(await alertaG.innerText().catch(() => '')), 30000)
+  const conLaFoto = limpio(await alertaG.innerText().catch(() => ''))
+  const antesDelOtro = vueltas.acciones
+  await g.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-I-${sello}.pdf`, mimeType: 'application/pdf', buffer: PDF_MINIMO(900) })
+  await g.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /ya se subió/.test(await alertaG.innerText().catch(() => '')), 30000)
+  const conOtroPdf = limpio(await alertaG.innerText().catch(() => ''))
+  await p.keyboard.press('Escape')
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const quedoG = await uno(`select count(*)::int as n, string_agg(c.archivo_nombre, ', ') as nombres, max((o.metadata ->> 'size')::int) as tam,
+                                   max(c.archivo_ruta) as ruta
+                              from public.subcontrato_contratos c left join storage.objects o on o.name = c.archivo_ruta
+                             where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3, $4)`,
+                            [sc.id, nombreG, `QA-OTRO-H-${sello}.png`, `QA-OTRO-I-${sello}.pdf`])
+  const fotoSuelta = quedoG.ruta ? Number((await uno('select count(*) from storage.objects where name = $1', [quedoG.ruta.replace(/\.pdf$/, '.png')])).count) : -1
+  comprobar(/ya quedó adjuntado con otro archivo/.test(conLaFoto) && conOtroPdf.includes(`Desde esta ventana ya se subió ${nombreG} y quedó registrado`) && vueltas.acciones === antesDelOtro,
+    `[Administración ${tam}] V6c: tras la foto, otro PDF no se da por adjunto y dice cuál quedó, sin llamar a la base: «${conLaFoto}» → «${conOtroPdf}» (${vueltas.acciones - antesDelOtro} llamadas)`)
+  comprobar(quedoG.n === 1 && quedoG.nombres === nombreG && quedoG.tam === pdfG.length && fotoSuelta === 0,
+    `[Administración ${tam}] V6c: el contrato es el primer PDF, con sus bytes, y la foto no quedó suelta (${quedoG.nombres}, ${quedoG.tam} bytes, ${fotoSuelta} fotos sueltas)`)
+
   // El recibo por honorarios vacío dice que está vacío, no «Adjunta el recibo».
   await ir(p, `/subcontratos/${sc.id}`)
   await p.locator('[data-subir-recibo]').click()
@@ -304,6 +351,64 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const dijo = limpio(await r.locator('[role=alert]').innerText().catch(() => ''))
   const recibos = await uno(`select count(*)::int as n from public.recibos_honorarios where numero = $1`, [`E001-${sello}`])
   comprobar(dijo === 'El archivo está vacío: elige otro.' && recibos.n === 0, `[Administración ${tam}] el recibo vacío dice que está vacío y no se registra: «${dijo}»`)
+  await contexto.close()
+}
+
+// ------------------------------------------------- 2c. la caja cambia de captura tras una respuesta perdida
+// Tesorería da de alta una cuenta con su captura en JPG; la acción entra y sus
+// dos respuestas se pierden. En la misma ventana elige una captura PNG y la
+// envía: la cuenta queda con la PNG, y la JPG, que ya nadie nombra, no queda
+// suelta en Storage.
+const JPEG_MINIMO = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64')
+async function laCapturaDeOtroTipoEnLaCaja(viewport) {
+  const tam = nombreDe(viewport)
+  const { pagina: p, contexto } = await entrar('tesoreria.local@metalwork.test', viewport)
+  await ir(p, '/tesoreria/caja-diaria')
+  const seccion = p.locator('details', { hasText: 'Cuentas de Tesorería' })
+  if (await seccion.count()) {
+    // Se abre cuando React ya la tomó; si no, la vuelve a cerrar al hidratar.
+    await seccion.evaluate((d) => new Promise((listo) => {
+      const mira = () => (Object.keys(d).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+      mira()
+    }))
+    await seccion.evaluate((d) => (d.open = true))
+  }
+  await p.locator('[data-agregar-cuenta]:visible').first().click()
+  const v = p.locator('[role="dialog"]:not([data-nextjs-dialog])')
+  await v.waitFor({ timeout: 20000 })
+  const nombreCuenta = `QA CAJA ${sello}-${tam}`
+  await v.locator('input[name="nombre"]').fill(nombreCuenta)
+  await v.locator('select[name="tipo"]').selectOption('BANCO')
+  await v.locator('input[name="banco"]').fill('BCP')
+  await v.locator('select[name="moneda"]').selectOption('PEN')
+  await v.locator('input[name="saldo_inicial"]').fill('0')
+  const cuentaId = await v.locator('input[name="id"]').getAttribute('value')
+  let acciones = 0
+  await p.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(nombreCuenta)) {
+      acciones++
+      if (acciones <= 2) {
+        await r.fetch().catch(() => {})
+        return r.abort('failed')
+      }
+    }
+    return r.continue()
+  })
+  const boton = v.getByRole('button', { name: 'Agregar la cuenta' })
+  await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.jpg`, mimeType: 'image/jpeg', buffer: Buffer.concat([JPEG_MINIMO, Buffer.alloc(200)]) })
+  await boton.click()
+  await esperar(async () => /No se confirmó/.test(limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))), 30000)
+  const primera = limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))
+  const conJpg = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
+  await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
+  await boton.click()
+  const cerro = await esperar(async () => !(await v.isVisible()), 30000)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const cuenta = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
+  const objetos = (await base.query(`select name from storage.objects where bucket_id = 'apertura-caja' and name like $1`, [`${cuentaId}/%`])).rows.map((o) => o.name)
+  comprobar(/No se confirmó/.test(primera) && conJpg?.ruta?.endsWith('.jpg') && cerro && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
+    `[Tesorería ${tam}] la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
   await contexto.close()
 }
 
@@ -902,6 +1007,32 @@ async function loLeidoSeVaConElArchivo(viewport) {
     : false
   comprobar(enLaLista && pendiente, `[Contabilidad ${tam}] y la lista lo muestra sin recargar, con su «PDF pendiente» (${enLaLista ? 'está' : 'no está'}${enLaLista && !pendiente ? ', sin «PDF pendiente» a la vista' : ''})`)
   await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-borrador-${tam}.png`) })
+
+  // Lo escrito ya está en el borrador: el formulario vuelve vacío, para que no
+  // se registre otra vez con su mismo número, y el aviso sigue abajo, con el
+  // cursor en él. Completado desde su fila, el formulario no lo vuelve a
+  // ofrecer, y el aviso se va cuando se empieza el siguiente.
+  const avisoBorrador = r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' })
+  const vacio = { proveedor: await valor(r, '#adq-proveedor'), numero: await valor(r, '#adq-numero'), total: await valor(r, '#adq-total') }
+  const pdfVacio = await dice(pdfR)
+  const focoBorrador = await r.evaluate(() => document.activeElement?.getAttribute('role') ?? '')
+  comprobar(!vacio.proveedor && !vacio.numero && !vacio.total && !pdfVacio.includes('QA-BORRADOR') && focoBorrador === 'alert' && (await avisoBorrador.count()) === 1,
+    `[Contabilidad ${tam}] el formulario vuelve vacío, con el aviso abajo y el cursor en él (proveedor «${vacio.proveedor}», número «${vacio.numero}», total «${vacio.total}», PDF «${pdfVacio}», cursor en «${focoBorrador}»)`)
+  const borradorId = (await uno('select id from public.adquisiciones where proveedor = $1 and numero_documento = $2', [`QA proveedor ${sello}`, `F998-${sello}${tam}`]))?.id
+  const completar = r.locator('form').filter({ has: r.locator(`input[name="id"][value="${borradorId}"]`) }).filter({ visible: true }).first()
+  let completado = false
+  if (borradorId && enLaLista) {
+    await completar.scrollIntoViewIfNeeded()
+    await completar.locator('input[name="pdf"]').setInputFiles({ name: `QA-PENDIENTE-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
+    await esperar(async () => !(await completar.getByRole('button', { name: 'Completar comprobante' }).isDisabled()), 20000)
+    await completar.getByRole('button', { name: 'Completar comprobante' }).click()
+    completado = await esperar(async () => (await uno('select estado from public.adquisiciones where id = $1', [borradorId]))?.estado === 'REGISTRADA', 30000)
+  }
+  await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
+  const seFue = await esperar(async () => (await avisoBorrador.count()) === 0, 5000)
+  comprobar(completado && seFue && (await valor(r, '#adq-numero')) === '',
+    `[Contabilidad ${tam}] se completa desde su fila (${completado ? 'REGISTRADA' : 'no se completó'}) y, al escribir el siguiente, el aviso se va (${seFue ? 'se fue' : 'sigue'})`)
+  await r.locator('#adq-proveedor').fill('')
   await cr.close()
 }
 
@@ -1262,6 +1393,7 @@ try {
   await cotizacionSinRespuesta(MONITOR)
   await ordenNuevaSinRespuesta(MONITOR)
   await otroArchivoTrasLaRespuestaPerdida(MONITOR)
+  await laCapturaDeOtroTipoEnLaCaja(MONITOR)
   await laSubidaQueLlegaSinRespuesta(MONITOR)
   await facturaQueNoSubeEnLaOcDirecta(MONITOR)
   for (const viewport of [MONITOR, TELEFONO]) {
@@ -1275,7 +1407,11 @@ try {
 } finally {
   // Lo que armó esta prueba no se queda en la orden de las demás.
   await quitarElRechazoDePrueba()
-  await base.query(`delete from public.adquisiciones where proveedor = $1 and estado = 'BORRADOR'`, [`QA proveedor ${sello}`])
+  await base.query(`delete from storage.objects where bucket_id = 'comprobantes-financieros'
+                      and name in (select ruta_storage from public.adquisiciones where proveedor = $1)`, [`QA proveedor ${sello}`])
+  await base.query('delete from public.adquisiciones where proveedor = $1', [`QA proveedor ${sello}`])
+  // Una cuenta de Tesorería no se borra: la de la prueba se desactiva, con su captura.
+  await base.query('update public.cajas set activa = false where nombre like $1', [`QA CAJA ${sello}-%`])
   await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
                       and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [`QA-SUELTO-${sello}-%`])
   await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [`QA-SUELTO-${sello}-%`])
