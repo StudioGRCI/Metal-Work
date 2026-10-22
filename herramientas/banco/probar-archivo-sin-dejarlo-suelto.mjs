@@ -16,7 +16,8 @@
  *      factura de Logística que sigue elegida, también, con su número y su
  *      fecha aunque su PDF no se pueda leer. Sin ninguna fuente, la moneda
  *      vuelve a la de antes. Con esa factura elegida, un PDF vacío no se
- *      envía: su campo dice que está vacío y el cursor queda ahí.
+ *      envía: su campo dice que está vacío y el cursor queda ahí; sin PDF ni
+ *      factura de Logística, el campo dice que falta, marcado.
  *      Lo que la persona cambió después de la lectura (la moneda) se queda
  *      aunque otra fuente vuelva a marcar lo suyo, y si el PDF y la factura de
  *      Logística son facturas distintas, se avisa.
@@ -45,7 +46,8 @@
  *      cotización, versión ni OT. (En el monitor; deja una cotización
  *      aprobada de banco.) Lo escrito antes de que termine la lectura se
  *      queda (el número de la cotización, el de la OT, que avisa si el PDF
- *      dice otra), el monto escrito no dice «Detectado», y un número que ya
+ *      dice otra), el monto escrito no dice «Detectado» (y si el documento
+ *      trae otro, la ayuda lo dice), y un número que ya
  *      existe se dice junto a su campo, con el cursor ahí.
  *   5. Diseño manda el PDF de un plano a un área con la respuesta perdida: la
  *      pantalla pregunta otra vez (antes quitaba el archivo a ciegas y decía
