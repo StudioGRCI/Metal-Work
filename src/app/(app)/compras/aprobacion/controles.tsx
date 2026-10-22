@@ -150,12 +150,12 @@ export function AnularCompra({ id, numero }: { id: string; numero: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular la compra ${numero}`}
-        descripcion="Sus insumos vuelven a quedar por comprar, sale de la lista del conductor y Logística recibe el motivo. La OC no se borra: queda anulada como evidencia y su PDF sale con la marca ANULADA."
+        descripcion="Si venía de un requerimiento, sus insumos vuelven a quedar por comprar. Sale de la lista del conductor y Logística recibe el motivo. La OC no se borra: queda anulada como evidencia y su PDF sale con la marca ANULADA."
         ancho="md"
       >
         <form onSubmit={anulacion.alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={id} />
-          <Campo etiqueta="Motivo" htmlFor={`anular-${id}`} requerido>
+          <Campo etiqueta="Motivo" htmlFor={`anular-${id}`} ayuda="Al menos 10 caracteres." requerido>
             <AreaTexto
               id={`anular-${id}`}
               name="motivo"

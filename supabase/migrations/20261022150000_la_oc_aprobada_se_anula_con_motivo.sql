@@ -1788,18 +1788,20 @@ begin
   select c.id, coalesce(c.numero, c.referencia), c.referencia, c.origen, c.proveedor, p.numero_documento,
          c.moneda,
          coalesce(l.total, (select sum((x->>'cantidad')::numeric * coalesce((x->>'precio_unitario')::numeric, 0))
-                              from jsonb_array_elements(c.lineas_rechazadas) x), 0),
+                              from jsonb_array_elements(coalesce(c.lineas_rechazadas, c.lineas_anuladas)) x), 0),
          c.monto_pen, c.condicion_pago, c.dias_credito, c.fecha_estimada, c.aprobacion, coalesce(c.motivo_anulacion, c.motivo_rechazo),
          c.recojo, c.entregado_almacen_en, c.creado_en, public.puesto(uc), c.motivo,
-         coalesce(l.ordenes, array[]::text[]),
+         coalesce(nullif(l.ordenes, array[]::text[]),
+                  array(select distinct x->>'orden' from jsonb_array_elements(coalesce(c.lineas_rechazadas, c.lineas_anuladas)) x
+                         where x->>'orden' is not null order by 1)),
          coalesce(l.unidades, array[]::text[]),
-         coalesce(l.n, jsonb_array_length(coalesce(c.lineas_rechazadas, '[]'::jsonb)))::integer,
+         coalesce(l.n, jsonb_array_length(coalesce(c.lineas_rechazadas, c.lineas_anuladas, '[]'::jsonb)))::integer,
          public.compra_tiene_comprobante(c)
     from public.ordenes_compra_materiales c
     left join public.proveedores p on p.id = c.proveedor_id
     left join public.usuarios uc on uc.id = c.creado_por
     left join lateral (
-      select sum(d.cantidad * coalesce(d.precio_unitario, 0)) as total, count(*) as n,
+      select sum(d.cantidad * coalesce(d.precio_unitario, 0)) as total, nullif(count(*), 0) as n,
              array_remove(array_agg(distinct o.numero), null) as ordenes,
              array_remove(array_agg(distinct public.nombre_unidad_almacen(u)) filter (where u.id is not null), null) as unidades
         from public.orden_compra_material_detalles d
@@ -1967,7 +1969,7 @@ begin
     '/compras/ordenes', 'ordenes_compra_materiales', p_compra, public.usuario_actual());
   if v_c.recojo = 'EN_RECOJO' or v_en_lista then
     perform public.avisar_a_quien_tiene('compras.recojo', 'No recojas la ' || v_nombre,
-      'Gerencia la anuló: ' || v_motivo, '/compras/recojo', p_compra, public.usuario_actual());
+      'Gerencia la anuló: ' || v_motivo, '/recojos', p_compra, public.usuario_actual());
   end if;
   return p_compra;
 end;

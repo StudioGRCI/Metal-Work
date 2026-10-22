@@ -127,6 +127,8 @@ function FilaCompra({
     .filter(Boolean)
     .join(' · ')
   const comprobante = comprobantePedido(c.con_factura)
+  // La rechazada y la anulada no se atienden ni se pagan: no esperan comprobante.
+  const sinCurso = c.aprobacion === 'RECHAZADA' || c.aprobacion === 'ANULADA'
   return (
     <TR data-compra={c.numero}>
       <TD>
@@ -140,6 +142,8 @@ function FilaCompra({
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
+          ) : sinCurso ? (
+            <span className="text-[11px] text-texto-suave">No se paga</span>
           ) : (
             <span className="text-[11px] text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
           )}
@@ -172,10 +176,12 @@ function FilaCompra({
       <TD className="hidden sm:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
+        ) : sinCurso ? (
+          <span className="text-xs text-texto-suave">No se paga</span>
         ) : (
           <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
         )}
-        <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
+        {!sinCurso && <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>}
         {c.facturas.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
             {c.facturas.map((f) => (

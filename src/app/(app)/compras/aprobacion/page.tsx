@@ -199,7 +199,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
       </Tarjeta>
       {no.length > 0 && (
         <details className="rounded-md border border-borde bg-superficie p-3 text-sm">
-          <summary className="cursor-pointer font-medium text-texto">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto">
             {no.length} {no.length === 1 ? 'aprobada que ya no se anula' : 'aprobadas que ya no se anulan'}, y por qué
           </summary>
           <ul className="mt-3 space-y-2">

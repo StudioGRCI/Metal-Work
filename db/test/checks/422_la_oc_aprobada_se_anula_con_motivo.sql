@@ -180,6 +180,15 @@ select test.afirmar(pg_temp.avisos('comprador', 'oc1', 'Compra anulada:') = 1,
   'a Logística le llega la anulación con su motivo');
 select test.afirmar(pg_temp.avisos('conductor', 'oc1', 'No recojas') = 1,
   'y al conductor, que no la recoja');
+select test.afirmar((select ruta = '/recojos' from public.notificaciones
+                      where usuario_id = pg_temp.id('conductor') and origen_id = pg_temp.id('oc1') and titulo like 'No recojas%'),
+  'el aviso del conductor lo lleva a su lista de recojos');
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar((select monto = 361.50 and lineas = 1
+                       from public.ordenes_compra_listado() where id = pg_temp.id('oc1')),
+  'en Órdenes de compra la anulada sigue diciendo qué se pidió y por cuánto');
+reset role;
 
 -- Lo que cuenta la anulada.
 select pg_temp.como('contabilidad');
