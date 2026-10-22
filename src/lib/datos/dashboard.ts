@@ -287,7 +287,7 @@ const CIFRAS = {
     ruta: '/compras/ordenes',
     calcular: async (c) => {
       const delMes = (await ordenesDeCompra(c)).filter(
-        (o) => o.creado_en && o.creado_en.slice(0, 10) >= c.mes && o.aprobacion !== 'RECHAZADA',
+        (o) => o.creado_en && o.creado_en.slice(0, 10) >= c.mes && o.aprobacion !== 'RECHAZADA' && o.aprobacion !== 'ANULADA',
       )
       // Todo en soles al cambio de su fecha, como en la lista; sin cambio, en su moneda.
       const pen = delMes.reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)

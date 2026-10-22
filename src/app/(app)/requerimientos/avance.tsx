@@ -78,7 +78,7 @@ export function CompraDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimie
           {' · '}
           <span className={`tabular ${l.compra_rechazada ? 'text-peligro' : 'text-texto'}`}>
             {l.orden_compra}
-            {l.compra_rechazada ? ' rechazada' : ''}
+            {l.compra_anulada ? ' anulada' : l.compra_rechazada ? ' rechazada' : ''}
           </span>
         </>
       )}

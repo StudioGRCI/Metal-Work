@@ -24,8 +24,10 @@ export type LineaRequerimiento = {
   material_unidad_pendiente: boolean
   /** La OC que Logística generó para este insumo (OC-5583-MW); vacía mientras no se compra. */
   orden_compra: string | null
-  /** Gerencia rechazó esa OC: el insumo vuelve a estar libre para otra. */
+  /** Gerencia rechazó o anuló esa OC: el insumo vuelve a estar libre para otra. */
   compra_rechazada: boolean
+  /** Esa OC no se rechazó: Gerencia la anuló después de aprobarla. */
+  compra_anulada: boolean
   /** En qué etapa va el insumo (`ETAPA_AVANCE_RQ`); vacía si el RQ está anulado. */
   etapa: string | null
   /** Desde cuándo está en esa etapa, si es del recojo (pendiente, en recojo, recogido, dejado). */
@@ -86,6 +88,7 @@ type LineaDeAvance = {
   item: number
   orden_compra: string | null
   rechazada: boolean
+  anulada?: boolean
   etapa: string
   desde: string | null
   en_stock: number | null
@@ -194,7 +197,8 @@ export async function cargarRequerimientos(
             material_nuevo: l.material_nuevo,
             material_unidad_pendiente: l.material?.unidad_pendiente ?? false,
             orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null),
-            compra_rechazada: deLinea ? deLinea.rechazada : l.orden_compra?.aprobacion === 'RECHAZADA',
+            compra_rechazada: deLinea ? deLinea.rechazada : ['RECHAZADA', 'ANULADA'].includes(l.orden_compra?.aprobacion ?? ''),
+            compra_anulada: deLinea ? Boolean(deLinea.anulada) : l.orden_compra?.aprobacion === 'ANULADA',
             etapa: deLinea?.etapa ?? null,
             etapa_desde: deLinea?.desde ?? null,
             en_stock: l.cantidad_en_stock == null ? null : Number(l.cantidad_en_stock),

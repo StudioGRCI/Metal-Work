@@ -59,6 +59,7 @@ export function situacionCompra(c: {
 }): { etiqueta: string; tono: Tono } {
   if (c.aprobacion === 'POR_APROBAR') return { etiqueta: 'Espera a Gerencia', tono: 'aviso' }
   if (c.aprobacion === 'RECHAZADA') return { etiqueta: 'Rechazada', tono: 'peligro' }
+  if (c.aprobacion === 'ANULADA') return { etiqueta: 'Anulada', tono: 'peligro' }
   if (c.recojo === 'DEJADO' && c.validacion && VALIDACION_INGRESO[c.validacion]) {
     const v = VALIDACION_INGRESO[c.validacion]
     return { etiqueta: v.etiqueta, tono: v.tono }

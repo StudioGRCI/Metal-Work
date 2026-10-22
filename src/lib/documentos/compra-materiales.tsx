@@ -47,9 +47,11 @@ export type CompraPdf = {
   }
   /** La cuenta en la moneda de la compra. Null si no tiene, o si quien descarga no ve cuentas. */
   cuenta: { banco: string; titular: string; numero: string; moneda: string } | null
+  /** Gerencia la anuló: el papel sale con la marca ANULADA en cada hoja, como evidencia. */
+  anulacion?: { en: string; por: string | null; motivo: string } | null
 }
 
-const { azul: AZUL, tinta: TINTA, suave: SUAVE, linea: LINEA, fondo: FONDO } = PALETA_DOCUMENTO
+const { azul: AZUL, rojo: ROJO, tinta: TINTA, suave: SUAVE, linea: LINEA, fondo: FONDO } = PALETA_DOCUMENTO
 
 // El `lineHeight` va en cada estilo de texto y nunca en la página ni en nada del
 // pie: el pie es `fixed`, y con un `lineHeight` heredado, en su caja o en sus
@@ -103,6 +105,10 @@ const s = StyleSheet.create({
   firmaRotulo: { backgroundColor: FONDO, borderRightWidth: 0.75, borderColor: TINTA, paddingHorizontal: 5, paddingVertical: 4, fontSize: 7.5, fontFamily: 'Helvetica-Bold', lineHeight: 1.25 },
   firmaValor: { paddingHorizontal: 5, paddingVertical: 4, fontSize: 8, fontFamily: 'Helvetica-Bold', lineHeight: 1.25 },
   pie: { position: 'absolute', bottom: 14, left: 28, right: 28, borderTopWidth: 0.5, borderColor: LINEA, paddingTop: 4 },
+  // La marca de la anulada va `fixed` en cada hoja: sin `lineHeight`, como el pie.
+  marca: { position: 'absolute', top: 360, left: 0, right: 0, textAlign: 'center', fontSize: 96, fontFamily: 'Helvetica-Bold', color: ROJO, opacity: 0.16, transform: 'rotate(-30deg)' },
+  anulada: { borderWidth: 1.25, borderColor: ROJO, paddingHorizontal: 6, paddingVertical: 4, marginBottom: 8 },
+  anuladaTitulo: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: ROJO, lineHeight: 1.3 },
   pieTexto: { fontSize: 6.8, color: SUAVE, textAlign: 'center' },
 })
 
@@ -157,7 +163,20 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
   return (
     <Document title={`Orden de compra ${c.numero}`} author={EMPRESA.razonSocial}>
       <Page size="A4" style={s.pagina}>
+        {c.anulacion && (
+          <Text style={s.marca} fixed>
+            ANULADA
+          </Text>
+        )}
         <CabeceraDocumento logo={logo} titulo="ORDEN DE COMPRA" numero={`N°: ${c.numero}`} lineas={[`FECHA DE EMISIÓN: ${fecha(c.emitida)}`]} />
+        {c.anulacion && (
+          <View style={s.anulada} wrap={false}>
+            <Text style={s.anuladaTitulo}>
+              {`ANULADA EL ${fecha(c.anulacion.en)}${c.anulacion.por ? ` POR ${c.anulacion.por}` : ''}: NO SE ATIENDE NI SE PAGA.`}
+            </Text>
+            <Text style={s.texto}>{`Motivo: ${conPunto(c.anulacion.motivo)}`}</Text>
+          </View>
+        )}
 
         <View style={s.fila2}>
           <Caja titulo="Datos del proveedor" flex={3}>

@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, X } from 'lucide-react'
+import { Ban, Check, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
@@ -9,7 +9,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { PuestoAprobador, ReglaAprobacion } from '@/lib/datos/aprobacion-compras'
 import { useAccion, useEnvio } from '@/lib/envio'
 
-import { aprobarCompra, fijarReglaAprobacion, rechazarCompra } from './acciones'
+import { anularCompra, aprobarCompra, fijarReglaAprobacion, rechazarCompra } from './acciones'
 
 export function FormularioRegla({ regla, puestos }: { regla: ReglaAprobacion | null; puestos: PuestoAprobador[] }) {
   const [activa, setActiva] = useState(regla?.activa ? 'true' : 'false')
@@ -133,5 +133,53 @@ export function DecisionCompra({ id, numero, tipo }: { id: string; numero: strin
         </form>
       </Ventana>
     </div>
+  )
+}
+
+/** Anular una OC ya aprobada, con su motivo: la base comprueba que nada haya entrado ni quede pagado. */
+export function AnularCompra({ id, numero }: { id: string; numero: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const anulacion = useEnvio(anularCompra, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Anular la compra ${numero}`}>
+        <Ban aria-hidden className="size-4" />
+        Anular
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Anular la compra ${numero}`}
+        descripcion="Sus insumos vuelven a quedar por comprar, sale de la lista del conductor y Logística recibe el motivo. La OC no se borra: queda anulada como evidencia y su PDF sale con la marca ANULADA."
+        ancho="md"
+      >
+        <form onSubmit={anulacion.alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={id} />
+          <Campo etiqueta="Motivo" htmlFor={`anular-${id}`} requerido>
+            <AreaTexto
+              id={`anular-${id}`}
+              name="motivo"
+              required
+              minLength={10}
+              maxLength={500}
+              placeholder="Por ejemplo: el proveedor ya no tiene el material; se compra a otro."
+            />
+          </Campo>
+          {anulacion.error && (
+            <p role="alert" className="text-sm text-peligro">
+              {anulacion.error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" variante="peligro" cargando={anulacion.enviando}>
+              Anular la compra
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
   )
 }
