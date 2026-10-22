@@ -95,14 +95,17 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
     pagina.click('button[type="submit"]'),
   ])
   if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
-  // La próxima acción de servidor llega y se cumple; su respuesta no llega.
+  // La acción de servidor que lleva `corte.armado` en su cuerpo llega y se
+  // cumple; su respuesta no llega. Con carga, una búsqueda de la pantalla puede
+  // salir tarde: por eso no se corta la primera acción que pase, sino esa.
   const cdp = await contexto.newCDPSession(pagina)
   await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
-  const corte = { armado: false, cortadas: 0 }
+  const corte = { armado: null, cortadas: 0 }
+  const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
   cdp.on('Fetch.requestPaused', async (e) => {
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
-    if (corte.armado && e.request.method === 'POST' && h['next-action']) {
-      corte.armado = false
+    if (corte.armado && e.request.method === 'POST' && h['next-action'] && cuerpo(e.request).includes(corte.armado)) {
+      corte.armado = null
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
     }
@@ -168,7 +171,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const id1 = await form.locator('input[name="id"]').inputValue()
   const desc1 = `QA-GASTO primer envío ${sello}, flete de planchas`
   await llenar('111.11', desc1, pdfs.A)
-  corte.armado = true
+  corte.armado = 'QA-GASTO primer'
   await enviar.click()
   const dijo1 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
   const [fila1] = await consulta(`select monto::float as monto from ot_gastos_areas where id = $1`, [id1])
@@ -203,9 +206,10 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const id4 = await form.locator('input[name="id"]').inputValue()
   const desc4 = `QA-GASTO cuarto ${sello}, mismo envío repetido`
   await llenar('75.5', desc4, pdfs.D)
-  corte.armado = true
+  corte.armado = 'QA-GASTO cuarto'
   await enviar.click()
-  await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA))
+  const dijoCorte = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
+  comprobar(corte.cortadas === 2 && dijoCorte.includes(SIN_RESPUESTA), '[Logística] el cuarto gasto entra y la respuesta se pierde')
   await enviar.click()
   const dijo4 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes('ya estaba registrado')))
   const [fila4] = await consulta(`select count(*)::int as n from ot_gastos_areas where descripcion = $1`, [desc4])
@@ -235,13 +239,13 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await v.locator('#veh-obs').fill('Llega con la llanta baja')
   await v.locator('input[type="file"]:not([capture])').setInputFiles(fotos.uno)
   await esperarSubidas(pagina)
-  corte.armado = true
+  corte.armado = 'Llega con la llanta baja'
   await v.getByRole('button', { name: 'Registrar ingreso' }).click()
   const avisoV = v.locator('[role="alert"]')
   const dijo1 = limpio(await hasta(() => avisoV.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
   const [reg] = await consulta(`select id from registro_vehiculos where placa = $1`, [placa.replace('-', '')]).then(async (r) =>
     r.length ? r : consulta(`select id from registro_vehiculos where placa = $1`, [placa]))
-  comprobar(dijo1.includes(SIN_RESPUESTA) && Boolean(reg), `[Requerimientos 390] el ingreso entra y la respuesta se pierde («${dijo1.slice(0, 50)}…»)`)
+  comprobar(corte.cortadas === 1 && dijo1.includes(SIN_RESPUESTA) && Boolean(reg), `[Requerimientos 390] el ingreso entra y la respuesta se pierde («${dijo1.slice(0, 50)}…»)`)
 
   await v.locator('#veh-obs').fill('Llega sin espejo')
   await v.locator('input[type="file"]:not([capture])').setInputFiles(fotos.dos)
@@ -278,10 +282,11 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await s.locator('textarea[name="observacion"]').fill('Lo recoge el conductor')
   await s.locator('input[type="file"]:not([capture])').setInputFiles(fotos.tres)
   await esperarSubidas(pagina)
-  corte.armado = true
+  corte.armado = 'Lo recoge el conductor'
   await s.getByRole('button', { name: 'Registrar salida' }).click()
   const avisoS = s.locator('[role="alert"]')
-  await hasta(() => avisoS.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA))
+  const dijoCorte = limpio(await hasta(() => avisoS.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
+  comprobar(corte.cortadas === 2 && dijoCorte.includes(SIN_RESPUESTA), '[Requerimientos 390] la salida entra y la respuesta se pierde')
   await s.locator('input[type="file"]:not([capture])').setInputFiles(fotos.cuatro)
   await esperarSubidas(pagina)
   await s.getByRole('button', { name: 'Registrar salida' }).click()
@@ -343,12 +348,12 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const galeria = pagina.locator('input[type="file"]:not([capture])')
   await galeria.setInputFiles(fotos.cinco)
   await esperarSubidas(pagina)
-  corte.armado = true
+  corte.armado = asunto
   await pagina.getByRole('button', { name: 'Subir reporte' }).click()
   const avisoR = pagina.locator('form > [role="alert"]')
   const dijo1 = limpio(await hasta(() => avisoR.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
   const [rep] = await consulta(`select id from reportes_diarios where asunto = $1`, [asunto])
-  comprobar(dijo1.includes(SIN_RESPUESTA) && Boolean(rep), `[Maestranza 390] el reporte entra y la respuesta se pierde («${dijo1.slice(0, 50)}…»)`)
+  comprobar(corte.cortadas === 1 && dijo1.includes(SIN_RESPUESTA) && Boolean(rep), `[Maestranza 390] el reporte entra y la respuesta se pierde («${dijo1.slice(0, 50)}…»)`)
 
   await pagina.fill('#rd-asunto', `${asunto} y pulido`)
   await galeria.setInputFiles(fotos.seis)
