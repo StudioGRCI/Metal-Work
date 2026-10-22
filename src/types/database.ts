@@ -10909,6 +10909,12 @@ export type Database = {
         }
         Returns: null
       }
+      bloquear_mes_de_planilla: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: null
+      }
       caja_anular_por_pago: {
         Args: {
           p_origen: string | null
@@ -13445,6 +13451,12 @@ export type Database = {
       quitar_material_codigo: {
         Args: {
           p_id: string | null
+        }
+        Returns: string
+      }
+      quitar_persona_de_planilla: {
+        Args: {
+          p_persona: string | null
         }
         Returns: string
       }

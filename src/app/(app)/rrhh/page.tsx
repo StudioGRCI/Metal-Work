@@ -12,7 +12,7 @@ import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { CrearPlanilla } from './crear-planilla'
-import { AgregarPersona, CerrarPlanilla, Distribuir, RepartirPartesIguales } from './formularios'
+import { AgregarPersona, CerrarPlanilla, Distribuir, QuitarPersona, RepartirPartesIguales } from './formularios'
 import { ImportarPlanilla } from './importar'
 
 export const metadata = { title: 'Planillas' }
@@ -233,6 +233,11 @@ export default async function PaginaRRHH() {
                             : 'Pendiente de repartir entre las OT.'}
                         </p>
                         {gestiona && abierta && <Distribuir personaId={x.id} ordenes={opciones} />}
+                        {gestiona && abierta && (
+                          <div className="flex justify-end border-t border-borde pt-3">
+                            <QuitarPersona personaId={x.id} nombre={x.nombre} />
+                          </div>
+                        )}
                       </div>
                     </details>
                   )
