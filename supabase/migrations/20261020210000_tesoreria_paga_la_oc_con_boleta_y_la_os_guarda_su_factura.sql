@@ -2660,11 +2660,11 @@ grant execute on function public.registrar_devolucion_compra(uuid, uuid, date, n
 
 -- La devolución que se registró mal se anula con su motivo: su ingreso sale de
 -- la caja y la factura vuelve a tomar ese dinero. No si con eso lo pagado por la
--- boleta pasaría del total de la OC: la correcta se registra primero. Si el
--- proveedor devolvió menos, se le pagó de más, y nada se registra hasta que
--- entre la diferencia: registrar antes lo que devolvió deja en la caja los dos
--- ingresos, y la pregunta de si queda pagada no tiene buena respuesta. Si ya se
--- registró algo después de ella, el mensaje dice cuánto falta, no «la correcta».
+-- boleta pasaría del total de la OC: antes se registra lo que falta devuelto
+-- (lo que el proveedor devolvió de verdad). Si no alcanza, se le pagó de más, y
+-- nada más se registra hasta que entre la diferencia: registrarlo a medias deja
+-- en la caja los dos ingresos y la OC a medio camino. El mensaje dice cuánto
+-- falta y no supone qué es lo registrado antes o después.
 create or replace function public.anular_devolucion_compra(p_id uuid, p_motivo text)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -2674,7 +2674,6 @@ declare
   v_total  numeric;
   v_neto   numeric;
   v_mon    text;
-  v_despues boolean;
 begin
   perform public.exigir_permiso('tesoreria.registrar_pagos');
   if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
@@ -2692,17 +2691,8 @@ begin
           - coalesce((select sum(monto) from public.devoluciones_orden_compra
                        where orden_compra_id = v_dev.orden_compra_id and anulado_en is null and id <> p_id), 0);
   v_mon := case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end;
-  -- Otra devolución vigente registrada después (en el orden de la lista: fecha y registro).
-  v_despues := exists (select 1 from public.devoluciones_orden_compra d
-                        where d.orden_compra_id = v_dev.orden_compra_id and d.anulado_en is null and d.id <> p_id
-                          and (d.fecha, d.creado_en) > (v_dev.fecha, v_dev.creado_en));
-  if v_neto > v_total and v_despues then
-    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%): faltan % devueltos por registrar. Si es la diferencia que el proveedor todavía tiene que devolver, regístrala cuando entre (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.',
-      v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00'),
-      v_mon || to_char(v_neto - v_total, 'FM999G999G990D00')
-      using errcode = 'check_violation';
-  elsif v_neto > v_total then
-    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal y el proveedor devolvió % o más, registra primero la correcta y después anula esta. Si devolvió menos, se le pagó de más: no registres nada todavía; pídele la diferencia y, cuando entre, registra lo que devolvió y la diferencia (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.',
+  if v_neto > v_total then
+    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%): para anularla, antes tienen que quedar registrados otros % devueltos. Registra lo que el proveedor devolvió y todavía no está registrado y enseguida anula esta. Si no llega a esa cifra, se le pagó de más: no registres nada más todavía; pídele la diferencia y, cuando entre, registra lo que falte y enseguida anula esta. Si pregunta si la OC queda pagada, contesta cómo quedará después de anular esta.',
       v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00'),
       v_mon || to_char(v_neto - v_total, 'FM999G999G990D00')
       using errcode = 'check_violation';

@@ -276,7 +276,7 @@ export function RegistrarDevolucion({
             <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
+            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0 || corregida === 'otro'}>
               Registrar la devolución
             </Boton>
           </div>

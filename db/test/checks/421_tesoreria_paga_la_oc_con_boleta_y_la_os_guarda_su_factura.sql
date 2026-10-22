@@ -2599,14 +2599,14 @@ select test.afirmar((select cancelada and pagado = 361.50 and devuelto = 40 from
   'pagado el resto, la OC queda pagada con lo neto');
 select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'Se registró en la OC que no era') $$,
   'la devolución no se anula si con eso lo pagado pasa del total: la correcta, de lo que sobra o más, se registra primero',
-  'pasaría de su total (S/ 361.50). Si la registraste mal y el proveedor devolvió S/ 40.00 o más, registra primero la correcta y después anula esta. Si devolvió menos, se le pagó de más: no registres nada todavía; pídele la diferencia y, cuando entre, registra lo que devolvió y la diferencia (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.');
+  'pasaría de su total (S/ 361.50): para anularla, antes tienen que quedar registrados otros S/ 40.00 devueltos. Registra lo que el proveedor devolvió y todavía no está registrado y enseguida anula esta. Si no llega a esa cifra, se le pagó de más: no registres nada más todavía; pídele la diferencia y, cuando entre, registra lo que falte y enseguida anula esta. Si pregunta si la OC queda pagada, contesta cómo quedará después de anular esta.');
 -- El proveedor había devuelto S/ 30, no 40: se le pagó S/ 10 de más. Si se registra
--- lo que devolvió antes de que entre la diferencia, el rechazo dice cuánto falta,
--- no que se registre «la correcta», que ya está.
+-- lo que devolvió antes de que entre la diferencia, el rechazo sigue diciendo lo
+-- que falta, con la cifra de ahora.
 select pg_temp.devolver('v11a3', 'o11a', 30, pg_temp.subir('pagos-compras', 'o11a'), null, 'DEV-11A3', true);
 select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'El proveedor devolvió S/ 30, no 40') $$,
-  'con lo que devolvió ya registrado, el rechazo dice cuánto falta registrar, no que se registre la correcta',
-  'pasaría de su total (S/ 361.50): faltan S/ 10.00 devueltos por registrar. Si es la diferencia que el proveedor todavía tiene que devolver, regístrala cuando entre (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.');
+  'con lo que devolvió ya registrado, el rechazo dice cuánto falta registrar ahora',
+  'pasaría de su total (S/ 361.50): para anularla, antes tienen que quedar registrados otros S/ 10.00 devueltos. Registra lo que el proveedor devolvió y todavía no está registrado y enseguida anula esta. Si no llega a esa cifra, se le pagó de más: no registres nada más todavía; pídele la diferencia y, cuando entre, registra lo que falte y enseguida anula esta. Si pregunta si la OC queda pagada, contesta cómo quedará después de anular esta.');
 -- Entra la diferencia: se registra con «Sí» y la equivocada se anula.
 select pg_temp.devolver('v11a4', 'o11a', 10, pg_temp.subir('pagos-compras', 'o11a'), null, 'DEV-11A4', true);
 select test.afirmar(public.anular_devolucion_compra(pg_temp.id('v11a'), 'El proveedor devolvió S/ 30, no 40') = pg_temp.id('v11a'),
