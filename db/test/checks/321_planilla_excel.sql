@@ -10,7 +10,8 @@
 -- con eso la planilla cierra; cerrada, el reparto ya no cambia. Quien no es de
 -- RR. HH. no importa. El Excel corregido con las filas corridas se vuelve a
 -- cargar en la misma planilla aunque la persona nueva caiga en la fila que ya
--- tenía otra de la primera carga.
+-- tenía otra de la primera carga. En borrador, RR. HH. quita a quien entró por
+-- error, con su reparto; cerrada, no.
 begin;
 
 select id as sede_id from public.sedes order by nombre limit 1 \gset
@@ -19,6 +20,7 @@ select test.crear_usuario('QA','Ventas','qa-321-ventas@demo.pe','VENDEDOR', :'se
 
 select set_config('prueba.p.taller', gen_random_uuid()::text, true);
 select set_config('prueba.p.admin', gen_random_uuid()::text, true);
+select set_config('prueba.p.sub', gen_random_uuid()::text, true);
 select set_config('prueba.p.import', gen_random_uuid()::text, true);
 select set_config('prueba.p.ot1', gen_random_uuid()::text, true);
 select set_config('prueba.p.ot2', gen_random_uuid()::text, true);
@@ -35,7 +37,8 @@ declare
 begin
   insert into public.planillas (id, tipo, periodo, moneda, estado, registrado_por) values
     (current_setting('prueba.p.taller')::uuid, 'TALLER', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh),
-    (current_setting('prueba.p.admin')::uuid, 'ADMINISTRATIVA', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh);
+    (current_setting('prueba.p.admin')::uuid, 'ADMINISTRATIVA', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh),
+    (current_setting('prueba.p.sub')::uuid, 'SUBCONTRATOS', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh);
   insert into public.clientes (id, tipo_documento, numero_documento, razon_social) values (v_cliente, 'RUC', '20990000321', 'QA planilla');
   insert into public.ordenes_trabajo (id, numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, fecha_registro)
   select o.id, o.numero, v_cliente, v_sede, 'FABRICACION', 'NORMAL', 'Orden QA de planilla', 'EN_PROCESO', current_date
@@ -106,6 +109,35 @@ select test.afirmar(
     where planilla_id = current_setting('prueba.p.taller')::uuid and origen_hoja = 'RESUMEN AGOSTO MWP - 2099' and fila_origen = 8),
   'el Excel corregido con las filas corridas se vuelve a cargar: dos personas de dos cargas en la misma fila');
 
+-- A mano o cambiando el nombre tampoco entra dos veces en el mes (migración
+-- 20261021160000); en la planilla de subcontratos, a mano, sí: son proveedores.
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'ROSA ELENA HUAMAN FLORES', 100)$$,
+  'agregar a mano a quien ya está en otra planilla del mes no entra', 'ya está en la planilla de taller');
+insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'Gómez Paz, Luis', 100);
+select test.debe_fallar($$update public.planilla_personas set nombre = 'Mario Vilchez Paredes'
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis'$$,
+  'cambiar el nombre al de alguien que ya está en el mes no entra', 'ya está en la planilla de taller');
+update public.planilla_personas set monto = 120
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis';
+select test.afirmar((select monto = 120 from public.planilla_personas
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis'),
+  'cambiar el importe de alguien no choca consigo mismo');
+insert into public.planilla_personas (planilla_id, nombre, monto) values
+  (current_setting('prueba.p.sub')::uuid, 'Soldaduras Huamán Flores SAC', 900),
+  (current_setting('prueba.p.sub')::uuid, 'Soldaduras Huamán Flores SAC', 400);
+select test.afirmar((select count(*) = 2 from public.planilla_personas where planilla_id = current_setting('prueba.p.sub')::uuid),
+  'en subcontratos, a mano, un proveedor puede tener dos contratos en el mes');
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.sub')::uuid, 'Vilchez Paredes, Mario', 100)$$,
+  'a mano en subcontratos, quien ya cobra en la planilla de taller no entra', 'ya está en la planilla de taller');
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'Soldaduras Huamán Flores SAC', 100)$$,
+  'quien está a mano en subcontratos no entra en otra planilla del mes', 'ya está en la planilla de subcontratos');
+select test.afirmar(pg_get_functiondef('public.importar_planilla_excel(uuid, uuid, jsonb)'::regprocedure) ~ 'bloquear_mes_de_planilla\(v_periodo\)',
+  'la importación bloquea el mes entero: dos cargas a la vez no dejan a la misma persona en dos planillas');
+
 -- Reparto en partes iguales y cierre.
 select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(current_setting('prueba.p.taller')::uuid,
   array(select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid),
@@ -120,6 +152,20 @@ select test.afirmar(
              from public.planilla_distribuciones d join public.planilla_personas p on p.id = d.persona_id
             where p.planilla_id = current_setting('prueba.p.taller')::uuid group by d.persona_id) r),
   'cada persona queda con 33.33 + 33.33 + 33.34 en las tres OT');
+-- Quitar a quien entró por error, en borrador: se va con su reparto
+-- (migración 20261022100000). Quien no es de RR. HH. no quita.
+select set_config('prueba.p.julio', (select id::text from public.planilla_personas
+  where planilla_id = current_setting('prueba.p.taller')::uuid and nombre = 'Torres Lazo, Julio'), true);
+select test.como_usuario(:'ventas_id');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid)$$,
+  'quien no es de RR. HH. no quita a nadie de la planilla', 'rrhh.gestionar_planillas');
+select test.como_usuario(:'rrhh_id');
+select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid);
+select test.afirmar(not exists (select 1 from public.planilla_personas where id = current_setting('prueba.p.julio')::uuid)
+  and not exists (select 1 from public.planilla_distribuciones where persona_id = current_setting('prueba.p.julio')::uuid),
+  'en borrador, RR. HH. quita a una persona con su reparto entre las OT');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(current_setting('prueba.p.julio')::uuid)$$,
+  'quitar otra vez a quien ya no está lo dice', 'ya no está');
 select public.cerrar_planilla(current_setting('prueba.p.taller')::uuid);
 select test.afirmar((select estado = 'CERRADA' from public.planillas where id = current_setting('prueba.p.taller')::uuid),
   'con el 100 % repartido la planilla cierra');
@@ -127,6 +173,9 @@ select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(curr
   array(select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid),
   array[current_setting('prueba.p.ot1')::uuid])$$,
   'cerrada, el reparto ya no cambia', 'cerrada');
+select test.debe_fallar($$select public.quitar_persona_de_planilla(
+  (select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid limit 1))$$,
+  'cerrada, nadie se quita', 'cerrada');
 
 reset role;
 select 'OK: planilla desde varias hojas con su empresa, sin duplicados en el mes y con reparto en partes iguales. Ensayo revertido.' as comprobacion;

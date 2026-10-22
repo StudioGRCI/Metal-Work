@@ -85,8 +85,8 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
               <p>
                 {faltan.length === 1
-                  ? <>Ya está en esta planilla y no figura en este Excel: {faltan[0]}. Si en el Excel le corregiste el nombre, no elijas a la versión corregida: entraría dos veces.</>
-                  : <>Ya están en esta planilla y no figuran en este Excel: {faltan.join(' · ')}. Si en el Excel les corregiste el nombre, no elijas a las versiones corregidas: entrarían dos veces.</>}
+                  ? <>Ya está en esta planilla y no figura en este Excel: {faltan[0]}. Si en el Excel le corregiste el nombre, quítala primero de la planilla y después elige la versión corregida; si no, entraría dos veces.</>
+                  : <>Ya están en esta planilla y no figuran en este Excel: {faltan.join(' · ')}. Si en el Excel les corregiste el nombre, quítalas primero de la planilla y después elige las versiones corregidas; si no, entrarían dos veces.</>}
               </p>
             </div>
           )}

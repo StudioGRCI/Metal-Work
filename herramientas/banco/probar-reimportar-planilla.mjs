@@ -13,7 +13,11 @@
  *      alguien que solo comparte «DE LA» con la quitada. La ventana avisa que
  *      las de antes ya están y no figuran en el Excel; la del nombre corregido
  *      lo dice en su fila y «Elegir las N» no la mete; la nueva no se marca.
- *   4. En la planilla quedan las cuatro, cada una con la hoja y fila de su carga.
+ *   4. En la planilla administrativa del mismo mes, «Agregar persona … a mano»
+ *      con el nombre de una que ya está en la de taller no entra.
+ *   5. En la planilla quedan las cuatro, cada una con la hoja y fila de su carga.
+ *   6. Quita de la planilla, todavía en borrador, a la que entró en la segunda
+ *      carga: sale de la lista con su reparto.
  *
  * Variables: BANCO_CLAVE (la clave local de las cuentas), BASE
  * (http://localhost:3111). La planilla es de un mes lejano (2090 en adelante)
@@ -202,10 +206,40 @@ try {
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-nombre-corregido-aviso.png`, fullPage: false, caret: 'initial' })
   await v.getByRole('button', { name: 'Cancelar' }).click()
 
-  // 4. Lo que quedó en la base.
+  // 4. A mano, en la planilla administrativa del mismo mes, la misma persona
+  //    tampoco entra (migración 20261021160000).
+  await comoPuesto(RRHH, `insert into planillas (tipo, periodo, moneda, observacion) values ('ADMINISTRATIVA', $1, 'PEN', 'Prueba del banco: a mano')`, [periodo])
+  await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
+  const admin = pagina.locator('section, article, div')
+    .filter({ has: pagina.getByText(`Planilla administrativa · ${titulo}`) })
+    .filter({ has: pagina.getByText('Agregar persona o subcontrato a mano') }).last()
+  await admin.getByText('Agregar persona o subcontrato a mano').click()
+  await admin.locator('input[name="nombre"]').fill(`Quispe Rojas, Ana ${sello}`)
+  await admin.locator('input[name="monto"]').fill('100')
+  await admin.getByRole('button', { name: 'Agregar' }).click()
+  const rechazo = limpio(await admin.locator('[role="alert"]').textContent({ timeout: 15000 }).catch(() => ''))
+  comprobar(rechazo.includes('ya está en la planilla de taller de este mes'), `a mano tampoco entra dos veces en el mes (${rechazo.slice(0, 110)})`)
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-a-mano-ya-esta-en-el-mes.png`, fullPage: false, caret: 'initial' })
+
+  // 5. Lo que quedó en la base.
   const personas = await consulta(`select nombre, fila_origen from planilla_personas where planilla_id = $1 order by fila_origen, nombre`, [planillaId])
   comprobar(personas.length === 4, `en la planilla quedan las cuatro personas (${personas.length})`)
   comprobar(personas.filter((p) => p.fila_origen === 1).length === 2, 'dos de dos cargas distintas comparten la fila 1, cada una de su libro')
+  // 6. Quitar de la planilla, en borrador, a quien entró por error.
+  await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
+  const resumenFila = pagina.locator('summary', { hasText: NUEVA })
+  const fila = pagina.locator('details', { has: resumenFila })
+  await resumenFila.click()
+  await fila.getByRole('button', { name: `Quitar a ${NUEVA} de la planilla` }).click()
+  const confirmar = pagina.locator('[role="dialog"]')
+  await confirmar.getByRole('button', { name: 'Quitar de la planilla' }).click()
+  await confirmar.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  await resumenFila.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
+  comprobar(!(await resumenFila.count()), 'quitar de la planilla la saca de la lista')
+  const quedan = await consulta(`select count(*)::int as n from planilla_personas where planilla_id = $1`, [planillaId])
+  comprobar(quedan[0].n === 3, `en la base quedan tres (${quedan[0].n})`)
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-quitar-de-la-planilla.png`, fullPage: false, caret: 'initial' })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
 } finally {
   await navegador.close()

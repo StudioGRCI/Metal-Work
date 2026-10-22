@@ -5545,6 +5545,51 @@ export type Database = {
           }
         ]
       }
+      ot_garantia_terminada: {
+        Row: {
+          id: string
+          orden_id: string
+          terminada_en: string
+          terminada_por: string
+          nota: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_id: string
+          terminada_en?: string
+          terminada_por: string
+          nota?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_id?: string
+          terminada_en?: string
+          terminada_por?: string
+          nota?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ot_garantia_terminada_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ot_garantia_terminada_terminada_por_fkey"
+            columns: ["terminada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ot_gastos_areas: {
         Row: {
           id: string
@@ -11245,6 +11290,12 @@ export type Database = {
         }
         Returns: null
       }
+      bloquear_mes_de_planilla: {
+        Args: {
+          p_periodo: string | null
+        }
+        Returns: null
+      }
       caja_anular_por_pago: {
         Args: {
           p_origen: string | null
@@ -12549,6 +12600,13 @@ export type Database = {
         }
         Returns: string
       }
+      dar_por_terminada_la_garantia: {
+        Args: {
+          p_orden: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       datos_de_empresa: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13570,6 +13628,12 @@ export type Database = {
         }
         Returns: string
       }
+      orden_garantia_terminada: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: boolean
+      }
       orden_tiene_pdf: {
         Args: {
           p_orden: string | null
@@ -14008,6 +14072,12 @@ export type Database = {
       quitar_material_codigo: {
         Args: {
           p_id: string | null
+        }
+        Returns: string
+      }
+      quitar_persona_de_planilla: {
+        Args: {
+          p_persona: string | null
         }
         Returns: string
       }
@@ -15484,6 +15554,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      vehiculo_ot_de_garantia_abierta: {
+        Args: {
+          p_unidad: string | null
+        }
+        Returns: string
+      }
       vehiculos_codigos_para_ingreso: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -15496,6 +15572,7 @@ export type Database = {
           placa: string | null
           chasis: string | null
           en_planta: boolean | null
+          garantia_numero: string | null
         }[]
       }
       vehiculos_estado_de_salida: {
@@ -15509,6 +15586,8 @@ export type Database = {
           tesoreria: string | null
           falta_para_pedir: string | null
           falta_para_salir: string | null
+          garantia_ot: string | null
+          garantia_estado: string | null
         }[]
       }
     }

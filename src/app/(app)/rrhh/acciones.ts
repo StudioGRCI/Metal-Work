@@ -75,3 +75,19 @@ export async function repartirEnPartesIguales(_previo:unknown,datos:FormData):Pr
   const parte=Math.floor(10000/ordenes.data.length)/100
   return {ok:true,mensaje:`${data} ${data===1?'persona repartida':'personas repartidas'}: ${ordenes.data.length===1?'100 %':`${parte} % en cada una de las ${ordenes.data.length} OT`}.`}
 }
+
+/**
+ * Quitar a una persona de la planilla en borrador, con su reparto entre las
+ * OT: corrige una carga equivocada. La baja de quien dejó de trabajar va por
+ * Personal.
+ */
+export async function quitarPersona(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {
+  if(!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'),'rrhh.gestionar_planillas')) return {ok:false,error:SOLO_RRHH}
+  const id=uuid.safeParse(datos.get('persona_id'))
+  if(!id.success) return {ok:false,error:'Persona no válida.'}
+  const db=await createClient()
+  const {data,error}=await db.rpc('quitar_persona_de_planilla',{p_persona:id.data})
+  if(error) return {ok:false,error:mensajeDeError(error)}
+  if(data!==id.data) return {ok:false,error:NO_TOCO_NADA}
+  volver(); return {ok:true,mensaje:'Persona quitada de la planilla.'}
+}
