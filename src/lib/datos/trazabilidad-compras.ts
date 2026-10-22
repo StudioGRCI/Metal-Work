@@ -99,6 +99,9 @@ const esquemaDocumento = z.object({
   // La factura o la boleta que Logística anuló: queda como evidencia (migración 20261020210000).
   anulado_en: texto.optional().default(null),
   motivo_anulacion: texto.optional().default(null),
+  // La boleta de una parte de la OC que llega en partes (migración 20261022200000): su monto y sus pagos vigentes.
+  monto_de_la_parte: numero.nullable().optional().default(null),
+  pagos_de_la_parte: z.array(z.object({ id: z.guid(), fecha: z.string(), monto: numero })).nullable().optional().default(null),
   /**
    * De la factura que Logística anexó a una OC con boleta, la que es la suya en
    * Adquisiciones: si alcanza para esta OC y lo pagado. Con ella se sabe si el
