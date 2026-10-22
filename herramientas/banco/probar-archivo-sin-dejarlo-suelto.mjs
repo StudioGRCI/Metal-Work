@@ -27,6 +27,10 @@
  *      reconoce lo suyo, la ventana se cierra como si nada y no hay otra
  *      cotización, versión ni OT. (En el monitor; deja una cotización
  *      aprobada de banco.)
+ *   5. Diseño manda el PDF de un plano a un área con la respuesta perdida: la
+ *      pantalla pregunta otra vez (antes quitaba el archivo a ciegas y decía
+ *      que no se confirmó) y queda una sola versión. (En el monitor; arma un
+ *      plano de banco en una orden abierta.)
  *
  * Arma lo suyo con el sello QA-SUELTO-… en la base del banco y lo retira al
  * terminar. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -470,7 +474,52 @@ async function cotizacionSinRespuesta(viewport) {
   await gerencia.contexto.close()
 }
 
+// ------------------------------------------------- 5. el plano cuya respuesta se pierde
+async function planoSinRespuesta(viewport) {
+  const tam = nombreDe(viewport)
+  // Un plano va en una etapa de su orden: una orden abierta que ya tiene alguna.
+  const orden = await uno(`select o.id, e.id as etapa_id from public.ordenes_trabajo o join public.ot_etapas e on e.orden_id = o.id
+                            where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
+  if (!orden) return comprobar(false, `[Diseño ${tam}] hay una orden abierta con etapas para el plano`)
+  const plano = await uno(`insert into public.ot_planos (orden_id, numero_plano, nombre, etapa_id)
+                           values ($1, $2, 'Plano de banco sin respuesta', $3) returning id`, [orden.id, `QA-SUELTO-PL-${sello}`, orden.etapa_id])
+  const { pagina: p, contexto } = await entrar('diseno.local@metalwork.test', viewport)
+  await ir(p, `/ordenes/${orden.id}/planos?plano=${plano.id}`)
+  const archivo = p.locator('#version-archivo')
+  await archivo.waitFor({ state: 'attached', timeout: 30000 })
+  const formulario = archivo.locator('xpath=ancestor::form')
+  await formulario.locator('input[name="area_id"]').first().check()
+  await archivo.setInputFiles({ name: `QA-SUELTO-PL-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-SUELTO-PL-${sello}`]) })
+  let vueltas = 0
+  await p.route((url) => url.pathname.startsWith(`/ordenes/${orden.id}`), async (r) => {
+    const pedido = r.request()
+    const cuerpo = pedido.method() === 'POST' && pedido.headers()['next-action'] ? pedido.postData() ?? '' : ''
+    if (!cuerpo.includes('plano_id') || !cuerpo.includes('area_id')) return r.continue()
+    vueltas += 1
+    try {
+      if (vueltas === 1) {
+        await r.fetch({ timeout: 60000 })
+        return await r.abort('failed')
+      }
+      return await r.continue()
+    } catch {
+      await r.abort('failed').catch(() => {})
+    }
+  })
+  await formulario.getByRole('button', { name: 'Enviar a revisión' }).click()
+  const dijo = await esperar(async () => (await formulario.locator('[role=status], [role=alert]').count()) > 0, 40000)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const texto = limpio((await formulario.locator('[role=status], [role=alert]').allInnerTexts()).join(' '))
+  const versiones = Number((await uno('select count(*) from public.ot_plano_versiones where plano_id = $1', [plano.id])).count)
+  comprobar(vueltas === 2 && versiones === 1, `[Diseño ${tam}] plano sin respuesta: se pregunta otra vez y queda una sola versión (${vueltas} vueltas, ${versiones} versiones)`)
+  comprobar(dijo && (await formulario.locator('[role=status]').count()) > 0 && !/no se pudo confirmar/.test(texto),
+    `[Diseño ${tam}] y dice que se envió, no que no se confirmó: «${texto}»`)
+  await p.screenshot({ path: join(CAPTURAS, `suelto-plano-${tam}.png`) })
+  await contexto.close()
+}
+
 try {
+  await planoSinRespuesta(MONITOR)
   await cotizacionSinRespuesta(MONITOR)
   await ordenNuevaSinRespuesta(MONITOR)
   for (const viewport of [MONITOR, TELEFONO]) {

@@ -18,7 +18,7 @@ import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
-import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDeInsumos, emitirCompraDirecta } from './acciones'
@@ -306,9 +306,15 @@ function FormularioCompraDirecta({
         contentType: 'application/pdf',
         registrar: () => registrarDocumentoCompra(null, documento),
       })
-      // La orden ya quedó: si el comprobante no subió, se dice y se adjunta desde la lista.
+      // La orden ya quedó y la ventana se cierra: si el comprobante no subió, se
+      // dice y se adjunta desde la lista. Si no se sabe, se mira antes: desde la
+      // lista va con otro id y, si había quedado, saldría dos veces.
       if (!adjunta.ok) {
-        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó (${adjunta.error}); adjúntalo desde la lista.` }
+        if (adjunta.error.startsWith(NO_SE_CONFIRMO)) {
+          return { ok: true, mensaje: `${emitida.mensaje} No se sabe si ${nombre.toLowerCase()} quedó adjunt${conFactura ? 'a' : 'o'}: míralo en la lista antes de adjuntarlo otra vez.` }
+        }
+        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : adjunta.error
+        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó (${motivo}); adjúntalo desde la lista.` }
       }
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },

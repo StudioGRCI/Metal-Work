@@ -7,6 +7,9 @@ export const NO_SE_CARGO_EL_ARCHIVO = 'No se pudo cargar el archivo.'
 /** Sin respuesta dos veces, y el archivo ya no estaba suelto: ninguna fila lo nombraba, así que no quedó. */
 export const NO_QUEDO_SIN_RESPUESTA = 'No quedó registrado: no llegó la respuesta. Vuelve a intentar.'
 
+/** Lo que dice `subirArchivoPrivado` cuando no se sabe si quedó: en la misma ventana, el reintento no duplica. */
+export const NO_SE_CONFIRMO = 'No se confirmó el registro. Conserva el archivo seleccionado y vuelve a intentar; no se duplicará.'
+
 /** Lo que se espera antes de preguntar otra vez: lo justo para que un corte breve pase. */
 const PAUSA_ANTES_DE_PREGUNTAR_MS = 1500
 
@@ -69,7 +72,10 @@ export async function anotarSinDejarloSuelto<T = never>({
     if ((await quitarSiSuelto()) === 'quitado') return otraVez ?? { ok: false, error: NO_QUEDO_SIN_RESPUESTA }
     return { ok: false, error: sinRespuesta }
   }
-  if (!primera.ok && (await quitarSiSuelto()) === 'sin respuesta' && siNoSeRetira) {
+  // Si una subida de adentro ya dijo que no se sabe, o que no se pudo retirar,
+  // no se repite ni se le contradice («vuelve a cargar» cambiaría el id).
+  const yaLoDijo = !primera.ok && [sinRespuesta, siNoSeRetira].some((t) => t && primera.error.includes(t))
+  if (!primera.ok && (await quitarSiSuelto()) === 'sin respuesta' && siNoSeRetira && !yaLoDijo) {
     return { ok: false, error: `${primera.error} ${siNoSeRetira}` }
   }
   return primera
@@ -86,7 +92,7 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
 }): Promise<ResultadoAccion> {
   // Una respuesta perdida puede haber registrado el documento: el reintento
   // con el mismo ID confirma el resultado guardado.
-  const sinRespuesta = 'No se confirmó el registro. Conserva el archivo seleccionado y vuelve a intentar; no se duplicará.'
+  const sinRespuesta = NO_SE_CONFIRMO
   const supabase = createClient()
   try {
     const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
