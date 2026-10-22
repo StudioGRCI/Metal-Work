@@ -22,6 +22,10 @@ fi
 
 psql -q -d postgres -c "drop database if exists ${BASE} with (force);" >/dev/null
 psql -q -d postgres -c "create database ${BASE};" >/dev/null
+# Sin JIT, como Supabase (`jit = off` en su configuración). Con él, una función
+# que el planificador cree de mil filas pasa el umbral y se compila en cada
+# lectura: la lista de Tesorería tardaba 3,4 s con 250 OC y 2,6 s eran el JIT.
+psql -q -d postgres -c "alter database ${BASE} set jit = off;" >/dev/null
 
 ejecutar() { psql -q -v ON_ERROR_STOP=1 -d "$BASE" -f "$1" >/dev/null; }
 # Cada migración en su transacción, como las aplica Supabase: una tabla
