@@ -145,7 +145,9 @@ select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'chk405-d 26/48', 'OTRO'
 select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, null, '9bm405000aa000001', null, 'Tolva', 'X', 'COCHERA', null, null, pg_temp.foto('v2', 'ingreso'))$q$,
   pg_temp.txt('v2')), 'ni por el chasis, mientras su OT sigue en el taller', 'tiene una OT en el taller');
 -- La unidad sin cliente entra con el de su OT, sin que nadie lo escriba.
-select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'GARANTIA', null, null,
+-- (Por mantenimiento: la garantía pide su propia OT de garantía desde la
+-- migración 20261021120000, check 416.)
+select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'MANTENIMIENTO', null, null,
   pg_temp.foto('v4', 'ingreso'));
 select test.afirmar((select empresa = 'QA CLIENTE 405' from public.registro_vehiculos where id = pg_temp.id('v4')),
   'la unidad sin cliente entra con el cliente de su OT');
@@ -169,7 +171,7 @@ select public.registrar_salida_vehiculo(pg_temp.id('v3'), null, null, pg_temp.fo
 select test.afirmar((select salida_en is not null from public.registro_vehiculos where id = pg_temp.id('v3')),
   'el de la cochera sale sin esperar avance ni Tesorería');
 -- Al arenado externo sale a medio trabajo y vuelve (migración 20261020168000).
-select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de garantía en 0 % no sale con «Marcar salida»', 'va en 0 %');
+select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de mantenimiento en 0 % no sale con «Marcar salida»', 'va en 0 %');
 select public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', pg_temp.foto('v4', 'salida'));
 select test.afirmar((select salida_en is not null and sale_al_arenado from public.registro_vehiculos where id = pg_temp.id('v4')),
   'pero sí sale al arenado, sin el 100 % ni Tesorería, y queda dicho');
