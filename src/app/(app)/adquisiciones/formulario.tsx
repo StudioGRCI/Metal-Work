@@ -6,6 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
@@ -113,7 +114,7 @@ function Formulario({
   // si Logística anexó la factura de otra empresa, y entonces se avisa aquí.
   const conRuc = [
     ...(elegida?.ruc ? [{ nombre: elegida.oc, ruc: elegida.ruc }] : []),
-    ...elegidas.map((c) => ({ nombre: c.numero ?? c.referencia, ruc: c.ruc })),
+    ...elegidas.map((c) => ({ nombre: nombreDeOc(c), ruc: c.ruc })),
   ]
   const deOtroRuc = rucEscrito.length === 11 ? conRuc.find((c) => c.ruc && c.ruc !== rucEscrito) : undefined
   const lectura = lecturas.xml ?? lecturas.pdf ?? lecturas.logistica ?? null

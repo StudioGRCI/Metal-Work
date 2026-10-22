@@ -133,7 +133,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       return rucEsValido(suyo) && suyo !== v.ruc_proveedor
     })
     if (otra) {
-      return { ok: false, error: `La ${otra.numero ?? `OC ${otra.referencia}`} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
+      return { ok: false, error: `La ${nombreDeOc(otra)} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
     }
   }
 
