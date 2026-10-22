@@ -1,4 +1,4 @@
--- El servicio cancelado no pierde lo que contó (migración 20261022160000): el
+-- El servicio cancelado no pierde lo que contó (migración 20261022165000): el
 -- pago a cuenta de una orden de servicio no se anula mientras esté vigente el
 -- pago que la canceló contando con él.
 -- Con el rol de Tesorería y Contabilidad, y `set local role authenticated`.
