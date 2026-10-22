@@ -142,7 +142,8 @@ reset role;
 -- la OC) deja de esperar por ella: esperaba para siempre por una OC ajena.
 savepoint sin_la_oc;
 set local session_replication_role = replica;
-update public.documentos_compra_material set anulado_en = now() where id = pg_temp.id('da');
+update public.documentos_compra_material set anulado_en = now(), anulado_por = pg_temp.id('comprador'),
+       motivo_anulacion = 'Era la factura de otra compra' where id = pg_temp.id('da');
 update public.adquisiciones_ordenes_compra set quitada_en = now() where adquisicion_id = pg_temp.id('fa');
 update public.adquisiciones set orden_compra_id = null, documento_compra_id = null where id = pg_temp.id('fa');
 set local session_replication_role = origin;
