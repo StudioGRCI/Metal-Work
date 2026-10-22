@@ -81,6 +81,7 @@ export function PagarParte({
           setDia(hoy)
           setPagoId(crypto.randomUUID())
         }}
+        aria-label={`Registrar pago de la boleta ${boleta}`}
         data-pagar-parte={boleta}
       >
         <Wallet aria-hidden className="size-4" />
@@ -90,7 +91,7 @@ export function PagarParte({
         abierta={pagoId !== null}
         alCerrar={() => setPagoId(null)}
         titulo={`Pago de la boleta ${boleta}`}
-        descripcion={`${proveedor.trim()} · ${numero}. Le quedan ${moneda(saldo, codigoMoneda)}; lo demás de la OC se paga por su factura.`}
+        descripcion={`${proveedor.trim()} · ${numero}. Le quedan ${moneda(saldo, codigoMoneda)}.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

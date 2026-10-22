@@ -238,6 +238,13 @@ begin
       raise exception 'Tesorería ya le pagó algo a la boleta %: primero se anula ese pago, con su motivo, y después la boleta.',
         old.numero_documento using errcode = 'check_violation';
     end if;
+    -- Anulada la boleta, Tesorería deja de deberla: que lo sepa.
+    if old.monto_de_la_parte is not null and old.anulado_en is null and new.anulado_en is not null then
+      perform public.notificar_a_permiso('tesoreria.registrar_pagos',
+        'Boleta de una parte anulada: ' || old.numero_documento,
+        coalesce(new.motivo_anulacion, 'Logística la anuló.'),
+        '/tesoreria/por-pagar#partes-con-boleta', 'documentos_compra_material', old.id, public.usuario_actual());
+    end if;
     return new;
   end if;
   if new.monto_de_la_parte is null then
@@ -319,21 +326,26 @@ create or replace trigger trg_pago_compra_sin_partes
   before insert on public.pagos_orden_compra
   for each row execute function public.fn_pago_compra_sin_partes();
 
--- Con una boleta de una parte la OC no cambia de moneda (la boleta va en la suya),
--- y con un pago vigente a una de ellas no se anula: el dinero ya salió.
+-- Con una boleta de una parte la OC no cambia de moneda (la boleta va en la suya)
+-- ni pasa de con factura a con boleta o al revés: su total ganaría o perdería el
+-- IGV y quedaría por debajo de lo que suman sus boletas, o la boleta entera se
+-- pagaría directo además de sus partes. Con un pago vigente a una de ellas no se
+-- anula: el dinero ya salió.
 create or replace function public.fn_compra_con_partes_no_cambia()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_nombre text := coalesce(new.numero, 'OC ' || new.referencia);
 begin
-  if new.moneda is distinct from old.moneda
+  if (new.moneda is distinct from old.moneda or new.con_factura is distinct from old.con_factura)
      and exists (select 1 from public.documentos_compra_material d
                   where d.orden_compra_id = new.id and d.monto_de_la_parte is not null and d.anulado_en is null) then
-    raise exception 'La % tiene anexada la boleta de una parte en %: no cambia de moneda mientras esa boleta siga vigente.',
-      coalesce(new.numero, new.referencia), case when old.moneda = 'USD' then 'dólares' else 'soles' end using errcode = 'check_violation';
+    raise exception 'La % tiene anexada la boleta de una parte: no cambia de moneda ni de factura a boleta mientras esa boleta siga vigente. Si la boleta estaba mal, Logística la anula primero, con su motivo.',
+      v_nombre using errcode = 'check_violation';
   end if;
   if new.aprobacion = 'ANULADA' and old.aprobacion is distinct from 'ANULADA'
      and exists (select 1 from public.pagos_parte_con_boleta x where x.orden_compra_id = new.id and x.anulado_en is null) then
     raise exception 'Tesorería ya le pagó a la % la boleta de una parte: no se anula mientras ese pago siga vigente.',
-      coalesce(new.numero, new.referencia) using errcode = 'check_violation';
+      v_nombre using errcode = 'check_violation';
   end if;
   return new;
 end;
@@ -388,8 +400,9 @@ create trigger trg_compra_con_partes_total
 -- (`adquisiciones_control`) y Adquisiciones la da por facturada entera
 -- (`trazabilidad_de_compras`). La boleta sale en la lista de comprobantes como
 -- «boleta B001-45», con `boleta` en verdadero. No cambia `completa`, que dice si
--- alguna factura la cubre entera, ni el reparto de cada factura entre sus OC. La
--- OC con boletas de una parte y sin factura también sale, con lo de sus boletas.
+-- alguna factura la cubre entera. La factura de varias OC se reparte sobre lo que
+-- sus facturas cubren de cada una, su total menos sus boletas. La OC con boletas
+-- de una parte y sin factura también sale, con lo de sus boletas.
 create or replace function public.compras_facturadas(p_ids uuid[], p_sin uuid)
 returns table (orden_compra_id uuid, total numeric, facturado numeric, completa boolean, facturas jsonb)
 language sql stable set search_path to 'public' as $$
@@ -403,14 +416,19 @@ language sql stable set search_path to 'public' as $$
        and (p_ids is null or l.adquisicion_id in (select x.adquisicion_id from public.adquisiciones_ordenes_compra x
                                                    where x.orden_compra_id = any (p_ids) and x.quitada_en is null))
   ), oc as (
-    select c.id, c.moneda, public.total_orden_compra(c.id) as total
+    -- `base`: lo que las facturas cubren de la OC, su total menos sus boletas de una parte.
+    -- Con ella se reparte la factura de varias OC: si no, lo facturado pasaba del total.
+    select c.id, c.moneda, public.total_orden_compra(c.id) as total,
+           public.total_orden_compra(c.id) - coalesce((select sum(d.monto_de_la_parte) from public.documentos_compra_material d
+                                                       where d.orden_compra_id = c.id and d.monto_de_la_parte is not null
+                                                         and d.anulado_en is null), 0) as base
       from public.ordenes_compra_materiales c
      where c.id in (select e.orden_compra_id from enlace e)
   ), reparto as (
-    select e.*, o.total as total_oc,
-           sum(o.total) filter (where not e.parcial) over w as completas,
-           sum(o.total) filter (where e.parcial) over w as parciales,
-           sum(o.total) over w as todas,
+    select e.*, o.base as total_oc, o.total as total_real,
+           sum(o.base) filter (where not e.parcial) over w as completas,
+           sum(o.base) filter (where e.parcial) over w as parciales,
+           sum(o.base) over w as todas,
            bool_or(o.moneda <> e.moneda_factura) over w as otra_moneda
       from enlace e join oc o on o.id = e.orden_compra_id
     window w as (partition by e.adquisicion_id)
@@ -425,7 +443,7 @@ language sql stable set search_path to 'public' as $$
            end as parte
       from reparto r
   ), por_factura as (
-    select p.orden_compra_id, max(p.total_oc)::numeric as total, round(coalesce(sum(p.parte), 0), 2)::numeric as facturado,
+    select p.orden_compra_id, max(p.total_real)::numeric as total, round(coalesce(sum(p.parte), 0), 2)::numeric as facturado,
            bool_or(not p.parcial) as completa,
            jsonb_agg(jsonb_build_object('id', p.adquisicion_id, 'numero_documento', p.numero_documento, 'total', p.total_factura,
                                         'moneda', p.moneda_factura, 'parcial', p.parcial, 'parte', round(p.parte, 2),
@@ -646,7 +664,8 @@ select pg_temp.parchar('public.compras_con_boleta_por_pagar()'::regprocedure, ar
 ], array[1]);
 
 -- Adquisiciones: pagada cuando sus facturas y sus boletas de una parte lo están;
--- pagada en parte si alguna boleta de una parte tiene pago. Y cada boleta de una
+-- pagada en parte si ya tiene su factura y alguna boleta de una parte tiene pago
+-- (sin factura sigue esperándola, o por pagar si es con boleta). Y cada boleta de una
 -- parte, entre los documentos de la OC, con su monto, lo pagado y sus pagos.
 select pg_temp.parchar('public.trazabilidad_de_compras()'::regprocedure, array[
   E'                                        ''anulado_en'', d.anulado_en, ''motivo_anulacion'', d.motivo_anulacion,\n',
@@ -671,3 +690,64 @@ select pg_temp.parchar('public.trazabilidad_de_compras()'::regprocedure, array[
   || E'    -- Lo que suman sus boletas de una parte y lo que Tesorería les pagó (20261022200000).\n'
   || E'    left join lateral public.partes_con_boleta_de_la_compra(c.id) pt on true\n'
 ], array[1, 1, 1, 1, 1]);
+
+-- Pagada de más entre su factura y sus boletas de una parte: la factura que
+-- Contabilidad registró por toda la OC cuando una parte ya venía con boleta. El
+-- control ya dice «no calza», pero pagadas las dos la OC salía «Pagada».
+select pg_temp.parchar('public.trazabilidad_de_compras()'::regprocedure, array[
+  E'           -- La OC con boleta se paga por su factura, ligada o anexada: pagada esa, pagada la OC. Si\n',
+  E'           -- Entre su factura y sus boletas de una parte se facturó y se pagó más que su total (20261022200000).\n'
+  || E'           when fa.pagadas and coalesce(pt.monto, 0) > 0 and coalesce(pt.pagado, 0) >= pt.monto\n'
+  || E'                and coalesce(fd.facturado, 0) > coalesce(fd.total, 0) + 1 then ''PAGADA_DE_MAS''\n'
+  || E'           -- La OC con boleta se paga por su factura, ligada o anexada: pagada esa, pagada la OC. Si\n'
+], array[1]);
+
+-- Gerencia no anula una OC con una boleta de una parte vigente: primero
+-- Logística anula la boleta (y, si tiene pagos, Tesorería antes esos pagos).
+-- Sin esto la OC salía como anulable y al anularla saltaba otro error.
+select pg_temp.parchar('public.motivo_para_no_anular_compra(uuid)'::regprocedure, array[
+  E'  -- La OC con boleta que Gerencia aprobó antes del 20/10 se dio por pagada fuera del\n',
+  E'  -- La boleta de una parte (20261022200000): primero se anula ella, y antes sus pagos.\n'
+  || E'  select d.numero_documento into v_doc from public.documentos_compra_material d\n'
+  || E'   where d.orden_compra_id = p_compra and d.monto_de_la_parte is not null and d.anulado_en is null order by d.creado_en limit 1;\n'
+  || E'  if found then\n'
+  || E'    return format(''La %s tiene anexada la boleta %s de una parte: que Logística la anule antes%s.'', v_nombre, v_doc,\n'
+  || E'                  case when exists (select 1 from public.pagos_parte_con_boleta x where x.orden_compra_id = p_compra and x.anulado_en is null)\n'
+  || E'                       then '', y antes Tesorería anule lo que le pagó'' else '''' end);\n'
+  || E'  end if;\n'
+  || E'  -- La OC con boleta que Gerencia aprobó antes del 20/10 se dio por pagada fuera del\n'
+], array[1]);
+
+-- La boleta de una parte no se registra además como comprobante en
+-- Adquisiciones: Tesorería la pagaría dos veces, por ella y por el comprobante.
+create or replace function public.fn_adquisicion_no_es_boleta_de_una_parte()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_numero text := public.clave_numero_comprobante(new.numero_documento);
+  v_doc    record;
+begin
+  if v_numero is null
+     or (tg_op = 'UPDATE' and v_numero is not distinct from public.clave_numero_comprobante(old.numero_documento)
+         and new.proveedor is not distinct from old.proveedor and new.ruc_proveedor is not distinct from old.ruc_proveedor) then
+    return new;
+  end if;
+  select d.numero_documento, coalesce(c.numero, 'OC ' || c.referencia) as compra into v_doc
+    from public.documentos_compra_material d
+    join public.ordenes_compra_materiales c on c.id = d.orden_compra_id
+    left join public.proveedores p on p.id = c.proveedor_id
+   where d.monto_de_la_parte is not null and d.anulado_en is null
+     and public.clave_numero_comprobante(d.numero_documento) = v_numero
+     and (case when new.ruc_proveedor is not null and p.numero_documento is not null then p.numero_documento = new.ruc_proveedor
+               else public.mismo_proveedor(c.proveedor, new.proveedor) end)
+   limit 1;
+  if found then
+    raise exception 'El comprobante % es la boleta de una parte que Logística anexó a la %: Tesorería la paga ahí, en «Boletas de una parte». No se registra otra vez.',
+      v_doc.numero_documento, v_doc.compra using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_adquisicion_no_es_boleta_de_una_parte() from public, anon, authenticated;
+create or replace trigger trg_adquisicion_no_es_boleta_de_una_parte
+  before insert or update of numero_documento, proveedor, ruc_proveedor on public.adquisiciones
+  for each row execute function public.fn_adquisicion_no_es_boleta_de_una_parte();

@@ -450,12 +450,6 @@ function Archivo({ url, children }: { url: string | undefined; children: ReactNo
   )
 }
 
-/**
- * Los documentos de la orden: la factura que registró Contabilidad, los PDF que
- * adjuntó Logística con su tipo (la cotización, la boleta…), la guía de
- * remisión y, de la OS, su factura y su contrato, y el número del comprobante
- * que Tesorería anotó al pagar si nadie adjuntó ese comprobante.
- */
 /** La boleta de una parte: lo que dice y lo que Tesorería le pagó (migración 20261022200000). */
 function DeUnaParte({ d, m }: { d: Documento; m: CodigoMoneda }) {
   const monto = d.monto_de_la_parte ?? 0
@@ -469,6 +463,12 @@ function DeUnaParte({ d, m }: { d: Documento; m: CodigoMoneda }) {
   )
 }
 
+/**
+ * Los documentos de la orden: la factura que registró Contabilidad, los PDF que
+ * adjuntó Logística con su tipo (la cotización, la boleta…), la guía de
+ * remisión y, de la OS, su factura y su contrato, y el número del comprobante
+ * que Tesorería anotó al pagar si nadie adjuntó ese comprobante.
+ */
 function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
   // La factura que Contabilidad registró sobre el PDF que anexó Logística es un solo archivo.
   const deFacturas = new Set(f.facturas.flatMap((x) => (x.bucket === 'documentos-compras' && x.ruta ? [x.ruta] : [])))
@@ -607,6 +607,15 @@ function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso 
   const neto = f.pagos.reduce((suma, p) => suma + p.monto, 0) - f.devoluciones.filter((x) => !x.anulado_en).reduce((suma, x) => suma + x.monto, 0)
   const bloqueo = acceso.esAdmin ? null : bloqueoDelAnexo({ con_factura: f.con_factura, neto }, d, tomo)
   if (bloqueo) return <span className="basis-full text-texto-suave">{bloqueo}</span>
+  // La boleta de una parte con un pago vigente: la base no la anula hasta que Tesorería anule ese pago.
+  const pagadoDeLaParte = (d.pagos_de_la_parte ?? []).reduce((suma, p) => suma + p.monto, 0)
+  if (d.monto_de_la_parte !== null && pagadoDeLaParte > 0 && !acceso.esAdmin) {
+    return (
+      <span className="basis-full text-texto-suave">
+        No se anula: Tesorería ya le pagó {moneda(pagadoDeLaParte, codigo(f.moneda))}; primero Tesorería anula ese pago, con su motivo.
+      </span>
+    )
+  }
   // La factura registrada que no alcanza para esta OC: si no es de esta OC, el que está mal es el anexo.
   const porRevisar = d.factura ? anexoPorRevisarAlAnular({ nombre: nombreDe(f), pagos: f.pagos }, d.factura) : null
   return (
@@ -624,6 +633,7 @@ function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso 
 /** Si ya se pagó: el estado, lo que falta y cada voucher; Tesorería salta a pagarla. */
 function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
   const estado = definir(ESTADO_PAGO, f.pago)
+  const enPartes = f.documentos.some((d) => d.monto_de_la_parte !== null && !d.anulado_en)
   const registradas = f.facturas.filter((x) => x.estado === 'REGISTRADA')
   // La OC con boleta puede tener vouchers de su boleta y de su factura: cada uno dice de cuál es.
   const conBoleta = f.tipo === 'OC' && f.con_factura === false
@@ -733,7 +743,13 @@ function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso:
         </Link>
       )}
       {/* Pagada por su boleta y su factura no tomó todo ese pago: lo que falta es pedir la devolución. */}
-      {f.tipo === 'OC' && f.pago === 'PAGADA_DE_MAS' && (acceso.porPagar ? (
+      {/* Pagada de más entre su factura y sus boletas de una parte (migración 20261022200000): no hay pago directo que devolver. */}
+      {f.tipo === 'OC' && f.pago === 'PAGADA_DE_MAS' && enPartes && (
+        <p className="text-xs text-texto-suave">
+          Se pagó de más entre su factura y sus boletas de una parte: Contabilidad pide al proveedor la nota de crédito contra la factura.
+        </p>
+      )}
+      {f.tipo === 'OC' && f.pago === 'PAGADA_DE_MAS' && !enPartes && (acceso.porPagar ? (
         <Link href={`/tesoreria/por-pagar#compra-${f.id}`} className={`${toque} ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pedir la devolución en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>

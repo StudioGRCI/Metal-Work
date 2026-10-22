@@ -326,5 +326,55 @@ select test.afirmar(pg_temp.pago('oc3') = 'POR_PAGAR', 'Adquisiciones la tiene p
 reset role;
 select test.debe_fallar($$ update public.ordenes_compra_materiales set moneda = 'USD' where id = pg_temp.id('oc3') $$,
   'con la boleta de una parte, la OC no cambia de moneda', 'no cambia de moneda');
+select test.debe_fallar($$ update public.ordenes_compra_materiales set con_factura = true where id = pg_temp.id('oc3') $$,
+  'ni pasa de boleta a factura', 'no cambia de moneda ni de factura a boleta');
+select test.debe_fallar($$ update public.ordenes_compra_materiales set con_factura = false where id = pg_temp.id('oc1') $$,
+  'ni de factura a boleta, que le quitaría el IGV por debajo de sus boletas', 'no cambia de moneda ni de factura a boleta');
+
+-- ============================================ 9. Lo que no se cuenta dos veces
+select set_config('prueba.' || v, gen_random_uuid()::text, true) from unnest(array['fx', 'f3', 'pf3', 'p3b']) v;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar($$ insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento,
+                                                             moneda, total, condicion_pago)
+                          values (pg_temp.id('fx'), 'OTRO', 'Proveedor de prueba 429', current_setting('prueba.ruc'), 'B001-004291',
+                                  current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 118, 'CONTADO') $$,
+  'la boleta de una parte no se registra además como comprobante en Adquisiciones', 'No se registra otra vez');
+reset role;
+select test.afirmar(public.motivo_para_no_anular_compra(pg_temp.id('oc3')) = 'La OC-' || split_part((select numero from public.ordenes_compra_materiales where id = pg_temp.id('oc3')), '-', 2)
+                      || '-MW tiene anexada la boleta B001-4293 de una parte: que Logística la anule antes.',
+  'Gerencia no ve como anulable la OC con boleta de una parte: dice qué anular antes');
+-- La OC 3, con su boleta de una parte de S/ 100 pagada, recibe una factura por toda la OC (S/ 300) y se paga: pagada de más.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select pg_temp.pagar_parte('p3b', 'b3', 100, pg_temp.subir('pagos-compras', 'oc3'));
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                  condicion_pago, orden_compra_id)
+values (pg_temp.id('f3'), 'FACTURA_COMPRA', 'Proveedor de prueba 429', current_setting('prueba.ruc'), 'F001-4293',
+        current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 300, 'CONTADO', pg_temp.id('oc3'));
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('f3') || '/comprobante.pdf', auth.uid()::text,
+        '{"mimetype": "application/pdf", "size": 2048}');
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f3');
+select test.afirmar((select control <> 'CALZA' from public.adquisiciones_control(array[pg_temp.id('f3')])),
+  'la factura por toda la OC no calza: una parte ya vino con boleta');
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.registrar_pago_factura(pg_temp.id('pf3'), pg_temp.id('f3'), current_setting('prueba.hoy')::date, 300, 'OP-429G',
+  pg_temp.subir('pagos-facturas', 'f3'), current_setting('prueba.caja')::uuid, null);
+select test.afirmar(pg_temp.pago('oc3') = 'PAGADA_DE_MAS', 'pagadas la boleta y la factura entera, Adquisiciones la da por pagada de más, no por pagada');
+select public.anular_pago_parte_con_boleta(pg_temp.id('p3b'), 'Se pagó dos veces: la factura ya la cubría');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.anular_documento_compra(pg_temp.id('b3'), 'La factura del proveedor ya cubre toda la OC');
+reset role;
+select test.afirmar((select count(*) from public.notificaciones where usuario_id = pg_temp.id('tesoreria')
+                      and titulo like 'Boleta de una parte anulada%' and origen_id = pg_temp.id('b3')) = 1,
+  'anulada la boleta de una parte, a Tesorería le llega el aviso');
 
 rollback;

@@ -442,14 +442,21 @@ function ParteConBoletaFila({
             <span className="whitespace-nowrap">{moneda(saldo > 0 ? saldo : (x.monto ?? 0), m)}</span>
           </p>
           <p className="tabular text-xs text-texto-suave">
-            Boleta <span className="whitespace-nowrap">{moneda(x.monto ?? 0, m)}</span>
-            {pagado > 0 && saldo > 0 && (
+            {/* Pagada, el monto de la boleta ya está arriba: no se repite. */}
+            {saldo > 0 && (
               <>
-                {' · pagado '}
-                <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                Boleta <span className="whitespace-nowrap">{moneda(x.monto ?? 0, m)}</span>
+                {' · '}
               </>
             )}
-            {' · OC '}
+            {pagado > 0 && saldo > 0 && (
+              <>
+                {'pagado '}
+                <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                {' · '}
+              </>
+            )}
+            {'OC '}
             <span className="whitespace-nowrap">{moneda(x.total_oc ?? 0, m)}</span>
           </p>
         </div>

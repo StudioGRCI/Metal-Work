@@ -67,7 +67,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     if (falta) return { ok: false, error: falta }
     if (tipo === 'COMPROBANTE' && parte) {
       if (!String(datos.get('parte_numero') ?? '').trim()) return { ok: false, error: 'Escribe el número de la boleta, como B001-45.' }
-      if (!/^\d{1,9}([.,]\d{1,2})?$/.test(String(datos.get('parte_monto') ?? '').trim())) {
+      const monto = String(datos.get('parte_monto') ?? '').trim()
+      if (!/^\d{1,9}([.,]\d{1,2})?$/.test(monto) || Number(monto.replace(',', '.')) <= 0) {
         return { ok: false, error: 'Escribe el monto de la boleta, mayor que cero y con hasta dos decimales.' }
       }
     }
@@ -86,11 +87,15 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     factura.vaciar()
     void detector.leer(undefined)
   })
-  return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] sm:items-end">
+  return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
-      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando} value={tipo} onChange={(e) => {
+        setTipo(e.target.value)
+        // En la OC con factura, la boleta que llega es la de una parte: la casilla sale marcada.
+        if (e.target.value === 'COMPROBANTE' && tipoInicial === 'FACTURA') setParte(true)
+      }}>
         <option value="" disabled>Elige el tipo</option>
         {TIPOS.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
       </Seleccion>
@@ -101,26 +106,23 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         aviso={detector.aviso} estado={tipo === 'FACTURA' ? detector.leyendo : null}
         onChange={(e) => void detector.leer(e.target.files?.[0]).then(factura.completar)} />
     </Campo>
-    <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
-      <FileUp aria-hidden className="size-4" />Adjuntar
-    </Boton>
     {tipo === 'FACTURA' && (
       <>
-        <div className="grid gap-4 sm:col-span-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
           <CamposDeLaFactura id={`factura-compra-${ordenCompraId}`} datos={factura} requerido disabled={enviando} />
         </div>
-        <div className="sm:col-span-3">
+        <div className="sm:col-span-2">
           <AvisoFacturaDeLaOrden lectura={detector.lectura} total={orden?.total ?? null}
             moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
         </div>
       </>
     )}
     {tipo === 'COMPROBANTE' && (
-      <div className="grid gap-4 sm:col-span-3 sm:grid-cols-3">
+      <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
         <label className="flex items-start gap-2 text-sm sm:col-span-3">
           <input type="checkbox" name="parte" value="si" className="mt-0.5 size-4" checked={parte} disabled={enviando}
             onChange={(e) => setParte(e.target.checked)} />
-          <span>Es la boleta de solo una parte: lo demás de la OC llega con factura</span>
+          <span>Es la boleta de solo una parte de la OC</span>
         </label>
         {parte && (
           <>
@@ -134,15 +136,21 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
             <Campo etiqueta={`Monto de la boleta (${orden?.moneda === 'USD' ? 'US$' : 'S/'})`} htmlFor={`parte-monto-${ordenCompraId}`} requerido
               ayuda="Lo que dice la boleta. Tesorería le paga esto y lo demás de la OC se paga por su factura.">
               <Entrada id={`parte-monto-${ordenCompraId}`} name="parte_monto" inputMode="decimal" required disabled={enviando}
-                autoComplete="off" placeholder="0.00" className="tabular" pattern="\d{1,9}([.,]\d{1,2})?" />
+                autoComplete="off" placeholder="0.00" className="tabular" />
             </Campo>
           </>
         )}
       </div>
     )}
-    {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
+    {/* Al final, debajo de lo que depende del tipo: en el teléfono se ve la casilla de la parte antes de adjuntar. */}
+    <div className="flex justify-end sm:col-span-2">
+      <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
+        <FileUp aria-hidden className="size-4" />Adjuntar
+      </Boton>
+    </div>
+    {error && <p role="alert" className="text-xs text-peligro sm:col-span-2">{error}</p>}
     {mensaje && (
-      <p role="status" className={`text-xs sm:col-span-3 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
+      <p role="status" className={`text-xs sm:col-span-2 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}
         {revisar && verAdquisiciones && (
           <>

@@ -88,13 +88,15 @@ export async function registrarDocumentoCompra(
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo')
+    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, monto_de_la_parte')
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
     if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id
-      || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo) {
+      || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo
+      // El reintento de la boleta de una parte trae el mismo número y el mismo monto.
+      || (esParte && (existente.numero_documento !== numeroParte || Number(existente.monto_de_la_parte) !== montoParte))) {
       return { ok: false, error: 'Ese identificador ya pertenece a otro documento. Recarga la compra antes de volver a intentar.' }
     }
     return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }

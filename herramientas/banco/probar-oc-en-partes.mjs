@@ -206,6 +206,13 @@ async function anexarParte(pagina, orden, numero, monto, toques = 1) {
   await pagina.locator(`tr[data-compra="${nombre(orden)}"]`).getByRole('button', { name: 'Adjuntar', exact: true }).click()
   const v = pagina.locator('[role="dialog"]')
   await v.locator('select[name="tipo"]').selectOption('COMPROBANTE')
+  // En la OC con factura la casilla sale marcada al elegir la boleta; en la de boleta, se marca.
+  comprobar((await v.locator('input[name="parte"]').isChecked()) === (orden === oc.A), 'la casilla de la parte sale marcada solo en la OC con factura')
+  const orden1 = await v.evaluate((el) => {
+    const y = (s) => el.querySelector(s)?.getBoundingClientRect().top ?? -1
+    return y('input[name="parte"]') < y('button[type="submit"]')
+  })
+  comprobar(orden1, 'la casilla va antes que «Adjuntar»')
   await v.locator('input[name="parte"]').check()
   await v.locator('input[name="parte_numero"]').fill(numero)
   await v.locator('input[name="parte_fecha"]').fill(hoy)
@@ -273,8 +280,7 @@ async function pagar(pagina, monto, toques = 1) {
   comprobar(/Por pagar: S\/ [\d,.]+/.test(encabezado), `el encabezado suma lo que se debe: ${encabezado.match(/Por pagar:[^·.]*/)?.[0] ?? encabezado.slice(0, 120)}`)
 
   const primero = await pagar(pagina, '50', 3)
-  comprobar(primero.ventana.includes(`Le quedan S/ ${cifra(118)}`) && primero.ventana.includes('lo demás de la OC se paga por su factura'),
-    'la ventana dice cuánto le queda y que lo demás va por la factura')
+  comprobar(primero.ventana.includes(`Le quedan S/ ${cifra(118)}`), 'la ventana dice cuánto le queda')
   comprobar(!primero.error, `registra el primer pago${primero.error ? ` (dijo «${primero.error}»)` : ''}`)
   const p1 = await hasta(() => pagosDe(parteA.id), (f) => f.length > 0)
   comprobar(p1.length === 1 && p1[0].monto === 50, `tres toques dejan un pago de S/ 50 (${p1.length})`)
@@ -326,7 +332,7 @@ async function pagar(pagina, monto, toques = 1) {
   console.log(`       la fila de la A: ${fila.slice(0, 400)}`)
   comprobar(fila.includes(BA) && fila.includes(`una parte, S/ ${cifra(118)}`) && fila.includes(`pagado S/ ${cifra(50)}`),
     'Adquisiciones muestra la boleta con su monto y lo pagado')
-  comprobar(fila.includes(`Falta facturar S/ ${cifra(236)}`) || !fila.includes('Falta facturar S/ 354'), 'y no pide facturar lo que ya cubrió la boleta')
+  comprobar(fila.includes(`No se anula: Tesorería ya le pagó S/ ${cifra(50)}`), 'con un pago vigente, la boleta no ofrece «Anular» y dice por qué')
   await contexto.close()
 }
 
