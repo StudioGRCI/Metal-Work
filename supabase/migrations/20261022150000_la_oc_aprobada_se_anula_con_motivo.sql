@@ -236,7 +236,7 @@ begin
     raise exception 'Las OC de una factura se eligen al registrarla; registrada, ya no cambian sin una corrección con su justificante.' using errcode = 'check_violation';
   end if;
   -- Tomada, para no cruzarse con su anulación.
-  select * into v_oc from public.ordenes_compra_materiales where id = new.orden_compra_id for share;
+  select * into v_oc from public.ordenes_compra_materiales where id = new.orden_compra_id for key share;
   if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
   if v_oc.aprobacion = 'RECHAZADA' then
     raise exception 'La orden de compra % está rechazada: no se factura.', coalesce(v_oc.numero, v_oc.referencia) using errcode = 'check_violation';
@@ -2071,8 +2071,10 @@ declare
   v_c public.ordenes_compra_materiales%rowtype;
 begin
   -- Con la OC tomada: si Gerencia la está anulando, se espera y se ve anulada; si
-  -- esto entra primero, la anulación lo ve y no se hace.
-  select * into v_c from public.ordenes_compra_materiales where id = new.orden_compra_id for share;
+  -- esto entra primero, la anulación lo ve y no se hace. `key share` y no `share`:
+  -- choca con el `for update` de la anulación, pero no con el `no key update` de
+  -- `bloquear_cierre`, que dos anexos a la vez pedirían después y se trabarían.
+  select * into v_c from public.ordenes_compra_materiales where id = new.orden_compra_id for key share;
   if found and v_c.aprobacion = 'ANULADA' then
     raise exception 'La % está anulada: %.', coalesce(v_c.numero, 'OC ' || v_c.referencia),
       case tg_table_name
