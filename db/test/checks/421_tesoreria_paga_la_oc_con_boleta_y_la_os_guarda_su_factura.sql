@@ -588,9 +588,9 @@ begin
                               from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4'))
                        and (select cancelada and neto = 241 from public.situacion_de_pago_de_compra(pg_temp.id('oc4')))
                        and pg_temp.pago('oc4') = 'PAGADA'
-                       and (select count(*) filter (where (p->>'cancela')::boolean) = 0
+                       and (select count(*) > 0 and bool_and(p->'cancela' = 'null'::jsonb)
                               from public.trazabilidad_de_compras() t, jsonb_array_elements(t.pagos) p where t.id = pg_temp.id('oc4')),
-    'devueltos S/ 120.50 con «Sí, queda pagada»: la OC queda pagada con S/ 241, la cancela la devolución y ningún pago dice «cancela la OC»');
+    'devueltos S/ 120.50 con «Sí, queda pagada»: la OC queda pagada con S/ 241, la cancela la devolución y ningún pago dice «cancela la OC» ni «a cuenta»');
   perform test.afirmar((select (sin_completar_al_anular ->> pg_temp.id('dv4g')::text)::boolean = false
                           from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc4')),
     'y la lista dice qué pasaría al anularla: ya no estaría cancelada con menos');

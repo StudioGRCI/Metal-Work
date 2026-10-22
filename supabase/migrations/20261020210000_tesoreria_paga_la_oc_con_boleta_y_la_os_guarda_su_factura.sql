@@ -113,7 +113,7 @@ alter table public.pagos_orden_compra add column if not exists cancela_sin_compl
 comment on table public.pagos_orden_compra is
   'Un pago de Tesorería a una OC con boleta, nota de venta o recibo, con su voucher. No se borra: se anula.';
 comment on column public.pagos_orden_compra.cancela_sin_completar is
-  'Tesorería dio la OC por cancelada con este pago sin que sus pagos llegaran al total. Mientras siga vigente y ninguna devolución posterior deje lo neto en cero, la OC está pagada.';
+  'Tesorería dio la OC por cancelada con este pago sin que sus pagos llegaran al total. Mientras siga vigente y sea lo último que dijo Tesorería (no hay una devolución posterior), la OC está pagada.';
 -- (b) Cuentas por pagar y Adquisiciones suman los pagos de cada OC.
 create index if not exists ix_pagos_orden_compra_oc on public.pagos_orden_compra (orden_compra_id);
 select public.activar_timestamps('pagos_orden_compra');
@@ -1448,7 +1448,7 @@ begin
         select sum(x.monto) as devuelto, max(x.fecha) as ultimo
           from public.devoluciones_orden_compra x where x.orden_compra_id = c.id and x.anulado_en is null
       ) dv on true
-      -- Pagos netos que la cubren (sección 2): lo que suman, o uno vigente que la dio por cancelada.
+      -- Pagos netos que la cubren (sección 2): lo que suman, o lo último que dijo Tesorería la dio por cancelada.
       cross join lateral (
         select coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) as neto,
                coalesce(g.pagado, 0) - coalesce(dv.devuelto, 0) > 0
@@ -1556,8 +1556,8 @@ begin
       using errcode = 'check_violation';
   end if;
   -- Pagada: sus pagos vigentes, menos lo que el proveedor devolvió, suman el
-  -- total, o uno vigente la dio por cancelada y el proveedor no lo devolvió todo
-  -- (sección 2), como la cuentan la lista y la situación. Lo devuelto se puede
+  -- total, o lo último que dijo Tesorería (un pago o una devolución) la dio por
+  -- cancelada (sección 2), como la cuentan la lista y la situación. Lo devuelto se puede
   -- volver a pagar: el tope es lo neto.
   v_total := public.total_orden_compra(p_orden_compra);
   select coalesce(sum(monto), 0) into v_pagado
@@ -3760,12 +3760,14 @@ begin
     ) ig on true
     left join documento dc on dc.orden_compra_id = c.id
     -- El pago de la OC con boleta (sección 2). `cancela`: el que la da por
-    -- cancelada (`pago_que_cancela_la_compra`), el mismo que marca Tesorería.
+    -- cancelada (`pago_que_cancela_la_compra`), el mismo que marca Tesorería; en
+    -- null si la dio por pagada una devolución, que no es ningún pago.
     left join lateral (select x.pago_id, x.sin_completar from public.pago_que_cancela_la_compra(c.id, null) x where not c.con_factura) pc on true
     left join lateral (
       select count(*) as n, sum(y.monto) as pagado,
              jsonb_agg(jsonb_build_object('id', y.id, 'fecha', y.fecha_pago, 'monto', y.monto, 'moneda', y.moneda,
-                                          'cancela', y.id is not distinct from pc.pago_id,
+                                          'cancela', case when pc.pago_id is null and pc.sin_completar then null
+                                                          else y.id is not distinct from pc.pago_id end,
                                           'operacion', y.operacion,
                                           'comprobante', y.comprobante_proveedor, 'ruta', y.archivo_ruta, 'bucket', 'pagos-compras',
                                           -- Las facturas que tomaron este pago: solas, al cambio o descontado.

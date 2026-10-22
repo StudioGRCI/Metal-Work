@@ -47,6 +47,13 @@
  *      entera, con una factura que cubre una parte: la tarjeta dice lo que
  *      tomó y lo que tomará la que falta, y la devolución dice lo que queda
  *      para esa factura, no «nada pagado de más».
+ *   3g. (duodécima vuelta, cuarta pasada) La OC 9, pagada entera con la
+ *      factura anexada: la ventana de la devolución no pregunta. Con ella
+ *      abierta, Logística anula el anexo: la base pide la respuesta y la
+ *      ventana la muestra sin recargar ni perder lo escrito. La tarjeta solo
+ *      ofrece anular la devolución y registrarla con «Sí» si anularla entra; y
+ *      devuelto todo, dice que se paga de nuevo solo si el proveedor la vuelve
+ *      a cobrar, a Tesorería y a Gerencia.
  *   4. Logística adjunta a la OS su factura (tres toques, un documento, con el
  *      número en mayúsculas) y su contrato, y el archivo queda en
  *      storage.objects. Emite otra OS con su contrato desde «Nueva orden de
@@ -178,7 +185,7 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 3, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 8) n))`,
+        from generate_series(1, 9) n))`,
   [rq, area, `Prueba de la OC con boleta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
@@ -189,9 +196,11 @@ await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [
 // La 5, con boleta, se paga entera y después llega su factura (3d).
 // La 6 y la 7, con boleta, se pagan enteras: el proveedor devuelve parte de la 6, y la 7 tiene una factura por una parte (3f).
 // La 8, con boleta, pagada a cuenta, con una factura por una parte que se paga entera (3f).
+// La 9, con boleta y la factura anexada, se paga entera; Logística anula el anexo con la ventana abierta y el proveedor
+// termina devolviéndolo todo (3g).
 await como('logistica')
 const oc = []
-for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
   const [{ id }] = await consulta(
     `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
        jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 3, 'precio', 120.50)), null, 'CONTADO', 0, 'PEN', $5) as id`,
@@ -214,6 +223,13 @@ await consulta(
   `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
    values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
   [facturaAnexada, oc[3], `compra/${oc[3]}/${facturaAnexada}.pdf`, PDF.length, ids[CUENTAS.logistica], `F009-${SUFIJO}`, hoy],
+)
+const [{ id: anexo9 }] = await consulta(`select gen_random_uuid() as id`)
+await subir('documentos-compras', `compra/${oc[8]}/${anexo9}.pdf`, 'logistica')
+await consulta(
+  `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+   values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+  [anexo9, oc[8], `compra/${oc[8]}/${anexo9}.pdf`, PDF.length, ids[CUENTAS.logistica], `F010-${SUFIJO}`, hoy],
 )
 await como('gerencia')
 for (const id of oc) await consulta(`select public.aprobar_compra($1)`, [id])
@@ -894,7 +910,77 @@ let pagoId
       && textoCuenta.includes(`Su factura ${PARTE8} es por una parte de la OC y ya tomó S/ 100.00 de lo pagado por la boleta. Falta la factura por el resto, S/ 161.50`),
     `con su factura parcial pagada, falta facturar S/ 161.50, no S/ 261.50: «${textoCuenta.slice(0, 360)}»`)
   await t.pagina.screenshot({ path: `${CAPTURAS}/boleta-3f-tesoreria.png`, fullPage: true })
+
+  // ---------------------------------------------------------------- 3g. La ventana vieja y la OC con todo devuelto
+  const ocToda = oc[8]
+  const pagar9 = async (monto) => {
+    const [{ id: p }] = await consulta('select gen_random_uuid() as id')
+    await como('tesoreria')
+    const v = await subir('pagos-compras', `${ocToda}/${p}.pdf`, 'tesoreria')
+    await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, false, null, null, $5, $6, null)`, [p, ocToda, hoy, monto, v, caja])
+    await como(null)
+  }
+  const tarjetaToda = async () => {
+    await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+    return limpio(await (await abrir(ocToda)).textContent())
+  }
+  await pagar9(total)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await (await abrir(ocToda)).locator('[data-registrar-devolucion]').click()
+  const vv = t.pagina.locator('[role="dialog"]')
+  await vv.waitFor()
+  await vv.locator('input[name="monto"]').fill('100')
+  comprobar((await vv.locator('select[name="deja"]').count()) === 0, 'con la factura anexada, la ventana de la devolución no pregunta si la OC queda pagada')
+  await vv.locator('input[name="operacion"]').fill(`DEV9-${SUFIJO}`)
+  await vv.locator('select[name="caja_id"]').selectOption(await vv.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value'))
+  await vv.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  // Con la ventana abierta, Logística anula el anexo: la OC queda sin factura y la base pide la respuesta.
+  await como('logistica')
+  await consulta(`select public.anular_documento_compra($1, 'No era de esta OC: prueba de la ventana vieja')`, [anexo9])
+  await como(null)
+  await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
+  const rechazo = await esperarVentana(t.pagina)
+  const preguntaTras = await hasta(() => vv.locator('select[name="deja"]').count(), (n) => n === 1)
+  const escrito = {
+    monto: await vv.locator('input[name="monto"]').inputValue(),
+    operacion: await vv.locator('input[name="operacion"]').inputValue(),
+    archivos: await vv.locator('input[name="archivo"]').evaluate((i) => i.files?.length ?? 0),
+  }
+  comprobar(rechazo.includes('Di si con los S/ 261.50') && preguntaTras === 1 && escrito.monto === '100' && escrito.operacion === `DEV9-${SUFIJO}`
+      && escrito.archivos === 1 && (await devolucionesDe(ocToda)).length === 0,
+    `anulado el anexo con la ventana abierta, la base pide la respuesta y la ventana la muestra sin perder lo escrito («${rechazo}», pregunta ${preguntaTras}, ${JSON.stringify(escrito)})`)
+  await vv.locator('select[name="deja"]').selectOption('no')
+  await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
+  const errorNo = await esperarVentana(t.pagina)
+  const devs9 = await hasta(() => devolucionesDe(ocToda), (x) => x.length === 1)
+  comprobar(!errorNo && devs9.length === 1 && devs9[0].monto === 100 && devs9[0].deja_pagada === false,
+    `contestada, entra una devolución, sin «queda pagada»${errorNo ? ` (dijo «${errorNo}»)` : ''}`)
+  const conConsejo = await tarjetaToda()
+  comprobar(conConsejo.includes('El proveedor devolvió S/ 100.00 de lo pagado y a la OC le faltan S/ 100.00, que se pagan aquí. Si con lo que quedaba ya estaba pagada, anula la devolución'),
+    `la tarjeta ofrece anularla y registrarla con «Sí», porque anularla entra: «${conConsejo.slice(0, 320)}»`)
+  // Paga S/ 50 a cuenta: sin la devolución, lo pagado pasaría del total y anularla no entra.
+  await pagar9(50)
+  const sinConsejo = await tarjetaToda()
+  comprobar(sinConsejo.includes('El proveedor devolvió S/ 100.00 de lo pagado y a la OC le faltan S/ 50.00, que se pagan aquí.')
+      && !sinConsejo.includes('Si con lo que quedaba'),
+    `pagado después lo que faltaba en parte, ya no ofrece anular la devolución, que la base rechazaría: «${sinConsejo.slice(0, 320)}»`)
+  const todo = await devolver(ocToda, '311.50', `DEV9B-${SUFIJO}`)
+  comprobar(!todo.pregunto && !todo.error && todo.aviso.includes('Devolución registrada'),
+    `el proveedor devuelve lo que quedaba: no pregunta y entra${todo.error ? ` (dijo «${todo.error}»)` : ''}`)
+  const devuelta = await tarjetaToda()
+  comprobar(devuelta.includes('El proveedor ya devolvió todo lo que se pagó por su boleta: págala de nuevo solo si te la vuelve a cobrar.')
+      && !devuelta.includes('Si con lo que quedaba'),
+    `devuelto todo, la tarjeta no pide un «Sí» imposible: «${devuelta.slice(0, 320)}»`)
   await t.contexto.close()
+  const g = await entrar('gerencia')
+  await g.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const tarjetaG = g.pagina.locator(`article#compra-${ocToda}`)
+  const plegadaG = g.pagina.locator('details', { has: tarjetaG })
+  if ((await plegadaG.count()) > 0 && !(await plegadaG.first().evaluate((d) => d.open))) await plegadaG.first().locator('summary').click()
+  const textoG = limpio(await tarjetaG.textContent())
+  comprobar(textoG.includes('El proveedor ya devolvió todo lo que se pagó por su boleta: Tesorería la paga de nuevo solo si se la vuelve a cobrar.'),
+    `Gerencia lee lo mismo, dicho para quien no paga: «${textoG.slice(0, 320)}»`)
+  await g.contexto.close()
 }
 
 // ---------------------------------------------------------------- 4. Logística adjunta la factura y el contrato de la OS

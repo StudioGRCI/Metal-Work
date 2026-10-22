@@ -550,10 +550,20 @@ function avisoDelPago(b: CompraConBoleta, vigentes: number, paga: boolean, m: Co
     const devuelto = Number(b.devuelto ?? 0)
     const saldo = saldoDeLaBoleta(b)
     if (b.factura || devuelto <= 0 || saldo <= 0) return null
+    const neto = Number(b.pagado ?? 0)
+    if (neto <= 0) {
+      return paga ? (
+        <>El proveedor ya devolvió todo lo que se pagó por su boleta: págala de nuevo solo si te la vuelve a cobrar.</>
+      ) : (
+        <>El proveedor ya devolvió todo lo que se pagó por su boleta: Tesorería la paga de nuevo solo si se la vuelve a cobrar.</>
+      )
+    }
+    // Anular la devolución solo entra si sin ella lo pagado no pasa del total.
+    const seAnula = redondear(neto + devuelto) <= Number(b.total ?? 0)
     return paga ? (
       <>
-        El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}, que se pagan aquí. Si con lo que quedaba ya estaba
-        pagada, anula la devolución y regístrala de nuevo con «Sí, queda pagada».
+        El proveedor devolvió {monto(devuelto)} de lo pagado y a la OC le faltan {monto(saldo)}, que se pagan aquí.
+        {seAnula && <> Si con lo que quedaba ya estaba pagada, anula la devolución y regístrala de nuevo con «Sí, queda pagada».</>}
       </>
     ) : (
       <>
@@ -960,7 +970,6 @@ function CompraConBoletaFila({
   const deMas = Number(b.de_mas ?? 0)
   const falta = Number(b.factura_saldo ?? 0)
   const aOtras = Number(b.a_otras ?? 0)
-  const alCambio = loTomadoAlCambio(b)
   const otraSaldo = Number(b.otra_saldo ?? 0)
   // Sus facturas la cubren en parte y les falta la otra: lo que tomaron no llega al total.
   const esperaOtra = conFactura && !b.entera && porFacturarDe(b) >= 1

@@ -1,6 +1,7 @@
 'use client'
 
 import { ArrowLeftRight, Ban, HandCoins, Undo2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
@@ -99,6 +100,7 @@ export function RegistrarDevolucion({
   const [monto, setMonto] = useState('')
   const [deja, setDeja] = useState('')
   const avisar = useAvisoDeLaCaja()
+  const router = useRouter()
   const tope = topeDeLaDevolucion(boleta)
   const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
 
@@ -116,10 +118,14 @@ export function RegistrarDevolucion({
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
     if (!devolucionId) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
-    return subirArchivoFinanzas(BUCKET_PAGOS_COMPRAS, ordenCompraId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+    const r = await subirArchivoFinanzas(BUCKET_PAGOS_COMPRAS, ordenCompraId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarDevolucionCompra(null, datos)
     })
+    // Si la OC cambió con la ventana abierta (Logística anexó o anuló su factura), la base pide la pregunta o la
+    // rechaza: se repinta para que la ventana la muestre, o la quite, sin perder lo escrito.
+    if (!r.ok) router.refresh()
+    return r
   }
   const { alEnviar, enviando, error } = useEnvio(registrar, (r) => {
     setDevolucionId(null)
