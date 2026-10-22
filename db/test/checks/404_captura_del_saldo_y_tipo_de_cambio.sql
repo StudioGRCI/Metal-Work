@@ -317,9 +317,9 @@ begin
 
   -- Y registra su factura: el disparador que la protege lee la solicitud con la
   -- cuenta de quien registra, para sacar la OT de la compra.
-  insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+  insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
                                     condicion_pago, orden_compra_id, registrado_por)
-  values (pg_temp.id('adq_antes'), 'FACTURA_COMPRA', 'Proveedor 404', 'F001-404404', current_date, current_date, 'PEN', 59,
+  values (pg_temp.id('adq_antes'), 'FACTURA_COMPRA', 'Proveedor 404', '20600004043', 'F001-404404', current_date, current_date, 'PEN', 59,
           'CONTADO', pg_temp.id('oc_antes'), pg_temp.id('contabilidad'));
   update public.adquisiciones
      set ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf', estado = 'REGISTRADA'

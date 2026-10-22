@@ -5,13 +5,25 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { rucEsValido } from '@/lib/dominio/proveedores'
 import { moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * El RUC de quien emitió el comprobante, sin espacios ni guiones; vacío si no se
+ * escribió (la base lo toma de la OC del padrón, y sin él no registra la factura
+ * de compra). El dígito de control lo revisa la base.
+ */
+const RUC = z
+  .string()
+  .transform((t) => t.replace(/\D/g, ''))
+  .refine((t) => t === '' || t.length === 11, 'El RUC son 11 dígitos: cópialo tal como sale en la factura.')
+
 const esquema = z.object({
   tipo: z.enum(['FACTURA_COMPRA', 'RECIBO_HONORARIOS', 'FACTURA_VEHICULO', 'FACTURA_TESORERIA', 'OTRO']),
   proveedor: z.string().trim().min(2).max(160),
+  ruc_proveedor: RUC.optional().transform((t) => t ?? ''),
   numero_documento: z.string().trim().min(3).max(80),
   fecha_emision: z.iso.date(),
   fecha_vencimiento: z.iso.date(),
@@ -91,6 +103,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (v.fecha_vencimiento < v.fecha_emision || (v.condicion_pago === 'CONTADO' && v.fecha_vencimiento !== v.fecha_emision)) {
     return { ok: false, error: 'Revisa la fecha de vencimiento y la condición de pago.' }
   }
+  // Sin él, el borrador de una factura de compra no se podría completar nunca.
+  if (v.tipo === 'FACTURA_COMPRA' && !v.ruc_proveedor) {
+    return { ok: false, error: 'Anota el RUC de quien emitió la factura, tal como sale en ella.' }
+  }
   const id = crypto.randomUUID()
   const supabase = await createClient()
   let ordenes = marcadas.data
@@ -104,6 +120,20 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     }
     principal = documento.orden_compra_id
     if (ordenes.length === 0) ordenes = [documento.orden_compra_id]
+  }
+
+  // Con el RUC escrito, la factura va solo a las OC de ese RUC (migración 20261022170000).
+  if (v.ruc_proveedor && ordenes.length > 0) {
+    const { data: padron, error: errorPadron } = await supabase.from('ordenes_compra_materiales')
+      .select('id, numero, referencia, padron:proveedores(numero_documento)').in('id', ordenes)
+    if (errorPadron) return { ok: false, error: mensajeDeError(errorPadron) }
+    const otra = (padron ?? []).find((c) => {
+      const suyo = c.padron?.numero_documento?.trim() ?? ''
+      return rucEsValido(suyo) && suyo !== v.ruc_proveedor
+    })
+    if (otra) {
+      return { ok: false, error: `La ${otra.numero ?? `OC ${otra.referencia}`} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
+    }
   }
 
   // Antes de crear nada: que las OC marcadas puedan ir juntas en esta factura.
@@ -130,7 +160,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   principal ??= ordenes[0] ?? null
 
   const { data: borrador, error: errorAlta } = await supabase.from('adquisiciones').insert({
-    id, tipo: v.tipo, proveedor: v.proveedor, numero_documento: v.numero_documento,
+    id, tipo: v.tipo, proveedor: v.proveedor, ruc_proveedor: v.ruc_proveedor || null, numero_documento: v.numero_documento,
     fecha_emision: v.fecha_emision, fecha_vencimiento: v.fecha_vencimiento,
     moneda: v.moneda, total: v.total, condicion_pago: v.condicion_pago,
     orden_id: v.orden_id || null, orden_compra_id: principal, documento_compra_id: v.documento_compra_id || null,
@@ -167,6 +197,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const espera = await queEspera(supabase, id)
+  if (espera) return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado. ${espera}` }
   const tomo = await loQueTomoDeLaBoleta(supabase, id, v.moneda)
   // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
   // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
@@ -180,6 +212,22 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const cuantas = ordenes.length
   const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
   return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}${tomo ?? '.'}` }
+}
+
+/**
+ * Si la factura que se acaba de registrar es de una OC con boleta que se dio por
+ * pagada fuera (migración 20261022175000), qué le toca hacer a Contabilidad.
+ * `null` si no espera; si no se pudo leer, lo dice.
+ */
+async function queEspera(supabase: Awaited<ReturnType<typeof createClient>>, id: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('facturas_en_espera', { p_facturas: [id] })
+  if (error) {
+    console.error('No se pudo leer si la factura espera a Contabilidad', error)
+    return null
+  }
+  const espera = data?.[0]
+  if (!espera) return null
+  return `La ${espera.compra} va con boleta y se dio por pagada fuera del sistema: en su fila de Facturas, di si ya se pagó o si falta pagarla; hasta entonces Tesorería no la paga.`
 }
 
 /**
@@ -226,6 +274,9 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   const perfil = await exigirPermiso('adquisiciones.registrar')
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'El borrador no es válido.' }
+  // El borrador de antes de la migración 20261022170000 pudo quedar sin RUC: se anota al completarlo.
+  const ruc = RUC.optional().safeParse(formulario.get('ruc_proveedor') ?? undefined)
+  if (!ruc.success) return { ok: false, error: ruc.error.issues[0]?.message ?? 'Revisa el RUC.' }
   const archivo = formulario.get('pdf')
   if (!(archivo instanceof File) || archivo.size < 5 || archivo.size > 10 * 1024 * 1024 || archivo.type !== 'application/pdf') {
     return { ok: false, error: 'Adjunta un PDF de hasta 10 MB.' }
@@ -252,12 +303,14 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   // Lo que el detector leyó del PDF pendiente; si no leyó nada, queda lo que había.
   const lectura = lecturaDelFormulario(formulario)
   const { data, error } = await db.from('adquisiciones')
-    .update({ ruta_storage: ruta, estado: 'REGISTRADA', ...(lectura.lectura_fuente ? lectura : {}) })
+    .update({ ruta_storage: ruta, estado: 'REGISTRADA', ...(ruc.data ? { ruc_proveedor: ruc.data } : {}), ...(lectura.lectura_fuente ? lectura : {}) })
     .eq('id', id.data).select('id').maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const espera = await queEspera(db, id.data)
+  if (espera) return { ok: true, mensaje: `Comprobante completado y registrado. ${espera}` }
   const tomo = await loQueTomoDeLaBoleta(db, id.data, borrador.moneda === 'USD' ? 'USD' : 'PEN')
   return { ok: true, mensaje: `Comprobante completado y registrado${tomo ?? '.'}` }
 }
@@ -292,6 +345,7 @@ const LECTURA_CORREGIDA = z
 
 const CAMBIOS_FACTURA = z.object({
   proveedor: z.string().trim().min(2, 'Escribe el proveedor.').max(160).optional(),
+  ruc_proveedor: RUC.optional(),
   numero_documento: z.string().trim().min(3, 'Escribe el número del comprobante.').max(80).optional(),
   fecha_emision: z.iso.date('Revisa la fecha de emisión.').optional(),
   fecha_vencimiento: z.iso.date('Revisa la fecha de vencimiento.').optional(),
@@ -345,4 +399,62 @@ export async function corregirFactura(_previo: unknown, formulario: FormData): P
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/compras/ordenes')
   return { ok: true, mensaje: 'Comprobante corregido, con su justificante.' }
+}
+
+const CONFIRMAR_PAGO = z.discriminatedUnion('pagada', [
+  z.object({
+    compra: z.guid(),
+    pagada: z.literal('si'),
+    // Solo para decir qué pasó si la factura no toma el pago: la base no lo decide por esto.
+    otra_moneda: z.enum(['si', 'no']).optional(),
+    fecha: z.iso.date('Elige el día en que se pagó.'),
+    monto: z.coerce.number().positive('Escribe lo que se pagó.').multipleOf(0.01, 'Lo pagado lleva como máximo dos decimales.'),
+    nota: z.string().trim().min(10, 'Cuenta cómo lo sabes, en al menos 10 caracteres.').max(500),
+  }),
+  z.object({
+    compra: z.guid(),
+    pagada: z.literal('no'),
+    nota: z.string().trim().min(10, 'Cuenta cómo lo sabes, en al menos 10 caracteres.').max(500),
+  }),
+])
+
+/**
+ * Contabilidad dice si la OC con boleta que se dio por pagada fuera ya se pagó o
+ * si falta pagarla, para que su factura deje de esperar (migración
+ * 20261022175000). Mismo permiso que `confirmar_pago_de_la_boleta`.
+ */
+export async function confirmarPagoDeBoleta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  await exigirPermiso('adquisiciones.registrar')
+  const entrada = CONFIRMAR_PAGO.safeParse(Object.fromEntries(formulario))
+  if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa lo que confirmas.' }
+  const v = entrada.data
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('confirmar_pago_de_la_boleta', {
+    p_compra: v.compra,
+    p_ya_pagada: v.pagada === 'si',
+    p_fecha: v.pagada === 'si' ? v.fecha : null,
+    p_monto: v.pagada === 'si' ? v.monto : null,
+    p_nota: v.nota,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  if (v.pagada === 'no') return { ok: true, mensaje: 'Anotado: Tesorería paga la factura en Cuentas por pagar.' }
+  // En otra moneda la factura no toma sola lo pagado fuera: Tesorería lo pasa al cambio.
+  const { count, error: errorToma } = await supabase.from('pagos_adquisicion')
+    .select('id', { count: 'exact', head: true }).eq('pago_orden_compra_id', data).is('anulado_en', null)
+  if (errorToma) {
+    console.error('confirmarPagoDeBoleta: no se pudo ver si la factura tomó el pago', errorToma)
+    return { ok: true, mensaje: 'Anotado. Mira en Cuentas por pagar cuánto tomó la factura de lo pagado fuera.' }
+  }
+  return {
+    ok: true,
+    mensaje:
+      (count ?? 0) > 0
+        ? 'Anotado: la factura toma lo que se pagó fuera, y Tesorería paga lo que falte.'
+        : v.otra_moneda === 'si'
+          ? 'Anotado. La factura va en otra moneda y no toma sola lo pagado fuera: Tesorería lo pasa al cambio en Cuentas por pagar.'
+          : 'Anotado, pero la factura no tomó lo pagado fuera: Tesorería lo revisa en Cuentas por pagar.',
+  }
 }

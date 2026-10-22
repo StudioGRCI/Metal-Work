@@ -78,9 +78,10 @@ begin
 
   -- Facturas de compra (las registra Contabilidad, como en el 390).
   perform pg_temp.como('conta');
-  insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-  values (current_setting('prueba.adq1')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 398', 'F001-398', v_hoy - 10, v_hoy - 10, 'PEN', 1180, 'CONTADO'),
-         (current_setting('prueba.adq2')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 398', 'F001-399', v_hoy - 10, v_hoy - 10, 'USD', 100, 'CONTADO');
+  insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                    condicion_pago)
+  values (current_setting('prueba.adq1')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 398', '20600003985', 'F001-398', v_hoy - 10, v_hoy - 10, 'PEN', 1180, 'CONTADO'),
+         (current_setting('prueba.adq2')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 398', '20600003985', 'F001-399', v_hoy - 10, v_hoy - 10, 'USD', 100, 'CONTADO');
   insert into storage.objects (bucket_id, name, owner_id, metadata)
   select 'comprobantes-financieros', 'adquisiciones/' || x || '/comprobante.pdf', current_setting('prueba.conta'),
          '{"mimetype": "application/pdf", "size": 2048}'

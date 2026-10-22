@@ -458,9 +458,15 @@ const CIFRAS = {
   por_pagar: {
     ruta: '/tesoreria/por-pagar',
     calcular: async (c) => {
-      const r = await todas((d, h) => c.supabase.from('v_cuentas_pagar').select('moneda, saldo, fecha_vencimiento').gt('saldo', 0).order('id').range(d, h))
+      const [r, espera] = await Promise.all([
+        todas((d, h) => c.supabase.from('v_cuentas_pagar').select('id, moneda, saldo, fecha_vencimiento').gt('saldo', 0).order('id').range(d, h)),
+        c.supabase.rpc('facturas_en_espera', {}),
+      ])
       fallo(r)
-      const filas = r.data ?? []
+      fallo(espera)
+      // La que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga (migración 20261022175000).
+      const esperan = new Set((espera.data ?? []).map((e) => e.adquisicion_id))
+      const filas = (r.data ?? []).filter((f) => !esperan.has(f.id))
       const vencidas = filas.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < c.hoy).length
       return {
         titulo: 'Por pagar',

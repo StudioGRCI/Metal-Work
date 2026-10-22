@@ -716,10 +716,16 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     let saldos: Promise<{ vencidas: number; resto: number }> | null = null
     const porPagar = () =>
       (saldos ??= (async () => {
-        const { data, error } = await supabase.from('v_cuentas_pagar').select('saldo, fecha_vencimiento').gt('saldo', 0).limit(1000)
-        if (error) throw new Error('No se pudo consultar el pendiente.')
-        const vencidas = (data ?? []).filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length
-        return { vencidas, resto: (data ?? []).length - vencidas }
+        // La que espera a Contabilidad (migración 20261022175000) pudo pagarse fuera: no se le pide a Tesorería.
+        const [{ data, error }, espera] = await Promise.all([
+          supabase.from('v_cuentas_pagar').select('id, saldo, fecha_vencimiento').gt('saldo', 0).limit(1000),
+          supabase.rpc('facturas_en_espera', {}),
+        ])
+        if (error || espera.error) throw new Error('No se pudo consultar el pendiente.')
+        const esperan = new Set((espera.data ?? []).map((e) => e.adquisicion_id))
+        const exigibles = (data ?? []).filter((c) => !esperan.has(c.id))
+        const vencidas = exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length
+        return { vencidas, resto: exigibles.length - vencidas }
       })())
     tareas.push({
       clave: 'facturas_vencidas', ruta: '/tesoreria/por-pagar', tono: 'peligro',
@@ -812,6 +818,18 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       },
     })
   }
+
+  // Contabilidad: la factura de una OC que se dio por pagada fuera espera que
+  // diga si ya se pagó (migración 20261022175000); hasta entonces Tesorería no la paga.
+  if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
+    clave: 'facturas_por_confirmar', ruta: '/adquisiciones?vista=por-confirmar', tono: 'aviso',
+    texto: n => plural(n, 'factura espera que digas si su OC ya se pagó', 'facturas esperan que digas si su OC ya se pagó'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('facturas_en_espera', {})
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
+  })
 
   // Contabilidad: las compras que todavía no tienen su factura registrada.
   if (puede(perfil, 'adquisiciones.registrar')) tareas.push({

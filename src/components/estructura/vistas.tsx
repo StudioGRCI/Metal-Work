@@ -29,9 +29,12 @@ export function Vistas({
   vistas,
   etiqueta,
   className,
+  id,
   children,
 }: {
   vistas: Vista[]
+  /** Para volver a la lista con un ancla en el `href` de cada vista. */
+  id?: string
   /** Qué elige el grupo; lo lee el lector de pantalla. */
   etiqueta: string
   className?: string
@@ -39,7 +42,7 @@ export function Vistas({
   children?: ReactNode
 }) {
   return (
-    <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', className)}>
+    <div id={id} className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', className)}>
       <nav aria-label={etiqueta} className="min-w-0 max-w-full">
         <div className={GRUPO_PASTILLAS}>
           {vistas.map((v) => (

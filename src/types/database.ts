@@ -33,6 +33,7 @@ export type Database = {
           lectura_numero: string | null
           lectura_ordenes: string[] | null
           lectura_en: string | null
+          ruc_proveedor: string | null
         }
         Insert: {
           id?: string
@@ -60,6 +61,7 @@ export type Database = {
           lectura_numero?: string | null
           lectura_ordenes?: string[] | null
           lectura_en?: string | null
+          ruc_proveedor?: string | null
         }
         Update: {
           id?: string
@@ -87,6 +89,7 @@ export type Database = {
           lectura_numero?: string | null
           lectura_ordenes?: string[] | null
           lectura_en?: string | null
+          ruc_proveedor?: string | null
         }
         Relationships: [
           {
@@ -1221,6 +1224,64 @@ export type Database = {
             columns: ["creado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      compras_pagadas_fuera_confirmadas: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          ya_pagada: boolean
+          pago_id: string | null
+          nota: string
+          confirmada_por: string
+          confirmada_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          ya_pagada: boolean
+          pago_id?: string | null
+          nota: string
+          confirmada_por: string
+          confirmada_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          ya_pagada?: boolean
+          pago_id?: string | null
+          nota?: string
+          confirmada_por?: string
+          confirmada_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_confirmada_por_fkey"
+            columns: ["confirmada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_pago_id_fkey"
+            columns: ["pago_id"]
+            isOneToOne: false
+            referencedRelation: "pagos_orden_compra"
             referencedColumns: ["id"]
           }
         ]
@@ -6620,15 +6681,16 @@ export type Database = {
           cancela_sin_completar: boolean
           operacion: string | null
           comprobante_proveedor: string | null
-          archivo_ruta: string
-          archivo_mime: string
-          archivo_tamano: number
+          archivo_ruta: string | null
+          archivo_mime: string | null
+          archivo_tamano: number | null
           registrado_por: string
           anulado_por: string | null
           anulado_en: string | null
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          pagado_fuera: string | null
         }
         Insert: {
           id?: string
@@ -6640,15 +6702,16 @@ export type Database = {
           cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
-          archivo_ruta: string
-          archivo_mime: string
-          archivo_tamano: number
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
           registrado_por?: string
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          pagado_fuera?: string | null
         }
         Update: {
           id?: string
@@ -6660,15 +6723,16 @@ export type Database = {
           cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
-          archivo_ruta?: string
-          archivo_mime?: string
-          archivo_tamano?: number
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
           registrado_por?: string
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          pagado_fuera?: string | null
         }
         Relationships: [
           {
@@ -12276,6 +12340,17 @@ export type Database = {
         }
         Returns: null
       }
+      compra_pagada_fuera_de_la_factura: {
+        Args: {
+          p_factura: string | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          compra: string | null
+          total: number | null
+          moneda: string | null
+        }[]
+      }
       compra_tiene_comprobante: {
         Args: {
           p_compra: string | null
@@ -12497,6 +12572,16 @@ export type Database = {
           p_incluye_igv: boolean | null
         }
         Returns: null
+      }
+      confirmar_pago_de_la_boleta: {
+        Args: {
+          p_compra: string | null
+          p_ya_pagada: boolean | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_nota: string | null
+        }
+        Returns: string
       }
       confirmar_salida_porteria: {
         Args: {
@@ -13114,6 +13199,19 @@ export type Database = {
           parcial: boolean | null
         }[]
       }
+      facturas_en_espera: {
+        Args: {
+          p_facturas?: string[] | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          orden_compra_id: string | null
+          compra: string | null
+          total: number | null
+          moneda: string | null
+          desde: string | null
+        }[]
+      }
       facturas_para_descontar: {
         Args: {
           p_compra: string | null
@@ -13587,6 +13685,15 @@ export type Database = {
       mi_usuario: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      mismo_emisor: {
+        Args: {
+          p_ruc_uno: string | null
+          p_nombre_uno: string | null
+          p_ruc_otro: string | null
+          p_nombre_otro: string | null
+        }
+        Returns: boolean
       }
       mismo_proveedor: {
         Args: {
@@ -15145,6 +15252,12 @@ export type Database = {
           p_fecha: string | null
           p_horas: number | null
           p_motivo: string | null
+        }
+        Returns: string
+      }
+      ruc_de_la_compra: {
+        Args: {
+          p_compra: string | null
         }
         Returns: string
       }

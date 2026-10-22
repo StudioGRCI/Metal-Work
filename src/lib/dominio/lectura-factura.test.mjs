@@ -9,11 +9,12 @@ import {
   numeroDeFactura,
   numeroDeOc,
   ordenesMencionadas,
+  rucDelEmisor,
 } from './lectura-factura.ts'
 
 // La representación impresa del portal de SUNAT (SEE-SOL), con datos inventados.
 const SUNAT = `FACTURA ELECTRONICA
-RUC: 20123456789
+RUC: 20123456786
 E001-482
 FERRETERIA EL PERNO S.A.C.
 Fecha de Emisión : 14/10/2026
@@ -35,7 +36,7 @@ SON: MIL CIENTO OCHENTA Y 00/100 SOLES`
 
 // La de un sistema de facturación privado: el total en la línea de abajo y dos OC.
 const PRIVADA = `ACEROS DEL NORTE E.I.R.L.
-R.U.C. 20456789012
+R.U.C. 20456789014
 FACTURA ELECTRÓNICA
 F001 - 00012345
 FECHA DE EMISIÓN: 2026-10-13
@@ -57,7 +58,8 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
   <cbc:Note languageLocaleID="1000"><![CDATA[DOS MIL TRESCIENTOS SESENTA Y 00/100 SOLES]]></cbc:Note>
   <cbc:DocumentCurrencyCode>PEN</cbc:DocumentCurrencyCode>
   <cac:OrderReference><cbc:ID>OC-5600-MW</cbc:ID></cac:OrderReference>
-  <cac:AccountingSupplierParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="6">20456789012</cbc:ID></cac:PartyIdentification></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="6">20601538840</cbc:ID></cac:PartyIdentification></cac:Party></cac:AccountingCustomerParty>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="6">20456789014</cbc:ID></cac:PartyIdentification></cac:Party></cac:AccountingSupplierParty>
   <cac:TaxTotal><cbc:TaxAmount currencyID="PEN">360.00</cbc:TaxAmount></cac:TaxTotal>
   <cac:LegalMonetaryTotal>
     <cbc:LineExtensionAmount currencyID="PEN">2000.00</cbc:LineExtensionAmount>
@@ -97,6 +99,7 @@ test('la factura de SUNAT da su importe total, no el subtotal ni el IGV', () => 
   assert.equal(l.numero, 'E001-482')
   assert.equal(l.fecha_emision, '2026-10-14')
   assert.deepEqual(l.ordenes, ['5583'])
+  assert.equal(l.ruc, '20123456786')
 })
 
 test('la factura privada da el total de la línea de abajo y no el neto de la detracción', () => {
@@ -106,6 +109,7 @@ test('la factura privada da el total de la línea de abajo y no el neto de la de
   assert.equal(l.numero, 'F001-12345')
   assert.equal(l.fecha_emision, '2026-10-13')
   assert.deepEqual(l.ordenes, ['5590', '591'])
+  assert.equal(l.ruc, '20456789014')
 })
 
 test('el XML de SUNAT da el PayableAmount, su moneda, el número y la OrderReference', () => {
@@ -116,6 +120,22 @@ test('el XML de SUNAT da el PayableAmount, su moneda, el número y la OrderRefer
   assert.equal(l.numero, 'F002-77')
   assert.equal(l.fecha_emision, '2026-10-12')
   assert.deepEqual(l.ordenes, ['5600'])
+  assert.equal(l.ruc, '20456789014', 'el del emisor, no el de Metal Work que va de cliente')
+})
+
+test('el detector avisa si el RUC anotado no es el que emitió la factura', () => {
+  const lectura = leerFacturaDeTexto(SUNAT)
+  const base = { lectura, total: 1180, moneda: 'PEN', numero: 'E001-482', marcadas: [{ numero: 'OC-5583-MW', referencia: 'R' }] }
+  assert.deepEqual(avisosDelDetector({ ...base, ruc: '20123456786' }), [])
+  assert.deepEqual(avisosDelDetector({ ...base, ruc: '20456789014' }), [{ tipo: 'RUC', leido: '20123456786', registrado: '20456789014' }])
+  assert.deepEqual(avisosDelDetector({ ...base, ruc: '2045' }), [], 'a medio escribir no avisa')
+})
+
+test('el RUC del emisor: el primero válido que no es el de Metal Work', () => {
+  assert.equal(rucDelEmisor('Señor(es): METAL WORK PERU S.A.C. RUC 20601538840\nRUC: 20123456786'), '20123456786')
+  assert.equal(rucDelEmisor('RUC 20123456789 (mal copiado)'), null)
+  assert.equal(rucDelEmisor('Cuenta 0020123456786001'), null, 'dentro de un número más largo no es un RUC')
+  assert.equal(rucDelEmisor('sin RUC'), null)
 })
 
 test('el detector avisa lo que no calza y calla lo que sí', () => {
