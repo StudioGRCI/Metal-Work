@@ -17,13 +17,14 @@ import {
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
-import { fecha, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
+import { ConfirmarPagoDeBoleta } from './pago-de-boleta'
 
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
@@ -532,8 +533,19 @@ function DatosDeFactura({
             {CONTROL_FACTURA_COMPRA[f.control.control]?.etiqueta ?? f.control.control}
           </Insignia>
         )}
+        {f.enEspera && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
         <InsigniaDelDetector avisos={avisos} />
       </p>
+      {/* La OC con boleta se dio por pagada fuera: hasta que Contabilidad lo diga, Tesorería no la paga (migración 20261022175000). */}
+      {f.enEspera && (
+        <div className="mt-1 max-w-72">
+          <p className="text-xs text-aviso">
+            La {f.enEspera.compra} va con boleta y se dio por pagada fuera del sistema: Tesorería no paga esta factura hasta que Contabilidad diga
+            si esa OC ya se pagó o si falta pagarla.
+          </p>
+          {corrige && <ConfirmarPagoDeBoleta espera={f.enEspera} factura={f.numero_documento} hoy={hoyLima()} />}
+        </div>
+      )}
       {f.control && detalleDelControl(f.control, (n) => moneda(n, m)) && (
         <p className={`mt-1 max-w-56 text-xs ${f.control.control === 'NO_CALZA' ? 'text-aviso' : 'text-texto-suave'}`}>
           {detalleDelControl(f.control, (n) => moneda(n, m))}

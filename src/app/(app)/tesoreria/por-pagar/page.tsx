@@ -99,12 +99,14 @@ export default async function PaginaPorPagar() {
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
   const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
   const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
+  // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
+  const exigibles = porPagar.filter((c) => !c.enEspera)
   const vencidas =
-    porPagar.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
+    exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
     pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length
   const resumen = resumenPorMoneda(
     [
-      ...porPagar.map((c) => ({ moneda: c.moneda, monto: Number(c.saldo) })),
+      ...exigibles.map((c) => ({ moneda: c.moneda, monto: Number(c.saldo) })),
       ...pagables.map((b) => ({ moneda: b.moneda, monto: saldoDeLaBoleta(b) })),
     ],
     ['documento', 'documentos'],
@@ -777,6 +779,7 @@ function Factura({
             </span>
             {saldo <= 0 && <Insignia tono="exito">Pagada</Insignia>}
             {saldo > 0 && Number(c.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
+            {c.enEspera && saldo > 0 && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
             {aviso && <Insignia tono={aviso.tono}>{aviso.etiqueta}</Insignia>}
             <InsigniaDelDetector avisos={avisos} />
           </p>
@@ -819,9 +822,9 @@ function Factura({
       <div className="mt-2 space-y-2">
         <ParaPagar
           documentos={documentos}
-          cuentas={saldo > 0 && !espera ? c.cuentasProveedor : []}
+          cuentas={saldo > 0 && !espera && !c.enEspera ? c.cuentasProveedor : []}
           monedaDocumento={m}
-          sinCuentas={saldo > 0 && !espera ? sinCuentas(verCuentas, ordenes.length > 0) : null}
+          sinCuentas={saldo > 0 && !espera && !c.enEspera ? sinCuentas(verCuentas, ordenes.length > 0) : null}
         />
         {paga &&
           faltaDeAnulados > 0.005 && (
@@ -852,7 +855,13 @@ function Factura({
               )}
             </p>
           )}
-        {espera ? (
+        {c.enEspera ? (
+          // La OC con boleta se dio por pagada fuera: la base no deja pagarla hasta que Contabilidad lo diga (migración 20261022175000).
+          <p className="text-xs text-aviso">
+            Espera a Contabilidad: la <span className="whitespace-nowrap">{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
+            sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
+          </p>
+        ) : espera ? (
           <p className="text-xs text-aviso">
             Espera lo pagado por la boleta de la <span className="whitespace-nowrap">{nombreDeLaOc(espera)}</span>:{' '}
             <span className="whitespace-nowrap">{moneda(Number(espera.sin_tomar ?? 0), codigoMoneda(espera.moneda))}</span> sin pasar a esta factura.{' '}
@@ -1236,6 +1245,8 @@ function CompraConBoletaFila({
                   Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span>
                   {p.operacion && ` · op. ${p.operacion}`}
                   {p.comprobante_proveedor && ` · boleta ${p.comprobante_proveedor}`}
+                  {/* Lo anotó Contabilidad al llegar la factura: se pagó fuera del sistema (migración 20261022175000). */}
+                  {p.pagado_fuera && ` · pagado fuera del sistema, según Contabilidad: «${p.pagado_fuera}»`}
                   {/* El que la canceló, y solo ese: con dos que «cancelan», uno llegó primero. */}
                   {p.id === cancela && ' · cancela la OC'}
                 </span>

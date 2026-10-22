@@ -6623,15 +6623,16 @@ export type Database = {
           cancela_sin_completar: boolean
           operacion: string | null
           comprobante_proveedor: string | null
-          archivo_ruta: string
-          archivo_mime: string
-          archivo_tamano: number
+          archivo_ruta: string | null
+          archivo_mime: string | null
+          archivo_tamano: number | null
           registrado_por: string
           anulado_por: string | null
           anulado_en: string | null
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          pagado_fuera: string | null
         }
         Insert: {
           id?: string
@@ -6643,15 +6644,16 @@ export type Database = {
           cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
-          archivo_ruta: string
-          archivo_mime: string
-          archivo_tamano: number
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
           registrado_por?: string
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          pagado_fuera?: string | null
         }
         Update: {
           id?: string
@@ -6663,15 +6665,16 @@ export type Database = {
           cancela_sin_completar?: boolean
           operacion?: string | null
           comprobante_proveedor?: string | null
-          archivo_ruta?: string
-          archivo_mime?: string
-          archivo_tamano?: number
+          archivo_ruta?: string | null
+          archivo_mime?: string | null
+          archivo_tamano?: number | null
           registrado_por?: string
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          pagado_fuera?: string | null
         }
         Relationships: [
           {
@@ -12279,6 +12282,17 @@ export type Database = {
         }
         Returns: null
       }
+      compra_pagada_fuera_de_la_factura: {
+        Args: {
+          p_factura: string | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          compra: string | null
+          total: number | null
+          moneda: string | null
+        }[]
+      }
       compra_tiene_comprobante: {
         Args: {
           p_compra: string | null
@@ -12500,6 +12514,16 @@ export type Database = {
           p_incluye_igv: boolean | null
         }
         Returns: null
+      }
+      confirmar_pago_de_la_boleta: {
+        Args: {
+          p_compra: string | null
+          p_ya_pagada: boolean | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_nota: string | null
+        }
+        Returns: string
       }
       confirmar_salida_porteria: {
         Args: {
@@ -13115,6 +13139,18 @@ export type Database = {
         Returns: {
           adquisicion_id: string | null
           parcial: boolean | null
+        }[]
+      }
+      facturas_en_espera: {
+        Args: {
+          p_facturas: string[] | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          orden_compra_id: string | null
+          compra: string | null
+          total: number | null
+          moneda: string | null
         }[]
       }
       facturas_para_descontar: {

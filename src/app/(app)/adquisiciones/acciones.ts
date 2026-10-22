@@ -193,6 +193,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const espera = await queEspera(supabase, id)
+  if (espera) return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado. ${espera}` }
   const tomo = await loQueTomoDeLaBoleta(supabase, id, v.moneda)
   // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
   // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
@@ -206,6 +208,22 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const cuantas = ordenes.length
   const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
   return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}${tomo ?? '.'}` }
+}
+
+/**
+ * Si la factura que se acaba de registrar es de una OC con boleta que se dio por
+ * pagada fuera (migración 20261022175000), qué le toca hacer a Contabilidad.
+ * `null` si no espera; si no se pudo leer, lo dice.
+ */
+async function queEspera(supabase: Awaited<ReturnType<typeof createClient>>, id: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('facturas_en_espera', { p_facturas: [id] })
+  if (error) {
+    console.error('No se pudo leer si la factura espera a Contabilidad', error)
+    return null
+  }
+  const espera = data?.[0]
+  if (!espera) return null
+  return `La ${espera.compra} va con boleta y se dio por pagada fuera del sistema: en su fila de Facturas, di si ya se pagó o si falta pagarla; hasta entonces Tesorería no la paga.`
 }
 
 /**
@@ -284,6 +302,8 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const espera = await queEspera(db, id.data)
+  if (espera) return { ok: true, mensaje: `Comprobante completado y registrado. ${espera}` }
   const tomo = await loQueTomoDeLaBoleta(db, id.data, borrador.moneda === 'USD' ? 'USD' : 'PEN')
   return { ok: true, mensaje: `Comprobante completado y registrado${tomo ?? '.'}` }
 }
@@ -372,4 +392,50 @@ export async function corregirFactura(_previo: unknown, formulario: FormData): P
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/compras/ordenes')
   return { ok: true, mensaje: 'Comprobante corregido, con su justificante.' }
+}
+
+const CONFIRMAR_PAGO = z.discriminatedUnion('pagada', [
+  z.object({
+    compra: z.guid(),
+    pagada: z.literal('si'),
+    fecha: z.iso.date('Elige el día en que se pagó.'),
+    monto: z.coerce.number().positive('Escribe lo que se pagó.').multipleOf(0.01, 'Lo pagado lleva como máximo dos decimales.'),
+    nota: z.string().trim().min(10, 'Cuenta cómo lo sabes, en al menos 10 caracteres.').max(500),
+  }),
+  z.object({
+    compra: z.guid(),
+    pagada: z.literal('no'),
+    nota: z.string().trim().min(10, 'Cuenta cómo lo sabes, en al menos 10 caracteres.').max(500),
+  }),
+])
+
+/**
+ * Contabilidad dice si la OC con boleta que se dio por pagada fuera ya se pagó o
+ * si falta pagarla, para que su factura deje de esperar (migración
+ * 20261022175000). Mismo permiso que `confirmar_pago_de_la_boleta`.
+ */
+export async function confirmarPagoDeBoleta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  await exigirPermiso('adquisiciones.registrar')
+  const entrada = CONFIRMAR_PAGO.safeParse(Object.fromEntries(formulario))
+  if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa lo que confirmas.' }
+  const v = entrada.data
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('confirmar_pago_de_la_boleta', {
+    p_compra: v.compra,
+    p_ya_pagada: v.pagada === 'si',
+    p_fecha: v.pagada === 'si' ? v.fecha : null,
+    p_monto: v.pagada === 'si' ? v.monto : null,
+    p_nota: v.nota,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  return {
+    ok: true,
+    mensaje:
+      v.pagada === 'si'
+        ? 'Anotado: la factura toma lo que se pagó fuera, y Tesorería paga lo que falte.'
+        : 'Anotado: Tesorería paga la factura en Cuentas por pagar.',
+  }
 }
