@@ -108,25 +108,37 @@ await como(ventas, `insert into public.cotizaciones_pdf (id, numero, cliente_id,
                      values ($1, $2, $3, $4, $5, $6, 'application/pdf', 1000, $7, 1000, 'PEN')`,
 [cotId, numeroCot, cliente, carroceria, `${numeroCot}.pdf`, `cot/${cotId}/${numeroCot}.pdf`, ventas])
 
-// Una orden sin cotización, sin PDF todavía, con su avance por área: ahí van
-// el PDF de la orden (Administración) y el cronograma (Diseño).
-const orden = await uno(`select id, numero from public.ordenes_trabajo
+// Una orden sin cotización y abierta: ahí van el PDF de la orden
+// (Administración) y el cronograma (Diseño). Siempre la misma de las de
+// demostración, la primera, para no ir gastando otras en cada vuelta: el PDF
+// se puede subir aunque ya tenga uno.
+const orden = await uno(`select id, numero, plan_etapas_manual from public.ordenes_trabajo
                           where cotizacion_pdf_id is null and estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR')
-                            and not exists (select 1 from public.ot_adjuntos a where a.orden_id = ordenes_trabajo.id and a.tipo = 'ORDEN')
                           order by numero limit 1`)
+if (!orden) {
+  console.error('FALLA · no hay ninguna orden abierta sin cotización en el banco: corre preparar.sh.')
+  process.exit(1)
+}
 // El cronograma es de las órdenes de antes del plan manual: toda orden nueva
-// nace manual y la base no deja cambiarlo. En el banco, y solo aquí, una de
-// demostración vuelve a ser «de antes» con los disparadores apagados.
-await base.query('begin')
-await base.query(`set local session_replication_role = replica`)
-await base.query(`update public.ordenes_trabajo set plan_etapas_manual = false where id = $1`, [orden.id])
-await base.query('commit')
+// nace manual y la base no deja cambiarlo. En el banco, y solo aquí, esa
+// orden vuelve a ser «de antes» con los disparadores apagados.
+if (orden.plan_etapas_manual) {
+  await base.query('begin')
+  await base.query(`set local session_replication_role = replica`)
+  await base.query(`update public.ordenes_trabajo set plan_etapas_manual = false where id = $1`, [orden.id])
+  await base.query('commit')
+}
 
 // Archivos.
 const PDF = join(CAPTURAS, `COTIZACION-${numeroCot}.pdf`)
 writeFileSync(PDF, pdfConTexto([`COTIZACION ${numeroCot}`, 'CLIENTE: BANCO', 'TOTAL S/ 1,180.00']))
 const PDF_OT = join(CAPTURAS, `OT-DOC-${sello}.pdf`)
 writeFileSync(PDF_OT, pdfConTexto([`ORDEN DE TRABAJO N ${sello}`, 'Reparación de tolva']))
+const pdfDeLaOrden = (tam) => {
+  const ruta = join(CAPTURAS, `OT-DOC-${sello}-${tam}.pdf`)
+  writeFileSync(ruta, pdfConTexto([`ORDEN DE TRABAJO N ${sello}`, `Subida a ${tam}`]))
+  return ruta
+}
 const TXT = join(CAPTURAS, `NOTAS-DE-LA-COTIZACION-${sello}.txt`)
 writeFileSync(TXT, 'Esto es texto, no una cotización.\n')
 const WORD_COMO_PDF = { name: `OT-FALSA-${sello}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('PK\u0003\u0004 un Word con otro nombre') }
@@ -164,6 +176,15 @@ async function ir(pagina, ruta) {
 /** Lo que dice la caja del campo (el padre del `<input>`). */
 const caja = (input) => input.locator('xpath=..')
 const dice = async (input) => limpio(await caja(input).innerText())
+/** Espera a que la caja diga algo. Con `innerText`: lo de `getByText` incluye el «toca» escondido. */
+const esperarQueDiga = async (input, patron, ms = 15000) => {
+  const hasta = Date.now() + ms
+  while (Date.now() < hasta) {
+    const texto = await dice(input).catch(() => '')
+    if (typeof patron === 'string' ? texto.includes(patron) : patron.test(texto)) return
+    await new Promise((r) => setTimeout(r, 200))
+  }
+}
 const invalido = async (input) => (await input.getAttribute('aria-invalid')) === 'true'
 const desborde = (pagina) => pagina.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 /** Que el control del navegador no se vea: transparente y tapando la caja. */
@@ -172,6 +193,9 @@ const oculto = (input) => input.evaluate((e) => getComputedStyle(e).opacity === 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   const movil = viewport.width < 500
   const tam = movil ? '390' : '1440'
+  // El campo dice «toca» en el teléfono y «haz clic» con ratón.
+  const accion = movil ? 'toca' : 'haz clic'
+  const listo = new RegExp(`${accion} para cambiarlo`)
   console.log(movil ? '\nTeléfono, 390 × 844' : '\nMonitor, 1440 × 900')
 
   // ------------------------------------------------ 1 y 2. Ventas
@@ -186,14 +210,18 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     comprobar((await dice(campo)).includes('Elegir el PDF o el Word') && (await dice(campo)).includes('PDF o Word, hasta 20 MB'),
       `[Ventas ${tam}] «Subir cotización» dice qué pide y el tope: «${await dice(campo)}»`)
     await campo.setInputFiles(TXT)
-    await v.getByText('No es un PDF ni un Word: toca para elegir otro').waitFor({ timeout: 5000 }).catch(() => {})
+    await esperarQueDiga(campo, `No es un PDF ni un Word: ${accion} para elegir otro`, 5000)
     comprobar((await dice(campo)).includes(`NOTAS-DE-LA-COTIZACION-${sello}.txt`) && (await dice(campo)).includes('No es un PDF ni un Word'),
       `[Ventas ${tam}] el .txt se ve entero y dice por qué no sirve`)
     comprobar(await invalido(campo), `[Ventas ${tam}] y queda marcado`)
     comprobar(!limpio(await v.innerText()).includes('Leído del archivo'), `[Ventas ${tam}] y no se intenta leer`)
+    await campo.setInputFiles({ name: `VACIA-${sello}.pdf`, mimeType: 'application/pdf', buffer: Buffer.alloc(0) })
+    await esperarQueDiga(campo, 'Está vacío', 5000)
+    comprobar((await dice(campo)).includes(`Está vacío: ${accion} para elegir otro`) && (await invalido(campo)),
+      `[Ventas ${tam}] un PDF de 0 bytes dice que está vacío: «${await dice(campo)}»`)
     await campo.setInputFiles(PDF)
-    await v.getByText(/toca para cambiarlo/).waitFor({ timeout: 60000 }).catch(() => {})
-    comprobar((await dice(campo)).includes(`COTIZACION-${numeroCot}.pdf`) && /\d+(\.\d)? (KB|MB) · toca para cambiarlo/.test(await dice(campo)),
+    await esperarQueDiga(campo, listo, 60000)
+    comprobar((await dice(campo)).includes(`COTIZACION-${numeroCot}.pdf`) && new RegExp(`\\d+(\\.\\d)? (KB|MB) · ${accion} para cambiarlo`).test(await dice(campo)),
       `[Ventas ${tam}] el PDF se lee y queda con su peso: «${await dice(campo)}»`)
     comprobar(!(await invalido(campo)), `[Ventas ${tam}] y ya no queda marcado`)
     comprobar((await v.locator('#cot-monto').inputValue()) === '1180.00', `[Ventas ${tam}] y lo leyó: el total sale del PDF`)
@@ -213,8 +241,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await corregido.setInputFiles(TXT)
     comprobar((await dice(corregido)).includes('No es un PDF ni un Word') && (await invalido(corregido)), `[Ventas ${tam}] el .txt corregido queda en rojo con el motivo`)
     await corregido.setInputFiles(PDF)
-    await c.getByText(/toca para cambiarlo/).waitFor({ timeout: 60000 }).catch(() => {})
-    comprobar(/toca para cambiarlo/.test(await dice(corregido)) && !(await invalido(corregido)), `[Ventas ${tam}] el PDF corregido se lee y queda en verde`)
+    await esperarQueDiga(corregido, listo, 60000)
+    comprobar(listo.test(await dice(corregido)) && !(await invalido(corregido)), `[Ventas ${tam}] el PDF corregido se lee y queda en verde`)
     await pagina.screenshot({ path: `${CAPTURAS}/doc-ventas-corregir-${tam}.png` })
     await contexto.close()
   }
@@ -231,13 +259,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     comprobar((await dice(campo)).includes('Elegir el PDF de la OT') && (await dice(campo)).includes('Solo PDF, hasta 20 MB'),
       `[Gerencia ${tam}] «Aprobar» dice qué pide y el tope: «${await dice(campo)}»`)
     await campo.setInputFiles(WORD_COMO_PDF)
-    await v.getByText('Está dañado o no es un PDF de verdad').waitFor({ timeout: 5000 }).catch(() => {})
+    await esperarQueDiga(campo, 'Está dañado o no es un PDF de verdad', 5000)
     comprobar((await dice(campo)).includes(`OT-FALSA-${sello}.pdf`) && (await dice(campo)).includes('Está dañado o no es un PDF de verdad'),
       `[Gerencia ${tam}] un Word con nombre «.pdf» se ve y dice por qué no sirve`)
     comprobar(await invalido(campo), `[Gerencia ${tam}] y queda marcado`)
     comprobar(limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Gerencia ${tam}] y no llega a la vista previa`)
     await campo.setInputFiles(PDF_OT)
-    await v.getByText(/toca para cambiarlo/).waitFor({ timeout: 60000 }).catch(() => {})
+    await esperarQueDiga(campo, listo, 60000)
     comprobar((await dice(campo)).includes(`OT-DOC-${sello}.pdf`) && !(await invalido(campo)), `[Gerencia ${tam}] el PDF de la OT queda en verde`)
     comprobar(!limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Gerencia ${tam}] y se ve en la vista previa`)
     comprobar((await desborde(pagina)) <= 0, `[Gerencia ${tam}] sin desborde`)
@@ -250,29 +278,47 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const { pagina, contexto } = await entrar('administracion.local@metalwork.test', viewport)
     await ir(pagina, `/ordenes/${orden.id}`)
     const campo = pagina.locator(`#subir-pdf-${orden.id}`)
-    await campo.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {})
-    if (!movil) {
-      comprobar((await dice(campo)).includes('Subir el PDF de la orden') && (await dice(campo)).includes('Solo PDF, hasta 20 MB'),
-        `[Administración] la orden ${orden.numero} pide su PDF en el mismo campo: «${await dice(campo)}»`)
-      const antes = (await uno(`select count(*)::int as n from storage.objects where bucket_id = 'adjuntos-ot' and name like $1`, [`ot/${orden.id}/%`])).n
-      await campo.setInputFiles(WORD_COMO_PDF)
-      await pagina.getByText('Está dañado o no es un PDF de verdad').waitFor({ timeout: 5000 }).catch(() => {})
-      await pagina.waitForTimeout(800)
-      comprobar((await dice(campo)).includes('Está dañado o no es un PDF de verdad') && (await invalido(campo)),
-        '[Administración] el falso queda en rojo con el motivo')
-      const despues = (await uno(`select count(*)::int as n from storage.objects where bucket_id = 'adjuntos-ot' and name like $1`, [`ot/${orden.id}/%`])).n
-      comprobar(despues === antes, '[Administración] y no se sube')
-      await campo.setInputFiles(PDF_OT)
-      await pagina.locator('ul').getByText(`OT-DOC-${sello}.pdf`).waitFor({ timeout: 30000 }).catch(() => {})
-      const fila = await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and tipo = 'ORDEN' and nombre_archivo = $2`, [orden.id, `OT-DOC-${sello}.pdf`])
-      comprobar(fila.n === 1, '[Administración] el bueno se sube apenas se elige y queda en la orden')
-      comprobar((await dice(campo)).includes('Subir el PDF de la orden') && !(await invalido(campo)), '[Administración] y el campo vuelve a pedir, limpio')
-      comprobar(limpio(await pagina.locator('main').innerText()).includes('Para cambiarlo, sube el correcto y después quita este.'), '[Administración] y dice cómo se cambia')
-    } else {
-      comprobar((await dice(campo)).includes('Subir el PDF de la orden'), '[Administración 390] el campo del PDF de la orden se ve en el teléfono')
+    const cambiar = pagina.getByRole('button', { name: 'Cambiar el PDF' })
+    const yaTiene = async () =>
+      (await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and tipo = 'ORDEN'`, [orden.id])).n > 0
+    // Con el PDF ya puesto no hay un campo vacío que parezca decir que falta:
+    // «Cambiar el PDF» lo abre y «No cambiarlo» lo cierra.
+    const tenia = await yaTiene()
+    if (tenia) {
+      await cambiar.waitFor({ timeout: 30000 }).catch(() => {})
+      comprobar((await campo.count()) === 0 && (await cambiar.count()) === 1,
+        `[Administración ${tam}] la orden ${orden.numero} ya tiene su PDF: no pide otro, ofrece «Cambiar el PDF»`)
+      await cambiar.click()
+      await pagina.getByRole('button', { name: 'No cambiarlo' }).click()
+      comprobar((await campo.count()) === 0, `[Administración ${tam}] «No cambiarlo» lo vuelve a cerrar`)
+      await cambiar.click()
     }
+    await campo.waitFor({ state: 'attached', timeout: 30000 }).catch(() => {})
+    const pide = tenia ? 'Subir el PDF corregido' : 'Subir el PDF de la orden'
+    comprobar((await dice(campo)).includes(pide) && (await dice(campo)).includes('Solo PDF, hasta 20 MB'),
+      `[Administración ${tam}] la orden ${orden.numero} pide su PDF en el mismo campo: «${await dice(campo)}»`)
+    const cuantos = async () => ({
+      archivos: (await uno(`select count(*)::int as n from storage.objects where bucket_id = 'adjuntos-ot' and name like $1`, [`ot/${orden.id}/%`])).n,
+      filas: (await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1`, [orden.id])).n,
+    })
+    const antes = await cuantos()
+    await campo.setInputFiles(WORD_COMO_PDF)
+    await esperarQueDiga(campo, 'Está dañado o no es un PDF de verdad', 5000)
+    await pagina.waitForTimeout(800)
+    comprobar((await dice(campo)).includes('Está dañado o no es un PDF de verdad') && (await invalido(campo)),
+      `[Administración ${tam}] el falso queda en rojo con el motivo`)
+    const despues = await cuantos()
+    comprobar(despues.archivos === antes.archivos && despues.filas === antes.filas, `[Administración ${tam}] y no se sube: ni archivo en Storage ni fila`)
+    const bueno = pdfDeLaOrden(tam)
+    const nombre = `OT-DOC-${sello}-${tam}.pdf`
+    await campo.setInputFiles(bueno)
+    await pagina.locator('ul').getByText(nombre).waitFor({ timeout: 30000 }).catch(() => {})
+    const fila = await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and tipo = 'ORDEN' and nombre_archivo = $2`, [orden.id, nombre])
+    comprobar(fila.n === 1, `[Administración ${tam}] el bueno se sube apenas se elige y queda en la orden`)
+    await cambiar.waitFor({ timeout: 15000 }).catch(() => {})
+    comprobar((await campo.count()) === 0 && (await cambiar.count()) === 1, `[Administración ${tam}] y el campo se cierra: queda «Cambiar el PDF»`)
     comprobar((await desborde(pagina)) <= 0, `[Administración ${tam}] sin desborde`)
-    await campo.evaluate((e) => e.scrollIntoView({ block: 'center' }))
+    await pagina.locator('ul').getByText(nombre).evaluate((e) => e.scrollIntoView({ block: 'center' }))
     await pagina.screenshot({ path: `${CAPTURAS}/doc-administracion-pdf-orden-${tam}.png` })
     await contexto.close()
   }
@@ -294,16 +340,41 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       comprobar((await dice(campo)).includes('Es un .xls: guárdalo como «Libro de Excel» (.xlsx)') && (await invalido(campo)),
         `[Diseño ${tam}] el .xls dice cómo arreglarlo`)
       await campo.setInputFiles(XLSX_DANADO)
-      await v.getByText(/No se pudo leer/).waitFor({ timeout: 15000 }).catch(() => {})
+      await esperarQueDiga(campo, 'No se pudo leer')
       comprobar((await dice(campo)).includes('No se pudo leer') && (await invalido(campo)), `[Diseño ${tam}] el .xlsx dañado dice que no se pudo leer`)
       await campo.setInputFiles(PLANTILLA)
-      await v.getByText(/toca para cambiarlo/).waitFor({ timeout: 15000 }).catch(() => {})
+      await esperarQueDiga(campo, listo)
       const texto = limpio(await v.innerText())
-      comprobar((await dice(campo)).includes('cronograma-actividades.xlsx') && /toca para cambiarlo/.test(await dice(campo)),
+      comprobar((await dice(campo)).includes('cronograma-actividades.xlsx') && listo.test(await dice(campo)),
         `[Diseño ${tam}] la plantilla se lee: «${await dice(campo)}»`)
       comprobar(/\d+ actividad/.test(texto) || texto.includes('Falta'), `[Diseño ${tam}] y muestra lo que se va a cargar`)
       comprobar((await desborde(pagina)) <= 0, `[Diseño ${tam}] sin desborde`)
       await pagina.screenshot({ path: `${CAPTURAS}/doc-diseno-cronograma-${tam}.png` })
+
+      // Diseño carga uno y guarda su Excel en la orden (migración 20261021120000):
+      // antes el cronograma entraba y el Excel no, con «revisa la señal».
+      const libroCronograma = new ExcelJS.Workbook()
+      const hoja = libroCronograma.addWorksheet('Cronograma')
+      hoja.addRow(['Área', 'Actividad', 'Referencia', 'Peso (%)', 'Inicio', 'Fin'])
+      hoja.addRow(['Acabados', `Banco ${sello} ${tam}`, null, 0, null, null])
+      const propio = join(CAPTURAS, `cronograma-${sello}-${tam}.xlsx`)
+      await libroCronograma.xlsx.writeFile(propio)
+      const guardadosAntes = (await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and tipo = 'CRONOGRAMA'`, [orden.id])).n
+      await campo.setInputFiles(propio)
+      const cargar = v.getByRole('button', { name: 'Cargar 1 actividad' })
+      await cargar.waitFor({ timeout: 15000 }).catch(() => {})
+      comprobar(await v.getByLabel('Guardar también el Excel en la orden').isChecked(), `[Diseño ${tam}] «Guardar también el Excel» viene marcado`)
+      await cargar.click()
+      await v.waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {})
+      await pagina.waitForTimeout(1500)
+      const avisoCarga = limpio(await pagina.locator('main').innerText())
+      const guardado = await uno(
+        `select count(*)::int as n from public.ot_adjuntos a join public.usuarios u on u.id = a.subido_por
+          where a.orden_id = $1 and a.tipo = 'CRONOGRAMA' and u.correo = 'diseno.local@metalwork.test'`, [orden.id])
+      const totalDespues = (await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and tipo = 'CRONOGRAMA'`, [orden.id])).n
+      comprobar(totalDespues === guardadosAntes + 1 && guardado.n >= 1 && !avisoCarga.includes('no quedó guardado'),
+        `[Diseño ${tam}] carga el cronograma y su Excel queda guardado en la orden${avisoCarga.includes('no quedó guardado') ? `: «${avisoCarga.match(/El Excel no quedó[^.]*\.[^.]*\./)?.[0]}»` : ''}`)
+      await pagina.screenshot({ path: `${CAPTURAS}/doc-diseno-cronograma-guardado-${tam}.png` })
     }
     await contexto.close()
   }
@@ -327,8 +398,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     })
     comprobar(Boolean(codigo && unidad), `[Almacén ${tam}] la planilla trae un material con saldo (${codigo}) y una unidad (${unidad})`)
     const salidas = libro.getWorksheet('Salidas')
-    const hoy = new Date()
-    salidas.getCell(5, 1).value = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()))
+    // El día de Lima, no el del contenedor (UTC): de 19:00 a 24:00 de Lima ya es mañana y la fila sale con error.
+    const [anio, mes, dia] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }).split('-').map(Number)
+    salidas.getCell(5, 1).value = new Date(Date.UTC(anio, mes - 1, dia))
     salidas.getCell(5, 3).value = codigo
     salidas.getCell(5, 6).value = 1
     salidas.getCell(5, 7).value = `Banco ${sello}`
@@ -342,7 +414,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const v = pagina.getByRole('dialog')
     await v.waitFor()
     await v.locator('#planilla-archivo').setInputFiles(llena)
-    const foto = v.locator('input[aria-label="Foto de la salida de la fila 5"]')
+    const foto = v.locator('input[aria-label$="de la salida de la fila 5"]')
     await foto.waitFor({ state: 'attached', timeout: 60000 }).catch(() => {})
     comprobar((await foto.count()) === 1, `[Almacén ${tam}] la salida pide su foto`)
     if (await foto.count()) {

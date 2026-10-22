@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from 'reac
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo, avisoDePdf } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -19,6 +19,8 @@ import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 
 import { crearOrden } from '../acciones'
+
+const ACEPTA_PDF = 'application/pdf,.pdf'
 
 type Catalogos = {
   clientes: { id: string; razon_social: string; tipo_documento?: string; numero_documento: string }[]
@@ -135,7 +137,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     if (!elegido) return
     // El que no sirve se queda a la vista, en rojo y con el motivo: así se sabe
     // cuál se eligió y por qué hay que cambiarlo.
-    const aviso = await avisoDePdf(elegido, MAXIMO_ADJUNTO_MB)
+    const aviso = await revisarArchivo(elegido, ACEPTA_PDF, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoPdf(aviso)
   }
@@ -449,15 +451,12 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
             <ElegirArchivo
               ref={campoPdf}
               id="pdf_orden"
-              accept="application/pdf,.pdf"
+              accept={ACEPTA_PDF}
               texto="Elegir el PDF de la orden"
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={archivo}
               aviso={avisoPdf}
-              onChange={(e) => {
-                void elegirArchivo(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
           </Campo>
         </TarjetaCuerpo>

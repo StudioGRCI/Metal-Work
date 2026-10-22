@@ -67,6 +67,8 @@ function lineasDeInsumos(insumos: InsumoParaCompra[], delCatalogo: Set<string>):
   return [...porMaterial.values()]
 }
 
+const ACEPTA_PDF = 'application/pdf,.pdf'
+
 async function esPdf(archivo: File) {
   return archivo.size > 0 && archivo.size <= 20 * 1024 * 1024 && (await archivo.slice(0, 5).text()) === '%PDF-'
 }
@@ -244,7 +246,7 @@ function FormularioCompraDirecta({
   )
   const unidadDe = useMemo(() => new Map(materiales.map((m) => [m.id, m.unidad])), [materiales])
   const total = lineas.reduce((suma, l) => suma + (Number(l.cantidad) || 0) * (Number(l.precio) || 0), 0)
-  const detector = useDetectorDeFactura()
+  const detector = useDetectorDeFactura(ACEPTA_PDF, 20)
   const datosFactura = useDatosDeFactura()
   // Con la factura elegida, su número y su fecha son obligatorios.
   const [hayFactura, setHayFactura] = useState(false)
@@ -508,13 +510,16 @@ function FormularioCompraDirecta({
           <ElegirArchivo
             id="ocd-factura"
             name="factura"
-            accept="application/pdf,.pdf"
+            accept={ACEPTA_PDF}
             hastaMb={20}
             disabled={enviando}
+            aviso={detector.aviso}
+            estado={conFactura ? detector.leyendo : null}
             onChange={(e) => {
               const archivo = e.target.files?.[0]
               setHayFactura(Boolean(archivo))
-              void detector.leer(conFactura ? archivo : undefined).then(datosFactura.completar)
+              // El comprobante sin factura también se revisa, pero no se lee.
+              void detector.leer(archivo, !conFactura).then(datosFactura.completar)
             }}
           />
         </Campo>
@@ -526,7 +531,6 @@ function FormularioCompraDirecta({
         {conFactura && (
           <AvisoFacturaDeLaOrden
             lectura={detector.lectura}
-            leyendo={detector.leyendo}
             total={total > 0 ? Math.round((total + igvCompra(total)) * 100) / 100 : null}
             moneda={divisa}
           />

@@ -67,15 +67,49 @@ export function avisoDeArchivo(archivo: File, accept: string, hastaMb?: number):
   return null
 }
 
+/** Que los bytes del principio digan lo mismo que el nombre. */
+const FIRMAS: Record<string, { que: string; es: (b: Uint8Array) => boolean }> = {
+  // «%PDF-» al principio, como lo exigen el servidor y la lectura de facturas:
+  // uno que el campo pusiera en verde no puede rechazarse después al enviar.
+  '.pdf': { que: 'un PDF', es: (b) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2d },
+  // .xlsx y .docx son un ZIP; el .doc de antes, un archivo compuesto de Office.
+  '.xlsx': { que: 'un Excel', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
+  '.docx': { que: 'un Word', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
+  '.doc': { que: 'un Word', es: (b) => b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0 },
+}
+
 /**
- * Lo mismo para un PDF, y además que lo sea por dentro: un Word o una foto con
- * el nombre cambiado a «.pdf» pasa por la extensión y después no lo abre nadie.
+ * Lo mismo, y además que lo sea por dentro: un Word o una foto con el nombre
+ * cambiado a «.pdf» pasa por la extensión y después no lo abre nadie. Para
+ * mirarlo antes de leerlo o subirlo.
  */
-export async function avisoDePdf(archivo: File, hastaMb?: number): Promise<string | null> {
-  const aviso = avisoDeArchivo(archivo, 'application/pdf,.pdf', hastaMb)
+export async function revisarArchivo(archivo: File, accept: string, hastaMb?: number): Promise<string | null> {
+  const aviso = avisoDeArchivo(archivo, accept, hastaMb)
   if (aviso) return aviso
-  const cabecera = new TextDecoder().decode(await archivo.slice(0, 5).arrayBuffer())
-  return cabecera === '%PDF-' ? null : 'Está dañado o no es un PDF de verdad: toca para elegir otro'
+  const extension = /\.[a-z0-9]+$/.exec(archivo.name.toLowerCase())?.[0] ?? ''
+  const firma = FIRMAS[extension] ?? (archivo.type === 'application/pdf' ? FIRMAS['.pdf'] : undefined)
+  if (!firma) return null
+  try {
+    const bytes = new Uint8Array(await archivo.slice(0, 8).arrayBuffer())
+    return firma.es(bytes) ? null : `Está dañado o no es ${firma.que} de verdad: toca para elegir otro`
+  } catch {
+    // Se movió o se cambió en la computadora después de elegirlo.
+    return 'No se pudo abrir: elígelo otra vez'
+  }
+}
+
+/** «toca para…» con el dedo, «haz clic para…» con ratón: por el puntero, como «Tomar la foto». */
+function ConPuntero({ texto }: { texto: string }) {
+  const i = texto.indexOf('toca para')
+  if (i < 0) return texto
+  return (
+    <>
+      {texto.slice(0, i)}
+      <span className="pointer-fine:hidden">toca</span>
+      <span className="hidden pointer-fine:inline">haz clic</span>
+      {texto.slice(i + 'toca'.length)}
+    </>
+  )
 }
 
 /** «Elegir el Excel de la planilla» → «Falta el Excel de la planilla.» */
@@ -121,7 +155,8 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  * bloquea: el que decide es el servidor. Es el mismo en todo lugar que pide
  * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
  * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
- * 2026-10-21).
+ * 2026-10-21). Con `archivo`, el campo se vacía solo al abrirse: la pantalla
+ * no tiene que vaciarlo.
  */
 export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoProps>(function ElegirArchivo(
   {
@@ -136,6 +171,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     disabled,
     required,
     onChange,
+    onClick,
     onInvalid,
     'aria-describedby': descrito,
     'aria-invalid': invalidoDesdeAfuera,
@@ -189,6 +225,12 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     (archivo ? `${tamanoArchivo(archivo.size)} · toca para cambiarlo` : [tipo.formato, limite].filter(Boolean).join(', '))
   const invalido = invalidoDesdeAfuera === true || invalidoDesdeAfuera === 'true'
   const mal = Boolean(aviso) || invalido
+  // Mientras se lee o se sube todavía no se sabe si sirve: ni verde ni apagado.
+  const ocupado = Boolean(estado) && !mal
+  // Apagado mientras se lee o se sube, pero sin soltar el foco: un campo
+  // `disabled` lo pierde, cae al <body> y Escape ya no cierra la ventana. Queda
+  // enfocable y no abre nada ni acepta un archivo soltado encima.
+  const quieto = Boolean(disabled) && ocupado
   const principal = texto ?? tipo.que
 
   return (
@@ -198,24 +240,27 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         archivo
           ? mal
             ? 'border-solid border-peligro bg-peligro-suave/40'
-            : 'border-solid border-exito'
+            : ocupado
+              ? 'border-solid border-acento'
+              : 'border-solid border-exito'
           : mal
             ? 'border-dashed border-peligro'
             : 'border-dashed border-borde-fuerte',
         // El campo de verdad es transparente: su anillo de foco (globals.css)
         // no se vería, así que lo lleva la caja, con el mismo grosor y color.
         'has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco',
-        // Con aviso, el fondo rojo se queda aunque pase el ratón.
-        disabled ? 'opacity-60' : !mal && 'hover:bg-superficie-2',
+        // Con aviso, el fondo rojo se queda aunque pase el ratón. Ocupado no se
+        // apaga: «Subiendo…» se tiene que leer.
+        disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : !mal && 'hover:bg-superficie-2',
         className,
       )}
     >
       <tipo.Icono
         aria-hidden
-        className={cn('size-5 shrink-0', mal ? 'text-peligro' : archivo ? 'text-exito' : 'text-texto-tenue')}
+        className={cn('size-5 shrink-0', mal ? 'text-peligro' : ocupado ? 'text-acento' : archivo ? 'text-exito' : 'text-texto-tenue')}
       />
       <span id={idEstado} className="min-w-0 flex-1">
-        <span className={cn('block text-sm font-medium break-all', archivo ? 'text-texto' : 'text-acento')}>
+        <span className={cn('block text-sm font-medium wrap-anywhere', archivo ? 'text-texto' : 'text-acento')}>
           {archivo ? (
             archivo.name
           ) : texto || !tipo.queConRaton ? (
@@ -232,7 +277,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         {/* Se anuncia al elegir: el aviso de «no es un Excel» llega también a quien no ve la caja. */}
         {pie && (
           <span aria-live="polite" className={cn('block text-xs', aviso ? 'text-peligro' : 'text-texto-tenue')}>
-            {pie}
+            <ConPuntero texto={pie} />
           </span>
         )}
       </span>
@@ -241,14 +286,33 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         type="file"
         accept={accept || undefined}
         capture={capture}
-        disabled={disabled}
+        disabled={disabled && !quieto}
+        aria-disabled={quieto || undefined}
         required={required}
         aria-describedby={descrito ? `${descrito} ${idEstado}` : idEstado}
         aria-invalid={mal || undefined}
-        className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed file:cursor-pointer"
+        aria-busy={ocupado || undefined}
+        className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed file:cursor-pointer aria-disabled:cursor-progress"
         onInvalid={(e) => {
           if (e.currentTarget.validity.valueMissing) e.currentTarget.setCustomValidity(faltaDe(principal))
           onInvalid?.(e)
+        }}
+        onClick={(e) => {
+          if (quieto) {
+            e.preventDefault()
+            return
+          }
+          // Cuando la pantalla guarda el archivo, el campo se vacía al abrirse y
+          // no al elegir: así sigue diciendo qué tiene elegido (el lector de
+          // pantalla leía «No file chosen») y elegir el mismo otra vez avisa.
+          if (archivoDeLaPantalla !== undefined) e.currentTarget.value = ''
+          onClick?.(e)
+        }}
+        onDragOver={(e) => {
+          if (quieto) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (quieto) e.preventDefault()
         }}
         onChange={(e) => {
           e.currentTarget.setCustomValidity('')

@@ -4,6 +4,7 @@ import { Camera, Images, RotateCcw, X } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import { comprimirFoto } from '@/lib/comprimir-foto'
+import { tamanoArchivo } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -84,6 +85,13 @@ function explicarFalla(mensaje: string) {
  * se tomaron durante el día, que es como trabaja el supervisor —fotografía a
  * la mañana y reporta a la tarde—. Con `capture` puesto en una sola entrada el
  * teléfono no ofrecía la galería y las fotos del día no se podían adjuntar.
+ * Con ratón no hay cámara (las dos abrían el mismo explorador): queda una sola,
+ * «Elegir fotos», decidido por el puntero como en `ElegirArchivo`.
+ *
+ * No es `ElegirArchivo` porque es otra cosa: varias fotos a la vez, cada una
+ * con su miniatura, su subida y su «Reintentar», y en HEIC si viene del iPhone.
+ * Lo que dice sí es lo mismo: formatos y tope antes de elegir, y el motivo con
+ * las mismas palabras cuando una no sirve.
  *
  * La foto viaja del navegador a Storage sin pasar por el servidor de la
  * aplicación; acá solo se guarda su ruta, y la acción la escribe cuando se
@@ -149,13 +157,17 @@ export function SelectorFotos({
 
     const disponibles = Math.max(0, (maximo ?? Number.POSITIVE_INFINITY) - fotos.length)
     for (const archivo of Array.from(lista).slice(0, disponibles)) {
-      if (!TIPOS.includes(archivo.type)) {
-        alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Solo fotos ${TIPOS_TEXTO}.` }])
-        continue
-      }
+      // Con las mismas palabras que el campo de los documentos (ElegirArchivo).
       const tope = comprimir ? MAXIMO_ORIGINAL_MB : maximoMb
-      if (archivo.size > tope * 1024 * 1024) {
-        alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: `Pesa más de ${tope} MB.` }])
+      const noSirve = !TIPOS.includes(archivo.type)
+        ? `No es una foto ${TIPOS_TEXTO}: elige otra.`
+        : archivo.size === 0
+          ? 'Está vacía: elige otra.'
+          : archivo.size > tope * 1024 * 1024
+            ? `Pesa ${tamanoArchivo(archivo.size)} y el tope es ${tope} MB: elige otra.`
+            : null
+      if (noSirve) {
+        alCambiar((f) => [...f, { archivo, vistaPrevia: '', subiendo: false, error: noSirve }])
         continue
       }
 
@@ -262,7 +274,7 @@ export function SelectorFotos({
           </div>
         ))}
 
-        {(maximo === undefined || fotos.length < maximo) && <label className={MOSAICO}>
+        {(maximo === undefined || fotos.length < maximo) && <label className={cn(MOSAICO, 'pointer-fine:hidden')}>
           <Camera aria-hidden className="size-5" />
           <span className="text-[11px]">Tomar foto</span>
           <input
@@ -279,7 +291,8 @@ export function SelectorFotos({
 
         {(maximo === undefined || fotos.length < maximo) && <label className={MOSAICO}>
           <Images aria-hidden className="size-5" />
-          <span className="text-[11px]">De la galería</span>
+          <span className="text-[11px] pointer-fine:hidden">De la galería</span>
+          <span className="hidden text-[11px] pointer-fine:inline">{maximo === 1 ? 'Elegir foto' : 'Elegir fotos'}</span>
           <input
             type="file"
             accept="image/*"
@@ -305,7 +318,7 @@ export function SelectorFotos({
 
       <p className="mt-1 text-[11px] text-texto-tenue">
         {comprimir
-          ? `${maximo ? `Hasta ${maximo} ${maximo === 1 ? 'foto' : 'fotos'}` : 'Varias a la vez desde la galería'}, en ${TIPOS_TEXTO}. Se achican en el teléfono antes de subir.`
+          ? `${maximo ? `Hasta ${maximo} ${maximo === 1 ? 'foto' : 'fotos'}` : 'Varias a la vez desde la galería'}, en ${TIPOS_TEXTO}, de hasta ${MAXIMO_ORIGINAL_MB} MB cada una. Se achican en el teléfono antes de subir.`
           : `${maximo === 1 ? 'Una foto' : 'Varias a la vez desde la galería'}. Hasta ${maximoMb} MB por foto, en ${TIPOS_TEXTO}.`}
       </p>
     </div>

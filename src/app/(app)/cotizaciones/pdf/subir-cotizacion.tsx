@@ -8,7 +8,7 @@ import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
@@ -61,6 +61,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  const campoArchivo = useRef<HTMLInputElement>(null)
 
   const [numero, setNumero] = useState('')
 
@@ -130,10 +131,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
-    setArchivo(elegido)
     setError(null)
     setLectura(null)
-    const noSirve = avisoDeArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    setArchivo(elegido)
     setAvisoArchivo(noSirve)
     if (noSirve) return
 
@@ -173,6 +174,13 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (enCurso.current) return
+    // Lo que falta o no sirve del archivo lo dice su campo, y el cursor va ahí:
+    // uno vacío o un Word con otro nombre no se sube aunque lo demás esté lleno.
+    if (!archivo || avisoArchivo) {
+      if (!archivo) setAvisoArchivo('Falta la cotización: elige el PDF o el Word')
+      campoArchivo.current?.focus()
+      return
+    }
 
     const falta = validar()
     const tipo = archivo ? tipoDeCotizacion(archivo) : null
@@ -298,19 +306,18 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
-          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+          {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
+          <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
           <Campo etiqueta="La cotización" htmlFor="cot-archivo" requerido>
             <ElegirArchivo
+              ref={campoArchivo}
               id="cot-archivo"
               accept={ACEPTA_COTIZACION}
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={archivo}
               aviso={avisoArchivo}
               estado={leyendo ? progreso || 'Leyendo el archivo…' : null}
-              onChange={(e) => {
-                void elegirArchivo(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
           </Campo>
 

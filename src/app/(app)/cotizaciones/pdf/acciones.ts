@@ -42,7 +42,8 @@ const esquemaSubir = z.object({
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
-  tamano_bytes: z.coerce.number().int().min(0).optional(),
+  // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
+  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
 })
 
 export async function registrarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -150,7 +151,8 @@ const esquemaCorregir = z.object({
   monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
-  tamano_bytes: z.coerce.number().int().min(0).optional(),
+  // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
+  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
 })
 
 /** Una nueva versión conserva el número y vuelve a Gerencia. */

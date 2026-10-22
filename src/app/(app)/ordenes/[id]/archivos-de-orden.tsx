@@ -1,11 +1,11 @@
 'use client'
 
-import { FileSpreadsheet, FileText, Trash2 } from 'lucide-react'
+import { FileSpreadsheet, FileText, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { ElegirArchivo, avisoDePdf } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { useEnvio } from '@/lib/envio'
@@ -65,14 +65,20 @@ export function ArchivosDeOrden({
   // El PDF está pero este puesto no lo abre: se dice que está y no se ofrece subir otro.
   const pdfOculto = tienePdf && !adjuntos.some((a) => a.tipo === 'ORDEN')
   const sube = puedeSubir && !pdfOculto
+  // Con el PDF ya puesto, el campo vacío parecía decir que faltaba: se abre con
+  // «Cambiar el PDF», en la cabecera, como lo demás que ya existe y se corrige.
+  const tieneOrden = adjuntos.some((a) => a.tipo === 'ORDEN')
+  const [cambiando, setCambiando] = useState(false)
+  const pide = sube && (!tieneOrden || cambiando || Boolean(elegido))
+  const textoCampo = tieneOrden ? 'Subir el PDF corregido' : 'Subir el PDF de la orden'
 
   async function subir(archivo: File | undefined) {
     if (!archivo || enCurso.current) return
-    setElegido(archivo)
     setError(null)
     setAviso(null)
     // Se sube apenas se elige: el que no es un PDF de verdad o pasa del tope no sale.
-    const noSirve = await avisoDePdf(archivo, MAXIMO_ADJUNTO_MB)
+    const noSirve = await revisarArchivo(archivo, 'application/pdf,.pdf', MAXIMO_ADJUNTO_MB)
+    setElegido(archivo)
     setAvisoSubida(noSirve)
     if (noSirve) return
     enCurso.current = true
@@ -84,6 +90,7 @@ export function ArchivosDeOrden({
         return
       }
       setElegido(null)
+      setCambiando(false)
       setAviso(r.mensaje ?? 'PDF guardado en la orden.')
       iniciar(() => router.refresh())
     } catch {
@@ -99,6 +106,15 @@ export function ArchivosDeOrden({
       <TarjetaCabecera
         titulo="Orden de trabajo"
         ayuda="El PDF de la orden para tenerlo a mano en el taller, y lo que alguien encontró mal en ella."
+        acciones={
+          sube &&
+          !pide && (
+            <Boton variante="secundario" tamano="sm" onClick={() => setCambiando(true)}>
+              <RefreshCw aria-hidden className="size-3.5" />
+              Cambiar el PDF
+            </Boton>
+          )
+        }
       />
       <TarjetaCuerpo className="space-y-4">
         {pdfOculto && (
@@ -117,29 +133,39 @@ export function ArchivosDeOrden({
             ))}
           </ul>
         )}
-        {sube && (
+        {pide && (
           <div className="space-y-1.5">
             {/* Se guarda en la orden apenas se elige, por eso dice «Subir». */}
             <ElegirArchivo
               id={`subir-pdf-${ordenId}`}
-              aria-label="PDF de la orden"
+              aria-label={textoCampo}
               accept="application/pdf,.pdf"
-              texto="Subir el PDF de la orden"
+              texto={textoCampo}
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={elegido}
               aviso={avisoSubida}
               estado={subiendo ? 'Subiendo…' : null}
               disabled={subiendo}
-              onChange={(e) => {
-                void subir(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void subir(e.target.files?.[0])}
             />
-            {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
-            {adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
-              <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
+            {tieneOrden && !subiendo && (
+              <Boton
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  setCambiando(false)
+                  setElegido(null)
+                  setAvisoSubida(null)
+                }}
+              >
+                No cambiarlo
+              </Boton>
             )}
           </div>
+        )}
+        {/* El último PDF no se quita (lo cuida la base): se dice cómo se cambia. */}
+        {sube && adjuntos.filter((a) => a.tipo === 'ORDEN').length === 1 && (
+          <p className="text-xs text-texto-suave">Para cambiarlo, sube el correcto y después quita este.</p>
         )}
 
         {error && (

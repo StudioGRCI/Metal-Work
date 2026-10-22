@@ -6,7 +6,7 @@ import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, avisoDeArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -17,6 +17,9 @@ import { createClient } from '@/lib/supabase/client'
 
 import { leerPlanillaAlmacen, registrarFilaPlanilla, type FilaPlanilla } from './acciones'
 
+const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+/** El tope con que el servidor abre el libro (`abrirLibro`). */
+const MAXIMO_MB_EXCEL = 8
 const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
 const MAXIMO_MB_FOTO = 10
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
@@ -36,15 +39,23 @@ const NUEVO = 'NUEVO'
  */
 export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerrar: () => void }) {
   const router = useRouter()
+  const [archivo, setArchivo] = useState<File | null>(null)
+  // Por qué la planilla elegida no se pudo leer, sea del navegador o del servidor: va en su campo.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
-  const [fotos, setFotos] = useState<Record<string, File>>({})
+  // La foto elegida en cada salida, sirva o no: su campo la muestra con el motivo.
+  const [elegidas, setElegidas] = useState<Record<string, File>>({})
   const [elecciones, setElecciones] = useState<Record<string, string>>({})
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
   const enCurso = useRef(false)
+  // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
+  // no es de esta ventana, y al abrirla de nuevo no aparece.
+  const vuelta = useRef(0)
 
+  // Las que se registran: de las elegidas, solo las que sirven.
+  const fotos = Object.fromEntries(Object.entries(elegidas).filter(([, foto]) => !avisoDeArchivo(foto, ACEPTA_FOTO, MAXIMO_MB_FOTO)))
   const listas = (filas ?? []).filter((f) => f.estado === 'LISTA' || (f.estado === 'ELEGIR' && elecciones[f.id]))
   const porRegistrar = listas.filter((f) => f.hoja === 'Ingresos' || fotos[f.id])
   const sinFoto = listas.filter((f) => f.hoja === 'Salidas' && !fotos[f.id])
@@ -54,11 +65,13 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   const terminado = !registrando && Object.keys(resultados).length > 0
 
   function reiniciar() {
+    vuelta.current++
+    setArchivo(null)
+    setAvisoArchivo(null)
     setFilas(null)
-    setFotos({})
+    setElegidas({})
     setElecciones({})
     setResultados({})
-    setError(null)
   }
 
   function cerrar() {
@@ -68,37 +81,41 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
     reiniciar()
   }
 
-  async function leer(archivo: File | undefined) {
-    if (!archivo || enCurso.current) return
-    reiniciar()
-    if (!/\.xlsx$/i.test(archivo.name)) {
-      setError('Tiene que ser la planilla en Excel (.xlsx). Si la guardaste como .xls, guárdala como «Libro de Excel».')
-      return
-    }
+  async function leer(elegido: File | undefined) {
+    if (!elegido || enCurso.current) return
     enCurso.current = true
-    setLeyendo(true)
+    let esta = vuelta.current
     try {
+      // El que no es un .xlsx de verdad no va al servidor: su campo dice por qué.
+      const noSirve = /\.xls$/i.test(elegido.name)
+        ? 'Es un .xls: guárdalo como «Libro de Excel» (.xlsx) y elígelo otra vez'
+        : await revisarArchivo(elegido, ACEPTA_EXCEL, MAXIMO_MB_EXCEL)
+      // reiniciar() vacía también el campo: el elegido se pone después, y gana.
+      reiniciar()
+      esta = vuelta.current
+      setArchivo(elegido)
+      setAvisoArchivo(noSirve)
+      if (noSirve) return
+      setLeyendo(true)
       const datos = new FormData()
-      datos.set('archivo', archivo)
+      datos.set('archivo', elegido)
       const r = await leerPlanillaAlmacen(null, datos)
-      if (!r.ok) setError(r.error)
+      if (esta !== vuelta.current) return
+      if (!r.ok) setAvisoArchivo(r.error)
       else setFilas(r.datos?.filas ?? [])
     } catch {
-      setError('No se pudo leer la planilla. Revisa la conexión y vuelve a intentar.')
+      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer la planilla: revisa la conexión y elígela otra vez')
     } finally {
       setLeyendo(false)
       enCurso.current = false
     }
   }
 
-  // Por qué una foto no sirve lo dice su campo; aquí solo se guarda la que sí.
-  function elegirFoto(fila: FilaPlanilla, archivo: File | undefined) {
-    setFotos((previas) => {
-      const nuevas = { ...previas }
-      if (archivo && !avisoDeArchivo(archivo, ACEPTA_FOTO, MAXIMO_MB_FOTO)) nuevas[fila.id] = archivo
-      else delete nuevas[fila.id]
-      return nuevas
-    })
+  // Se guarda la elegida aunque no sirva: su campo la sigue mostrando, y volver
+  // a elegir la misma avisa otra vez. Para registrar cuenta solo la que sirve.
+  function elegirFoto(fila: FilaPlanilla, foto: File | undefined) {
+    if (!foto) return
+    setElegidas((previas) => ({ ...previas, [fila.id]: foto }))
     setResultados((r) => { const n = { ...r }; delete n[fila.id]; return n })
   }
 
@@ -176,12 +193,11 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       <div className="space-y-4">
         {!filas && (
           <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
-            <ElegirArchivo id="planilla-archivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hastaMb={8}
-              disabled={leyendo} onChange={(e) => leer(e.target.files?.[0])} />
+            <ElegirArchivo id="planilla-archivo" accept={ACEPTA_EXCEL} hastaMb={MAXIMO_MB_EXCEL}
+              archivo={archivo} aviso={avisoArchivo} estado={leyendo ? 'Leyendo la planilla…' : null}
+              disabled={leyendo} onChange={(e) => void leer(e.target.files?.[0])} />
           </Campo>
         )}
-        {leyendo && <p role="status" className="text-sm text-texto-suave">Leyendo la planilla y revisando cada fila…</p>}
-        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
 
         {filas && resumen && (
           <>
@@ -250,7 +266,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
                       {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
                         <ElegirArchivo accept={ACEPTA_FOTO} texto="Elegir la foto de la salida" hastaMb={MAXIMO_MB_FOTO}
-                          disabled={registrando} className="w-full sm:w-64" aria-label={`Foto de la salida de la fila ${f.fila}`}
+                          archivo={elegidas[f.id] ?? null} disabled={registrando} className="w-full sm:w-64"
+                          aria-label={`Elegir la foto de la salida de la fila ${f.fila}`}
                           onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
                       )}
                     </div>

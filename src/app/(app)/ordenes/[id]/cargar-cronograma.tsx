@@ -6,7 +6,7 @@ import { useRef, useState, useTransition } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
-import { ElegirArchivo, avisoDeArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
@@ -14,6 +14,8 @@ import { explicarFallo } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 
 import { cargarCronograma } from './acciones-actividades'
+
+const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 /**
  * Subir el cronograma de la orden desde un Excel: una fila por actividad, con
@@ -25,8 +27,6 @@ import { cargarCronograma } from './acciones-actividades'
  * mismo nombre se actualiza y lo nuevo se agrega. El Excel, si se quiere,
  * queda guardado en la orden.
  */
-const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
 export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; areasPropias: AreaDelTaller[] }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -53,12 +53,12 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
   async function leer(elegido: File | undefined) {
     if (!elegido) return
-    setArchivo(elegido)
     setLectura(null)
     setError(null)
     const noSirve = /\.xls$/i.test(elegido.name)
       ? 'Es un .xls: guárdalo como «Libro de Excel» (.xlsx) y elígelo otra vez'
-      : avisoDeArchivo(elegido, ACEPTA_EXCEL, MAXIMO_ADJUNTO_MB)
+      : await revisarArchivo(elegido, ACEPTA_EXCEL, MAXIMO_ADJUNTO_MB)
+    setArchivo(elegido)
     setAvisoArchivo(noSirve)
     if (noSirve) return
     setLeyendo(true)
@@ -115,7 +115,9 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         if (guardarExcel && archivo) {
           try {
             const guardado = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
-            if (!guardado.ok) mensaje += ` El Excel no quedó guardado en la orden: ${guardado.error}`
+            mensaje += guardado.ok
+              ? ' El Excel quedó guardado en la orden.'
+              : ` El Excel no quedó guardado en la orden: ${guardado.error}`
           } catch {
             mensaje += ' El Excel no quedó guardado en la orden.'
           }
@@ -174,10 +176,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
               aviso={avisoArchivo}
               estado={leyendo ? 'Leyendo el Excel…' : null}
               aria-invalid={Boolean(lectura?.error)}
-              onChange={(e) => {
-                void leer(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void leer(e.target.files?.[0])}
             />
           </Campo>
 

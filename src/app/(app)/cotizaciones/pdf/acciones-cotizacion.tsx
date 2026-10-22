@@ -6,7 +6,7 @@ import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo, avisoDeArchivo, avisoDePdf } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
@@ -154,6 +154,7 @@ export function CorregirCotizacion({
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  const campoArchivo = useRef<HTMLInputElement>(null)
 
   function abrir() {
     setArchivo(null)
@@ -171,10 +172,10 @@ export function CorregirCotizacion({
 
   async function elegir(elegido: File | undefined) {
     if (!elegido) return
-    setArchivo(elegido)
     setDice(null)
     setError(null)
-    const noSirve = avisoDeArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    setArchivo(elegido)
     setAvisoArchivo(noSirve)
     if (noSirve) return
     setLeyendo(true)
@@ -193,6 +194,12 @@ export function CorregirCotizacion({
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (enCurso.current) return
+    // Lo que falta o no sirve del archivo lo dice su campo, y el cursor va ahí.
+    if (!archivo || avisoArchivo) {
+      if (!archivo) setAvisoArchivo('Falta el archivo corregido: elige el PDF o el Word')
+      campoArchivo.current?.focus()
+      return
+    }
 
     const tipo = archivo ? tipoDeCotizacion(archivo) : null
     if (!archivo || !tipo) {
@@ -311,6 +318,7 @@ export function CorregirCotizacion({
 
           <Campo etiqueta="Archivo corregido" htmlFor={`corregir-archivo-${id}`} requerido>
             <ElegirArchivo
+              ref={campoArchivo}
               id={`corregir-archivo-${id}`}
               accept={ACEPTA_COTIZACION}
               texto="Elegir el archivo corregido"
@@ -318,10 +326,7 @@ export function CorregirCotizacion({
               archivo={archivo}
               aviso={avisoArchivo}
               estado={leyendo ? progreso || 'Leyendo el archivo…' : null}
-              onChange={(e) => {
-                void elegir(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void elegir(e.target.files?.[0])}
             />
           </Campo>
 
@@ -444,6 +449,8 @@ export function AprobarConOt({
   const [archivo, setArchivo] = useState<File | null>(null)
   // El que no sirve se queda a la vista en su campo, con el motivo; `archivo` es solo el que sí.
   const [rechazado, setRechazado] = useState<{ archivo: File; motivo: string } | null>(null)
+  const [faltaPdf, setFaltaPdf] = useState(false)
+  const campoPdf = useRef<HTMLInputElement>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [avisoLectura, setAvisoLectura] = useState('')
   const [numeroOrden, setNumeroOrden] = useState('')
@@ -458,6 +465,7 @@ export function AprobarConOt({
   function abrir() {
     setArchivo(null)
     setRechazado(null)
+    setFaltaPdf(false)
     setAvisoLectura('')
     setNumeroOrden('')
     setCodigo('')
@@ -473,7 +481,8 @@ export function AprobarConOt({
     setError(null)
     setAvisoLectura('')
     setDatosLeidos(null)
-    const motivo = await avisoDePdf(elegido, MAXIMO_ADJUNTO_MB)
+    setFaltaPdf(false)
+    const motivo = await revisarArchivo(elegido, 'application/pdf,.pdf', MAXIMO_ADJUNTO_MB)
     setArchivo(motivo ? null : elegido)
     setRechazado(motivo ? { archivo: elegido, motivo } : null)
     if (motivo) return
@@ -502,7 +511,9 @@ export function AprobarConOt({
       return
     }
     if (!archivo) {
-      setError(rechazado ? 'El PDF elegido no sirve: elige otro.' : 'Elige el PDF de la orden de trabajo.')
+      // Lo dice su campo, como en la orden nueva, y el cursor va ahí.
+      if (!rechazado) setFaltaPdf(true)
+      campoPdf.current?.focus()
       return
     }
     if (archivo.type !== 'application/pdf' && !/\.pdf$/i.test(archivo.name)) {
@@ -579,7 +590,8 @@ export function AprobarConOt({
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
-          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+          {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
+          <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
@@ -602,17 +614,15 @@ export function AprobarConOt({
 
           <Campo etiqueta="PDF de la OT" htmlFor={`aprobar-pdf-${cotizacionId}`} requerido>
             <ElegirArchivo
+              ref={campoPdf}
               id={`aprobar-pdf-${cotizacionId}`}
               accept="application/pdf,.pdf"
               texto="Elegir el PDF de la OT"
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={archivo ?? rechazado?.archivo ?? null}
-              aviso={rechazado?.motivo}
+              aviso={rechazado?.motivo ?? (faltaPdf ? 'Falta el PDF de la OT: sin él no se aprueba' : null)}
               estado={leyendo ? avisoLectura || 'Leyendo el PDF…' : null}
-              onChange={(e) => {
-                void elegirArchivo(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
           </Campo>
 

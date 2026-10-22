@@ -303,10 +303,12 @@ let ordenId = ''
   // Primero uno que se llama .pdf y no lo es: se queda a la vista, en rojo y con el motivo.
   await pagina.locator('#pdf_orden').setInputFiles({ name: `NO-ES-PDF-${sello}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('PK\u0003\u0004 un Word con otro nombre') })
   await pagina.getByText(`NO-ES-PDF-${sello}.pdf`).waitFor({ timeout: 5000 })
-  comprobar(await pagina.getByText('Está dañado o no es un PDF de verdad: toca para elegir otro').isVisible(), 'un archivo que no es PDF por dentro se marca en su campo')
+  // Lo que se ve (innerText): con ratón dice «haz clic»; el «toca» del teléfono está escondido.
+  const cajaPdf = async () => (await pagina.locator('#pdf_orden').locator('xpath=..').innerText()).replace(/\s+/g, ' ').trim()
+  comprobar((await cajaPdf()).includes('Está dañado o no es un PDF de verdad: haz clic para elegir otro'), 'un archivo que no es PDF por dentro se marca en su campo')
   await pagina.locator('#pdf_orden').setInputFiles(archivo)
   await pagina.getByText(`OT-banco-${sello}.pdf`).waitFor({ timeout: 5000 })
-  comprobar(await pagina.getByText(/^[\d.]+ (KB|MB) · toca para cambiarlo$/).isVisible(), 'el PDF elegido se distingue de la zona vacía y dice su peso')
+  comprobar(/[\d.]+ (KB|MB) · haz clic para cambiarlo$/.test(await cajaPdf()), 'el PDF elegido se distingue de la zona vacía y dice su peso')
   comprobar((await pagina.locator('#pdf_orden').getAttribute('aria-invalid')) === null, 'y ya no queda marcado')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-orden-con-pdf.png`, fullPage: true })
   if (repetido) {

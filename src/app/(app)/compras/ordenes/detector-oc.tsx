@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 
 import { Campo, Entrada } from '@/components/ui/campos'
+import { revisarArchivo } from '@/components/ui/elegir-archivo'
 import { normalizarNumeroFactura } from '@/lib/dominio/finanzas'
 import { avisosDeLaOrden, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { moneda as dinero, hoyLima } from '@/lib/format'
@@ -13,26 +14,39 @@ import { leerFactura } from '@/lib/leer-factura'
  * `leer` va en el `onChange` del campo del archivo; un archivo nuevo deja sin
  * efecto la lectura anterior que todavía no terminó. Devuelve lo leído (null si
  * no leyó nada o si otro archivo la reemplazó), para llenar el número y la fecha.
+ *
+ * Antes de leerlo se mira que sea lo que pide el campo (`accept`, `hastaMb`):
+ * un Word con el nombre cambiado a «.pdf» no se lee y su motivo queda en
+ * `aviso`. `aviso` y `leyendo` van al `aviso` y al `estado` del campo.
+ * `soloRevisar` mira el archivo sin leerlo: el comprobante que no es factura.
  */
-export function useDetectorDeFactura() {
+export function useDetectorDeFactura(accept: string, hastaMb: number) {
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
   const [leyendo, setLeyendo] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const turno = useRef(0)
-  async function leer(archivo: File | undefined): Promise<LecturaFactura | null> {
+  async function leer(archivo: File | undefined, soloRevisar = false): Promise<LecturaFactura | null> {
     const vez = ++turno.current
-    setLectura(null)
-    if (!archivo) {
-      setLeyendo(null)
-      return null
+    // Lo que diga una lectura que otro archivo ya reemplazó no llega al campo.
+    const anotar = (texto: string | null) => {
+      if (vez === turno.current) setLeyendo(texto)
     }
-    setLeyendo('Leyendo la factura…')
-    const leida = await leerFactura(archivo, setLeyendo)
+    setLectura(null)
+    setAviso(null)
+    anotar(null)
+    if (!archivo) return null
+    const motivo = await revisarArchivo(archivo, accept, hastaMb)
     if (vez !== turno.current) return null
-    setLeyendo(null)
+    setAviso(motivo)
+    if (motivo || soloRevisar) return null
+    anotar('Leyendo la factura…')
+    const leida = await leerFactura(archivo, anotar)
+    if (vez !== turno.current) return null
+    anotar(null)
     setLectura(leida)
     return leida
   }
-  return { lectura, leyendo, leer }
+  return { lectura, leyendo, aviso, leer }
 }
 
 /**
@@ -106,17 +120,18 @@ export function CamposDeLaFactura({
   )
 }
 
-/** Lo que no calza entre la factura y su orden. Solo avisa: la orden se emite o el PDF se adjunta igual. */
+/**
+ * Lo que no calza entre la factura y su orden. Solo avisa: la orden se emite o
+ * el PDF se adjunta igual. Mientras se lee calla: el «Leyendo…» va en el campo.
+ */
 export function AvisoFacturaDeLaOrden({
   lectura,
-  leyendo,
   total,
   moneda,
   numero,
   parcialPosible,
 }: {
   lectura: LecturaFactura | null
-  leyendo: string | null
   /** El total de la orden, con IGV si va con factura. */
   total: number | null
   moneda: string
@@ -125,13 +140,6 @@ export function AvisoFacturaDeLaOrden({
   /** La OC puede ir en varias facturas: si el total no calza, se dice que puede ser una parte. */
   parcialPosible?: boolean
 }) {
-  if (leyendo) {
-    return (
-      <p role="status" className="text-xs text-texto-suave">
-        {leyendo}
-      </p>
-    )
-  }
   if (!lectura) return null
   const avisos = avisosDeLaOrden({ lectura, total, moneda, numero }, (monto, m) => dinero(monto, m))
   if (avisos.length === 0) {

@@ -24,13 +24,23 @@ En `src/components/ui/`:
   («Elegir el PDF o la foto») y con `hastaMb` dice el tope y avisa si el
   archivo pasa; el tope ya no se repite en la `ayuda`. Es el mismo en todo
   lugar que pide un documento (DKS, 2026-10-21), también donde se lee o se
-  sube apenas se elige: la pantalla le pasa `archivo` (el que guarda, porque
-  vacía el campo para poder elegir el mismo otra vez), `aviso` (por qué no
-  sirvió: no se pudo leer, el rechazo de la subida) y `estado` («Leyendo el
-  Excel…», «Subiendo…»). Antes de leer o subir, `avisoDeArchivo` o
-  `avisoDePdf` (este mira además que sea PDF por dentro) dicen si sirve, con
-  las mismas palabras que el campo. Lo único aparte es el mosaico de fotos
-  del avance (`SelectorFotos`): varias a la vez con su miniatura.
+  sube apenas se elige: la pantalla le pasa `archivo` (el que guarda),
+  `aviso` (por qué no sirvió: no se pudo leer, el rechazo de la subida, o
+  «Falta…» al enviar sin él, con el foco en el campo) y `estado` («Leyendo
+  el Excel…», «Subiendo…»). Con `archivo` el campo se vacía solo al tocarlo,
+  para poder elegir el mismo otra vez: la pantalla no vacía `value`. Antes
+  de guardarlo en el estado, `await revisarArchivo(...)` dice si sirve (tipo,
+  vacío, tope y la firma de PDF, Excel o Word por dentro), con las mismas
+  palabras que el campo; se calcula antes del `setArchivo` para que no
+  parpadee el aviso del anterior. Dice «toca» en el teléfono y «haz clic»
+  con ratón (`pointer-fine:`): una prueba con Chromium sin `hasTouch` lee
+  «haz clic». Donde el documento ya está puesto, el campo no aparece vacío
+  como si faltara: «Cambiar el PDF» en la cabecera lo abre, y «No cambiarlo»
+  lo cierra. Lo único aparte es `SelectorFotos` (avance, vehículos,
+  reportes, trabajos): varias fotos a la vez, cada una con su miniatura, su
+  subida y su «Reintentar», HEIC y achicadas en el teléfono, cámara y
+  galería. Habla igual: formatos y tope antes de elegir, el motivo con las
+  mismas palabras, y con ratón una sola entrada («Elegir fotos»).
 - `Boton` (`variante` primario/secundario/peligro, `tamano`, `cargando`)
 - `Insignia` y `Punto` con `tono` (exito/aviso/peligro/neutro), `Progreso`
 
