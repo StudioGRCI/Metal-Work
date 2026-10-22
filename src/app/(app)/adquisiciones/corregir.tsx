@@ -22,6 +22,7 @@ export type FacturaParaCorregir = {
   id: string
   tipo: string
   proveedor: string
+  ruc_proveedor: string | null
   numero_documento: string
   fecha_emision: string
   fecha_vencimiento: string
@@ -100,6 +101,7 @@ function Formulario({
   alTerminar: () => void
 }) {
   const [proveedor, setProveedor] = useState(f.proveedor)
+  const [ruc, setRuc] = useState(f.ruc_proveedor ?? '')
   const [numero, setNumero] = useState(f.numero_documento)
   const [emision, setEmision] = useState(f.fecha_emision)
   const [vencimiento, setVencimiento] = useState(f.fecha_vencimiento)
@@ -141,6 +143,7 @@ function Formulario({
       alTerminar()
     },
   )
+  const rucEscrito = ruc.replace(/\D/g, '')
   // Las OC que se pueden marcar: las de la factura y las que esperan su factura, del mismo proveedor.
   const elegibles: OcElegible[] = [
     ...ordenes.map((o) => ({
@@ -153,7 +156,8 @@ function Formulario({
       condicion: null,
     })),
     ...disponibles
-      .filter((c) => !ordenes.some((o) => o.id === c.orden_compra_id) && mismoNombre(c.proveedor, proveedor))
+      // Del mismo RUC si los dos lo tienen; si no, del mismo nombre (migración 20261022170000).
+      .filter((c) => !ordenes.some((o) => o.id === c.orden_compra_id) && (rucEscrito.length === 11 && c.ruc ? c.ruc === rucEscrito : mismoNombre(c.proveedor, proveedor)))
       .map((c) => ({
         id: c.orden_compra_id,
         numero: c.numero ?? c.referencia,
@@ -169,6 +173,7 @@ function Formulario({
   // Solo viaja lo que cambió: la base anota antes y después.
   const cambios: Record<string, unknown> = {}
   if (proveedor.trim() !== f.proveedor) cambios.proveedor = proveedor.trim()
+  if (rucEscrito !== (f.ruc_proveedor ?? '')) cambios.ruc_proveedor = rucEscrito
   if (numero.trim() !== f.numero_documento) cambios.numero_documento = numero.trim()
   if (emision !== f.fecha_emision) cambios.fecha_emision = emision
   if (condicion === 'CREDITO' && vencimiento !== f.fecha_vencimiento) cambios.fecha_vencimiento = vencimiento
@@ -234,6 +239,25 @@ function Formulario({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Campo etiqueta="Proveedor" htmlFor={`fc-proveedor-${id}`} requerido>
           <Entrada id={`fc-proveedor-${id}`} value={proveedor} onChange={(e) => setProveedor(e.target.value)} required minLength={2} maxLength={160} />
+        </Campo>
+        <Campo
+          etiqueta="RUC del emisor"
+          htmlFor={`fc-ruc-${id}`}
+          requerido={f.tipo === 'FACTURA_COMPRA' && Boolean(f.ruc_proveedor)}
+          ayuda={f.ruc_proveedor ? undefined : 'Se registró sin RUC: anótalo si lo corriges.'}
+        >
+          <Entrada
+            id={`fc-ruc-${id}`}
+            value={ruc}
+            onChange={(e) => setRuc(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={13}
+            pattern={'\\D*(\\d\\D*){11}'}
+            title="Los 11 dígitos del RUC."
+            required={f.tipo === 'FACTURA_COMPRA' && Boolean(f.ruc_proveedor)}
+            className="tabular"
+          />
         </Campo>
         <Campo etiqueta="Número" htmlFor={`fc-numero-${id}`} requerido>
           <Entrada id={`fc-numero-${id}`} value={numero} onChange={(e) => setNumero(e.target.value)} required minLength={3} maxLength={80} />

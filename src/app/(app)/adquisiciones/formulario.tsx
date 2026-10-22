@@ -16,12 +16,12 @@ import { completarAdquisicion, enlaceDeFacturaDeLogistica, registrarAdquisicion 
 
 type Fuente = 'xml' | 'pdf' | 'logistica'
 
-type Dato = 'total' | 'numero' | 'emision'
-const DATOS: Dato[] = ['total', 'numero', 'emision']
+type Dato = 'total' | 'numero' | 'emision' | 'ruc'
+const DATOS: Dato[] = ['total', 'numero', 'emision', 'ruc']
 /** Cada dato y la fuente que lo llenó; `null` si lo escribió la persona o está vacío. */
 type Llenado = Record<Dato, { valor: string; fuente: Fuente | null }>
 const VACIO = { valor: '', fuente: null }
-const SIN_LLENAR: Llenado = { total: VACIO, numero: VACIO, emision: VACIO }
+const SIN_LLENAR: Llenado = { total: VACIO, numero: VACIO, emision: VACIO, ruc: VACIO }
 
 /** Lo que está vacío se llena con lo que trae la fuente, y queda anotado que vino de ella. */
 function llenarCon(d: Llenado, fuente: Fuente, valores: Partial<Record<Dato, string | null | undefined>>): Llenado {
@@ -32,7 +32,7 @@ function llenarCon(d: Llenado, fuente: Fuente, valores: Partial<Record<Dato, str
   }
   return n
 }
-const valoresDe = (l: LecturaFactura) => ({ total: l.total !== null ? l.total.toFixed(2) : null, numero: l.numero, emision: l.fecha_emision })
+const valoresDe = (l: LecturaFactura) => ({ total: l.total !== null ? l.total.toFixed(2) : null, numero: l.numero, emision: l.fecha_emision, ruc: l.ruc })
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
@@ -62,6 +62,10 @@ type Props = {
 }
 
 const mismoNombre = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
+/** El mismo proveedor: por el RUC si las dos lo tienen; si no, por el nombre (como `public.mismo_emisor`). */
+const mismoEmisor = (a: { ruc: string | null; proveedor: string }, b: { ruc: string | null; proveedor: string }) =>
+  a.ruc && b.ruc ? a.ruc === b.ruc : mismoNombre(a.proveedor, b.proveedor)
+const soloDigitos = (t: string) => t.replace(/\D/g, '')
 const codigo = (m: string) => (m === 'USD' ? 'USD' : 'PEN')
 
 /** Lo que falta facturar de una OC: su total menos lo que ya cubren otras facturas. */
@@ -161,6 +165,7 @@ function Formulario({
 }) {
   const [marcadas, setMarcadas, marcadasAhora] = useEstadoAlDia<string[]>([])
   const [parciales, setParciales] = useState<string[]>([])
+  const [tipo, setTipo] = useState('FACTURA_COMPRA')
   const [proveedor, setProveedor, proveedorAhora] = useEstadoAlDia('')
   const [condicion, setCondicion, condicionAhora] = useEstadoAlDia('CONTADO')
   const [monedaFactura, setMonedaFactura, monedaAhora] = useEstadoAlDia('PEN')
@@ -187,7 +192,7 @@ function Formulario({
   // El total, el número y la emisión, con la fuente que los llenó: lo que llenó un
   // archivo se va con él si nadie lo cambió (`soltar`).
   const [llenado, setLlenado] = useState<Llenado>(SIN_LLENAR)
-  const { total, numero, emision } = { total: llenado.total.valor, numero: llenado.numero.valor, emision: llenado.emision.valor }
+  const { total, numero, emision, ruc } = { total: llenado.total.valor, numero: llenado.numero.valor, emision: llenado.emision.valor, ruc: llenado.ruc.valor }
   // Lo que escribe la persona ya no es de ninguna fuente: quitar un archivo no lo toca.
   const escribir = (dato: Dato, valor: string) => setLlenado((d) => ({ ...d, [dato]: { valor, fuente: null } }))
   // Lo que leyó el detector de cada fuente; manda el XML, después el PDF, después el de Logística.
@@ -227,6 +232,11 @@ function Formulario({
   }
 
   function registrar(e: FormEvent<HTMLFormElement>) {
+    // Con el RUC de otra OC, el aviso del campo ya dice por qué: no se envía para recibir el mismo rechazo.
+    if (deOtroRuc) {
+      e.preventDefault()
+      return document.getElementById('adq-ruc')?.focus()
+    }
     const elegido = campoPdf.current?.files?.[0]
     const conLogistica = Boolean(new FormData(e.currentTarget).get('documento_compra_id'))
     // El PDF elegido y vacío ya lo dice su campo; sin PDF ni factura de
@@ -251,9 +261,18 @@ function Formulario({
   // Una OC entra con las marcadas si es del mismo proveedor y condición que ellas.
   const encajaCon = (ids: string[], c: CompraSinFactura) => {
     const base = compras.find((x) => ids.includes(x.orden_compra_id))
-    return !base || (mismoNombre(c.proveedor, base.proveedor) && c.condicion_pago === base.condicion_pago)
+    return !base || (mismoEmisor(c, base) && c.condicion_pago === base.condicion_pago)
   }
   const encaja = (c: CompraSinFactura) => encajaCon(marcadas, c)
+  // Con el RUC escrito, la OC de otro RUC no se liga (migración 20261022170000): se dice antes de registrar.
+  const rucEscrito = soloDigitos(ruc)
+  // La OC del anexo de Logística también: su RUC sale lleno, pero se puede corregir
+  // si Logística anexó la factura de otra empresa, y entonces se avisa aquí.
+  const conRuc = [
+    ...(elegida?.ruc ? [{ nombre: elegida.oc, ruc: elegida.ruc }] : []),
+    ...elegidas.map((c) => ({ nombre: c.numero ?? c.referencia, ruc: c.ruc })),
+  ]
+  const deOtroRuc = rucEscrito.length === 11 ? conRuc.find((c) => c.ruc && c.ruc !== rucEscrito) : undefined
   const lectura = lecturas.xml ?? lecturas.pdf ?? lecturas.logistica ?? null
   const enCurso = Object.values(leyendo).some(Boolean)
   const sinLeer = (['xml', 'pdf', 'logistica'] as const).some((f) => lecturas[f] === null) && !lectura && !enCurso
@@ -287,7 +306,7 @@ function Formulario({
   function marcarDeLectura(fuente: Fuente, leida: LecturaFactura, deNuevo = false) {
     const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
     const primera = nombradas.at(0)
-    const juntas = primera ? nombradas.filter((c) => mismoNombre(c.proveedor, primera.proveedor) && c.condicion_pago === primera.condicion_pago) : []
+    const juntas = primera ? nombradas.filter((c) => mismoEmisor(c, primera) && c.condicion_pago === primera.condicion_pago) : []
     if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda, deNuevo)
   }
 
@@ -331,6 +350,8 @@ function Formulario({
     // no es suyo: cuenta lo que cambie después.
     if (!deNuevo) for (const k of CAMPOS) if (puestos[k] !== ahora[k]) tocados.current.delete(k)
     const ids = cs.map((c) => c.orden_compra_id)
+    // El RUC de su OC llena el campo vacío, y se va con la fuente como el total.
+    if (primera?.ruc) setLlenado((l) => llenarCon(l, fuente, { ruc: primera.ruc }))
     setMarcadas(ids)
     ponerValores(puestos)
     marcadasPor.current[fuente] = ids
@@ -359,7 +380,7 @@ function Formulario({
       const l = lecturas[f]
       const leidos: Partial<Record<Dato, string | null>> = l ? valoresDe(l) : {}
       const d = f === 'logistica' ? documento.current : null
-      return d ? { ...leidos, numero: d.numero || leidos.numero, emision: d.fecha || leidos.emision } : leidos
+      return d ? { ...leidos, numero: d.numero || leidos.numero, emision: d.fecha || leidos.emision, ruc: leidos.ruc || d.ruc } : leidos
     }
     setLlenado((d) => {
       const sueltos = DATOS.filter((k) => d[k].fuente === fuente)
@@ -430,6 +451,7 @@ function Formulario({
         total: Number(total) > 0 ? Number(total) : null,
         moneda: monedaFactura,
         numero,
+        ruc: rucEscrito,
         marcadas: elegidas,
         disponibles: compras,
       })
@@ -458,6 +480,7 @@ function Formulario({
       puesto.current = null
       marcadasPor.current = {}
       if (!proveedorAhora.current.trim()) setProveedor(c.proveedor)
+      if (c.ruc) setLlenado((l) => (l.ruc.valor ? l : { ...l, ruc: { valor: c.ruc!, fuente: null } }))
       setCondicion(c.condicion_pago)
       setMonedaFactura(c.moneda)
       if (!otAhora.current && c.orden_id) setOt(c.orden_id)
@@ -479,7 +502,7 @@ function Formulario({
     soltar('logistica')
     documento.current = d
     setElegida(d)
-    if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha }))
+    if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha, ruc: d.ruc }))
     const c = compraDelDocumento()
     // Su OC se marca sola (o queda anotada como suya si otra fuente ya la
     // marcó), y se desmarca si se cambia o se quita esta factura.
@@ -505,7 +528,7 @@ function Formulario({
   return (
     <form onSubmit={registrar} onChange={alEscribir} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <Campo etiqueta="Tipo de comprobante" htmlFor="adq-tipo" requerido>
-        <Seleccion id="adq-tipo" name="tipo" required>
+        <Seleccion id="adq-tipo" name="tipo" required value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="FACTURA_COMPRA">Factura de compra</option>
           <option value="RECIBO_HONORARIOS">Recibo por honorarios</option>
           <option value="FACTURA_VEHICULO">Factura de vehículo</option>
@@ -534,6 +557,37 @@ function Formulario({
             setProveedor(e.target.value)
           }}
         />
+      </Campo>
+      <Campo
+        etiqueta="RUC del emisor"
+        htmlFor="adq-ruc"
+        requerido={tipo === 'FACTURA_COMPRA'}
+        ayuda={
+          elegida?.ruc
+            ? `El del proveedor de la ${elegida.oc}: corrígelo si la factura es de otra empresa.`
+            : 'El de quien emitió la factura, tal como sale en ella: la factura se liga solo a las OC de ese RUC.'
+        }
+      >
+        <Entrada
+          id="adq-ruc"
+          name="ruc_proveedor"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={13}
+          pattern={'\\D*(\\d\\D*){11}'}
+          title="Los 11 dígitos del RUC."
+          required={tipo === 'FACTURA_COMPRA'}
+          aria-invalid={deOtroRuc ? true : undefined}
+          aria-describedby={deOtroRuc ? 'adq-ruc-otro' : undefined}
+          className="tabular"
+          value={ruc}
+          onChange={(e) => escribir('ruc', e.target.value)}
+        />
+        {deOtroRuc && (
+          <p id="adq-ruc-otro" role="alert" className="text-xs text-peligro">
+            La {deOtroRuc.nombre} es del RUC {deOtroRuc.ruc}: una factura se liga solo a las OC de su RUC.
+          </p>
+        )}
       </Campo>
       <Campo etiqueta="Número de comprobante" htmlFor="adq-numero" requerido>
         <Entrada
@@ -950,7 +1004,8 @@ function AvisoDeMonto({
   )
 }
 
-export function CompletarAdquisicion({ id }: { id: string }) {
+/** `pideRuc`: la factura de compra que quedó en borrador sin RUC no se registra sin él. */
+export function CompletarAdquisicion({ id, pideRuc = false }: { id: string; pideRuc?: boolean }) {
   const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion)
   // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
@@ -961,6 +1016,7 @@ export function CompletarAdquisicion({ id }: { id: string }) {
   // Con `useId` y no con el id de la factura: la página la dibuja dos veces —en la
   // tabla del monitor y en la tarjeta del teléfono— y la etiqueta apuntaba al campo oculto.
   const campo = `pdf-${useId()}`
+  const campoRuc = `ruc-${useId()}`
 
   async function leerPdf(archivo: File | undefined) {
     const vez = ++turno.current
@@ -997,6 +1053,21 @@ export function CompletarAdquisicion({ id }: { id: string }) {
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
         <input key={nombre} type="hidden" name={nombre} value={valor} />
       ))}
+      {pideRuc && (
+        <Campo etiqueta="RUC del emisor" htmlFor={campoRuc} requerido>
+          <Entrada
+            id={campoRuc}
+            name="ruc_proveedor"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={13}
+            pattern={'\\D*(\\d\\D*){11}'}
+            title="Los 11 dígitos del RUC."
+            required
+            className="tabular"
+          />
+        </Campo>
+      )}
       <Campo etiqueta="PDF pendiente" htmlFor={campo} requerido>
         <ElegirArchivo
           id={campo}

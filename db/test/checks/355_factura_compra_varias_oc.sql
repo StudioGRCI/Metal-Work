@@ -130,7 +130,7 @@ begin
   values (current_setting('prueba.a1')::uuid, current_setting('prueba.oc2')::uuid);
   perform test.debe_fallar(format('insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (%L, %L)',
       current_setting('prueba.a1'), current_setting('prueba.oc3')),
-    'una factura es de un solo proveedor', 'de un solo proveedor');
+    'una factura es de un solo proveedor: con los dos en el padrón, lo dice el RUC', 'se liga solo a las OC de su proveedor');
   perform test.debe_fallar(format('insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (%L, %L)',
       current_setting('prueba.a1'), current_setting('prueba.oc4')),
     'la OC a crédito no entra en una factura al contado', 'tiene que ir igual');

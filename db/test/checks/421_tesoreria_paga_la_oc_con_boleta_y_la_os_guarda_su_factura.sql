@@ -709,11 +709,20 @@ begin
           set_config('request.jwt.claims', coalesce(v_claims, ''), true);
   return v_doc;
 end $$;
+-- El RUC del proveedor de prueba, como lo anota Contabilidad.
+create or replace function pg_temp.ruc421() returns text language sql as $$
+  select numero_documento from public.proveedores where id = current_setting('prueba.proveedor')::uuid;
+$$;
 create or replace function pg_temp.alta(p_clave text, p_proveedor text, p_numero text, p_condicion text default 'CONTADO',
                                         p_total numeric default 361.50)
 returns uuid language sql as $$
-  insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-  values (pg_temp.id(p_clave), 'FACTURA_COMPRA', p_proveedor, p_numero, current_setting('prueba.hoy')::date,
+  -- Con el RUC de su proveedor (migración 20261022170000); la de un nombre que no está en la prueba va sin RUC.
+  insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                    condicion_pago)
+  values (pg_temp.id(p_clave), 'FACTURA_COMPRA', p_proveedor,
+          case when public.mismo_proveedor(p_proveedor, 'Proveedor de prueba 421') then pg_temp.ruc421()
+               when public.mismo_proveedor(p_proveedor, 'Otro proveedor 421 S.A.C.') then '20600014219' end,
+          p_numero, current_setting('prueba.hoy')::date,
           case when p_condicion = 'CREDITO' then current_setting('prueba.hoy')::date + 30 else current_setting('prueba.hoy')::date end,
           'PEN', p_total, p_condicion)
   returning id;
@@ -748,8 +757,8 @@ end $$;
 
 -- Por más que lo pagado: la factura de S/ 361.50 toma los S/ 100 y debe 261.50.
 select pg_temp.como('contabilidad');
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-values (pg_temp.id('f1'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F001-4211', current_setting('prueba.hoy')::date,
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('f1'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', pg_temp.ruc421(), 'F001-4211', current_setting('prueba.hoy')::date,
         current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO');
 select pg_temp.con_pdf('f1');
 update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id('tesoreria');
@@ -1943,9 +1952,9 @@ end $$;
 -- se corrige.
 select set_config('prueba.fsin', gen_random_uuid()::text, true);
 set local session_replication_role = replica;
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado,
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado,
                                   ruta_storage)
-values (pg_temp.id('fsin'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F009-421', current_setting('prueba.hoy')::date,
+values (pg_temp.id('fsin'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', pg_temp.ruc421(), 'F009-421', current_setting('prueba.hoy')::date,
         current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || pg_temp.id('fsin') || '/comprobante.pdf');
 set local session_replication_role = origin;
 select public.conciliar_pago_directo(array[pg_temp.id('oc1')]);
@@ -2267,8 +2276,8 @@ set local role authenticated;
 select pg_temp.pagar('p7b', 'o7b', 361.50, true, pg_temp.subir('pagos-compras', 'o7b'));
 reset role;
 select pg_temp.como('contabilidad');
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-values (pg_temp.id('f7b'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F712-1', current_setting('prueba.hoy')::date,
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('f7b'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', pg_temp.ruc421(), 'F712-1', current_setting('prueba.hoy')::date,
         current_setting('prueba.hoy')::date, 'PEN', 361.50, 'CONTADO');
 select pg_temp.con_pdf('f7b');
 update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f7b');
@@ -2489,8 +2498,8 @@ update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id(
 select pg_temp.como('contabilidad');
 select pg_temp.con_pdf('f7g');
 set local role authenticated;
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-values (pg_temp.id('f7g'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', 'F716-1', current_setting('prueba.hoy')::date,
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
+values (pg_temp.id('f7g'), 'FACTURA_COMPRA', 'Proveedor de prueba 421', pg_temp.ruc421(), 'F716-1', current_setting('prueba.hoy')::date,
         current_setting('prueba.hoy')::date, 'PEN', 80, 'CONTADO');
 update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf' where id = pg_temp.id('f7g');
 reset role;

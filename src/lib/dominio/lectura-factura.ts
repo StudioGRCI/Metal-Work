@@ -27,6 +27,33 @@ export type LecturaFactura = {
   fecha_emision: string | null
   /** Las OC que menciona, por su número sin ceros a la izquierda: «5583» de OC-5583-MW. */
   ordenes: string[]
+  /** El RUC de quien la emitió, con su dígito de control bueno; null si no se encontró. No se guarda con la lectura. */
+  ruc?: string | null
+}
+
+/**
+ * El RUC de Metal Work (`EMPRESA.ruc` en `empresa.ts`), que va en la factura como
+ * cliente: nunca es el del emisor. Copiado aquí porque este archivo va sin imports.
+ */
+const RUC_PROPIO = '20601538840'
+
+/** El dígito de control de SUNAT, gemelo de `rucEsValido` y de `public.ruc_es_valido`. */
+function rucValido(ruc: string): boolean {
+  if (!/^(10|15|16|17|20)\d{9}$/.test(ruc)) return false
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  const suma = pesos.reduce((total, peso, i) => total + Number(ruc[i]) * peso, 0)
+  const digito = (11 - (suma % 11)) % 10
+  return digito === Number(ruc[10])
+}
+
+/**
+ * El RUC del emisor en un texto: el primero válido que no es el de Metal Work. En
+ * la factura impresa el del emisor va arriba, junto a «FACTURA ELECTRÓNICA», y el
+ * de Metal Work abajo, en «Señor(es)».
+ */
+export function rucDelEmisor(texto: string): string | null {
+  const candidatos = [...texto.matchAll(/(?<!\d)((?:10|15|16|17|20)\d{9})(?!\d)/g)].map((m) => m[1])
+  return candidatos.find((r) => r !== RUC_PROPIO && rucValido(r)) ?? null
 }
 
 const limpiar = (t: string) => t.replace(/\s+/g, ' ').trim()
@@ -154,6 +181,7 @@ export function leerFacturaDeTexto(texto: string, fuente: 'PDF' | 'OCR' = 'PDF')
     numero: numeroDeFactura(t),
     fecha_emision: fechaDelTexto(t),
     ordenes: ordenesMencionadas(t),
+    ruc: rucDelEmisor(t),
   }
 }
 
@@ -176,6 +204,8 @@ export function leerFacturaDeXml(xml: string): LecturaFactura {
       const id = etiqueta('ID', m[1])?.[2] ?? ''
       return numeroDeOc(id) ? [numeroDeOc(id) as string] : []
     })
+  // El emisor es `AccountingSupplierParty`; el cliente, que es Metal Work, va en `AccountingCustomerParty`.
+  const emisor = xml.match(/<(?:\w+:)?AccountingSupplierParty\b[^>]*>([\s\S]*?)<\/(?:\w+:)?AccountingSupplierParty>/)?.[1] ?? ''
   // Las observaciones también nombran la OC: se lee el texto sin etiquetas.
   const texto = xml.replace(/<[^>]+>/g, ' ')
   const ordenes = [...new Set([...referencias, ...ordenesMencionadas(texto)])]
@@ -186,6 +216,7 @@ export function leerFacturaDeXml(xml: string): LecturaFactura {
     numero,
     fecha_emision: fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null,
     ordenes,
+    ruc: rucDelEmisor(emisor.replace(/<[^>]+>/g, ' ')),
   }
 }
 
@@ -201,6 +232,7 @@ export type AvisoDelDetector =
   | { tipo: 'TOTAL'; leido: number; registrado: number; moneda: 'PEN' | 'USD' }
   | { tipo: 'MONEDA'; leida: 'PEN' | 'USD'; registrada: string }
   | { tipo: 'NUMERO'; leido: string; registrado: string }
+  | { tipo: 'RUC'; leido: string; registrado: string }
   /** `espera`: si la OC espera su factura y se puede marcar; null si no se sabe (la factura ya está registrada). */
   | { tipo: 'OC_NO_MARCADA'; oc: string; espera: boolean | null }
   | { tipo: 'OC_NO_MENCIONADA'; oc: string }
@@ -217,6 +249,8 @@ export function avisosDelDetector(entrada: {
   total: number | null
   moneda: string
   numero: string
+  /** El RUC que se anota; vacío si todavía no se escribió. */
+  ruc?: string
   marcadas: OcParaDetector[]
   /** Las OC que esperan su factura: para decir si la mencionada se puede marcar. */
   disponibles?: OcParaDetector[]
@@ -231,6 +265,7 @@ export function avisosDelDetector(entrada: {
   }
   const escrito = numeroDeFactura(entrada.numero)
   if (l.numero && escrito && l.numero !== escrito) avisos.push({ tipo: 'NUMERO', leido: l.numero, registrado: escrito })
+  if (l.ruc && entrada.ruc && entrada.ruc.length === 11 && l.ruc !== entrada.ruc) avisos.push({ tipo: 'RUC', leido: l.ruc, registrado: entrada.ruc })
   if (l.ordenes.length > 0) {
     const marcadas = new Map(entrada.marcadas.flatMap((o) => (numeroDeOc(o.numero) ? [[numeroDeOc(o.numero) as string, o] as const] : [])))
     const disponibles = new Map(
@@ -268,6 +303,8 @@ export function textoDelAviso(
       return `La factura está en ${a.leida === 'USD' ? 'dólares' : 'soles'} y se registró en ${a.registrada === 'USD' ? 'dólares' : 'soles'}.`
     case 'NUMERO':
       return `La factura es la ${a.leido} y se registró como ${a.registrado}.`
+    case 'RUC':
+      return `La factura la emitió el RUC ${a.leido} y se anota el ${a.registrado}.`
     case 'OC_NO_MARCADA':
       if (registrada || a.espera === null) return `La factura menciona la ${a.oc} y no está entre sus OC.`
       return a.espera

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { enlaces } from '@/lib/datos/facturacion'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
+import { rucEsValido } from '@/lib/dominio/proveedores'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
 
@@ -73,6 +74,24 @@ export type CompraSinFactura = {
   facturado: number
   /** Las facturas registradas que ya la cubren en parte. */
   facturas: string[]
+  /** El RUC de su proveedor en el padrón: la factura se liga solo a las OC de su RUC (migración 20261022170000). */
+  ruc: string | null
+}
+
+/** El RUC del proveedor de cada OC, si está en el padrón y es un RUC (como `public.ruc_de_la_compra`). */
+async function rucsDeCompras(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data, error } = await supabase
+    .from('ordenes_compra_materiales')
+    .select('id, padron:proveedores(numero_documento)')
+    .in('id', ids)
+  if (error) throw new Error(`No se pudo leer el RUC del proveedor de cada OC: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((c) => {
+      const ruc = c.padron?.numero_documento?.trim() ?? ''
+      return rucEsValido(ruc) ? [[c.id, ruc] as const] : []
+    }),
+  )
 }
 
 const esquemaFacturadas = z.array(z.object({ numero_documento: z.string() }))
@@ -88,6 +107,7 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
   const ids = (data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))
   const facturadas = ids.length ? await supabase.rpc('facturado_de_compras', { p_ids: ids }) : { data: [], error: null }
   if (facturadas.error) throw new Error(`No se pudo leer lo facturado de cada OC: ${facturadas.error.message}`)
+  const rucDe = await rucsDeCompras(supabase, ids)
   const facturadoDe = new Map(
     (facturadas.data ?? []).flatMap((f) =>
       f.orden_compra_id
@@ -112,8 +132,36 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
           en_borrador: Boolean(c.en_borrador),
           facturado: facturadoDe.get(c.orden_compra_id)?.facturado ?? 0,
           facturas: facturadoDe.get(c.orden_compra_id)?.facturas ?? [],
+          ruc: rucDe.get(c.orden_compra_id) ?? null,
         }]
       : [],
+  )
+}
+
+/**
+ * La factura de una OC con boleta que se dio por pagada fuera del sistema: no se
+ * paga hasta que Contabilidad diga si esa OC ya se pagó o si falta pagarla
+ * (migración 20261022175000).
+ */
+/** `desde`: el día que se emitió la OC; lo pagado fuera no puede ser de antes. */
+export type EsperaDeLaFactura = { ordenCompraId: string; compra: string; total: number; moneda: string; desde: string | null }
+
+/** De estas facturas (o de todas, con `null`), las que esperan a Contabilidad y por qué OC. */
+async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[] | null): Promise<Map<string, EsperaDeLaFactura>> {
+  if (ids?.length === 0) return new Map()
+  const { data, error } = await supabase.rpc('facturas_en_espera', { p_facturas: ids })
+  if (error) throw new Error(`No se pudo ver qué facturas esperan a Contabilidad: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) =>
+      f.adquisicion_id && f.orden_compra_id
+        ? [
+            [
+              f.adquisicion_id,
+              { ordenCompraId: f.orden_compra_id, compra: f.compra ?? 'su OC', total: Number(f.total ?? 0), moneda: f.moneda ?? 'PEN', desde: f.desde ?? null },
+            ] as const,
+          ]
+        : [],
+    ),
   )
 }
 
@@ -151,6 +199,8 @@ export type FacturaDeLogistica = {
   pagadaDirecto: boolean
   /** La moneda de su OC: si la factura va en otra, no toma sola lo pagado por la boleta. */
   monedaOc: string
+  /** El RUC del proveedor de su OC, si está en el padrón: es el de la factura. */
+  ruc: string | null
 }
 
 /**
@@ -174,6 +224,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     ? await supabase.rpc('situacion_de_facturas_anexadas', { p_documentos: documentos.map((d) => d.id) })
     : { data: [], error: null }
   if (errorSituacion) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${errorSituacion.message}`)
+  const rucDe = await rucsDeCompras(supabase, [...new Set(documentos.map((d) => d.orden_compra_id))])
   const situacionDe = new Map((situacion ?? []).flatMap((r) => (r.documento ? [[r.documento, r] as const] : [])))
   return documentos.map((d) => ({
     id: d.id,
@@ -188,6 +239,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     facturaDeLaOc: situacionDe.get(d.id)?.factura_de_la_oc ?? null,
     pagadaDirecto: situacionDe.get(d.id)?.pagada_directo ?? false,
     monedaOc: d.oc?.moneda ?? 'PEN',
+    ruc: rucDe.get(d.orden_compra_id) ?? null,
   }))
 }
 
@@ -239,6 +291,8 @@ export type FacturaEnTabla = {
   id: string
   tipo: string
   proveedor: string
+  /** El RUC de quien la emitió; null en las registradas antes del 22/10/2026 (migración 20261022170000). */
+  ruc_proveedor: string | null
   numero_documento: string
   fecha_emision: string
   fecha_vencimiento: string
@@ -255,6 +309,7 @@ export type FacturaEnTabla = {
   pagado: number | null
   saldo: number | null
   pagos: PagoDeFactura[]
+  enEspera: EsperaDeLaFactura | null
 }
 
 /** Lo que muestra la tabla: cada factura con sus OC, y las OC que todavía esperan la suya. */
@@ -287,7 +342,8 @@ const COLUMNAS_PAGO_FACTURA =
  * voucher de su pago.
  */
 async function conVouchers(
-  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string; moneda: string } | null })[],
+  // Sin voucher, el pago de la boleta que Contabilidad anotó como hecho fuera del sistema (migración 20261022175000).
+  pagos: (PagoFacturaFila & { boleta: { orden_compra_id: string; archivo_ruta: string | null; moneda: string } | null })[],
 ): Promise<PagoDeFactura[]> {
   const [propios, deLaBoleta] = await Promise.all([
     enlaces(BUCKET_PAGOS_FACTURAS, pagos.map((p) => p.archivo_ruta)),
@@ -303,7 +359,7 @@ async function conVouchers(
     const ruta = p.archivo_ruta ?? nota?.archivo_ruta ?? null
     return {
       ...p,
-      url: (ruta ? propios.get(ruta) : boleta && deLaBoleta.get(boleta.archivo_ruta)) || null,
+      url: (ruta ? propios.get(ruta) : boleta?.archivo_ruta && deLaBoleta.get(boleta.archivo_ruta)) || null,
       esNota: Boolean(p.pago_orden_compra_id && ruta),
       ordenCompraDeLaBoleta: boleta?.orden_compra_id ?? null,
       monedaDeLaBoleta: boleta?.moneda ?? null,
@@ -319,15 +375,19 @@ async function conVouchers(
  */
 export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Promise<TablaDeAdquisiciones> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('adquisiciones')
-    .select(
-      'id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
-    )
-    .order('creado_en', { ascending: false })
-    .limit(100)
+  const columnas =
+    'id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes'
+  // Las que esperan a Contabilidad salen aunque queden detrás de las cien más
+  // nuevas: solo ella las saca de la espera, y Tesorería no las paga mientras tanto.
+  const [{ data, error }, espera] = await Promise.all([
+    supabase.from('adquisiciones').select(columnas).order('creado_en', { ascending: false }).limit(100),
+    facturasEnEspera(supabase, null),
+  ])
   if (error) throw new Error(`No se pudieron leer adquisiciones: ${error.message}`)
-  const filas = data ?? []
+  const faltan = [...espera.keys()].filter((id) => !(data ?? []).some((a) => a.id === id))
+  const atrasadas = faltan.length ? await supabase.from('adquisiciones').select(columnas).in('id', faltan) : { data: [], error: null }
+  if (atrasadas.error) throw new Error(`No se pudieron leer las facturas que esperan a Contabilidad: ${atrasadas.error.message}`)
+  const filas = [...(data ?? []), ...(atrasadas.data ?? [])]
   const ids = filas.map((a) => a.id)
   const [controles, urls, saldos, pagos] = await Promise.all([
     controlDeFacturas(ids),
@@ -392,6 +452,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
         id: a.id,
         tipo: a.tipo,
         proveedor: a.proveedor,
+        ruc_proveedor: a.ruc_proveedor,
         numero_documento: a.numero_documento,
         fecha_emision: a.fecha_emision,
         fecha_vencimiento: a.fecha_vencimiento,
@@ -407,6 +468,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
         pagado: cuenta?.pagado == null ? null : Number(cuenta.pagado),
         saldo: cuenta?.saldo == null ? null : Number(cuenta.saldo),
         pagos: pagosConVoucher.filter((p) => p.adquisicion_id === a.id),
+        enEspera: espera.get(a.id) ?? null,
       },
       ordenes: (control?.ordenes ?? []).map(oc),
     }
@@ -458,6 +520,8 @@ export type CuentaPorPagar = CuentaPagarFila & {
    * una cuenta a la que se le transfiere dinero.
    */
   cuentasProveedor: CuentaDelProveedor[]
+  /** Espera que Contabilidad diga si su OC con boleta ya se pagó fuera: mientras, no se paga. */
+  enEspera: EsperaDeLaFactura | null
 }
 
 /** Las cuentas activas de esos proveedores, por proveedor. Sin `proveedores.ver_cuentas` no se piden. */
@@ -504,7 +568,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
   if (error) throw new Error(`No se pudieron leer las cuentas por pagar: ${error.message}`)
   const filas = [...(pendientes.data ?? []), ...(pagadas.data ?? [])]
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const [pagos, comprobantes, controles] = await Promise.all([
+  const [pagos, comprobantes, controles, espera] = await Promise.all([
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_adquisicion')
@@ -523,6 +587,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
       return r.data ?? []
     }),
     controlDeFacturas(ids),
+    facturasEnEspera(supabase, ids),
   ])
   const [pagosConVoucher, pdfs] = await Promise.all([conVouchers(pagos), enlacesDeComprobantes(comprobantes)])
   const lecturas = new Map(comprobantes.map((a) => [a.id, lecturaDeFila(a)]))
@@ -548,6 +613,7 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
       lectura: (f.id && lecturas.get(f.id)) || null,
       pagos: pagosConVoucher.filter((p) => p.adquisicion_id === f.id),
       cuentasProveedor: proveedores.flatMap((p) => cuentas.get(p) ?? []),
+      enEspera: (f.id && espera.get(f.id)) || null,
     }
   })
 }
@@ -556,7 +622,7 @@ type CompraConBoletaFila = Funciones<'compras_con_boleta_por_pagar'>['Returns'][
 type PagoCompraFila = Pick<
   Tablas<'pagos_orden_compra'>,
   | 'id' | 'orden_compra_id' | 'fecha_pago' | 'moneda' | 'monto' | 'cancela' | 'cancela_sin_completar' | 'operacion'
-  | 'comprobante_proveedor' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+  | 'comprobante_proveedor' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion' | 'pagado_fuera'
 >
 /**
  * La boleta, nota de venta o recibo que Logística adjuntó a la OC, o el
@@ -618,7 +684,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
     enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('pagos_orden_compra')
-        .select('id, orden_compra_id, fecha_pago, moneda, monto, cancela, cancela_sin_completar, operacion, comprobante_proveedor, archivo_ruta, anulado_en, motivo_anulacion')
+        .select('id, orden_compra_id, fecha_pago, moneda, monto, cancela, cancela_sin_completar, operacion, comprobante_proveedor, archivo_ruta, anulado_en, motivo_anulacion, pagado_fuera')
         .in('orden_compra_id', tanda)
         .order('fecha_pago')
         .order('creado_en')
@@ -691,7 +757,7 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
         .filter((p) => p.orden_compra_id === f.id)
         .map((p) => ({
           ...p,
-          url: vouchers.get(p.archivo_ruta) ?? null,
+          url: (p.archivo_ruta && vouchers.get(p.archivo_ruta)) || null,
           tomas: tomas
             .filter((x) => x.pago_orden_compra_id === p.id)
             .map((x) => ({
