@@ -22,6 +22,11 @@
  *   3. Administración, «Nueva orden de trabajo», cuando se pierde la respuesta
  *      al registrarla: la segunda vez la acción reconoce su propio PDF, abre la
  *      orden y no hay otra. (En el monitor; deja una orden de banco.)
+ *   4. La cotización con la respuesta perdida: Ventas la sube y la edita, y
+ *      Gerencia la aprueba con su código y su OT. Cada vez, la segunda vuelta
+ *      reconoce lo suyo, la ventana se cierra como si nada y no hay otra
+ *      cotización, versión ni OT. (En el monitor; deja una cotización
+ *      aprobada de banco.)
  *
  * Arma lo suyo con el sello QA-SUELTO-… en la base del banco y lo retira al
  * terminar. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -351,7 +356,122 @@ async function ordenNuevaSinRespuesta(viewport) {
   await contexto.close()
 }
 
+// ------------------------------------------------- 4. la cotización cuya respuesta se pierde
+/** Corta la primera respuesta de la acción que lleva `campo` en su formulario; las demás pasan. */
+async function perderLaPrimeraRespuesta(pagina, campo) {
+  const vueltas = { n: 0 }
+  await pagina.route((url) => url.pathname.startsWith('/cotizaciones'), async (r) => {
+    const pedido = r.request()
+    const cuerpo = pedido.method() === 'POST' && pedido.headers()['next-action'] ? pedido.postData() ?? '' : ''
+    if (!cuerpo.includes(campo)) return r.continue()
+    vueltas.n += 1
+    try {
+      if (vueltas.n === 1) {
+        await r.fetch({ timeout: 60000 })
+        return await r.abort('failed')
+      }
+      return await r.continue()
+    } catch {
+      await r.abort('failed').catch(() => {})
+    }
+  })
+  return vueltas
+}
+
+async function cotizacionSinRespuesta(viewport) {
+  const tam = nombreDe(viewport)
+  const numero = `QA-SUELTO-COT-${sello}`
+  const cerrada = (pagina) => esperar(async () => (await pagina.getByRole('dialog').count()) === 0, 40000)
+  // Lo leído del archivo llena (o vacía) el monto y la moneda: se escribe cuando terminó de leer.
+  const leido = async (dialogo, boton) => {
+    await dialogo.page().waitForTimeout(1500)
+    await esperar(async () => !/Leyendo/.test(await dialogo.innerText()) && !(await dialogo.getByRole('button', { name: boton }).isDisabled()), 30000)
+  }
+  const alerta = async (pagina) => limpio((await pagina.getByRole('dialog').locator('[role=alert]').allInnerTexts().catch(() => [])).join(' '))
+
+  // 4a. Ventas la sube.
+  const ventas = await entrar('ventas.local@metalwork.test', viewport)
+  const p = ventas.pagina
+  await ir(p, '/cotizaciones/pdf')
+  await p.getByRole('button', { name: 'Subir cotización' }).first().click()
+  const d = p.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#cot-archivo').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${numero}`, 'Semirremolque de banco']) })
+  await leido(d, 'Subir y mandar a Gerencia')
+  await d.locator('#cot-numero').fill(numero)
+  await d.locator('#cot-monto').fill('1000')
+  await d.locator('#cot-moneda').selectOption('USD')
+  await d.locator('#cot-igv').selectOption('no')
+  if (await d.locator('#cot-cliente').count()) await d.locator('#cot-cliente').selectOption({ index: 1 })
+  if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+  const subir = await perderLaPrimeraRespuesta(p, 'ruta_storage')
+  await d.getByRole('button', { name: 'Subir y mandar a Gerencia' }).click()
+  const subio = await cerrada(p)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const cot = await uno('select id, version from public.cotizaciones_pdf where numero = $1', [numero])
+  const cuantas = Number((await uno('select count(*) from public.cotizaciones_pdf where numero = $1', [numero])).count)
+  comprobar(subir.n === 2 && cuantas === 1, `[Ventas ${tam}] cotización sin respuesta: se pregunta otra vez y queda una sola (${subir.n} vueltas, ${cuantas} cotizaciones)`)
+  comprobar(subio && (await p.getByRole('status').filter({ hasText: 'Cotización subida' }).count()) > 0,
+    `[Ventas ${tam}] y la ventana se cierra con «Cotización subida»${subio ? '' : ` (dijo: ${await alerta(p)})`}`)
+  if (!cot) {
+    await ventas.contexto.close()
+    return
+  }
+
+  // 4b. Ventas la edita antes de que Gerencia la vea.
+  await ir(p, '/cotizaciones/pdf')
+  const tarjeta = p.locator(`li[id="${cot.id}"]`)
+  await tarjeta.getByRole('button', { name: /Editar cotización|Subir corrección/ }).click()
+  const e = p.getByRole('dialog').first()
+  await e.waitFor({ timeout: 20000 })
+  await e.locator(`#corregir-motivo-${cot.id}`).fill('Se corrigió el monto en la prueba del banco')
+  await e.locator(`#corregir-archivo-${cot.id}`).setInputFiles({ name: `${numero}-v2.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${numero}`, 'Version 2']) })
+  await leido(e, 'Guardar versión y enviar a Gerencia')
+  await e.locator('#corregir-monto').fill('1100')
+  await e.locator('#corregir-moneda').selectOption('USD')
+  await e.locator('#corregir-igv').selectOption('no')
+  const corregir = await perderLaPrimeraRespuesta(p, 'ruta_storage')
+  await e.getByRole('button', { name: 'Guardar versión y enviar a Gerencia' }).click()
+  const corrigio = await cerrada(p)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const v2 = await uno(`select c.version, (select count(*)::int from public.cotizaciones_pdf_versiones v where v.cotizacion_id = c.id) as anteriores
+                          from public.cotizaciones_pdf c where c.id = $1`, [cot.id])
+  comprobar(corregir.n === 2 && v2?.version === cot.version + 1 && v2?.anteriores === 1,
+    `[Ventas ${tam}] corrección sin respuesta: se pregunta otra vez y queda una sola versión nueva (${corregir.n} vueltas, versión ${v2?.version}, ${v2?.anteriores} anterior)`)
+  comprobar(corrigio, `[Ventas ${tam}] y la ventana se cierra en vez de decir que la cotización cambió${corrigio ? '' : ` (dijo: ${await alerta(p)})`}`)
+  await ventas.contexto.close()
+
+  // 4c. Gerencia la aprueba con su código y su OT.
+  const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
+  const libre = (await uno(`select n from generate_series(9100, 9999) n
+                             where not exists (select 1 from public.ordenes_trabajo o where o.numero = n || '-' || $1) order by n desc limit 1`, [anio])).n
+  const gerencia = await entrar('gerencia.local@metalwork.test', viewport)
+  const g = gerencia.pagina
+  await ir(g, '/cotizaciones/pdf')
+  await g.locator(`li[id="${cot.id}"]`).getByRole('button', { name: 'Aprobar', exact: true }).click()
+  const a = g.getByRole('dialog').first()
+  await a.waitFor({ timeout: 20000 })
+  await a.locator('#eo-codigo-interno').fill(`QA_SUELTO_${sello}/26`)
+  await a.locator(`#aprobar-pdf-${cot.id}`).setInputFiles({ name: `OT-${libre}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}-${anio}`]) })
+  await leido(a, 'Aprobar con código y OT')
+  await a.locator('#eo-numero').fill(String(libre))
+  await a.locator('#eo-fecha').fill(`${anio}-12-15`)
+  await a.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
+  const aprobar = await perderLaPrimeraRespuesta(g, 'ruta_pdf')
+  await a.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+  const aprobo = await cerrada(g)
+  await g.unrouteAll({ behavior: 'ignoreErrors' })
+  const ots = await base.query(`select o.id from public.ordenes_trabajo o where o.cotizacion_pdf_id = $1`, [cot.id])
+  const estado = (await uno('select estado::text from public.cotizaciones_pdf where id = $1', [cot.id]))?.estado
+  comprobar(aprobar.n === 2 && ots.rows.length === 1 && estado === 'APROBADA',
+    `[Gerencia ${tam}] aprobación sin respuesta: se pregunta otra vez y queda aprobada con una sola OT (${aprobar.n} vueltas, ${ots.rows.length} OT, ${estado})`)
+  comprobar(aprobo, `[Gerencia ${tam}] y la ventana se cierra en vez de decir que ya tiene su OT${aprobo ? '' : ` (dijo: ${await alerta(g)})`}`)
+  await g.screenshot({ path: join(CAPTURAS, `suelto-cotizacion-aprobada-${tam}.png`) })
+  await gerencia.contexto.close()
+}
+
 try {
+  await cotizacionSinRespuesta(MONITOR)
   await ordenNuevaSinRespuesta(MONITOR)
   for (const viewport of [MONITOR, TELEFONO]) {
     await quitarElOpcional(viewport)

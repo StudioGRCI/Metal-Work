@@ -81,7 +81,21 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
     .select('id')
     .maybeSingle()
 
+  const subida = async (): Promise<ResultadoAccion> => {
+    const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
+    revalidatePath('/cotizaciones/pdf')
+    return { ok: true, mensaje: `Cotización subida. Gerencia ya la tiene para revisar.${igv}` }
+  }
   if (error) {
+    // La misma subida otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`). Si la cotización con este id
+    // ya nombra esta ruta —un uuid de esta subida— y la registró quien sube,
+    // quedó: se dice como la primera vez. El IGV se anota otra vez (es un upsert),
+    // por si la primera se cortó antes.
+    if (error.code === '23505') {
+      const { data: ya } = await supabase.from('cotizaciones_pdf').select('ruta_storage, registrado_por').eq('id', v.id).maybeSingle()
+      if (ya && ya.ruta_storage === v.ruta_storage && ya.registrado_por === perfil.id) return subida()
+    }
     return {
       ok: false,
       error: error.message.includes('uq_cotizacion_pdf_numero')
@@ -91,9 +105,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
   }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
-  const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
-  revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: `Cotización subida. Gerencia ya la tiene para revisar.${igv}` }
+  return subida()
 }
 
 const esquemaRevisar = z.object({
@@ -194,13 +206,25 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
     return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
   }
-  if (!data) {
-    return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
+  let corregida = data
+  if (!corregida) {
+    // La misma corrección otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo con la versión que tenía. Si la cotización ya nombra
+    // esta ruta —un uuid de esta corrección— en la versión siguiente, quedó.
+    const { data: ya } = await supabase
+      .from('cotizaciones_pdf')
+      .select('numero, version, ruta_storage')
+      .eq('id', v.id)
+      .maybeSingle()
+    if (!ya || ya.ruta_storage !== v.ruta_storage || ya.version !== v.version + 1) {
+      return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
+    }
+    corregida = ya
   }
 
   const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
   revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: `Corrección subida: la ${data.numero} vuelve a Gerencia (versión ${data.version}).${igv}` }
+  return { ok: true, mensaje: `Corrección subida: la ${corregida.numero} vuelve a Gerencia (versión ${corregida.version}).${igv}` }
 }
 
 const esquemaQuitar = z.object({ id: z.guid() })
@@ -330,10 +354,27 @@ export async function aprobarCotizacionConOt(
   })
 
   if (error) {
-    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
-    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
-  }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
+    // La misma aprobación otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`), y la base dice que la
+    // cotización ya tiene su OT. Si esa OT es la de este envío —su id es un uuid
+    // de este envío, y la base la crea con su PDF y la aprobación, todo o
+    // nada— y la creó quien aprueba, quedó.
+    const yaEsSuya =
+      error.code === '23505' &&
+      (
+        await supabase
+          .from('ordenes_trabajo')
+          .select('id')
+          .eq('id', v.orden_id)
+          .eq('cotizacion_pdf_id', v.cotizacion_id)
+          .eq('creado_por', perfil.id)
+          .maybeSingle()
+      ).data
+    if (!yaEsSuya) {
+      const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
+      return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
+    }
+  } else if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/cotizaciones/pdf')
   revalidatePath('/codigos-internos')
