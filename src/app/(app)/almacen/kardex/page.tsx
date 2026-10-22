@@ -451,13 +451,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
                   )}
                   {f.con_foto && (
-                    <Link href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</Link>
+                    <a href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</a>
                   )}
                   {f.formato_pendiente && (
                     <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
                   )}
                   {f.con_formato && exigeFormato(f.almacen) && (
-                    <Link href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</Link>
+                    <a href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</a>
                   )}
                 </>
               )
