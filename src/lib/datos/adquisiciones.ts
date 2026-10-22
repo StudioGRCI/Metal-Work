@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { enlaces } from '@/lib/datos/facturacion'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
+import { rucEsValido } from '@/lib/dominio/proveedores'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
 
@@ -73,6 +74,24 @@ export type CompraSinFactura = {
   facturado: number
   /** Las facturas registradas que ya la cubren en parte. */
   facturas: string[]
+  /** El RUC de su proveedor en el padrón: la factura se liga solo a las OC de su RUC (migración 20261022170000). */
+  ruc: string | null
+}
+
+/** El RUC del proveedor de cada OC, si está en el padrón y es un RUC (como `public.ruc_de_la_compra`). */
+async function rucsDeCompras(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data, error } = await supabase
+    .from('ordenes_compra_materiales')
+    .select('id, padron:proveedores(numero_documento)')
+    .in('id', ids)
+  if (error) throw new Error(`No se pudo leer el RUC del proveedor de cada OC: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((c) => {
+      const ruc = c.padron?.numero_documento?.trim() ?? ''
+      return rucEsValido(ruc) ? [[c.id, ruc] as const] : []
+    }),
+  )
 }
 
 const esquemaFacturadas = z.array(z.object({ numero_documento: z.string() }))
@@ -88,6 +107,7 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
   const ids = (data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))
   const facturadas = ids.length ? await supabase.rpc('facturado_de_compras', { p_ids: ids }) : { data: [], error: null }
   if (facturadas.error) throw new Error(`No se pudo leer lo facturado de cada OC: ${facturadas.error.message}`)
+  const rucDe = await rucsDeCompras(supabase, ids)
   const facturadoDe = new Map(
     (facturadas.data ?? []).flatMap((f) =>
       f.orden_compra_id
@@ -112,6 +132,7 @@ export async function comprasSinFactura(): Promise<CompraSinFactura[]> {
           en_borrador: Boolean(c.en_borrador),
           facturado: facturadoDe.get(c.orden_compra_id)?.facturado ?? 0,
           facturas: facturadoDe.get(c.orden_compra_id)?.facturas ?? [],
+          ruc: rucDe.get(c.orden_compra_id) ?? null,
         }]
       : [],
   )
@@ -151,6 +172,8 @@ export type FacturaDeLogistica = {
   pagadaDirecto: boolean
   /** La moneda de su OC: si la factura va en otra, no toma sola lo pagado por la boleta. */
   monedaOc: string
+  /** El RUC del proveedor de su OC, si está en el padrón: es el de la factura. */
+  ruc: string | null
 }
 
 /**
@@ -174,6 +197,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     ? await supabase.rpc('situacion_de_facturas_anexadas', { p_documentos: documentos.map((d) => d.id) })
     : { data: [], error: null }
   if (errorSituacion) throw new Error(`No se pudo ver qué facturas de Logística ya se registraron: ${errorSituacion.message}`)
+  const rucDe = await rucsDeCompras(supabase, [...new Set(documentos.map((d) => d.orden_compra_id))])
   const situacionDe = new Map((situacion ?? []).flatMap((r) => (r.documento ? [[r.documento, r] as const] : [])))
   return documentos.map((d) => ({
     id: d.id,
@@ -188,6 +212,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
     facturaDeLaOc: situacionDe.get(d.id)?.factura_de_la_oc ?? null,
     pagadaDirecto: situacionDe.get(d.id)?.pagada_directo ?? false,
     monedaOc: d.oc?.moneda ?? 'PEN',
+    ruc: rucDe.get(d.orden_compra_id) ?? null,
   }))
 }
 
@@ -239,6 +264,8 @@ export type FacturaEnTabla = {
   id: string
   tipo: string
   proveedor: string
+  /** El RUC de quien la emitió; null en las registradas antes del 22/10/2026 (migración 20261022170000). */
+  ruc_proveedor: string | null
   numero_documento: string
   fecha_emision: string
   fecha_vencimiento: string
@@ -322,7 +349,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
   const { data, error } = await supabase
     .from('adquisiciones')
     .select(
-      'id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
+      'id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, registrado_por, observacion, ruta_storage, documento_compra_id, lectura_fuente, lectura_total, lectura_moneda, lectura_numero, lectura_ordenes',
     )
     .order('creado_en', { ascending: false })
     .limit(100)
@@ -392,6 +419,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
         id: a.id,
         tipo: a.tipo,
         proveedor: a.proveedor,
+        ruc_proveedor: a.ruc_proveedor,
         numero_documento: a.numero_documento,
         fecha_emision: a.fecha_emision,
         fecha_vencimiento: a.fecha_vencimiento,

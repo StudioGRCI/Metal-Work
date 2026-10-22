@@ -33,6 +33,7 @@ export type Database = {
           lectura_numero: string | null
           lectura_ordenes: string[] | null
           lectura_en: string | null
+          ruc_proveedor: string | null
         }
         Insert: {
           id?: string
@@ -60,6 +61,7 @@ export type Database = {
           lectura_numero?: string | null
           lectura_ordenes?: string[] | null
           lectura_en?: string | null
+          ruc_proveedor?: string | null
         }
         Update: {
           id?: string
@@ -87,6 +89,7 @@ export type Database = {
           lectura_numero?: string | null
           lectura_ordenes?: string[] | null
           lectura_en?: string | null
+          ruc_proveedor?: string | null
         }
         Relationships: [
           {
@@ -13588,6 +13591,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      mismo_emisor: {
+        Args: {
+          p_ruc_uno: string | null
+          p_nombre_uno: string | null
+          p_ruc_otro: string | null
+          p_nombre_otro: string | null
+        }
+        Returns: boolean
+      }
       mismo_proveedor: {
         Args: {
           p_uno: string | null
@@ -15145,6 +15157,12 @@ export type Database = {
           p_fecha: string | null
           p_horas: number | null
           p_motivo: string | null
+        }
+        Returns: string
+      }
+      ruc_de_la_compra: {
+        Args: {
+          p_compra: string | null
         }
         Returns: string
       }

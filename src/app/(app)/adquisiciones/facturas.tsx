@@ -551,6 +551,7 @@ function DatosDeFactura({
               id: f.id,
               tipo: f.tipo,
               proveedor: f.proveedor,
+              ruc_proveedor: f.ruc_proveedor,
               numero_documento: f.numero_documento,
               fecha_emision: f.fecha_emision,
               fecha_vencimiento: f.fecha_vencimiento,

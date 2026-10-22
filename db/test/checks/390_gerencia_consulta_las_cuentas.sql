@@ -39,8 +39,9 @@ end $$;
 -- 1. Contabilidad registra la factura de compra con su PDF.
 select pg_temp.como('contabilidad');
 set local role authenticated;
-insert into public.adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-values (current_setting('prueba.adq')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 390', 'F001-390',
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                  condicion_pago)
+values (current_setting('prueba.adq')::uuid, 'FACTURA_COMPRA', 'PROVEEDOR 390', '20600003900', 'F001-390',
         current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 1180, 'CONTADO');
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('comprobantes-financieros', 'adquisiciones/' || current_setting('prueba.adq') || '/comprobante.pdf', current_setting('prueba.contabilidad'),

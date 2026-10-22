@@ -5,13 +5,25 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { rucEsValido } from '@/lib/dominio/proveedores'
 import { moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * El RUC de quien emitió el comprobante, sin espacios ni guiones; vacío si no se
+ * escribió (la base lo toma de la OC del padrón, y sin él no registra la factura
+ * de compra). El dígito de control lo revisa la base.
+ */
+const RUC = z
+  .string()
+  .transform((t) => t.replace(/\D/g, ''))
+  .refine((t) => t === '' || t.length === 11, 'El RUC son 11 dígitos: cópialo tal como sale en la factura.')
+
 const esquema = z.object({
   tipo: z.enum(['FACTURA_COMPRA', 'RECIBO_HONORARIOS', 'FACTURA_VEHICULO', 'FACTURA_TESORERIA', 'OTRO']),
   proveedor: z.string().trim().min(2).max(160),
+  ruc_proveedor: RUC.optional().transform((t) => t ?? ''),
   numero_documento: z.string().trim().min(3).max(80),
   fecha_emision: z.iso.date(),
   fecha_vencimiento: z.iso.date(),
@@ -106,6 +118,20 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     if (ordenes.length === 0) ordenes = [documento.orden_compra_id]
   }
 
+  // Con el RUC escrito, la factura va solo a las OC de ese RUC (migración 20261022170000).
+  if (v.ruc_proveedor && ordenes.length > 0) {
+    const { data: padron, error: errorPadron } = await supabase.from('ordenes_compra_materiales')
+      .select('id, numero, referencia, padron:proveedores(numero_documento)').in('id', ordenes)
+    if (errorPadron) return { ok: false, error: mensajeDeError(errorPadron) }
+    const otra = (padron ?? []).find((c) => {
+      const suyo = c.padron?.numero_documento?.trim() ?? ''
+      return rucEsValido(suyo) && suyo !== v.ruc_proveedor
+    })
+    if (otra) {
+      return { ok: false, error: `La ${otra.numero ?? `OC ${otra.referencia}`} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
+    }
+  }
+
   // Antes de crear nada: que las OC marcadas puedan ir juntas en esta factura.
   // La base lo vuelve a exigir; aquí se ataja para no dejar un borrador a medias.
   if (ordenes.length > 1 || (ordenes.length === 1 && !principal)) {
@@ -130,7 +156,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   principal ??= ordenes[0] ?? null
 
   const { data: borrador, error: errorAlta } = await supabase.from('adquisiciones').insert({
-    id, tipo: v.tipo, proveedor: v.proveedor, numero_documento: v.numero_documento,
+    id, tipo: v.tipo, proveedor: v.proveedor, ruc_proveedor: v.ruc_proveedor || null, numero_documento: v.numero_documento,
     fecha_emision: v.fecha_emision, fecha_vencimiento: v.fecha_vencimiento,
     moneda: v.moneda, total: v.total, condicion_pago: v.condicion_pago,
     orden_id: v.orden_id || null, orden_compra_id: principal, documento_compra_id: v.documento_compra_id || null,
@@ -292,6 +318,7 @@ const LECTURA_CORREGIDA = z
 
 const CAMBIOS_FACTURA = z.object({
   proveedor: z.string().trim().min(2, 'Escribe el proveedor.').max(160).optional(),
+  ruc_proveedor: RUC.optional(),
   numero_documento: z.string().trim().min(3, 'Escribe el número del comprobante.').max(80).optional(),
   fecha_emision: z.iso.date('Revisa la fecha de emisión.').optional(),
   fecha_vencimiento: z.iso.date('Revisa la fecha de vencimiento.').optional(),
