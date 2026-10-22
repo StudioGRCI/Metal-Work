@@ -235,7 +235,8 @@ begin
   if not found or (v_adq.estado <> 'BORRADOR' and current_setting('metalwork.corrigiendo', true) is distinct from 'factura') then
     raise exception 'Las OC de una factura se eligen al registrarla; registrada, ya no cambian sin una corrección con su justificante.' using errcode = 'check_violation';
   end if;
-  select * into v_oc from public.ordenes_compra_materiales where id = new.orden_compra_id;
+  -- Tomada, para no cruzarse con su anulación.
+  select * into v_oc from public.ordenes_compra_materiales where id = new.orden_compra_id for share;
   if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
   if v_oc.aprobacion = 'RECHAZADA' then
     raise exception 'La orden de compra % está rechazada: no se factura.', coalesce(v_oc.numero, v_oc.referencia) using errcode = 'check_violation';
@@ -1884,6 +1885,11 @@ begin
   if found then
     return format('Logística le anexó a la %s la factura %s: si no corresponde, que anule ese anexo antes.', v_nombre, v_doc);
   end if;
+  -- La OC con boleta que Gerencia aprobó antes del 20/10 se dio por pagada fuera del
+  -- sistema (migración 20261020210000): nada en él dice que no se pagó.
+  if not v_c.con_factura and not v_c.pago_en_tesoreria then
+    return format('La %s va con boleta y se aprobó antes de que Tesorería pagara en el sistema: se dio por pagada fuera. Si no se pagó, que Tesorería la pase a su lista («No se pagó») y después se anula.', v_nombre);
+  end if;
   v_neto := coalesce((select sum(p.monto) from public.pagos_orden_compra p where p.orden_compra_id = p_compra and p.anulado_en is null), 0)
           - coalesce((select sum(x.monto) from public.devoluciones_orden_compra x where x.orden_compra_id = p_compra and x.anulado_en is null), 0);
   if v_neto > 0 then
@@ -1939,7 +1945,16 @@ begin
            'material_id', coalesce(d.material_id, om.material_id),
            'orden', o.numero, 'area', r.area_destino,
            'material_codigo', m.codigo, 'material', m.descripcion, 'unidad', um.codigo,
-           'cantidad', d.cantidad, 'precio_unitario', d.precio_unitario) order by o.numero nulls first, m.codigo), '[]'::jsonb)
+           'cantidad', d.cantidad, 'precio_unitario', d.precio_unitario,
+           -- El destino que decía su PDF: «CÓDIGO · RQ-…» por cada código de los insumos que compraba.
+           'destino', (select string_agg(x.codigo || ' · ' || x.rqs, '; ' order by x.codigo)
+                         from (select btrim(rq.codigo_interno) as codigo, string_agg(distinct rq.numero::text, ', ') as rqs
+                                 from public.requerimiento_lineas rl
+                                 join public.requerimientos rq on rq.id = rl.requerimiento_id
+                                where (rl.orden_compra_detalle_id = d.id
+                                       or (rl.orden_compra_detalle_id is null and rl.orden_compra_id = d.orden_compra_id))
+                                  and nullif(btrim(rq.codigo_interno), '') is not null
+                                group by btrim(rq.codigo_interno)) x)) order by o.numero nulls first, m.codigo), '[]'::jsonb)
     into v_lineas
     from public.orden_compra_material_detalles d
     left join public.requerimientos_materiales r on r.id = d.requerimiento_id
@@ -1994,7 +2009,9 @@ begin
   if not public.es_aprobador_compras() then
     raise exception 'Solo el puesto que aprueba las compras puede anularlas.' using errcode = 'insufficient_privilege';
   end if;
+  -- Primero las que se pueden anular: las que ya no se pueden no le quitan sitio.
   return query
+  select x.* from (
   select c.id, coalesce(c.numero, 'OC ' || c.referencia), c.proveedor, c.moneda,
          coalesce((select sum(d.cantidad * coalesce(d.precio_unitario, 0)) from public.orden_compra_material_detalles d
                     where d.orden_compra_id = c.id), 0)::numeric(14, 2),
@@ -2007,12 +2024,13 @@ begin
               else array(select distinct q.codigo_interno from public.requerimiento_lineas rl
                            join public.requerimientos q on q.id = rl.requerimiento_id
                           where rl.orden_compra_id = c.id and q.codigo_interno is not null order by 1) end,
-         public.motivo_para_no_anular_compra(c.id)
+         public.motivo_para_no_anular_compra(c.id) as impide
     from public.ordenes_compra_materiales c
    where c.aprobacion in ('APROBADA', 'NO_REQUERIDA')
      and c.entregado_almacen_en is null
      and c.recojo is distinct from 'DEJADO'
-   order by c.creado_en desc
+  ) x
+   order by x.impide is null desc, x.creado_en desc
    limit 200;
 end;
 $$;
@@ -2052,7 +2070,9 @@ as $$
 declare
   v_c public.ordenes_compra_materiales%rowtype;
 begin
-  select * into v_c from public.ordenes_compra_materiales where id = new.orden_compra_id;
+  -- Con la OC tomada: si Gerencia la está anulando, se espera y se ve anulada; si
+  -- esto entra primero, la anulación lo ve y no se hace.
+  select * into v_c from public.ordenes_compra_materiales where id = new.orden_compra_id for share;
   if found and v_c.aprobacion = 'ANULADA' then
     raise exception 'La % está anulada: %.', coalesce(v_c.numero, 'OC ' || v_c.referencia),
       case tg_table_name

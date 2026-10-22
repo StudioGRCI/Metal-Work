@@ -26,6 +26,10 @@ begin
   if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then
     raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
   end if;
+  -- La orden primero, como al registrar un pago: si Tesorería está pagando la misma
+  -- orden en otra pantalla, se espera y se ve ese pago.
+  perform 1 from public.ordenes_servicio
+   where id = (select x.orden_servicio_id from public.pagos_orden_servicio x where x.id = p_id) for update;
   select * into v_pago from public.pagos_orden_servicio where id = p_id for update;
   if not found then raise exception 'Ese pago no existe.' using errcode = 'check_violation'; end if;
   if v_pago.anulado_en is not null then return p_id; end if;

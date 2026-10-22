@@ -170,6 +170,9 @@ select test.afirmar((select aprobacion = 'ANULADA' and anulada_por = pg_temp.id(
                             and lineas_anuladas->0->>'material_codigo' = 'CHK422-PLA'
                        from public.ordenes_compra_materiales where id = pg_temp.id('oc1')),
   'queda con quién, cuándo y por qué, y sus líneas escritas en la OC');
+select test.afirmar((select lineas_anuladas->0->>'destino' = 'PLA_SR_O4_1_26/22 · ' || (select numero from public.requerimientos where id = pg_temp.id('rq'))
+                       from public.ordenes_compra_materiales where id = pg_temp.id('oc1')),
+  'cada línea guarda para qué código y qué RQ era: su PDF lo sigue diciendo');
 select test.afirmar(not exists (select 1 from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oc1'))
                     and not exists (select 1 from public.programacion_recojo where orden_compra_id = pg_temp.id('oc1')),
   'sus líneas se soltaron y salió de la lista del conductor');
@@ -325,6 +328,24 @@ select test.debe_fallar($$ insert into public.documentos_compra_material (id, or
                             values (pg_temp.id('d2'), pg_temp.id('oc2'), 'COTIZACION', 'cotizacion.pdf', 'compra/' || pg_temp.id('oc2') || '/' || pg_temp.id('d2') || '.pdf',
                                     'application/pdf', 2048, pg_temp.id('comprador')) $$,
   'a la anulada Logística no le adjunta documentos', 'no se le adjuntan documentos');
+reset role;
+
+-- ============================================ 8. La de boleta que se dio por pagada fuera
+-- Las OC con boleta aprobadas antes del 20/10 quedaron con `pago_en_tesoreria` en
+-- falso: se pagaron fuera del sistema y nada en él lo dice.
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(pg_temp.id('oc7'));
+reset role;
+alter table public.ordenes_compra_materiales disable trigger user;
+update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('oc7');
+alter table public.ordenes_compra_materiales enable trigger user;
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar((select impide like '%se dio por pagada fuera%' from public.compras_que_se_pueden_anular()
+                      where id = pg_temp.id('oc7')),
+  'la de boleta pagada fuera del sistema no se ofrece para anular, y dice por qué');
+select test.debe_fallar($$ select pg_temp.anular('oc7') $$, 'ni se anula', 'se dio por pagada fuera');
 reset role;
 
 rollback;

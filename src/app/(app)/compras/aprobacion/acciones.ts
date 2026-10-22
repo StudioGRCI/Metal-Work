@@ -143,6 +143,6 @@ export async function anularCompra(_previo: unknown, datos: FormData): Promise<R
   revalidatePath('/requerimientos')
   return {
     ok: true,
-    mensaje: 'Compra anulada. Logística recibió el motivo, sus insumos volvieron a quedar por comprar y su PDF sale como ANULADA.',
+    mensaje: 'Compra anulada. Logística recibió el motivo; si venía de un requerimiento, sus insumos volvieron a quedar por comprar. Su PDF sale como ANULADA.',
   }
 }

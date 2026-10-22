@@ -164,7 +164,6 @@ export function DocumentoOrdenServicio({ servicio: o, logo }: { servicio: Servic
   const observaciones = [
     o.referenciaProveedor ? `Según su cotización ${o.referenciaProveedor}.` : null,
     `Emitir la factura a nombre de ${EMPRESA.razonSocial} y enviarla a los correos indicados, con el número ${o.numero}.`,
-    'Tesorería paga contra la factura, después de la conformidad del servicio.',
   ].filter(Boolean)
 
   return (

@@ -27,7 +27,7 @@ function lineasAnuladas(guardadas: unknown, codigo: string | null): LineaCompraP
       unidad: texto(l.unidad),
       cantidad: Number(l.cantidad ?? 0),
       precio: l.precio_unitario === null || l.precio_unitario === undefined ? null : Number(l.precio_unitario),
-      destino: [orden ? `OT ${orden}` : null, codigo].filter(Boolean).join(' · ') || 'ALMACÉN',
+      destino: texto(l.destino) || [orden ? `OT ${orden}` : null, codigo].filter(Boolean).join(' · ') || 'ALMACÉN',
     }
   })
 }
