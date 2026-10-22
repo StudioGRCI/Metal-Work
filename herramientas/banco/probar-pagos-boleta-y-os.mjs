@@ -308,7 +308,7 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (cortando && m.text().includes('net::ERR_FAILED')) return
+    if (cortando && /net::ERR_FAILED|status of 504/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -437,9 +437,10 @@ let pagoId
 // y la base ya no da por pagado ese envío con otro voucher (migración
 // 20261022170000): lo dice, y el voucher nuevo, que ninguna fila nombra, se
 // quita. Un pago, un egreso y ningún voucher suelto. Queda a cuenta: Gerencia y
-// el teléfono (6 y 7) siguen viendo su botón de pagar.
+// el teléfono (6 y 7) siguen viendo su botón de pagar. En el teléfono, que es donde el
+// botón quedaba bajo el borde de la hoja tras el rechazo (undécima pasada).
 {
-  const { pagina, contexto } = await entrar('tesoreria')
+  const { pagina, contexto } = await entrar('tesoreria', { width: 390, height: 844 })
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
   await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
@@ -464,6 +465,15 @@ let pagoId
   const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
   await boton.click()
   const primera = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+  // Tras el rechazo, el cursor en el aviso y el botón entero a la vista (undécima pasada: quedaba en la página).
+  const alRechazo = () => pagina.evaluate(() => {
+    const ventana = document.querySelector('[role="dialog"]:not([data-nextjs-dialog])')
+    const aviso = ventana?.querySelector('[role="alert"]')
+    const boton = [...(ventana?.querySelectorAll('button[type=submit]') ?? [])].find((b) => b.textContent.trim() === 'Registrar el pago')
+    const r = boton?.getBoundingClientRect()
+    return { cursor: document.activeElement === aviso, boton: Boolean(r && r.top >= 0 && r.bottom <= innerHeight) }
+  })
+  const trasLaPrimera = await hasta(alRechazo, (e) => e.cursor && e.boton, 5000)
   await pagina.unrouteAll({ behavior: 'ignoreErrors' })
   await boton.click()
   const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
@@ -478,10 +488,57 @@ let pagoId
   const [{ n: egresos }] = pagos.length === 1
     ? await consulta(`select count(*)::int as n from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagos[0].id])
     : [{ n: -1 }]
-  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Ese pago ya quedó registrado con otro voucher: recarga la pantalla para verlo.')
+  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.')
     && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
-    `el pago cuya respuesta se perdió no se da por pagado con otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
+    `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
+  comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)
   await pagina.keyboard.press('Escape')
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3a'. El voucher que Storage guardó sin contestar
+// Storage guarda el voucher y al navegador le llega un 504 de la pasarela. La
+// ruta era nueva y nadie la vuelve a usar: la pantalla lo quita en el acto, y
+// el segundo intento, a otra ruta, entra. Un pago y ningún voucher suelto
+// (undécima pasada: el primero quedaba suelto aunque el segundo entrara).
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('input[name="monto"]').fill('25')
+  await v.locator('select[name="cancela"]').selectOption('no')
+  const valor = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valor)
+  await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  const guardados = []
+  await pagina.route(`**/storage/v1/object/pagos-compras/${oc[0]}/**`, async (r) => {
+    if (r.request().method() !== 'POST' || guardados.length) return r.continue()
+    guardados.push(new URL(r.request().url()).pathname.split('/pagos-compras/')[1])
+    await r.fetch().catch(() => {})
+    return r.fulfill({ status: 504, contentType: 'text/html', body: '<html><body>504 Gateway Time-out</body></html>' })
+  })
+  const boton = v.getByRole('button', { name: 'Registrar el pago' })
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  cortando = true
+  await boton.click()
+  const primera = limpio(await hasta(aviso, (t) => /No se pudo subir/.test(t ?? ''), 30000))
+  cortando = false
+  const quitado = guardados.length === 1 && (await hasta(
+    () => consulta(`select 1 from storage.objects where bucket_id = 'pagos-compras' and name = $1`, [decodeURIComponent(guardados[0])]),
+    (r) => r.length === 0,
+  )).length === 0
+  await boton.click()
+  const entro = await hasta(() => v.count(), (n) => n === 0, 30000)
+  const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                                    and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                                    and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
+  comprobar(guardados.length === 1 && quitado && entro === 0 && pagos.length === 1 && pagos[0].monto === 25 && sueltos.length === 0,
+    `el voucher que Storage guardó con un 504 se quita en el acto y el segundo intento entra: «${primera}» (${guardados.length} cortado, ${quitado ? 'quitado' : 'sigue ahí'}, ${pagos.length} pago, ${sueltos.length} sueltos)`)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
   await contexto.close()
 }
 

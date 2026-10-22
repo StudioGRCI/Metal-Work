@@ -147,7 +147,7 @@ begin
   -- Con otro PDF ya no es el mismo envío (migración 20261022160000).
   perform test.debe_fallar(format('select public.registrar_factura_venta(%L, %L, ''E001-626'', current_setting(''prueba.hoy'')::date, current_setting(''prueba.hoy'')::date + 30, ''USD'', 29500, null, %L, ''otra.pdf'')',
       current_setting('prueba.f1'), current_setting('prueba.cot1'), current_setting('prueba.f1') || '/' || gen_random_uuid() || '.pdf'),
-    'la misma factura con otro PDF no se da por registrada', 'ya quedó registrada con otro PDF');
+    'la misma factura con otro PDF no se da por registrada', 'ya quedó registrada la primera vez que la enviaste');
   perform test.afirmar((select numero = 'E001-626' and codigo_interno = 'QA-CI 357' and cliente = 'QA CLIENTE FACTURA'
                           and cotizacion_numero = 'QA-357-1' from public.facturas_venta where id = v),
     'la factura queda colgada del código interno y de la cotización');

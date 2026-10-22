@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
+import { ocupada, subirARutaNueva } from '@/lib/ruta-nueva'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
@@ -43,7 +44,13 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
     ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
     : { ok: false, error: 'El identificador del gasto ya está en uso.' }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
-  const { error: errorArchivo } = await db.storage.from('gastos-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
+  const cubeta = db.storage.from('gastos-ot')
+  let { error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf')
+  // Ninguna fila nombra todavía la ruta de este gasto: lo que ocupa la ruta lo
+  // dejó un intento anterior del mismo formulario (la subida llegó y la
+  // respuesta no), `subirARutaNueva` ya lo quitó, y se sube otra vez. Antes
+  // cada reintento chocaba con ese archivo para siempre.
+  if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf'))
   if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {
     const { data, error } = await db.from('ot_gastos_areas').insert({
@@ -170,9 +177,12 @@ export async function adjuntarControlFirmado(_previo: unknown, datos: FormData):
   const { data: control, error: lectura } = await db.from('ot_control_vehicular')
     .select('id, salida_cerrada_en, escaneo_ruta').eq('orden_id', ordenId.data).maybeSingle()
   if (lectura) return { ok: false, error: mensajeDeError(lectura) }
-  if (!control?.salida_cerrada_en || control.escaneo_ruta) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo; solo se admite un archivo.' }
+  // Ya con su escaneo: también es el reintento de un envío que entró y cuya
+  // respuesta se perdió, y decirle que cierre la salida lo confundía.
+  if (control?.escaneo_ruta) return { ok: false, error: 'La ficha ya tiene su escaneo firmado: recarga la pantalla para verlo. Solo se admite uno.' }
+  if (!control?.salida_cerrada_en) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo.' }
   const ruta = `ot/${ordenId.data}/control/${crypto.randomUUID()}.pdf`
-  const { error: subida } = await db.storage.from('control-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
+  const { error: subida } = await subirARutaNueva(db.storage.from('control-ot'), ruta, pdf.bytes, 'application/pdf')
   if (subida) return { ok: false, error: `No se pudo subir el escaneo: ${mensajeDeArchivo(subida)}` }
   try {
     const { data, error } = await db.from('ot_control_vehicular').update({

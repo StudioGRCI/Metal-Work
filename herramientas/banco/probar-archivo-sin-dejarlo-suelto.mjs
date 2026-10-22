@@ -1211,8 +1211,10 @@ async function loLeidoSeVaConElArchivo(viewport) {
   // Para que la base diga que no, un disparador de banco que rechaza marcar
   // como parcial la OC de los comprobantes de esta prueba, y se quita enseguida.
   // Primero como una regla (`check_violation`): su motivo ya dice qué hacer y
-  // no se agrega otro paso. Después como un fallo de paso (`40001`, la
-  // escritura chocó con otra): ahí sí, «Después, …».
+  // no se agrega otro paso. Luego sin permiso (`42501`): «Corregir» tampoco
+  // pasaría, así que el paso es avisar al administrador. Después como un fallo
+  // de paso (`40001`, la escritura chocó con otra): ahí sí, «Después, …» con
+  // «Corregir», y el motivo en castellano, no el del motor.
   const borradorConParcialQueFalla = async (numero, errcode, motivo) => {
     await quitarElParcialDePrueba()
     await base.query(`create function public.qa_parcial_dice_que_no() returns trigger language plpgsql security definer set search_path = public as $$
@@ -1247,26 +1249,48 @@ async function loLeidoSeVaConElArchivo(viewport) {
   const porRegla = await borradorConParcialQueFalla(numeroRegla, 'check_violation', 'QA: esta OC no se marca como parcial; corrige la otra factura primero.')
   comprobar(porRegla === `El comprobante ${numeroRegla} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: QA: esta OC no se marca como parcial; corrige la otra factura primero. Complétalo en su fila de la lista, en «PDF pendiente».`,
     `[Contabilidad ${tam}] si lo frenó una regla de la base, el aviso dice su motivo y no agrega un «Después» que lo contradiga: «${porRegla}»`)
+  const numeroPermiso = `F995-${sello}${tam}`
+  const sinPermiso = await borradorConParcialQueFalla(numeroPermiso, '42501', 'permission denied for table adquisiciones_ordenes_compra')
+  comprobar(sinPermiso === `El comprobante ${numeroPermiso} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: no tienes permisos para realizar esta operación. Complétalo en su fila de la lista, en «PDF pendiente». Después, avisa al administrador para marcarla como parcial.`,
+    `[Contabilidad ${tam}] si le faltó el permiso, no lo manda a «Corregir», que tampoco pasaría: avisar al administrador, una vez y al final: «${sinPermiso}»`)
   const numeroOc = `F997-${sello}${tam}`
-  const sinOc = await borradorConParcialQueFalla(numeroOc, '40001', 'No se pudo marcar la OC como parcial')
-  comprobar(sinOc === `El comprobante ${numeroOc} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: no se pudo marcar la OC como parcial. Complétalo en su fila de la lista, en «PDF pendiente». Después, márcala como parcial con «Corregir».`,
+  const sinOc = await borradorConParcialQueFalla(numeroOc, '40001', 'could not serialize access due to concurrent update')
+  comprobar(sinOc === `El comprobante ${numeroOc} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: otra persona guardaba algo relacionado a la vez y esto no se guardó. Complétalo en su fila de la lista, en «PDF pendiente». Después, márcala como parcial con «Corregir».`,
     `[Contabilidad ${tam}] el borrador al que le faltó marcar su OC como parcial dice su número, la OC y qué hacer después: «${sinOc}»`)
   await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).scrollIntoViewIfNeeded().catch(() => {})
   await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-borrador-sin-oc-${tam}.png`) })
   const sinOcId = (await uno('select id from public.adquisiciones where proveedor = $1 and numero_documento = $2', [`QA proveedor ${sello}`, numeroOc]))?.id
   const completarSinOc = r.locator('form').filter({ has: r.locator(`input[name="id"][value="${sinOcId}"]`) }).filter({ visible: true }).first()
   let completadoSinOc = false
+  let rodada = null
   if (sinOcId && (await esperar(async () => (await completarSinOc.count()) > 0, 10000))) {
     await completarSinOc.scrollIntoViewIfNeeded()
     await completarSinOc.locator('input[name="pdf"]').setInputFiles({ name: `QA-PENDIENTE-OC-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
     await esperar(async () => !(await completarSinOc.getByRole('button', { name: 'Completar comprobante' }).isDisabled()), 20000)
+    // Mientras espera, la persona rueda la página: el «listo» recibe el cursor sin que la página salte bajo
+    // su dedo (undécima pasada: a 390 saltaba 1319 px). La respuesta se demora para que ruede antes.
+    await r.route('**/*', async (ruta) => {
+      const q = ruta.request()
+      if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sinOcId)) await new Promise((listo) => setTimeout(listo, 1500))
+      return ruta.continue()
+    })
     await completarSinOc.getByRole('button', { name: 'Completar comprobante' }).click()
+    rodada = await r.evaluate(() => {
+      const desde = scrollY
+      scrollTo(0, desde > 700 ? desde - 700 : desde + 700)
+      return { desde, hasta: scrollY }
+    })
     completadoSinOc = await esperar(async () => (await uno('select estado from public.adquisiciones where id = $1', [sinOcId]))?.estado === 'REGISTRADA', 30000)
   }
   const listoSinOc = r.locator('#adq-completado').filter({ hasText: `Comprobante ${numeroOc} completado y registrado.` })
   const llegoSinOc = await esperar(async () => (await listoSinOc.count()) > 0, 20000)
   const dijoSinOc = llegoSinOc ? limpio(await listoSinOc.innerText()) : ''
   const anunciaSinOc = llegoSinOc ? limpio(await listoSinOc.locator('[role=status]').innerText()) : ''
+  await r.unrouteAll({ behavior: 'ignoreErrors' })
+  if (llegoSinOc) await esperar(() => listoSinOc.evaluate((e) => e.contains(document.activeElement)), 3000)
+  const trasElListo = llegoSinOc ? await listoSinOc.evaluate((e) => ({ y: scrollY, cursor: e.contains(document.activeElement) })) : null
+  comprobar(rodada && Math.abs(rodada.hasta - rodada.desde) > 48 && trasElListo?.cursor && Math.abs(trasElListo.y - rodada.hasta) <= 2,
+    `[Contabilidad ${tam}] si rodó la página mientras esperaba, el «listo» recibe el cursor y la página no salta (${JSON.stringify({ rodada, trasElListo })})`)
   // El aviso de F996, que sigue en borrador, no es de este: se queda.
   comprobar(completadoSinOc && dijoSinOc === `Comprobante ${numeroOc} completado y registrado. Ahora márcala como parcial con «Corregir».`
     && anunciaSinOc === 'Ahora márcala como parcial con «Corregir».'

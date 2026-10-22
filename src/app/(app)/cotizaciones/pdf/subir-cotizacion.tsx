@@ -23,6 +23,7 @@ import {
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
 import { useCursorAlRechazo } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
@@ -264,9 +265,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           setCarroceriaNueva(false)
         }
 
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return

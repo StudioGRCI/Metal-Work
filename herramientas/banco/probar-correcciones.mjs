@@ -202,11 +202,23 @@ writeFileSync(
 // ------------------------------------------------------------------ navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
+/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte. */
+let cortando = false
+async function hasta(leer, cumple, ms = 30000) {
+  const fin = Date.now() + ms
+  let v = await leer()
+  while (!cumple(v) && Date.now() < fin) {
+    await new Promise((r) => setTimeout(r, 250))
+    v = await leer()
+  }
+  return v
+}
 async function entrar(clave) {
   const correo = `${clave}.corr@banco.test`
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
+    if (cortando && m.text().includes('net::ERR_FAILED')) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${clave}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -244,12 +256,38 @@ try {
     comprobar(sinArchivo && (await v.isVisible()), 'sin justificante la corrección del RQ no se envía')
     await v.locator('[id^="correccion-justificante-"]').setInputFiles(justificante)
     await pagina.screenshot({ path: `${CAPTURAS}/correccion-rq-ventana.png`, fullPage: true })
+    // Las respuestas se pierden (la corrección entra) y, en la misma ventana, se cambia la cantidad y el motivo
+    // antes de volver a enviar, con el mismo justificante: la base no da por hecho lo nuevo con lo de la primera
+    // vez (undécima pasada, migración 20261022180000). Lo dice, queda lo primero y el justificante no queda suelto.
+    cortando = true
+    await pagina.route('**/*', async (r) => {
+      const q = r.request()
+      if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(rqId)) {
+        await r.fetch().catch(() => {})
+        return r.abort('failed')
+      }
+      return r.continue()
+    })
+    const aviso = () => v.locator('[role="alert"]').allTextContents().then((t) => t.join(' ').trim()).catch(() => '')
     await v.getByRole('button', { name: 'Corregir', exact: true }).click()
-    const alerta = await terminarVentana(pagina)
+    const primera = await hasta(aviso, (t) => /No se confirmó/.test(t))
+    await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+    cortando = false
+    await v.locator('[id^="rq-corr-cant-"]').first().fill('7')
+    await v.locator('[id^="correccion-motivo-"]').fill('El plano final pide plancha de 3 mm y siete piezas')
+    await v.getByRole('button', { name: 'Corregir', exact: true }).click()
+    const segunda = await hasta(aviso, (t) => /ya quedó registrada/.test(t))
+    const alerta = segunda.startsWith('Esta corrección ya quedó registrada la primera vez que la enviaste') ? '' : segunda
+    await v.getByRole('button', { name: 'Cancelar' }).click()
     const linea = await uno('select material_id, cantidad::float as cantidad from public.requerimiento_lineas where requerimiento_id = $1 and item = 1', [rqId])
-    comprobar(!alerta && linea.material_id === mat[1] && linea.cantidad === 6, `Requerimientos corrige material y cantidad ${alerta ? `(${alerta})` : ''}`)
-    const corr = await uno(`select count(*)::int as n, max(justificante_nombre) as nombre from public.correcciones where documento_id = $1`, [rqId])
-    comprobar(corr.n === 1 && corr.nombre === 'justificante-correccion.pdf', 'la corrección queda una vez con su justificante')
+    comprobar(/No se confirmó/.test(primera) && !alerta && linea.material_id === mat[1] && linea.cantidad === 6,
+      `Requerimientos corrige material y cantidad, y el reenvío con otra cantidad no pasa por el mismo: «${primera}» → «${segunda}» (cantidad ${linea.cantidad})`)
+    const corr = await uno(`select count(*)::int as n, max(justificante_nombre) as nombre, max(motivo) as motivo from public.correcciones where documento_id = $1`, [rqId])
+    comprobar(corr.n === 1 && corr.nombre === 'justificante-correccion.pdf' && corr.motivo === 'El plano final pide plancha de 3 mm y seis piezas',
+      `la corrección queda una vez con su justificante y su motivo de la primera vez (${corr.n}, «${corr.motivo}»)`)
+    const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'justificantes-correccion' and o.name like $1
+                                      and not exists (select 1 from public.correcciones c where c.justificante_ruta = o.name)`, [`%${rqId}%`])
+    comprobar(sueltos.length === 0, `y ningún justificante suelto (${sueltos.length})`)
     await pagina.reload({ waitUntil: 'networkidle' })
     // Desde el 2026-10-20 la lista de RQ son tarjetas, no filas.
     const fila = pagina.locator(`[data-rq="${rq.numero}"]`)

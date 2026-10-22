@@ -191,11 +191,15 @@ console.log(`Sembrado ${SUFIJO}: ${numeroRq}, ${oc.map(nombre).join(', ')} y QA-
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
 
+/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte. */
+let cortando = false
+
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
+    if (cortando && m.text().includes('net::ERR_FAILED')) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -309,11 +313,39 @@ const rechaza = async (pagina, ruta) => {
   comprobar(limpio(await ventana.innerText()).includes('245.5 kg'), 'la ventana dice el peso con que se emite')
   await ventana.locator('input[name="numero"]').fill(' t001- 00000403 ')
   await ventana.locator('input[name="archivo"]').setInputFiles({ name: 'guia.pdf', mimeType: 'application/pdf', buffer: PDF })
+  // Las respuestas se pierden (la guía entra) y, en la misma ventana, se cambia la fecha antes de volver a
+  // enviar: la base no da por cargada otra guía con la de la primera vez (undécima pasada, migración
+  // 20261022180000). Lo dice, y la guía queda con su fecha de la primera vez.
+  const fechaPrimera = await ventana.locator('input[name="fecha"]').inputValue()
+  cortando = true
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(oc[2])) {
+      await r.fetch().catch(() => {})
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  const avisoGuia = () => ventana.locator('[role="alert"]').allTextContents().then((t) => limpio(t.join(' '))).catch(() => '')
+  const esperarAviso = async (cumple) => {
+    for (let i = 0; i < 120 && !cumple(await avisoGuia()); i++) await pagina.waitForTimeout(250)
+    return avisoGuia()
+  }
   await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  const primeraGuia = await esperarAviso((t) => /No se confirmó/.test(t))
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  cortando = false
+  const ayer = new Date(Date.parse(`${fechaPrimera}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  await ventana.locator('input[name="fecha"]').fill(ayer)
+  await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  const segundaGuia = await esperarAviso((t) => /ya se cargó/.test(t))
+  await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
-  const [guia] = await consulta(`select id, numero, ruta from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
+  const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])
   comprobar(guia?.numero === 'T001-00000403' && objetos.length === 1, `la guía queda en la base como T001-00000403, con su PDF en storage.objects (${guia?.numero}, ${objetos.length})`)
+  comprobar(/No se confirmó/.test(primeraGuia) && segundaGuia === 'Esa guía ya se cargó con otros datos. Vuelve a cargar la pantalla.' && guia?.fecha === fechaPrimera,
+    `la guía cuya respuesta se perdió no se da por cargada con otra fecha: «${primeraGuia}» → «${segundaGuia}» (queda del ${guia?.fecha})`)
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])
   comprobar((await conGuia.getByRole('link', { name: 'Guía de remisión T001-00000403' }).count()) === 1, 'la fila muestra la guía')

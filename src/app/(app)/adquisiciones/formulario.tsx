@@ -100,7 +100,7 @@ export function FormularioAdquisicion({ borradores, ...props }: Props & { borrad
   if (borrador?.enLaLista && !sigue) {
     setBorrador(null)
     // El último «Después, …»: si el motivo de la base trajera uno, no se toma ese.
-    const falta = /.* Después, (.+ con «Corregir»\.)$/.exec(borrador.texto)?.[1] ?? null
+    const falta = /.* Después, (.+ con «Corregir»\.|avisa al administrador para .+\.)$/.exec(borrador.texto)?.[1] ?? null
     setCompletado({ texto: `Comprobante ${borrador.numero} completado y registrado.`, falta: falta && `Ahora ${falta}` })
   }
   return (
@@ -816,11 +816,18 @@ function Formulario({
  * El cursor que se quedó sin lugar (en la página) va al elemento que acaba de
  * aparecer; el que está en otra parte no se toca. A diferencia de
  * `AvisoEnfocado`, no lo quita de donde la persona lo puso: el «completado»
- * llega segundos después del clic, cuando ya pudo seguir en otra cosa.
+ * llega segundos después del clic, cuando ya pudo seguir en otra cosa. Si
+ * mientras esperaba rodó la página, el cursor va igual (el lector lo dice),
+ * pero la página no salta bajo su dedo: a 390 saltaba 1319 px (undécima pasada).
  */
 function enfocarSiSeSolto(elemento: HTMLElement | null) {
-  if (elemento && (!document.activeElement || document.activeElement === document.body)) elemento.focus()
+  if (!elemento || (document.activeElement && document.activeElement !== document.body)) return
+  const rodo = alturaAlCompletar !== null && Math.abs(window.scrollY - alturaAlCompletar) > 48
+  elemento.focus({ preventScroll: rodo })
 }
+
+/** Dónde estaba la página al pulsar «Completar comprobante» (`enfocarSiSeSolto`). */
+let alturaAlCompletar: number | null = null
 
 const FUENTE: Record<LecturaFactura['fuente'], string> = { XML: 'del XML de SUNAT', PDF: 'del PDF', OCR: 'del escaneo' }
 
@@ -979,7 +986,13 @@ export function CompletarAdquisicion({ id }: { id: string }) {
   }
 
   return (
-    <form onSubmit={alEnviar} className="mt-2 flex flex-wrap items-end gap-2">
+    <form
+      onSubmit={(evento) => {
+        alturaAlCompletar = window.scrollY
+        alEnviar(evento)
+      }}
+      className="mt-2 flex flex-wrap items-end gap-2"
+    >
       <input type="hidden" name="id" value={id} />
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
         <input key={nombre} type="hidden" name={nombre} value={valor} />

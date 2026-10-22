@@ -1390,6 +1390,7 @@ export type Database = {
           corregido_por: string
           corregido_en: string
           actualizado_en: string
+          huella_del_envio: string | null
         }
         Insert: {
           id?: string
@@ -1406,6 +1407,7 @@ export type Database = {
           corregido_por: string
           corregido_en?: string
           actualizado_en?: string
+          huella_del_envio?: string | null
         }
         Update: {
           id?: string
@@ -1422,6 +1424,7 @@ export type Database = {
           corregido_por?: string
           corregido_en?: string
           actualizado_en?: string
+          huella_del_envio?: string | null
         }
         Relationships: [
           {
@@ -13307,6 +13310,13 @@ export type Database = {
           total: number | null
           codigos: number | null
         }[]
+      }
+      huella_del_envio_de_correccion: {
+        Args: {
+          p_motivo: string | null
+          p_cambios: Json | null
+        }
+        Returns: string
       }
       identificacion_ot_diseno: {
         Args: {

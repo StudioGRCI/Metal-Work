@@ -184,6 +184,25 @@ En la misma migración que la crea, sin excepción:
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo
   cambia cuando uno entró (`alAdjuntar`).
+- **«El mismo envío» es todo lo que el envío lleva, no solo su id y su ruta.**
+  Con la ruta fija de la ventana (corrección, guía, plano), tras una respuesta
+  perdida la persona puede cambiar la cantidad, el motivo o la fecha y volver a
+  pulsar con el mismo archivo: id, ruta y persona coinciden y la función
+  devolvía `ok` sin haber guardado lo nuevo. La función compara también lo que
+  el envío trae (la guía, su fecha y su nombre de archivo; la corrección, una
+  huella de su motivo y sus cambios en `correcciones.huella_del_envio`; la toma
+  al cambio, sus montos), y si no coincide lo dice: «… ya quedó registrada la
+  primera vez que la enviaste: recarga…» (`20261022180000`, `20261022170000`;
+  undécima pasada del PR #148). Con ruta nueva en cada envío (finanzas,
+  planilla, subcontratos) la ruta ya distingue un envío de otro, y el aviso no
+  dice «con otro voucher», que sería falso si eligió el mismo archivo. El
+  detector del check `417` busca funciones que reciben una ruta y devuelven el
+  id existente comparando solo el id.
+- **La subida a una ruta nueva que falla sin un 4xx se quita en el acto**
+  (`subirARutaNueva`, `src/lib/ruta-nueva.ts`): un 5xx o un corte pueden llegar
+  con el archivo ya guardado, y esa ruta no la vuelve a usar nadie. El voucher
+  del pago de la OC con boleta quedaba suelto así aunque el segundo intento
+  entrara.
 - **Un archivo vacío no es «sin archivo».** En el navegador, el campo que nadie
   tocó llega como un `File` con nombre vacío; uno de 0 bytes es un archivo
   elegido, y se rechaza diciendo que está vacío. Separarlos por `size === 0`

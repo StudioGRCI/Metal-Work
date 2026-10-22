@@ -8,6 +8,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -152,19 +153,7 @@ export function CobrarFactura({
           <Campo etiqueta="Voucher o constancia del depósito" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setCobroId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar el cobro
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setCobroId(null)} texto="Registrar el cobro" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -197,19 +186,7 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
           <Campo etiqueta="Motivo" htmlFor={`anular-cobro-${cobroId}`} requerido>
             <AreaTexto id={`anular-cobro-${cobroId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -327,19 +304,7 @@ export function PagarServicio({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar el pago
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -372,19 +337,7 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
           <Campo etiqueta="Motivo" htmlFor={`anular-pago-servicio-${pagoId}`} requerido>
             <AreaTexto id={`anular-pago-servicio-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -493,19 +446,7 @@ export function PagarFactura({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar el pago
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -538,19 +479,7 @@ export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
           <Campo etiqueta="Motivo" htmlFor={`anular-pago-factura-${pagoId}`} requerido>
             <AreaTexto id={`anular-pago-factura-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -672,19 +601,7 @@ export function PagarCompra({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setPagoId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar el pago
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -818,15 +735,13 @@ export function AnularPagoCompra({
               No se anula: usa «La factura lo toma al cambio», y la factura {alCambio.factura} lo toma.
             </p>
           )}
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
+          <PieDeVentana
+            error={error}
+            enviando={enviando}
+            alCancelar={() => setAbierta(false)}
+            texto={quePaso === 'no_salio' ? 'Anular' : undefined}
+            variante="peligro"
+          >
             {quePaso === 'devolvio' && puedeDevolver && (
               <Boton type="button" onClick={() => irA('devolucion')} data-ir-a-devolucion={pagoId}>
                 <HandCoins aria-hidden className="size-4" />
@@ -839,12 +754,7 @@ export function AnularPagoCompra({
                 La factura lo toma al cambio
               </Boton>
             )}
-            {quePaso === 'no_salio' && (
-              <Boton type="submit" variante="peligro" cargando={enviando}>
-                Anular
-              </Boton>
-            )}
-          </div>
+          </PieDeVentana>
         </form>
       </Ventana>
     </>
@@ -893,19 +803,7 @@ export function PasarCompraATesoreria({ compraId, numero, fueraDelSistema }: { c
       >
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={compraId} />
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Pasar a Cuentas por pagar
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Pasar a Cuentas por pagar" />
         </form>
       </Ventana>
     </>

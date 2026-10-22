@@ -1,5 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
@@ -31,7 +32,7 @@ export async function subirArchivoFinanzas(
 
   const ruta = `${carpeta}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
-  const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+  const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, archivo, archivo.type)
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   return anotarSinDejarloSuelto({

@@ -9,6 +9,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -257,29 +258,24 @@ export function RegistrarDevolucion({
           <p role="status" aria-live="polite" className="text-sm text-texto">
             {enVivo}
           </p>
-          {corregida !== null ? (
-            <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
-              {corregida === 'llego'
-                ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
-                : corregida === 'se-fue'
-                  ? 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'
-                  : 'Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día y vuelve a registrar la devolución.'}
-            </p>
-          ) : (
-            error && (
-              <p role="alert" className="text-sm text-peligro">
-                {error}
-              </p>
-            )
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={cerrar}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0 || corregida === 'otro'}>
-              Registrar la devolución
-            </Boton>
-          </div>
+          <PieDeVentana
+            error={error}
+            enviando={enviando}
+            alCancelar={cerrar}
+            texto="Registrar la devolución"
+            disabled={cuentas.length === 0 || corregida === 'otro'}
+            enLugarDelError={
+              corregida !== null && (
+                <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
+                  {corregida === 'llego'
+                    ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
+                    : corregida === 'se-fue'
+                      ? 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'
+                      : 'Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día y vuelve a registrar la devolución.'}
+                </p>
+              )
+            }
+          />
         </form>
       </Ventana>
     </>
@@ -345,19 +341,7 @@ export function AnularDevolucion({
             <Campo etiqueta="Motivo" htmlFor={`anular-devolucion-${devolucionId}`} requerido>
               <AreaTexto id={`anular-devolucion-${devolucionId}`} name="motivo" required minLength={10} maxLength={500} />
             </Campo>
-            {error && (
-              <p role="alert" className="text-sm text-peligro">
-                {error}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-                Cancelar
-              </Boton>
-              <Boton type="submit" variante="peligro" cargando={enviando}>
-                Anular
-              </Boton>
-            </div>
+            <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
           </form>
         )}
       </Ventana>
@@ -491,19 +475,7 @@ export function TomarAlCambio({
                 ? `Con esos montos el dólar sale a S/ ${tipo.toFixed(3)}: revisa los dos montos.`
                 : `Sale a S/ ${tipo.toFixed(3)} por dólar. La factura queda debiendo ${moneda(Math.max(factura.saldo - enFactura, 0), factura.moneda)}.`)}
           </p>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Pasar a la factura
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setTomaId(null)} texto="Pasar a la factura" />
         </form>
       </Ventana>
     </>
@@ -650,19 +622,7 @@ export function DescontarDeOtraFactura({
               </Campo>
             </div>
           )}
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={facturas.length === 0}>
-              Descontar
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setTomaId(null)} texto="Descontar" disabled={facturas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -721,19 +681,7 @@ export function SoltarToma({
           <Campo etiqueta="Motivo" htmlFor={id} requerido>
             <AreaTexto id={id} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Deshacer
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Deshacer" variante="peligro" />
         </form>
       </Ventana>
     </>

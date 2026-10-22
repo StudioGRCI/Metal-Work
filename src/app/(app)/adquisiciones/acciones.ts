@@ -104,15 +104,24 @@ function borradorSinPdf(numero: string, motivo: string) {
  * se completa en su fila y lo de la OC, ya registrado, con «Corregir». El aviso
  * termina en «Después, …»: al completarlo, la pantalla lo recuerda. Pero si lo
  * frenó una regla de la base (una OC con su factura completa), su motivo ya
- * dice qué hacer y otro paso lo contradiría; y sin el permiso, «Corregir»
- * tampoco alcanza.
+ * dice qué hacer y otro paso lo contradiría. Sin el permiso, o con un fallo del
+ * sistema (la clase 42), «Corregir» tampoco alcanza: el PDF sí se completa en
+ * su fila, y lo de la OC lo destraba el administrador.
  */
-function borradorSinOc(numero: string, falta: string, error: { message: string; code?: string }, despues: string) {
+function borradorSinOc(
+  numero: string,
+  falta: string,
+  error: { message: string; code?: string },
+  queHacer: { hazlo: string; hacerlo: string },
+) {
   const motivo = mensajeDeError(error)
-  const aviso = `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo)}`
-  if (/\bpermisos?\b/i.test(motivo)) return `${aviso} Avisa al administrador.`
+  // «Avisa al administrador» va una vez, al final, con lo que hay que pedirle.
+  const aviso = `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo.replace(/ Avisa al administrador\.$/, ''))}`
+  if (/\bpermisos?\b/i.test(motivo) || error.code?.startsWith('42')) {
+    return `${aviso} ${EN_SU_FILA}. Después, avisa al administrador para ${queHacer.hacerlo}.`
+  }
   if (error.code === 'P0001' || error.code?.startsWith('23')) return `${aviso} ${EN_SU_FILA}.`
-  return `${aviso} ${EN_SU_FILA}. Después, ${despues} con «Corregir».`
+  return `${aviso} ${EN_SU_FILA}. Después, ${queHacer.hazlo} con «Corregir».`
 }
 
 /**
@@ -210,7 +219,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
     if (errorEnlace) {
       const cuales = lasOc(resto, numeroDeOc)
-      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, errorEnlace, `agrégale ${cuales ?? 'las OC que faltan'}`))
+      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, errorEnlace, {
+        hazlo: `agrégale ${cuales ?? 'las OC que faltan'}`,
+        hacerlo: `agregarle ${cuales ?? 'las OC que faltan'}`,
+      }))
     }
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
@@ -223,7 +235,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       const unaSola = enParte.data.length === 1
       const comoParcial = unaSola ? 'como parcial' : 'como parciales'
       return enBorrador(borradorSinOc(v.numero_documento, `sin marcar ${comoParcial} ${cuales ?? (unaSola ? 'su OC' : 'sus OC')}`,
-        errorParcial, `${unaSola ? 'márcala' : 'márcalas'} ${comoParcial}`))
+        errorParcial, { hazlo: `${unaSola ? 'márcala' : 'márcalas'} ${comoParcial}`, hacerlo: `${unaSola ? 'marcarla' : 'marcarlas'} ${comoParcial}` }))
     }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }

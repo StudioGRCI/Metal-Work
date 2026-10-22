@@ -495,6 +495,43 @@ async function manejarArchivos(req, res, url) {
   const ruta = url.pathname.replace('/storage/v1', '')
   const sesion = sesionDe(req)
 
+  // Lista: POST /object/list/<cubeta> con { prefix, limit, offset }. Como
+  // Supabase, lo que hay justo debajo de la carpeta y la sesión puede leer: el
+  // archivo con su nombre sin la carpeta, la subcarpeta sin id. Completar un
+  // borrador de Contabilidad lo usa para saber si el PDF del primer intento ya
+  // quedó. Va antes de la subida, que tomaba la lista por un archivo nuevo en
+  // la cubeta «list» y la contestaba con un error.
+  if (req.method === 'POST' && ruta.startsWith('/object/list/')) {
+    const cubeta = decodeURIComponent(ruta.replace('/object/list/', ''))
+    const cuerpo = JSON.parse((await leerCuerpo(req)).toString() || '{}')
+    const carpeta = String(cuerpo.prefix ?? '').replace(/\/+$/, '')
+    const desde = carpeta ? `${carpeta}/` : ''
+    let filas
+    try {
+      filas = await comoSesion(
+        sesion,
+        `select id, name, metadata, created_at from storage.objects
+          where bucket_id = $1 and left(name, length($2)) = $2 order by name`,
+        [cubeta, desde],
+      )
+    } catch (fallo) {
+      if (fallo.code !== '42501') return responder(res, 400, { statusCode: '400', error: 'Error', message: fallo.message })
+      filas = []
+    }
+    const debajo = new Map()
+    for (const fila of filas) {
+      const [nombre, ...mas] = fila.name.slice(desde.length).split('/')
+      if (mas.length) {
+        if (!debajo.has(nombre)) debajo.set(nombre, { name: nombre, id: null, updated_at: null, created_at: null, last_accessed_at: null, metadata: null })
+      } else {
+        const cuando = fila.created_at
+        debajo.set(nombre, { name: nombre, id: fila.id, updated_at: cuando, created_at: cuando, last_accessed_at: cuando, metadata: fila.metadata })
+      }
+    }
+    const desdeFila = Number(cuerpo.offset ?? 0)
+    return responder(res, 200, [...debajo.values()].slice(desdeFila, desdeFila + Number(cuerpo.limit ?? 100)))
+  }
+
   // Subida: POST /object/<cubeta>/<camino>. Como Supabase, la fila de
   // `storage.objects` entra con el rol de la sesión, así que la política de
   // subida de esa cubeta decide; si la rechaza, el archivo no se escribe.

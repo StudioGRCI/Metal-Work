@@ -14,9 +14,15 @@
 --
 -- Igual que allá: el id existente se reconoce solo si la fila nombra el mismo
 -- archivo y la anotó la misma persona. Si no, se rechaza, y la pantalla quita
--- el archivo nuevo, que ninguna fila nombra. Lo pasado a una factura sin
--- documento («la factura lo toma al cambio») no lleva archivo: sin archivo en
--- la fila ni en el envío, es el mismo.
+-- el archivo nuevo, que ninguna fila nombra. El aviso dice que ese envío ya
+-- entró la primera vez, no «con otro voucher»: la ruta es nueva en cada envío
+-- aunque la persona elija el mismo archivo.
+--
+-- Lo pasado a una factura «al cambio» no lleva archivo, así que ahí la ruta no
+-- distingue nada: con la respuesta perdida, otros montos con el mismo id se
+-- daban por el mismo envío y la pantalla anunciaba los montos nuevos mientras
+-- la base guardaba los primeros (undécima pasada). Ahí se mira todo lo que
+-- dice el envío: la OC, la factura y los dos montos, contra la toma que entró.
 --
 -- Cada función va entera, tal como la dejó la 20261020210000; cambia solo la
 -- línea que reconoce el id (dos en las que la miran otra vez después de tomar
@@ -29,10 +35,10 @@
 do $$
 declare
   conocidas constant jsonb := '{
-    "registrar_pago_compra(uuid,uuid,date,numeric,boolean,text,text,text,uuid,numeric)": ["21ec90982ea47c46f62a4e4be1932cc0", "97b17f92d8b237f10429abdb2589817a"],
-    "registrar_devolucion_compra(uuid,uuid,date,numeric,text,text,uuid,numeric,boolean)": ["c5c3e1636b39d9c418f65ed5fe6f6c27", "af6731f33836183a5eea00ee578d0cdc"],
-    "adjuntar_documento_servicio(uuid,uuid,text,text,text,text)": ["1ec020d5302de240d7c982b10f0466e8", "aa6c0d599e2a8a054f16d9cb3d008d24"],
-    "tomar_pago_de_la_boleta(uuid,uuid,uuid,numeric,numeric,text)": ["9b408f5334accc1f39ef0cb37087f0d9", "294b1cdcd3abf22d8085a87c22afee9a"]
+    "registrar_pago_compra(uuid,uuid,date,numeric,boolean,text,text,text,uuid,numeric)": ["21ec90982ea47c46f62a4e4be1932cc0", "eeedf50cc44bdcd461ca881fb2e1481d"],
+    "registrar_devolucion_compra(uuid,uuid,date,numeric,text,text,uuid,numeric,boolean)": ["c5c3e1636b39d9c418f65ed5fe6f6c27", "0fc4807aef7722ff98c24ec00a7af23d"],
+    "adjuntar_documento_servicio(uuid,uuid,text,text,text,text)": ["1ec020d5302de240d7c982b10f0466e8", "28688d52d83918181e86ea2e9c0f9d6e"],
+    "tomar_pago_de_la_boleta(uuid,uuid,uuid,numeric,numeric,text)": ["9b408f5334accc1f39ef0cb37087f0d9", "eab3258486b414fa784026208c317ac6"]
   }';
   firma text;
   huella text;
@@ -80,7 +86,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Ese pago ya quedó registrado con otro voucher: recarga la pantalla para verlo.' using errcode = 'check_violation';
+    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   select * into v_oc from public.ordenes_compra_materiales where id = p_orden_compra for update;
   if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
@@ -207,7 +213,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Esa devolución ya quedó registrada con otra constancia: recarga la pantalla para verla.' using errcode = 'check_violation';
+    raise exception 'Esta devolución ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   v_cierre := public.bloquear_cierre(array[p_orden_compra]);
   -- Otra vez, ya con los candados: el mismo envío pudo entrar mientras tanto.
@@ -216,7 +222,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Esa devolución ya quedó registrada con otra constancia: recarga la pantalla para verla.' using errcode = 'check_violation';
+    raise exception 'Esta devolución ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   select * into v_oc from public.ordenes_compra_materiales where id = p_orden_compra;
   if not found then raise exception 'Esa orden de compra no existe.' using errcode = 'check_violation'; end if;
@@ -315,7 +321,7 @@ begin
                where id = p_id and ruta_storage = p_ruta and subido_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Ese documento ya quedó adjuntado con otro archivo: recarga la pantalla para verlo.' using errcode = 'check_violation';
+    raise exception 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   v_que := case p_tipo when 'FACTURA' then 'factura' when 'BOLETA' then 'boleta' when 'RECIBO' then 'recibo'
                        when 'CONTRATO' then 'contrato' when 'OTRO' then 'documento' end;
@@ -367,7 +373,7 @@ begin
 end;
 $$;
 
--- tomar_pago_de_la_boleta: pagos_adquisicion.archivo_ruta, en la primera fila
+-- tomar_pago_de_la_boleta: pagos_adquisicion: el archivo, la OC, la factura y los montos
 create or replace function public.tomar_pago_de_la_boleta(
   p_id uuid, p_compra uuid, p_factura uuid, p_monto_boleta numeric, p_monto_factura numeric, p_ruta text default null
 ) returns uuid language plpgsql security definer set search_path to 'public' as $$
@@ -395,23 +401,41 @@ declare
 begin
   perform public.exigir_permiso('tesoreria.registrar_pagos');
   if p_id is null then raise exception 'Vuelve a abrir la ventana.' using errcode = 'check_violation'; end if;
-  -- El mismo envío repetido (la respuesta se perdió) se reconoce por su
-  -- archivo y por quién lo anotó; otro envío con el mismo id, no.
+  -- El mismo envío repetido (la respuesta se perdió) se reconoce por todo lo
+  -- que dice: el archivo si lo lleva, la OC, la factura, los dos montos y
+  -- quién lo anotó. «Al cambio» no lleva archivo, y sin los montos otro
+  -- envío con el mismo id pasaba por el mismo (undécima pasada).
   if exists (select 1 from public.pagos_adquisicion where id = p_id) then
-    if exists (select 1 from public.pagos_adquisicion
-               where id = p_id and archivo_ruta is not distinct from p_ruta and registrado_por = public.usuario_actual()) then
+    if exists (
+      select 1 from public.pagos_adquisicion t
+        join public.pagos_orden_compra o on o.id = t.pago_orden_compra_id
+       where t.id = p_id and t.archivo_ruta is not distinct from p_ruta
+         and t.registrado_por = public.usuario_actual() and t.anulado_en is null
+         and t.adquisicion_id = p_factura and o.orden_compra_id = p_compra
+         and (select sum(x.monto) = p_monto_factura and sum(x.monto_de_la_boleta) = p_monto_boleta
+                from public.pagos_adquisicion x
+               where x.adquisicion_id = t.adquisicion_id and x.registrado_por = t.registrado_por
+                 and x.creado_en = t.creado_en and x.pago_orden_compra_id is not null)) then
       return p_id;
     end if;
-    raise exception 'Eso ya quedó registrado con otro documento: recarga la pantalla para verlo.' using errcode = 'check_violation';
+    raise exception 'Lo que toma la factura ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   v_cierre := public.bloquear_cierre(array[p_compra], p_factura);
   -- Otra vez, ya con los candados: el mismo envío pudo entrar mientras tanto.
   if exists (select 1 from public.pagos_adquisicion where id = p_id) then
-    if exists (select 1 from public.pagos_adquisicion
-               where id = p_id and archivo_ruta is not distinct from p_ruta and registrado_por = public.usuario_actual()) then
+    if exists (
+      select 1 from public.pagos_adquisicion t
+        join public.pagos_orden_compra o on o.id = t.pago_orden_compra_id
+       where t.id = p_id and t.archivo_ruta is not distinct from p_ruta
+         and t.registrado_por = public.usuario_actual() and t.anulado_en is null
+         and t.adquisicion_id = p_factura and o.orden_compra_id = p_compra
+         and (select sum(x.monto) = p_monto_factura and sum(x.monto_de_la_boleta) = p_monto_boleta
+                from public.pagos_adquisicion x
+               where x.adquisicion_id = t.adquisicion_id and x.registrado_por = t.registrado_por
+                 and x.creado_en = t.creado_en and x.pago_orden_compra_id is not null)) then
       return p_id;
     end if;
-    raise exception 'Eso ya quedó registrado con otro documento: recarga la pantalla para verlo.' using errcode = 'check_violation';
+    raise exception 'Lo que toma la factura ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
   select * into v_oc from public.ordenes_compra_materiales where id = p_compra;
   if not found or v_oc.con_factura then

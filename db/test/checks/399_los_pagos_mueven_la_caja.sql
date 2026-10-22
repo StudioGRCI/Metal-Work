@@ -181,7 +181,7 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-398-1'', %L, %L, null)',
       current_setting('prueba.pago1'), current_setting('prueba.adq1'), v_hoy,
       pg_temp.voucher('pagos-facturas', current_setting('prueba.adq1')), current_setting('prueba.cpen')),
-    'el mismo formulario con otro voucher no se da por pagado', 'ya quedó registrado con otro comprobante');
+    'el mismo formulario con otro voucher no se da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
   perform test.afirmar((select egresos = 500 and saldo_final = -500 from public.caja_del_dia(v_hoy)
                          where caja_id = current_setting('prueba.cpen')::uuid),
     'la caja del día lo cuenta en los egresos y en el saldo');
@@ -251,13 +251,13 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 500, true, ''OP-398-4'', null, %L, %L, null)',
       current_setting('prueba.pago4'), current_setting('prueba.os'), v_hoy,
       pg_temp.voucher('pagos-servicio', current_setting('prueba.os')), current_setting('prueba.cpen')),
-    'el pago del servicio con otro comprobante no se da por pagado', 'ya quedó registrado con otro comprobante');
+    'el pago del servicio con otro comprobante no se da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
   reset role;
   perform pg_temp.como('teso2');
   set local role authenticated;
   perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 500, true, ''OP-398-4'', null, %L, %L, null)',
       current_setting('prueba.pago4'), current_setting('prueba.os'), v_hoy, v_ruta, current_setting('prueba.cpen')),
-    'otra persona con el mismo id y el mismo comprobante no lo da por pagado', 'ya quedó registrado con otro comprobante');
+    'otra persona con el mismo id y el mismo comprobante no lo da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
   reset role;
   perform pg_temp.como('teso');
   set local role authenticated;
@@ -309,7 +309,7 @@ begin
   perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, %L, 400, false, ''OP-398-5'', %L, %L, null)',
       current_setting('prueba.pago5'), current_setting('prueba.fv'), v_hoy,
       pg_temp.voucher('cobros-venta', current_setting('prueba.fv')), current_setting('prueba.cusd')),
-    'con otro voucher no se da por cobrado', 'ya quedó registrado con otro voucher');
+    'con otro voucher no se da por cobrado', 'ya quedó registrado la primera vez que lo enviaste');
 
   -- Un cobro en dólares que entró a la cuenta en soles.
   v_ruta := pg_temp.voucher('cobros-venta', current_setting('prueba.fv'));
@@ -352,7 +352,7 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, %L, ''OP-398-7'', %L, %L, null)',
       current_setting('prueba.pago7'), current_setting('prueba.rec'), v_hoy,
       pg_temp.voucher('subcontratos', current_setting('prueba.sc')), current_setting('prueba.cpen')),
-    'el pago del recibo con otro voucher no se da por pagado', 'ya quedó registrado con otro voucher');
+    'el pago del recibo con otro voucher no se da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
   perform public.anular_pago_recibo_honorarios(current_setting('prueba.pago7')::uuid, 'El voucher era de otro recibo');
   perform test.afirmar((pg_temp.mov('PAGO_RECIBO_HONORARIOS', current_setting('prueba.pago7'))).id is null,
     'anular el pago del recibo anula su egreso');
@@ -379,7 +379,7 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-398-8'', %L, %L, null)',
       current_setting('prueba.pago8'), current_setting('prueba.pd'), array[current_setting('prueba.pp1'), current_setting('prueba.pp2')],
       v_hoy, pg_temp.voucher('planilla-diaria', current_setting('prueba.pd')), current_setting('prueba.cpen')),
-    'el pago de la planilla con otro comprobante no se da por pagado', 'ya quedó registrado con otro comprobante');
+    'el pago de la planilla con otro comprobante no se da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
   perform public.anular_pago_planilla_diaria(current_setting('prueba.pago8')::uuid, 'Se marcó a la persona equivocada');
   perform test.afirmar((pg_temp.mov('PAGO_PLANILLA_DIARIA', current_setting('prueba.pago8'))).id is null
       and (select count(*) from public.planilla_diaria_personas where planilla_id = current_setting('prueba.pd')::uuid and pago_id is null) = 3,

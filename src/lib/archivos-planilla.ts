@@ -1,5 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANILLA_DIARIA, MAXIMO_MB_PLANILLA, TIPOS_ARCHIVO_PLANILLA } from '@/lib/dominio/planilla-diaria'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
@@ -25,7 +26,7 @@ export async function subirArchivoPlanilla(
 
   const ruta = `${planillaId}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
-  const { error } = await supabase.storage.from(BUCKET_PLANILLA_DIARIA).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+  const { error } = await subirARutaNueva(supabase.storage.from(BUCKET_PLANILLA_DIARIA), ruta, archivo, archivo.type)
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   // Sin respuesta, antes se quitaba a ciegas: si la fila había entrado, la

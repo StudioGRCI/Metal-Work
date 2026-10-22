@@ -186,7 +186,7 @@ begin
     'el recibo repetido con su archivo devuelve el mismo');
   perform test.debe_fallar(format('select public.registrar_recibo_honorarios(%L, %L, ''E001-25'', current_date, null, 2000, true, %L)',
       current_setting('prueba.rec1'), current_setting('prueba.sc'), current_setting('prueba.arch2')),
-    'el mismo recibo con otro archivo no se da por registrado', 'ya quedó registrado con otro archivo');
+    'el mismo recibo con otro archivo no se da por registrado', 'ya quedó registrado la primera vez que lo enviaste');
   perform pg_temp.subir(current_setting('prueba.arch2'), 'application/pdf');
   perform test.debe_fallar(format('select public.registrar_recibo_honorarios(%L, %L, ''E001-25'', current_date, null, 900, false, %L)',
       current_setting('prueba.rec2'), current_setting('prueba.sc'), current_setting('prueba.arch2')),

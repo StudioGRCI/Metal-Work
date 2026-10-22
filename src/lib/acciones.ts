@@ -55,6 +55,19 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
   // la regla de las horas extras (2026-10-20).
   if (error.code?.startsWith('42')) return 'El sistema no pudo guardar esto. Avisa al administrador.'
 
+  // Los fallos de paso del motor llegaban en inglés («canceling statement due
+  // to statement timeout»), justo en los avisos que piden volver a intentar
+  // (undécima pasada). Con estos, la transacción se deshizo: nada se guardó.
+  if (error.code === '40001' || error.code === '40P01') return 'Otra persona guardaba algo relacionado a la vez y esto no se guardó.'
+  if (error.code === '57014') return 'La base tardó demasiado y esto no se guardó.'
+  if (error.code?.startsWith('53') || error.code?.startsWith('57P') || ['PGRST000', 'PGRST002', 'PGRST003'].includes(error.code ?? '')) {
+    return 'La base no estaba disponible y esto no se guardó.'
+  }
+  // Con estos, en cambio, el pedido pudo llegar y la respuesta perderse.
+  if (error.code?.startsWith('08') || error.code === 'PGRST001' || (!error.code && /fetch failed|network|ECONNRESET|socket hang up|other side closed/i.test(m))) {
+    return 'No llegó la respuesta de la base; recarga la pantalla y mira si se guardó.'
+  }
+
   const check = /violates check constraint "([^"]+)"/.exec(m)
   if (check) return `El dato no cumple la regla ${check[1]}.`
 

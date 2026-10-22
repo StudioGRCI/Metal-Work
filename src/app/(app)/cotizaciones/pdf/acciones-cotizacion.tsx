@@ -17,6 +17,7 @@ import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
@@ -247,9 +248,7 @@ export function CorregirCotizacion({
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
@@ -616,9 +615,7 @@ export function AprobarConOt({
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('adjuntos-ot')
-          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
         if (falla) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return

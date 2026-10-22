@@ -13,6 +13,7 @@ import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { useCursorAlRechazo } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
@@ -168,9 +169,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let listo = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('adjuntos-ot')
-          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
         if (falla) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return

@@ -1,5 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_SUBCONTRATOS, MAXIMO_MB_SUBCONTRATOS, TIPOS_ARCHIVO_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
@@ -25,7 +26,7 @@ export async function subirArchivoSubcontrato(
 
   const ruta = `${subcontratoId}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
-  const { error } = await supabase.storage.from(BUCKET_SUBCONTRATOS).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+  const { error } = await subirARutaNueva(supabase.storage.from(BUCKET_SUBCONTRATOS), ruta, archivo, archivo.type)
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   // Sin respuesta, antes se quitaba a ciegas: si la fila había entrado, la

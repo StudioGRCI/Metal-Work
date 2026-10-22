@@ -7,10 +7,10 @@
 -- queda trabada: Gerencia la rechaza y Ventas la corrige con un PDF que pesa,
 -- pero no con otro vacío; el administrador no quita de Storage el PDF que una
 -- cotización nombra, y sí uno suelto. Y ninguna función que anota un archivo
--- da por registrado otro envío con el mismo id (migraciones 20261022160000 y
--- 20261022170000; el caso de cada una, en los checks 357, 361, 399, 412 y
--- 421). El armazón lo pone el
--- administrador. Termina en rollback.
+-- da por registrado otro envío con el mismo id (migraciones 20261022160000,
+-- 20261022170000 y 20261022180000; el caso de cada una, en los checks 357, 361,
+-- 399, 412, 421 y 422). El armazón lo pone el administrador. Termina en
+-- rollback.
 \set ON_ERROR_STOP on
 begin;
 
@@ -177,13 +177,16 @@ select test.afirmar((select count(*) from storage.objects where bucket_id = 'cot
 -- está, la función la reconoce por su archivo y por quién la anotó. Ninguna
 -- función que recibe la ruta de un archivo puede darla por registrada solo
 -- porque el id coincide: otro envío con el mismo id dejaría su archivo suelto.
--- Cualquier argumento con «ruta» en el nombre, y la línea escrita en una o en
--- varias.
+-- Cualquier argumento que nombre un archivo (su ruta, el justificante, la
+-- foto), el id con el nombre que tenga y otras condiciones que no miren el
+-- archivo (`and documento_id = p_id`), en una línea o en varias. La primera
+-- versión solo buscaba «ruta» y `id = p_id` sola, y no vio las tres
+-- correcciones con justificante (migración 20261022180000, undécima pasada).
 select test.afirmar(not exists (
     select 1 from pg_proc p
      where p.pronamespace = 'public'::regnamespace
-       and pg_get_function_arguments(p.oid) ~* '\mp_\w*ruta\w* text'
-       and p.prosrc ~* 'where\s+(\w+\.)?id\s*=\s*p_id\s*\)\s*then\s+return\s+p_id\s*;'),
+       and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto)\w* text'
+       and p.prosrc ~* 'where\s+(\w+\.)?id\s*=\s*p_\w+(\s+and\s+[^)]*)?\)\s*then\s+return\s+p_\w+\s*;'),
   'Ninguna función que anota un archivo da por registrado otro envío con el mismo id');
 
 rollback;

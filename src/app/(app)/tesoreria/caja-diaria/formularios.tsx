@@ -1,13 +1,14 @@
 'use client'
 
 import { ArrowLeftRight, Ban, ImageIcon, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import {
@@ -23,7 +24,7 @@ import {
   rutaDeCapturaDeSaldo,
   SALDO,
 } from '@/lib/dominio/caja'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { useEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -32,42 +33,6 @@ import { anularMovimiento, cerrarDia, guardarCuenta, reabrirDia, registrarMovimi
 
 /** Una cuenta que se puede elegir en un formulario de la caja. */
 export type CuentaElegible = { id: string; nombre: string; moneda: string; tipo: string }
-
-/** El pie de todos los formularios: el error, cancelar y el botón que envía. */
-function Pie({ error, enviando, alCancelar, texto, variante }: {
-  error: string | null
-  enviando: boolean
-  alCancelar: () => void
-  texto: string
-  variante?: 'primario' | 'peligro'
-}) {
-  // Tras un rechazo, el cursor va al aviso. Sin esto caía a la página. Antes, el
-  // pie entero a la vista: en el teléfono, enfocar solo el aviso dejaba el
-  // botón debajo del borde de la hoja.
-  const aviso = useRef<HTMLParagraphElement>(null)
-  const pie = useRef<HTMLDivElement>(null)
-  useCursorAlRechazo(enviando, error, () => {
-    pie.current?.scrollIntoView({ block: 'nearest' })
-    return aviso.current
-  })
-  return (
-    <div ref={pie} className="space-y-4">
-      {error && (
-        <p ref={aviso} role="alert" tabIndex={-1} className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" variante={variante} cargando={enviando}>
-          {texto}
-        </Boton>
-      </div>
-    </div>
-  )
-}
 
 /** Abre una ventana con un formulario nuevo cada vez: otro id, nada de lo escrito la vez anterior. */
 function useVentana() {
@@ -188,7 +153,7 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
           <Entrada id={`${p}-cambio`} name="tipo_cambio" inputMode="decimal" autoComplete="off" className="tabular" />
         </Campo>
       </div>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar" />
     </form>
   )
 }
@@ -267,7 +232,7 @@ function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: Cuenta
       <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} ayuda="Si la dejas vacía, dice «Transferencia entre cuentas».">
         <Entrada id={`${p}-descripcion`} name="descripcion" maxLength={300} autoComplete="off" />
       </Campo>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar la transferencia" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar la transferencia" />
     </form>
   )
 }
@@ -303,7 +268,7 @@ export function AnularMovimiento({ id, descripcion, cuenta, otraCuenta }: {
           <Campo etiqueta="Motivo" htmlFor={`anular-mov-${id}`} requerido>
             <AreaTexto id={`anular-mov-${id}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Anular" variante="peligro" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={v.cerrar} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -381,7 +346,7 @@ function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
       <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={conObservaciones}>
         <AreaTexto id={`${p}-obs`} name="observaciones" required={conObservaciones} minLength={conObservaciones ? 10 : undefined} maxLength={500} />
       </Campo>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
     </form>
   )
 }
@@ -407,7 +372,7 @@ export function ReabrirDia({ cierreId, cuenta, dia }: { cierreId: string; cuenta
           <Campo etiqueta="Motivo" htmlFor={`reabrir-${cierreId}`} requerido>
             <AreaTexto id={`reabrir-${cierreId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Reabrir el día" variante="peligro" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={v.cerrar} texto="Reabrir el día" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -630,7 +595,7 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           <ElegirArchivo id={`${p}-captura`} name="captura" accept={ACEPTA_CAPTURA_SALDO} hastaMb={MAXIMO_MB_CAPTURA_SALDO} required={pideCaptura} />
         </Campo>
       )}
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />
     </form>
   )
 }

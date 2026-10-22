@@ -1,5 +1,6 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
@@ -39,7 +40,7 @@ export async function subirAdjunto(
   const contentType = esPdf ? TIPOS.pdf : TIPOS.xlsx
   const supabase = createClient()
 
-  const { error } = await supabase.storage.from('adjuntos-ot').upload(ruta, archivo, { contentType, upsert: false })
+  const { error } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, contentType)
   if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   const datos = new FormData()

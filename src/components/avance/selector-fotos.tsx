@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import { comprimirFoto } from '@/lib/comprimir-foto'
 import { tamanoArchivo } from '@/lib/format'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
@@ -134,9 +135,7 @@ export function SelectorFotos({
       : (foto.archivo.name.split('.').pop() ?? 'jpg').toLowerCase()
     const ruta = `${prefijoRuta}/${crypto.randomUUID()}.${extension}`
 
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(ruta, foto.archivo, { contentType: foto.archivo.type, upsert: false })
+    const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, foto.archivo, foto.archivo.type)
 
     alCambiar((f) =>
       f.map((item) =>

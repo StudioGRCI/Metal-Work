@@ -1,4 +1,5 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { noGuardoNada } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 
 /** Con esto empieza el error cuando lo que falló es el archivo y no el registro: la pantalla lo pone en su campo. */
@@ -129,8 +130,6 @@ const rutaDelDocumento = new Map<string, string>()
 // tipo.
 const porQuitarTrasOk = new Map<string, Set<string>>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
-const noGuardoNada = (error: { statusCode?: string } | null) =>
-  Boolean(error?.statusCode && /^4\d\d$/.test(error.statusCode) && error.statusCode !== '409')
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
