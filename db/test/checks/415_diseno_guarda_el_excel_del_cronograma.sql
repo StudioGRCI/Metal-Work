@@ -1,4 +1,4 @@
--- Diseño guarda el Excel del cronograma en la orden (migración 20261021120000).
+-- Diseño guarda el Excel del cronograma en la orden (migración 20261022113000).
 -- Con la cuenta de Diseño y `set local role authenticated`: sube a Storage el
 -- `.xlsx` de la orden y lo anota como CRONOGRAMA, y lo quita si se equivocó;
 -- el PDF de la orden no lo sube, ni en Storage ni como fila. Almacén, que no

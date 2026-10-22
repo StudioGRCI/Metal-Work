@@ -367,7 +367,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       comprobar((await desborde(pagina)) <= 0, `[Diseño ${tam}] sin desborde`)
       await pagina.screenshot({ path: `${CAPTURAS}/doc-diseno-cronograma-${tam}.png` })
 
-      // Diseño carga uno y guarda su Excel en la orden (migración 20261021120000):
+      // Diseño carga uno y guarda su Excel en la orden (migración 20261022113000):
       // antes el cronograma entraba y el Excel no, con «revisa la señal».
       const libroCronograma = new ExcelJS.Workbook()
       const hoja = libroCronograma.addWorksheet('Cronograma')

@@ -15,7 +15,7 @@ import { createClient } from '@/lib/supabase/server'
  * órdenes, y quien las abre desde el taller.
  */
 const PUEDEN_SUBIR = ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller']
-// Diseño carga el cronograma y guarda su Excel, no el PDF de la orden (migración 20261021120000).
+// Diseño carga el cronograma y guarda su Excel, no el PDF de la orden (migración 20261022113000).
 const PUEDEN_SUBIR_CRONOGRAMA = [...PUEDEN_SUBIR, 'diseno.planos']
 
 const esquemaAdjunto = z.object({
