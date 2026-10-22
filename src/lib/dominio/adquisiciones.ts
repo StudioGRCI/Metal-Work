@@ -30,6 +30,13 @@ export const ESTADO_PAGO: Record<string, Def> = {
       'Logística le anexó una factura que Contabilidad registró para otras OC y que no alcanza para esta: no se paga ni por ella ni por su boleta hasta que Logística anule ese anexo o Contabilidad corrija el total de la factura, si lo escribió mal.',
   },
   POR_PAGAR: { etiqueta: 'Por pagar', tono: 'aviso', descripcion: 'Lista para que Tesorería la pague.' },
+  // La OC con boleta cuyo pago el proveedor devolvió entero (migración 20261020210000): no se le debe, como
+  // dice «Devuelta» en Cuentas por pagar. No está entre las por pagar ni entre las pagadas.
+  DEVUELTA: {
+    etiqueta: 'Devuelta',
+    tono: 'neutro',
+    descripcion: 'El proveedor devolvió todo lo que Tesorería le pagó por su boleta: no se le debe. Tesorería la paga de nuevo solo si se la vuelve a cobrar.',
+  },
   POR_FACTURAR: { etiqueta: 'Espera su factura', tono: 'aviso', descripcion: 'Contabilidad todavía no registra su factura.' },
   // La OC con boleta de antes de que Tesorería registrara esos pagos (migración 20261020210000).
   SIN_FACTURA: {

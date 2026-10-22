@@ -572,6 +572,7 @@ export function PagarCompra({
   codigoMoneda,
   cuentas,
   paraPagar,
+  principal = true,
 }: {
   ordenCompraId: string
   numero: string
@@ -582,6 +583,8 @@ export function PagarCompra({
   cuentas: CuentaParaPagar[]
   /** El PDF de la OC, su boleta y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
+  /** La que el proveedor devolvió entera no se debe: pagarla es la excepción y el botón va de contorno. */
+  principal?: boolean
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
@@ -610,6 +613,7 @@ export function PagarCompra({
       <Boton
         type="button"
         tamano="sm"
+        variante={principal ? 'primario' : 'contorno'}
         onClick={() => {
           avisar(null)
           setDia(hoy)

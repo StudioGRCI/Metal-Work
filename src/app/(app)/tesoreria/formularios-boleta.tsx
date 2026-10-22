@@ -1,6 +1,7 @@
 'use client'
 
 import { ArrowLeftRight, Ban, HandCoins, Undo2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
@@ -105,6 +106,7 @@ export function RegistrarDevolucion({
   const [monto, setMonto] = useState('')
   const [deja, setDeja] = useState('')
   const avisar = useAvisoDeLaCaja()
+  const router = useRouter()
   // La OC cambió con la ventana abierta (Logística anexó o anuló su factura) y la base pide la respuesta, o la
   // rechaza: la ventana se corrige con lo que dijo la base. Repintar la página la cerraba con todo lo escrito,
   // porque la tarjeta pasa a otra lista. Vale hasta que la página traiga otra `boleta`.
@@ -113,15 +115,6 @@ export function RegistrarDevolucion({
     rechazo?.para === boleta ? { ...boleta, enCamino: rechazo.enCamino, factura: rechazo.enCamino ? boleta.factura : null } : boleta
   const tope = topeDeLaDevolucion(boleta)
   const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
-
-  function abrir() {
-    avisar(null)
-    setDia(hoy)
-    setMonto(sugerido)
-    setDeja('')
-    setDevolucionId(crypto.randomUUID())
-  }
-  useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
@@ -138,10 +131,29 @@ export function RegistrarDevolucion({
     }
     return r
   }
-  const { alEnviar, enviando, error } = useEnvio(registrar, (r) => {
+  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
     setDevolucionId(null)
     avisar(r.mensaje ?? null)
   })
+
+  function abrir() {
+    avisar(null)
+    limpiar()
+    setDia(hoy)
+    setMonto(sugerido)
+    setDeja('')
+    setDevolucionId(crypto.randomUUID())
+  }
+  // Cerrada sin registrar después de corregirse, la tarjeta de atrás todavía dice lo de antes: se repinta ahora,
+  // que la ventana ya no se pierde si la tarjeta cambia de lista.
+  function cerrar() {
+    setDevolucionId(null)
+    if (rechazo?.para === boleta) router.refresh()
+  }
+  useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
+
+  // Lo que dijo la base ya está en la ventana (la pregunta, o sin ella): no es un error, es la OC que cambió.
+  const corregida = rechazo?.para === boleta && error !== null && facturaSegunElRechazo(error) !== null ? rechazo.enCamino : null
   const campo = (nombre: string) => `${nombre}-devolucion-${ordenCompraId}`
   const escrito = leerMonto(monto) ?? 0
   const valido = escrito > 0 && escrito <= tope
@@ -157,7 +169,7 @@ export function RegistrarDevolucion({
       </Boton>
       <Ventana
         abierta={devolucionId !== null}
-        alCerrar={() => setDevolucionId(null)}
+        alCerrar={cerrar}
         titulo={`Devolución de la ${numero}`}
         descripcion={`${conPunto(proveedor)} Lo que el proveedor te devolvió de lo pagado por la boleta: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(tope, codigoMoneda)}.`}
         ancho="md"
@@ -233,13 +245,21 @@ export function RegistrarDevolucion({
           <p role="status" aria-live="polite" className="text-sm text-texto">
             {enVivo}
           </p>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
+          {corregida !== null ? (
+            <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
+              {corregida
+                ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
+                : 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'}
             </p>
+          ) : (
+            error && (
+              <p role="alert" className="text-sm text-peligro">
+                {error}
+              </p>
+            )
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setDevolucionId(null)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>

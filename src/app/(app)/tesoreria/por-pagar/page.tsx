@@ -89,7 +89,9 @@ export default async function PaginaPorPagar() {
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
   // La pagada que pide algo (pedir la devolución, o la factura en otra moneda) o
   // que espera su comprobante va arriba, no en las pagadas.
-  const boletasPorPagar = boletas.filter((b) => !b.cancelada || b.comprobante_en_camino || pideAlgo(b))
+  // La que el proveedor devolvió entera va al final: no se le debe, y por su vencimiento quedaba entre las que sí.
+  const arriba = boletas.filter((b) => !b.cancelada || b.comprobante_en_camino || pideAlgo(b))
+  const boletasPorPagar = [...arriba.filter((b) => !devueltaEntera(b)), ...arriba.filter((b) => devueltaEntera(b))]
   const boletasPagadas = boletas.filter((b) => b.cancelada && !b.comprobante_en_camino && !pideAlgo(b))
   // La que espera su comprobante o ya tiene su factura se paga por ella: no suma al «Por pagar» ni a lo vencido.
   // Tampoco la que el proveedor devolvió entera: no se le debe hasta que la vuelva a cobrar.
@@ -665,12 +667,13 @@ function sinCompletarAlAnular(b: CompraConBoleta, devolucionId: string) {
 /**
  * Por qué la base no deja anular la devolución: sin ella, lo pagado por la boleta
  * pasaría de su total (por los pagos de después, o porque el total bajó). Null si entra.
+ * Dice de cuánto tiene que ser la correcta para que entre; si es menor, sobra un pago.
  */
 function noSeAnulaLaDevolucion(b: CompraConBoleta, monto: number, m: CodigoMoneda): string | null {
   const sinElla = redondear(Number(b.pagado ?? 0) + monto)
   const total = Number(b.total ?? 0)
   if (sinElla <= total) return null
-  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta y después anula esta.`
+  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta, de ${moneda(redondear(sinElla - total), m)} o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.`
 }
 
 /** Lo que le falta pagar a una OC con boleta, sobre lo neto (lo pagado menos lo devuelto); una cancelada «a cuenta» ya no debe nada. */
@@ -1054,7 +1057,11 @@ function CompraConBoletaFila({
     'Pagada por su factura'
   )
   return (
-    <article id={`compra-${b.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
+    <article
+      id={`compra-${b.id}`}
+      data-devuelta={devuelta || undefined}
+      className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento"
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
@@ -1127,6 +1134,18 @@ function CompraConBoletaFila({
                 </p>
               )}
             </>
+          ) : devuelta ? (
+            // No se le debe: sin «Saldo», que la hacía parecer una deuda.
+            <>
+              <p className="tabular text-sm font-semibold text-texto">
+                Total <span className="whitespace-nowrap">{moneda(b.total ?? 0, m)}</span>
+              </p>
+              <p className="tabular text-xs text-texto-suave">
+                Pagado <span className="whitespace-nowrap">{moneda(redondear(neto + devuelto), m)}</span>
+                {' · devuelto '}
+                <span className="whitespace-nowrap">{moneda(devuelto, m)}</span>
+              </p>
+            </>
           ) : (
             <>
               <p className="tabular text-sm font-semibold text-texto">
@@ -1172,6 +1191,7 @@ function CompraConBoletaFila({
                 codigoMoneda={m}
                 cuentas={cuentasCaja}
                 paraPagar={<ParaPagar documentos={documentos} cuentas={b.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, true)} />}
+                principal={!devuelta}
               />
             )}
             {otraFactura && (

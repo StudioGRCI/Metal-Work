@@ -607,6 +607,10 @@ begin
   perform test.debe_fallar($q$ select pg_temp.devolver('dv4i', 'oc4', 241, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4220', true) $q$,
     'devuelto todo, no puede quedar pagada', 'no queda nada pagado por la boleta');
   perform pg_temp.devolver('dv4i', 'oc4', 241, pg_temp.subir('pagos-compras', 'oc4'), null, 'DEV-4220', false);
+  perform test.afirmar(pg_temp.pago('oc4') = 'DEVUELTA'
+                       and (select count(*) > 0 and bool_and(p->'cancela' = 'null'::jsonb)
+                              from public.trazabilidad_de_compras() t, jsonb_array_elements(t.pagos) p where t.id = pg_temp.id('oc4')),
+    'con todo devuelto, Adquisiciones la da por devuelta, no por pagar, y su pago no dice «a cuenta»');
   reset role;
   perform pg_temp.como('comprador');
   set local role authenticated;
@@ -2594,7 +2598,8 @@ select test.afirmar((select cancelada and pagado = 361.50 and devuelto = 40 from
                     and pg_temp.pago('o11a') = 'PAGADA',
   'pagado el resto, la OC queda pagada con lo neto');
 select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'Se registró en la OC que no era') $$,
-  'la devolución no se anula si con eso lo pagado pasa del total: la correcta se registra primero', 'pasaría de su total (S/ 361.50)');
+  'la devolución no se anula si con eso lo pagado pasa del total: la correcta, de lo que sobra o más, se registra primero',
+  'pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 40.00 o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.');
 reset role;
 
 -- Antes de la factura: la OC pagada con S/ 100 y el proveedor devuelve 30; la

@@ -50,10 +50,15 @@
  *   3g. (duodécima vuelta, cuarta pasada) La OC 9, pagada entera, y
  *      después con la factura anexada: la ventana de la devolución no pregunta. Con ella
  *      abierta, Logística anula el anexo: la base pide la respuesta y la
- *      ventana la muestra sin recargar ni perder lo escrito. La tarjeta solo
- *      ofrece anular la devolución y registrarla con «Sí» si anularla entra; y
- *      devuelto todo, dice que se paga de nuevo solo si el proveedor la vuelve
- *      a cobrar, a Tesorería y a Gerencia.
+ *      ventana la muestra sin recargar ni perder lo escrito, con una nota y no
+ *      como error. Y la vuelta: Logística le anexa otra con la ventana abierta y
+ *      el «Sí» elegido; la ventana quita la pregunta, y cerrada sin registrar,
+ *      la tarjeta de atrás se repinta. La tarjeta solo ofrece anular la
+ *      devolución y registrarla con «Sí» si anularla entra, y la ventana de
+ *      anularla dice de cuánto tiene que ser la correcta; devuelto todo, dice
+ *      que se paga de nuevo solo si el proveedor la vuelve a cobrar, a
+ *      Tesorería y a Gerencia, sin «Saldo», al final de la lista, y
+ *      Adquisiciones la da por devuelta.
  *   4. Logística adjunta a la OS su factura (tres toques, un documento, con el
  *      número en mayúsculas) y su contrato, y el archivo queda en
  *      storage.objects. Emite otra OS con su contrato desde «Nueva orden de
@@ -942,16 +947,20 @@ let pagoId
   await consulta(`select public.anular_documento_compra($1, 'No era de esta OC: prueba de la ventana vieja')`, [anexo9])
   await como(null)
   await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
-  const rechazo = await esperarVentana(t.pagina)
+  // La ventana se corrige con lo que dijo la base y lo cuenta en una nota: no es un error.
+  const notaIda = vv.locator('[data-ventana-corregida]')
+  await notaIda.waitFor({ timeout: 30000 }).catch(() => {})
+  const rechazo = limpio(await notaIda.textContent({ timeout: 500 }).catch(() => ''))
+  const alertaIda = limpio(await vv.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
   const preguntaTras = await hasta(() => vv.locator('select[name="deja"]').count(), (n) => n === 1)
   const escrito = {
     monto: await vv.locator('input[name="monto"]').inputValue(),
     operacion: await vv.locator('input[name="operacion"]').inputValue(),
     archivos: await vv.locator('input[name="archivo"]').evaluate((i) => i.files?.length ?? 0),
   }
-  comprobar(rechazo.includes('Di si con los S/ 261.50') && preguntaTras === 1 && escrito.monto === '100' && escrito.operacion === `DEV9-${SUFIJO}`
-      && escrito.archivos === 1 && (await devolucionesDe(ocToda)).length === 0,
-    `anulado el anexo con la ventana abierta, la base pide la respuesta y la ventana la muestra sin perder lo escrito («${rechazo}», pregunta ${preguntaTras}, ${JSON.stringify(escrito)})`)
+  comprobar(rechazo.includes('Mientras escribías, la OC se quedó sin su factura y se paga por su boleta') && !alertaIda && preguntaTras === 1
+      && escrito.monto === '100' && escrito.operacion === `DEV9-${SUFIJO}` && escrito.archivos === 1 && (await devolucionesDe(ocToda)).length === 0,
+    `anulado el anexo con la ventana abierta, la base pide la respuesta y la ventana la muestra sin perder lo escrito, con una nota y no como error («${rechazo}»${alertaIda ? `, alerta «${alertaIda}»` : ''}, pregunta ${preguntaTras}, ${JSON.stringify(escrito)})`)
   // No se repinta la página: la tarjeta pasaría a otra lista y la ventana se cerraría sola con lo escrito.
   await t.pagina.waitForTimeout(4000)
   comprobar((await vv.isVisible()) && (await vv.locator('select[name="deja"]').count()) === 1 && (await vv.locator('input[name="monto"]').inputValue()) === '100',
@@ -965,6 +974,44 @@ let pagoId
   const conConsejo = await tarjetaToda()
   comprobar(conConsejo.includes('El proveedor devolvió S/ 100.00 de lo pagado y a la OC le faltan S/ 100.00, que se pagan aquí. Si con lo que quedaba ya estaba pagada, anula la devolución'),
     `la tarjeta ofrece anularla y registrarla con «Sí», porque anularla entra: «${conConsejo.slice(0, 320)}»`)
+  // La vuelta: con la página cargada sin factura, Logística le anexa otra. La ventana pregunta, la base rechaza
+  // el «Sí» y la ventana quita la pregunta con una nota; cerrada sin registrar, la tarjeta de atrás se repinta.
+  const [{ id: anexo9b }] = await consulta(`select gen_random_uuid() as id`)
+  await como('logistica')
+  await subir('documentos-compras', `compra/${ocToda}/${anexo9b}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+     values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+    [anexo9b, ocToda, `compra/${ocToda}/${anexo9b}.pdf`, PDF.length, ids[CUENTAS.logistica], `F091-${SUFIJO}`, hoy],
+  )
+  await como(null)
+  await (await abrir(ocToda)).locator('[data-registrar-devolucion]').click()
+  await vv.waitFor()
+  await vv.locator('input[name="monto"]').fill('50')
+  const preguntaAntes = await vv.locator('select[name="deja"]').count()
+  if (preguntaAntes === 1) await vv.locator('select[name="deja"]').selectOption('si')
+  await vv.locator('input[name="operacion"]').fill(`DEV9V-${SUFIJO}`)
+  await vv.locator('select[name="caja_id"]').selectOption(await vv.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value'))
+  await vv.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  await t.pagina.evaluate(() => {
+    window.__sinRecargar = 1
+  })
+  await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
+  const notaVuelta = vv.locator('[data-ventana-corregida]')
+  await notaVuelta.waitFor({ timeout: 30000 }).catch(() => {})
+  const vuelta = limpio(await notaVuelta.textContent({ timeout: 500 }).catch(() => ''))
+  const alertaVuelta = limpio(await vv.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
+  comprobar(preguntaAntes === 1 && vuelta.includes('Mientras escribías, le llegó su factura a la OC') && !alertaVuelta
+      && (await vv.locator('select[name="deja"]').count()) === 0 && (await vv.locator('input[name="monto"]').inputValue()) === '50'
+      && (await devolucionesDe(ocToda)).length === 1,
+    `la vuelta: anexada la factura con la ventana abierta, la base rechaza el «Sí» y la ventana quita la pregunta con una nota, sin perder lo escrito («${vuelta}»${alertaVuelta ? `, alerta «${alertaVuelta}»` : ''}, preguntaba ${preguntaAntes})`)
+  await vv.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  const repintada = await hasta(async () => limpio(await t.pagina.locator(`article#compra-${ocToda}`).textContent().catch(() => '')), (x) => x.includes('Llegó factura'))
+  comprobar(repintada.includes('Llegó factura') && (await t.pagina.evaluate(() => window.__sinRecargar)) === 1,
+    `cerrada sin registrar, la tarjeta de atrás se repinta con la factura que llegó, sin recargar la página: «${repintada.slice(0, 200)}»`)
+  await como('logistica')
+  await consulta(`select public.anular_documento_compra($1, 'No era de esta OC: prueba de la vuelta')`, [anexo9b])
+  await como(null)
   // Paga S/ 50 a cuenta: sin la devolución, lo pagado pasaría del total y anularla no entra.
   await pagar9(50)
   const sinConsejo = await tarjetaToda()
@@ -975,7 +1022,7 @@ let pagoId
   const vn = t.pagina.locator('[role="dialog"]')
   await vn.waitFor()
   const noSe = limpio(await vn.textContent())
-  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50).')
+  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 50.00 o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.')
       && !noSe.includes('La OC queda pagada') && (await vn.getByRole('button', { name: 'Anular', exact: true }).count()) === 0,
     `la ventana de anularla dice por qué no se puede, en vez de prometer cómo queda la OC: «${noSe.slice(0, 300)}»`)
   await vn.getByRole('button', { name: 'Cerrar', exact: true }).last().click()
@@ -989,6 +1036,22 @@ let pagoId
     `devuelto todo, la tarjeta no pide un «Sí» imposible: «${devuelta.slice(0, 320)}»`)
   comprobar(devuelta.includes('Devuelta') && devuelta.includes('Devuelta el ') && !devuelta.includes('Vence') && !devuelta.includes('Venció'),
     `y no se cuenta como deuda que vence: dice «Devuelta el …» en vez del vencimiento: «${devuelta.slice(0, 200)}»`)
+  const tarjeta9 = t.pagina.locator(`article#compra-${ocToda}`)
+  const clasePago = (await tarjeta9.locator('[data-pagar-compra]').getAttribute('class').catch(() => '')) ?? ''
+  comprobar(!devuelta.includes('Saldo') && devuelta.includes('Total S/ 361.50') && devuelta.includes('Pagado S/ 411.50 · devuelto S/ 411.50')
+      && clasePago.includes('bg-transparent'),
+    `ni parece una deuda: sin «Saldo», con lo pagado y lo devuelto, y «Registrar pago» de contorno («${devuelta.slice(0, 260)}»)`)
+  const orden = await tarjeta9.evaluate((a) => [...a.parentElement.querySelectorAll(':scope > article')].map((x) => x.dataset.devuelta === 'true'))
+  comprobar(orden.length > 1 && orden.every((d, i) => !d || orden.slice(i).every(Boolean)),
+    `y va al final de la lista, con las otras devueltas, no entre las que se deben (${orden.map((d) => (d ? 'D' : '·')).join('')})`)
+  comprobar((await pagoSegunAdquisiciones(ocToda)) === 'DEVUELTA', 'Adquisiciones la da por devuelta, no por pagar')
+  await t.pagina.goto(`${BASE}/adquisiciones?q=${encodeURIComponent(nombre(ocToda))}`, { waitUntil: 'networkidle' })
+  const filaAdq = limpio(
+    await t.pagina.locator(`[data-orden="${nombre(ocToda)}"]:visible, [data-orden-telefono="${nombre(ocToda)}"]:visible`).first().textContent().catch(() => ''),
+  )
+  comprobar(filaAdq.includes('Devuelta') && !filaAdq.includes('Por pagar') && !filaAdq.includes('Pagar en Cuentas por pagar') && !filaAdq.includes('a cuenta'),
+    `y su fila lo dice, sin mandar a pagarla ni llamar «a cuenta» a su pago: «${filaAdq.slice(0, 400)}»`)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   const porPagarDespues = await t.pagina.locator('p', { hasText: 'Por pagar: S/' }).first().textContent().catch(() => '')
   const soles = (t) => Number(/Por pagar: S\/ ([\d,]+\.\d{2})/.exec(t ?? '')?.[1]?.replace(/,/g, '') ?? NaN)
   comprobar(Math.round((soles(porPagarAntes) - soles(porPagarDespues)) * 100) / 100 === 50,

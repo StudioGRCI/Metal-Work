@@ -2684,8 +2684,9 @@ begin
                        where orden_compra_id = v_dev.orden_compra_id and anulado_en is null and id <> p_id), 0);
   v_mon := case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end;
   if v_neto > v_total then
-    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal, registra primero la correcta y después anula esta.',
-      v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00')
+    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal, registra primero la correcta, de % o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.',
+      v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00'),
+      v_mon || to_char(v_neto - v_total, 'FM999G999G990D00')
       using errcode = 'check_violation';
   end if;
   perform public.caja_anular_por_pago('DEVOLUCION_ORDEN_COMPRA', p_id, p_motivo, 'devolución');
@@ -3557,7 +3558,8 @@ grant execute on function public.corregir_factura_compra(uuid, uuid, text, text,
 --     lo pagado), para que Adquisiciones diga si el anexo se puede anular y no
 --     la muestre dos veces.
 --   · (undécima vuelta) la OC con boleta se mide con lo neto de sus pagos (sin
---     lo que el proveedor devolvió): con todo devuelto vuelve a POR_PAGAR, o sale
+--     lo que el proveedor devolvió): con todo devuelto sale DEVUELTA (no se le
+--     debe hasta que la vuelva a cobrar, y sus pagos no son «a cuenta»), o sale
 --     como se paga su factura. Sale PAGADA_DE_MAS solo con algo sin tomar de S/ 1
 --     o más, y PAGO_PARCIAL mientras su factura en otra moneda espere que
 --     Tesorería le pase el pago al cambio (`espera_boleta`, en esa factura). Cada
@@ -3700,6 +3702,10 @@ begin
            when not c.con_factura and coalesce(pd.neto, 0) > 0 and coalesce(fa.registradas, 0) = 0
                 and (coalesce(pc.sin_completar, false) or pd.neto >= tt.total) then 'PAGADA'
            when not c.con_factura and coalesce(pd.neto, 0) > 0 and coalesce(fa.registradas, 0) = 0 then 'PAGO_PARCIAL'
+           -- El proveedor devolvió todo lo pagado por su boleta: no se le debe hasta que la
+           -- vuelva a cobrar, como dice «Devuelta» en Cuentas por pagar.
+           when not c.con_factura and coalesce(fa.registradas, 0) = 0 and fe.origen is null
+                and coalesce(pd.devuelto, 0) > 0 and coalesce(pd.neto, 0) <= 0 then 'DEVUELTA'
            -- La boleta que Contabilidad registró como comprobante se paga por ahí (y
            -- `registrar_pago_compra` ya no la deja pagar directo): sigue como factura.
            -- La que trae factura (en borrador o anexada por Logística) espera que Contabilidad la registre.
@@ -3728,7 +3734,7 @@ begin
     -- su pago directo frente a su factura (sección 4). Solo la OC con boleta: la
     -- condición va afuera de la función y la de factura no la llama.
     left join lateral (select e.origen, e.alcanza from public.comprobante_en_camino(c.id) e where not c.con_factura) fe on true
-    left join lateral (select x.de_mas, x.otra_moneda, x.sin_tomar, x.pagado - x.devuelto as neto
+    left join lateral (select x.de_mas, x.otra_moneda, x.sin_tomar, x.pagado - x.devuelto as neto, x.devuelto
                          from public.pago_directo_de_la_compra(c.id) x where not c.con_factura) pd on true
     -- El RQ nuevo (RQ-0001-2026): la OC lo atiende con alguna de sus líneas.
     left join lateral (
@@ -3761,12 +3767,15 @@ begin
     left join documento dc on dc.orden_compra_id = c.id
     -- El pago de la OC con boleta (sección 2). `cancela`: el que la da por
     -- cancelada (`pago_que_cancela_la_compra`), el mismo que marca Tesorería; en
-    -- null si la dio por pagada una devolución, que no es ningún pago.
+    -- null si la dio por pagada una devolución, que no es ningún pago, o si el
+    -- proveedor devolvió todo lo pagado: ninguno quedó «a cuenta» de nada.
     left join lateral (select x.pago_id, x.sin_completar from public.pago_que_cancela_la_compra(c.id, null) x where not c.con_factura) pc on true
     left join lateral (
       select count(*) as n, sum(y.monto) as pagado,
              jsonb_agg(jsonb_build_object('id', y.id, 'fecha', y.fecha_pago, 'monto', y.monto, 'moneda', y.moneda,
-                                          'cancela', case when pc.pago_id is null and pc.sin_completar then null
+                                          'cancela', case when pc.pago_id is null
+                                                                and (pc.sin_completar or (coalesce(pd.devuelto, 0) > 0 and coalesce(pd.neto, 0) <= 0))
+                                                          then null
                                                           else y.id is not distinct from pc.pago_id end,
                                           'operacion', y.operacion,
                                           'comprobante', y.comprobante_proveedor, 'ruta', y.archivo_ruta, 'bucket', 'pagos-compras',
