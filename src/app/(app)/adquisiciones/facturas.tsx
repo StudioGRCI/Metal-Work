@@ -17,6 +17,7 @@ import {
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { devolucionesSinNota, notasDeLasFacturas, type DevolucionSinNota, type NotaDeLaFactura } from '@/lib/datos/notas-credito'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
@@ -494,10 +495,10 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
     <li>
       {acceso.oc ? (
         <a href={`/compras/${o.id}/pdf`} target="_blank" rel="noopener" className={`tabular ${enlace}`}>
-          {o.numero}
+          {nombreDeOc(o)}
         </a>
       ) : (
-        <span className="tabular text-texto">{o.numero}</span>
+        <span className="tabular text-texto">{nombreDeOc(o)}</span>
       )}
       {o.requerimientos.length > 0 ? (
         <>
@@ -813,11 +814,13 @@ function CeldaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
     <TD className="align-top whitespace-nowrap">
       {acceso.oc ? (
         <a href={`/compras/${orden.id}/pdf`} target="_blank" rel="noopener" className={`tabular ${enlace}`}>
-          {orden.numero}
+          {orden.numero ?? 'OC sin número'}
         </a>
       ) : (
-        <span className="tabular">{orden.numero}</span>
+        <span className="tabular">{orden.numero ?? 'OC sin número'}</span>
       )}
+      {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
+      {!orden.numero && orden.referencia && <p className="text-[11px] text-texto-suave">Ref. del proveedor: {orden.referencia}</p>}
       <p className="tabular text-[11px] text-texto-suave">{orden.sin_precio ? 'Sin precio' : moneda(orden.total, codigo(orden.moneda))}</p>
     </TD>
   )

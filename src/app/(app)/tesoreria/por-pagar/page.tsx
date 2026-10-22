@@ -22,6 +22,7 @@ import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { notasAFavor, type NotaAFavor } from '@/lib/datos/notas-credito'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
@@ -88,7 +89,7 @@ export default async function PaginaPorPagar() {
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
-  const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeLaOc(b)] as const] : [])))
+  const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeOc(b)] as const] : [])))
   // Las que esperan a Contabilidad van al final: no se pagan hasta que lo diga.
   const porPagar = [...cuentas.filter((c) => Number(c.saldo) > 0 && !c.enEspera), ...cuentas.filter((c) => Number(c.saldo) > 0 && c.enEspera)]
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
@@ -255,7 +256,7 @@ export default async function PaginaPorPagar() {
               >
                 <span>
                   <span className="text-texto">
-                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {c.numero ?? c.referencia}
+                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {nombreDeOc(c)}
                   </span>
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
@@ -350,9 +351,6 @@ function etiquetaDelComprobante(d: CompraConBoleta['comprobantes'][number]) {
   if (d.tipo === 'BORRADOR') return `Comprobante ${d.numero} (en borrador${d.sinPdf ? ', sin PDF todavía' : ''})`
   return `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}`
 }
-
-/** «OC-0001-MW», o «OC 12» si todavía no tiene número. */
-const nombreDeLaOc = (b: CompraConBoleta) => b.numero ?? `OC ${b.referencia}`
 
 /** La otra moneda: la de la factura que no es la de la OC. */
 const laOtra = (m: CodigoMoneda): CodigoMoneda => (m === 'USD' ? 'PEN' : 'USD')
@@ -779,7 +777,7 @@ function Factura({
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
-    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: `PDF de la ${o.numero ?? `OC ${o.referencia}`}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
+    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: `PDF de la ${nombreDeOc(o)}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
   ]
   // Lo que Tesorería le pasó a mano de cada OC con boleta se deshace junto: el botón va en la última línea de esa OC.
   const aManoVigentes = c.pagos.filter((p) => p.monto_de_la_boleta !== null && !p.anulado_en && p.ordenCompraDeLaBoleta)
@@ -854,12 +852,12 @@ function Factura({
           </p>
           {ordenes.length > 0 && (
             <p className="text-xs text-texto-suave">
-              {ordenes.length === 1 ? 'OC ' : `${ordenes.length} OC: `}
+              {ordenes.length > 1 && `${ordenes.length} OC: `}
               {/* El PDF de cada OC va abajo, con la factura y las cuentas del proveedor. */}
               {ordenes.map((o, i) => (
                 <span key={o.id}>
                   {i > 0 && ' · '}
-                  <span className="tabular whitespace-nowrap text-texto">{o.numero ?? o.referencia}</span>
+                  <span className={`tabular text-texto ${o.numero ? 'whitespace-nowrap' : ''}`}>{nombreDeOc(o)}</span>
                   {o.numero_ot && ` (OT ${o.numero_ot})`}
                 </span>
               ))}
@@ -931,7 +929,7 @@ function Factura({
           </p>
         ) : espera ? (
           <p className="text-xs text-aviso">
-            Espera lo pagado por la boleta de la <span className="whitespace-nowrap">{nombreDeLaOc(espera)}</span>:{' '}
+            Espera lo pagado por la boleta de la <span className={espera.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(espera)}</span>:{' '}
             <span className="whitespace-nowrap">{moneda(Number(espera.sin_tomar ?? 0), codigoMoneda(espera.moneda))}</span> sin pasar a esta factura.{' '}
             {pasa ? (
               <>
@@ -1087,7 +1085,7 @@ function CompraConBoletaFila({
   // `pagado` ya es lo neto: los pagos vigentes menos lo que el proveedor devolvió.
   const neto = Number(b.pagado ?? 0)
   const devuelto = Number(b.devuelto ?? 0)
-  const nombre = nombreDeLaOc(b)
+  const nombre = nombreDeOc(b)
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(b.id), descarga: true }] : []),
     ...b.comprobantes.map((d) => ({ clave: d.id, etiqueta: etiquetaDelComprobante(d), url: d.url })),

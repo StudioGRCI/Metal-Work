@@ -3,6 +3,7 @@ import 'server-only'
 import { z } from 'zod'
 
 import { enlaces } from '@/lib/datos/facturacion'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_NOTAS_CREDITO, BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { rucEsValido } from '@/lib/dominio/proveedores'
@@ -169,7 +170,7 @@ async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient
 export type FacturaDeLogistica = {
   id: string
   orden_compra_id: string
-  /** El número de la OC, o su referencia si todavía no lo tiene. */
+  /** Cómo se nombra la OC (`nombreDeOc`): las de antes de la serie no tienen número. */
   oc: string
   proveedor: string
   nombre_archivo: string
@@ -229,7 +230,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
   return documentos.map((d) => ({
     id: d.id,
     orden_compra_id: d.orden_compra_id,
-    oc: d.oc?.numero ?? d.oc?.referencia ?? 'OC',
+    oc: d.oc ? nombreDeOc(d.oc) : 'OC',
     proveedor: d.oc?.proveedor ?? '',
     nombre_archivo: d.nombre_archivo,
     numero: d.numero_documento,
@@ -276,7 +277,10 @@ export type RqDeCompra = { id: string; numero: string; codigo_interno: string }
 /** Una OC en la tabla de Adquisiciones: su número, su total, su código y los RQ que atiende. */
 export type OcEnTabla = {
   id: string
-  numero: string
+  /** Null en las OC de antes de la serie OC-…-MW: se nombran con `nombreDeOc`. */
+  numero: string | null
+  /** La cotización o la proforma del proveedor; no es el número de la OC. */
+  referencia: string
   moneda: string
   total: number
   sin_precio: boolean
@@ -445,7 +449,8 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
     const propio = codigoDe.get(o.id)
     return {
       id: o.id,
-      numero: o.numero ?? o.referencia,
+      numero: o.numero,
+      referencia: o.referencia,
       moneda: o.moneda,
       total: o.total,
       sin_precio: o.sin_precio,

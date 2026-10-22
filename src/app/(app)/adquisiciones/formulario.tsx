@@ -6,6 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
@@ -345,7 +346,7 @@ function Formulario({
                       className="mt-0.5 size-4 accent-[var(--acento)]"
                     />
                     <span className="flex-1">
-                      <span className="tabular font-medium text-texto">{c.numero ?? c.referencia}</span>
+                      <span className="tabular font-medium text-texto">{nombreDeOc(c)}</span>
                       <span className="text-texto"> · {c.proveedor}</span>
                       <span className="block text-xs text-texto-suave">
                         {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'}

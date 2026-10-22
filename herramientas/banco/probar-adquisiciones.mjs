@@ -403,7 +403,8 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
   {
     // Las OC sembradas ya tienen su factura: las que esperan son las que dejó el resto del banco, si quedó alguna.
     await como('tesoreria')
-    const esperan = (await consulta(`select numero from public.compras_sin_factura()`)).map((o) => o.numero)
+    // Las OC de antes de la serie no tienen número: la tabla las nombra «OC sin número».
+    const esperan = (await consulta(`select numero from public.compras_sin_factura()`)).map((o) => o.numero ?? 'OC sin número')
     await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
     const sinFactura = limpio(await pagina.locator('table').textContent())
     comprobar(
