@@ -337,7 +337,7 @@ const anulado = async (id) => (await consulta(`select anulado_en, anulado_por, m
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
 
-/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte. */
+/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» y el «Failed to fetch» de la consola son el corte. */
 let cortando = false
 
 async function entrar(puesto) {
@@ -345,7 +345,7 @@ async function entrar(puesto) {
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (cortando && m.text().includes('net::ERR_FAILED')) return
+    if (cortando && /net::ERR_FAILED|Failed to fetch/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -747,10 +747,10 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
     await v.getByRole('button', { name: 'Pasar a la factura' }).click()
     const primera = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
     await pagina.unrouteAll({ behavior: 'ignoreErrors' })
-    cortando = false
     await v.locator('input[name="monto_factura"]').fill('90.00')
     await v.getByRole('button', { name: 'Pasar a la factura' }).click()
     const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
+    cortando = false
     const tomasAhora = await consulta(`select monto::float as monto, monto_de_la_boleta::float as boleta from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [facturaH])
     comprobar(/No llegó la respuesta/.test(primera) && segunda.startsWith('Lo que toma la factura ya quedó registrado la primera vez que lo enviaste')
       && tomasAhora.length === 1 && tomasAhora[0].monto === 97.7 && tomasAhora[0].boleta === total,

@@ -1654,12 +1654,18 @@ async function cotizacionSinRespuesta(viewport) {
 // ------------------------------------------------- 5. el plano cuya respuesta se pierde
 async function planoSinRespuesta(viewport) {
   const tam = nombreDe(viewport)
-  // Un plano va en una etapa de su orden: una orden abierta que ya tiene alguna.
-  const orden = await uno(`select o.id, e.id as etapa_id from public.ordenes_trabajo o join public.ot_etapas e on e.orden_id = o.id
+  // Un plano va en una etapa de su orden: una orden abierta que ya tiene alguna. En la orden con plan de
+  // etapas propio la base pide quién lo elaboró: un integrante de banco de su equipo de Diseño (en la base
+  // recién hecha, todas las abiertas son así).
+  const orden = await uno(`select o.id, e.id as etapa_id, o.plan_etapas_manual from public.ordenes_trabajo o join public.ot_etapas e on e.orden_id = o.id
                             where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
   if (!orden) return comprobar(false, `[Diseño ${tam}] hay una orden abierta con etapas para el plano`)
-  const plano = await uno(`insert into public.ot_planos (orden_id, numero_plano, nombre, etapa_id)
-                           values ($1, $2, 'Plano de banco sin respuesta', $3) returning id`, [orden.id, `QA-SUELTO-PL-${sello}`, orden.etapa_id])
+  const integrante = orden.plan_etapas_manual
+    ? (await uno(`insert into public.ot_equipo_diseno (orden_id, nombre, funcion) values ($1, 'QA banco Diseño', 'COLABORADOR')
+                  on conflict (orden_id, lower(btrim(nombre))) do update set nombre = excluded.nombre returning id`, [orden.id])).id
+    : null
+  const plano = await uno(`insert into public.ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
+                           values ($1, $2, 'Plano de banco sin respuesta', $3, $4) returning id`, [orden.id, `QA-SUELTO-PL-${sello}`, orden.etapa_id, integrante])
   const { pagina: p, contexto } = await entrar('diseno.local@metalwork.test', viewport)
   await ir(p, `/ordenes/${orden.id}/planos?plano=${plano.id}`)
   const archivo = p.locator('#version-archivo')

@@ -26,6 +26,13 @@ import pg from 'pg'
 // sin zona, 1182/1115 sus arreglos.)
 pg.types.setTypeParser(1082, (v) => v)
 pg.types.setTypeParser(1182, (v) => v)
+// La fecha con hora, como la escribe PostgREST: texto ISO con sus microsegundos
+// («2026-10-22T14:50:01.123456-05:00»). Como Date de JavaScript se quedaba en
+// milisegundos, y un filtro por igualdad con el valor leído (`.eq('creado_en',
+// …)`) no encontraba la fila que en Supabase sí encuentra (1184 timestamptz,
+// 1114 timestamp sin zona).
+pg.types.setTypeParser(1184, (v) => v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'))
+pg.types.setTypeParser(1114, (v) => v.replace(' ', 'T'))
 
 import { ErrorNoSoportado, leerEsquema } from './esquema.mjs'
 import { construirEscritura, construirLectura, construirLlamada } from './rest.mjs'

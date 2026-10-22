@@ -202,7 +202,10 @@ writeFileSync(
 // ------------------------------------------------------------------ navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
-/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte. */
+/**
+ * Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte, y el
+ * 400 es Storage diciendo que el justificante ya está en su ruta (el reintento lo sube otra vez).
+ */
 let cortando = false
 async function hasta(leer, cumple, ms = 30000) {
   const fin = Date.now() + ms
@@ -218,7 +221,7 @@ async function entrar(clave) {
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (cortando && m.text().includes('net::ERR_FAILED')) return
+    if (cortando && /net::ERR_FAILED|status of 400/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${clave}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -272,11 +275,11 @@ try {
     await v.getByRole('button', { name: 'Corregir', exact: true }).click()
     const primera = await hasta(aviso, (t) => /No se confirmó/.test(t))
     await pagina.unrouteAll({ behavior: 'ignoreErrors' })
-    cortando = false
     await v.locator('[id^="rq-corr-cant-"]').first().fill('7')
     await v.locator('[id^="correccion-motivo-"]').fill('El plano final pide plancha de 3 mm y siete piezas')
     await v.getByRole('button', { name: 'Corregir', exact: true }).click()
     const segunda = await hasta(aviso, (t) => /ya quedó registrada/.test(t))
+    cortando = false
     const alerta = segunda.startsWith('Esta corrección ya quedó registrada la primera vez que la enviaste') ? '' : segunda
     await v.getByRole('button', { name: 'Cancelar' }).click()
     const linea = await uno('select material_id, cantidad::float as cantidad from public.requerimiento_lineas where requerimiento_id = $1 and item = 1', [rqId])
