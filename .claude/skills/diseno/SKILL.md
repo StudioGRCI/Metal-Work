@@ -173,14 +173,23 @@ se queda donde ninguna fila lo nombra, y ahí solo lo ve quien lo subió (en
 `adjuntos-ot`, por `owner_id` desde la migración `20261017402000`; antes no lo
 veía nadie y hubo que sacar a mano el Excel de un cronograma).
 
-La forma correcta es la de `src/lib/adjuntos.ts`: si la anotación devuelve
-`!ok`, `storage.remove([ruta])`. Si **no llega la respuesta** (excepción, señal
-cortada), el archivo **no se toca**: la fila pudo entrar, y quitarlo deja una
-orden que nombra un archivo que no existe —el banco lo mostró el 2026-10-19 con
-«Subir PDF»—. La pantalla dice «No llegó la respuesta: mira si quedó antes de
-volver a subirlo», porque reintentar a ciegas lo sube dos veces. Y si la subida
-es opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no
-puede tragarse el aviso de lo que sí entró.
+La forma correcta es anotar con `anotarSinDejarloSuelto`
+(`src/lib/subida-privada.ts`), como ya hacen `subirArchivoPrivado`,
+`adjuntos.ts` y las demás: si la anotación devuelve `!ok`, quita el archivo. Si
+**no llega la respuesta**, no lo quita a ciegas —la fila pudo entrar, y quitarlo
+deja una orden que nombra un archivo que no existe; el banco lo mostró el
+2026-10-19 con «Subir PDF»—: pregunta otra vez con la misma ruta y el mismo id.
+Para eso **la acción tiene que contestar `ok` cuando es el mismo pedido otra
+vez**: o por id (`if exists … then return p_id` en la función), o, ante el
+duplicado, releyendo la fila por su ruta —un uuid de esa subida— y comparando
+quién y para qué documento (`registrarAdjunto`, `crearOrden`, las tres de la
+cotización, `registrarDocumentoCompra`). Si contesta «duplicado» o «ya quedó
+registrada», la pantalla dice en rojo «mira si quedó» aunque quedó (lo vio la
+auditoría del 2026-10-22). Si ni la segunda vez hay un sí, intenta quitarlo: la
+política del bucket deja quitar solo el que ninguna fila nombra. Lo que queda sin
+saber se dice: «mira si quedó antes de volver a subirlo». Y si la subida es
+opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no puede
+tragarse el aviso de lo que sí entró.
 
 Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista,
 el identificador se decide en el navegador con `crypto.randomUUID()` y la base

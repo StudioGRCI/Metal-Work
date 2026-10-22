@@ -136,7 +136,10 @@ En la misma migración que la crea, sin excepción:
   propio: si la respuesta se pierde, pregunta otra vez con la misma ruta y solo
   quita el archivo si ninguna fila lo nombra. Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
-  aunque hubiera quedado.
+  aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
+  repetido —por id en la función, o releyendo la fila por su ruta y quién la
+  anotó—, nunca a uno parecido: comparar solo el id, o solo la orden, daría
+  `ok` a otro archivo y lo dejaría suelto.
 - El navegador nunca recibe la clave de servicio: `src/lib/supabase/server.ts`
   es `server-only`.
 
