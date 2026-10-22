@@ -338,6 +338,45 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   comprobar(quedoG.n === 1 && quedoG.nombres === nombreG && quedoG.tam === pdfG.length && fotoSuelta === 0,
     `[Administración ${tam}] V6c: el contrato es el primer PDF, con sus bytes, y la foto no quedó suelta (${quedoG.nombres}, ${quedoG.tam} bytes, ${fotoSuelta} fotos sueltas)`)
 
+  // N1: la foto sí quedó (las dos respuestas se pierden) y después, con un PDF,
+  // la acción no llega dos veces: el PDF se quita, pero el contrato ya quedó
+  // con la foto. No se dice «No quedó registrado»: se dice cuál se subió y
+  // que no se sabe si quedó.
+  await ir(p, `/subcontratos/${sc.id}`)
+  const n1 = { acciones: 0 }
+  await p.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sc.id)) {
+      n1.acciones++
+      if (n1.acciones <= 2) {
+        await r.fetch().catch(() => {})
+        return r.abort('failed')
+      }
+      if (n1.acciones <= 4) return r.abort('failed')
+    }
+    return r.continue()
+  })
+  await p.locator('[data-adjuntar-contrato]').click()
+  const n = p.getByRole('dialog').first()
+  await n.waitFor({ timeout: 20000 })
+  const nombreJ = `QA-OTRO-J-${sello}.png`
+  const alertaN = n.locator('[role=alert]')
+  await n.locator('input[name="contrato"]').setInputFiles({ name: nombreJ, mimeType: 'image/png', buffer: PNG_MINIMO })
+  await n.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /Conserva el archivo/.test(await alertaN.innerText().catch(() => '')), 30000)
+  await n.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-K-${sello}.pdf`, mimeType: 'application/pdf', buffer: PDF_MINIMO(600) })
+  await n.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => n1.acciones >= 4 && /ya se subió|No quedó/.test(await alertaN.innerText().catch(() => '')), 40000)
+  const dijoN = limpio(await alertaN.innerText().catch(() => ''))
+  await p.keyboard.press('Escape')
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const quedoN = await uno(`select count(*)::int as n, string_agg(c.archivo_nombre, ', ') as nombres, max(c.archivo_ruta) as ruta
+                              from public.subcontrato_contratos c where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3)`,
+                            [sc.id, nombreJ, `QA-OTRO-K-${sello}.pdf`])
+  const pdfSuelto = quedoN.ruta ? Number((await uno('select count(*) from storage.objects where name = $1', [quedoN.ruta.replace(/\.png$/, '.pdf')])).count) : -1
+  comprobar(dijoN.includes(`Desde esta ventana ya se subió ${nombreJ} y no se sabe si quedó`) && quedoN.n === 1 && quedoN.nombres === nombreJ && pdfSuelto === 0,
+    `[Administración ${tam}] N1: con el contrato ya adjunto con la foto, el PDF que no llegó no dice «No quedó registrado»: «${dijoN}» (${quedoN.nombres}, ${pdfSuelto} PDF suelto)`)
+
   // El recibo por honorarios vacío dice que está vacío, no «Adjunta el recibo».
   await ir(p, `/subcontratos/${sc.id}`)
   await p.locator('[data-subir-recibo]').click()
@@ -358,57 +397,75 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
 // Tesorería da de alta una cuenta con su captura en JPG; la acción entra y sus
 // dos respuestas se pierden. En la misma ventana elige una captura PNG y la
 // envía: la cuenta queda con la PNG, y la JPG, que ya nadie nombra, no queda
-// suelta en Storage.
+// suelta en Storage. También si la primera subida de la PNG se corta y el ok
+// llega en el envío siguiente.
 const JPEG_MINIMO = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64')
 async function laCapturaDeOtroTipoEnLaCaja(viewport) {
   const tam = nombreDe(viewport)
   const { pagina: p, contexto } = await entrar('tesoreria.local@metalwork.test', viewport)
-  await ir(p, '/tesoreria/caja-diaria')
-  const seccion = p.locator('details', { hasText: 'Cuentas de Tesorería' })
-  if (await seccion.count()) {
-    // Se abre cuando React ya la tomó; si no, la vuelve a cerrar al hidratar.
-    await seccion.evaluate((d) => new Promise((listo) => {
-      const mira = () => (Object.keys(d).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
-      mira()
-    }))
-    await seccion.evaluate((d) => (d.open = true))
-  }
-  await p.locator('[data-agregar-cuenta]:visible').first().click()
-  const v = p.locator('[role="dialog"]:not([data-nextjs-dialog])')
-  await v.waitFor({ timeout: 20000 })
-  const nombreCuenta = `QA CAJA ${sello}-${tam}`
-  await v.locator('input[name="nombre"]').fill(nombreCuenta)
-  await v.locator('select[name="tipo"]').selectOption('BANCO')
-  await v.locator('input[name="banco"]').fill('BCP')
-  await v.locator('select[name="moneda"]').selectOption('PEN')
-  await v.locator('input[name="saldo_inicial"]').fill('0')
-  const cuentaId = await v.locator('input[name="id"]').getAttribute('value')
-  let acciones = 0
-  await p.route('**/*', async (r) => {
-    const q = r.request()
-    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(nombreCuenta)) {
-      acciones++
-      if (acciones <= 2) {
-        await r.fetch().catch(() => {})
+  for (const caso of ['directo', 'con la subida de la PNG cortada']) {
+    await ir(p, '/tesoreria/caja-diaria')
+    const seccion = p.locator('details', { hasText: 'Cuentas de Tesorería' })
+    if (await seccion.count()) {
+      // Se abre cuando React ya la tomó; si no, la vuelve a cerrar al hidratar.
+      await seccion.evaluate((d) => new Promise((listo) => {
+        const mira = () => (Object.keys(d).some((k) => k.startsWith('__react')) ? listo() : setTimeout(mira, 50))
+        mira()
+      }))
+      await seccion.evaluate((d) => (d.open = true))
+    }
+    await p.locator('[data-agregar-cuenta]:visible').first().click()
+    const v = p.locator('[role="dialog"]:not([data-nextjs-dialog])')
+    await v.waitFor({ timeout: 20000 })
+    const nombreCuenta = `QA CAJA ${sello}-${tam}-${caso === 'directo' ? 1 : 2}`
+    await v.locator('input[name="nombre"]').fill(nombreCuenta)
+    await v.locator('select[name="tipo"]').selectOption('BANCO')
+    await v.locator('input[name="banco"]').fill('BCP')
+    await v.locator('select[name="moneda"]').selectOption('PEN')
+    await v.locator('input[name="saldo_inicial"]').fill('0')
+    const cuentaId = await v.locator('input[name="id"]').getAttribute('value')
+    const cortes = { acciones: 0, png: 0 }
+    await p.route('**/*', async (r) => {
+      const q = r.request()
+      if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(nombreCuenta)) {
+        cortes.acciones++
+        if (cortes.acciones <= 2) {
+          await r.fetch().catch(() => {})
+          return r.abort('failed')
+        }
+      }
+      if (caso !== 'directo' && q.method() === 'POST' && q.url().includes('/storage/v1/object/apertura-caja/') && q.url().endsWith('.png') && cortes.png++ === 0) {
         return r.abort('failed')
       }
+      return r.continue()
+    })
+    const boton = v.getByRole('button', { name: 'Agregar la cuenta' })
+    const avisos = async () => limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))
+    await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.jpg`, mimeType: 'image/jpeg', buffer: Buffer.concat([JPEG_MINIMO, Buffer.alloc(200)]) })
+    await boton.click()
+    await esperar(async () => /No se confirmó/.test(await avisos()), 30000)
+    const primera = await avisos()
+    const conJpg = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
+    await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
+    await boton.click()
+    let segunda = ''
+    if (caso !== 'directo') {
+      await esperar(async () => /Revisa la señal/.test(await avisos()), 30000)
+      segunda = await avisos()
+      await boton.click()
     }
-    return r.continue()
-  })
-  const boton = v.getByRole('button', { name: 'Agregar la cuenta' })
-  await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.jpg`, mimeType: 'image/jpeg', buffer: Buffer.concat([JPEG_MINIMO, Buffer.alloc(200)]) })
-  await boton.click()
-  await esperar(async () => /No se confirmó/.test(limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))), 30000)
-  const primera = limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))
-  const conJpg = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
-  await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
-  await boton.click()
-  const cerro = await esperar(async () => !(await v.isVisible()), 30000)
-  await p.unrouteAll({ behavior: 'ignoreErrors' })
-  const cuenta = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
-  const objetos = (await base.query(`select name from storage.objects where bucket_id = 'apertura-caja' and name like $1`, [`${cuentaId}/%`])).rows.map((o) => o.name)
-  comprobar(/No se confirmó/.test(primera) && conJpg?.ruta?.endsWith('.jpg') && cerro && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
-    `[Tesorería ${tam}] la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
+    const cerro = await esperar(async () => !(await v.isVisible()), 30000)
+    await p.unrouteAll({ behavior: 'ignoreErrors' })
+    // El borrado de la JPG va después del ok, sin esperarlo; en el banco, un
+    // borrado en Storage tarda unos 7 s (Postgres compila la consulta con JIT).
+    const objetosDe = async () => (await base.query(`select name from storage.objects where bucket_id = 'apertura-caja' and name like $1`, [`${cuentaId}/%`])).rows.map((o) => o.name)
+    await esperar(async () => (await objetosDe()).length === 1, 25000)
+    const cuenta = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
+    const objetos = await objetosDe()
+    comprobar(/No se confirmó/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
+      && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
+      `[Tesorería ${tam}] ${caso}: la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»${segunda ? ` / «${segunda}»` : ''}; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
+  }
   await contexto.close()
 }
 
@@ -1010,8 +1067,8 @@ async function loLeidoSeVaConElArchivo(viewport) {
 
   // Lo escrito ya está en el borrador: el formulario vuelve vacío, para que no
   // se registre otra vez con su mismo número, y el aviso sigue abajo, con el
-  // cursor en él. Completado desde su fila, el formulario no lo vuelve a
-  // ofrecer, y el aviso se va cuando se empieza el siguiente.
+  // cursor en él. Completado desde su fila, el aviso se va solo y arriba queda
+  // el «listo», que se va al empezar el siguiente.
   const avisoBorrador = r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' })
   const vacio = { proveedor: await valor(r, '#adq-proveedor'), numero: await valor(r, '#adq-numero'), total: await valor(r, '#adq-total') }
   const pdfVacio = await dice(pdfR)
@@ -1028,10 +1085,12 @@ async function loLeidoSeVaConElArchivo(viewport) {
     await completar.getByRole('button', { name: 'Completar comprobante' }).click()
     completado = await esperar(async () => (await uno('select estado from public.adquisiciones where id = $1', [borradorId]))?.estado === 'REGISTRADA', 30000)
   }
-  await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
-  const seFue = await esperar(async () => (await avisoBorrador.count()) === 0, 5000)
+  const listo = r.getByRole('status').filter({ hasText: `Comprobante F998-${sello}${tam} completado y registrado.` })
+  const seFue = await esperar(async () => (await avisoBorrador.count()) === 0 && (await listo.count()) > 0, 20000)
   comprobar(completado && seFue && (await valor(r, '#adq-numero')) === '',
-    `[Contabilidad ${tam}] se completa desde su fila (${completado ? 'REGISTRADA' : 'no se completó'}) y, al escribir el siguiente, el aviso se va (${seFue ? 'se fue' : 'sigue'})`)
+    `[Contabilidad ${tam}] se completa desde su fila (${completado ? 'REGISTRADA' : 'no se completó'}) y el aviso del borrador se va solo, con el «listo» arriba (${seFue ? 'sí' : `aviso ${await avisoBorrador.count()}, listo ${await listo.count()}`})`)
+  await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
+  comprobar(await esperar(async () => (await listo.count()) === 0, 5000), `[Contabilidad ${tam}] y el «listo» se va al empezar el siguiente`)
   await r.locator('#adq-proveedor').fill('')
   await cr.close()
 }
@@ -1387,6 +1446,14 @@ async function planoSinRespuesta(viewport) {
   await p.screenshot({ path: join(CAPTURAS, `suelto-plano-${tam}.png`) })
   await contexto.close()
 }
+
+// Lo que dejó una corrida anterior que murió por una señal: el disparador de
+// prueba, sus comprobantes y sus cuentas de la caja, que no se borran: se desactivan.
+await quitarElRechazoDePrueba()
+await base.query(`delete from storage.objects where bucket_id = 'comprobantes-financieros'
+                    and name in (select ruta_storage from public.adquisiciones where proveedor like 'QA proveedor %')`)
+await base.query(`delete from public.adquisiciones where proveedor like 'QA proveedor %'`)
+await base.query(`update public.cajas set activa = false where nombre like 'QA CAJA %' and activa`)
 
 try {
   await planoSinRespuesta(MONITOR)

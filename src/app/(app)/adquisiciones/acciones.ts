@@ -60,6 +60,13 @@ function lecturaDelFormulario(formulario: FormData) {
 
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
+/** «la OC OC-5620-MW» o «las OC …», si se sabe el número de cada una; si no, null. */
+function lasOc(ids: string[], numeroDeOc: Map<string, string>): string | null {
+  const numeros = ids.map((o) => numeroDeOc.get(o))
+  if (numeros.length === 0 || numeros.some((n) => !n)) return null
+  return `${numeros.length === 1 ? 'la OC' : 'las OC'} ${numeros.join(', ')}`
+}
+
 /** Lo que queda en borrador se ve en la lista sin recargar: el aviso manda ahí. */
 function enBorrador(error: string): ResultadoAccion {
   revalidatePath('/adquisiciones')
@@ -122,6 +129,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const id = crypto.randomUUID()
   const supabase = await createClient()
   let ordenes = marcadas.data
+  // El número de cada OC, para decir cuál no entró si el comprobante queda en borrador.
+  const numeroDeOc = new Map<string, string>()
   let principal: string | null = null
   if (v.documento_compra_id) {
     const { data: documento, error: errorDocumento } = await supabase.from('documentos_compra_material')
@@ -145,6 +154,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       return { ok: false, error: 'Una de las OC marcadas ya tiene su factura registrada. Recarga la pantalla.' }
     }
     const conocidas = ordenes.flatMap((o) => porId.get(o) ?? [])
+    for (const c of conocidas) if (c.orden_compra_id) numeroDeOc.set(c.orden_compra_id, c.numero ?? c.referencia ?? '')
     const nombre = (p: string | null) => (p ?? '').trim().toUpperCase()
     const otroProveedor = conocidas.find((c) => nombre(c.proveedor) !== nombre(conocidas[0].proveedor))
     if (otroProveedor) return { ok: false, error: `Una factura es de un solo proveedor: la OC ${otroProveedor.numero ?? otroProveedor.referencia} es de ${otroProveedor.proveedor}.` }
@@ -172,14 +182,16 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (resto.length > 0) {
     const { data: enlazadas, error: errorEnlace } = await supabase.from('adquisiciones_ordenes_compra')
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
-    if (errorEnlace) return enBorrador(`El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}`)
+    if (errorEnlace) return enBorrador(`El comprobante quedó en borrador sin ${lasOc(resto, numeroDeOc) ?? 'todas sus OC'}: ${mensajeDeError(errorEnlace)}`)
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
   // Las que cubre en parte, mientras sigue en borrador: registrada, solo se cambia con una corrección.
   if (enParte.data.length > 0) {
     const { data: parciales, error: errorParcial } = await supabase.from('adquisiciones_ordenes_compra')
       .update({ parcial: true }).eq('adquisicion_id', id).in('orden_compra_id', enParte.data).select('id')
-    if (errorParcial) return enBorrador(`El comprobante quedó en borrador sin marcar las OC parciales: ${mensajeDeError(errorParcial)}`)
+    if (errorParcial) {
+      return enBorrador(`El comprobante quedó en borrador sin marcar como parcial ${lasOc(enParte.data, numeroDeOc) ?? 'sus OC'}: ${mensajeDeError(errorParcial)}`)
+    }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }
   const ruta = bytes ? `adquisiciones/${id}/comprobante.pdf` : null

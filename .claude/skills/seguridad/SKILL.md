@@ -163,7 +163,10 @@ En la misma migración que la crea, sin excepción:
   del PDF con otro PDF lo daba por adjunto con el primero adentro (pasó en la
   séptima pasada del PR #148). Si la acción cambia la ruta del documento (la
   caja reemplaza su captura), la de antes se vuelve a quitar después del `ok`,
-  cuando ya nadie la nombra. La ruta fija
+  cuando ya nadie la nombra, aunque el `ok` llegue en otro envío
+  (`porQuitarTrasOk`). Y «No quedó registrado» habla solo del archivo de este
+  envío: si una fila nombraba la ruta de otro tipo del mismo documento, se
+  dice cuál se subió y que no se sabe si quedó. La ruta fija
   vale **por envío**, no por ventana: el id que nace en un componente que la
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo

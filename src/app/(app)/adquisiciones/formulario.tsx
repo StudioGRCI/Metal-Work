@@ -81,14 +81,23 @@ const pendiente = (c: CompraSinFactura) => Math.max(Math.round((Number(c.total) 
  * están vacíos, y avisa lo que no calza. Lo leído se guarda con el comprobante.
  * Si se quita o se cambia el archivo, lo que llenó y nadie tocó se va con él.
  */
-export function FormularioAdquisicion(props: Props) {
+export function FormularioAdquisicion({ borradores, ...props }: Props & { borradores: { proveedor: string; numero: string }[] }) {
   // Al registrar, el formulario se vuelve a montar vacío y el aviso queda arriba.
   // Si el comprobante quedó en borrador, también: lo escrito ya está en él, y
   // volver a enviarlo chocaría con su propio número. Su aviso sigue abajo,
-  // donde estaba, hasta que la persona empiece el siguiente.
+  // donde estaba, hasta que la persona empiece el siguiente o lo complete en
+  // su fila: dura lo que el borrador en la lista (`borradores`, los de esta
+  // persona). La lista lo trae un momento después del aviso: se va cuando ya
+  // estuvo y dejó de estar.
   const [vuelta, setVuelta] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const [borrador, setBorrador] = useState<string | null>(null)
+  const [borrador, setBorrador] = useState<{ texto: string; clave: string; numero: string; enLaLista: boolean } | null>(null)
+  const sigue = borrador !== null && borradores.some((b) => claveDeBorrador(b.proveedor, b.numero) === borrador.clave)
+  if (borrador && sigue && !borrador.enLaLista) setBorrador({ ...borrador, enLaLista: true })
+  if (borrador?.enLaLista && !sigue) {
+    setBorrador(null)
+    setAviso(`Comprobante ${borrador.numero} completado y registrado.`)
+  }
   return (
     <>
       {aviso && (
@@ -99,15 +108,15 @@ export function FormularioAdquisicion(props: Props) {
       <Formulario
         key={vuelta}
         {...props}
-        borrador={borrador}
+        borrador={borrador?.texto ?? null}
         alRegistrar={(mensaje) => {
           setAviso(mensaje)
           setBorrador(null)
           setVuelta((v) => v + 1)
         }}
-        alQuedarEnBorrador={(mensaje) => {
+        alQuedarEnBorrador={(texto, proveedor, numero) => {
           setAviso(null)
-          setBorrador(mensaje)
+          setBorrador({ texto, clave: claveDeBorrador(proveedor, numero), numero: numero.trim(), enLaLista: false })
           setVuelta((v) => v + 1)
         }}
         alEscribir={() => {
@@ -118,6 +127,9 @@ export function FormularioAdquisicion(props: Props) {
     </>
   )
 }
+
+/** Cómo se reconoce un comprobante en la lista: proveedor y número son únicos juntos. */
+const claveDeBorrador = (proveedor: string, numero: string) => `${proveedor.trim()}|${numero.trim()}`
 
 /** Los avisos de la acción que dejan el comprobante creado, en borrador. */
 const quedoEnBorrador = (error: string) => /\bborrador\b/.test(error)
@@ -133,7 +145,7 @@ function Formulario({
 }: Props & {
   borrador: string | null
   alRegistrar: (mensaje: string) => void
-  alQuedarEnBorrador: (mensaje: string) => void
+  alQuedarEnBorrador: (mensaje: string, proveedor: string, numero: string) => void
   alEscribir: () => void
 }) {
   const [marcadas, setMarcadas, marcadasAhora] = useEstadoAlDia<string[]>([])
@@ -174,7 +186,9 @@ function Formulario({
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     async (previo: unknown, datos: FormData) => {
       const resultado = await registrarAdquisicion(previo, datos)
-      if (!resultado.ok && quedoEnBorrador(resultado.error)) alQuedarEnBorrador(resultado.error)
+      if (!resultado.ok && quedoEnBorrador(resultado.error)) {
+        alQuedarEnBorrador(resultado.error, String(datos.get('proveedor') ?? ''), String(datos.get('numero_documento') ?? ''))
+      }
       return resultado
     },
     (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'),
