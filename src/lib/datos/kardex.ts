@@ -2,6 +2,7 @@ import 'server-only'
 
 import { type Almacen, esAlmacen } from '@/lib/dominio/almacen'
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { sumarDias } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Vistas } from '@/types/database'
@@ -232,15 +233,17 @@ export type LineaRqParaSalida = {
   almacen: Almacen | null
   entregado: number
   pendiente: number
-  /** El material del catálogo con que se pidió: la salida lo trae elegido. */
+  /** El material del catálogo con que se pidió. */
   material_id: string | null
+  /** El que entró al kardex de su compra, que puede ser otra marca: la salida lo propone primero. */
+  material_comprado: string | null
 }
 
 /** Lo que piden los requerimientos vivos y todavía no se entregó, por número e ítem. */
 export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSalida[]> {
   const db = await createClient()
   const { data, error } = await db.from('v_rq_lineas_para_salida')
-    .select('linea_id,requerimiento_id,numero,codigo_interno,area,item,descripcion,cantidad,unidad,categoria,almacen,entregado,pendiente,material_id')
+    .select('linea_id,requerimiento_id,numero,codigo_interno,area,item,descripcion,cantidad,unidad,categoria,almacen,entregado,pendiente,material_id,material_comprado')
     .gt('pendiente', 0)
     .order('numero', { ascending: false })
     .order('item')
@@ -252,7 +255,85 @@ export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSali
     descripcion: l.descripcion ?? '', cantidad: Number(l.cantidad ?? 0), unidad: l.unidad ?? '',
     categoria: l.categoria ?? '', almacen: esAlmacen(l.almacen) ? l.almacen : null,
     entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0), material_id: l.material_id,
+    material_comprado: l.material_comprado,
   }] : [])
+}
+
+/**
+ * De estos RQ, los que ya no se pueden corregir al código que se propone para
+ * cada uno: tienen una salida del kardex cargada a otro código y no devuelta
+ * entera (`corregir_requerimiento`, migración 20261020196000, que compara con
+ * `normalizar_codigo_interno`). Se mira el RQ entero, también el ítem ya
+ * entregado, que no viene en las líneas por atender. `null` si no se pudo leer.
+ */
+export async function requerimientosConSalidaCargada(
+  pedidos: { requerimiento_id: string; codigo: string }[],
+): Promise<string[] | null> {
+  if (pedidos.length === 0) return []
+  const propuesto = new Map(pedidos.map((p) => [p.requerimiento_id, normalizarCodigo(p.codigo)]))
+  const db = await createClient()
+  const { data: lineas, error } = await db.from('requerimiento_lineas').select('id, requerimiento_id').in('requerimiento_id', [...propuesto.keys()])
+  if (error) {
+    console.error('No se pudieron leer los ítems de los RQ para saber si ya salió algo:', error.message)
+    return null
+  }
+  const delRq = new Map((lineas ?? []).map((l) => [l.id, l.requerimiento_id]))
+  if (delRq.size === 0) return []
+  const { data: salidas, error: errorSalidas } = await db.from('movimientos_materiales').select('id, cantidad, codigo_interno, requerimiento_linea_id')
+    .eq('tipo', 'SALIDA').not('codigo_interno', 'is', null).in('requerimiento_linea_id', [...delRq.keys()])
+  if (errorSalidas) {
+    console.error('No se pudieron leer las salidas de los RQ:', errorSalidas.message)
+    return null
+  }
+  if (!salidas?.length) return []
+  const { data: devoluciones, error: errorDevoluciones } = await db.from('movimientos_materiales').select('devolucion_de, cantidad')
+    .eq('tipo', 'INGRESO').in('devolucion_de', salidas.map((s) => s.id))
+  if (errorDevoluciones) {
+    console.error('No se pudieron leer las devoluciones de las salidas de los RQ:', errorDevoluciones.message)
+    return null
+  }
+  const devuelto = new Map<string, number>()
+  for (const d of devoluciones ?? []) if (d.devolucion_de) devuelto.set(d.devolucion_de, (devuelto.get(d.devolucion_de) ?? 0) + Number(d.cantidad))
+  return [...new Set(salidas.flatMap((s) => {
+    const rq = s.requerimiento_linea_id ? delRq.get(s.requerimiento_linea_id) : undefined
+    const aOtro = normalizarCodigo(s.codigo_interno ?? '') !== propuesto.get(rq ?? '')
+    return rq && aOtro && Number(s.cantidad) > (devuelto.get(s.id) ?? 0) ? [rq] : []
+  }))]
+}
+
+/** Un insumo de un RQ listo que todavía no salió del kardex, con lo que le falta. */
+export type InsumoPorSacar = { item: number; descripcion: string; pendiente: number; unidad: string }
+
+/**
+ * Qué insumos de cada RQ falta sacar del kardex (lo pedido menos lo que salió,
+ * descontando lo devuelto). «Entregado» no pasa mientras falte alguno, salvo
+ * que Almacén lo entregue con faltante y diga por qué (migración
+ * 20261020196000). `null` si no se pudo leer: la pantalla ofrece entonces los
+ * dos pasos y la base decide.
+ */
+export async function insumosPorSacarDelKardex(requerimientos: string[]): Promise<Record<string, InsumoPorSacar[]> | null> {
+  if (requerimientos.length === 0) return {}
+  const db = await createClient()
+  const porRq: Record<string, InsumoPorSacar[]> = {}
+  // De a 150, para no alargar la URL con cientos de identificadores.
+  for (let i = 0; i < requerimientos.length; i += 150) {
+    const { data, error } = await db.from('v_rq_lineas_para_salida')
+      .select('requerimiento_id, item, descripcion, pendiente, unidad')
+      .in('requerimiento_id', requerimientos.slice(i, i + 150))
+      .gt('pendiente', 0)
+      .order('item')
+    if (error) {
+      console.error('No se pudo leer qué insumos de los RQ listos faltan sacar del kardex:', error.message)
+      return null
+    }
+    for (const l of data ?? []) {
+      if (!l.requerimiento_id) continue
+      ;(porRq[l.requerimiento_id] ??= []).push({
+        item: l.item ?? 0, descripcion: l.descripcion ?? '', pendiente: Number(l.pendiente ?? 0), unidad: l.unidad ?? '',
+      })
+    }
+  }
+  return porRq
 }
 
 export type MaterialParaPlanilla = {

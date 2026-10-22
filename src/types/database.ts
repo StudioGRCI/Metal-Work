@@ -3361,6 +3361,7 @@ export type Database = {
           formato_cerrado_en: string | null
           formato_cerrado_por: string | null
           numero_salida: string | null
+          de_la_unidad: number | null
         }
         Insert: {
           id: string
@@ -3391,6 +3392,7 @@ export type Database = {
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
           numero_salida?: string | null
+          de_la_unidad?: number | null
         }
         Update: {
           id?: string
@@ -3421,6 +3423,7 @@ export type Database = {
           formato_cerrado_en?: string | null
           formato_cerrado_por?: string | null
           numero_salida?: string | null
+          de_la_unidad?: number | null
         }
         Relationships: [
           {
@@ -8310,6 +8313,7 @@ export type Database = {
           material_id: string | null
           material_nuevo: boolean
           orden_compra_detalle_id: string | null
+          sin_salida_al_entregar: number | null
         }
         Insert: {
           id?: string
@@ -8330,6 +8334,7 @@ export type Database = {
           material_id?: string | null
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
+          sin_salida_al_entregar?: number | null
         }
         Update: {
           id?: string
@@ -8350,6 +8355,7 @@ export type Database = {
           material_id?: string | null
           material_nuevo?: boolean
           orden_compra_detalle_id?: string | null
+          sin_salida_al_entregar?: number | null
         }
         Relationships: [
           {
@@ -8514,6 +8520,8 @@ export type Database = {
           entregado_por: string | null
           nota_entrega: string | null
           tipo: string
+          faltante_al_entregar: string | null
+          motivo_del_faltante: string | null
         }
         Insert: {
           id?: string
@@ -8541,6 +8549,8 @@ export type Database = {
           entregado_por?: string | null
           nota_entrega?: string | null
           tipo?: string
+          faltante_al_entregar?: string | null
+          motivo_del_faltante?: string | null
         }
         Update: {
           id?: string
@@ -8568,6 +8578,8 @@ export type Database = {
           entregado_por?: string | null
           nota_entrega?: string | null
           tipo?: string
+          faltante_al_entregar?: string | null
+          motivo_del_faltante?: string | null
         }
         Relationships: [
           {
@@ -10626,6 +10638,7 @@ export type Database = {
           entregado: number | null
           pendiente: number | null
           material_id: string | null
+          material_comprado: string | null
         }
         Relationships: []
       }
@@ -10642,6 +10655,16 @@ export type Database = {
           p_prioridad?: Database["public"]["Enums"]["prioridad_ot"] | null
         }
         Returns: string
+      }
+      accesorios_de_cada_unidad: {
+        Args: {
+          p_materiales: string[] | null
+        }
+        Returns: {
+          material_id: string | null
+          codigo: string | null
+          saldo: number | null
+        }[]
       }
       activar_auditoria: {
         Args: {
@@ -10695,6 +10718,10 @@ export type Database = {
           p_material: string | null
         }
         Returns: string
+      }
+      anotar_salidas_de_antes: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       anular_asistencia: {
         Args: {
@@ -14153,6 +14180,14 @@ export type Database = {
           escaneo_ruta: string | null
         }[]
       }
+      rq_entregar_con_faltante: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       rq_exigir: {
         Args: {
           p_tipo: string | null
@@ -14541,6 +14576,18 @@ export type Database = {
           p_pasos: string[] | null
         }
         Returns: number
+      }
+      separado_de_cada_linea: {
+        Args: {
+          p_materiales: string[] | null
+        }
+        Returns: {
+          linea: string | null
+          material_id: string | null
+          codigo: string | null
+          numero: string | null
+          cantidad: number | null
+        }[]
       }
       servicios_pendientes_de_pago: {
         Args: Record<PropertyKey, never>

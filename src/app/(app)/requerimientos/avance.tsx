@@ -1,7 +1,7 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import type { LineaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ETAPA_AVANCE_RQ, resumenDeEtapas } from '@/lib/dominio/requerimientos'
+import { ENTREGADO_CON_FALTANTE, ETAPA_AVANCE_RQ, resumenDeEtapas } from '@/lib/dominio/requerimientos'
 import { cantidad, fechaHora } from '@/lib/format'
 
 const COLOR: Record<Tono, string> = {
@@ -20,12 +20,15 @@ const COLOR: Record<Tono, string> = {
  */
 export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
   if (!rq.avance) return null
-  const etapa = ETAPA_AVANCE_RQ[rq.avance.etapa]
+  // Entregado con faltante no es «Entregado» a secas: parte no salió. Y si ya
+  // se entregó, la insignia de al lado lo dice: la etapa no lo repite.
+  const etapa = rq.avance.etapa === 'ENTREGADO' && rq.faltante_al_entregar ? ENTREGADO_CON_FALTANTE : ETAPA_AVANCE_RQ[rq.avance.etapa]
+  const repite = rq.estado === 'ENTREGADO' && rq.avance.etapa === 'ENTREGADO'
   const resumen = resumenDeEtapas(rq.lineas.map((l) => l.etapa))
   return (
     <div className="mt-2 w-48 max-w-full space-y-0.5">
       <Progreso valor={rq.avance.porcentaje} mostrarValor alto="sm" etiqueta={`Avance de ${rq.numero}`} />
-      <p className={`text-[11px] font-medium ${COLOR[etapa?.tono ?? 'neutro']}`}>{etapa?.etiqueta ?? rq.avance.etapa}</p>
+      {!repite && <p className={`text-[11px] font-medium ${COLOR[etapa?.tono ?? 'neutro']}`}>{etapa?.etiqueta ?? rq.avance.etapa}</p>}
       {resumen && <p className="text-[11px] text-texto-suave">{resumen}</p>}
     </div>
   )

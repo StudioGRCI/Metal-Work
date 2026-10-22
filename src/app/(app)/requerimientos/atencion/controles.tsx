@@ -1,19 +1,23 @@
 'use client'
 
-import { Check, ClipboardCheck, PackageCheck, ShoppingCart } from 'lucide-react'
+import { Check, ClipboardCheck, PackageCheck, PackageX, ShoppingCart } from 'lucide-react'
 import { Fragment, useMemo, useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import type { InsumoPorSacar } from '@/lib/datos/kardex'
 import type { MaterialParaRequerimiento } from '@/lib/datos/requerimientos'
+import { redondearCantidad, topeDeCantidad } from '@/lib/dominio/almacen'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { marcarPasoRequerimiento, revisarStockRequerimiento } from './acciones'
+import { entregarConFaltante, marcarPasoRequerimiento, revisarStockRequerimiento } from './acciones'
+import { useAvisar } from './avisos'
 
 type Paso = 'listo' | 'en_atencion' | 'entregado'
 
@@ -53,7 +57,13 @@ const PASO = {
 /** Un botón por paso; cada uno abre su ventana con la nota y manda a la base. */
 export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: string; paso: Paso }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(marcarPasoRequerimiento, () => setAbierta(false))
+  const avisar = useAvisar()
+  const { alEnviar, enviando, error } = useEnvio(marcarPasoRequerimiento, (r) => {
+    setAbierta(false)
+    // Entregado, la fila se va de «Por atender»: lo que pasó se dice arriba.
+    // Los otros pasos la dejan donde está, con su estado nuevo.
+    if (paso === 'entregado' && r.mensaje) avisar(`${numero}: ${r.mensaje}`, r.datos?.aviso)
+  })
   const d = PASO[paso]
   const Icono = d.icono
   return (
@@ -69,17 +79,91 @@ export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: st
           <Campo etiqueta={d.nota} htmlFor={`rq-${paso}-${id}`} requerido={paso === 'entregado'}>
             <AreaTexto id={`rq-${paso}-${id}`} name="nota" rows={2} maxLength={500} required={paso === 'entregado'} minLength={paso === 'entregado' ? 3 : undefined} placeholder={d.ejemplo} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
+          {/* El botón se desactiva mientras envía y el foco caía en la página: el
+              rechazo se lo lleva, y Escape sigue cerrando la ventana. */}
+          {error && <AvisoEnfocado rol="alert">{error}</AvisoEnfocado>}
           <div className="flex justify-end gap-2">
             <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={enviando}>
               {d.boton}
+            </Boton>
+          </div>
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+/**
+ * Entregar un RQ listo con lo que salió del kardex, cuando lo que falta ya no
+ * va a salir: el área no necesita el resto, devolvieron lo que sobró, se compró
+ * en otra unidad. Sin esto el RQ quedaba listo para siempre. La ventana dice qué
+ * no salió y pide el motivo, que le llega a quien lo pidió.
+ */
+export function EntregarConFaltante({ id, numero, faltan }: {
+  id: string
+  numero: string
+  /** Lo que falta sacar del kardex; `null` si no se pudo leer (la base lo anota igual al entregar). */
+  faltan: InsumoPorSacar[] | null
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const avisar = useAvisar()
+  const { alEnviar, enviando, error } = useEnvio(entregarConFaltante, (r) => {
+    setAbierta(false)
+    if (r.mensaje) avisar(`${numero}: ${r.mensaje}`, r.datos?.aviso)
+  })
+  return (
+    <>
+      <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)}>
+        <PackageX aria-hidden className="size-4" />
+        Entregar con faltante
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Entregar con faltante · ${numero}`}
+        descripcion="Cierra el requerimiento aunque esto no salió del kardex. Si todavía va a salir, registra su salida."
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <input type="hidden" name="id" value={id} />
+          <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2">
+            <p className="text-xs font-medium text-texto-suave">No salió del kardex</p>
+            {faltan === null ? (
+              <p className="mt-1 text-sm text-texto">No se pudo leer qué falta. Al entregarlo, el sistema anota lo que no salió.</p>
+            ) : (
+              <ul className="mt-1 space-y-0.5 text-sm text-texto" data-faltante>
+                {faltan.map((f) => (
+                  <li key={f.item}>
+                    <span className="tabular font-medium">
+                      {formatoCantidad(f.pendiente)} {f.unidad}
+                    </span>{' '}
+                    de {f.descripcion}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Campo etiqueta="Quién lo recogió" htmlFor={`rq-faltante-nota-${id}`} requerido>
+            <AreaTexto id={`rq-faltante-nota-${id}`} name="nota" rows={2} maxLength={500} required minLength={3}
+              placeholder="Por ejemplo: supervisor de Maestranza." />
+          </Campo>
+          <Campo etiqueta="Por qué lo que falta ya no sale" htmlFor={`rq-faltante-motivo-${id}`} requerido
+            ayuda="Le llega a quien pidió el RQ y queda escrito en él.">
+            <AreaTexto id={`rq-faltante-motivo-${id}`} name="motivo" rows={2} maxLength={500} required minLength={10}
+              placeholder="Por ejemplo: el área ya no necesita el resto; devolvieron lo que sobró." />
+          </Campo>
+          {/* El botón se desactiva mientras envía y el foco caía en la página: el
+              rechazo se lo lleva, y Escape sigue cerrando la ventana. */}
+          {error && <AvisoEnfocado rol="alert">{error}</AvisoEnfocado>}
+          <div className="flex justify-end gap-2">
+            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={enviando}>
+              Entregar con faltante
             </Boton>
           </div>
         </form>
@@ -107,14 +191,24 @@ export type StockDelSistema = {
  * Lo que el sistema tiene para este RQ: lo libre y, de lo que ya es de su mismo
  * código, solo lo que ningún RQ abierto separó (el accesorio que entró para la
  * unidad). Lo que separó otro RQ del mismo código es de aquel: contarlo aquí lo
- * separaría dos veces, y la base lo marcaría «separado de más».
+ * separaría dos veces, y la base lo marcaría «separado de más». Si se separó más
+ * de lo que hay, lo de la unidad no pasa de lo que queda en el kardex fuera de
+ * lo libre: `entro` es lo que entró para ella, `deLaUnidad` lo que de eso hay.
  */
 function partesDelSistema(sistema: StockDelSistema, codigo: string) {
   const propio = normalizarCodigo(codigo)
   const mismo = sistema.codigos.find((c) => c.codigo === propio) ?? null
   const otros = sistema.codigos.filter((c) => c.codigo !== propio)
-  const deLaUnidad = mismo ? Math.max(mismo.cantidad - mismo.de_requerimientos, 0) : 0
-  return { mismo, otros, deLaUnidad, usable: sistema.libre + deLaUnidad }
+  // Redondeado a los tres decimales de la base: 0.3 − 0.1 da 0.19999999999999998 en el navegador.
+  const entro = mismo ? Math.max(redondearCantidad(mismo.cantidad - mismo.de_requerimientos), 0) : 0
+  const fueraDeLoLibre = Math.max(redondearCantidad(sistema.existencia - sistema.reservado_ot - sistema.libre), 0)
+  const deLaUnidad = Math.min(entro, fueraDeLoLibre)
+  // `paraElRq` es la cifra como la dice el kardex, con cuatro decimales, y con
+  // ella se compara lo anotado: con 1.0005 libres, el aviso decía «el sistema
+  // tiene 1» dos líneas debajo de «1.0005 libres». `usable` la corta a los tres
+  // decimales de lo que se separa.
+  const paraElRq = Math.round((sistema.libre + deLaUnidad) * 10000) / 10000
+  return { mismo, otros, entro, deLaUnidad, usable: topeDeCantidad(paraElRq), paraElRq }
 }
 
 type InsumoPorRevisar = {
@@ -274,8 +368,13 @@ function FormularioStock({
                 : (stockDelCatalogo[elegido] ?? { existencia: 0, libre: 0, reservado_ot: 0, unidad: l.unidad, codigos: [] })
           // Anotar más de lo que el sistema tiene para este RQ no se impide —Almacén
           // cuenta lo que ve—, pero se avisa: separaría de más.
-          const usable = sistema && sistema !== 'no_se_pudo' && sistema.unidad === l.unidad ? partesDelSistema(sistema, codigo).usable : null
-          const deMas = valor !== '' && usable !== null && Number(valor) > usable
+          const partes = sistema && sistema !== 'no_se_pudo' && sistema.unidad === l.unidad ? partesDelSistema(sistema, codigo) : null
+          const usable = partes ? partes.usable : null
+          // Lo separado lleva tres decimales y el kardex, cuatro: con 1.0005 en el
+          // sistema, anotar 1.0005 avisaba que era de más con la misma cifra.
+          const conMasDecimales = valor !== '' && Math.abs(Number(valor) * 1000 - Math.round(Number(valor) * 1000)) > 1e-6
+          const deMas = !conMasDecimales && valor !== '' && partes !== null && Number(valor) > partes.paraElRq
+          const conAviso = deMas || conMasDecimales
           return (
             <li key={l.item} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_9rem] sm:items-end">
               <div className="text-sm">
@@ -296,7 +395,7 @@ function FormularioStock({
               <Campo etiqueta={`Tienes (${l.unidad || 'cantidad'})`} htmlFor={`rq-stock-${id}-${l.item}`} requerido>
                 <Entrada
                   id={`rq-stock-${id}-${l.item}`}
-                  aria-describedby={deMas ? `rq-stock-${id}-${l.item}-aviso` : undefined}
+                  aria-describedby={conAviso ? `rq-stock-${id}-${l.item}-aviso` : undefined}
                   type="number"
                   inputMode="decimal"
                   min={0}
@@ -311,15 +410,17 @@ function FormularioStock({
               <p
                 id={`rq-stock-${id}-${l.item}-aviso`}
                 aria-live="polite"
-                className={cn('tabular text-xs text-aviso sm:col-span-2', !deMas && 'sr-only')}
+                className={cn('tabular text-xs text-aviso sm:col-span-2', !conAviso && 'sr-only')}
                 data-separa-de-mas={deMas || undefined}
               >
-                {deMas && sistema && sistema !== 'no_se_pudo'
+                {conMasDecimales
+                  ? `La revisión lleva hasta tres decimales: anota ${formatoCantidad(topeDeCantidad(Number(valor)))}.`
+                  : deMas && sistema && sistema !== 'no_se_pudo'
                   ? sistema.existencia <= 0
                     ? 'El sistema no tiene stock de este material: revisa antes de separarlo.'
                     : usable !== null && usable <= 0
                       ? 'El sistema no tiene nada libre para este RQ: revisa antes de separarlo.'
-                      : `El sistema tiene ${formatoCantidad(usable)} ${sistema.unidad} para este RQ: revisa antes de separar más.`
+                      : `El sistema tiene ${formatoCantidad(partes?.paraElRq ?? usable)} ${sistema.unidad} para este RQ: revisa antes de separar más.`
                   : ''}
               </p>
               {l.nuevo && (
@@ -393,19 +494,24 @@ const CODIGOS_A_LA_VISTA = 3
  * código es de aquel: si es el mismo pedido repetido, no se separa otra vez. Lo
  * que entró para la unidad y ningún RQ tomó sí le sirve a este.
  */
-function DelMismoCodigo({ mismo, deLaUnidad, unidad }: {
-  mismo: StockDelSistema['codigos'][number]; deLaUnidad: number; unidad: string
+function DelMismoCodigo({ mismo, entro, deLaUnidad, unidad }: {
+  mismo: StockDelSistema['codigos'][number]; entro: number; deLaUnidad: number; unidad: string
 }) {
   const separado = mismo.de_requerimientos
   const numeros = mismo.requerimientos.join(', ')
   const propio = `${mismo.codigo}, el código de este RQ`
+  const sirve = `${deLaUnidad === 1 ? 'sirve' : 'sirven'} para este pedido`
+  // Se separó más de lo que hay: de lo que entró para la unidad no queda todo en el kardex.
+  const queda = deLaUnidad <= 0 ? 'no queda ninguno' : `${deLaUnidad === 1 ? 'queda' : 'quedan'} ${formatoCantidad(deLaUnidad)}`
   return (
     <p className="tabular text-xs text-texto" data-mismo-codigo>
       {separado <= 0
-        ? `${formatoCantidad(deLaUnidad)} ${unidad} ${deLaUnidad === 1 ? 'entró' : 'entraron'} para ${propio}: ${deLaUnidad === 1 ? 'sirve' : 'sirven'} para este pedido.`
-        : deLaUnidad <= 0
+        ? deLaUnidad < entro
+          ? `${formatoCantidad(entro)} ${unidad} ${entro === 1 ? 'entró' : 'entraron'} para ${propio}, pero en el kardex ${queda}${deLaUnidad > 0 ? `: ${sirve}` : ''}.`
+          : `${formatoCantidad(deLaUnidad)} ${unidad} ${deLaUnidad === 1 ? 'entró' : 'entraron'} para ${propio}: ${sirve}.`
+        : entro <= 0
           ? `${formatoCantidad(separado)} ${unidad} ya ${separado === 1 ? 'está separado' : 'están separados'} para ${propio}${numeros && `, en ${numeros}`}: si es el mismo pedido, no ${separado === 1 ? 'lo' : 'los'} separes otra vez.`
-          : `${formatoCantidad(mismo.cantidad)} ${unidad} son de ${propio}: ${formatoCantidad(separado)} ya separados${numeros && ` en ${numeros}`}; ${formatoCantidad(deLaUnidad)} ${deLaUnidad === 1 ? 'entró' : 'entraron'} para la unidad y ${deLaUnidad === 1 ? 'sirve' : 'sirven'} para este pedido.`}
+          : `${formatoCantidad(mismo.cantidad)} ${unidad} son de ${propio}: ${formatoCantidad(separado)} ya separados${numeros && ` en ${numeros}`}; ${formatoCantidad(entro)} ${entro === 1 ? 'entró' : 'entraron'} para la unidad${deLaUnidad < entro ? `, y en el kardex ${queda}` : ''}${deLaUnidad > 0 ? ` y ${sirve}` : ''}.`}
     </p>
   )
 }
@@ -425,7 +531,7 @@ function EnElSistema({ sistema, codigo }: { sistema: InsumoPorRevisar['sistema']
   }
   const { existencia, libre, reservado_ot: reservado, unidad } = sistema
   if (existencia <= 0) return <p className="text-xs text-texto-suave" data-en-el-sistema>En el sistema: no hay stock.</p>
-  const { mismo, otros, deLaUnidad } = partesDelSistema(sistema, codigo)
+  const { mismo, otros, entro, deLaUnidad } = partesDelSistema(sistema, codigo)
   const deOtros = otros.reduce((suma, c) => suma + c.cantidad, 0)
   const nombrados = otros.slice(0, CODIGOS_A_LA_VISTA)
   const resto = otros.length - nombrados.length
@@ -462,7 +568,7 @@ function EnElSistema({ sistema, codigo }: { sistema: InsumoPorRevisar['sistema']
           )}
         </p>
       )}
-      {mismo && <DelMismoCodigo mismo={mismo} deLaUnidad={deLaUnidad} unidad={unidad} />}
+      {mismo && <DelMismoCodigo mismo={mismo} entro={entro} deLaUnidad={deLaUnidad} unidad={unidad} />}
     </>
   )
 }

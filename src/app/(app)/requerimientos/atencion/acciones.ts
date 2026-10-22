@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -20,13 +21,48 @@ const PASOS = {
   entregado: { funcion: 'rq_marcar_entregado', permiso: 'almacen.despachar', hecho: 'Entregado. El requerimiento queda cerrado.' },
 } as const
 
+/**
+ * La entrega, leída después de la función. La base devuelve el id también
+ * cuando el RQ ya estaba entregado —el segundo toque de un doble toque no es un
+ * error—, así que si lo entregó otra persona, o esta misma en otra pestaña con
+ * otra nota, la pantalla lo dice en vez de «Entregado» a secas: si no, quien
+ * mira cree que quedó su nota, y en el RQ quedó la otra. `null` es que la
+ * entrega es la que se acaba de enviar.
+ */
+async function yaEstabaEntregado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  id: string,
+  quien: string,
+  nota: string,
+  motivo: string | null,
+): Promise<{ mensaje: string } | { faltante: boolean }> {
+  const { data: rq, error } = await supabase
+    .from('requerimientos')
+    .select('entregado_en, entregado_por, nota_entrega, faltante_al_entregar, motivo_del_faltante')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !rq) return { mensaje: 'Quedó entregado, pero no se pudo leer con qué nota: recarga la pantalla.' }
+  const otra =
+    rq.entregado_por !== quien ||
+    (rq.nota_entrega ?? '').trim() !== nota ||
+    (rq.faltante_al_entregar != null && (rq.motivo_del_faltante ?? '').trim() !== (motivo ?? ''))
+  if (!otra) return { faltante: rq.faltante_al_entregar != null }
+  // Primero lo que importa: no se cambió nada. La nota, que puede ser larga, al final y cortada.
+  const como = rq.faltante_al_entregar ? 'entregado con faltante' : 'entregado'
+  const quedo = (rq.nota_entrega ?? '').trim()
+  const corta = quedo.length > 80 ? `${quedo.slice(0, 79)}…` : quedo
+  const cuando = fechaHora(rq.entregado_en)
+  // Sin punto al final: la hora ya termina en «p. m.».
+  return { mensaje: `Ya estaba ${como}; no se cambió nada. ${corta ? `Lo recogió ${corta} el ${cuando}` : `Se entregó el ${cuando}`}` }
+}
+
 const QUIEN: Record<keyof typeof PASOS, string> = {
   listo: 'Lo deja listo Almacén.',
   en_atencion: 'La compra la marca quien compra: Logística o, si es de Administración, la administradora.',
   entregado: 'La entrega la registra Almacén.',
 }
 
-export async function marcarPasoRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+export async function marcarPasoRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ aviso: boolean }>> {
   const analisis = z
     .object({
       id: z.guid(),
@@ -46,9 +82,63 @@ export async function marcarPasoRequerimiento(_previo: unknown, formulario: Form
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El requerimiento no cambió. Recarga la pantalla.' }
 
+  const entrega =
+    analisis.data.paso === 'entregado'
+      ? await yaEstabaEntregado(supabase, analisis.data.id, perfil.id, analisis.data.nota, null)
+      : null
+
   revalidatePath('/requerimientos')
   revalidatePath('/requerimientos/atencion')
+  // «Ya estaba entregado» no es un éxito: va en tono de aviso.
+  if (entrega && 'mensaje' in entrega) return { ok: true, mensaje: entrega.mensaje, datos: { aviso: true } }
   return { ok: true, mensaje: paso.hecho }
+}
+
+/**
+ * Almacén entrega un RQ listo aunque parte no haya salido del kardex, porque ya
+ * no va a salir: el área no necesita el resto, devolvieron lo que sobró, se
+ * compró en otra unidad. Escribe por qué; queda en el RQ y le llega a quien lo
+ * pidió (`rq_entregar_con_faltante`, migración 20261020196000).
+ */
+export async function entregarConFaltante(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ aviso: boolean }>> {
+  const analisis = z
+    .object({
+      id: z.guid(),
+      nota: z.string().trim().min(3, 'Anota quién del área lo recogió.').max(500, 'La nota pasa de 500 caracteres.'),
+      motivo: z
+        .string()
+        .trim()
+        .min(10, 'Escribe por qué lo que falta ya no sale del kardex (al menos 10 caracteres).')
+        .max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), nota: formulario.get('nota') ?? '', motivo: formulario.get('motivo') ?? '' })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: QUIEN.entregado }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rq_entregar_con_faltante', {
+    p_id: analisis.data.id,
+    p_nota: analisis.data.nota,
+    p_motivo: analisis.data.motivo,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El requerimiento no cambió. Recarga la pantalla.' }
+
+  const entrega = await yaEstabaEntregado(supabase, analisis.data.id, perfil.id, analisis.data.nota, analisis.data.motivo)
+
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  if ('mensaje' in entrega) return { ok: true, mensaje: entrega.mensaje, datos: { aviso: true } }
+  return {
+    ok: true,
+    // Si mientras tanto salió todo del kardex, la base lo entregó sin
+    // faltante: decir «con faltante» sería mentir.
+    mensaje: entrega.faltante
+      ? 'Entregado con faltante. Le avisamos a quien lo pidió.'
+      : 'Entregado: mientras tanto salió todo del kardex, así que no quedó faltante.',
+  }
 }
 
 const CANTIDAD_EN_STOCK = /^\d{1,9}(\.\d{1,3})?$/

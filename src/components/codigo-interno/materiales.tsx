@@ -5,7 +5,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import type { LineaDeMaterial, LineaPedida, MaterialComparado } from '@/lib/datos/diseno-codigos'
 import { comparacionMaterial } from '@/lib/dominio/diseno-codigos'
 import { definir } from '@/lib/dominio/estados'
-import { ESTADO_REQUERIMIENTO } from '@/lib/dominio/requerimientos'
+import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha } from '@/lib/format'
 
 /**
@@ -119,7 +119,7 @@ export function TablaLoPedido({ lineas }: { lineas: LineaPedida[] }) {
           <SinDatos titulo="Ningún requerimiento para este código" descripcion="Los piden Maestranza, Producción, Acabados y Almacén con el código de la unidad." />
         ) : (
           lineas.map((l) => {
-            const estado = definir(ESTADO_REQUERIMIENTO, l.estado)
+            const estado = definir(ESTADO_REQUERIMIENTO_DEL_CODIGO, l.estado)
             return (
               <TR key={`${l.requerimiento_id}-${l.item}`}>
                 <TD className="align-top whitespace-nowrap">
