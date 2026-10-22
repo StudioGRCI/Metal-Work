@@ -177,7 +177,9 @@ En la misma migración que la crea, sin excepción:
   rechazó la subida a una ruta que estaba vacía). Sin eso, tras un PDF que
   Storage rechazó (413) o cuya subida se cortó, la foto sin respuesta decía
   «ya se subió el PDF» de un archivo que nunca llegó (novena pasada del PR
-  #148). La ruta fija
+  #148). Rechazó es un 4xx que no es el 409: un 5xx de la pasarela (502,
+  504) puede llegar con el archivo ya guardado, y contarlo como vacía dejaba
+  ese archivo suelto tras el `ok` del de otro tipo (décima pasada). La ruta fija
   vale **por envío**, no por ventana: el id que nace en un componente que la
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo

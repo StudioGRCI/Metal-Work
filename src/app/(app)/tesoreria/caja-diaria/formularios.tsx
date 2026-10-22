@@ -41,12 +41,17 @@ function Pie({ error, enviando, alCancelar, texto, variante }: {
   texto: string
   variante?: 'primario' | 'peligro'
 }) {
-  // Tras un rechazo, el cursor va al aviso. Sin esto caía a la página, y en el
-  // teléfono un aviso largo deja el botón debajo del borde de la ventana.
+  // Tras un rechazo, el cursor va al aviso. Sin esto caía a la página. Antes, el
+  // pie entero a la vista: en el teléfono, enfocar solo el aviso dejaba el
+  // botón debajo del borde de la hoja.
   const aviso = useRef<HTMLParagraphElement>(null)
-  useCursorAlRechazo(enviando, error, () => aviso.current)
+  const pie = useRef<HTMLDivElement>(null)
+  useCursorAlRechazo(enviando, error, () => {
+    pie.current?.scrollIntoView({ block: 'nearest' })
+    return aviso.current
+  })
   return (
-    <>
+    <div ref={pie} className="space-y-4">
       {error && (
         <p ref={aviso} role="alert" tabIndex={-1} className="text-sm text-peligro">
           {error}
@@ -60,7 +65,7 @@ function Pie({ error, enviando, alCancelar, texto, variante }: {
           {texto}
         </Boton>
       </div>
-    </>
+    </div>
   )
 }
 

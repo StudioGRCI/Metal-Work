@@ -295,6 +295,10 @@ select test.afirmar(pg_temp.pagar('p1', 'oc1', 100, false, current_setting('prue
   'Tesorería registra un pago a cuenta con su voucher');
 select test.afirmar(pg_temp.pagar('p1', 'oc1', 100, false, current_setting('prueba.v1')) = pg_temp.id('p1'),
   'el reintento con el mismo id devuelve el mismo pago');
+-- Con otro voucher ya no es el mismo envío: se perdió la respuesta, se volvió
+-- a pulsar y la pantalla subió el archivo a otra ruta (migración 20261022170000).
+select test.debe_fallar($$ select pg_temp.pagar('p1', 'oc1', 100, false, pg_temp.subir('pagos-compras', 'oc1')) $$,
+  'el mismo formulario con otro voucher no se da por pagado', 'ya quedó registrado con otro voucher');
 select test.afirmar((select count(*) from public.pagos_orden_compra where orden_compra_id = pg_temp.id('oc1')) = 1,
   'y no registra otro');
 select test.afirmar((select monto = 100 and not cancela and comprobante_proveedor = 'B001-421' and moneda = 'PEN'
@@ -934,6 +938,9 @@ begin
       'Tesorería registra los S/ 5 que devolvió el proveedor, con su constancia');
     -- En otra sentencia: la que llama a la función no ve la fila que la función inserta.
     perform pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), null, 'DEV-4219');
+    -- Con otra constancia ya no es el mismo envío (migración 20261022170000).
+    perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 5, pg_temp.subir('pagos-compras', 'oc1'), null, 'DEV-4219') $q$,
+      'la misma devolución con otra constancia no se da por registrada', 'ya quedó registrada con otra constancia');
     reset role;
     perform test.afirmar((select count(*) from public.devoluciones_orden_compra where orden_compra_id = pg_temp.id('oc1')) = 1
                          and pg_temp.ingresos('dv1') = 1,
@@ -1132,6 +1139,13 @@ begin
                                          current_setting('prueba.nc1')) $q$,
         'ni más de lo pagado de más', 'no se descuenta más');
       perform public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100, current_setting('prueba.nc1'));
+      -- El mismo envío, con su nota de crédito, se reconoce; con otro documento, no (migración 20261022170000).
+      perform test.afirmar(public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100,
+                                                          current_setting('prueba.nc1')) = pg_temp.id('tj'),
+        'el descuento repetido con su nota de crédito devuelve el mismo');
+      perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100,
+                                         pg_temp.subir('pagos-facturas', 'f4216')) $q$,
+        'con otro documento ya no es el mismo envío', 'ya quedó registrado con otro documento');
       perform test.afirmar((select de_mas = 0 and a_otras = 100 and a_otras_facturas = 'F001-4216' and aplicado = 0 and cancelada
                               from public.compras_con_boleta_por_pagar() where id = pg_temp.id('oc1'))
                            and pg_temp.pago('oc1') = 'PAGADA',
@@ -2983,6 +2997,24 @@ select test.afirmar(public.adjuntar_documento_servicio(pg_temp.id('d1'), pg_temp
 select test.afirmar((select numero = 'E001-421' and tipo = 'FACTURA' and subido_por = pg_temp.id('comprador') and tamano_bytes = 4096
                        from public.documentos_orden_servicio where id = pg_temp.id('d1')),
   'con su número normalizado, quién la subió y su tamaño');
+-- El mismo envío repetido (la respuesta se perdió) devuelve el mismo; con otro
+-- archivo, o de otra persona, ya no es el mismo (migración 20261022170000).
+select test.afirmar(public.adjuntar_documento_servicio(pg_temp.id('d1'), pg_temp.id('os1'), 'FACTURA', 'e001-421',
+                                                       'factura-421.pdf', current_setting('prueba.r1')) = pg_temp.id('d1')
+                    and (select count(*) from public.documentos_orden_servicio where orden_servicio_id = pg_temp.id('os1')) = 1,
+  'el mismo envío repetido devuelve el mismo documento, sin otro');
+select test.debe_fallar($$ select public.adjuntar_documento_servicio(pg_temp.id('d1'), pg_temp.id('os1'), 'FACTURA', 'e001-421',
+                                 'factura-421.pdf', pg_temp.subir('documentos-servicio', 'os1', 4096)) $$,
+  'con otro archivo ya no es el mismo envío', 'ya quedó adjuntado con otro archivo');
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.debe_fallar($$ select public.adjuntar_documento_servicio(pg_temp.id('d1'), pg_temp.id('os1'), 'FACTURA', 'e001-421',
+                                 'factura-421.pdf', current_setting('prueba.r1')) $$,
+  'ni con el mismo archivo desde otra cuenta', 'ya quedó adjuntado con otro archivo');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
 select set_config('prueba.r2', pg_temp.subir('documentos-servicio', 'os2'), true);
 select test.debe_fallar($$ select public.adjuntar_documento_servicio(pg_temp.id('d2'), pg_temp.id('os2'), 'FACTURA', 'E001-421',
                                  'otra.pdf', current_setting('prueba.r2')) $$,

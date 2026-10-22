@@ -102,10 +102,17 @@ function borradorSinPdf(numero: string, motivo: string) {
 /**
  * El borrador al que además le faltó una OC, o marcarla como parcial: el PDF
  * se completa en su fila y lo de la OC, ya registrado, con «Corregir». El aviso
- * termina en «Después, …»: al completarlo, la pantalla lo recuerda.
+ * termina en «Después, …»: al completarlo, la pantalla lo recuerda. Pero si lo
+ * frenó una regla de la base (una OC con su factura completa), su motivo ya
+ * dice qué hacer y otro paso lo contradiría; y sin el permiso, «Corregir»
+ * tampoco alcanza.
  */
-function borradorSinOc(numero: string, falta: string, motivo: string, despues: string) {
-  return `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo)} ${EN_SU_FILA}. Después, ${despues} con «Corregir».`
+function borradorSinOc(numero: string, falta: string, error: { message: string; code?: string }, despues: string) {
+  const motivo = mensajeDeError(error)
+  const aviso = `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo)}`
+  if (/\bpermisos?\b/i.test(motivo)) return `${aviso} Avisa al administrador.`
+  if (error.code === 'P0001' || error.code?.startsWith('23')) return `${aviso} ${EN_SU_FILA}.`
+  return `${aviso} ${EN_SU_FILA}. Después, ${despues} con «Corregir».`
 }
 
 /**
@@ -203,7 +210,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
     if (errorEnlace) {
       const cuales = lasOc(resto, numeroDeOc)
-      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, mensajeDeError(errorEnlace), `agrégale ${cuales ?? 'las OC que faltan'}`))
+      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, errorEnlace, `agrégale ${cuales ?? 'las OC que faltan'}`))
     }
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
@@ -214,8 +221,9 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     if (errorParcial) {
       const cuales = lasOc(enParte.data, numeroDeOc)
       const unaSola = enParte.data.length === 1
-      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar como parcial ${cuales ?? (unaSola ? 'su OC' : 'sus OC')}`,
-        mensajeDeError(errorParcial), `${unaSola ? 'márcala' : 'márcalas'} como parcial`))
+      const comoParcial = unaSola ? 'como parcial' : 'como parciales'
+      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar ${comoParcial} ${cuales ?? (unaSola ? 'su OC' : 'sus OC')}`,
+        errorParcial, `${unaSola ? 'márcala' : 'márcalas'} ${comoParcial}`))
     }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }
@@ -228,7 +236,12 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id)
     .select('id, orden_compra_id, oc:ordenes_compra_materiales!adquisiciones_orden_compra_id_fkey(numero, referencia)').maybeSingle()
-  if (errorRegistro) return enBorrador(`El comprobante ${v.numero_documento} quedó en borrador: ${trasDosPuntos(mensajeDeError(errorRegistro))}`)
+  if (errorRegistro) {
+    // El PDF ya está guardado: al completarlo desde su fila, se toma ese.
+    const motivo = mensajeDeError(errorRegistro)
+    const queHacer = /\bpermisos?\b/i.test(motivo) ? 'Avisa al administrador.' : `${EN_SU_FILA}.`
+    return enBorrador(`El comprobante ${v.numero_documento} quedó en borrador: ${trasDosPuntos(motivo)} ${queHacer}`)
+  }
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')

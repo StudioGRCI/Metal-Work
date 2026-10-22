@@ -111,7 +111,9 @@ const intentados = new Map<string, { huella: string; nombre: string }>()
 const confirmados = new Map<string, { huella: string; nombre: string }>()
 // Las rutas que esta pestaña sabe vacías: quitó lo que había (el borrado lo
 // devolvió) o Storage rechazó la subida a una ruta que ya estaba vacía, y no
-// intentó otra desde entonces. Un borrado que vuelve vacío no distingue «una
+// intentó otra desde entonces. Rechazó es un 4xx que no es el 409: un 5xx (la
+// pasarela que no esperó, un 502 o un 504) puede llegar con el archivo ya
+// guardado detrás. Un borrado que vuelve vacío no distingue «una
 // fila lo nombra» de «no hay nada»: esto sí.
 const vacias = new Set<string>()
 // La última ruta de cada documento, que es la ruta sin su extensión: el mismo
@@ -127,6 +129,8 @@ const rutaDelDocumento = new Map<string, string>()
 // tipo.
 const porQuitarTrasOk = new Map<string, Set<string>>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
+const noGuardoNada = (error: { statusCode?: string } | null) =>
+  Boolean(error?.statusCode && /^4\d\d$/.test(error.statusCode) && error.statusCode !== '409')
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
@@ -155,7 +159,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
   const estabaVacia = vacias.has(clave) || !antes
   const siLaRechazo = (rechazo: { statusCode?: string } | null) => {
     // Un rechazo de Storage (413, 403…) no deja nada: la ruta sigue como estaba.
-    if (rechazo?.statusCode && rechazo.statusCode !== '409' && estabaVacia) vacias.add(clave)
+    if (noGuardoNada(rechazo) && estabaVacia) vacias.add(clave)
   }
   try {
     // Otro tipo de archivo, otra ruta: lo de antes quedó en la suya. Si ninguna
@@ -173,7 +177,9 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
         vacias.add(otraClave)
         porQuitarTrasOk.get(documento)?.delete(otraRuta)
       } else if (confirmados.has(otraClave)) {
-        porQuitarTrasOk.set(documento, new Set([...(porQuitarTrasOk.get(documento) ?? []), otraRuta]))
+        // Al final, aunque ya estuviera: la última que se anotó es la que se nombra.
+        const yaAnotadas = [...(porQuitarTrasOk.get(documento) ?? [])].filter((r) => r !== otraRuta)
+        porQuitarTrasOk.set(documento, new Set([...yaAnotadas, otraRuta]))
       }
     }
     rutaDelDocumento.set(documento, ruta)
@@ -194,7 +200,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
         confirmados.delete(clave)
         sinSaber(este.nombre)
         ;({ error } = await subir())
-        if (error?.statusCode && error.statusCode !== '409') vacias.add(clave)
+        if (noGuardoNada(error)) vacias.add(clave)
       } else {
         const quedo = confirmados.get(clave)
         if (quedo?.huella !== este.huella) {
@@ -220,6 +226,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
     alQuitarlo: () => {
       confirmados.delete(clave)
       vacias.add(clave)
+      porQuitarTrasOk.get(documento)?.delete(ruta)
     },
   })
   const deOtroTipo = [...(porQuitarTrasOk.get(documento) ?? [])].filter((r) => r !== ruta)

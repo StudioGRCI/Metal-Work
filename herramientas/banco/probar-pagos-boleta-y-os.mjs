@@ -13,6 +13,9 @@
  *   2. El PDF de la OC lo descarga Tesorería (200, application/pdf).
  *   3. Tesorería anula el pago con su motivo: la OC vuelve a estar por pagar y
  *      el egreso queda anulado.
+ *   3a. (PR #148) Un pago a cuenta cuyas dos respuestas se pierden: la ventana
+ *      dice que no llegó, y volver a pulsar no lo da por pagado con otro
+ *      voucher; un pago, un egreso y ningún voucher suelto.
  *   3b. La OC con boleta de antes sale «Pago fuera del sistema» y no está en
  *      Cuentas por pagar; Tesorería la pasa con «No se pagó» (tres toques, un
  *      cambio en la auditoría) y ya pide su pago. Tras «No se pagó» la fila dice lo
@@ -424,6 +427,61 @@ let pagoId
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).count()) === 1, 'la OC vuelve a pedir su pago')
   comprobar((await pagoSegunAdquisiciones(oc[0])) === 'POR_PAGAR', 'y Adquisiciones la vuelve a dar por pagar')
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3a. El pago cuya respuesta se pierde
+// Tesorería paga a cuenta la misma OC y las dos respuestas de la acción se
+// pierden (el pago entra): la ventana dice que no llegó. Vuelve a pulsar desde
+// la misma ventana, como hace la gente: la pantalla sube el voucher a otra ruta,
+// y la base ya no da por pagado ese envío con otro voucher (migración
+// 20261022170000): lo dice, y el voucher nuevo, que ninguna fila nombra, se
+// quita. Un pago, un egreso y ningún voucher suelto. Queda a cuenta: Gerencia y
+// el teléfono (6 y 7) siguen viendo su botón de pagar.
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('input[name="monto"]').fill('50')
+  await v.locator('select[name="cancela"]').selectOption('no')
+  const valor = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valor)
+  await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  const cortes = { acciones: 0 }
+  cortando = true
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(oc[0]) && ++cortes.acciones <= 2) {
+      await r.fetch().catch(() => {})
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  const boton = v.getByRole('button', { name: 'Registrar el pago' })
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  await boton.click()
+  const primera = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await boton.click()
+  const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
+  cortando = false
+  const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  const sueltos = await hasta(
+    () => consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                      and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                      and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`]),
+    (r) => r.length === 0,
+  )
+  const [{ n: egresos }] = pagos.length === 1
+    ? await consulta(`select count(*)::int as n from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagos[0].id])
+    : [{ n: -1 }]
+  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Ese pago ya quedó registrado con otro voucher: recarga la pantalla para verlo.')
+    && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
+    `el pago cuya respuesta se perdió no se da por pagado con otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
+  await pagina.keyboard.press('Escape')
   await contexto.close()
 }
 

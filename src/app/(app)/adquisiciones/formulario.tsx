@@ -99,7 +99,8 @@ export function FormularioAdquisicion({ borradores, ...props }: Props & { borrad
   if (borrador && sigue && !borrador.enLaLista) setBorrador({ ...borrador, enLaLista: true })
   if (borrador?.enLaLista && !sigue) {
     setBorrador(null)
-    const falta = / Después, (.+ con «Corregir»\.)$/.exec(borrador.texto)?.[1] ?? null
+    // El último «Después, …»: si el motivo de la base trajera uno, no se toma ese.
+    const falta = /.* Después, (.+ con «Corregir»\.)$/.exec(borrador.texto)?.[1] ?? null
     setCompletado({ texto: `Comprobante ${borrador.numero} completado y registrado.`, falta: falta && `Ahora ${falta}` })
   }
   return (
@@ -792,20 +793,33 @@ function Formulario({
             {avisoAbajo}
           </p>
         )}
-        {/* El borrador completado se dice donde estaba su aviso. La región está
-            montada desde antes, vacía y fuera de la vista: así el lector de
-            pantalla la anuncia una vez. */}
-        <p role="status" className={completado && !avisoAbajo ? 'text-sm' : 'sr-only'}>
+        {/* El borrador completado se dice donde estaba su aviso. Que quedó
+            registrado ya lo dijo su fila: aquí el cursor va a él si se quedó
+            sin lugar (el botón de la fila se fue), y la región viva, montada
+            desde antes, anuncia solo lo que falta hacer. */}
+        <p id="adq-completado" className={completado && !avisoAbajo ? 'text-sm' : 'sr-only'}>
           {completado && !avisoAbajo && (
-            <>
-              <span className="text-exito">{completado.texto}</span>
-              {completado.falta && <span className="text-aviso"> {completado.falta}</span>}
-            </>
+            <span ref={enfocarSiSeSolto} tabIndex={-1} className="scroll-mt-20 text-exito outline-none">
+              {completado.texto}
+            </span>
           )}
+          <span role="status" className="text-aviso">
+            {completado && !avisoAbajo && completado.falta ? ` ${completado.falta}` : null}
+          </span>
         </p>
       </div>
     </form>
   )
+}
+
+/**
+ * El cursor que se quedó sin lugar (en la página) va al elemento que acaba de
+ * aparecer; el que está en otra parte no se toca. A diferencia de
+ * `AvisoEnfocado`, no lo quita de donde la persona lo puso: el «completado»
+ * llega segundos después del clic, cuando ya pudo seguir en otra cosa.
+ */
+function enfocarSiSeSolto(elemento: HTMLElement | null) {
+  if (elemento && (!document.activeElement || document.activeElement === document.body)) elemento.focus()
 }
 
 const FUENTE: Record<LecturaFactura['fuente'], string> = { XML: 'del XML de SUNAT', PDF: 'del PDF', OCR: 'del escaneo' }

@@ -7,8 +7,9 @@
 -- queda trabada: Gerencia la rechaza y Ventas la corrige con un PDF que pesa,
 -- pero no con otro vacío; el administrador no quita de Storage el PDF que una
 -- cotización nombra, y sí uno suelto. Y ninguna función que anota un archivo
--- da por registrado otro envío con el mismo id (migración 20261022160000; el
--- caso de cada una, en los checks 357, 361, 399 y 412). El armazón lo pone el
+-- da por registrado otro envío con el mismo id (migraciones 20261022160000 y
+-- 20261022170000; el caso de cada una, en los checks 357, 361, 399, 412 y
+-- 421). El armazón lo pone el
 -- administrador. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
