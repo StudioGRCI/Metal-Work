@@ -29,6 +29,19 @@ export const ESTADO_SERVICIO: Record<string, Def> = {
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro', descripcion: 'Anulada con su motivo.' },
 }
 
+/**
+ * Por qué una orden de servicio no sale en papel, o `null` si sale. El papel es
+ * lo que se le entrega al contratista: sale solo la que Gerencia aprobó. La que
+ * se anuló después de aprobada sale con su marca de anulada, como evidencia; la
+ * que se anuló antes nunca se le entregó a nadie.
+ */
+export function servicioSinPapel(aprobacion: string, estado: string): string | null {
+  if (aprobacion === 'APROBADA') return null
+  if (estado === 'ANULADA') return 'se anuló antes de que Gerencia la aprobara: nunca se entregó al contratista.'
+  if (aprobacion === 'RECHAZADA') return 'Gerencia la rechazó. Si el servicio sigue, emite otra.'
+  return 'espera la aprobación de Gerencia antes de entregarse al contratista.'
+}
+
 export type ValidacionIngreso = 'PENDIENTE' | 'OBSERVADO' | 'VALIDADO' | null
 
 /**
