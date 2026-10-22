@@ -7,12 +7,13 @@
  *
  *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
  *      sale «OC sin número» con su referencia aparte.
- *   2. Contabilidad la ve igual en el formulario, registra su factura, y la
- *      tabla la nombra igual. En «Corregir», la lista también; el detector, al
- *      leer un PDF que menciona la otra OC sin número, la nombra «OC sin número
- *      (ref. del proveedor …)»; la suma, y el historial dice cuál se sumó. En
- *      el teléfono, igual y sin ensanchar la página. El PDF de la OC sale «SIN
- *      NÚMERO», sin pedir que la referencia se cite como número.
+ *   2. Contabilidad la ve igual en el formulario (también el aviso de otro
+ *      RUC), registra su factura, y la tabla la nombra igual. En «Corregir»,
+ *      la lista también; el detector, al leer un PDF que menciona la otra OC
+ *      sin número, la nombra «OC sin número (ref. del proveedor …)»; la suma,
+ *      y el historial dice cuál se sumó. En el teléfono, igual y sin ensanchar
+ *      la página. El PDF de la OC sale «SIN NÚMERO», sin pedir que la
+ *      referencia se cite como número.
  *   3. Tesorería ve la factura en Cuentas por pagar con la OC nombrada así, y
  *      el PDF de la OC con el mismo nombre; en Facturas, «Pagar en Cuentas por
  *      pagar». En el teléfono, la tarjeta de la OC con boleta no se desborda.
@@ -155,9 +156,10 @@ async function rucLibre() {
     if (fila) return fila.n
   }
 }
+const RUC = await rucLibre()
 const [{ id: proveedor }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. Argentina 903, Lima', '999 903 903') returning id`,
-  [await rucLibre(), PROVEEDOR],
+  [RUC, PROVEEDOR],
 )
 const [{ id: area }] = await consulta(`select id from areas where codigo = 'MTZ'`)
 const [{ id: und }] = await consulta(`select id from unidades_medida where codigo = 'UND'`)
@@ -256,6 +258,11 @@ writeFileSync(
   comprobar(etiqueta.startsWith('OC sin número ·') && etiqueta.includes(`Ref. del proveedor: ${REFERENCIA}`),
     `en el formulario se marca como «OC sin número», con su referencia aparte (dice «${etiqueta.slice(0, 90)}»)`)
   await casilla.check()
+  // Con el RUC de otra empresa, el aviso la nombra sin hacer pasar la referencia por número.
+  await pagina.locator('#adq-ruc').fill(await rucLibre())
+  const avisoRuc = limpio(await pagina.locator('#adq-ruc-otro').textContent({ timeout: 3000 }).catch(() => ''))
+  comprobar(avisoRuc.startsWith(`La ${NOMBRE} es del RUC ${RUC}`), `con otro RUC el aviso la nombra «${NOMBRE}» («${avisoRuc.slice(0, 90)}»)`)
+  await pagina.locator('#adq-ruc').fill(RUC)
   await pagina.locator('#adq-total').fill('295')
   await pagina.locator('#adq-numero').fill(FACTURA)
   await pagina.locator('#adq-emision').fill(hoy)
