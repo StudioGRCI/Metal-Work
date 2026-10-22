@@ -16,19 +16,19 @@ begin;
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
 
-insert into public.sedes (codigo, nombre) values ('QA426', 'Taller prueba 426') on conflict (codigo) do nothing;
-select id as sede_id from public.sedes where codigo = 'QA426' \gset
-select test.crear_usuario('Ada', 'Admin', 'admin426@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
-select test.crear_usuario('Lucía', 'Logística', 'logistica426@demo.pe', 'COMPRADOR', :'sede_id') as logistica_id \gset
-select test.crear_usuario('Luis', 'Logística', 'logistica426b@demo.pe', 'COMPRADOR', :'sede_id') as otro_id \gset
-select test.crear_usuario('Rita', 'Requerimientos', 'requerimientos426@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req_id \gset
+insert into public.sedes (codigo, nombre) values ('QA429', 'Taller prueba 429') on conflict (codigo) do nothing;
+select id as sede_id from public.sedes where codigo = 'QA429' \gset
+select test.crear_usuario('Ada', 'Admin', 'admin429@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
+select test.crear_usuario('Lucía', 'Logística', 'logistica429@demo.pe', 'COMPRADOR', :'sede_id') as logistica_id \gset
+select test.crear_usuario('Luis', 'Logística', 'logistica429b@demo.pe', 'COMPRADOR', :'sede_id') as otro_id \gset
+select test.crear_usuario('Rita', 'Requerimientos', 'requerimientos429@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req_id \gset
 
 select test.como_usuario(:'admin_id');
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
-values ('RUC', '20990000426', 'QA CLIENTE 426') returning id as cliente_id \gset
+values ('RUC', '20990000429', 'QA CLIENTE 429') returning id as cliente_id \gset
 insert into public.ordenes_trabajo (numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado)
-values ('9426-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY'), :'cliente_id', :'sede_id', 'FABRICACION', 'NORMAL',
-        'Tolva 426 con gastos', 'APROBADA')
+values ('9429-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY'), :'cliente_id', :'sede_id', 'FABRICACION', 'NORMAL',
+        'Tolva 429 con gastos', 'APROBADA')
 returning id as orden_id \gset
 select id as area_id from public.areas where codigo <> 'ADM' order by codigo limit 1 \gset
 select set_config('prueba.gasto', gen_random_uuid()::text, true);
@@ -50,13 +50,13 @@ insert into storage.objects (bucket_id, name, owner_id, metadata) values
   ('control-ot', current_setting('prueba.ajeno_control'), :'otro_id', '{"mimetype":"application/pdf","size":2048}');
 -- Uno de cada uno ya lo nombra su fila.
 insert into public.ot_gastos_areas (id, orden_id, area_id, tipo, descripcion, fecha, monto, moneda, comprobante_ruta, comprobante_nombre, registrado_por)
-values (current_setting('prueba.gasto')::uuid, :'orden_id', :'area_id', 'SERVICIO', 'Servicio de doblez para la tolva 426',
-        (now() at time zone 'America/Lima')::date, 150, 'PEN', current_setting('prueba.anotado_gasto'), 'doblez-426.pdf', :'logistica_id');
+values (current_setting('prueba.gasto')::uuid, :'orden_id', :'area_id', 'SERVICIO', 'Servicio de doblez para la tolva 429',
+        (now() at time zone 'America/Lima')::date, 150, 'PEN', current_setting('prueba.anotado_gasto'), 'doblez-429.pdf', :'logistica_id');
 -- La ficha completa con su escaneo, sin pasar por cada ítem de ingreso y
 -- salida: aquí solo importa que una fila nombra el escaneo.
 set local session_replication_role = replica;
 insert into public.ot_control_vehicular (orden_id, ingreso_cerrado_en, salida_cerrada_en, escaneo_ruta, escaneo_nombre)
-values (:'orden_id', now(), now(), current_setting('prueba.anotado_control'), 'control-426.pdf');
+values (:'orden_id', now(), now(), current_setting('prueba.anotado_control'), 'control-429.pdf');
 set local session_replication_role = origin;
 select set_config('prueba.logistica', :'logistica_id', true);
 select set_config('prueba.req', :'req_id', true);

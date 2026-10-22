@@ -7,6 +7,7 @@ import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -168,19 +169,7 @@ export function RegistrarNotaCredito({
           <Campo etiqueta="La nota de crédito" htmlFor={campo('archivo')} requerido ayuda="El PDF que envió el proveedor, o una foto legible.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setNotaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Registrar la nota
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setNotaId(null)} texto="Registrar la nota" />
         </form>
       </Ventana>
     </>

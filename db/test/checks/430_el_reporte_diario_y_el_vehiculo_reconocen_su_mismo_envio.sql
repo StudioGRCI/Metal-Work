@@ -15,21 +15,21 @@ begin;
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
 
-insert into public.sedes (codigo, nombre) values ('QA427', 'Taller prueba 427') on conflict (codigo) do nothing;
-select id as sede_id from public.sedes where codigo = 'QA427' \gset
-select test.crear_usuario('Ada', 'Admin', 'admin427@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
-select test.crear_usuario('Rosa', 'Humanos', 'rrhh427@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
-select test.crear_usuario('Reni', 'Requerimientos', 'req427@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req_id \gset
-select test.crear_usuario('Raúl', 'Requerimientos', 'req427b@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req2_id \gset
+insert into public.sedes (codigo, nombre) values ('QA430', 'Taller prueba 430') on conflict (codigo) do nothing;
+select id as sede_id from public.sedes where codigo = 'QA430' \gset
+select test.crear_usuario('Ada', 'Admin', 'admin430@demo.pe', 'ADMIN', :'sede_id') as admin_id \gset
+select test.crear_usuario('Rosa', 'Humanos', 'rrhh430@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
+select test.crear_usuario('Reni', 'Requerimientos', 'req430@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req_id \gset
+select test.crear_usuario('Raúl', 'Requerimientos', 'req430b@demo.pe', 'REQUERIMIENTOS', :'sede_id') as req2_id \gset
 -- Una sola Supervisión activa por área: si la base ya tiene la de Maestranza o la de Producción, se usa esa.
 select coalesce(
   (select u.id from public.usuarios u join public.roles r on r.id = u.rol_id and r.codigo = 'SUPERVISOR'
      join public.areas a on a.id = u.area_id and a.codigo = 'MTZ' where u.activo limit 1),
-  test.crear_usuario('Mario', 'Maestranza', 'sup.mtz427@demo.pe', 'SUPERVISOR', :'sede_id')) as sup_id \gset
+  test.crear_usuario('Mario', 'Maestranza', 'sup.mtz430@demo.pe', 'SUPERVISOR', :'sede_id')) as sup_id \gset
 select coalesce(
   (select u.id from public.usuarios u join public.roles r on r.id = u.rol_id and r.codigo = 'SUPERVISOR'
      join public.areas a on a.id = u.area_id and a.codigo = 'PRD' where u.activo limit 1),
-  test.crear_usuario('Pía', 'Producción', 'sup.prd427@demo.pe', 'SUPERVISOR', :'sede_id')) as sup2_id \gset
+  test.crear_usuario('Pía', 'Producción', 'sup.prd430@demo.pe', 'SUPERVISOR', :'sede_id')) as sup2_id \gset
 
 select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ') where id = :'sup_id';
@@ -84,7 +84,7 @@ end $$;
 -- RR. HH. registra a Juan, de Maestranza.
 select test.como_usuario(:'rrhh_id');
 set local role authenticated;
-select public.rrhh_guardar_trabajador(pg_temp.id('juan'), 'Juan', 'Habilitador', '70000427', 'Habilitador',
+select public.rrhh_guardar_trabajador(pg_temp.id('juan'), 'Juan', 'Habilitador', '70000430', 'Habilitador',
   (select id from public.areas where codigo = 'MTZ'), '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-27', null);
 select public.rrhh_guardar_costo_trabajador(pg_temp.id('juan'), 2400);
 reset role;
@@ -94,7 +94,7 @@ select test.como_usuario(:'sup_id');
 set local role authenticated;
 select set_config('prueba.f1', pg_temp.foto('fotos-reporte-diario', pg_temp.txt('ra'), 'sup'), true);
 select set_config('prueba.f2', pg_temp.foto('fotos-reporte-diario', pg_temp.txt('ra'), 'sup'), true);
-select set_config('prueba.primero', pg_temp.codigo('ra', 'CHK427_SR_A_1_26/40', 4, jsonb_build_array(pg_temp.txt('f1')))::text, true);
+select set_config('prueba.primero', pg_temp.codigo('ra', 'CHK430_SR_A_1_26/40', 4, jsonb_build_array(pg_temp.txt('f1')))::text, true);
 select test.afirmar(public.registrar_reportes_diarios(pg_temp.txt('hoy')::date, 'Avance del día', 'Lo que se avanzó en el código',
                       jsonb_build_array(pg_temp.txt('primero')::jsonb)) = array[pg_temp.id('ra')],
   'el supervisor sube su reporte con una foto');
@@ -103,13 +103,13 @@ select test.afirmar(public.registrar_reportes_diarios(pg_temp.txt('hoy')::date, 
   'el mismo envío repetido devuelve el mismo reporte');
 select test.debe_fallar(pg_temp.reporte_sql('Otro asunto', jsonb_build_array(pg_temp.txt('primero')::jsonb)),
   'con otro asunto ya no es el mismo envío', 'Este reporte ya quedó registrado la primera vez que lo enviaste');
-select test.debe_fallar(pg_temp.reporte_sql('Avance del día', jsonb_build_array(pg_temp.codigo('ra', 'CHK427_SR_A_1_26/40', 8, jsonb_build_array(pg_temp.txt('f1'))))),
+select test.debe_fallar(pg_temp.reporte_sql('Avance del día', jsonb_build_array(pg_temp.codigo('ra', 'CHK430_SR_A_1_26/40', 8, jsonb_build_array(pg_temp.txt('f1'))))),
   'ni con otras horas', 'la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.reporte_sql('Avance del día',
-    jsonb_build_array(pg_temp.codigo('ra', 'CHK427_SR_A_1_26/40', 4, jsonb_build_array(pg_temp.txt('f1'), pg_temp.txt('f2'))))),
+    jsonb_build_array(pg_temp.codigo('ra', 'CHK430_SR_A_1_26/40', 4, jsonb_build_array(pg_temp.txt('f1'), pg_temp.txt('f2'))))),
   'ni con otra foto', 'la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.reporte_sql('Avance del día', jsonb_build_array(pg_temp.txt('primero')::jsonb,
-    pg_temp.codigo('rb', 'CHK427_SR_B_1_26/41', 2, '[]'::jsonb))),
+    pg_temp.codigo('rb', 'CHK430_SR_B_1_26/41', 2, '[]'::jsonb))),
   'ni con un código que se agregó después', 'la primera vez que lo enviaste');
 select test.afirmar(pg_temp.quitar('fotos-reporte-diario', pg_temp.txt('f2')) = 1,
   'la foto nueva no la nombra nadie: el supervisor la quita');
@@ -132,13 +132,13 @@ reset role;
 -- ============================================ 2. El reporte de un código y el corregido
 select test.como_usuario(:'sup_id');
 set local role authenticated;
-select test.afirmar(public.registrar_reporte_diario(pg_temp.id('rc'), pg_temp.txt('hoy')::date - 1, 'CHK427_SR_A_1_26/40',
+select test.afirmar(public.registrar_reporte_diario(pg_temp.id('rc'), pg_temp.txt('hoy')::date - 1, 'CHK430_SR_A_1_26/40',
     'Ayer', 'El armado de ayer', (pg_temp.codigo('rc', '', 2, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rc'),
   'el reporte de un código entra');
-select test.afirmar(public.registrar_reporte_diario(pg_temp.id('rc'), pg_temp.txt('hoy')::date - 1, 'CHK427_SR_A_1_26/40',
+select test.afirmar(public.registrar_reporte_diario(pg_temp.id('rc'), pg_temp.txt('hoy')::date - 1, 'CHK430_SR_A_1_26/40',
     'Ayer', 'El armado de ayer', (pg_temp.codigo('rc', '', 2, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rc'),
   'y su mismo envío devuelve su id');
-select test.debe_fallar(format('select public.registrar_reporte_diario(%L, %L, ''CHK427_SR_A_1_26/40'', ''Ayer'', ''Otra descripción del armado'', %L, null, null)',
+select test.debe_fallar(format('select public.registrar_reporte_diario(%L, %L, ''CHK430_SR_A_1_26/40'', ''Ayer'', ''Otra descripción del armado'', %L, null, null)',
     pg_temp.txt('rc'), pg_temp.txt('hoy')::date - 1, pg_temp.codigo('rc', '', 2, '[]', 'Pulido del cajón') -> 'trabajos'),
   'con otra descripción ya no', 'la primera vez que lo enviaste');
 reset role;
@@ -151,12 +151,12 @@ reset role;
 select test.como_usuario(:'sup_id');
 set local role authenticated;
 select test.afirmar(public.registrar_reporte_corregido(pg_temp.id('rc'), pg_temp.id('rd'), pg_temp.txt('hoy')::date - 1,
-    'CHK427_SR_A_1_26/40', 'Ayer', 'El armado de ayer', (pg_temp.codigo('rd', '', 1, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rd'),
+    'CHK430_SR_A_1_26/40', 'Ayer', 'El armado de ayer', (pg_temp.codigo('rd', '', 1, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rd'),
   'el supervisor corrige lo observado');
 select test.afirmar(public.registrar_reporte_corregido(pg_temp.id('rc'), pg_temp.id('rd'), pg_temp.txt('hoy')::date - 1,
-    'CHK427_SR_A_1_26/40', 'Ayer', 'El armado de ayer', (pg_temp.codigo('rd', '', 1, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rd'),
+    'CHK430_SR_A_1_26/40', 'Ayer', 'El armado de ayer', (pg_temp.codigo('rd', '', 1, '[]', 'Pulido del cajón') -> 'trabajos'), null, null) = pg_temp.id('rd'),
   'y el mismo envío de la corrección devuelve su id');
-select test.debe_fallar(format('select public.registrar_reporte_corregido(%L, %L, %L, ''CHK427_SR_A_1_26/40'', ''Ayer'', ''El armado de ayer'', %L, null, null)',
+select test.debe_fallar(format('select public.registrar_reporte_corregido(%L, %L, %L, ''CHK430_SR_A_1_26/40'', ''Ayer'', ''El armado de ayer'', %L, null, null)',
     pg_temp.txt('rc'), pg_temp.txt('rd'), pg_temp.txt('hoy')::date - 1, pg_temp.codigo('rd', '', 3, '[]', 'Pulido del cajón') -> 'trabajos'),
   'con otras horas, la corrección ya no es la misma', 'la primera vez que lo enviaste');
 reset role;
@@ -169,16 +169,16 @@ select test.como_usuario(:'req_id');
 set local role authenticated;
 select set_config('prueba.i1', pg_temp.foto('fotos-vehiculos', pg_temp.txt('v1') || '/ingreso', 'req'), true);
 select set_config('prueba.i2', pg_temp.foto('fotos-vehiculos', pg_temp.txt('v1') || '/ingreso', 'req'), true);
-select test.afirmar(public.registrar_ingreso_vehiculo(pg_temp.id('v1'), 'QAA427', null, null, 'Camioneta del cliente', 'QA CLIENTE 427',
+select test.afirmar(public.registrar_ingreso_vehiculo(pg_temp.id('v1'), 'QAA430', null, null, 'Camioneta del cliente', 'QA CLIENTE 430',
     'COCHERA', null, 'Llega con la llanta baja', jsonb_build_array(pg_temp.txt('i1'))) = pg_temp.id('v1'),
   'Requerimientos registra el ingreso con su foto');
-select test.afirmar(public.registrar_ingreso_vehiculo(pg_temp.id('v1'), 'QAA427', null, null, 'Camioneta del cliente', 'QA CLIENTE 427',
+select test.afirmar(public.registrar_ingreso_vehiculo(pg_temp.id('v1'), 'QAA430', null, null, 'Camioneta del cliente', 'QA CLIENTE 430',
     'COCHERA', null, 'Llega con la llanta baja', jsonb_build_array(pg_temp.txt('i1'))) = pg_temp.id('v1'),
   'el mismo envío repetido devuelve el mismo ingreso');
-select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA427', null, null, 'Camioneta del cliente', 'QA CLIENTE 427', 'COCHERA', null, 'Llega sin espejo', %L)$q$,
+select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA430', null, null, 'Camioneta del cliente', 'QA CLIENTE 430', 'COCHERA', null, 'Llega sin espejo', %L)$q$,
     pg_temp.txt('v1'), jsonb_build_array(pg_temp.txt('i1'))),
   'con otra observación ya no es el mismo envío (antes bastaba el motivo)', 'Este ingreso ya quedó registrado la primera vez que lo enviaste');
-select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA427', null, null, 'Camioneta del cliente', 'QA CLIENTE 427', 'COCHERA', null, 'Llega con la llanta baja', %L)$q$,
+select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA430', null, null, 'Camioneta del cliente', 'QA CLIENTE 430', 'COCHERA', null, 'Llega con la llanta baja', %L)$q$,
     pg_temp.txt('v1'), jsonb_build_array(pg_temp.txt('i1'), pg_temp.txt('i2'))),
   'ni con otra foto', 'la primera vez que lo enviaste');
 select test.afirmar(pg_temp.quitar('fotos-vehiculos', pg_temp.txt('i2')) = 1 and pg_temp.quitar('fotos-vehiculos', pg_temp.txt('i1')) = 0,
@@ -187,7 +187,7 @@ reset role;
 
 select test.como_usuario(:'req2_id');
 set local role authenticated;
-select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA427', null, null, 'Camioneta del cliente', 'QA CLIENTE 427', 'COCHERA', null, 'Llega con la llanta baja', '[]')$q$,
+select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, 'QAA430', null, null, 'Camioneta del cliente', 'QA CLIENTE 430', 'COCHERA', null, 'Llega con la llanta baja', '[]')$q$,
     pg_temp.txt('v1')),
   'el ingreso de otra persona no se da por suyo', 'Este ingreso ya existe con otros datos');
 reset role;
@@ -229,5 +229,5 @@ select test.afirmar(
   and not has_function_privilege('anon', 'public.anotar_envio(uuid, text, jsonb)', 'execute'),
   'ni se anotan ni se consultan con una llamada');
 
-select 'CHECK 427 OK' as resultado;
+select 'CHECK 430 OK' as resultado;
 rollback;

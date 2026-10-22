@@ -15,11 +15,7 @@
 -- Ahora el id existente se reconoce solo si la fila nombra el mismo archivo y
 -- la anotó la misma persona: es el mismo envío, que la pantalla repite cuando
 -- no le llegó la respuesta (`anotarSinDejarloSuelto`). Si no, se rechaza, y la
--- pantalla quita el archivo nuevo, que ninguna fila nombra. El aviso no dice
--- «con otro voucher»: la ruta es nueva en cada envío aunque la persona elija
--- el mismo archivo, y lo que sí sabe la base es que ese envío ya entró la
--- primera vez. Solo el contrato, que va a la ruta fija de su ventana, dice
--- «con otro archivo», porque es lo que pasó.
+-- pantalla quita el archivo nuevo, que ninguna fila nombra.
 --
 -- Cada función va entera, tal como queda después de todas las migraciones
 -- anteriores; cambia solo la línea que reconoce el id. `create or replace`
@@ -33,13 +29,13 @@ do $$
 declare
   conocidas constant jsonb := '{
     "adjuntar_contrato_subcontrato(uuid,uuid,text,text)": ["b261941b5013cc7a1117b1581c21a8ab", "bfbf4f75c39dc77802c42298736b8b15"],
-    "registrar_cobro_factura(uuid,uuid,date,numeric,boolean,text,text,uuid,numeric)": ["2d0a6f12e62ea3a6467d937e85d0ad91", "6f0cc162fbd145dca632a36af1fda8d2"],
-    "registrar_factura_venta(uuid,uuid,text,date,date,text,numeric,text,text,text)": ["9fd0af54ac1650f00d0a577a79a67341", "fb6522dbed0662933c896540bad089da"],
-    "registrar_pago_factura(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["94daf26e021bce8cce96b49fb0eb34c7", "a846e85f766a2bc37b3d4fccdea2e584"],
-    "registrar_pago_planilla_diaria(uuid,uuid,uuid[],date,text,text,uuid,numeric)": ["3e8e026fe554d720c04c1da6133a7021", "3ffc339d213d8f5f536ca94461a9ee33"],
-    "registrar_pago_recibo_honorarios(uuid,uuid,date,text,text,uuid,numeric)": ["1f8e7341ac5071b91260205fd3d75c2c", "e8c051e3408b46dfed90657bdc376ad8"],
-    "registrar_pago_servicio(uuid,uuid,date,numeric,boolean,text,text,text,uuid,numeric)": ["c66392cac12567c324e6451f513d1694", "eac1c36bcb1c3cc1d37a1e531443ba8d"],
-    "registrar_recibo_honorarios(uuid,uuid,text,date,text,numeric,boolean,text)": ["425853aa63a6900939adcb94c252e890", "4610aa9540281a7c903f02a47c652489"]
+    "registrar_cobro_factura(uuid,uuid,date,numeric,boolean,text,text,uuid,numeric)": ["2d0a6f12e62ea3a6467d937e85d0ad91", "46faf5ed5453c35aad46841d69914e9a"],
+    "registrar_factura_venta(uuid,uuid,text,date,date,text,numeric,text,text,text)": ["9fd0af54ac1650f00d0a577a79a67341", "f4c5a4085f59d983e2a3899ee812d566"],
+    "registrar_pago_factura(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["94daf26e021bce8cce96b49fb0eb34c7", "79019d81d2f6fa6521ff16b2512c8aa9"],
+    "registrar_pago_planilla_diaria(uuid,uuid,uuid[],date,text,text,uuid,numeric)": ["3e8e026fe554d720c04c1da6133a7021", "3a1733a12ca7419d9615d7be5c99ba3b"],
+    "registrar_pago_recibo_honorarios(uuid,uuid,date,text,text,uuid,numeric)": ["1f8e7341ac5071b91260205fd3d75c2c", "083803d7bb04f48a4cfe6be441548815"],
+    "registrar_pago_servicio(uuid,uuid,date,numeric,boolean,text,text,text,uuid,numeric)": ["c66392cac12567c324e6451f513d1694", "e75dd19a0f0c9e7f0b07b6096683598f"],
+    "registrar_recibo_honorarios(uuid,uuid,text,date,text,numeric,boolean,text)": ["425853aa63a6900939adcb94c252e890", "4d15db4cb62dfc98ad62e661be1b996a"]
   }';
   firma text;
   huella text;
@@ -82,7 +78,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este cobro ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese cobro ya quedó registrado con otro voucher: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_fac from public.facturas_venta where id = p_factura for update;
   if not found then raise exception 'Esa factura no existe.' using errcode = 'check_violation'; end if;
@@ -151,7 +147,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese pago ya quedó registrado con otro comprobante: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_adq from public.adquisiciones where id = p_adquisicion;
   if not found or v_adq.estado <> 'REGISTRADA' then
@@ -216,7 +212,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese pago ya quedó registrado con otro comprobante: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_os from public.ordenes_servicio where id = p_orden_servicio for update;
   if not found then raise exception 'Esa orden de servicio no existe.' using errcode = 'check_violation'; end if;
@@ -285,7 +281,7 @@ begin
                where id = p_id and voucher_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese pago ya quedó registrado con otro voucher: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_rec from public.recibos_honorarios where id = p_recibo_id for update;
   if not found then raise exception 'Ese recibo no existe.' using errcode = 'check_violation'; end if;
@@ -348,7 +344,7 @@ begin
                where id = p_id and comprobante_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese pago ya quedó registrado con otro comprobante: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_pla from public.planillas_diarias where id = p_planilla_id for update;
   if not found then raise exception 'Esa planilla no existe.' using errcode = 'check_violation'; end if;
@@ -426,7 +422,7 @@ begin
                where id = p_id and ruta_storage = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Esta factura ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Esa factura ya quedó registrada con otro PDF: recarga la pantalla para verla.' using errcode = 'check_violation';
   end if;
   select * into v_cot from public.cotizaciones_pdf where id = p_cotizacion for share;
   if not found then raise exception 'Esa cotización no existe.' using errcode = 'check_violation'; end if;
@@ -506,7 +502,7 @@ begin
                where id = p_id and archivo_ruta = p_ruta and registrado_por = public.usuario_actual()) then
       return p_id;
     end if;
-    raise exception 'Este recibo ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+    raise exception 'Ese recibo ya quedó registrado con otro archivo: recarga la pantalla para verlo.' using errcode = 'check_violation';
   end if;
   select * into v_sc from public.subcontratos where id = p_subcontrato_id for update;
   if not found then raise exception 'Ese subcontrato no existe.' using errcode = 'check_violation'; end if;

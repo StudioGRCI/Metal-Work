@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio } from '@/lib/envio'
 import { redondearCantidad } from '@/lib/dominio/almacen'
@@ -23,12 +25,29 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
   const [id, setId] = useState(() => crypto.randomUUID())
   const [elegido, setElegido] = useState('')
   const [repone, setRepone] = useState('')
-  const envio = useEnvio(devolverAlProveedor, () => {
+  const empezarOtra = () => {
     setId(crypto.randomUUID())
     setElegido('')
     setRepone('')
+  }
+  // El envío vive fuera de la ventana: si ya había entrado la primera vez, al
+  // cerrarla se empieza otra con un id nuevo. Con el mismo, la devolución
+  // siguiente decía otra vez «ya quedó registrada» y no dejaba registrarla.
+  const yaEntro = useRef(false)
+  const envio = useEnvio(async (previo: unknown, datos: FormData) => {
+    const r = await devolverAlProveedor(previo, datos)
+    if (!r.ok && yaEntroLaPrimeraVez(r.error)) yaEntro.current = true
+    return r
+  }, () => {
+    empezarOtra()
     setAbierta(false)
   })
+  const cerrar = () => {
+    setAbierta(false)
+    if (!yaEntro.current) return
+    yaEntro.current = false
+    empezarOtra()
+  }
   const ingreso = ingresos.find((i) => i.ingreso_id === elegido)
   return (
     <>
@@ -37,7 +56,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
       </Boton>
       <Ventana
         abierta={abierta}
-        alCerrar={() => setAbierta(false)}
+        alCerrar={cerrar}
         titulo="Devolver al proveedor"
         descripcion="Lo que llegó malo de una compra sale del kardex. No vuelve atrás."
         ancho="lg"
@@ -94,19 +113,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 <option value="no">No lo repone</option>
               </Seleccion>
             </Campo>
-            {envio.error && (
-              <p role="alert" className="text-sm text-peligro">
-                {envio.error}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Boton type="submit" cargando={envio.enviando}>
-                Devolver
-              </Boton>
-              <Boton type="button" variante="secundario" onClick={() => setAbierta(false)} disabled={envio.enviando}>
-                Cancelar
-              </Boton>
-            </div>
+            <PieDeVentana error={envio.error} enviando={envio.enviando} alCancelar={cerrar} texto="Devolver" />
           </form>
         )}
       </Ventana>
@@ -237,19 +244,7 @@ function Reposicion({ devolucion: d, falta, alCancelar, alTerminar }: {
           <Entrada id="rep-documento" name="documento" required minLength={2} maxLength={100} />
         </Campo>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Boton type="submit" cargando={enviando}>
-          Recibir
-        </Boton>
-        <Boton type="button" variante="secundario" onClick={alCancelar} disabled={enviando}>
-          Cancelar
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Recibir" />
     </form>
   )
 }

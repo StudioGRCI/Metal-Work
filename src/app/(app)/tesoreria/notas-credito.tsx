@@ -8,6 +8,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -216,19 +217,8 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
           <Campo etiqueta="Constancia de la devolución" htmlFor={campo('archivo')} requerido ayuda="La transferencia, el voucher del depósito o la foto del recibo firmado.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar la devolución
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setId(null)} texto="Registrar la devolución"
+            disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>

@@ -199,7 +199,7 @@ En la misma migración que la crea, sin excepción:
   lleva mucho (el reporte diario con sus trabajos, su gente y sus fotos; el
   ingreso y la salida del vehículo) deja la huella de su envío en
   `huellas_de_envio` (`anotar_envio` al registrar, `mismo_envio` al
-  reconocerlo; `20261022194000`, check 427). Las fotos también son archivos:
+  reconocerlo; `20261022194000`, check 430). Las fotos también son archivos:
   `p_fotos jsonb` va en la huella. El detector del check `417` busca funciones
   que reciben una ruta o fotos y devuelven el id existente sin comparar el
   envío, también leyendo la fila (`if v.registrado_por = v_yo then return`) o
@@ -212,7 +212,7 @@ En la misma migración que la crea, sin excepción:
   `DELETE … RETURNING`, y Postgres le aplica también la política de leer. En
   `gastos-ot` y `control-ot` la de leer pedía una fila que lo nombrara, y el
   borrado afectaba cero archivos sin error (duodécima pasada; migración
-  `20261022193000`, check 426). «Ninguna fila lo nombra» se pregunta con una
+  `20261022193000`, check 429). «Ninguna fila lo nombra» se pregunta con una
   función `security definer` (`archivo_plano_vinculado`,
   `comprobante_de_gasto_anotado`): un `not exists` bajo RLS cuenta como
   inexistente la fila que el dueño ya no ve, y le dejaría ver y quitar su
@@ -226,7 +226,12 @@ En la misma migración que la crea, sin excepción:
   pintar el botón que la abrió (el vehículo ya salió, la factura quedó pagada)
   y la ventana se desmontaba sola con el aviso a medio leer (decimotercera).
   Al cerrarla, el aviso se va: un envío que vive fuera de su ventana la volvía
-  a abrir con el «ya quedó» y sin botón. Un aviso nuevo de «mismo envío» lleva
+  a abrir con el «ya quedó» y sin botón. Si además el id vive fuera y no se
+  renueva al abrir, se renueva al cerrar tras el aviso: con el mismo, la
+  devolución siguiente decía otra vez «ya quedó» (`devolucion-proveedor.tsx`).
+  Una migración ya aplicada en producción no se reescribe: su cambio va en
+  otra (`20261022195000` lleva el texto que la 160000 cambió después de
+  pegarse). Un aviso nuevo de «mismo envío» lleva
   «la primera vez que lo enviaste» para que `yaEntroLaPrimeraVez` lo
   reconozca. **Las fotos nuevas de ese envío no las nombra nadie: se quitan al
   recibir el aviso**, en el envoltorio de la acción (`quitarFotosSueltas`; la
