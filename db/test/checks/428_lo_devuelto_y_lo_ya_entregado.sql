@@ -10,6 +10,8 @@
 --      al primero lo que le llegó (3), no 6, y deja libres los 5 (auditor, 22/10).
 --   J. Los dos RQ se entregaron de otro stock antes de que llegara la OC: lo de la
 --      OC sigue en el almacén y se devuelve (auditor de realización, 22/10).
+--   K. Los dos RQ se entregaron con otro material, de otro stock: lo de la OC sigue en
+--      el almacén y se devuelve (auditor de realización, 22/10).
 --   I. Todo lo de la OC ya salió al taller con sus RQ y en el almacén hay 5 de otro
 --      ingreso: no se devuelve «de la OC» lo que ya no está, ni se ofrece.
 \set ON_ERROR_STOP on
@@ -219,6 +221,39 @@ begin
 end $$;
 reset role;
 rollback to savepoint antes_de_j;
+
+-- ============================================ K. Se entregó con otro material
+savepoint antes_de_k;
+insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+select 'CHK428-2', 'Disco de otra marca 428', categoria_id, unidad_medida_id from public.materiales where id = current_setting('prueba.m1')::uuid;
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por)
+select gen_random_uuid(), 'INGRESO', id, 10, 'INGRESO_GENERAL', 'Otra marca K', current_setting('prueba.almacenero')::uuid
+  from public.materiales where codigo = 'CHK428-2';
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
+                                           registrado_por, codigo_unidad, codigo_interno, requerimiento_linea_id)
+select gen_random_uuid(), 'SALIDA', (select id from public.materiales where codigo = 'CHK428-2'), l.cantidad, 'SALIDA_GENERAL', 'Vale K',
+       'Operario de prueba K', current_setting('prueba.almacenero')::uuid, 'CHK428_A', 'CHK428_A', l.id
+  from public.requerimiento_lineas l
+ where l.requerimiento_id in (current_setting('prueba.rq_a')::uuid, current_setting('prueba.rq_b')::uuid);
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+begin
+  perform test.afirmar(pg_temp.saldo() = 10, 'los 10 de la OC siguen en el almacén');
+  perform test.afirmar(exists (select 1 from public.ingresos_para_devolver() where ingreso_id = current_setting('prueba.ing')::uuid),
+    'lo entregado con otro material no le quita a la OC lo que tiene: su ingreso se ofrece');
+end $$;
+select public.devolver_al_proveedor(current_setting('prueba.dev1')::uuid, current_setting('prueba.ing')::uuid, 3, 'GR-K-1',
+  'Tres discos con fisuras', false);
+do $$
+begin
+  perform test.afirmar(pg_temp.saldo() = 7, 'se devuelven 3 de los 10 de la OC');
+end $$;
+-- El mismo id con otro motivo no es el mismo envío.
+select test.debe_fallar(format($q$select public.devolver_al_proveedor('%s', '%s', 3, 'GR-K-1', 'Otro motivo distinto', false)$q$,
+  current_setting('prueba.dev1'), current_setting('prueba.ing')), 'el mismo id con otro motivo no da «listo»');
+reset role;
+rollback to savepoint antes_de_k;
 
 -- ============================================ I. Lo de la OC ya salió al taller
 insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,

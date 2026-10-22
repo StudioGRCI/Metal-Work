@@ -361,4 +361,43 @@ do $$ begin
 end $$;
 reset role;
 
+-- ============================================ 6. Lo que encontró el auditor de realización (22/10)
+-- La nota no se descuenta de su propia factura, aunque vuelva a deber.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(pg_temp.saldo('f1') > 0
+    and not exists (select 1 from public.facturas_para_la_nota(pg_temp.id('nc4')) where factura_id = pg_temp.id('f1')),
+    'F1 vuelve a deber, y la nota que la baja no la ofrece para descontar');
+end $$;
+select test.debe_fallar(format($q$select public.descontar_nota_credito('%s', '%s', 1)$q$, pg_temp.id('nc4'), pg_temp.id('f1')),
+  'la nota no se descuenta de su propia factura');
+reset role;
+-- El costeo del descuento: una factura que cubre la mitad de la OC baja solo esa mitad, y una factura en
+-- dólares de una OC en soles baja en soles. Filas puestas como dueño, sin disparadores: lo que se mira es la cuenta.
+savepoint antes_del_costeo;
+set local session_replication_role = replica;
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                  condicion_pago, orden_compra_id, ruta_storage, estado)
+values ('00000000-0000-4000-8000-000000427f03', 'FACTURA_COMPRA', 'PROVEEDOR DE PRUEBA 427 S.A.C.', current_setting('prueba.ruc'), 'F001-4279',
+        current_setting('prueba.hoy')::date - 5, current_setting('prueba.hoy')::date - 5, 'PEN', 59, 'CONTADO', pg_temp.id('oc'), 'x', 'REGISTRADA'),
+       ('00000000-0000-4000-8000-000000427f04', 'FACTURA_COMPRA', 'PROVEEDOR DE PRUEBA 427 S.A.C.', current_setting('prueba.ruc'), 'F001-4280',
+        current_setting('prueba.hoy')::date - 5, current_setting('prueba.hoy')::date - 5, 'USD', 31.47, 'CONTADO', pg_temp.id('oc'), 'y', 'REGISTRADA');
+insert into public.notas_credito_compra (id, adquisicion_id, numero, proveedor, fecha_emision, moneda, monto, tipo, motivo,
+                                         archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values ('00000000-0000-4000-8000-0000004270c3', '00000000-0000-4000-8000-000000427f03', 'FC09-4271', 'PROVEEDOR DE PRUEBA 427 S.A.C.',
+        current_date, 'PEN', 5.90, 'DESCUENTO', 'Descuento sobre la factura parcial', 'f/x.pdf', 'application/pdf', 1, pg_temp.id('contabilidad')),
+       ('00000000-0000-4000-8000-0000004270c4', '00000000-0000-4000-8000-000000427f04', 'FC09-4272', 'PROVEEDOR DE PRUEBA 427 S.A.C.',
+        current_date, 'USD', 3.15, 'DESCUENTO', 'Descuento sobre la factura en dólares', 'f/y.pdf', 'application/pdf', 1, pg_temp.id('contabilidad'));
+set local session_replication_role = origin;
+do $$ begin
+  perform test.afirmar((select monto from public.codigo_interno_lineas_nota_credito('CHK427_A')
+                         where referencia_id = '00000000-0000-4000-8000-0000004270c3') = -5.00,
+    'la factura de 59 cubre la mitad de la OC de 118: su nota de 5.90 baja 5.00 del código, no 10');
+  perform test.afirmar((select moneda from public.codigo_interno_lineas_nota_credito('CHK427_A')
+                         where referencia_id = '00000000-0000-4000-8000-0000004270c4') = 'PEN',
+    'la nota de una factura en dólares baja el código en la moneda de la OC, que es en soles');
+end $$;
+rollback to savepoint antes_del_costeo;
+
 rollback;

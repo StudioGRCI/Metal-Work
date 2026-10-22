@@ -154,13 +154,15 @@ revoke all on function public.llegado_de_la_linea_de_compra(uuid, numeric) from 
 -- de la OC ya había salido al taller (auditor de funcionamiento, 22/10). Lo que se
 -- entregó antes de que entrara la OC no salió de ella, sino de otro stock: no se
 -- descuenta, y lo de la OC sigue en el almacén para devolverse (auditor de
--- realización, 22/10). Lo que el insumo tenía en stock se da por entregado primero.
+-- realización, 22/10), ni lo que se entregó con otro material. Lo que el insumo
+-- tenía en stock se da por entregado primero.
 create or replace function public.en_mano_de_la_linea_de_compra(p_detalle uuid)
 returns numeric language sql stable set search_path to 'public' as $$
   with k as (
     select k.neto,
            (select min(m.registrado_en) from public.movimientos_materiales m
-             where m.orden_compra_detalle_id = p_detalle and m.tipo = 'INGRESO') as llego
+             where m.orden_compra_detalle_id = p_detalle and m.tipo = 'INGRESO') as llego,
+           (select d.material_id from public.orden_compra_material_detalles d where d.id = p_detalle) as material
       from public.cuenta_de_la_linea_de_compra(p_detalle) k
   ), s as (
     select greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0)::numeric as falta,
@@ -170,7 +172,9 @@ returns numeric language sql stable set search_path to 'public' as $$
       from k
       join public.requerimiento_lineas l on l.orden_compra_detalle_id = p_detalle
       join public.requerimientos r on r.id = l.requerimiento_id and r.estado <> 'ANULADO'
+      -- Solo lo que salió del material de la OC: lo entregado con otro no salió de ella.
       left join public.movimientos_materiales m on m.requerimiento_linea_id = l.id and m.tipo = 'SALIDA'
+                                               and m.material_id = k.material
       left join lateral (
         select greatest(m.cantidad::numeric - coalesce((select sum(d.cantidad::numeric) from public.movimientos_materiales d
                                                           where d.devolucion_de = m.id and d.tipo = 'INGRESO'), 0), 0) as neta) n on true
@@ -831,7 +835,7 @@ begin
     if exists (select 1 from public.movimientos_materiales m
                 where m.id = p_id and m.tipo = 'DEVOLUCION_PROVEEDOR' and m.devuelve_ingreso = p_ingreso
                   and m.cantidad::numeric = p_cantidad and m.documento_referencia = btrim(p_documento)
-                  and m.registrado_por = public.usuario_actual()
+                  and m.motivo_devolucion = btrim(p_motivo) and m.registrado_por = public.usuario_actual()
                   and (m.se_repone = p_se_repone or m.reposicion_cancelada_en is not null)) then
       return p_id;
     end if;
