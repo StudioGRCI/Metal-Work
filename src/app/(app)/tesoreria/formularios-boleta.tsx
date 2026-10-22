@@ -8,6 +8,7 @@ import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -238,9 +239,9 @@ export function RegistrarDevolucion({
             etiqueta="Constancia de la devolución"
             htmlFor={campo('archivo')}
             requerido
-            ayuda={`La transferencia, la captura de Yape o Plin, el voucher del depósito o la foto del recibo firmado. PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}
+            ayuda="La transferencia, la captura de Yape o Plin, el voucher del depósito o la foto del recibo firmado."
           >
-            <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+            <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           <p role="status" aria-live="polite" className="text-sm text-texto">
             {enVivo}
@@ -630,9 +631,9 @@ export function DescontarDeOtraFactura({
                 htmlFor={campo('archivo')}
                 requerido
                 className="sm:col-span-2"
-                ayuda={`La nota de crédito del proveedor, o la factura o el estado de cuenta donde descontó lo pagado de más. PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB.`}
+                ayuda="La nota de crédito del proveedor, o la factura o el estado de cuenta donde descontó lo pagado de más."
               >
-                <Entrada id={campo('archivo')} name="archivo" type="file" accept={ACEPTA} required />
+                <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
               </Campo>
             </div>
           )}

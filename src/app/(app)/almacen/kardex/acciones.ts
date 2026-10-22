@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { materialesDelKardex, materialesParaPlanilla, type MaterialParaPlanilla } from '@/lib/datos/kardex'
-import { leerHojaConteo, motivoConteoInicial, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { DIAS_DEL_CONTEO, leerHojaConteo, motivoConteoInicial, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
 import { leerHoja, normalizarNombre, similitud, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
 import { cantidad, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -208,6 +208,8 @@ async function idDeFila(usuario: string, f: FilaLeida) {
 
 type Hojas = Awaited<ReturnType<typeof readXlsxFile>>
 
+const DEMASIADOS_DATOS = 'El archivo tiene demasiados datos.'
+
 /** Abre el Excel subido sin dejar que un archivo chico se expanda a cientos de MB. */
 async function abrirLibro(archivo: FormDataEntryValue | null, queEs: string): Promise<{ hojas: Hojas } | { error: string }> {
   if (!(archivo instanceof File) || archivo.size === 0 || archivo.size > 8 * 1024 * 1024) {
@@ -218,10 +220,13 @@ async function abrirLibro(archivo: FormDataEntryValue | null, queEs: string): Pr
     if (bytes[0] !== 80 || bytes[1] !== 75) return { error: 'El archivo no es un Excel .xlsx. Guárdalo como «Libro de Excel».' }
     let descomprimido = 0, entradas = 0
     // Mirar el directorio del ZIP sin extraer: un XLSX chico no puede expandirse a cientos de MB.
-    unzipSync(bytes, { filter: (e) => { descomprimido += e.originalSize; entradas++; if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error('El archivo tiene demasiados datos.'); return false } })
+    unzipSync(bytes, { filter: (e) => { descomprimido += e.originalSize; entradas++; if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error(DEMASIADOS_DATOS); return false } })
     return { hojas: await readXlsxFile(Buffer.from(bytes), { trim: false }) }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'No se pudo leer el archivo.' }
+    // Lo propio se dice tal cual; lo de la librería sale en inglés («invalid zip
+    // data») y a Almacén no le dice qué hacer.
+    const propio = e instanceof Error && e.message === DEMASIADOS_DATOS
+    return { error: propio ? DEMASIADOS_DATOS : 'No se pudo leer el Excel: ábrelo y guárdalo de nuevo como «Libro de Excel» (.xlsx).' }
   }
 }
 
@@ -535,8 +540,8 @@ export async function leerConteoInicial(_previo: unknown, datos: FormData): Prom
   const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
   if (!fecha.success) return { ok: false, error: 'Indica la fecha en que se hizo el conteo.' }
   const hoy = hoyLima()
-  if (fecha.data > hoy) return { ok: false, error: 'La fecha del conteo es posterior a hoy.' }
-  if (fecha.data < sumarDias(hoy, -31)) return { ok: false, error: 'El conteo es de hace más de 31 días: lo que pasó desde entonces ya movió los saldos. Vuelve a contar.' }
+  const fueraDeFecha = motivoDeFechaDeConteo(fecha.data, hoy, sumarDias(hoy, -DIAS_DEL_CONTEO))
+  if (fueraDeFecha) return { ok: false, error: fueraDeFecha }
 
   const abierto = await abrirLibro(datos.get('archivo'), 'el formato del conteo')
   if ('error' in abierto) return { ok: false, error: abierto.error }

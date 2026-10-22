@@ -1,13 +1,15 @@
 'use client'
 
-import { AlertTriangle, Check, FileSearch, FileUp, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
+import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
@@ -149,13 +151,17 @@ export function CorregirCotizacion({
   const [motivo, setMotivo] = useState('')
   const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Por qué el archivo elegido no sirve: va en su campo, no con los errores de enviar.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  const campoArchivo = useRef<HTMLInputElement>(null)
 
   function abrir() {
     setArchivo(null)
     setDice(null)
     setError(null)
+    setAvisoArchivo(null)
     setTotal({ monto: null, moneda: null })
     setIncluyeIgv('')
     setCliente(clienteId)
@@ -167,13 +173,12 @@ export function CorregirCotizacion({
 
   async function elegir(elegido: File | undefined) {
     if (!elegido) return
-    setArchivo(elegido)
     setDice(null)
     setError(null)
-    if (!tipoDeCotizacion(elegido)) {
-      setError('La corrección se sube en PDF o en Word.')
-      return
-    }
+    const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
+    setArchivo(elegido)
+    setAvisoArchivo(noSirve)
+    if (noSirve) return
     setLeyendo(true)
     try {
       const lectura = await leerCabeceraDeArchivo(elegido, setProgreso)
@@ -190,6 +195,12 @@ export function CorregirCotizacion({
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (enCurso.current) return
+    // Lo que falta o no sirve del archivo lo dice su campo, y el cursor va ahí.
+    if (!archivo || avisoArchivo) {
+      if (!archivo) setAvisoArchivo('Falta el archivo corregido: elige el PDF o el Word')
+      campoArchivo.current?.focus()
+      return
+    }
 
     const tipo = archivo ? tipoDeCotizacion(archivo) : null
     if (!archivo || !tipo) {
@@ -224,7 +235,7 @@ export function CorregirCotizacion({
           .from('cotizaciones-pdf')
           .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. Revisa la señal y vuelve a intentar.`)
+          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -306,20 +317,20 @@ export function CorregirCotizacion({
             <AreaTexto id={`corregir-motivo-${id}`} value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} minLength={5} maxLength={500} required placeholder="Qué dato o documento se corrigió" />
           </Campo>
 
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
-            <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el archivo corregido'}</span>
-            <span className="text-xs">{leyendo ? progreso || 'Leyendo…' : `PDF o Word · hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
-            <input
-              type="file"
+          <Campo etiqueta="Archivo corregido" htmlFor={`corregir-archivo-${id}`} requerido>
+            <ElegirArchivo
+              ref={campoArchivo}
+              id={`corregir-archivo-${id}`}
+              required
               accept={ACEPTA_COTIZACION}
-              className="sr-only"
-              onChange={(e) => {
-                void elegir(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              texto="Elegir el archivo corregido"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={archivo}
+              aviso={avisoArchivo}
+              estado={leyendo ? progreso || 'Leyendo el archivo…' : null}
+              onChange={(e) => void elegir(e.target.files?.[0])}
             />
-          </label>
+          </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
             <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
@@ -438,6 +449,10 @@ export function AprobarConOt({
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+  // El que no sirve se queda a la vista en su campo, con el motivo; `archivo` es solo el que sí.
+  const [rechazado, setRechazado] = useState<{ archivo: File; motivo: string } | null>(null)
+  const [faltaPdf, setFaltaPdf] = useState(false)
+  const campoPdf = useRef<HTMLInputElement>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [avisoLectura, setAvisoLectura] = useState('')
   const [numeroOrden, setNumeroOrden] = useState('')
@@ -451,6 +466,8 @@ export function AprobarConOt({
 
   function abrir() {
     setArchivo(null)
+    setRechazado(null)
+    setFaltaPdf(false)
     setAvisoLectura('')
     setNumeroOrden('')
     setCodigo('')
@@ -466,16 +483,11 @@ export function AprobarConOt({
     setError(null)
     setAvisoLectura('')
     setDatosLeidos(null)
-    setArchivo(null)
-    if (elegido.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
-      setError(`El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
-      return
-    }
-    if (!/\.pdf$/i.test(elegido.name) || new TextDecoder().decode(await elegido.slice(0, 5).arrayBuffer()) !== '%PDF-') {
-      setError('El archivo debe ser un PDF válido.')
-      return
-    }
-    setArchivo(elegido)
+    setFaltaPdf(false)
+    const motivo = await revisarArchivo(elegido, 'application/pdf,.pdf', MAXIMO_ADJUNTO_MB)
+    setArchivo(motivo ? null : elegido)
+    setRechazado(motivo ? { archivo: elegido, motivo } : null)
+    if (motivo) return
     setLeyendo(true)
     try {
       const datos = await leerArchivoOrden(elegido, setAvisoLectura)
@@ -501,7 +513,9 @@ export function AprobarConOt({
       return
     }
     if (!archivo) {
-      setError('Elige el PDF de la orden de trabajo.')
+      // Lo dice su campo, como en la orden nueva, y el cursor va ahí.
+      if (!rechazado) setFaltaPdf(true)
+      campoPdf.current?.focus()
       return
     }
     if (archivo.type !== 'application/pdf' && !/\.pdf$/i.test(archivo.name)) {
@@ -527,7 +541,7 @@ export function AprobarConOt({
           .from('adjuntos-ot')
           .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
         if (falla) {
-          setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -578,7 +592,8 @@ export function AprobarConOt({
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
-          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+          {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
+          <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
@@ -599,22 +614,21 @@ export function AprobarConOt({
             />
           </Campo>
 
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2">
-            <FileUp aria-hidden className="size-6" />
-            <span className="font-medium text-texto">{archivo ? archivo.name : 'Elegir el PDF de la OT'}</span>
-            <span className="text-xs">Hasta {MAXIMO_ADJUNTO_MB} MB</span>
-            <input
-              type="file"
+          <Campo etiqueta="PDF de la OT" htmlFor={`aprobar-pdf-${cotizacionId}`} requerido>
+            <ElegirArchivo
+              ref={campoPdf}
+              id={`aprobar-pdf-${cotizacionId}`}
+              required
               accept="application/pdf,.pdf"
-              className="sr-only"
-              onChange={(e) => {
-                void elegirArchivo(e.target.files?.[0])
-                e.target.value = ''
-              }}
+              texto="Elegir el PDF de la OT"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={archivo ?? rechazado?.archivo ?? null}
+              aviso={rechazado?.motivo ?? (faltaPdf ? 'Falta el PDF de la OT: sin él no se aprueba' : null)}
+              estado={leyendo ? avisoLectura || 'Leyendo el PDF…' : null}
+              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
-          </label>
+          </Campo>
 
-          {leyendo && <p role="status" className="flex items-center gap-2 text-sm text-texto-suave"><FileSearch aria-hidden className="size-4" />{avisoLectura || 'Leyendo el PDF…'}</p>}
           {!leyendo && avisoLectura && <p role="status" className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">{avisoLectura}</p>}
           {datosLeidos && (datosLeidos.cliente || datosLeidos.producto) && <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">
             {datosLeidos.cliente && <><dt>Cliente</dt><dd className="text-texto">{datosLeidos.cliente}</dd></>}

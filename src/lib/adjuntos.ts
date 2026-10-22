@@ -1,5 +1,5 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { createClient } from '@/lib/supabase/client'
 
 /**
@@ -11,6 +11,9 @@ import { createClient } from '@/lib/supabase/client'
  * un archivo suelto que nadie ve.
  */
 export const MAXIMO_ADJUNTO_MB = 20
+
+/** Sin respuesta al anotarlo: no se sabe si quedó, y la pantalla no puede decir que no. */
+export const NO_SE_SABE_SI_QUEDO = 'No llegó la respuesta. Recarga la orden y mira si el archivo quedó antes de volver a subirlo.'
 
 const TIPOS = {
   pdf: 'application/pdf',
@@ -36,7 +39,7 @@ export async function subirAdjunto(
   const supabase = createClient()
 
   const { error } = await supabase.storage.from('adjuntos-ot').upload(ruta, archivo, { contentType, upsert: false })
-  if (error) return { ok: false, error: 'No se pudo subir el archivo. Revisa la señal y vuelve a intentar.' }
+  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   const datos = new FormData()
   datos.set('orden_id', ordenId)
@@ -56,6 +59,6 @@ export async function subirAdjunto(
   } catch {
     // Sin respuesta no se sabe si quedó anotado: el archivo no se toca, y
     // reintentar a ciegas lo subiría dos veces.
-    return { ok: false, error: 'No llegó la respuesta. Recarga la orden y mira si el archivo quedó antes de volver a subirlo.' }
+    return { ok: false, error: NO_SE_SABE_SI_QUEDO }
   }
 }

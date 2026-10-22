@@ -6,6 +6,7 @@ import { useRef, useState } from 'react'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { CompraSinFactura, OrdenDeFactura } from '@/lib/datos/adquisiciones'
 import { avisosDelDetector, lecturaUtil, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
@@ -49,6 +50,8 @@ const mismas = (a: string[], b: string[]) => a.length === b.length && a.every((x
 
 const mismoNombre = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
 const codigo = (m: string) => (m === 'USD' ? 'USD' : 'PEN')
+
+const ACEPTA_PDF = 'application/pdf,.pdf'
 
 /**
  * Corregir un comprobante registrado, con su motivo y su justificante: sus datos,
@@ -109,6 +112,10 @@ function Formulario({
   const [pdfId] = useState(() => crypto.randomUUID())
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
   const [leyendo, setLeyendo] = useState<string | null>(null)
+  // Por qué el PDF elegido no sirve: va en su campo, y no se lee.
+  const [avisoPdf, setAvisoPdf] = useState<string | null>(null)
+  // Se leyó y no trajo nada: se revisa a mano.
+  const [sinLeer, setSinLeer] = useState(false)
   const turno = useRef(0)
   const rutaPdf = `adquisiciones/${f.id}/correccion-${pdfId}.pdf`
   const { corregir, otra } = useCorreccion(f.id, corregirFactura)
@@ -196,14 +203,26 @@ function Formulario({
 
   async function leerPdf(archivo: File | undefined) {
     const vez = ++turno.current
+    // Lo que diga una lectura que otro PDF ya reemplazó no llega al campo.
+    const anotar = (texto: string | null) => {
+      if (vez === turno.current) setLeyendo(texto)
+    }
     setPdf(archivo ?? null)
     setLectura(null)
-    if (!archivo) return setLeyendo(null)
-    setLeyendo('Leyendo la factura…')
-    const leida = await leerFactura(archivo, setLeyendo)
+    setAvisoPdf(null)
+    setSinLeer(false)
+    anotar(null)
+    if (!archivo) return
+    // Un Word con el nombre cambiado a «.pdf» queda en rojo y no se lee.
+    const motivo = await revisarArchivo(archivo, ACEPTA_PDF, 10)
     if (vez !== turno.current) return
-    setLeyendo(null)
+    if (motivo) return setAvisoPdf(motivo)
+    anotar('Leyendo la factura…')
+    const leida = await leerFactura(archivo, anotar)
+    if (vez !== turno.current) return
+    anotar(null)
     setLectura(leida)
+    setSinLeer(!lecturaUtil(leida))
   }
 
   const id = f.id
@@ -261,17 +280,24 @@ function Formulario({
           />
         </Campo>
         <Campo etiqueta="PDF corregido (opcional)" htmlFor={`fc-pdf-${id}`} ayuda="Solo si el PDF adjunto estaba mal. El que reemplaza queda como evidencia.">
-          <Entrada id={`fc-pdf-${id}`} name="pdf" type="file" accept="application/pdf,.pdf" onChange={(e) => void leerPdf(e.target.files?.[0])} />
+          <ElegirArchivo
+            id={`fc-pdf-${id}`}
+            name="pdf"
+            accept={ACEPTA_PDF}
+            hastaMb={10}
+            aviso={avisoPdf}
+            estado={leyendo}
+            onChange={(e) => void leerPdf(e.target.files?.[0])}
+          />
         </Campo>
       </div>
       <Campo etiqueta="Observación" htmlFor={`fc-obs-${id}`}>
         <AreaTexto id={`fc-obs-${id}`} value={observacion} onChange={(e) => setObservacion(e.target.value)} maxLength={1000} />
       </Campo>
 
-      {(leyendo || lectura || avisos.length > 0) && (
+      {(sinLeer || avisos.length > 0) && (
         <div className="space-y-1 text-sm" role="status">
-          {leyendo && <p className="text-texto-suave">{leyendo}</p>}
-          {!leyendo && pdf && !lecturaUtil(lectura) && <p className="text-texto-suave">No se pudo leer el PDF nuevo: revisa a mano el total y las OC.</p>}
+          {sinLeer && <p className="text-texto-suave">No se pudo leer el PDF nuevo: revisa a mano el total y las OC.</p>}
           {avisos.length > 0 && (
             <ul className="space-y-0.5 text-aviso">
               {avisos.map((a) => (

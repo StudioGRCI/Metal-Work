@@ -11,6 +11,7 @@ import { registrarIngresoGeneral } from './acciones'
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
@@ -587,7 +588,7 @@ function FormularioDespacho({
         {candidatos.length === 0 && <p className="mt-1 text-[11px] text-aviso">No hay personas activas registradas para {NOMBRE_AREA[linea.area_destino ?? ''] ?? 'esta área'}.</p>}
       </Campo>
       <Campo etiqueta="Nombre de quien recibe físicamente" htmlFor={`sal-nombre-${linea.detalle_id}`} requerido><Entrada id={`sal-nombre-${linea.detalle_id}`} name="recibido_por_nombre" required minLength={3} maxLength={160}/></Campo>
-      <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Hasta 10 MB; incluye el material entregado." requerido><Entrada id={`sal-foto-${linea.detalle_id}`} name="foto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required/></Campo>
+      <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Que se vea el material entregado." requerido><ElegirArchivo id={`sal-foto-${linea.detalle_id}`} name="foto" accept="image/jpeg,image/png,image/webp" hastaMb={10} capture="environment" required/></Campo>
       <div className="flex items-end"><Boton type="submit" tamano="sm" cargando={enviando} disabled={candidatos.length === 0} className="w-full"><ArrowUpFromLine aria-hidden className="size-4" />Despachar</Boton></div>
       {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     </form>

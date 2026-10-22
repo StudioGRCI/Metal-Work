@@ -87,3 +87,16 @@ export function mensajeDeArchivo(error: { message: string }): string {
   if (/mime|content type|invalid file type/i.test(m)) return 'Ese tipo de archivo no se acepta.'
   return 'El archivo no se pudo guardar. Inténtalo de nuevo; si vuelve a pasar, avisa al administrador.'
 }
+
+/**
+ * Por qué no subió un archivo, en una frase para poner después de «No se pudo
+ * subir…»: la señal solo cuando el almacenamiento no contestó; si contestó, lo
+ * que dijo (`mensajeDeArchivo`). Antes toda falla culpaba a la señal, también
+ * la de un permiso que faltaba: a Diseño, con el Excel del cronograma (2026-10-21).
+ */
+export function motivoDeSubida(error: { message: string }): string {
+  if (/fetch|network|load failed|timed? ?out|aborted/i.test(error.message)) return 'Revisa la señal y vuelve a intentar.'
+  const motivo = mensajeDeArchivo(error)
+  // Detrás de «No se pudo subir…», sin repetir que no se guardó.
+  return motivo.startsWith('El archivo no se pudo guardar. ') ? motivo.slice('El archivo no se pudo guardar. '.length) : motivo
+}

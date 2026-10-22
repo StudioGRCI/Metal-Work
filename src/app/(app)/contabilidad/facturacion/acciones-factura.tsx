@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -142,8 +143,8 @@ export function RegistrarFactura({
               {moneda(totalCotizacion, monedaCotizacion)}. Revisa el total; si está bien, regístrala igual.
             </p>
           )}
-          <Campo etiqueta="PDF de la factura" htmlFor={campo('archivo')} requerido ayuda={`El que descargaste de SUNAT, hasta ${MAXIMO_MB_FINANZAS} MB.`}>
-            <Entrada id={campo('archivo')} name="archivo" type="file" accept="application/pdf,.pdf" required />
+          <Campo etiqueta="PDF de la factura" htmlFor={campo('archivo')} requerido ayuda="El que descargaste de SUNAT.">
+            <ElegirArchivo id={campo('archivo')} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           {error && (
             <p role="alert" className="text-sm text-peligro">

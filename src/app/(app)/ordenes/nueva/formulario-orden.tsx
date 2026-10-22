@@ -1,25 +1,27 @@
 'use client'
 
-import { FileText, FileUp } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { etiquetasDePuesto } from '@/lib/format'
-import { cn } from '@/lib/utils'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
 
 import { crearOrden } from '../acciones'
+
+const ACEPTA_PDF = 'application/pdf,.pdf'
 
 type Catalogos = {
   clientes: { id: string; razon_social: string; tipo_documento?: string; numero_documento: string }[]
@@ -37,6 +39,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // encuentra la orden ya registrada en vez de crear otra.
   const [ordenId] = useState(() => crypto.randomUUID())
   const [archivo, setArchivo] = useState<File | null>(null)
+  // Por qué el PDF elegido no sirve, o que falta: va en su campo, como el número.
+  const [avisoPdf, setAvisoPdf] = useState<string | null>(null)
+  const campoPdf = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   // El rechazo del número va junto a su campo, no en el aviso de abajo: en la
   // misma tarjeta también puede fallar el PDF.
@@ -131,25 +136,20 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   async function elegirArchivo(elegido: File | undefined) {
     setError(null)
     if (!elegido) return
-    if (!/\.pdf$/i.test(elegido.name) || new TextDecoder().decode(await elegido.slice(0, 5).arrayBuffer()) !== '%PDF-') {
-      setArchivo(null)
-      setError('La orden se sube en PDF: elige el PDF de la orden de trabajo.')
-      return
-    }
-    if (elegido.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
-      setArchivo(null)
-      setError(`El PDF pesa más de ${MAXIMO_ADJUNTO_MB} MB.`)
-      return
-    }
+    // El que no sirve se queda a la vista, en rojo y con el motivo: así se sabe
+    // cuál se eligió y por qué hay que cambiarlo.
+    const aviso = await revisarArchivo(elegido, ACEPTA_PDF, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
+    setAvisoPdf(aviso)
   }
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
     if (enCurso.current) return
     const datos = new FormData(evento.currentTarget)
-    if (!archivo) {
-      setError('Elige el PDF de la orden de trabajo: la orden va siempre con su PDF.')
+    if (!archivo || avisoPdf) {
+      if (!archivo) setAvisoPdf('Falta el PDF de la orden: sin él la orden no se registra')
+      campoPdf.current?.focus()
       return
     }
 
@@ -168,7 +168,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           .from('adjuntos-ot')
           .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
         if (falla) {
-          setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -447,29 +447,20 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               }}
             />
           </Campo>
-          <label
-            className={cn(
-              'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed px-4 py-6 text-center text-sm text-texto-suave hover:bg-superficie-2',
-              'focus-within:ring-2',
-              archivo
-                ? 'border-solid border-exito focus-within:border-exito focus-within:ring-exito/25'
-                : 'border-borde focus-within:border-acento focus-within:ring-acento/25',
-            )}
-          >
-            {archivo ? <FileText aria-hidden className="size-6 text-exito" /> : <FileUp aria-hidden className="size-6" />}
-            <span className="font-medium break-all text-texto">{archivo ? archivo.name : 'Elegir el PDF de la orden'}</span>
-            <span className="text-xs">{archivo ? 'Listo · toca para cambiarlo' : `Obligatorio · PDF hasta ${MAXIMO_ADJUNTO_MB} MB`}</span>
+          <Campo etiqueta="PDF de la orden" htmlFor="pdf_orden" requerido>
             {/* Sin `name`: el archivo va a Storage, no dentro del formulario a la acción. */}
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              className="sr-only"
-              onChange={(e) => {
-                void elegirArchivo(e.target.files?.[0])
-                e.target.value = ''
-              }}
+            <ElegirArchivo
+              ref={campoPdf}
+              id="pdf_orden"
+              required
+              accept={ACEPTA_PDF}
+              texto="Elegir el PDF de la orden"
+              hastaMb={MAXIMO_ADJUNTO_MB}
+              archivo={archivo}
+              aviso={avisoPdf}
+              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
-          </label>
+          </Campo>
         </TarjetaCuerpo>
       </Tarjeta>
 

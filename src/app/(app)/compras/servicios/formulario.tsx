@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -282,9 +283,9 @@ function FormularioServicio({
       <Campo
         etiqueta="Contrato (opcional)"
         htmlFor="os-contrato"
-        ayuda={`PDF o foto, hasta ${MAXIMO_MB_FINANZAS} MB. Si llega después, se adjunta desde la fila de la orden.`}
+        ayuda="Si llega después, se adjunta desde la fila de la orden."
       >
-        <Entrada id="os-contrato" name="contrato" type="file" accept={ACEPTA} />
+        <ElegirArchivo id="os-contrato" name="contrato" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} />
       </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">

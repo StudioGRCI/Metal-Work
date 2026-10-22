@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Pliegue, SeccionDesplegable } from '@/components/ui/seccion-desplegable'
@@ -161,7 +162,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Campo etiqueta="Importe" htmlFor="gasto-monto" requerido ayuda="Sin el IGV si el comprobante es factura; completo si es boleta, ticket o recibo por honorarios."><Entrada id="gasto-monto" type="number" min="0.01" step="0.01" name="monto" required /></Campo>
           <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
           <div className="sm:col-span-2"><Campo etiqueta="Descripción y referencia" htmlFor="gasto-descripcion" requerido><AreaTexto id="gasto-descripcion" name="descripcion" minLength={10} maxLength={500} required rows={2} /></Campo></div>
-          <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido ayuda="Hasta 15 MB."><Entrada id="gasto-pdf" type="file" name="pdf" accept="application/pdf,.pdf" required /></Campo></div>
+          <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido><ElegirArchivo id="gasto-pdf" name="pdf" accept="application/pdf,.pdf" hastaMb={15} required /></Campo></div>
           {error && <p role="alert" className="sm:col-span-2 text-sm text-peligro">{error}</p>}
           {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
@@ -267,7 +268,7 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
       </form>
       {editable && salidaCerrada && !c?.escaneo_ruta && <form onSubmit={escaneo.alEnviar} className="space-y-2 rounded-[var(--radius-base)] border border-borde p-3">
         <input type="hidden" name="orden_id" value={ordenId} />
-        <Campo etiqueta="Escaneo firmado en PDF" htmlFor="cv-scan" requerido><Entrada id="cv-scan" name="pdf" type="file" accept="application/pdf,.pdf" required /></Campo>
+        <Campo etiqueta="Escaneo firmado en PDF" htmlFor="cv-scan" requerido><ElegirArchivo id="cv-scan" name="pdf" accept="application/pdf,.pdf" hastaMb={15} required /></Campo>
         {escaneo.error && <p role="alert" className="text-peligro">{escaneo.error}</p>}
         {escaneo.resultado?.ok && <p role="status" className="text-exito">{escaneo.resultado.mensaje}</p>}
         <Boton type="submit" cargando={escaneo.enviando}>Adjuntar escaneo firmado</Boton>

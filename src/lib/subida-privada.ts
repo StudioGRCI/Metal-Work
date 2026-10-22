@@ -1,5 +1,8 @@
-import type { ResultadoAccion } from '@/lib/acciones'
+import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { createClient } from '@/lib/supabase/client'
+
+/** Con esto empieza el error cuando lo que falló es el archivo y no el registro: la pantalla lo pone en su campo. */
+export const NO_SE_CARGO_EL_ARCHIVO = 'No se pudo cargar el archivo.'
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
@@ -16,7 +19,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
     if (error && error.statusCode !== '409') {
-      return { ok: false, error: 'No se pudo cargar el archivo. Revisa tu conexión y vuelve a intentar.' }
+      return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
     }
     const resultado = await registrar()
     if (!resultado.ok) {
