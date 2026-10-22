@@ -329,7 +329,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     if (tenia) {
       await pagina.getByText('Vigente', { exact: true }).waitFor({ timeout: 15000 }).catch(() => {})
       const filaNueva = pagina.locator('li').filter({ hasText: nombre })
-      const tarjeta = limpio(await pagina.locator('ul').filter({ hasText: nombre }).locator('xpath=..').innerText())
+      // La lista va en su propia zona, y la nota debajo: se lee el cuerpo de la tarjeta.
+      const tarjeta = limpio(await pagina.locator('ul').filter({ hasText: nombre }).locator('xpath=../..').innerText())
       comprobar((await filaNueva.getByText('Vigente', { exact: true }).count()) === 1 && /Quita (el anterior|los anteriores)/.test(tarjeta),
         `[Administración ${tam}] el corregido sale «Vigente» y dice qué quitar: «${(tarjeta.match(/Vale el marcado[^.]*\./) ?? [''])[0]}»`)
     }

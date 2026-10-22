@@ -12,6 +12,9 @@ import { createClient } from '@/lib/supabase/client'
  */
 export const MAXIMO_ADJUNTO_MB = 20
 
+/** Sin respuesta al anotarlo: no se sabe si quedó, y la pantalla no puede decir que no. */
+export const NO_SE_SABE_SI_QUEDO = 'No llegó la respuesta. Recarga la orden y mira si el archivo quedó antes de volver a subirlo.'
+
 const TIPOS = {
   pdf: 'application/pdf',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -56,6 +59,6 @@ export async function subirAdjunto(
   } catch {
     // Sin respuesta no se sabe si quedó anotado: el archivo no se toca, y
     // reintentar a ciegas lo subiría dos veces.
-    return { ok: false, error: 'No llegó la respuesta. Recarga la orden y mira si el archivo quedó antes de volver a subirlo.' }
+    return { ok: false, error: NO_SE_SABE_SI_QUEDO }
   }
 }

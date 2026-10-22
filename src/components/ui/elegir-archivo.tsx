@@ -112,6 +112,11 @@ function ConPuntero({ texto }: { texto: string }) {
   )
 }
 
+/** En el globo del navegador no hay caja que tocar: «No es un PDF: elige otro.» */
+function paraElGlobo(aviso: string): string {
+  return aviso.replace(/: toca para elegir otro$/, ': elige otro.')
+}
+
 /** «Elegir el Excel de la planilla» → «Falta el Excel de la planilla.» */
 function faltaDe(principal: string): string {
   const objeto = principal.replace(/^(Tomar|Elegir)\s+/, '')
@@ -153,7 +158,9 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  * Lo que dice cambia con lo elegido: el nombre entero y su peso, o el motivo
  * —no es del tipo, pasa del tope, está vacío, no lo es por dentro— antes de
  * enviar. Avisa, no bloquea: el que decide es el servidor. Lo que sí traba es
- * que falte, y entonces lo dice también en la caja. Es el mismo en todo lugar que pide
+ * que falte, y entonces lo dice también en la caja; donde la pantalla guarda el
+ * archivo y es obligatorio, también que no sirva, porque esas pantallas no lo
+ * envían y el navegador saltaba al primer campo vacío. Es el mismo en todo lugar que pide
  * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
  * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
  * 2026-10-21). Con `archivo`, el campo se vacía solo al abrirse: la pantalla
@@ -181,8 +188,8 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   ref,
 ) {
   const [delCampo, setDelCampo] = React.useState<File | null>(null)
-  // Lo que `revisarArchivo` vio por dentro del que eligió el campo, cuando la
-  // pantalla no lo guarda: un Word con nombre «.pdf» no puede quedar en verde.
+  // Lo que `revisarArchivo` vio por dentro: un Word con nombre «.pdf» no puede
+  // quedar en verde, ni pasar el envío cuando la pantalla guarda el archivo.
   const [revisado, setRevisado] = React.useState<{ archivo: File; aviso: string | null } | null>(null)
   // Se intentó enviar sin archivo: «Falta…» se dice en la caja, no solo en el globo.
   const [falta, setFalta] = React.useState(false)
@@ -232,24 +239,42 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     [ref, revisarDelCampo],
   )
 
+  // El que guarda la pantalla se mira por dentro aquí: solo para el envío, que
+  // lo que dice la caja lo pone la pantalla.
+  React.useEffect(() => {
+    if (!controlado || !archivoDeLaPantalla) return
+    let sigue = true
+    void revisarArchivo(archivoDeLaPantalla, accept, hastaMb).then((aviso) => {
+      if (sigue) setRevisado({ archivo: archivoDeLaPantalla, aviso })
+    })
+    return () => {
+      sigue = false
+    }
+  }, [controlado, archivoDeLaPantalla, accept, hastaMb])
+
+  const archivo = controlado ? archivoDeLaPantalla : delCampo
+  const avisoPorDentro = archivo && revisado?.archivo === archivo ? revisado.aviso : null
+  const noSirve = archivo ? avisoDeArchivo(archivo, accept, hastaMb) ?? avisoPorDentro : null
+
   // Si deja de ser obligatorio (la captura de la caja depende del tipo de
   // cuenta), el «Falta…» de un intento anterior no puede seguir trabando el envío.
   // Cuando la pantalla guarda el archivo, el campo se vacía al tocarlo y el
   // `required` del navegador no sabría que ya hay uno: «Falta…» sale de lo que
-  // tiene la pantalla. Así el navegador lo revisa en su orden, antes que los
-  // campos de abajo, y no al final.
+  // tiene la pantalla, y también que el que tiene no sirve —esas pantallas ya
+  // no lo envían—. Así el navegador lo revisa en su orden, antes que los campos
+  // de abajo, y no salta al primero vacío dejando el rojo fuera de la vista.
   React.useEffect(() => {
     const input = propio.current
     if (!input) return
     if (!required) input.setCustomValidity('')
-    else if (controlado) input.setCustomValidity(archivoDeLaPantalla ? '' : faltaDe(principal))
-  }, [required, controlado, archivoDeLaPantalla, principal])
+    else if (controlado) {
+      input.setCustomValidity(archivoDeLaPantalla ? (noSirve ? paraElGlobo(noSirve) : '') : faltaDe(principal))
+    }
+  }, [required, controlado, archivoDeLaPantalla, noSirve, principal])
 
-  const archivo = controlado ? archivoDeLaPantalla : delCampo
-  const avisoPorDentro = !controlado && archivo && revisado?.archivo === archivo ? revisado.aviso : null
   const aviso =
     avisoDeLaPantalla ||
-    (archivo ? avisoDeArchivo(archivo, accept, hastaMb) ?? avisoPorDentro : falta && required ? faltaDe(principal) : null)
+    (archivo ? (controlado ? avisoDeArchivo(archivo, accept, hastaMb) : noSirve) : falta && required ? faltaDe(principal) : null)
   const limite = hastaMb ? `hasta ${hastaMb} MB` : ''
   const pie =
     aviso ??

@@ -76,12 +76,18 @@ export function ArchivosDeOrden({
   // con dos, el más nuevo es el que vale y se dice que el otro hay que quitarlo.
   const pdfs = adjuntos.filter((a) => a.tipo === 'ORDEN')
   const vigente = pdfs.length > 1 ? pdfs.reduce((a, b) => (b.creado_en > a.creado_en ? b : a)) : null
-  const anteriores = vigente ? pdfs.filter((a) => a.id !== vigente.id) : []
+  const anteriores = vigente
+    ? pdfs.filter((a) => a.id !== vigente.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+    : []
+  // Primero el PDF de la orden, el vigente arriba; el Excel del cronograma, que
+  // se guarda después, quedaba encima en la tarjeta que se llama «Orden de trabajo».
+  const lista = [...pdfs].sort((a, b) => b.creado_en.localeCompare(a.creado_en)).concat(adjuntos.filter((a) => a.tipo !== 'ORDEN'))
 
   // El foco no se pierde al abrir o cerrar el campo: va al campo al abrirlo y
   // vuelve a «Cambiar el PDF» al cerrarlo o al terminar la subida.
   const campo = useRef<HTMLInputElement>(null)
   const botonCambiar = useRef<HTMLButtonElement>(null)
+  const zona = useRef<HTMLDivElement>(null)
   const focoA = useRef<'campo' | 'boton' | null>(null)
   useEffect(() => {
     const quien = focoA.current
@@ -95,6 +101,12 @@ export function ArchivosDeOrden({
     // En el teléfono el campo se abre debajo de la barra de abajo: se trae al centro.
     destino.scrollIntoView({ block: quien === 'campo' ? 'center' : 'nearest' })
   }, [pide])
+
+  // La fila quitada se va con el refresco y el foco caía al <body>.
+  function alQuitar(nombre: string) {
+    setAviso(`Se quitó ${nombre} de la orden.`)
+    ;(botonCambiar.current ?? zona.current)?.focus()
+  }
 
   async function subir(archivo: File | undefined) {
     if (!archivo || enCurso.current) return
@@ -156,17 +168,27 @@ export function ArchivosDeOrden({
             La orden tiene su PDF. Lo abren Diseño y Supervisión de Producción, Maestranza y Acabados.
           </p>
         )}
-        {pdfOculto && adjuntos.length === 0 ? null : adjuntos.length === 0 ? (
-          <p className="text-sm text-texto-suave">
-            Todavía no se subió el PDF de la orden.{!sube && ' Lo sube la oficina o el supervisor.'}
-          </p>
-        ) : (
-          <ul className="divide-y divide-borde">
-            {adjuntos.map((a) => (
-              <FilaAdjunto key={a.id} adjunto={a} ordenId={ordenId} vigente={a.id === vigente?.id} alQuedarArchivo={setError} />
-            ))}
-          </ul>
-        )}
+        <div ref={zona} tabIndex={-1} className="outline-none">
+          {pdfOculto && adjuntos.length === 0 ? null : adjuntos.length === 0 ? (
+            <p className="text-sm text-texto-suave">
+              Todavía no se subió el PDF de la orden.{!sube && ' Lo sube la oficina o el supervisor.'}
+            </p>
+          ) : (
+            <ul className="divide-y divide-borde">
+              {lista.map((a) => (
+                <FilaAdjunto
+                  key={a.id}
+                  adjunto={a}
+                  ordenId={ordenId}
+                  // Si se quita el vigente, vale el anterior más nuevo: se dice antes de confirmar.
+                  quedaria={a.id === vigente?.id ? anteriores[0] : undefined}
+                  alQuedarArchivo={setError}
+                  alQuitar={alQuitar}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
         {pide && (
           <div className="space-y-1.5">
             {/* Se guarda en la orden apenas se elige, por eso dice «Subir». */}
@@ -206,9 +228,12 @@ export function ArchivosDeOrden({
         )}
         {anteriores.some((a) => a.quitable) && (
           <p className="text-xs font-medium text-aviso wrap-anywhere">
+            {/* Por la hora y no solo el nombre: el corregido suele salir con el mismo nombre. */}
             Vale el marcado «Vigente». Quita{' '}
-            {anteriores.length === 1 ? `el anterior (${anteriores[0].nombre_archivo})` : 'los anteriores'} para que el
-            taller no abra el viejo.
+            {anteriores.length === 1
+              ? `el anterior (${anteriores[0].nombre_archivo}, del ${fechaHora(anteriores[0].creado_en)})`
+              : 'los anteriores, los que no dicen «Vigente»,'}{' '}
+            para que el taller no abra el viejo.
           </p>
         )}
 
@@ -232,22 +257,27 @@ export function ArchivosDeOrden({
 function FilaAdjunto({
   adjunto: a,
   ordenId,
-  vigente,
+  quedaria,
   alQuedarArchivo,
+  alQuitar,
 }: {
   adjunto: AdjuntoEnPantalla
   ordenId: string
-  /** El PDF de la orden que vale, cuando hay más de uno. */
-  vigente: boolean
+  /** Si es el PDF vigente de varios: el que vale si se quita este. */
+  quedaria?: AdjuntoEnPantalla
   // La fila se va con el refresco: el aviso de que el archivo quedó guardado
   // lo muestra la tarjeta, que se queda.
   alQuedarArchivo: (mensaje: string) => void
+  alQuitar: (nombre: string) => void
 }) {
   const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(quitarAdjunto, (r) => {
     if (r.datos?.archivoQuedo && r.mensaje) alQuedarArchivo(r.mensaje)
+    alQuitar(a.nombre_archivo)
   })
   const Icono = a.tipo === 'CRONOGRAMA' ? FileSpreadsheet : FileText
+  const vigente = Boolean(quedaria)
+  const cuando = fechaHora(a.creado_en)
 
   return (
     <li className="space-y-2 py-2.5">
@@ -267,10 +297,9 @@ function FilaAdjunto({
             <p className="truncate text-sm font-medium text-texto">{a.nombre_archivo}</p>
           )}
           <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-texto-suave">
-            {/* Con la hora: dos PDF del mismo día se veían iguales. */}
-            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : 'Orden de trabajo', tamano(a.tamano_bytes), fechaHora(a.creado_en)]
-              .filter(Boolean)
-              .join(' · ')}
+            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : 'Orden de trabajo', tamano(a.tamano_bytes)].filter(Boolean).join(' · ')}
+            {/* Con la hora: dos PDF del mismo día se veían iguales. Entera, sin partir «p. m.». */}
+            <span className="whitespace-nowrap">· {cuando}</span>
             {vigente && <Insignia tono="exito">Vigente</Insignia>}
           </p>
         </div>
@@ -279,7 +308,7 @@ function FilaAdjunto({
             type="button"
             variante="fantasma"
             tamano="icono"
-            aria-label={`Quitar ${a.nombre_archivo}`}
+            aria-label={`Quitar ${a.nombre_archivo}, del ${cuando}${vigente ? ', el vigente' : ''}`}
             onClick={() => {
               limpiar()
               setConfirmando(true)
@@ -297,7 +326,12 @@ function FilaAdjunto({
         >
           <input type="hidden" name="id" value={a.id} />
           <input type="hidden" name="orden_id" value={ordenId} />
-          <span className="text-xs text-peligro">¿Quitar este archivo de la orden?</span>
+          <span className="text-xs text-peligro">
+            {/* La hora termina en «p. m.»: ese punto cierra también la frase. */}
+            {quedaria
+              ? `Es el vigente: si lo quitas, vuelve a valer el del ${fechaHora(quedaria.creado_en).replace(/\.?$/, '.')} ¿Quitarlo igual?`
+              : '¿Quitar este archivo de la orden?'}
+          </span>
           <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
             Sí, quitar
           </Boton>

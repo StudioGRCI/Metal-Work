@@ -4,6 +4,8 @@
  * existe y cómo entra cada fila lo decide quien lo carga, contra la base.
  */
 
+import { fecha as fechaCorta } from '@/lib/format'
+
 import { numeroDeCelda, textoDeCelda, type Celda } from './planilla-almacen'
 
 /** Fila donde están los encabezados del formato; lo contado empieza debajo. */
@@ -23,7 +25,8 @@ export const DIAS_DEL_CONTEO = 31
  */
 export function motivoDeFechaDeConteo(fecha: string, hoy: string, desde: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return 'Indica la fecha en que se hizo el conteo.'
-  if (fecha > hoy) return 'La fecha del conteo es posterior a hoy.'
+  // Con el día del que revisa: el del equipo puede ir adelantado.
+  if (fecha > hoy) return `La fecha del conteo es posterior a hoy, ${fechaCorta(hoy)}.`
   if (fecha < desde) {
     return `El conteo es de hace más de ${DIAS_DEL_CONTEO} días: lo que pasó desde entonces ya movió los saldos. Vuelve a contar.`
   }

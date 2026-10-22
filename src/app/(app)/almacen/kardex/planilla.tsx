@@ -49,6 +49,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   const [elecciones, setElecciones] = useState<Record<string, string>>({})
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
+  // Cuántas veces se apretó «Registrar»: después de la primera, lo que queda es «lo que falta».
+  const [intentos, setIntentos] = useState(0)
   const enCurso = useRef(false)
   // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
   // no es de esta ventana, y al abrirla de nuevo no aparece.
@@ -60,9 +62,15 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   const porRegistrar = listas.filter((f) => f.hoja === 'Ingresos' || fotos[f.id])
   const sinFoto = listas.filter((f) => f.hoja === 'Salidas' && !fotos[f.id])
   const sinElegir = (filas ?? []).filter((f) => f.estado === 'ELEGIR' && !elecciones[f.id])
+  // Lo que falta: lo que se puede registrar y todavía no entró. Tras una vuelta
+  // con fallas —la foto que no subió—, se vuelve a registrar solo eso.
+  const faltan = porRegistrar.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
-  const terminado = !registrando && Object.keys(resultados).length > 0
+  const empezado = intentos > 0
+  // Terminado es que no quede nada por registrar, no que algo ya haya entrado:
+  // si no, la salida cuya foto no subió se quedaba sin botón para volver a intentarlo.
+  const terminado = !registrando && empezado && faltan.length === 0
 
   function reiniciar() {
     vuelta.current++
@@ -72,6 +80,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
     setElegidas({})
     setElecciones({})
     setResultados({})
+    setIntentos(0)
   }
 
   function cerrar() {
@@ -120,7 +129,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   }
 
   async function registrar() {
-    if (enCurso.current || porRegistrar.length === 0) return
+    if (enCurso.current || faltan.length === 0) return
     enCurso.current = true
     setRegistrando(true)
     try {
@@ -129,7 +138,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       const usuario = sesion.user?.id
       // Primero todos los ingresos y después las salidas: así el saldo alcanza
       // aunque la salida esté anotada antes que el ingreso del mismo día.
-      const orden = [...porRegistrar.filter((f) => f.hoja === 'Ingresos'), ...porRegistrar.filter((f) => f.hoja === 'Salidas')]
+      const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
       for (const f of orden) {
         setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
         const datos = new FormData()
@@ -176,6 +185,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       }
     } finally {
       setRegistrando(false)
+      setIntentos((n) => n + 1)
       enCurso.current = false
     }
   }
@@ -206,7 +216,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               {resumen.cargadas > 0 && <Insignia tono="neutro">{resumen.cargadas} ya estaban en el kardex</Insignia>}
               {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
               {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
-              {!registrando && !terminado && (
+              {!registrando && !empezado && (
                 <Boton type="button" variante="fantasma" tamano="sm" onClick={reiniciar} className="ml-auto">Elegir otra planilla</Boton>
               )}
             </div>
@@ -278,24 +288,33 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               })}
             </ul>
 
-            {!terminado && sinElegir.length > 0 && (
+            {sinElegir.length > 0 && (
               <p className="text-sm text-aviso">{sinElegir.length === 1 ? 'Un ingreso espera' : `${sinElegir.length} ingresos esperan`} que elijas el material; {sinElegir.length === 1 ? 'no se registrará' : 'no se registrarán'} hasta entonces.</p>
             )}
-            {!terminado && sinFoto.length > 0 && (
+            {sinFoto.length > 0 && (
               <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
             )}
-            {terminado && (
-              <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
+            {empezado && !registrando && (
+              <p role="status" className={fallidas || faltan.length ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+                {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
+                {fallidas
+                  ? `; ${fallidas} no: revisa el mensaje de cada uno.`
+                  : faltan.length
+                    ? `; ${faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`}.`
+                    : '.'}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
               {!terminado && (
-                <Boton onClick={registrar} cargando={registrando} disabled={porRegistrar.length === 0}>
-                  {porRegistrar.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${porRegistrar.length} movimientos`}
+                <Boton onClick={registrar} cargando={registrando} disabled={faltan.length === 0}>
+                  {empezado
+                    ? `Registrar lo que falta (${faltan.length})`
+                    : faltan.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${faltan.length} movimientos`}
                 </Boton>
               )}
-              {terminado && <Boton onClick={cerrar}>Cerrar</Boton>}
+              {empezado && !registrando && (
+                <Boton variante={terminado ? 'primario' : 'secundario'} onClick={cerrar}>Cerrar</Boton>
+              )}
             </div>
           </>
         )}

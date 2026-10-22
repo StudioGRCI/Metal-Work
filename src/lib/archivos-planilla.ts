@@ -1,4 +1,4 @@
-import type { ResultadoAccion } from '@/lib/acciones'
+import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANILLA_DIARIA, MAXIMO_MB_PLANILLA, TIPOS_ARCHIVO_PLANILLA } from '@/lib/dominio/planilla-diaria'
 import { createClient } from '@/lib/supabase/client'
 
@@ -24,7 +24,7 @@ export async function subirArchivoPlanilla(
   const ruta = `${planillaId}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
   const { error } = await supabase.storage.from(BUCKET_PLANILLA_DIARIA).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
-  if (error) return { ok: false, error: 'No se pudo subir el archivo. Revisa la señal y vuelve a intentar.' }
+  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   try {
     const resultado = await anotar(ruta)

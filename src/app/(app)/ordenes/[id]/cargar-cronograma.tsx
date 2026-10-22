@@ -9,7 +9,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
-import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
+import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { explicarFallo } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
@@ -17,6 +17,19 @@ import { fecha as fmtFecha, numero } from '@/lib/format'
 import { cargarCronograma } from './acciones-actividades'
 
 const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/**
+ * Por qué no quedó el Excel, sin repetir «No se pudo subir el archivo» y
+ * diciendo cómo se vuelve a intentar: la ventana ya se cerró, y lo que queda es
+ * subir otra vez el cronograma, que actualiza lo que ya estaba.
+ */
+function motivoDelExcel(error: string): string {
+  const motivo = error.replace(/^No se pudo subir el archivo\. /, '')
+  const otraVez = 'sube otra vez el cronograma con el mismo Excel; las actividades no se duplican.'
+  if (motivo.startsWith('Revisa la señal')) return `Revisa la señal y ${otraVez}`
+  if (motivo.startsWith('Inténtalo de nuevo')) return `Para guardarlo, ${otraVez} Si vuelve a pasar, avisa al administrador.`
+  return motivo
+}
 
 /**
  * Subir el cronograma de la orden desde un Excel: una fila por actividad, con
@@ -40,7 +53,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   // Lo del Excel va aparte: si no quedó, se lee como aviso y no como el éxito del cronograma.
-  const [excel, setExcel] = useState<{ ok: true } | { ok: false; error: string } | null>(null)
+  const [excel, setExcel] = useState<{ ok: true } | { ok: false; error: string } | { ok: false; incierto: true } | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
 
@@ -119,9 +132,13 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         if (guardarExcel && archivo) {
           try {
             const subida = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
-            guardado = subida.ok ? { ok: true } : { ok: false, error: subida.error }
+            guardado = subida.ok
+              ? { ok: true }
+              : subida.error === NO_SE_SABE_SI_QUEDO
+                ? { ok: false, incierto: true }
+                : { ok: false, error: motivoDelExcel(subida.error) }
           } catch {
-            guardado = { ok: false, error: 'No llegó la respuesta. Mira en Resumen si quedó antes de volver a subirlo.' }
+            guardado = { ok: false, incierto: true }
           }
         }
         setAviso(r.mensaje ?? 'Cronograma cargado.')
@@ -157,7 +174,16 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
                 .
               </>
             )}
-            {excel && !excel.ok && (
+            {excel && !excel.ok && 'incierto' in excel && (
+              <span className="font-medium text-aviso">
+                {' '}No se sabe si el Excel quedó guardado:{' '}
+                <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
+                  míralo en Resumen
+                </Link>{' '}
+                antes de volver a subirlo.
+              </span>
+            )}
+            {excel && !excel.ok && 'error' in excel && (
               <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
             )}
           </span>

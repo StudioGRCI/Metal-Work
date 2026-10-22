@@ -36,7 +36,12 @@ En `src/components/ui/`:
   con ratón (`pointer-fine:`): una prueba con Chromium sin `hasTouch` lee
   «haz clic». Donde el documento ya está puesto, el campo no aparece vacío
   como si faltara: «Cambiar el PDF» en la cabecera lo abre, y «No cambiarlo»
-  lo cierra. Lo único aparte es `SelectorFotos` (avance, vehículos,
+  lo cierra. Con `archivo` y `required`, el campo traba el envío también si
+  el archivo no sirve: el navegador revisa en el orden en que se ven y no
+  salta al primer campo vacío de abajo con el rojo fuera de la vista. Con dos
+  documentos del mismo nombre, se distinguen por la hora (la nota, el
+  `aria-label` de «Quitar» y su confirmación), y al quitar uno el foco vuelve
+  a la tarjeta. Lo único aparte es `SelectorFotos` (avance, vehículos,
   reportes, trabajos): varias fotos a la vez, cada una con su miniatura, su
   subida y su «Reintentar», HEIC y achicadas en el teléfono, cámara y
   galería. Habla igual: formatos y tope antes de elegir, el motivo con las

@@ -2,7 +2,7 @@
 
 import { CheckCircle2, ClipboardList, FileSpreadsheet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
@@ -43,6 +43,11 @@ export function ConteoInicial() {
   const hoy = hoyLima()
   const desde = sumarDias(hoy, -DIAS_DEL_CONTEO)
   const avisoFecha = motivoDeFechaDeConteo(fecha, hoy, desde) ?? avisoFechaServidor
+  // El rechazo apaga el campo del Excel, que tenía el foco: va a la fecha, que es lo que hay que cambiar.
+  const campoFecha = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (avisoFechaServidor) campoFecha.current?.focus()
+  }, [avisoFechaServidor])
   const enCurso = useRef(false)
   // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
   // no es de esta ventana, y al abrirla de nuevo no aparece.
@@ -58,6 +63,7 @@ export function ConteoInicial() {
     vuelta.current++
     setArchivo(null)
     setAvisoArchivo(null)
+    setAvisoFechaServidor(null)
     setFilas(null)
     setResultados({})
   }
@@ -164,7 +170,7 @@ export function ConteoInicial() {
               </a>
               <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
                 <Campo etiqueta="Fecha del conteo" htmlFor="conteo-inicial-fecha" requerido error={avisoFecha ?? undefined}>
-                  <Entrada id="conteo-inicial-fecha" type="date" value={fecha} min={desde} max={hoy} disabled={leyendo}
+                  <Entrada ref={campoFecha} id="conteo-inicial-fecha" type="date" value={fecha} min={desde} max={hoy} disabled={leyendo}
                     onChange={(e) => {
                       setFecha(e.target.value)
                       setAvisoFechaServidor(null)

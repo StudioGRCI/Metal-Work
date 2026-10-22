@@ -95,7 +95,8 @@ export function mensajeDeArchivo(error: { message: string }): string {
  * la de un permiso que faltaba: a Diseño, con el Excel del cronograma (2026-10-21).
  */
 export function motivoDeSubida(error: { message: string }): string {
-  return /fetch|network|load failed|timed? ?out|aborted/i.test(error.message)
-    ? 'Revisa la señal y vuelve a intentar.'
-    : mensajeDeArchivo(error)
+  if (/fetch|network|load failed|timed? ?out|aborted/i.test(error.message)) return 'Revisa la señal y vuelve a intentar.'
+  const motivo = mensajeDeArchivo(error)
+  // Detrás de «No se pudo subir…», sin repetir que no se guardó.
+  return motivo.startsWith('El archivo no se pudo guardar. ') ? motivo.slice('El archivo no se pudo guardar. '.length) : motivo
 }
