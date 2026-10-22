@@ -6,22 +6,28 @@ import { useState } from 'react'
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import type { ResultadoAccion } from '@/lib/acciones'
+import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { AreaSolicitante, OtParaLogistica } from '@/lib/datos/logistica'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { TipoDetraccion } from '@/lib/dominio/detraccion'
+import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useEnvio } from '@/lib/envio'
 
 import { SelectorProveedor } from '../selector-proveedor'
-import { emitirOrdenServicio } from './acciones'
+import { adjuntarDocumentoServicio, emitirOrdenServicio } from './acciones'
 import { SelectorDetraccion } from './selector-detraccion'
+
+const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
 /**
  * La orden de servicio: quién hace el trabajo, qué, para qué código interno, OT
- * o área, cuánto, cuándo y si lleva detracción.
+ * o área, cuánto, cuándo, si lleva detracción y, si ya está, su contrato.
  */
 export function NuevaOrdenServicio({
   proveedores,
@@ -42,12 +48,15 @@ export function NuevaOrdenServicio({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  // La OS entró pero su contrato no: se dice por qué y dónde adjuntarlo.
+  const [faltaContrato, setFaltaContrato] = useState<string | null>(null)
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
           setAviso(null)
+          setFaltaContrato(null)
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -58,6 +67,11 @@ export function NuevaOrdenServicio({
       {aviso && (
         <p role="status" className="basis-full text-sm text-exito">
           {aviso}
+        </p>
+      )}
+      {faltaContrato && (
+        <p role="alert" className="basis-full text-sm text-aviso">
+          {faltaContrato}
         </p>
       )}
       <Ventana
@@ -75,9 +89,10 @@ export function NuevaOrdenServicio({
           tipos={tipos}
           codigos={codigos}
           puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(mensaje) => {
+          alTerminar={(mensaje, sinContrato) => {
             setAbierta(false)
             setAviso(mensaje)
+            setFaltaContrato(sinContrato)
           }}
         />
       </Ventana>
@@ -100,17 +115,57 @@ function FormularioServicio({
   tipos: TipoDetraccion[]
   codigos: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
-  alTerminar: (mensaje: string) => void
+  alTerminar: (mensaje: string, faltaContrato: string | null) => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no duplica la orden.
+  // Decidido aquí: un reintento manda el mismo y la base no duplica la orden ni el contrato.
   const [id] = useState(() => crypto.randomUUID())
+  const [contratoId] = useState(() => crypto.randomUUID())
   const [proveedorId, setProveedorId] = useState('')
   const [ordenId, setOrdenId] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [dias, setDias] = useState(0)
   const [divisa, setDivisa] = useState('PEN')
   const [monto, setMonto] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(emitirOrdenServicio, (r) => alTerminar(r.mensaje ?? 'Orden de servicio emitida.'))
+
+  /**
+   * Emite la OS y, si se eligió, adjunta después su contrato con la función de
+   * los documentos de la OS (tipo CONTRATO, en `documentos-servicio/{OS}/…`).
+   * El archivo se revisa antes de emitir; si la OS entra y el contrato no, la
+   * OS queda emitida y se avisa para adjuntarlo desde su fila.
+   */
+  async function emitir(previo: unknown, datos: FormData): Promise<ResultadoAccion<{ faltaContrato: string }>> {
+    const elegido = datos.get('contrato')
+    datos.delete('contrato')
+    const contrato = elegido instanceof File && elegido.size > 0 ? elegido : null
+    if (contrato && !TIPOS_COMPROBANTE_PAGO[contrato.type]) return { ok: false, error: 'El contrato va en PDF o en foto (JPG, PNG o WEBP).' }
+    if (contrato && contrato.size > MAXIMO_MB_FINANZAS * 1024 * 1024) return { ok: false, error: `El contrato pesa más de ${MAXIMO_MB_FINANZAS} MB.` }
+
+    const emitida = await emitirOrdenServicio(previo, datos)
+    if (!emitida.ok || !contrato) return emitida
+    const documento = new FormData()
+    documento.set('id', contratoId)
+    documento.set('orden_servicio_id', id)
+    documento.set('tipo', 'CONTRATO')
+    documento.set('nombre', contrato.name)
+    const adjunto = await subirArchivoFinanzas(BUCKET_DOCUMENTOS_SERVICIO, id, contrato, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+      documento.set('ruta', ruta)
+      return adjuntarDocumentoServicio(null, documento)
+    })
+    if (adjunto.ok) return { ok: true, mensaje: `${emitida.mensaje ?? 'Orden de servicio emitida.'} Su contrato quedó adjunto.` }
+    // La ventana ya se cerró: el aviso no pide «vuelve a intentar», dice dónde adjuntarlo.
+    // Sin respuesta, el contrato pudo quedar: primero se mira (`subirArchivoFinanzas`).
+    const faltaContrato = adjunto.error.startsWith('No llegó la respuesta')
+      ? 'No llegó la respuesta al adjuntar el contrato: recarga la pantalla y mira en la fila de la orden si quedó; si no, adjúntalo con «Adjuntar documento».'
+      : `${
+          adjunto.error.startsWith('No se pudo subir')
+            ? 'El contrato no subió (revisa la señal).'
+            : `El contrato no se adjuntó: ${adjunto.error.charAt(0).toLowerCase()}${adjunto.error.slice(1).replace(/ Vuelve a intentar\.$/, '')}`
+        } Adjúntalo desde la fila de la orden, con «Adjuntar documento».`
+    return { ok: true, mensaje: emitida.mensaje, datos: { faltaContrato } }
+  }
+  const { alEnviar, enviando, error } = useEnvio(emitir, (r) =>
+    alTerminar(r.mensaje ?? 'Orden de servicio emitida.', r.datos?.faltaContrato ?? null),
+  )
 
   return (
     <form onSubmit={alEnviar} className="space-y-4">
@@ -225,6 +280,13 @@ function FormularioServicio({
         montoSinIgvPen={divisa === 'PEN' && monto !== '' ? Number(monto) : null}
         enDolares={divisa === 'USD'}
       />
+      <Campo
+        etiqueta="Contrato (opcional)"
+        htmlFor="os-contrato"
+        ayuda="Si llega después, se adjunta desde la fila de la orden."
+      >
+        <ElegirArchivo id="os-contrato" name="contrato" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} />
+      </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}

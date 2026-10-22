@@ -1,6 +1,7 @@
 'use client'
 
 import { FileUp } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import {
@@ -18,6 +19,8 @@ import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 const TIPOS = [
+  // La cotización o proforma del proveedor; antes se subía como «Orden de compra» u «Otro».
+  ['COTIZACION', 'Cotización del proveedor'],
   ['ORDEN_COMPRA', 'Orden de compra'],
   ['ORDEN_PAGO', 'Orden de pago'],
   ['ORDEN_SERVICIO', 'Orden de servicio'],
@@ -29,21 +32,29 @@ const TIPOS = [
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
-export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden }: {
+export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden, verAdquisiciones = false }: {
   ordenCompraId: string
   solicitudId: string
   /** El que pide la compra: FACTURA, o COMPROBANTE si es sin factura. */
   tipoInicial?: 'FACTURA' | 'COMPROBANTE'
   /** El número, el total con IGV y la moneda de la orden: el detector compara la factura con ellos. */
   orden?: { numero: string; total: number; moneda: string }
+  /** Si quien anexa entra a Adquisiciones (`adquisiciones.ver`): sin él, el enlace a la OC lo dejaría en la puerta. */
+  verAdquisiciones?: boolean
 }) {
   const [id, setId] = useState(solicitudId)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
   const detector = useDetectorDeFactura(ACEPTA_PDF, 20)
   const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
+  // La factura no alcanza para la OC, o la OC quedó pagada dos veces: el mensaje
+  // pide algo, no dice que todo salió bien.
+  const [revisar, setRevisar] = useState(false)
+  const [avisaTesoreria, setAvisaTesoreria] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
+    setRevisar(false)
+    setAvisaTesoreria(false)
     const archivo = datos.get('archivo')
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
@@ -59,6 +70,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     })
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
+    setRevisar(r.datos?.revisar ?? false)
+    setAvisaTesoreria(r.datos?.avisaTesoreria ?? false)
     setId(crypto.randomUUID())
     factura.vaciar()
     void detector.leer(undefined)
@@ -93,6 +106,18 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
       </>
     )}
     {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
-    {mensaje && <p role="status" className="text-xs text-exito sm:col-span-3">{mensaje}</p>}
+    {mensaje && (
+      <p role="status" className={`text-xs sm:col-span-3 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
+        {mensaje}
+        {revisar && verAdquisiciones && (
+          <>
+            {' '}
+            <Link href={`/adquisiciones${orden?.numero ? `?q=${encodeURIComponent(orden.numero)}` : ''}`} className="font-medium underline">
+              Ver la OC en Adquisiciones
+            </Link>
+          </>
+        )}
+      </p>
+    )}
   </form>
 }

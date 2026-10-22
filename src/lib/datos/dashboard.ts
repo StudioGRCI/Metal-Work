@@ -526,18 +526,24 @@ const CIFRAS = {
     },
   },
   adquisiciones_del_mes: {
-    ruta: '/adquisiciones',
+    ruta: '/adquisiciones?vista=facturas',
     calcular: async (c) => {
       const r = await c.supabase.from('adquisiciones').select('id', { count: 'exact', head: true }).gte('creado_en', c.mes)
       fallo(r)
       return { titulo: 'Facturas de compra del mes', valor: String(r.count ?? 0), pie: 'registradas en Adquisiciones', icono: Receipt }
     },
   },
+  // Contabilidad las carga en Adquisiciones (migración 20261020171000).
   guias_del_mes: {
-    ruta: '/compras/gestion',
+    ruta: '/adquisiciones',
     calcular: async (c) => {
-      const n = (await enGestion(c)).filter((g) => g.guia_cargada_en && g.guia_cargada_en.slice(0, 10) >= c.mes).length
-      return { titulo: 'Guías cargadas este mes', valor: String(n), pie: 'de las compras que recoge el conductor', icono: FileText }
+      const r = await c.supabase
+        .from('guias_remision_compra')
+        .select('id', { count: 'exact', head: true })
+        .is('anulada_en', null)
+        .gte('cargada_en', c.mes)
+      fallo(r)
+      return { titulo: 'Guías cargadas este mes', valor: String(r.count ?? 0), pie: 'de las compras que recoge el conductor', icono: FileText }
     },
   },
 

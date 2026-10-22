@@ -45,6 +45,10 @@ En la misma migración que la crea, sin excepción:
   `revoke all on function ... from public, anon;` y `grant execute` solo a
   quien corresponda. Una función de trigger se revoca también a
   `authenticated` — la llama el sistema, no la gente.
+- **La función que va en la expresión de un índice** (y las que ella llama) no
+  se revoca al rol que escribe en esa tabla, aunque sea un ayudante interno:
+  Postgres la evalúa con ese rol, y sin `execute` la tabla deja de aceptar las
+  escrituras de la gente (skill `esquema` › Trampas).
 - Dentro, el permiso se exige con `public.exigir_permiso('x.y')`, no se
   asume por quién la llama.
 - Las vistas que agregan datos llevan `alter view ... set (security_invoker = on)`

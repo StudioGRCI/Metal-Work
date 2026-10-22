@@ -3,6 +3,7 @@ import 'server-only'
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima, mesLargo } from '@/lib/format'
@@ -88,8 +89,8 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // La gestión de compras (migración 20261015140000): Logística, Contabilidad y
-  // el conductor cuentan cosas distintas de la misma lista, que se lee una vez.
+  // La gestión de compras (migración 20261015140000): Logística y el conductor
+  // cuentan cosas distintas de la misma lista, que se lee una vez.
   let gestion: ReturnType<typeof leerGestion> | null = null
   async function leerGestion() {
     const { data, error } = await supabase.rpc('compras_en_gestion')
@@ -99,18 +100,22 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   const enGestion = () => (gestion ??= leerGestion())
 
   // Logística: lo que Gerencia aprobó y todavía no está en la lista del conductor.
-  if (puede(perfil, 'compras.crear')) tareas.push({
+  if (puede(perfil, 'compras.programar_recojo')) tareas.push({
     clave: 'compras_por_programar', ruta: '/compras/gestion', tono: 'aviso',
     texto: n => plural(n, 'compra aprobada por programar con el conductor', 'compras aprobadas por programar con el conductor'),
     contar: async () => (await enGestion()).filter((c) => c.recojo === 'POR_RECOGER' && !c.en_lista).length,
   })
 
-  // Contabilidad: las que ya tienen peso y esperan su guía de remisión.
+  // Contabilidad: las que ya tienen peso y esperan su guía de remisión. La carga
+  // en Adquisiciones: la gestión ya no es suya (migración 20261020171000).
   if (puede(perfil, 'compras.guia_remision')) tareas.push({
-    clave: 'guias_por_cargar', ruta: '/compras/gestion', tono: 'aviso',
+    clave: 'guias_por_cargar', ruta: '/adquisiciones?situacion=guia', tono: 'aviso',
     texto: n => plural(n, 'guía de remisión por cargar', 'guías de remisión por cargar'),
-    contar: async () =>
-      (await enGestion()).filter((c) => c.recojo !== 'DEJADO' && (c.en_lista || c.recojo !== 'POR_RECOGER') && c.peso_kg !== null && !c.guia_id).length,
+    contar: async () => {
+      const { data, error } = await supabase.rpc('guias_por_emitir')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
   })
 
   // El conductor de Logística: lo que Logística le programó o lleva en camino.
@@ -726,6 +731,36 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       texto: n => plural(n, 'factura de compra por pagar', 'facturas de compra por pagar'),
       contar: async () => (await porPagar()).resto,
     })
+    // Las OC con boleta, que Tesorería paga directo (migración 20261020210000);
+    // la que tiene líneas sin precio espera a Logística, y la que trae su
+    // comprobante o ya tiene su factura registrada se paga por ella, en las
+    // facturas: ninguna se paga aquí. La que se pagó por su boleta y cuya
+    // factura la dejó pagada de más (o va en otra moneda y no toma ese pago
+    // sola) espera a Tesorería, que pide la devolución, la registra o la
+    // descuenta de otra factura, o pasa la factura en otra moneda al cambio:
+    // va aparte.
+    let boletas: Promise<{ porPagar: number; deMas: number }> | null = null
+    const conBoleta = () =>
+      (boletas ??= (async () => {
+        const { data, error } = await supabase.rpc('compras_con_boleta_por_pagar')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        const filas = data ?? []
+        return {
+          // La que el proveedor devolvió entera no se debe hasta que la vuelva a cobrar.
+          porPagar: filas.filter((c) => !c.cancelada && !c.sin_precio && !c.comprobante_en_camino && !c.factura && !devueltaEntera(c)).length,
+          deMas: filas.filter((c) => Number(c.de_mas ?? 0) > 0 || c.otra_moneda).length,
+        }
+      })())
+    tareas.push({
+      clave: 'compras_con_boleta_pagadas_de_mas', ruta: '/tesoreria/por-pagar', tono: 'peligro',
+      texto: n => plural(n, 'OC con boleta pagada de más o con factura en otra moneda', 'OC con boleta pagadas de más o con factura en otra moneda'),
+      contar: async () => (await conBoleta()).deMas,
+    })
+    tareas.push({
+      clave: 'compras_con_boleta_por_pagar', ruta: '/tesoreria/por-pagar', tono: 'aviso',
+      texto: n => plural(n, 'OC con boleta por pagar', 'OC con boleta por pagar'),
+      contar: async () => (await conBoleta()).porPagar,
+    })
   }
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({
     clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',
@@ -780,7 +815,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   // Contabilidad: las compras que todavía no tienen su factura registrada.
   if (puede(perfil, 'adquisiciones.registrar')) tareas.push({
-    clave: 'compras_sin_factura', ruta: '/adquisiciones', tono: 'aviso',
+    clave: 'compras_sin_factura', ruta: '/adquisiciones?situacion=por-facturar', tono: 'aviso',
     texto: n => plural(n, 'compra sin factura registrada', 'compras sin factura registrada'),
     contar: async () => {
       const { data, error } = await supabase.rpc('compras_sin_factura')

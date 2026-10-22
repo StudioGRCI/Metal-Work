@@ -204,3 +204,76 @@ export async function corregirOrdenServicio(_previo: unknown, formulario: FormDa
   revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: 'Orden de servicio corregida.' }
 }
+
+/** Adjuntan y anulan los documentos de una OS los mismos que la base: `puede_adjuntar_documento_servicio`. */
+const ADJUNTAN = ['compras.crear', 'tesoreria.pagar_servicios']
+const NO_ADJUNTA = 'Los documentos de la orden de servicio los adjuntan Logística y Tesorería.'
+
+function repintarDocumentos() {
+  revalidatePath('/compras/servicios')
+  revalidatePath('/tesoreria/pagos-de-servicio')
+  revalidatePath('/adquisiciones')
+}
+
+/**
+ * Anota la factura, la boleta, el recibo, el contrato u otro documento de una
+ * OS, ya subido a `documentos-servicio/{orden de servicio}/…` (migración
+ * 20261020210000). El número va solo con la factura, la boleta y el recibo. El
+ * id llega de la pantalla: un reintento no anota otro.
+ */
+export async function adjuntarDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ADJUNTA }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      orden_servicio_id: z.guid(),
+      tipo: z.enum(['FACTURA', 'BOLETA', 'RECIBO', 'CONTRATO', 'OTRO'], 'Elige qué documento es.'),
+      numero: z.string().trim().max(30, 'El número pasa de 30 caracteres.'),
+      nombre: z.string().trim().min(1, 'Adjunta el archivo.').max(200),
+      ruta: z.string().min(1, 'Adjunta el archivo.').max(200),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      orden_servicio_id: dato(formulario, 'orden_servicio_id'),
+      tipo: dato(formulario, 'tipo'),
+      numero: dato(formulario, 'numero'),
+      nombre: dato(formulario, 'nombre'),
+      ruta: dato(formulario, 'ruta'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el documento.' }
+  const d = analisis.data
+  const comprobante = d.tipo === 'FACTURA' || d.tipo === 'BOLETA' || d.tipo === 'RECIBO'
+  if (comprobante && d.numero.length < 3) return { ok: false, error: 'Escribe el número del comprobante con su serie, como F001-123.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('adjuntar_documento_servicio', {
+    p_id: d.id,
+    p_orden_servicio: d.orden_servicio_id,
+    p_tipo: d.tipo,
+    p_numero: comprobante ? d.numero : null,
+    p_nombre: d.nombre,
+    p_ruta: d.ruta,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'El documento no se anotó. Recarga la pantalla.' }
+  repintarDocumentos()
+  return { ok: true, mensaje: 'Documento adjunto a la orden de servicio.' }
+}
+
+/** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */
+export async function anularDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ADJUNTA }
+  const analisis = z
+    .object({ id: z.guid(), motivo: z.string().trim().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.') })
+    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_documento_servicio', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El documento no se anuló. Recarga la pantalla.' }
+  repintarDocumentos()
+  return { ok: true, mensaje: 'Documento anulado: queda en el historial con su motivo.' }
+}

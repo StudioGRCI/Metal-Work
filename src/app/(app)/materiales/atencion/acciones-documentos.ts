@@ -4,15 +4,17 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { TIPO_DOCUMENTO_COMPRA } from '@/lib/dominio/adquisiciones'
 import { normalizarNumeroFactura } from '@/lib/dominio/finanzas'
-import { hoyLima } from '@/lib/format'
+import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const FORMATO = z.object({
   id: z.guid(),
   orden_compra_id: z.guid(),
-  tipo: z.enum(['ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
+  // La cotización del proveedor tiene su tipo desde la migración 20261020170000.
+  tipo: z.enum(['COTIZACION', 'ORDEN_COMPRA', 'ORDEN_PAGO', 'ORDEN_SERVICIO', 'FACTURA', 'COMPROBANTE', 'OTRO']),
   nombre_archivo: z.string().trim().min(1).max(200),
   // La factura anexada lleva su número y su fecha (migración 20261016702000):
   // Contabilidad la registra con ellos.
@@ -25,10 +27,11 @@ const campo = (formulario: FormData, nombre: string) => {
   return typeof v === 'string' ? v : undefined
 }
 
+/** `revisar`: la factura que se anexó no alcanza para la OC y el anexo queda por revisar en Adquisiciones; `avisaTesoreria`: la OC se pagó por su boleta y esa factura la dejó pagada de más o va en otra moneda. */
 export async function registrarDocumentoCompra(
   _previo: unknown,
   formulario: FormData,
-): Promise<ResultadoAccion> {
+): Promise<ResultadoAccion<{ revisar: boolean; avisaTesoreria: boolean }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Adjuntar documentos de compra corresponde a Logística.' }
 
@@ -77,6 +80,28 @@ export async function registrarDocumentoCompra(
   if (archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
     return { ok: false, error: 'El archivo debe ser un PDF válido de hasta 20 MB.' }
   }
+  // El mismo PDF dos veces en la misma compra y con el mismo tipo (mismo nombre
+  // y mismo tamaño) es un toque de más: en Adquisiciones salía la misma
+  // cotización dos veces (2026-10-20). Con otro tipo sí entra: es la forma de
+  // corregir uno mal elegido, porque un documento adjunto no se edita ni se borra.
+  const { data: igual, error: errorIgual } = await supabase
+    .from('documentos_compra_material')
+    .select('tipo, creado_en')
+    .eq('orden_compra_id', datos.data.orden_compra_id)
+    .eq('nombre_archivo', datos.data.nombre_archivo)
+    .eq('tamano_bytes', archivo.size)
+    .eq('tipo', datos.data.tipo)
+    // El que Logística anuló por un número mal escrito se vuelve a anexar bien.
+    .is('anulado_en', null)
+    .limit(1)
+    .maybeSingle()
+  if (errorIgual) return { ok: false, error: mensajeDeError(errorIgual) }
+  if (igual) {
+    return {
+      ok: false,
+      error: `Ese PDF ya está adjunto a esta compra como «${TIPO_DOCUMENTO_COMPRA[igual.tipo] ?? igual.tipo}» desde el ${fecha(igual.creado_en)}: no hace falta subirlo otra vez. Si es otro documento, revisa que elegiste el archivo correcto.`,
+    }
+  }
 
   const { data: guardado, error } = await supabase.from('documentos_compra_material').insert({
     id: datos.data.id,
@@ -112,10 +137,68 @@ export async function registrarDocumentoCompra(
   revalidatePath('/compras')
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
+  // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
+  // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se
+  // pagó de más, y si va en otra moneda no lo toma sola: a Tesorería le llega el
+  // aviso. Cuenta lo neto: un pago que el proveedor devolvió entero no es pago. Lo dice la base con la misma regla; si no se pudo leer, no se afirma
+  // el paso siguiente.
+  const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
+  if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
+  const s = situacion?.[0]
+  const pagado = Number(s?.neto ?? 0) > 0
+  const revisar = Boolean(s && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false)
+  const deMas = Number(s?.de_mas ?? 0)
+  const m = s?.moneda === 'USD' ? 'USD' : 'PEN'
+  const avisaTesoreria = Boolean(s && !revisar && pagado && s.factura && (deMas > 0 || s.otra_moneda))
+  // Administración también anexa, pero no entra a Adquisiciones: el anexo lo anula Logística.
+  const anulaQuien = puede(perfil, 'adquisiciones.ver') ? 'anula el anexo en Adquisiciones › OC y OS, en la fila de la OC' : 'pide a Logística que anule el anexo en Adquisiciones'
+  const falta = Number(s?.factura_saldo ?? 0)
   return {
     ok: true,
-    mensaje: numeroFactura
-      ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`
-      : 'Documento adjuntado a la compra y disponible para Tesorería.',
+    datos: { revisar, avisaTesoreria },
+    mensaje: errorSituacion || !s
+      ? `Factura ${numeroFactura} adjuntada a la compra.`
+      : revisar
+        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagado ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
+      : pagado && s.factura && s.otra_moneda
+        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura va en otra moneda: no toma ese pago sola. Tesorería recibió el aviso para pasarlo al cambio o registrar la devolución.`
+      : pagado && s.factura && deMas > 0
+        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura ya estaba pagada o es por menos: se pagaron ${moneda(deMas, m)} de más. Tesorería recibió el aviso para pedir la devolución.`
+      : pagado && s.factura
+        ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya la tenía registrada: toma lo que Tesorería pagó por la boleta${falta > 0 ? `, y lo que falta (${moneda(falta, m)}) se paga por ella` : ''}.`
+      : pagado
+        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: cuando Contabilidad registre la factura, toma ese pago y solo se paga lo que falte.`
+      : s.factura
+        ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad ya la tenía registrada, y la OC se paga por ella en Cuentas por pagar.`
+        : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
   }
+}
+
+const ANULACION = z.object({
+  id: z.guid(),
+  motivo: z.string().trim().min(10, 'Cuenta por qué se anula, en 10 a 500 caracteres.').max(500, 'El motivo va en 10 a 500 caracteres.'),
+})
+
+/**
+ * Logística anula la factura o la boleta que anexó por error a una OC, con su
+ * motivo (migración 20261020210000): queda tachada como evidencia y deja de
+ * contar para el pago. Mismo permiso que la anexa (`compras.crear`); la base
+ * avisa a Tesorería y a Contabilidad si les cambia algo.
+ */
+export async function anularDocumentoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Anular un documento de compra corresponde a Logística.' }
+  const datos = ANULACION.safeParse({ id: formulario.get('id'), motivo: formulario.get('motivo') })
+  if (!datos.success) return { ok: false, error: datos.error.issues[0]?.message ?? 'Cuenta por qué se anula.' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_documento_compra', { p_id: datos.data.id, p_motivo: datos.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se confirmó la anulación. Recarga la pantalla antes de volver a intentar.' }
+  revalidatePath('/adquisiciones')
+  revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/compras')
+  revalidatePath('/ordenes/[id]', 'page')
+  return { ok: true, mensaje: 'Documento anulado: queda tachado con su motivo y ya no cuenta para el pago de la OC.' }
 }

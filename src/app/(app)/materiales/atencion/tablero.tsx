@@ -89,6 +89,7 @@ export function TableroMateriales({
   clavesDocumento,
   proveedores = [],
   puedeRegistrarProveedor = false,
+  puedeVerAdquisiciones = false,
   codigos = null,
 }: {
   lineas: LineaAtencionMaterial[]
@@ -110,6 +111,8 @@ export function TableroMateriales({
   /** El padrón activo, para elegir el proveedor de la orden de compra. */
   proveedores?: ProveedorParaCompra[]
   puedeRegistrarProveedor?: boolean
+  /** Entra a Adquisiciones: el aviso de un anexo por revisar enlaza a la OC. */
+  puedeVerAdquisiciones?: boolean
   /** Los códigos internos para buscar en la orden de compra; null si no se pudieron leer. */
   codigos?: CodigoParaElegir[] | null
 }) {
@@ -250,6 +253,7 @@ export function TableroMateriales({
                           ordenCompraId={compra.orden_compra_id}
                           solicitudId={clavesDocumento[compra.orden_compra_id] ?? ''}
                           tipoInicial={compra.con_factura ? 'FACTURA' : 'COMPROBANTE'}
+                          verAdquisiciones={puedeVerAdquisiciones}
                         />
                       ))}
                     </div>

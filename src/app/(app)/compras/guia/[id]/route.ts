@@ -9,10 +9,12 @@ import { createClient } from '@/lib/supabase/server'
  * Abrir la guía de remisión. El enlace firmado se pide en el momento del toque
  * y no al pintar la lista: el conductor deja la pantalla abierta toda la
  * mañana, y un enlace de hace una hora ya no abriría. Quién la ve lo deciden la
- * política de la guía y la de su PDF: Logística, Contabilidad y el conductor.
+ * política de la guía y la de su PDF (migración 20261020171000): Logística, el
+ * conductor, Contabilidad y quien sigue la compra en Adquisiciones. Vive fuera
+ * de la Gestión de compras porque la abren también quienes no entran a ella.
  */
-export async function GET(_request: Request, context: RouteContext<'/compras/gestion/guia/[id]'>) {
-  await exigirPermiso(['compras.crear', 'compras.guia_remision', 'compras.recojo'])
+export async function GET(_request: Request, context: RouteContext<'/compras/guia/[id]'>) {
+  await exigirPermiso(['compras.programar_recojo', 'compras.recojo', 'compras.guia_remision', 'adquisiciones.ver'])
   const { id } = await context.params
   if (!z.guid().safeParse(id).success) return NextResponse.json({ error: 'La guía de remisión no está disponible.' }, { status: 404 })
   const supabase = await createClient()

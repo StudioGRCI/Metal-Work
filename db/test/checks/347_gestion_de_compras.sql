@@ -1,7 +1,8 @@
 -- Gestión de compras (migración 20261015140000): Logística programa qué OC
--- recoge el conductor, en qué orden y con qué peso; Contabilidad ve la misma
--- lista y carga la guía de remisión; el conductor sale solo con lo programado
--- y ve su guía. Cada paso con el rol que lo da —nunca ADMIN— y `set local role
+-- recoge el conductor, en qué orden y con qué peso; Contabilidad carga la guía
+-- de remisión, desde Adquisiciones desde la migración 20261020171000, que deja
+-- la gestión para Logística y el conductor; el conductor sale solo con lo
+-- programado y ve su guía. Cada paso con el rol que lo da —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
 begin;
 
@@ -129,12 +130,12 @@ select test.debe_fallar($q$select public.programar_recojo(current_setting('prueb
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
-select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Almacén no ve la gestión', 'No tienes permiso');
+select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Almacén no ve la gestión', 'la ven Logística y el conductor');
 select test.afirmar((select count(*) from public.programacion_recojo) = 0, 'ni lee la lista del conductor');
 reset role;
 select pg_temp.como('supervisor');
 set local role authenticated;
-select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Supervisión tampoco', 'No tienes permiso');
+select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Supervisión tampoco', 'la ven Logística y el conductor');
 reset role;
 
 -- ============================================ 3. Logística programa: peso y lugar
@@ -158,8 +159,10 @@ reset role;
 
 select test.afirmar(pg_temp.avisos('conductor', 'Recojo programado') = 3,
   'al conductor le llega un aviso por OC, solo la primera vez que se programa');
-select test.afirmar(pg_temp.avisos('contabilidad', 'Guía de remisión por emitir') = 3,
-  'y a Contabilidad, para emitir la guía');
+select test.afirmar(pg_temp.avisos('contabilidad', 'Guía de remisión por emitir') = 3
+    and (select count(*) from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
+          and titulo like 'Guía de remisión por emitir%' and ruta = '/adquisiciones?situacion=guia') = 3,
+  'y a Contabilidad, para emitir la guía desde Adquisiciones');
 select test.afirmar(pg_temp.avisos('comprador', 'Recojo programado') = 0, 'a quien programa no le llega su propio aviso');
 
 -- Quitar de la lista: el peso se queda y las demás se corren.
@@ -213,8 +216,9 @@ select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current
 select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
   'T001-00000123', (now() at time zone 'America/Lima')::date, 'guia-t001-123.pdf');  -- respuesta perdida: no duplica
 select test.afirmar(
-  (select guia_numero = 'T001-00000123' and guia_id = current_setting('prueba.guia')::uuid and guias_anuladas = 0
-     from public.compras_en_gestion() where id = current_setting('prueba.oc2')::uuid),
+  (select numero = 'T001-00000123' from public.guias_remision_compra
+    where orden_compra_id = current_setting('prueba.oc2')::uuid and anulada_en is null and id = current_setting('prueba.guia')::uuid)
+  and (select count(*) from public.guias_remision_compra where orden_compra_id = current_setting('prueba.oc2')::uuid) = 1,
   'la guía queda en la OC, con el número en mayúsculas y sin espacios');
 select pg_temp.subir_pdf('oc2', 'guia2', 'contabilidad');
 select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('prueba.guia2')::uuid, current_setting('prueba.oc2')::uuid,
@@ -223,7 +227,7 @@ select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('p
 reset role;
 select test.afirmar(pg_temp.avisos('conductor', 'Guía de remisión lista') = 1, 'al conductor le avisan que su guía está lista');
 
--- La ven el conductor y Logística, con el PDF; Supervisión y Tesorería no.
+-- La ven el conductor y Logística, con el PDF, y quien lee Adquisiciones; Supervisión no.
 select pg_temp.como('conductor');
 set local role authenticated;
 select test.afirmar(
@@ -245,7 +249,8 @@ select test.afirmar(
 reset role;
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select test.afirmar((select count(*) from public.guias_remision_compra) = 0, 'Tesorería tampoco');
+select test.afirmar((select count(*) from public.guias_remision_compra where id = current_setting('prueba.guia')::uuid) = 1,
+  'Tesorería la ve en Adquisiciones');
 reset role;
 
 -- Con la guía emitida, el peso ya no cambia; el lugar sí.
@@ -282,13 +287,22 @@ select test.debe_fallar($q$select public.anular_guia_remision(current_setting('p
   'sin motivo no se anula', 'por qué');
 select public.anular_guia_remision(current_setting('prueba.guia')::uuid, 'Se emitió con el punto de llegada equivocado');
 select test.afirmar(
-  (select guia_id is null and guias_anuladas = 1 from public.compras_en_gestion() where id = current_setting('prueba.oc2')::uuid),
+  (select count(*) filter (where anulada_en is null) = 0 and count(*) filter (where anulada_en is not null) = 1
+     from public.guias_remision_compra where orden_compra_id = current_setting('prueba.oc2')::uuid),
   'anulada, la OC queda sin guía vigente y cuenta la anulada');
 select public.cargar_guia_remision(current_setting('prueba.guia2')::uuid, current_setting('prueba.oc2')::uuid,
   'T001-00000124', (now() at time zone 'America/Lima')::date, 'guia-t001-124.pdf');
 select test.afirmar(
-  (select guia_numero = 'T001-00000124' from public.compras_en_gestion() where id = current_setting('prueba.oc2')::uuid),
+  (select numero = 'T001-00000124' from public.guias_remision_compra
+    where orden_compra_id = current_setting('prueba.oc2')::uuid and anulada_en is null),
   'y se carga la buena');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(
+  (select guia_numero = 'T001-00000124' and guias_anuladas = 1 from public.compras_en_gestion()
+    where id = current_setting('prueba.oc2')::uuid),
+  'y Logística la ve en la gestión, con la anulada contada');
 reset role;
 select test.afirmar(pg_temp.avisos('conductor', 'Guía de remisión anulada') = 1, 'al conductor le avisan que la guía ya no vale');
 select test.debe_fallar(

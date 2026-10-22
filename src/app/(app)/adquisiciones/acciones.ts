@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -160,14 +161,65 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
-    .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
+    .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id)
+    .select('id, orden_compra_id, oc:ordenes_compra_materiales!adquisiciones_orden_compra_id_fkey(numero, referencia)').maybeSingle()
   if (errorRegistro) return { ok: false, error: `Comprobante en borrador: ${mensajeDeError(errorRegistro)}` }
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
+  const tomo = await loQueTomoDeLaBoleta(supabase, id, v.moneda)
+  // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
+  // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
+  if (ordenes.length === 0 && registrado.orden_compra_id) {
+    const oc = registrado.oc ? (registrado.oc.numero ?? `OC ${registrado.oc.referencia}`) : 'OC con boleta'
+    return {
+      ok: true,
+      mensaje: `Comprobante ${v.numero_documento} registrado y ligado a la ${oc}, a la que Logística lo anexó${tomo ?? ': se paga por él en Cuentas por pagar.'}`,
+    }
+  }
   const cuantas = ordenes.length
   const parcial = enParte.data.length > 0 ? ', como factura parcial: sus OC siguen esperando el resto' : ''
-  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}.` }
+  return { ok: true, mensaje: `Comprobante ${v.numero_documento} registrado${cuantas > 1 ? ` con ${cuantas} OC` : cuantas === 1 ? ' con su OC' : ''}${parcial}${tomo ?? '.'}` }
+}
+
+/**
+ * Si la factura que se acaba de registrar tomó lo que Tesorería ya pagó por la
+ * boleta de su OC (migración 20261020210000), cómo lo dice el aviso: lo que tomó,
+ * lo que le falta (que paga Tesorería), lo pagado de más o, si va en otra
+ * moneda, que no lo toma sola. Lo lee de `pago_directo_de_la_factura`, que
+ * Contabilidad puede llamar. `null` si no hay pago por la boleta que tomar; si
+ * no se pudo leer, lo dice y no adivina.
+ */
+async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createClient>>, id: string, codigo: 'PEN' | 'USD') {
+  const { data, error } = await supabase.rpc('pago_directo_de_la_factura', { p_factura: id })
+  if (error) {
+    console.error('No se pudo leer si la factura tomó lo pagado por la boleta', error)
+    return '. No se pudo leer si tomó lo que Tesorería pagó por la boleta: mírala en Cuentas por pagar.'
+  }
+  const filas = data ?? []
+  if (filas.length === 0) return null
+  // Con una OC la nombra; con varias, las suma.
+  const oc = filas.length === 1 ? `la ${filas[0].compra}` : 'sus OC con boleta'
+  const otra = filas.find((f) => f.otra_moneda)
+  if (otra) {
+    return `. Va en otra moneda que la ${otra.compra}, que Tesorería ya pagó por su boleta: no toma ese pago sola; Tesorería lo pasa al cambio o registra la devolución antes de pagar lo que falte.`
+  }
+  // `tomado` y `falta` van en la moneda de la factura; lo pagado de más, en la de cada OC.
+  const tomado = filas.reduce((suma, f) => suma + Number(f.tomado ?? 0), 0)
+  const falta = Number(filas[0].falta ?? 0)
+  const deMas = filas
+    .filter((f) => Number(f.de_mas ?? 0) > 0)
+    .map((f) => moneda(Number(f.de_mas), f.moneda === 'USD' ? 'USD' : 'PEN'))
+    .join(' y ')
+  if (tomado > 0) {
+    if (falta > 0) return `: tomó lo que Tesorería pagó por la boleta de ${oc}, ${moneda(tomado, codigo)}; le faltan ${moneda(falta, codigo)}, que Tesorería paga en Cuentas por pagar.`
+    if (deMas) return `: tomó ${moneda(tomado, codigo)} de lo que Tesorería pagó por la boleta de ${oc} y no le falta nada; se pagaron ${deMas} de más, y Tesorería pide la devolución.`
+    return `: tomó lo que Tesorería pagó por la boleta de ${oc}, ${moneda(tomado, codigo)}, y no le falta nada.`
+  }
+  if (deMas) {
+    return `. Tesorería ya la había pagado y también pagó ${filas.length === 1 ? `${oc} por su boleta` : oc}: se pagaron ${deMas} de más, y Tesorería pide la devolución.`
+  }
+  return null
 }
 
 export async function completarAdquisicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
@@ -182,7 +234,7 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (String.fromCharCode(...bytes.slice(0, 5)) !== '%PDF-') return { ok: false, error: 'El archivo no es un PDF válido.' }
   const db = await createClient()
   const { data: borrador, error: errorLectura } = await db.from('adquisiciones')
-    .select('id, registrado_por, estado').eq('id', id.data).maybeSingle()
+    .select('id, registrado_por, estado, moneda').eq('id', id.data).maybeSingle()
   if (errorLectura) return { ok: false, error: mensajeDeError(errorLectura) }
   if (!borrador || borrador.registrado_por !== perfil.id || borrador.estado !== 'BORRADOR') {
     return { ok: false, error: 'Solo quien creó este borrador puede completarlo.' }
@@ -206,7 +258,8 @@ export async function completarAdquisicion(_previo: unknown, formulario: FormDat
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
-  return { ok: true, mensaje: 'Comprobante completado y registrado.' }
+  const tomo = await loQueTomoDeLaBoleta(db, id.data, borrador.moneda === 'USD' ? 'USD' : 'PEN')
+  return { ok: true, mensaje: `Comprobante completado y registrado${tomo ?? '.'}` }
 }
 
 /**

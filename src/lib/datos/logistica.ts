@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
+import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 
@@ -40,7 +41,7 @@ export type OrdenCompraListada = {
   /** Compra insumos de RQ línea por línea: su código es el de cada insumo y se corrige en el RQ. */
   codigo_por_insumo: boolean
   /** Las facturas que Logística le anexó, con su número y su fecha; una OC puede ir en varias. */
-  facturas: { numero: string; fecha: string | null }[]
+  facturas: { id: string; numero: string; fecha: string | null }[]
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
 }
@@ -85,15 +86,16 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   // borrarla); se leen aparte, de a tandas para no alargar la URL.
   const ids = (data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id))
   const datosCompra = new Map<string, { con_factura: boolean; codigo_interno: string | null }>()
-  const facturasDe = new Map<string, { numero: string; fecha: string | null }[]>()
+  const facturasDe = new Map<string, { id: string; numero: string; fecha: string | null }[]>()
   for (let i = 0; i < ids.length; i += 150) {
     const [tanda, facturas] = await Promise.all([
       supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150)),
       supabase
         .from('documentos_compra_material')
-        .select('orden_compra_id, numero_documento, fecha_emision')
+        .select('id, orden_compra_id, numero_documento, fecha_emision')
         .eq('tipo', 'FACTURA')
         .not('numero_documento', 'is', null)
+        .is('anulado_en', null)
         .in('orden_compra_id', ids.slice(i, i + 150))
         .order('fecha_emision'),
     ])
@@ -102,7 +104,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
     for (const f of facturas.data ?? []) {
       if (!f.numero_documento) continue
-      facturasDe.set(f.orden_compra_id, [...(facturasDe.get(f.orden_compra_id) ?? []), { numero: f.numero_documento, fecha: f.fecha_emision }])
+      facturasDe.set(f.orden_compra_id, [...(facturasDe.get(f.orden_compra_id) ?? []), { id: f.id, numero: f.numero_documento, fecha: f.fecha_emision }])
     }
   }
   // Qué RQ atiende cada compra y con qué código interno: la OC que junta
@@ -263,6 +265,71 @@ export type OrdenServicioListada = {
   /** Vacío solo en las OS de antes de que se pidiera. */
   codigo_interno: string | null
   detraccion: DetraccionDeServicio
+  documentos: DocumentoDeServicio[]
+}
+
+/** La factura, la boleta, el recibo o el contrato de una OS, con su enlace (migración 20261020210000). */
+export type DocumentoDeServicio = {
+  id: string
+  tipo: string
+  numero: string | null
+  nombre: string
+  creado_en: string
+  /** Null si la firma falló o la política de quien mira no lo deja abrir: el documento se lista igual. */
+  url: string | null
+  /** Storage firmó la tanda y este archivo no estaba: hay que anularlo y adjuntarlo de nuevo. */
+  faltaArchivo: boolean
+}
+
+/**
+ * Los documentos vigentes de esas OS, por OS, con su enlace firmado. Quien no
+ * los puede ver (el RLS de la tabla) recibe la lista vacía.
+ */
+export async function documentosDeServicios(ids: string[]): Promise<Map<string, DocumentoDeServicio[]>> {
+  const mapa = new Map<string, DocumentoDeServicio[]>()
+  if (ids.length === 0) return mapa
+  const supabase = await createClient()
+  // De 150 en 150 para que la URL no crezca sin límite; las tandas van a la vez.
+  const tandas = Array.from({ length: Math.ceil(ids.length / 150) }, (_, i) => ids.slice(i * 150, i * 150 + 150))
+  const leidas = await Promise.all(
+    tandas.map(async (tanda) => {
+      const { data, error } = await supabase
+        .from('documentos_orden_servicio')
+        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
+        .in('orden_servicio_id', tanda)
+        .is('anulado_en', null)
+        .order('creado_en')
+      if (error) throw new Error(`No se pudieron leer los documentos de las órdenes de servicio: ${error.message}`)
+      return data ?? []
+    }),
+  )
+  const filas = leidas.flat()
+  const urls = new Map<string, string>()
+  const faltan = new Set<string>()
+  if (filas.length > 0) {
+    const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_SERVICIO).createSignedUrls([...new Set(filas.map((f) => f.ruta_storage))], 600)
+    // Sin enlace el documento se lista igual: se ve qué hay aunque no se abra. Si
+    // falló la tanda entera, no se sabe qué archivo falta y no se dice que falte.
+    if (error) console.error('No se pudieron firmar los documentos de las órdenes de servicio:', error.message)
+    for (const e of data ?? []) {
+      if (e.path && e.signedUrl) urls.set(e.path, e.signedUrl)
+      else if (e.path && e.error) faltan.add(e.path)
+    }
+  }
+  for (const f of filas) {
+    const lista = mapa.get(f.orden_servicio_id) ?? []
+    lista.push({
+      id: f.id,
+      tipo: f.tipo,
+      numero: f.numero,
+      nombre: f.nombre_archivo,
+      creado_en: f.creado_en,
+      url: urls.get(f.ruta_storage) ?? null,
+      faltaArchivo: faltan.has(f.ruta_storage),
+    })
+    mapa.set(f.orden_servicio_id, lista)
+  }
+  return mapa
 }
 
 /** Los tipos de servicio con detracción, con el porcentaje y el mínimo de SUNAT. */
@@ -334,6 +401,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   if (error) throw new Error(`No se pudieron leer las órdenes de servicio: ${error.message}`)
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
+  const documentos = await documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : [])))
   return (data ?? []).map((s) => ({
     id: s.id ?? '',
     numero: s.numero ?? '',
@@ -361,6 +429,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     atrasada: s.atrasada === true,
     codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
     detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos),
+    documentos: documentos.get(s.id ?? '') ?? [],
   }))
 }
 

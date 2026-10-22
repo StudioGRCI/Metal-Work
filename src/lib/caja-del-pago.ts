@@ -2,22 +2,28 @@ import 'server-only'
 
 import { z } from 'zod'
 
-import { MONTO, normalizarMonto } from '@/lib/dominio/caja'
+import { MONTO, normalizarMonto, type TipoDeLaCaja } from '@/lib/dominio/caja'
 
 /*
  * La cuenta de la caja que pide cada pago y cada cobro del sistema (migración
  * 20261019100000): la eligen en el formulario y la base deja ahí su movimiento.
  * Lo comparten las acciones de Tesorería, de recibos por honorarios y de la
- * planilla diaria, para que las cinco lean y avisen lo mismo.
+ * planilla diaria, para que todas lean y avisen lo mismo. La devolución del
+ * proveedor de una OC con boleta también entra a una cuenta (migración
+ * 20261020210000).
  */
 
-type Tipo = 'pago' | 'cobro'
+const ELIGE: Record<TipoDeLaCaja, string> = {
+  pago: 'Elige la cuenta de la que salió el pago.',
+  cobro: 'Elige la cuenta a la que entró el cobro.',
+  devolucion: 'Elige la cuenta a la que entró la devolución.',
+}
 
 /** Los dos campos que agrega la cuenta al formulario: cuál y, si es de otra moneda, cuánto salió o entró en ella. */
-export function camposDeLaCuenta(tipo: Tipo) {
-  const verbo = tipo === 'cobro' ? 'entró a' : 'salió de'
+export function camposDeLaCuenta(tipo: TipoDeLaCaja) {
+  const verbo = tipo === 'pago' ? 'salió de' : 'entró a'
   return {
-    caja_id: z.guid(tipo === 'cobro' ? 'Elige la cuenta a la que entró el cobro.' : 'Elige la cuenta de la que salió el pago.'),
+    caja_id: z.guid(ELIGE[tipo]),
     monto_cuenta: z.string().regex(/^(\d{1,9}(\.\d{1,2})?)?$/, `Escribe con números lo que ${verbo} la cuenta, como 3750.00.`),
   }
 }

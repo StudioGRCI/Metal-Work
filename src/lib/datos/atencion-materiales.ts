@@ -145,7 +145,7 @@ export async function cargarAtencionMateriales(permisos: {
       ? supabase.from('orden_compra_material_detalles').select('id, orden_compra_id, precio_unitario').in('orden_compra_id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
     idsCompra.length > 0 && (permisos.crearCompra || permisos.verCompras)
-      ? supabase.from('documentos_compra_material').select('orden_compra_id, tipo').in('orden_compra_id',idsCompra).in('tipo',['FACTURA','COMPROBANTE'])
+      ? supabase.from('documentos_compra_material').select('orden_compra_id, tipo').in('orden_compra_id',idsCompra).in('tipo',['FACTURA','COMPROBANTE']).is('anulado_en', null)
       : Promise.resolve({ data: [], error: null }),
     // Lo que el conductor dejó y si Almacén ya lo validó.
     idsCompra.length > 0 && (permisos.verCompras || permisos.recibir)

@@ -301,13 +301,14 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Logística decide qué OC recoge el conductor, en qué orden y con qué
-      // peso; Contabilidad emite con ese peso la guía de remisión y la carga en
-      // la misma pantalla (está también en Finanzas, con su permiso).
+      // peso. Es de Logística y del conductor, nada más (DKS, 2026-10-20):
+      // Contabilidad carga la guía de remisión desde Adquisiciones, y quien
+      // solo emite compras —Gerencia, Administración— no la abre.
       {
         titulo: 'Gestión de compras',
         ruta: '/compras/gestion',
         icono: Route,
-        permiso: 'compras.crear',
+        permiso: 'compras.programar_recojo',
         descripcion: 'Qué órdenes de compra recoge el conductor, en qué orden y con qué peso',
         disponible: true,
       },
@@ -317,7 +318,7 @@ export const NAVEGACION = [
         titulo: 'Recojos',
         ruta: '/recojos',
         icono: Truck,
-        permiso: ['compras.recojo', 'compras.crear'],
+        permiso: ['compras.recojo', 'compras.programar_recojo'],
         descripcion: 'Compras aprobadas por recoger y dejar en almacén',
         disponible: true,
       },
@@ -438,14 +439,6 @@ export const NAVEGACION = [
     titulo: 'Finanzas',
     items: [
       { titulo: 'Facturación', ruta: '/contabilidad/facturacion', icono: ReceiptText, permiso: 'contabilidad.facturar', descripcion: 'Las cotizaciones aprobadas, por código interno: registrar su factura', disponible: true },
-      {
-        titulo: 'Gestión de compras',
-        ruta: '/compras/gestion',
-        icono: Route,
-        permiso: 'compras.guia_remision',
-        descripcion: 'Las OC que recoge el conductor, con su peso: cargar su guía de remisión',
-        disponible: true,
-      },
       // Contabilidad responde por la detracción de cada orden de servicio.
       {
         titulo: 'Órdenes de servicio',
@@ -455,7 +448,7 @@ export const NAVEGACION = [
         descripcion: 'Si cada orden de servicio lleva detracción y de qué tipo según SUNAT',
         disponible: true,
       },
-      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Todo lo comprado, por factura: cada factura con sus OC y si calza con ellas', disponible: true },
+      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Cada OC y OS de su RQ a su pago, con sus documentos; y cada factura con sus OC', disponible: true },
       { titulo: 'Cuentas por cobrar', ruta: '/tesoreria/por-cobrar', icono: HandCoins, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de venta por código interno, cobradas con su voucher', disponible: true },
       { titulo: 'Cuentas por pagar', ruta: '/tesoreria/por-pagar', icono: CreditCard, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de compra, al contado o a crédito, pagadas con su voucher', disponible: true },
       { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
@@ -669,17 +662,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/adquisiciones', '/tesoreria/caja-diaria', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
   },
   // Primero Adquisiciones, lo que entra de Logística por factura, y encima de
-  // la facturación (DKS, 2026-10-20). Después las compras en su orden: la guía
-  // de remisión de cada OC que recoge el conductor y la detracción de las
-  // órdenes de servicio. El kardex lo consulta en lectura: ingresos con su
-  // guía, atenciones y egresos. Proveedores y el tipo de cambio —que registra
-  // ella— van en Consultas. Sin la cotización (la abre desde su factura en
-  // Facturación) ni los requerimientos, que no son de su trabajo (2026-10-20).
+  // la facturación (DKS, 2026-10-20). Después la detracción de las órdenes de
+  // servicio; la guía de remisión de cada OC que recoge el conductor la carga
+  // en Adquisiciones, en la fila de la OC (la Gestión de compras ya no es suya:
+  // es de Logística y el conductor, 2026-10-20). El kardex lo consulta en
+  // lectura: ingresos con su guía, atenciones y egresos. Proveedores y el tipo
+  // de cambio —que registra ella— van en Consultas. Sin la cotización (la abre
+  // desde su factura en Facturación) ni los requerimientos, que no son de su
+  // trabajo (2026-10-20).
   CONTABILIDAD: {
     grupos: [
       {
         titulo: 'Contabilidad',
-        rutas: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/compras/servicios'],
+        rutas: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios'],
       },
       // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
       {
@@ -687,7 +682,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
-    telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/almacen/kardex'],
+    telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios', '/almacen/kardex'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,

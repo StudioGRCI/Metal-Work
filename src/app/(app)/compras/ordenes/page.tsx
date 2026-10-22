@@ -28,6 +28,7 @@ function divisa(codigo: string) {
 export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
   const emite = puede(perfil, 'compras.crear')
+  const verAdquisiciones = puede(perfil, 'adquisiciones.ver')
   const [compras, proveedores, materiales, codigos] = await Promise.all([
     cargarOrdenesCompra(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
@@ -92,7 +93,7 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} correcciones={correcciones.get(c.id)} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -104,10 +105,12 @@ export default async function PaginaOrdenesCompra() {
 function FilaCompra({
   compra: c,
   emite,
+  verAdquisiciones,
   correcciones,
 }: {
   compra: OrdenCompraListada
   emite: boolean
+  verAdquisiciones: boolean
   correcciones: CorreccionVista[] | undefined
 }) {
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
@@ -171,9 +174,9 @@ function FilaCompra({
         <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
         {c.facturas.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
-            {/* Una OC puede tener dos facturas con el mismo número: el número solo no sirve de clave. */}
-            {c.facturas.map((f, i) => (
-              <li key={`${i}-${f.numero}`} className="tabular whitespace-nowrap">
+            {c.facturas.map((f) => (
+              // El mismo número puede ir anexado dos veces a la OC: la clave es el anexo.
+              <li key={f.id} className="tabular whitespace-nowrap">
                 {f.numero}
                 {f.fecha && <span className="text-texto-suave"> · {fecha(f.fecha)}</span>}
               </li>
@@ -207,6 +210,7 @@ function FilaCompra({
               entregada={Boolean(c.entregado_almacen_en)}
               total={c.con_factura ? Math.round((c.monto + igvCompra(c.monto)) * 100) / 100 : c.monto}
               moneda={c.moneda}
+              verAdquisiciones={verAdquisiciones}
             />
           )}
         </div>

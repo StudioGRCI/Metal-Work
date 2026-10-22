@@ -63,6 +63,7 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
       clavesDocumento={clavesDocumento}
       proveedores={proveedores}
       puedeRegistrarProveedor={puede(perfil, 'proveedores.editar')}
+      puedeVerAdquisiciones={puede(perfil, 'adquisiciones.ver')}
       codigos={codigos}
     />}
   </section>

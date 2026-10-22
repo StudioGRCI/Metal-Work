@@ -6,8 +6,11 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { camposDeLaCuenta, leerCuenta, montoDeLaCuenta, SIN_CAJA } from '@/lib/caja-del-pago'
 import { cajaTrasAnular, cajaTrasElPago } from '@/lib/datos/caja'
+import { nombreMoneda } from '@/lib/dominio/caja'
+import { moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/database'
 
 function dato(formulario: FormData, nombre: string) {
   const valor = formulario.get(nombre)
@@ -169,9 +172,481 @@ export async function anularPagoFactura(_previo: unknown, formulario: FormData):
 
   revalidatePath('/tesoreria/por-pagar')
   revalidatePath('/adquisiciones')
-  const caja = await cajaTrasAnular('PAGO_ADQUISICION', analisis.data.id, 'pago')
+  const [caja, quedo] = await Promise.all([
+    cajaTrasAnular('PAGO_ADQUISICION', analisis.data.id, 'pago'),
+    comoQuedaLaFactura(supabase, analisis.data.id),
+  ])
   revalidatePath('/tesoreria/caja-diaria')
-  return { ok: true, mensaje: `Pago anulado: la factura vuelve a su saldo. ${caja}`.trim() }
+  return { ok: true, mensaje: `${quedo} ${caja}`.trim() }
+}
+
+/**
+ * Lo que dice el aviso después de anular un pago de la factura, leído de la
+ * base: si la OC con boleta de la factura se había pagado de más por su boleta,
+ * la factura toma ahora ese pago (migración 20261020210000) y no vuelve a deber
+ * todo. Si no se pudo leer, no se adivina.
+ */
+async function comoQuedaLaFactura(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string): Promise<string> {
+  const { data: pago, error } = await supabase.from('pagos_adquisicion').select('adquisicion_id').eq('id', pagoId).maybeSingle()
+  if (error || !pago) {
+    if (error) console.error('No se pudo leer cómo quedó la factura del pago anulado', error)
+    return 'Pago anulado. No se pudo leer cómo quedó la factura: mírala en «Facturas por pagar».'
+  }
+  const [cuenta, deLaBoleta] = await Promise.all([
+    supabase.from('v_cuentas_pagar').select('saldo, moneda').eq('id', pago.adquisicion_id).maybeSingle(),
+    supabase
+      .from('pagos_adquisicion')
+      .select('id', { count: 'exact', head: true })
+      .eq('adquisicion_id', pago.adquisicion_id)
+      .not('pago_orden_compra_id', 'is', null)
+      .is('anulado_en', null),
+  ])
+  if (cuenta.error || !cuenta.data || deLaBoleta.error) {
+    console.error('No se pudo leer cómo quedó la factura del pago anulado', cuenta.error ?? deLaBoleta.error)
+    return 'Pago anulado. No se pudo leer cómo quedó la factura: mírala en «Facturas por pagar».'
+  }
+  const saldo = Number(cuenta.data.saldo ?? 0)
+  const m = cuenta.data.moneda === 'USD' ? 'USD' : 'PEN'
+  const falta = saldo > 0 ? `le faltan ${moneda(saldo, m)}` : 'queda pagada'
+  return (deLaBoleta.count ?? 0) > 0
+    ? `Pago anulado: la factura toma lo que se pagó por la boleta de su OC y ${falta}.`
+    : `Pago anulado: a la factura ${saldo > 0 ? `le faltan ${moneda(saldo, m)}` : 'no le falta nada'}.`
+}
+
+const NO_PAGA_COMPRAS = 'Los pagos de las OC con boleta los registra Tesorería.'
+
+function repintarPagosDeCompra() {
+  revalidatePath('/tesoreria/por-pagar')
+  revalidatePath('/adquisiciones')
+  revalidatePath('/compras/ordenes')
+  revalidatePath('/tesoreria/caja-diaria')
+}
+
+/**
+ * Tesorería paga una OC con boleta directo, como una OS (migración
+ * 20261020210000): con su voucher ya subido a `pagos-compras/{oc}/…`, desde la
+ * cuenta de la caja que eligió. Mismo permiso que `registrar_pago_compra`
+ * (`tesoreria.registrar_pagos`). El id llega de la pantalla: un reintento no
+ * registra otro.
+ */
+export async function registrarPagoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      orden_compra_id: z.guid(),
+      fecha_pago: z.iso.date('Elige el día del pago.'),
+      monto: z.coerce.number('Escribe lo que se pagó.').positive('Escribe lo que se pagó.').multipleOf(0.01, 'El importe va en dos decimales.'),
+      cancela: z.enum(['si', 'no'], 'Indica si este pago cancela la OC.'),
+      operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
+      comprobante: z.string().max(30, 'El número de la boleta pasa de 30 caracteres.'),
+      ruta: z.string().min(1, 'Adjunta el voucher del pago.').max(200),
+      ...camposDeLaCuenta('pago'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      orden_compra_id: dato(formulario, 'orden_compra_id'),
+      fecha_pago: dato(formulario, 'fecha_pago'),
+      monto: dato(formulario, 'monto'),
+      cancela: dato(formulario, 'cancela'),
+      operacion: dato(formulario, 'operacion'),
+      comprobante: dato(formulario, 'comprobante'),
+      ruta: dato(formulario, 'ruta'),
+      ...leerCuenta(formulario),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el pago.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_pago_compra', {
+    p_id: d.id,
+    p_orden_compra: d.orden_compra_id,
+    p_fecha_pago: d.fecha_pago,
+    p_monto: d.monto,
+    p_cancela: d.cancela === 'si',
+    p_operacion: d.operacion || null,
+    p_comprobante: d.comprobante || null,
+    p_ruta: d.ruta,
+    p_caja: d.caja_id,
+    p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }
+
+  // El pago que completa el total cancela la OC aunque se marcara «a cuenta»: lo dice la fila guardada.
+  // Si no se pudo leer, no se adivina con lo que marcó el formulario.
+  const [guardado, caja] = await Promise.all([
+    supabase.from('pagos_orden_compra').select('cancela').eq('id', d.id).maybeSingle(),
+    cajaTrasElPago('PAGO_ORDEN_COMPRA', d.id, d.caja_id, d.fecha_pago, 'pago'),
+  ])
+  repintarPagosDeCompra()
+  const pagado =
+    guardado.error || !guardado.data
+      ? 'Pago registrado.'
+      : guardado.data.cancela
+        ? 'Pago registrado: la OC queda pagada.'
+        : 'Pago a cuenta registrado.'
+  return { ok: true, mensaje: `${pagado} ${caja}`.trim() }
+}
+
+/**
+ * La OC con boleta de antes de la migración 20261020210000 se dio por pagada
+ * fuera del sistema. Si no se pagó, Tesorería la pasa a su lista y se paga como
+ * las de ahora. Mismo permiso que `pasar_compra_a_tesoreria`
+ * (`tesoreria.registrar_pagos`).
+ */
+export async function pasarCompraATesoreria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const analisis = z.object({ id: z.guid() }).safeParse({ id: dato(formulario, 'id') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('pasar_compra_a_tesoreria', { p_compra: analisis.data.id })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La OC no pasó a Cuentas por pagar. Recarga la pantalla.' }
+  repintarPagosDeCompra()
+  return { ok: true, mensaje: 'La OC pasó a Cuentas por pagar: ahí la pagas con su voucher.' }
+}
+
+/**
+ * Anular con su motivo un pago de OC con boleta mal registrado: el que no salió,
+ * o salió de otra cuenta o por otro monto. El que el proveedor devolvió no se
+ * anula (lo que salió, salió): se registra la devolución. La ventana lo pregunta
+ * primero y la acción no acepta otra respuesta, porque la pantalla no es la
+ * única puerta. Mismo permiso que `anular_pago_compra`.
+ */
+export async function anularPagoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const analisis = z
+    .object({ id: z.guid(), que_paso: z.literal('no_salio', 'Elige qué pasó con el pago.'), motivo: MOTIVO })
+    .safeParse({ id: dato(formulario, 'id'), que_paso: dato(formulario, 'que_paso'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_pago_compra', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El pago no se anuló. Recarga la pantalla.' }
+  const [caja, situacion] = await Promise.all([
+    cajaTrasAnular('PAGO_ORDEN_COMPRA', analisis.data.id, 'pago'),
+    situacionDeLaCompraDelPago(supabase, analisis.data.id),
+  ])
+  repintarPagosDeCompra()
+  return { ok: true, mensaje: `${queQuedaTrasAnular(situacion)} ${caja}`.trim() }
+}
+
+type SituacionDePago = Database['public']['Functions']['situacion_de_pago_de_compra']['Returns'][number]
+
+/** Cómo quedó el pago de la OC de ese pago, leído de la base; `null` si no se pudo leer. */
+async function situacionDeLaCompraDelPago(supabase: Awaited<ReturnType<typeof createClient>>, pagoId: string) {
+  const { data: pago, error } = await supabase.from('pagos_orden_compra').select('orden_compra_id').eq('id', pagoId).maybeSingle()
+  if (error || !pago) return null
+  return situacionDeLaCompra(supabase, pago.orden_compra_id)
+}
+
+/** Cómo quedó el pago de esa OC, leído de la base; `null` si no se pudo leer. */
+async function situacionDeLaCompra(supabase: Awaited<ReturnType<typeof createClient>>, compraId: string) {
+  const { data, error } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: compraId })
+  if (error) {
+    console.error('No se pudo leer cómo quedó el pago de la OC', error)
+    return null
+  }
+  return data?.[0] ?? null
+}
+
+/**
+ * Lo que dice el aviso después de anular un pago de OC con boleta: lo que la
+ * base dejó, no lo que se esperaba. Si su factura había tomado ese pago, deja de
+ * tomarlo y vuelve a deber lo que no cubren los otros pagos (migración
+ * 20261020210000). Si no se pudo leer, no se adivina.
+ */
+function queQuedaTrasAnular(s: SituacionDePago | null): string {
+  if (!s) return 'Pago anulado.'
+  const m = s.moneda === 'USD' ? 'USD' : 'PEN'
+  // La factura que Logística anexó es de otras OC y no alcanza para esta: la OC
+  // se sigue pagando por su boleta cuando se anule ese anexo.
+  if (s.en_camino && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false) {
+    return `Pago anulado. Ojo: la factura ${s.en_camino} anexada a esta OC, que Contabilidad registró para otras OC, no alcanza para ella; la OC se paga por su boleta cuando Logística anule ese anexo.`
+  }
+  // Lo que queda pagado por la boleta espera a su factura en otra moneda: o se lo pasa al cambio, o se registra la devolución.
+  if (s.otra_moneda) {
+    return `Pago anulado, pero quedan ${moneda(Number(s.sin_tomar ?? 0), m)} pagados por la boleta sin pasar a su factura ${s.otra_factura ?? s.factura}: en «OC con boleta», «La factura lo toma al cambio» o «Registrar devolución».`
+  }
+  // La factura en otra moneda no toma nada de un pago anulado (lo que tomaba al cambio se deshizo con él): le falta en su moneda.
+  if (Number(s.otra_saldo ?? 0) > 0 && s.otra_factura) {
+    const otra = s.moneda === 'USD' ? 'PEN' : 'USD'
+    return `Pago anulado: su factura ${s.otra_factura} ya no toma nada de este pago y le faltan ${moneda(Number(s.otra_saldo), otra)}, que se pagan en «Facturas por pagar».`
+  }
+  if (s.factura) {
+    const deMas = Number(s.de_mas ?? 0)
+    if (deMas > 0) {
+      return `Pago anulado, pero la OC sigue pagada de más: ${moneda(deMas, m)}. Cuando el proveedor los devuelva, regístralo con «Registrar devolución».`
+    }
+    const saldo = Number(s.factura_saldo ?? 0)
+    if (saldo <= 0) return `Pago anulado: la OC sigue pagada por su factura ${s.factura}.`
+    return `Pago anulado: su factura ${s.factura} ya no toma ese pago y le faltan ${moneda(saldo, m)}: se pagan en «Facturas por pagar».`
+  }
+  const n = s.pagos_vigentes ?? 0
+  // El comprobante que el proveedor entregó y Contabilidad todavía no registra: registrado, toma los pagos que queden.
+  if (s.en_camino) {
+    const quien = s.en_camino_origen === 'BORRADOR' ? 'Contabilidad lo tiene en borrador' : 'Logística lo anexó'
+    return `Pago anulado: la OC se paga por su comprobante ${s.en_camino} (${quien}) en «Facturas por pagar» cuando Contabilidad lo registre.${
+      n > 0 ? ' Registrado, toma lo que queda pagado por la boleta.' : ''
+    }`
+  }
+  if (s.cancelada) {
+    return Number(s.saldo ?? 0) <= 0
+      ? 'Pago anulado. La OC sigue pagada: sus otros pagos cubren el total.'
+      : 'Pago anulado. La OC sigue pagada: otro de sus pagos la dio por cancelada.'
+  }
+  return `Pago anulado: a la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
+}
+
+/**
+ * Tesorería registra lo que el proveedor de una OC con boleta le devolvió de lo
+ * pagado por la boleta (undécima vuelta): con su constancia ya subida a
+ * `pagos-compras/{oc}/…` y la cuenta a la que entró; la base deja ahí su
+ * ingreso y rehace lo que la factura toma. Sin factura, si queda algo pagado
+ * sin llegar al total, Tesorería dice si con eso la OC queda pagada (`deja`:
+ * «si» o «no»; la base exige la respuesta). Mismo permiso que
+ * `registrar_devolucion_compra` (`tesoreria.registrar_pagos`, y
+ * `tesoreria.caja`, que mueve la caja). El id llega de la pantalla: un
+ * reintento no registra otra.
+ */
+export async function registrarDevolucionCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  if (!puede(perfil, 'tesoreria.caja')) return { ok: false, error: SIN_CAJA }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      orden_compra_id: z.guid(),
+      fecha: z.iso.date('Elige el día en que entró la devolución.'),
+      monto: z.coerce
+        .number('Escribe lo que devolvió el proveedor.')
+        .positive('Escribe lo que devolvió el proveedor.')
+        .multipleOf(0.01, 'El importe va en dos decimales.'),
+      operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
+      ruta: z.string().min(1, 'Adjunta la constancia de la devolución.').max(200),
+      deja: z.enum(['', 'si', 'no'], 'Di si con lo que queda la OC queda pagada.'),
+      ...camposDeLaCuenta('devolucion'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      orden_compra_id: dato(formulario, 'orden_compra_id'),
+      fecha: dato(formulario, 'fecha'),
+      monto: dato(formulario, 'monto'),
+      operacion: dato(formulario, 'operacion'),
+      ruta: dato(formulario, 'ruta'),
+      deja: dato(formulario, 'deja'),
+      ...leerCuenta(formulario),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la devolución.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('registrar_devolucion_compra', {
+    p_id: d.id,
+    p_orden_compra: d.orden_compra_id,
+    p_fecha: d.fecha,
+    p_monto: d.monto,
+    p_operacion: d.operacion || null,
+    p_ruta: d.ruta,
+    p_caja: d.caja_id,
+    p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
+    p_deja_pagada: d.deja === '' ? null : d.deja === 'si',
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'La devolución no se registró. Recarga la pantalla.' }
+
+  const [caja, situacion] = await Promise.all([
+    cajaTrasElPago('DEVOLUCION_ORDEN_COMPRA', d.id, d.caja_id, d.fecha, 'devolucion'),
+    situacionDeLaCompra(supabase, d.orden_compra_id),
+  ])
+  repintarPagosDeCompra()
+  return { ok: true, mensaje: `Devolución registrada. ${queQuedaTrasDevolver(situacion)} ${caja}`.trim() }
+}
+
+/** Anular con su motivo una devolución mal registrada: su ingreso sale de la caja. Mismo permiso que `anular_devolucion_compra`. */
+export async function anularDevolucionCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anular_devolucion_compra', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La devolución no se anuló. Recarga la pantalla.' }
+  const { data: devolucion, error: errorDevolucion } = await supabase
+    .from('devoluciones_orden_compra')
+    .select('orden_compra_id')
+    .eq('id', analisis.data.id)
+    .maybeSingle()
+  if (errorDevolucion) console.error('anularDevolucionCompra: no se pudo leer la devolución anulada', errorDevolucion)
+  const [caja, situacion] = await Promise.all([
+    cajaTrasAnular('DEVOLUCION_ORDEN_COMPRA', analisis.data.id, 'devolucion'),
+    devolucion ? situacionDeLaCompra(supabase, devolucion.orden_compra_id) : Promise.resolve(null),
+  ])
+  repintarPagosDeCompra()
+  const sinLeer = situacion ? '' : 'No se pudo leer cómo quedó la OC: mírala en «OC con boleta».'
+  return { ok: true, mensaje: `Devolución anulada. ${queQuedaTrasDevolver(situacion) || sinLeer} ${caja}`.trim() }
+}
+
+/**
+ * Lo que dice el aviso después de registrar o anular una devolución, leído de
+ * la base: lo pagado de más que queda, lo que le falta a su factura (también a
+ * la de otra moneda que ya no espera nada de la boleta), lo que queda para la
+ * factura que falta o, sin factura, si la OC está pagada o lo que le queda por
+ * pagar. Si no se pudo leer, no se adivina.
+ */
+function queQuedaTrasDevolver(s: SituacionDePago | null): string {
+  if (!s) return ''
+  const m = s.moneda === 'USD' ? 'USD' : 'PEN'
+  const deMas = Number(s.de_mas ?? 0)
+  if (deMas > 0) return `Quedan ${moneda(deMas, m)} pagados de más.`
+  if (s.otra_moneda) {
+    return `Quedan ${moneda(Number(s.sin_tomar ?? 0), m)} pagados por la boleta sin pasar a su factura ${s.otra_factura ?? s.factura}.`
+  }
+  if (s.factura) {
+    const saldo = Number(s.factura_saldo ?? 0)
+    if (saldo > 0) {
+      return `Su factura ${s.factura} ahora toma ${moneda(Number(s.aplicado ?? 0), m)} y le faltan ${moneda(saldo, m)}, que se pagan en «Facturas por pagar».`
+    }
+    // Su factura en otra moneda ya no espera nada de la boleta: debe lo suyo.
+    const otraSaldo = Number(s.otra_saldo ?? 0)
+    if (otraSaldo > 0 && s.otra_factura) {
+      const otra = m === 'USD' ? 'PEN' : 'USD'
+      return `Su factura ${s.otra_factura}, en ${nombreMoneda(otra)}, ya no espera nada de lo pagado por la boleta: le faltan ${moneda(otraSaldo, otra)}, que se pagan en «Facturas por pagar».`
+    }
+    // Sus facturas la cubren en parte: nunca hubo nada pagado de más, lo que queda es para la que falta.
+    if (!s.entera) {
+      const sinTomar = Number(s.sin_tomar ?? 0)
+      return sinTomar > 0
+        ? `Quedan ${moneda(sinTomar, m)} pagados por la boleta, que tomará la factura que falta.`
+        : 'No queda nada pagado por la boleta para la factura que falta: se pagará por ella.'
+    }
+    return 'Ya no queda nada pagado de más.'
+  }
+  if (s.cancelada) return 'La OC queda pagada.'
+  // Como la tarjeta: devuelta entera y sin comprobante en camino, no se le debe hasta que la vuelva a cobrar.
+  if (!s.en_camino && Number(s.neto ?? 0) <= 0 && Number(s.devuelto ?? 0) > 0) {
+    return 'El proveedor devolvió todo lo pagado: la OC queda devuelta y se paga de nuevo solo si te la vuelve a cobrar.'
+  }
+  return `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
+}
+
+/**
+ * Tesorería pasa a una factura lo pagado por la boleta (undécima vuelta): a su
+ * factura en otra moneda, al cambio que reconoce el proveedor, o a otra factura
+ * suya en que descuenta lo pagado de más, con la nota de crédito o el documento
+ * del descuento ya subido a `pagos-facturas/{factura}/…` (DKS, 2026-10-21). No
+ * mueve la caja: el dinero ya salió. Mismo permiso que `tomar_pago_de_la_boleta`
+ * (`tesoreria.registrar_pagos`). El id llega de la pantalla: un reintento no lo
+ * pasa dos veces.
+ */
+export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const importe = (que: string) =>
+    z.coerce.number(`Escribe ${que}.`).positive(`Escribe ${que}.`).multipleOf(0.01, 'Los importes van en dos decimales.')
+  const analisis = z
+    .object({
+      id: z.guid(),
+      orden_compra_id: z.guid(),
+      factura_id: z.guid('Elige la factura.'),
+      monto_boleta: importe('lo que sale de lo pagado por la boleta'),
+      monto_factura: importe('lo que toma la factura'),
+      ruta: z.string().min(1).max(200).optional(),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      orden_compra_id: dato(formulario, 'orden_compra_id'),
+      factura_id: dato(formulario, 'factura_id'),
+      monto_boleta: dato(formulario, 'monto_boleta'),
+      monto_factura: dato(formulario, 'monto_factura'),
+      ruta: dato(formulario, 'ruta') || undefined,
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los montos.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tomar_pago_de_la_boleta', {
+    p_id: d.id,
+    p_compra: d.orden_compra_id,
+    p_factura: d.factura_id,
+    p_monto_boleta: d.monto_boleta,
+    p_monto_factura: d.monto_factura,
+    p_ruta: d.ruta,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'La factura no tomó lo pagado por la boleta. Recarga la pantalla.' }
+  repintarPagosDeCompra()
+  return { ok: true, mensaje: await loQueTomoLaFactura(supabase, d) }
+}
+
+/** Lo que dice el aviso después de pasar lo pagado por la boleta a una factura, leído de la base. */
+async function loQueTomoLaFactura(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  d: { factura_id: string; orden_compra_id: string; monto_boleta: number; monto_factura: number },
+): Promise<string> {
+  const [factura, cuenta, oc] = await Promise.all([
+    supabase.from('adquisiciones').select('numero_documento, moneda').eq('id', d.factura_id).maybeSingle(),
+    supabase.from('v_cuentas_pagar').select('saldo').eq('id', d.factura_id).maybeSingle(),
+    supabase.from('ordenes_compra_materiales').select('moneda').eq('id', d.orden_compra_id).maybeSingle(),
+  ])
+  const error = factura.error ?? cuenta.error ?? oc.error
+  if (error || !factura.data || !cuenta.data || !oc.data) {
+    if (error) console.error('No se pudo leer cómo quedó la factura que tomó lo pagado por la boleta', error)
+    return 'Listo: la factura tomó lo pagado por la boleta. Mírala en «Facturas por pagar».'
+  }
+  const mf = factura.data.moneda === 'USD' ? 'USD' : 'PEN'
+  const mo = oc.data.moneda === 'USD' ? 'USD' : 'PEN'
+  // En otra moneda, con el cambio que salió de los dos montos: soles por dólar.
+  const cambio =
+    mf === mo
+      ? ''
+      : ` (${moneda(d.monto_boleta, mo)}, a S/ ${(mf === 'USD' ? d.monto_boleta / d.monto_factura : d.monto_factura / d.monto_boleta).toFixed(3)} por dólar)`
+  const saldo = Number(cuenta.data.saldo ?? 0)
+  const resto = saldo > 0 ? ` Le faltan ${moneda(saldo, mf)}: se pagan en «Facturas por pagar».` : ' Queda pagada.'
+  return `La factura ${factura.data.numero_documento} toma ${moneda(d.monto_factura, mf)} de lo pagado por la boleta${cambio}.${resto}`
+}
+
+/**
+ * Deshacer lo que Tesorería pasó a mano de la boleta a una factura: la factura
+ * vuelve a deberlo y lo pagado por la boleta queda sin pasar a ninguna. Mismo
+ * permiso que `soltar_pago_de_la_boleta` (`tesoreria.registrar_pagos`).
+ */
+export async function soltarPagoDeLaBoleta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tesoreria.registrar_pagos')) return { ok: false, error: NO_PAGA_COMPRAS }
+  const analisis = z
+    .object({ orden_compra_id: z.guid(), factura_id: z.guid(), motivo: z.string().min(10, 'Cuenta por qué se deshace, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.') })
+    .safeParse({ orden_compra_id: dato(formulario, 'orden_compra_id'), factura_id: dato(formulario, 'factura_id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('soltar_pago_de_la_boleta', { p_compra: d.orden_compra_id, p_factura: d.factura_id, p_motivo: d.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.factura_id) return { ok: false, error: 'La toma no se deshizo. Recarga la pantalla.' }
+  repintarPagosDeCompra()
+  const [factura, cuenta] = await Promise.all([
+    supabase.from('adquisiciones').select('numero_documento, moneda').eq('id', d.factura_id).maybeSingle(),
+    supabase.from('v_cuentas_pagar').select('saldo').eq('id', d.factura_id).maybeSingle(),
+  ])
+  if (factura.error || cuenta.error || !factura.data || !cuenta.data) {
+    if (factura.error || cuenta.error) console.error('soltarPagoDeLaBoleta: no se pudo leer cómo quedó la factura', factura.error ?? cuenta.error)
+    return { ok: true, mensaje: 'Toma deshecha: lo pagado por la boleta queda sin pasar a ninguna factura. No se pudo leer cuánto debe ahora la factura: mírala en «Facturas por pagar».' }
+  }
+  const m = factura.data.moneda === 'USD' ? 'USD' : 'PEN'
+  return {
+    ok: true,
+    mensaje: `Toma deshecha: la factura ${factura.data.numero_documento} vuelve a deber ${moneda(Number(cuenta.data.saldo ?? 0), m)}, y lo pagado por la boleta queda sin pasar a ninguna factura.`,
+  }
 }
 
 const NO_PAGA_SERVICIOS = 'Los pagos de servicio los registra Tesorería.'
