@@ -12,6 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { useCursorAlRechazo } from '@/lib/envio'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
@@ -53,14 +54,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [numeroEscrito, setNumeroEscrito] = useState('')
   const numeroFinal = comoQuedaElNumero(numeroEscrito)
   const [pendiente, iniciar] = useTransition()
-  // Mientras se envía, los campos están trabados y no reciben el cursor: el que
-  // rechazó la base se enfoca cuando vuelven a estar libres.
-  const enfocarAlVolver = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    if (pendiente) return
-    enfocarAlVolver.current?.focus()
-    enfocarAlVolver.current = null
-  }, [pendiente])
+  // Al volver de un rechazo, el cursor va al número o al aviso.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(pendiente, errorNumero ?? error, () => (errorNumero ? campoNumero.current : avisoError.current))
   const router = useRouter()
   const enCurso = useRef(false)
   const [clienteId, setClienteId] = useState('')
@@ -198,7 +194,6 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         if (!r.ok) {
           if (/número de la (OT|orden)|^Ya hay una orden de trabajo/.test(r.error)) {
             setErrorNumero(r.error)
-            enfocarAlVolver.current = campoNumero.current
           } else {
             setError(r.error)
           }
@@ -475,7 +470,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       </fieldset>
 
       {error && (
-        <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
+        <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
           {error}
         </p>
       )}

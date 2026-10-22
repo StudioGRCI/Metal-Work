@@ -139,6 +139,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   botón desactivado y el texto todavía en el campo.
 - `useActionState` sí desactiva su botón a tiempo, pero también vacía el
   formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
+- **El cursor vuelve a donde está el problema después del rechazo**, con
+  `useCursorAlRechazo` (`src/lib/envio.ts`): al campo que lo causó, o al aviso
+  (`tabIndex={-1}`) si no es de un campo. No se llama a `focus()` dentro del
+  `alEnviar`: mientras envía, el `<fieldset disabled>` no acepta el foco y se
+  pierde sin aviso (el banco de Administración lo vio el 2026-10-22).
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en

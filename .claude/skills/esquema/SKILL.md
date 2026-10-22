@@ -223,7 +223,10 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   (lo vieron los auditores el 2026-10-22). Va como disparador `before insert or
   update of <columnas>` que juzga solo el valor nuevo o el que cambió
   (`fn_archivo_no_vacio`), y el check prueba con una fila vieja sembrada con
-  `session_replication_role = replica`.
+  `session_replication_role = replica`. El tamaño que juzga es el que guardó
+  Storage (`storage.objects.metadata->>'size'`), no el que manda el navegador:
+  quien llama a la función puede declarar 4096 bytes de un archivo vacío, o no
+  declarar nada. El disparador anota el tamaño real encima del declarado.
 
 - **Redefinir una función que producción pudo cambiar a mano.** Una migración
   que lleva la función entera pisa sin aviso un arreglo pegado en el editor de

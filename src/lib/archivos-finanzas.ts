@@ -26,6 +26,7 @@ export async function subirArchivoFinanzas(
   if (!extension) {
     return { ok: false, error: Object.keys(tipos).length === 1 ? 'Adjunta el PDF.' : 'Adjunta un PDF o una foto (JPG, PNG o WEBP).' }
   }
+  if (archivo.size === 0) return { ok: false, error: 'El archivo está vacío: elige otro.' }
   if (archivo.size > MAXIMO_MB_FINANZAS * 1024 * 1024) return { ok: false, error: `El archivo pesa más de ${MAXIMO_MB_FINANZAS} MB.` }
 
   const ruta = `${carpeta}/${crypto.randomUUID()}.${extension}`

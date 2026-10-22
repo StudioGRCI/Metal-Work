@@ -16,9 +16,9 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
-import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, OTRO_ARCHIVO_EN_LA_RUTA, subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDeInsumos, emitirCompraDirecta } from './acciones'
@@ -71,6 +71,12 @@ function lineasDeInsumos(insumos: InsumoParaCompra[], delCatalogo: Set<string>):
 }
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
+
+/** «No se pudo cargar el archivo. Revisa la señal…» → «no se pudo cargar el archivo», para ir dentro de otra oración. */
+function primeraOracion(texto: string) {
+  const o = texto.split(/(?<=[.!?])\s/)[0].replace(/[.!?]$/, '')
+  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(o) ? o[0].toLowerCase() + o.slice(1) : o
+}
 
 async function esPdf(archivo: File) {
   return archivo.size > 0 && archivo.size <= 20 * 1024 * 1024 && (await archivo.slice(0, 5).text()) === '%PDF-'
@@ -267,7 +273,7 @@ function FormularioCompraDirecta({
     setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, [campo]: valor } : l)))
   }
 
-  const { alEnviar, enviando, error } = useEnvio(
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
     async (_previo, datos) => {
       const factura = datos.get('factura')
       datos.delete('factura')
@@ -324,14 +330,14 @@ function FormularioCompraDirecta({
       // saldría dos veces.
       if (!adjunta.ok) {
         aRevisar.current = true
-        if (adjunta.error.startsWith(NO_SE_CONFIRMO)) {
+        if (adjunta.error.startsWith(NO_SE_CONFIRMO) || adjunta.error === OTRO_ARCHIVO_EN_LA_RUTA) {
           return {
             ok: true,
             mensaje: `${emitida.mensaje} No se sabe si ${nombre.toLowerCase()} quedó adjunt${o}: recarga la lista y mira si está antes de adjuntarl${o} otra vez.`,
           }
         }
-        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : adjunta.error
-        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó (${motivo}): adjúntal${o} desde la lista.` }
+        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : primeraOracion(adjunta.error)
+        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó: ${motivo}. Adjúntal${o} desde la lista.` }
       }
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },
@@ -339,6 +345,10 @@ function FormularioCompraDirecta({
   )
 
   const listas = lineas.every((l) => l.material_id && Number(l.cantidad) > 0 && l.precio !== '')
+  // Al volver de un rechazo, el cursor va al archivo si es por él, o al aviso.
+  const campoFactura = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => (/ está vací|debe ser un PDF/.test(error ?? '') ? campoFactura.current : avisoError.current))
 
   return (
     <form onSubmit={alEnviar} className="space-y-6">
@@ -531,6 +541,7 @@ function FormularioCompraDirecta({
           }
         >
           <ElegirArchivo
+            ref={campoFactura}
             id="ocd-factura"
             name="factura"
             accept={ACEPTA_PDF}
@@ -540,7 +551,9 @@ function FormularioCompraDirecta({
             estado={conFactura ? detector.leyendo : null}
             onChange={(e) => {
               const archivo = e.target.files?.[0]
-              setHayFactura(Boolean(archivo))
+              // Uno vacío no pide su número ni su fecha: primero se cambia.
+              setHayFactura(Boolean(archivo && archivo.size > 0))
+              limpiar()
               // Lo leído del archivo anterior se va con él; lo escrito a mano se queda.
               datosFactura.soltarLeido()
               // El comprobante sin factura también se revisa, pero no se lee.
@@ -548,7 +561,7 @@ function FormularioCompraDirecta({
             }}
           />
         </Campo>
-        {conFactura && hayFactura && (
+        {conFactura && hayFactura && !detector.aviso && (
           <div className="grid gap-4 sm:grid-cols-2">
             <CamposDeLaFactura id="ocd-factura" datos={datosFactura} requerido disabled={enviando} />
           </div>
@@ -563,7 +576,7 @@ function FormularioCompraDirecta({
         )}
 
         {error && (
-          <p role="alert" className="text-sm text-peligro">
+          <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
             {error}
           </p>
         )}

@@ -20,6 +20,7 @@ export async function subirArchivoSubcontrato(
 ): Promise<ResultadoAccion> {
   const extension = TIPOS_ARCHIVO_SUBCONTRATOS[archivo.type]
   if (!extension) return { ok: false, error: 'Adjunta un PDF o una foto (JPG, PNG o WEBP).' }
+  if (archivo.size === 0) return { ok: false, error: 'El archivo está vacío: elige otro.' }
   if (archivo.size > MAXIMO_MB_SUBCONTRATOS * 1024 * 1024) return { ok: false, error: `El archivo pesa más de ${MAXIMO_MB_SUBCONTRATOS} MB.` }
 
   const ruta = `${subcontratoId}/${crypto.randomUUID()}.${extension}`

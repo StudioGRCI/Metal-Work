@@ -24,7 +24,8 @@ const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 function sacarArchivo(datos: FormData): File | null {
   const archivo = datos.get('archivo')
   datos.delete('archivo')
-  return archivo instanceof File && archivo.size > 0 ? archivo : null
+  // Uno vacío también cuenta como elegido: lo rechaza la subida diciendo que está vacío.
+  return archivo instanceof File && archivo.name !== '' ? archivo : null
 }
 
 type ReciboAPagar = {

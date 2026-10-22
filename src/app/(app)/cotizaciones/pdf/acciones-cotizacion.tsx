@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -15,16 +15,17 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { aprobarCotizacionConOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
-function Falla({ texto }: { texto: string | null }) {
+/** El rechazo de un envío; con `ref`, recibe el cursor al volver (`useCursorAlRechazo`). */
+function Falla({ texto, ref }: { texto: string | null; ref?: Ref<HTMLParagraphElement> }) {
   if (!texto) return null
   return (
-    <p role="alert" className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+    <p ref={ref} role="alert" tabIndex={-1} className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
       {texto}
     </p>
   )
@@ -157,6 +158,9 @@ export function CorregirCotizacion({
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al aviso: la ventana estuvo trabada.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => avisoError.current)
 
   function abrir() {
     setArchivo(null)
@@ -371,7 +375,7 @@ export function CorregirCotizacion({
             </p>
           )}
 
-          <Falla texto={error} />
+          <Falla ref={avisoError} texto={error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
@@ -471,6 +475,9 @@ export function AprobarConOt({
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Al volver de un rechazo, el cursor va al aviso: la ventana estuvo trabada.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => avisoError.current)
 
   function abrir() {
     setArchivo(null)
@@ -718,7 +725,7 @@ export function AprobarConOt({
             <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />
           </Campo>
 
-          <Falla texto={error} />
+          <Falla ref={avisoError} texto={error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>

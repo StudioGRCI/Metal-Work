@@ -143,6 +143,16 @@ En la misma migración que la crea, sin excepción:
   lo dejaría suelto. Los ocho cobros y pagos que devolvían el id existente sin
   mirar la ruta confirmaban un voucher que ninguna fila nombra
   (`20261022160000`); el check `417` falla si vuelve a aparecer una así.
+  La misma ruta sirve para un solo archivo: si la respuesta se perdió y la
+  persona elige otro antes de reintentar, Storage contesta «ya existe» con el
+  primero adentro, y darlo por subido anotaría el archivo que no eligió.
+  `subirArchivoPrivado` recuerda qué archivo subió con cada ruta y en ese caso
+  devuelve `OTRO_ARCHIVO_EN_LA_RUTA` sin llamar a la base.
+- **Un archivo vacío no es «sin archivo».** El campo que nadie tocó llega como
+  un `File` con nombre vacío; uno de 0 bytes es un archivo elegido, y se
+  rechaza diciendo que está vacío. Separarlos por `size === 0` dejaba de lado,
+  callado, el que la persona sí eligió. La base lo rechaza igual
+  (`fn_archivo_no_vacio`), pero el aviso tiene que salir antes de subirlo.
 - El navegador nunca recibe la clave de servicio: `src/lib/supabase/server.ts`
   es `server-only`.
 

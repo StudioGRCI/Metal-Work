@@ -61,7 +61,7 @@ export function CobrarFactura({
   async function cobrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
     datos.delete('archivo')
-    if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el voucher del cobro.' }
+    if (!(archivo instanceof File) || archivo.name === '') return { ok: false, error: 'Adjunta el voucher del cobro.' }
     if (!cobroId) return { ok: false, error: 'Vuelve a abrir el formulario del cobro.' }
     return subirArchivoFinanzas(BUCKET_COBROS_VENTA, facturaId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
@@ -235,7 +235,7 @@ export function PagarServicio({
   async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
     datos.delete('archivo')
-    if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el comprobante del pago.' }
+    if (!(archivo instanceof File) || archivo.name === '') return { ok: false, error: 'Adjunta el comprobante del pago.' }
     if (!pagoId) return { ok: false, error: 'Vuelve a abrir el formulario del pago.' }
     return subirArchivoFinanzas(BUCKET_PAGOS_SERVICIO, ordenServicioId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
@@ -405,7 +405,7 @@ export function PagarFactura({
   async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
     datos.delete('archivo')
-    if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el voucher del pago.' }
+    if (!(archivo instanceof File) || archivo.name === '') return { ok: false, error: 'Adjunta el voucher del pago.' }
     if (!pagoId) return { ok: false, error: 'Vuelve a abrir el formulario del pago.' }
     return subirArchivoFinanzas(BUCKET_PAGOS_FACTURAS, adquisicionId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)

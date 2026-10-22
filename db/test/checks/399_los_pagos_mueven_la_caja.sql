@@ -18,7 +18,9 @@ insert into public.sedes (codigo, nombre) values ('QA98', 'Taller prueba de la c
 select test.crear_usuario('Tea', 'Tesoro', 'tesoreria398@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA98')) as teso_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia398@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA98')) as gerente_id \gset
 select test.crear_usuario('Coni', 'Contable', 'contabilidad398@demo.pe', 'CONTABILIDAD', (select id from public.sedes where codigo = 'QA98')) as conta_id \gset
+select test.crear_usuario('Teo', 'Tesoro', 'tesoreria398b@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA98')) as teso2_id \gset
 select set_config('prueba.teso', :'teso_id', true);
+select set_config('prueba.teso2', :'teso2_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.conta', :'conta_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -240,6 +242,25 @@ begin
   perform test.afirmar(m.tipo = 'EGRESO' and m.monto = 500 and m.codigo_interno = 'QA398-OS'
       and m.descripcion = 'Pago de la QA-OS-398 · PROVEEDOR 398',
     'el pago del servicio deja su egreso con el código interno de la OS');
+  -- El mismo envío repetido entra una vez; con otro comprobante, u otra persona
+  -- con el mismo, no es el mismo envío (migración 20261022160000).
+  perform test.afirmar(public.registrar_pago_servicio(current_setting('prueba.pago4')::uuid, current_setting('prueba.os')::uuid,
+      v_hoy, 500, true, 'OP-398-4', null, v_ruta, current_setting('prueba.cpen')::uuid, null) = current_setting('prueba.pago4')::uuid
+      and (select count(*) from public.pagos_orden_servicio where id = current_setting('prueba.pago4')::uuid) = 1,
+    'el pago del servicio repetido con su comprobante devuelve el mismo pago');
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 500, true, ''OP-398-4'', null, %L, %L, null)',
+      current_setting('prueba.pago4'), current_setting('prueba.os'), v_hoy,
+      pg_temp.voucher('pagos-servicio', current_setting('prueba.os')), current_setting('prueba.cpen')),
+    'el pago del servicio con otro comprobante no se da por pagado', 'ya quedó registrado con otro comprobante');
+  reset role;
+  perform pg_temp.como('teso2');
+  set local role authenticated;
+  perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 500, true, ''OP-398-4'', null, %L, %L, null)',
+      current_setting('prueba.pago4'), current_setting('prueba.os'), v_hoy, v_ruta, current_setting('prueba.cpen')),
+    'otra persona con el mismo id y el mismo comprobante no lo da por pagado', 'ya quedó registrado con otro comprobante');
+  reset role;
+  perform pg_temp.como('teso');
+  set local role authenticated;
 
   -- Un egreso escrito a mano con el mismo código, para ver qué cuenta el costeo.
   perform public.registrar_movimiento_caja(current_setting('prueba.manual')::uuid, current_setting('prueba.cpen')::uuid, v_hoy,
@@ -328,6 +349,10 @@ begin
   perform test.afirmar(m.tipo = 'EGRESO' and m.monto = 920 and m.codigo_interno = 'QA398-SC'
       and m.descripcion = 'Pago del recibo por honorarios E001-398 · SUBCONTRATISTA 398',
     'el pago del recibo deja su egreso por el neto, sin la retención, con el código del subcontrato');
+  perform test.debe_fallar(format('select public.registrar_pago_recibo_honorarios(%L, %L, %L, ''OP-398-7'', %L, %L, null)',
+      current_setting('prueba.pago7'), current_setting('prueba.rec'), v_hoy,
+      pg_temp.voucher('subcontratos', current_setting('prueba.sc')), current_setting('prueba.cpen')),
+    'el pago del recibo con otro voucher no se da por pagado', 'ya quedó registrado con otro voucher');
   perform public.anular_pago_recibo_honorarios(current_setting('prueba.pago7')::uuid, 'El voucher era de otro recibo');
   perform test.afirmar((pg_temp.mov('PAGO_RECIBO_HONORARIOS', current_setting('prueba.pago7'))).id is null,
     'anular el pago del recibo anula su egreso');
@@ -351,6 +376,10 @@ begin
   perform test.afirmar(m.tipo = 'EGRESO' and m.monto = 300 and m.codigo_interno is null
       and m.descripcion = 'Pago de la planilla diaria QA-PD-398 · 2 personas',
     'el pago de la planilla deja un egreso por lo de las personas marcadas');
+  perform test.debe_fallar(format('select public.registrar_pago_planilla_diaria(%L, %L, %L, %L, ''OP-398-8'', %L, %L, null)',
+      current_setting('prueba.pago8'), current_setting('prueba.pd'), array[current_setting('prueba.pp1'), current_setting('prueba.pp2')],
+      v_hoy, pg_temp.voucher('planilla-diaria', current_setting('prueba.pd')), current_setting('prueba.cpen')),
+    'el pago de la planilla con otro comprobante no se da por pagado', 'ya quedó registrado con otro comprobante');
   perform public.anular_pago_planilla_diaria(current_setting('prueba.pago8')::uuid, 'Se marcó a la persona equivocada');
   perform test.afirmar((pg_temp.mov('PAGO_PLANILLA_DIARIA', current_setting('prueba.pago8'))).id is null
       and (select count(*) from public.planilla_diaria_personas where planilla_id = current_setting('prueba.pd')::uuid and pago_id is null) = 3,

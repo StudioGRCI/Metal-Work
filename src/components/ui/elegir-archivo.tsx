@@ -322,8 +322,9 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         // no se vería, así que lo lleva la caja, con el mismo grosor y color.
         'has-[input:focus-visible]:border-acento has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-anillo-foco',
         // Con aviso, el fondo rojo se queda aunque pase el ratón. Ocupado no se
-        // apaga: «Subiendo…» se tiene que leer.
-        disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : !mal && 'hover:bg-superficie-2',
+        // apaga: «Subiendo…» se tiene que leer. Dentro de un `fieldset` trabado
+        // (la ventana que envía) se apaga como los demás campos.
+        disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : [!mal && 'hover:bg-superficie-2', !ocupado && 'has-[input:disabled]:opacity-60'],
         className,
       )}
     >

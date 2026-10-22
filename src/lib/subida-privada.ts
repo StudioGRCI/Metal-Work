@@ -10,6 +10,10 @@ export const NO_QUEDO_SIN_RESPUESTA = 'No quedó registrado: no llegó la respue
 /** Lo que dice `subirArchivoPrivado` cuando no se sabe si quedó: en la misma ventana, el reintento no duplica. */
 export const NO_SE_CONFIRMO = 'No se confirmó el registro. Conserva el archivo seleccionado y vuelve a intentar; no se duplicará.'
 
+/** Después de una respuesta perdida se eligió otro archivo, y en Storage puede estar el primero. */
+export const OTRO_ARCHIVO_EN_LA_RUTA =
+  'Con este formulario ya se subió otro archivo y no se sabe si quedó: recarga la pantalla y mira si está antes de volver a intentar.'
+
 /** Lo que se espera antes de preguntar otra vez: lo justo para que un corte breve pase. */
 const PAUSA_ANTES_DE_PREGUNTAR_MS = 1500
 
@@ -81,6 +85,13 @@ export async function anotarSinDejarloSuelto<T = never>({
   return primera
 }
 
+// Qué archivo intentó subir esta pestaña a cada ruta. La ruta sale del id del
+// formulario, así que un 409 es el mismo envío repetido... salvo que, después de
+// una respuesta perdida, se haya elegido otro archivo: ese no es el que está en
+// Storage, y anotarlo confirmaría un archivo que no es el elegido.
+const intentados = new Map<string, string>()
+const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
+
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
 export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, registrar }: {
@@ -94,12 +105,19 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
   // con el mismo ID confirma el resultado guardado.
   const sinRespuesta = NO_SE_CONFIRMO
   const supabase = createClient()
+  const clave = `${bucket}/${ruta}`
+  const antes = intentados.get(clave)
+  if (!antes) intentados.set(clave, huellaDe(archivo))
   try {
     const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
+    if (!error) intentados.set(clave, huellaDe(archivo))
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
     if (error && error.statusCode !== '409') {
       return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
+    }
+    if (error && antes && antes !== huellaDe(archivo)) {
+      return { ok: false, error: OTRO_ARCHIVO_EN_LA_RUTA }
     }
   } catch {
     return { ok: false, error: sinRespuesta }

@@ -28,7 +28,7 @@
 do $$
 declare
   conocidas constant jsonb := '{
-    "adjuntar_contrato_subcontrato(uuid,uuid,text,text)": ["b261941b5013cc7a1117b1581c21a8ab", "8965e8b1597e5a1c2eda7a2271f9ff7c"],
+    "adjuntar_contrato_subcontrato(uuid,uuid,text,text)": ["b261941b5013cc7a1117b1581c21a8ab", "bfbf4f75c39dc77802c42298736b8b15"],
     "registrar_cobro_factura(uuid,uuid,date,numeric,boolean,text,text,uuid,numeric)": ["2d0a6f12e62ea3a6467d937e85d0ad91", "46faf5ed5453c35aad46841d69914e9a"],
     "registrar_factura_venta(uuid,uuid,text,date,date,text,numeric,text,text,text)": ["9fd0af54ac1650f00d0a577a79a67341", "f4c5a4085f59d983e2a3899ee812d566"],
     "registrar_pago_factura(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["94daf26e021bce8cce96b49fb0eb34c7", "79019d81d2f6fa6521ff16b2512c8aa9"],
@@ -44,7 +44,7 @@ begin
     select md5(replace(p.prosrc, E'\r', '')) into huella
       from pg_proc p where p.oid = to_regprocedure('public.' || firma);
     if huella is null then
-      raise exception 'Falta la función % : esta base no tiene las migraciones anteriores.', firma;
+      raise exception 'Falta la función %: esta base no tiene las migraciones anteriores.', firma;
     end if;
     if not conocidas -> firma ? huella then
       raise exception 'La función % no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.', firma;
@@ -564,7 +564,6 @@ begin
   if p_id is null then
     raise exception 'Vuelve a adjuntar el contrato.' using errcode = 'check_violation';
   end if;
-  -- El reintento del mismo contrato devuelve el que ya entró.
   -- El mismo envío repetido (la respuesta se perdió) se reconoce por su
   -- archivo y por quién lo anotó; otro envío con el mismo id, no.
   if exists (select 1 from public.subcontrato_contratos where id = p_id) then

@@ -481,6 +481,10 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
   async function guardar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('captura')
     datos.delete('captura')
+    // Una captura elegida y vacía no se deja de lado callada.
+    if (archivo instanceof File && archivo.name !== '' && archivo.size === 0) {
+      return { ok: false, error: pideCaptura ? 'La captura está vacía: elige otra.' : 'La captura está vacía: elige otra o quítala.' }
+    }
     if (!(archivo instanceof File) || archivo.size === 0) {
       if (pideCaptura) return { ok: false, error: 'Adjunta la captura del aplicativo del banco con el saldo de ese día.' }
       return guardarCuenta(null, datos)

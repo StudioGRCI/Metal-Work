@@ -1,13 +1,14 @@
 -- Un archivo de 0 bytes no es un documento, y el que una cotización nombra no
 -- lo borra nadie, tampoco el administrador (migración 20261022141500). Con las
 -- cuentas reales y `set local role authenticated`: Diseño no anota un Excel
--- vacío como cronograma, y sí uno con peso; Ventas no registra una cotización
--- con un PDF vacío, y sí una con peso; una cotización anterior con 0 bytes no
+-- vacío como cronograma, ni uno vacío que dice pesar, y sí uno con peso, con
+-- el tamaño que guardó Storage; Ventas no registra una cotización con un PDF
+-- vacío, y sí una con peso; una cotización anterior con 0 bytes no
 -- queda trabada: Gerencia la rechaza y Ventas la corrige con un PDF que pesa,
 -- pero no con otro vacío; el administrador no quita de Storage el PDF que una
 -- cotización nombra, y sí uno suelto. Y ninguna función que anota un archivo
 -- da por registrado otro envío con el mismo id (migración 20261022160000; el
--- caso de cada una, en los checks 399 y 412). El armazón lo pone el
+-- caso de cada una, en los checks 357, 361, 399 y 412). El armazón lo pone el
 -- administrador. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -44,8 +45,10 @@ select set_config('prueba.orden', :'orden_id', true);
 select set_config('prueba.cliente', :'cliente_id', true);
 select set_config('prueba.carroceria', :'carroceria_id', true);
 select set_config('prueba.excel', 'ot/' || :'orden_id' || '/' || gen_random_uuid() || '.xlsx', true);
+select set_config('prueba.excel_vacio', 'ot/' || :'orden_id' || '/' || gen_random_uuid() || '.xlsx', true);
 select set_config('prueba.cotizacion', gen_random_uuid()::text, true);
 select set_config('prueba.pdf', 'cot/' || current_setting('prueba.cotizacion') || '/' || gen_random_uuid() || '.pdf', true);
+select set_config('prueba.pdf_vacio_nuevo', 'cot/' || current_setting('prueba.cotizacion') || '/' || gen_random_uuid() || '.pdf', true);
 select set_config('prueba.suelto', 'cot/' || gen_random_uuid() || '/' || gen_random_uuid() || '.pdf', true);
 select set_config('prueba.vieja', gen_random_uuid()::text, true);
 select set_config('prueba.pdf_vacio', 'cot/' || current_setting('prueba.vieja') || '/' || gen_random_uuid() || '.pdf', true);
@@ -57,30 +60,39 @@ select test.como_usuario(:'diseno_id');
 set local role authenticated;
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('adjuntos-ot', current_setting('prueba.excel'), current_setting('prueba.diseno'),
-        '{"mimetype":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","size":4096}'::jsonb);
+        '{"mimetype":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","size":4096}'::jsonb),
+       ('adjuntos-ot', current_setting('prueba.excel_vacio'), current_setting('prueba.diseno'),
+        '{"mimetype":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","size":0}'::jsonb);
 select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
                                   values (%L, 'CRONOGRAMA', 'vacio-417.xlsx', %L,
                                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 0, %L)$q$,
-                               current_setting('prueba.orden'), current_setting('prueba.excel'), current_setting('prueba.diseno')),
+                               current_setting('prueba.orden'), current_setting('prueba.excel_vacio'), current_setting('prueba.diseno')),
   'Diseño no anota un Excel de 0 bytes como cronograma', 'El archivo está vacío');
+-- El tamaño que vale es el que guardó Storage, no el que dice el navegador.
+select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+                                  values (%L, 'CRONOGRAMA', 'dice-pesar-417.xlsx', %L,
+                                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 4096, %L)$q$,
+                               current_setting('prueba.orden'), current_setting('prueba.excel_vacio'), current_setting('prueba.diseno')),
+  'ni uno vacío que dice pesar 4096 bytes', 'El archivo está vacío');
 insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
 values (current_setting('prueba.orden')::uuid, 'CRONOGRAMA', 'cronograma-417.xlsx', current_setting('prueba.excel'),
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 4096, current_setting('prueba.diseno')::uuid);
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, current_setting('prueba.diseno')::uuid);
 reset role;
 select test.afirmar((select tamano_bytes from public.ot_adjuntos where ruta_storage = current_setting('prueba.excel')) = 4096,
-  'y sí uno con peso');
+  'y sí uno con peso, anotado con el tamaño que guardó Storage aunque la pantalla no lo diga');
 
 -- ============================================ 2. La cotización con un PDF vacío no se registra
 select test.como_usuario(:'ventas_id');
 set local role authenticated;
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('cotizaciones-pdf', current_setting('prueba.pdf'), current_setting('prueba.ventas'), '{"mimetype":"application/pdf","size":120}'::jsonb),
+       ('cotizaciones-pdf', current_setting('prueba.pdf_vacio_nuevo'), current_setting('prueba.ventas'), '{"mimetype":"application/pdf","size":0}'::jsonb),
        ('cotizaciones-pdf', current_setting('prueba.suelto'), current_setting('prueba.ventas'), '{"mimetype":"application/pdf","size":120}'::jsonb);
 select test.debe_fallar(format($q$insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por)
-                                  values (%L, 'QA-PDF-417', %L, %L, 'POR_REVISAR', 'vacia-417.pdf', %L, 'application/pdf', 0, %L)$q$,
+                                  values (%L, 'QA-PDF-417', %L, %L, 'POR_REVISAR', 'vacia-417.pdf', %L, 'application/pdf', null, %L)$q$,
                                current_setting('prueba.cotizacion'), current_setting('prueba.cliente'), current_setting('prueba.carroceria'),
-                               current_setting('prueba.pdf'), current_setting('prueba.ventas')),
-  'Ventas no registra una cotización con un PDF de 0 bytes', 'El archivo está vacío');
+                               current_setting('prueba.pdf_vacio_nuevo'), current_setting('prueba.ventas')),
+  'Ventas no registra una cotización con un PDF de 0 bytes, aunque no diga su tamaño', 'El archivo está vacío');
 insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por)
 values (current_setting('prueba.cotizacion')::uuid, 'QA-PDF-417', current_setting('prueba.cliente')::uuid, current_setting('prueba.carroceria')::uuid,
         'POR_REVISAR', 'cotizacion-417.pdf', current_setting('prueba.pdf'), 'application/pdf', 120, current_setting('prueba.ventas')::uuid);
@@ -164,11 +176,13 @@ select test.afirmar((select count(*) from storage.objects where bucket_id = 'cot
 -- está, la función la reconoce por su archivo y por quién la anotó. Ninguna
 -- función que recibe la ruta de un archivo puede darla por registrada solo
 -- porque el id coincide: otro envío con el mismo id dejaría su archivo suelto.
+-- Cualquier argumento con «ruta» en el nombre, y la línea escrita en una o en
+-- varias.
 select test.afirmar(not exists (
     select 1 from pg_proc p
      where p.pronamespace = 'public'::regnamespace
-       and pg_get_function_arguments(p.oid) ~ '\mp_ruta text\M'
-       and p.prosrc ~ 'where id = p_id\) then return p_id'),
+       and pg_get_function_arguments(p.oid) ~* '\mp_\w*ruta\w* text'
+       and p.prosrc ~* 'where\s+(\w+\.)?id\s*=\s*p_id\s*\)\s*then\s+return\s+p_id\s*;'),
   'Ninguna función que anota un archivo da por registrado otro envío con el mismo id');
 
 rollback;

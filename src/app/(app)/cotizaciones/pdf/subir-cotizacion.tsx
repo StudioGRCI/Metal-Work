@@ -22,6 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
+import { useCursorAlRechazo } from '@/lib/envio'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
@@ -64,6 +65,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al número repetido o al aviso.
+  const campoNumero = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => (error?.startsWith('Ya hay una cotización con el número') ? campoNumero.current : avisoError.current))
 
   const [numero, setNumero] = useState('')
 
@@ -372,6 +377,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
           <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" requerido>
             <Entrada
+              ref={campoNumero}
               id="cot-numero"
               value={numero}
               onChange={(e) => setNumero(e.target.value)}
@@ -545,7 +551,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           )}
 
           {error && (
-            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+            <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
               {error}
             </p>
           )}

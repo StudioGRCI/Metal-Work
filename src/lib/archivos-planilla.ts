@@ -20,6 +20,7 @@ export async function subirArchivoPlanilla(
 ): Promise<ResultadoAccion> {
   const extension = TIPOS_ARCHIVO_PLANILLA[archivo.type]
   if (!extension) return { ok: false, error: 'Adjunta un PDF o una foto (JPG, PNG o WEBP).' }
+  if (archivo.size === 0) return { ok: false, error: 'El archivo está vacío: elige otro.' }
   if (archivo.size > MAXIMO_MB_PLANILLA * 1024 * 1024) return { ok: false, error: `El archivo pesa más de ${MAXIMO_MB_PLANILLA} MB.` }
 
   const ruta = `${planillaId}/${crypto.randomUUID()}.${extension}`

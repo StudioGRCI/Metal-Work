@@ -119,10 +119,16 @@ function Formulario({
   const [monedaFactura, setMonedaFactura, monedaAhora] = useEstadoAlDia('PEN')
   const [ot, setOt, otAhora] = useEstadoAlDia('')
   // Las OC que marcó cada fuente sola (al leerla, o al elegir la factura de
-  // Logística) y, si fueron las primeras, lo que llenó de su OC y lo que había
-  // antes: se van con su archivo si nadie las cambió, como el total (`soltar`).
+  // Logística): se van con su archivo si nadie las cambió, como el total
+  // (`soltar`). Una OC puede ser de dos fuentes; se va cuando no queda ninguna.
   const marcadasPor = useRef<Partial<Record<Fuente, string[]>>>({})
-  const puesto = useRef<{ antes: Valores; puestos: Valores } | null>(null)
+  // Lo que las fuentes pusieron en el proveedor, la condición, la moneda y la OT
+  // (`puestos`) y lo que había antes de la primera (`base`): cuando ya no queda
+  // ninguna, vuelve lo de antes en lo que nadie cambió.
+  const puesto = useRef<{ base: Valores; puestos: Valores } | null>(null)
+  // La factura de Logística elegida: su número, su fecha y su OC cuentan como
+  // lo leído de esa fuente, aunque su PDF no se pueda leer.
+  const documento = useRef<FacturaDeLogistica | null>(null)
   // El total, el número y la emisión, con la fuente que los llenó: lo que llenó un
   // archivo se va con él si nadie lo cambió (`soltar`).
   const [llenado, setLlenado] = useState<Llenado>(SIN_LLENAR)
@@ -183,6 +189,24 @@ function Formulario({
     if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda)
   }
 
+  /** La OC de la factura de Logística elegida, si espera su factura. */
+  const compraDelDocumento = () => compras.find((x) => x.orden_compra_id === documento.current?.orden_compra_id)
+
+  const valoresAhora = (): Valores => ({
+    proveedor: proveedorAhora.current,
+    condicion: condicionAhora.current,
+    moneda: monedaAhora.current,
+    ot: otAhora.current,
+  })
+  const ponerValores = (v: Valores) => {
+    setProveedor(v.proveedor)
+    setCondicion(v.condicion)
+    setMonedaFactura(v.moneda)
+    setOt(v.ot)
+  }
+  const CAMPOS = ['proveedor', 'condicion', 'moneda', 'ot'] as const
+  const cada = (f: (k: (typeof CAMPOS)[number]) => string) => Object.fromEntries(CAMPOS.map((k) => [k, f(k)])) as Valores
+
   /**
    * Una fuente marca sola las primeras OC: llena con la primera el proveedor (si
    * está vacío), la condición, la moneda y la OT (si está vacía). Sin OC, pone
@@ -190,39 +214,52 @@ function Formulario({
    */
   function marcarSolas(fuente: Fuente, cs: CompraSinFactura[], monedaLeida?: string | null) {
     const primera = cs.at(0)
-    const antes: Valores = { proveedor: proveedorAhora.current, condicion: condicionAhora.current, moneda: monedaAhora.current, ot: otAhora.current }
+    const ahora = valoresAhora()
+    const antes = puesto.current
+    // Lo de antes de la primera fuente se guarda; lo que la persona cambió
+    // después de una fuente pasa a ser lo suyo.
+    const base = antes ? cada((k) => (ahora[k] === antes.puestos[k] ? antes.base[k] : ahora[k])) : ahora
     const puestos: Valores = primera
-      ? { proveedor: antes.proveedor.trim() || primera.proveedor, condicion: primera.condicion_pago, moneda: primera.moneda, ot: antes.ot || (primera.orden_id ?? '') }
-      : { ...antes, moneda: monedaLeida || antes.moneda }
+      ? { proveedor: ahora.proveedor.trim() || primera.proveedor, condicion: primera.condicion_pago, moneda: primera.moneda, ot: ahora.ot || (primera.orden_id ?? '') }
+      : { ...ahora, moneda: monedaLeida || ahora.moneda }
     const ids = cs.map((c) => c.orden_compra_id)
     setMarcadas(ids)
-    setProveedor(puestos.proveedor)
-    setCondicion(puestos.condicion)
-    setMonedaFactura(puestos.moneda)
-    setOt(puestos.ot)
+    ponerValores(puestos)
     marcadasPor.current[fuente] = ids
-    puesto.current = { antes, puestos }
+    puesto.current = { base, puestos }
+  }
+
+  /** Una fuente que sigue puesta vuelve a marcar lo suyo: la de Logística, su OC; las demás, lo que leyeron. */
+  function marcarDeFuente(f: Fuente) {
+    const c = f === 'logistica' ? compraDelDocumento() : undefined
+    if (c) return marcarSolas('logistica', [c])
+    const l = lecturas[f]
+    if (l) marcarDeLectura(f, l)
   }
 
   /**
    * Lo que llenó una fuente se va con su archivo (quitado o cambiado por otro), si
-   * nadie lo cambió: se vacía y se vuelve a llenar con lo que leyeron las demás.
-   * Las OC que marcó sola se desmarcan; si no queda ninguna, el proveedor, la
-   * condición, la moneda y la OT que puso vuelven a lo que había, y la lectura
-   * de otra fuente que siga puesta marca las suyas.
+   * nadie lo cambió: se vacía y se vuelve a llenar con lo que traen las demás.
+   * Las OC que marcó sola se desmarcan, salvo las que también son de otra
+   * fuente; si no queda ninguna, el proveedor, la condición, la moneda y la OT
+   * vuelven a lo que había antes de la primera fuente, y otra fuente que siga
+   * puesta marca las suyas.
    */
   function soltar(fuente: Fuente) {
-    const otras = (['xml', 'pdf', 'logistica'] as const).flatMap((f) => {
-      const l = f !== fuente ? lecturas[f] : null
-      return l ? [[f, l] as const] : []
-    })
+    const otras = (['xml', 'pdf', 'logistica'] as const).filter((f) => f !== fuente)
+    const valoresDeFuente = (f: Fuente): Partial<Record<Dato, string | null>> => {
+      const l = lecturas[f]
+      const leidos: Partial<Record<Dato, string | null>> = l ? valoresDe(l) : {}
+      const d = f === 'logistica' ? documento.current : null
+      return d ? { ...leidos, numero: d.numero || leidos.numero, emision: d.fecha || leidos.emision } : leidos
+    }
     setLlenado((d) => {
       const sueltos = DATOS.filter((k) => d[k].fuente === fuente)
       if (sueltos.length === 0) return d
       let n = d
       for (const k of sueltos) n = { ...n, [k]: VACIO }
-      for (const [f, l] of otras) {
-        const valores = valoresDe(l)
+      for (const f of otras) {
+        const valores = valoresDeFuente(f)
         n = llenarCon(n, f, Object.fromEntries(sueltos.map((k) => [k, valores[k]])))
       }
       return n
@@ -230,20 +267,21 @@ function Formulario({
     const suyas = marcadasPor.current[fuente]
     delete marcadasPor.current[fuente]
     if (!suyas) return
-    const quedan = marcadasAhora.current.filter((id) => !suyas.includes(id))
+    const deOtras = otras.flatMap((f) => marcadasPor.current[f] ?? [])
+    const sueltas = suyas.filter((id) => !deOtras.includes(id))
+    const quedan = marcadasAhora.current.filter((id) => !sueltas.includes(id))
     setMarcadas(quedan)
-    setParciales((p) => p.filter((id) => !suyas.includes(id)))
+    setParciales((p) => p.filter((id) => !sueltas.includes(id)))
     if (quedan.length > 0) return
     const p = puesto.current
-    puesto.current = null
     if (p) {
-      if (proveedorAhora.current === p.puestos.proveedor) setProveedor(p.antes.proveedor)
-      if (condicionAhora.current === p.puestos.condicion) setCondicion(p.antes.condicion)
-      if (monedaAhora.current === p.puestos.moneda) setMonedaFactura(p.antes.moneda)
-      if (otAhora.current === p.puestos.ot) setOt(p.antes.ot)
+      // En lo que nadie cambió vuelve lo de antes; lo que cambió la persona se queda.
+      const vuelto = cada((k) => (valoresAhora()[k] === p.puestos[k] ? p.base[k] : valoresAhora()[k]))
+      ponerValores(vuelto)
+      puesto.current = { base: vuelto, puestos: vuelto }
     }
-    for (const [f, l] of otras) {
-      marcarDeLectura(f, l)
+    for (const f of otras) {
+      marcarDeFuente(f)
       if (marcadasAhora.current.length > 0) break
     }
   }
@@ -286,6 +324,7 @@ function Formulario({
     if (marcadasAhora.current.length === 0) {
       // La primera la marcó la persona: lo que llena ya no se va con ningún archivo.
       puesto.current = null
+      marcadasPor.current = {}
       if (!proveedorAhora.current.trim()) setProveedor(c.proveedor)
       setCondicion(c.condicion_pago)
       setMonedaFactura(c.moneda)
@@ -296,16 +335,18 @@ function Formulario({
 
   /** La factura de Logística trae su número, su fecha y su OC: se llenan si están vacíos. */
   function elegirDeLogistica(id: string) {
-    const d = documentos.find((x) => x.id === id)
+    const d = documentos.find((x) => x.id === id) ?? null
     soltar('logistica')
+    documento.current = d
     if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha }))
-    const c = d && compras.find((x) => x.orden_compra_id === d.orden_compra_id)
-    // Su OC se marca sola, y se desmarca si se cambia o se quita esta factura.
-    if (c && !marcadasAhora.current.includes(c.orden_compra_id) && encajaCon(marcadasAhora.current, c)) {
+    const c = compraDelDocumento()
+    // Su OC se marca sola (o queda anotada como suya si otra fuente ya la
+    // marcó), y se desmarca si se cambia o se quita esta factura.
+    if (c && encajaCon(marcadasAhora.current, c)) {
       alEscribir()
       if (marcadasAhora.current.length === 0) marcarSolas('logistica', [c])
       else {
-        setMarcadas((m) => [...m, c.orden_compra_id])
+        setMarcadas((m) => (m.includes(c.orden_compra_id) ? m : [...m, c.orden_compra_id]))
         marcadasPor.current.logistica = [c.orden_compra_id]
       }
     }
