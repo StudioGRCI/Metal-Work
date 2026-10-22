@@ -2547,7 +2547,7 @@ declare v text;
 begin
   foreach v in array array['rq11', 'o11a', 'o11b', 'o11c', 'o11d', 'o11e', 'o11f', 'o11g', 'o11h', 'o11i', 'o11j',
                            'q11a', 'q11a2', 'q11b', 'q11c', 'q11d', 'q11e', 'q11f', 'q11g', 'q11h', 'q11i1', 'q11i2', 'q11j',
-                           'v11a', 'v11b', 'v11b2', 'v11c', 'v11j', 'g11b', 'g11c', 'g11de', 'g11f', 'g11g', 'g11h', 'g11i',
+                           'v11a', 'v11a3', 'v11a4', 'v11b', 'v11b2', 'v11c', 'v11j', 'g11b', 'g11c', 'g11de', 'g11f', 'g11g', 'g11h', 'g11i',
                            'e11b', 'e11c'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
@@ -2599,7 +2599,23 @@ select test.afirmar((select cancelada and pagado = 361.50 and devuelto = 40 from
   'pagado el resto, la OC queda pagada con lo neto');
 select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'Se registró en la OC que no era') $$,
   'la devolución no se anula si con eso lo pagado pasa del total: la correcta, de lo que sobra o más, se registra primero',
-  'pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 40.00 o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.');
+  'pasaría de su total (S/ 361.50). Si la registraste mal y el proveedor devolvió S/ 40.00 o más, registra primero la correcta y después anula esta. Si devolvió menos, se le pagó de más: no registres nada todavía; pídele la diferencia y, cuando entre, registra lo que devolvió y la diferencia (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.');
+-- El proveedor había devuelto S/ 30, no 40: se le pagó S/ 10 de más. Si se registra
+-- lo que devolvió antes de que entre la diferencia, el rechazo dice cuánto falta,
+-- no que se registre «la correcta», que ya está.
+select pg_temp.devolver('v11a3', 'o11a', 30, pg_temp.subir('pagos-compras', 'o11a'), null, 'DEV-11A3', true);
+select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'El proveedor devolvió S/ 30, no 40') $$,
+  'con lo que devolvió ya registrado, el rechazo dice cuánto falta registrar, no que se registre la correcta',
+  'pasaría de su total (S/ 361.50): faltan S/ 10.00 devueltos por registrar. Si es la diferencia que el proveedor todavía tiene que devolver, regístrala cuando entre (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.');
+-- Entra la diferencia: se registra con «Sí» y la equivocada se anula.
+select pg_temp.devolver('v11a4', 'o11a', 10, pg_temp.subir('pagos-compras', 'o11a'), null, 'DEV-11A4', true);
+select test.afirmar(public.anular_devolucion_compra(pg_temp.id('v11a'), 'El proveedor devolvió S/ 30, no 40') = pg_temp.id('v11a'),
+  'siguiendo el consejo, la devolución equivocada se anula');
+select test.afirmar((select cancelada and not sin_completar and pago_que_cancela = pg_temp.id('q11a2') and pagado = 361.50 and devuelto = 40
+                       from public.compras_con_boleta_por_pagar() where id = pg_temp.id('o11a'))
+                    and pg_temp.pago('o11a') = 'PAGADA'
+                    and pg_temp.ingresos('v11a') = 0 and pg_temp.ingresos('v11a3') = 1 and pg_temp.ingresos('v11a4') = 1,
+  'y la OC queda pagada como siempre, con lo neto en su total: la cancela el pago que lo hizo llegar, no la marca de la devolución de paso, y la caja tiene lo que entró (30 y 10)');
 reset role;
 
 -- Antes de la factura: la OC pagada con S/ 100 y el proveedor devuelve 30; la

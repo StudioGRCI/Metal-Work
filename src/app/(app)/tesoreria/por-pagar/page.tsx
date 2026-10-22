@@ -667,14 +667,19 @@ function sinCompletarAlAnular(b: CompraConBoleta, devolucionId: string) {
 /**
  * Por qué la base no deja anular la devolución: sin ella, lo pagado por la boleta
  * pasaría de su total (por los pagos de después, o porque el total bajó). Null si entra.
- * Dice de cuánto tiene que ser la correcta para que entre; si es menor, se le pagó de más al proveedor
- * y la salida es registrar también la diferencia cuando la devuelva (un pago no se anula con una devolución vigente).
+ * Dice de cuánto tiene que ser la correcta para que entre; si es menor, se le pagó de más al proveedor y nada
+ * se registra hasta que devuelva la diferencia (un pago no se anula con una devolución vigente). Si ya se registró
+ * otra después (`despues`), dice cuánto falta en vez de pedir la correcta. Lo mismo que `anular_devolucion_compra`.
  */
-function noSeAnulaLaDevolucion(b: CompraConBoleta, monto: number, m: CodigoMoneda): string | null {
+function noSeAnulaLaDevolucion(b: CompraConBoleta, monto: number, m: CodigoMoneda, despues: boolean): string | null {
   const sinElla = redondear(Number(b.pagado ?? 0) + monto)
   const total = Number(b.total ?? 0)
   if (sinElla <= total) return null
-  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta, de ${moneda(redondear(sinElla - total), m)} o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.`
+  const falta = moneda(redondear(sinElla - total), m)
+  const antes = `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)})`
+  return despues
+    ? `${antes}: faltan ${falta} devueltos por registrar. Si es la diferencia que el proveedor todavía tiene que devolver, regístrala cuando entre (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.`
+    : `${antes}. Si la registraste mal y el proveedor devolvió ${falta} o más, registra primero la correcta y después anula esta. Si devolvió menos, se le pagó de más: no registres nada todavía; pídele la diferencia y, cuando entre, registra lo que devolvió y la diferencia (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.`
 }
 
 /** Lo que le falta pagar a una OC con boleta, sobre lo neto (lo pagado menos lo devuelto); una cancelada «a cuenta» ya no debe nada. */
@@ -1267,7 +1272,7 @@ function CompraConBoletaFila({
               </span>
             </li>
           ))}
-          {b.devoluciones.map((d) => (
+          {b.devoluciones.map((d, i) => (
             <li key={d.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between" data-devolucion={d.id}>
               <span className="text-texto-suave">
                 <span className={d.anulado_en ? 'line-through' : undefined}>
@@ -1292,7 +1297,7 @@ function CompraConBoletaFila({
                     devolucionId={d.id}
                     etiqueta={`la devolución del ${fecha(d.fecha)} por ${moneda(d.monto, m)}`}
                     queQueda={queQuedaTrasLaDevolucion({ ...boleta, sinCompletar: sinCompletarAlAnular(b, d.id) }, Number(d.monto), m)}
-                    noSeAnula={noSeAnulaLaDevolucion(b, Number(d.monto), m)}
+                    noSeAnula={noSeAnulaLaDevolucion(b, Number(d.monto), m, b.devoluciones.slice(i + 1).some((x) => !x.anulado_en))}
                   />
                 )}
               </span>

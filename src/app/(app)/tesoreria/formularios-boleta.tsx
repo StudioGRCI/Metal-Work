@@ -131,7 +131,8 @@ export function RegistrarDevolucion({
     })
     if (!r.ok) {
       const enCamino = facturaSegunElRechazo(r.error)
-      if (enCamino !== null) setRechazo({ para: boleta, enCamino, otro: enCamino === (boleta.enCamino || Boolean(boleta.factura)) })
+      // Contra lo que la ventana mostraba al mandar (`vigente`): la factura pudo llegar y después irse con ella abierta.
+      if (enCamino !== null) setRechazo({ para: boleta, enCamino, otro: enCamino === (vigente.enCamino || Boolean(vigente.factura)) })
     }
     return r
   }

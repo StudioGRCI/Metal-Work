@@ -53,7 +53,9 @@
  *      ventana la muestra sin recargar ni perder lo escrito, con una nota y no
  *      como error. Y la vuelta: Logística le anexa otra con la ventana abierta y
  *      el «Sí» elegido; la ventana quita la pregunta, y cerrada sin registrar,
- *      la tarjeta de atrás se repinta. La tarjeta solo ofrece anular la
+ *      la tarjeta de atrás se repinta. Si lo que cambia con la ventana abierta
+ *      es lo pagado (otro pago), la nota no inventa una factura: pide cerrarla
+ *      para verla al día. La tarjeta solo ofrece anular la
  *      devolución y registrarla con «Sí» si anularla entra, y la ventana de
  *      anularla dice de cuánto tiene que ser la correcta; devuelto todo, dice
  *      que se paga de nuevo solo si el proveedor la vuelve a cobrar, a
@@ -1012,8 +1014,27 @@ let pagoId
   await como('logistica')
   await consulta(`select public.anular_documento_compra($1, 'No era de esta OC: prueba de la vuelta')`, [anexo9b])
   await como(null)
-  // Paga S/ 50 a cuenta: sin la devolución, lo pagado pasaría del total y anularla no entra.
+  // Con la ventana abierta para devolver todo lo neto (S/ 261.50, sin pregunta), Tesorería paga S/ 50 a cuenta en
+  // otra sesión: la base pide la respuesta, y la ventana, que no sabe cuánto quedó, pide cerrarla para verla al día.
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await (await abrir(ocToda)).locator('[data-registrar-devolucion]').click()
+  await vv.waitFor()
+  await vv.locator('input[name="monto"]').fill('261.50')
+  const preguntaOtro = await vv.locator('select[name="deja"]').count()
+  await vv.locator('input[name="operacion"]').fill(`DEV9O-${SUFIJO}`)
+  await vv.locator('select[name="caja_id"]').selectOption(await vv.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value'))
+  await vv.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
   await pagar9(50)
+  await vv.getByRole('button', { name: 'Registrar la devolución' }).click()
+  const notaOtro = vv.locator('[data-ventana-corregida]')
+  await notaOtro.waitFor({ timeout: 30000 }).catch(() => {})
+  const otro = limpio(await notaOtro.textContent({ timeout: 500 }).catch(() => ''))
+  const alertaOtro = limpio(await vv.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
+  comprobar(preguntaOtro === 0 && otro.includes('Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día')
+      && !alertaOtro && (await devolucionesDe(ocToda)).length === 1,
+    `con lo pagado cambiado en otra sesión, la nota no inventa una factura y pide cerrar la ventana («${otro}»${alertaOtro ? `, alerta «${alertaOtro}»` : ''}, preguntaba ${preguntaOtro})`)
+  await vv.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  // Con esos S/ 50 pagados, sin la devolución lo pagado pasaría del total y anularla no entra.
   const sinConsejo = await tarjetaToda()
   comprobar(sinConsejo.includes('El proveedor devolvió S/ 100.00 de lo pagado y a la OC le faltan S/ 50.00, que se pagan aquí.')
       && !sinConsejo.includes('Si con lo que quedaba'),
@@ -1022,7 +1043,7 @@ let pagoId
   const vn = t.pagina.locator('[role="dialog"]')
   await vn.waitFor()
   const noSe = limpio(await vn.textContent())
-  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 50.00 o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.')
+  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50). Si la registraste mal y el proveedor devolvió S/ 50.00 o más, registra primero la correcta y después anula esta. Si devolvió menos, se le pagó de más: no registres nada todavía; pídele la diferencia y, cuando entre, registra lo que devolvió y la diferencia (si pregunta si la OC queda pagada, «Sí») y enseguida anula esta.')
       && !noSe.includes('La OC queda pagada') && (await vn.getByRole('button', { name: 'Anular', exact: true }).count()) === 0,
     `la ventana de anularla dice por qué no se puede, en vez de prometer cómo queda la OC: «${noSe.slice(0, 300)}»`)
   await vn.getByRole('button', { name: 'Cerrar', exact: true }).last().click()
