@@ -627,7 +627,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // los subcontratos, las tardanzas, las observaciones y los proveedores
   // salieron de su menú ese día: su permiso sigue, y los abre por su dirección.
   // Desde el 2026-10-22 consulta Adquisiciones (`adquisiciones.ver`): cada OC y
-  // OS que aprobó, de su RQ a su pago. Antes solo entraba por la dirección.
+  // cada OS, de su RQ o su OT a su pago. Antes solo entraba por la dirección.
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [

@@ -17,7 +17,6 @@ import {
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { devolucionesSinNota, notasDeLasFacturas, type DevolucionSinNota, type NotaDeLaFactura } from '@/lib/datos/notas-credito'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
-import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
@@ -46,7 +45,14 @@ type Vista = (typeof VISTAS_DE_FACTURAS)[number]['valor']
 type Params = Record<string, string | string[] | undefined>
 
 /** A qué documento puede ir quien mira: cada enlace solo sale si su pantalla lo deja entrar. */
-type Acceso = { rq: boolean; oc: boolean; proveedor: boolean; porPagar: boolean; codigo: boolean }
+type Acceso = {
+  rq: boolean
+  oc: boolean
+  proveedor: boolean
+  /** «pagar» salta a pagar; «ver», a mirar: Gerencia lee Cuentas por pagar pero no paga. */
+  porPagar: 'pagar' | 'ver' | null
+  codigo: boolean
+}
 
 const enlace = 'font-medium text-acento hover:underline'
 
@@ -76,7 +82,13 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
     rq: puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.ver', 'compras.crear', 'almacen.recibir']),
     oc: puede(perfil, ['compras.ver', 'almacen.recibir']),
     proveedor: puede(perfil, 'proveedores.ver'),
-    porPagar: puede(perfil, 'tesoreria.ver_documentos'),
+    // Como las pantallas de Tesorería: pagar pide además la caja de la que sale.
+    porPagar:
+      puede(perfil, 'tesoreria.registrar_pagos') && puede(perfil, 'tesoreria.caja')
+        ? 'pagar'
+        : puede(perfil, 'tesoreria.ver_documentos')
+          ? 'ver'
+          : null,
     codigo: puede(perfil, 'codigos_internos.ver'),
   }
   const vista: Vista = VISTAS_DE_FACTURAS.find((v) => v.valor === params.vista)?.valor ?? 'facturas'
@@ -495,10 +507,10 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
     <li>
       {acceso.oc ? (
         <a href={`/compras/${o.id}/pdf`} target="_blank" rel="noopener" className={`tabular ${enlace}`}>
-          {nombreDeOc(o)}
+          {o.numero ?? 'OC sin número'}
         </a>
       ) : (
-        <span className="tabular text-texto">{nombreDeOc(o)}</span>
+        <span className="tabular text-texto">{o.numero ?? 'OC sin número'}</span>
       )}
       {o.requerimientos.length > 0 ? (
         <>
@@ -507,11 +519,11 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
             <span key={rq.id}>
               {i > 0 && ', '}
               {acceso.rq ? (
-                <Link href={`/requerimientos?rq=${rq.id}`} className={`tabular ${enlace}`}>
+                <Link href={`/requerimientos?rq=${rq.id}`} className={`tabular whitespace-nowrap ${enlace}`}>
                   {rq.numero}
                 </Link>
               ) : (
-                <span className="tabular">{rq.numero}</span>
+                <span className="tabular whitespace-nowrap">{rq.numero}</span>
               )}
             </span>
           ))}
@@ -535,6 +547,12 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
             </span>
           ))}
         </>
+      )}
+      {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
+      {!o.numero && o.referencia && (
+        <span className="block text-xs text-texto-suave">
+          Ref. del proveedor: <span className="tabular whitespace-nowrap">{o.referencia}</span>
+        </span>
       )}
     </li>
   )
@@ -793,11 +811,11 @@ function CeldaRq({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
           {orden.requerimientos.map((rq) => (
             <li key={rq.id} className="whitespace-nowrap">
               {acceso.rq ? (
-                <Link href={`/requerimientos?rq=${rq.id}`} className={`tabular ${enlace}`}>
+                <Link href={`/requerimientos?rq=${rq.id}`} className={`tabular whitespace-nowrap ${enlace}`}>
                   {rq.numero}
                 </Link>
               ) : (
-                <span className="tabular">{rq.numero}</span>
+                <span className="tabular whitespace-nowrap">{rq.numero}</span>
               )}
             </li>
           ))}
@@ -913,7 +931,7 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
       {/* Solo la que falta pagar: la pagada ya trae aquí sus vouchers, y allá va plegada. */}
       {acceso.porPagar && f.estado === 'REGISTRADA' && f.saldo !== null && f.saldo > 0 && (
         <Link href={`/tesoreria/por-pagar#factura-${f.id}`} className={`inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
-          Pagar en Cuentas por pagar
+          {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}
     </div>

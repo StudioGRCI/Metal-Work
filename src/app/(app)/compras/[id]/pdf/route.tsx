@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 
 import { DocumentoCompraMateriales, type LineaCompraPdf } from '@/lib/documentos/compra-materiales'
 import { leerLogoDocumento } from '@/lib/documentos/logo'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { APROBACION_COMPRA, compraConPdf, cuentaParaCompra } from '@/lib/dominio/proveedores'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -54,7 +55,9 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   if (compra.error || detalles.error) return NextResponse.json({ error: 'No se pudo leer la compra.' }, { status: 500 })
   if (!compra.data) return NextResponse.json({ error: 'La compra no está disponible.' }, { status: 404 })
   const c = compra.data
-  const titulo = c.numero ?? c.referencia
+  // La de antes de la serie no tiene número: su referencia es la cotización del
+  // proveedor y no se escribe donde va el número (en el papel sale «SIN NÚMERO»).
+  const titulo = nombreDeOc(c)
   // Una compra por aprobar o rechazada no sale en papel: el papel es lo que se
   // le manda al proveedor. La anulada sí, con su marca: es la evidencia de lo
   // que se le pidió y de por qué ya no va.
@@ -141,7 +144,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
       logo={await logo}
       lineas={filas}
       compra={{
-        numero: titulo,
+        numero: c.numero,
         referenciaProveedor: c.referencia,
         emitida: c.creado_en,
         entrega: c.fecha_estimada,
@@ -174,7 +177,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="MW-Compra-${titulo.replace(/[^a-zA-Z0-9-]/g, '_')}.pdf"`,
+      'Content-Disposition': `attachment; filename="MW-Compra-${(c.numero ?? `sin-numero-ref-${c.referencia}`).replace(/[^a-zA-Z0-9-]/g, '_')}.pdf"`,
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     },

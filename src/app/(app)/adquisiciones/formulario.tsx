@@ -6,7 +6,6 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
-import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
@@ -346,14 +345,20 @@ function Formulario({
                       className="mt-0.5 size-4 accent-[var(--acento)]"
                     />
                     <span className="flex-1">
-                      <span className="tabular font-medium text-texto">{nombreDeOc(c)}</span>
+                      <span className="tabular font-medium text-texto">{c.numero ?? 'OC sin número'}</span>
                       <span className="text-texto"> · {c.proveedor}</span>
+                      {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
+                      {!c.numero && c.referencia && (
+                        <span className="block text-xs text-texto-suave">
+                          Ref. del proveedor: <span className="tabular whitespace-nowrap">{c.referencia}</span>
+                        </span>
+                      )}
                       <span className="block text-xs text-texto-suave">
                         {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'}
                         {c.en_borrador && ' · ya está en un borrador'}
                       </span>
                     </span>
-                    <span className="text-right tabular text-sm text-texto">
+                    <span className="shrink-0 whitespace-nowrap text-right tabular text-sm text-texto">
                       {c.sin_precio ? <span className="text-aviso">Sin precio</span> : dinero(c.total, codigo(c.moneda))}
                       {!c.sin_precio && c.facturado > 0 && (
                         <span className="block text-xs text-texto-suave">falta {dinero(pendiente(c), codigo(c.moneda))}</span>

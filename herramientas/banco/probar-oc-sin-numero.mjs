@@ -7,18 +7,25 @@
  *
  *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
  *      sale «OC sin número» con su referencia aparte.
- *   2. Contabilidad la ve en el formulario como «OC sin número (ref. del
- *      proveedor …)», registra su factura, y la tabla y la lista del teléfono
- *      la nombran igual. La ventana de «Corregir» también.
+ *   2. Contabilidad la ve igual en el formulario, registra su factura, y la
+ *      tabla la nombra igual. En «Corregir», la lista también; el detector, al
+ *      leer un PDF que menciona la otra OC sin número, la nombra «OC sin número
+ *      (ref. del proveedor …)»; la suma, y el historial dice cuál se sumó. En
+ *      el teléfono, igual y sin ensanchar la página. El PDF de la OC sale «SIN
+ *      NÚMERO», sin pedir que la referencia se cite como número.
  *   3. Tesorería ve la factura en Cuentas por pagar con la OC nombrada así, y
- *      el PDF de la OC con el mismo nombre.
+ *      el PDF de la OC con el mismo nombre; en Facturas, «Pagar en Cuentas por
+ *      pagar».
+ *   4. Gerencia, que lee Cuentas por pagar y no paga, ve en Facturas «Ver en
+ *      Cuentas por pagar».
  *
- * Siembra una OC del RQ, aprobada, y le quita el número como a una de antes de
- * la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre las veces
- * que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
+ * Siembra dos OC del RQ, aprobadas, y les quita el número como a una de antes
+ * de la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre las
+ * veces que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
  * CAPTURAS, BANCO_BASE, ARCHIVOS y el correo de cada cuenta si no es
- * `<puesto>.local@metalwork.test`.
+ * `<puesto>.local@metalwork.test`. Lee el PDF con `pdftotext` (poppler).
  */
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -38,11 +45,29 @@ if (!CLAVE) {
 }
 mkdirSync(CAPTURAS, { recursive: true })
 mkdirSync(ARCHIVOS, { recursive: true })
-const PDF_COMPROBANTE = join(ARCHIVOS, 'minimo.pdf')
-writeFileSync(
-  PDF_COMPROBANTE,
-  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 200 200]/Parent 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
-)
+
+/** Un PDF de una página con texto que el detector puede leer (Helvetica, WinAnsi). */
+function pdfConTexto(lineas) {
+  const texto = lineas.map((l, i) => `BT /F1 11 Tf 50 ${780 - i * 18} Td (${l.replace(/[()\\]/g, '')}) Tj ET`).join('\n')
+  const objetos = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(texto, 'latin1')} >>\nstream\n${texto}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const posiciones = []
+  objetos.forEach((o, i) => {
+    posiciones.push(Buffer.byteLength(pdf, 'latin1'))
+    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(pdf, 'latin1')
+  pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`
+  pdf += posiciones.map((p) => `${String(p).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf, 'latin1')
+}
 
 const base = new pg.Client({
   host: process.env.PGHOST ?? '/tmp',
@@ -91,6 +116,13 @@ async function grupo(pagina, numero) {
   return textos.join(' ')
 }
 
+/** Espera a que la ventana se cierre o diga por qué no; devuelve lo que dijo. */
+async function terminarVentana(pagina) {
+  const v = pagina.locator('[role="dialog"]')
+  await Promise.race([v.waitFor({ state: 'hidden', timeout: 60000 }), v.locator('[role="alert"]').waitFor({ timeout: 60000 })]).catch(() => {})
+  return limpio((await v.locator('[role="alert"]').allTextContents().catch(() => [])).join(' '))
+}
+
 /** Los textos del menú, sin el contador del final. */
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
@@ -98,8 +130,10 @@ const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).forma
 // ---------------------------------------------------------------- siembra
 const SUFIJO = String(100000 + (Date.now() % 900000))
 const PROVEEDOR = `ACEROS SIN NÚMERO ${SUFIJO} S.A.C.`
-// La referencia tiene la forma de un número de OC: es justo lo que confundía.
-const REFERENCIA = `OC-${SUFIJO.slice(-4)}`
+// Las referencias tienen la forma de un número de OC: es justo lo que confundía.
+// Sin ceros delante, para que el detector las lea igual que la pantalla.
+const REFERENCIA = `OC-${1000 + (Number(SUFIJO) % 8999)}`
+const REFERENCIA_2 = `OC-${1000 + ((Number(SUFIJO) + 1) % 8999)}`
 const FACTURA = `F903-${SUFIJO}`
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
@@ -131,34 +165,56 @@ const [{ id: material }] = await consulta(
   `insert into materiales (codigo, descripcion, categoria_id, unidad_medida_id) values ($1, $2, $3, $4) returning id`,
   [`SN-${SUFIJO}`, `Plancha LAC 1/8" (${SUFIJO})`, cat, und],
 )
-const [{ id: rq }] = await consulta(`select gen_random_uuid() as id`)
-await como('requerimientos')
-await consulta(
-  `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
-     jsonb_build_array(jsonb_build_object('descripcion', 'Plancha', 'cantidad', 1, 'unidad_medida_id', $4::text, 'categoria_id', $5::text)))`,
-  [rq, area, `Prueba de la OC sin número ${SUFIJO}`, und, cat],
-)
-await como('almacen')
-await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
-await como('logistica')
-const [{ id: oc }] = await consulta(
-  `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[1]::smallint[], $2, null,
-     jsonb_build_array(jsonb_build_object('material_id', $3::text, 'cantidad', 1, 'precio', 250::numeric)), null, 'CONTADO', 0, 'PEN', true) as id`,
-  [rq, proveedor, material],
-)
-await como('gerencia')
-await consulta(`select public.aprobar_compra($1)`, [oc])
-// Como una de antes de la serie: sin número de la casa, con la referencia del proveedor.
-await base.query('begin')
-await base.query(`set local session_replication_role = replica`)
-await base.query(`update ordenes_compra_materiales set numero = null, referencia = $2 where id = $1`, [oc, REFERENCIA])
-await base.query('commit')
-const [sembrada] = await consulta(`select numero, referencia, aprobacion, public.total_orden_compra(id)::float as total from ordenes_compra_materiales where id = $1`, [oc])
-if (sembrada.numero !== null || sembrada.referencia !== REFERENCIA || sembrada.aprobacion !== 'APROBADA' || sembrada.total !== 295) {
-  throw new Error(`La siembra no dejó la OC aprobada, sin número y con 295.00: ${JSON.stringify(sembrada)}`)
+
+/** Una OC de su RQ, aprobada, de 295.00 con IGV, al contado y con factura; después, sin número y con `referencia`. */
+async function ocSinNumero(referencia) {
+  const [{ id: rq }] = await consulta(`select gen_random_uuid() as id`)
+  await como('requerimientos')
+  await consulta(
+    `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
+       jsonb_build_array(jsonb_build_object('descripcion', 'Plancha', 'cantidad', 1, 'unidad_medida_id', $4::text, 'categoria_id', $5::text)))`,
+    [rq, area, `Prueba de la OC sin número ${SUFIJO} (${referencia})`, und, cat],
+  )
+  await como('almacen')
+  await consulta(`select public.rq_marcar_sin_stock($1, 'No hay nada de esto')`, [rq])
+  await como('logistica')
+  const [{ id: oc }] = await consulta(
+    `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[1]::smallint[], $2, null,
+       jsonb_build_array(jsonb_build_object('material_id', $3::text, 'cantidad', 1, 'precio', 250::numeric)), null, 'CONTADO', 0, 'PEN', true) as id`,
+    [rq, proveedor, material],
+  )
+  await como('gerencia')
+  await consulta(`select public.aprobar_compra($1)`, [oc])
+  // Como una de antes de la serie: sin número de la casa, con la referencia del proveedor.
+  await base.query('begin')
+  await base.query(`set local session_replication_role = replica`)
+  await base.query(`update ordenes_compra_materiales set numero = null, referencia = $2 where id = $1`, [oc, referencia])
+  await base.query('commit')
+  const [sembrada] = await consulta(`select numero, referencia, aprobacion, public.total_orden_compra(id)::float as total from ordenes_compra_materiales where id = $1`, [oc])
+  if (sembrada.numero !== null || sembrada.referencia !== referencia || sembrada.aprobacion !== 'APROBADA' || sembrada.total !== 295) {
+    throw new Error(`La siembra no dejó la OC aprobada, sin número y con 295.00: ${JSON.stringify(sembrada)}`)
+  }
+  return oc
 }
+const oc = await ocSinNumero(REFERENCIA)
+const oc2 = await ocSinNumero(REFERENCIA_2)
 const NOMBRE = `OC sin número (ref. del proveedor ${REFERENCIA})`
-console.log(`     sembrada la OC sin número, con la referencia ${REFERENCIA}`)
+const NOMBRE_2 = `OC sin número (ref. del proveedor ${REFERENCIA_2})`
+console.log(`     sembradas dos OC sin número, con las referencias ${REFERENCIA} y ${REFERENCIA_2}`)
+
+const JUSTIFICANTE = join(ARCHIVOS, `justificante-sin-numero-${SUFIJO}.pdf`)
+writeFileSync(JUSTIFICANTE, pdfConTexto(['Correo del proveedor', 'La factura cubre las dos cotizaciones']))
+// La factura corregida menciona solo la segunda: el detector tiene que nombrarla sin hacer pasar su referencia por número.
+const FACTURA_CORREGIDA = join(ARCHIVOS, `factura-sin-numero-${SUFIJO}.pdf`)
+writeFileSync(
+  FACTURA_CORREGIDA,
+  pdfConTexto(['FACTURA ELECTRONICA', FACTURA, `Fecha de Emision : ${hoy.split('-').reverse().join('/')}`, `Orden de compra ${REFERENCIA_2}`, 'Importe Total : S/ 590.00']),
+)
+const PDF_COMPROBANTE = join(ARCHIVOS, 'minimo.pdf')
+writeFileSync(
+  PDF_COMPROBANTE,
+  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 200 200]/Parent 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
+)
 
 // ---------------------------------------------------------------- 1. Gerencia
 {
@@ -176,7 +232,7 @@ console.log(`     sembrada la OC sin número, con la referencia ${REFERENCIA}`)
   const h1 = limpio(await pagina.locator('h1').first().textContent().catch(() => ''))
   const filas = await pagina.locator('tbody tr').count()
   comprobar(pagina.url().endsWith('/adquisiciones') && h1 === 'Adquisiciones' && filas > 0, `la pantalla abre con su tabla: «${h1}», ${filas} filas`)
-  const fila = limpio(await pagina.locator('tbody tr', { hasText: PROVEEDOR }).first().textContent().catch(() => ''))
+  const fila = limpio(await pagina.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
   comprobar(fila.includes('OC sin número') && fila.includes(`Ref. del proveedor: ${REFERENCIA}`), 'la OC sin número sale «OC sin número», con su referencia aparte')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-gerencia.png'), fullPage: true, caret: 'initial' })
   await contexto.close()
@@ -188,7 +244,8 @@ console.log(`     sembrada la OC sin número, con la referencia ${REFERENCIA}`)
   await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const casilla = pagina.locator(`input[name="ordenes_compra"][value="${oc}"]`)
   const etiqueta = limpio(await casilla.locator('xpath=ancestor::label').textContent().catch(() => ''))
-  comprobar(etiqueta.startsWith(NOMBRE), `en el formulario se marca como «${NOMBRE}» (dice «${etiqueta.slice(0, 80)}»)`)
+  comprobar(etiqueta.startsWith('OC sin número ·') && etiqueta.includes(`Ref. del proveedor: ${REFERENCIA}`),
+    `en el formulario se marca como «OC sin número», con su referencia aparte (dice «${etiqueta.slice(0, 90)}»)`)
   await casilla.check()
   await pagina.locator('#adq-total').fill('295')
   await pagina.locator('#adq-numero').fill(FACTURA)
@@ -210,21 +267,64 @@ console.log(`     sembrada la OC sin número, con la referencia ${REFERENCIA}`)
   comprobar(celda === 'OC sin número' && textoFila.includes(`Ref. del proveedor: ${REFERENCIA}`),
     `en la tabla, la OC es «OC sin número» y su referencia va aparte (el enlace dice «${celda}»)`)
 
-  // «Corregir»: la lista de OC de la ventana.
+  // El PDF de la OC: «SIN NÚMERO» donde va el número, y la referencia como lo que es.
+  const respuesta = await pagina.request.get(`${BASE}/compras/${oc}/pdf`)
+  const disposicion = respuesta.headers()['content-disposition'] ?? ''
+  const archivoOc = join(CAPTURAS, `oc-sin-numero-${SUFIJO}.pdf`)
+  writeFileSync(archivoOc, await respuesta.body())
+  const enElPapel = respuesta.ok() ? limpio(execFileSync('pdftotext', ['-layout', archivoOc, '-']).toString()) : ''
+  comprobar(respuesta.ok() && disposicion.includes(`MW-Compra-sin-numero-ref-${REFERENCIA}.pdf`), `el PDF de la OC se descarga como sin número (${disposicion || respuesta.status()})`)
+  comprobar(
+    enElPapel.includes('N°: SIN NÚMERO') && !enElPapel.includes(`N°: ${REFERENCIA}`) && enElPapel.includes(`Según su cotización ${REFERENCIA}`) &&
+      enElPapel.includes(`citando su cotización ${REFERENCIA}`) && !enElPapel.includes(`con el número ${REFERENCIA}`),
+    'en el papel dice «N°: SIN NÚMERO» y la referencia va como su cotización, no como el número que se cita',
+  )
+
+  // «Corregir»: la lista de OC de la ventana, el detector y el historial.
   await pagina.getByRole('button', { name: `Corregir el comprobante ${FACTURA}` }).first().click()
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.waitFor({ timeout: 15000 }).catch(() => {})
-  const enLaVentana = limpio(await ventana.textContent().catch(() => ''))
-  comprobar(enLaVentana.includes(NOMBRE), 'la ventana de «Corregir» la nombra igual')
-  await pagina.keyboard.press('Escape')
-  await ventana.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+  // Las OC de la lista llevan su casilla; los avisos del detector, que también son `li`, no.
+  const ocDeLaLista = (ref) => ventana.locator('li:has(input[type="checkbox"])', { hasText: `Ref. del proveedor: ${ref}` }).first()
+  const enLaLista = async (ref) => limpio(await ocDeLaLista(ref).textContent().catch(() => ''))
+  const primera = await enLaLista(REFERENCIA)
+  const segunda = await enLaLista(REFERENCIA_2)
+  comprobar(primera.startsWith('OC sin número') && primera.includes(`Ref. del proveedor: ${REFERENCIA}`) &&
+    segunda.startsWith('OC sin número') && segunda.includes(`Ref. del proveedor: ${REFERENCIA_2}`),
+    `la ventana de «Corregir» las nombra igual (dice «${primera.slice(0, 70)}»)`)
+  await ventana.locator('[id^="fc-pdf-"]').setInputFiles(FACTURA_CORREGIDA)
+  await ventana.locator('[role="status"]', { hasText: 'menciona' }).first().waitFor({ timeout: 60000 }).catch(() => {})
+  const avisos = limpio((await ventana.locator('[role="status"]').allTextContents()).join(' '))
+  comprobar(avisos.includes(`menciona la ${NOMBRE_2}`) && avisos.includes(`La ${NOMBRE} está marcada`) && !avisos.includes(`la ${REFERENCIA_2}`),
+    `el detector las nombra sin hacer pasar la referencia por número (${avisos.slice(0, 200)})`)
+  await ocDeLaLista(REFERENCIA_2).locator('input[type="checkbox"]').first().check()
+  await ventana.locator('[id^="fc-total-"]').fill('590')
+  await ventana.locator('[id^="correccion-motivo-"]').fill('La factura cubre las dos cotizaciones del proveedor')
+  await ventana.locator('[id^="correccion-justificante-"]').setInputFiles(JUSTIFICANTE)
+  await ventana.getByRole('button', { name: 'Corregir', exact: true }).click()
+  const alerta = await terminarVentana(pagina)
+  const [corregida] = await consulta(
+    `select a.total::float as total,
+            (select count(*)::int from adquisiciones_ordenes_compra l where l.adquisicion_id = a.id and l.quitada_en is null and l.orden_compra_id = any($2)) as ordenes
+       from adquisiciones a where a.numero_documento = $1 and a.estado = 'REGISTRADA'`,
+    [FACTURA, [oc, oc2]],
+  )
+  comprobar(!alerta && corregida?.total === 590 && corregida?.ordenes === 2, `corrige la factura y le suma la otra OC sin número${alerta ? ` (dijo «${alerta}»)` : ''}`)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const cuerpo = pagina.locator('tbody', { hasText: FACTURA }).first()
+  await cuerpo.getByText('Corregido una vez').first().click()
+  const historial = limpio(await cuerpo.textContent().catch(() => ''))
+  comprobar(historial.includes(`Se sumó la ${NOMBRE_2}`) && !historial.includes(`Se sumó la ${REFERENCIA_2}`),
+    `el historial dice «Se sumó la ${NOMBRE_2}»`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-contabilidad.png'), fullPage: true, caret: 'initial' })
   await contexto.close()
 
   // En el teléfono, la lista de facturas.
   const tel = await entrar(CUENTAS.contabilidad, { width: 390, height: 844 })
   await tel.pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
   const tarjeta = limpio(await tel.pagina.locator(`[data-factura-telefono="${FACTURA}"]`).textContent().catch(() => ''))
-  comprobar(tarjeta.includes(NOMBRE), 'en el teléfono la factura nombra la OC igual')
+  comprobar(tarjeta.includes('OC sin número') && tarjeta.includes(`Ref. del proveedor: ${REFERENCIA}`) && tarjeta.includes(`Ref. del proveedor: ${REFERENCIA_2}`),
+    'en el teléfono la factura nombra sus OC igual')
   const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `y la página no se ensancha (${ancho} px)`)
   await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-contabilidad-telefono.png'), fullPage: true, caret: 'initial' })
@@ -240,6 +340,19 @@ console.log(`     sembrada la OC sin número, con la referencia ${REFERENCIA}`)
   comprobar(texto.includes(NOMBRE) && !texto.includes(`OC ${REFERENCIA}`), 'en Cuentas por pagar la factura nombra la OC sin hacer pasar la referencia por su número')
   comprobar(texto.includes(`PDF de la ${NOMBRE}`), 'y el PDF de la OC lleva el mismo nombre')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-tesoreria.png'), fullPage: true, caret: 'initial' })
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  const enFacturas = limpio(await grupo(pagina, FACTURA))
+  comprobar(enFacturas.includes('Pagar en Cuentas por pagar'), 'en Facturas, Tesorería tiene «Pagar en Cuentas por pagar»')
+  await contexto.close()
+}
+
+// ------------------------------------------------- 4. Gerencia, en Facturas
+{
+  const { pagina, contexto } = await entrar(CUENTAS.gerencia)
+  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  const enFacturas = limpio(await grupo(pagina, FACTURA))
+  comprobar(enFacturas.includes('Ver en Cuentas por pagar') && !enFacturas.includes('Pagar en Cuentas por pagar'),
+    `Gerencia, que no paga, tiene «Ver en Cuentas por pagar» (${enFacturas ? 'la fila está' : 'no encontró la fila'})`)
   await contexto.close()
 }
 
