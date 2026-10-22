@@ -30,11 +30,17 @@ export const APROBACION_COMPRA: Record<string, Def> = {
   POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'Espera la aprobación antes de enviarse al proveedor.' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'exito', descripcion: 'Aprobada: ya se puede enviar y recibir.' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro', descripcion: 'Rechazada: sus líneas volvieron a quedar por comprar.' },
+  ANULADA: { etiqueta: 'Anulada', tono: 'peligro', descripcion: 'Anulada por Gerencia: sus líneas volvieron a quedar por comprar.' },
 }
 
-/** Una compra que no se envía, no se entrega ni se recibe hasta que se decida. */
+/** Una compra que no se envía, no se entrega ni se recibe: espera a Gerencia, o se rechazó o se anuló. */
 export function compraDetenida(aprobacion: string | null | undefined): boolean {
-  return aprobacion === 'POR_APROBAR' || aprobacion === 'RECHAZADA'
+  return aprobacion === 'POR_APROBAR' || aprobacion === 'RECHAZADA' || aprobacion === 'ANULADA'
+}
+
+/** Su PDF se descarga: la aprobada o sin aprobación, y la anulada, que sale con la marca ANULADA como evidencia. */
+export function compraConPdf(aprobacion: string | null | undefined): boolean {
+  return aprobacion !== 'POR_APROBAR' && aprobacion !== 'RECHAZADA'
 }
 
 /**

@@ -463,7 +463,7 @@ function InsumoConPartes({ linea: l, partes, rq }: { linea: LineaRequerimiento; 
                   <span className={cn('tabular', l.compra_rechazada ? 'text-peligro' : 'text-texto-suave')}>
                     {' · '}
                     {l.orden_compra}
-                    {l.compra_rechazada ? ' rechazada' : ''}
+                    {l.compra_anulada ? ' anulada' : l.compra_rechazada ? ' rechazada' : ''}
                   </span>
                 )}
                 {etapa && (

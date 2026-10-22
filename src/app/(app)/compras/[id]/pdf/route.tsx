@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 import { DocumentoCompraMateriales, type LineaCompraPdf } from '@/lib/documentos/compra-materiales'
 import { leerLogoDocumento } from '@/lib/documentos/logo'
-import { APROBACION_COMPRA, compraDetenida, cuentaParaCompra } from '@/lib/dominio/proveedores'
+import { APROBACION_COMPRA, compraConPdf, cuentaParaCompra } from '@/lib/dominio/proveedores'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -11,6 +11,25 @@ import { createClient } from '@/lib/supabase/server'
 function nombreDe(u: { nombres: string; apellidos: string } | null) {
   const nombre = u ? `${u.nombres} ${u.apellidos}`.trim() : ''
   return nombre ? nombre.toUpperCase() : null
+}
+
+/** Las líneas que guardó la OC al anularse, en el orden en que las guardó la base. */
+function lineasAnuladas(guardadas: unknown, codigo: string | null): LineaCompraPdf[] {
+  if (!Array.isArray(guardadas)) return []
+  return guardadas.map((x, i) => {
+    const l = (x ?? {}) as Record<string, unknown>
+    const texto = (v: unknown) => (typeof v === 'string' ? v : '')
+    const orden = texto(l.orden)
+    return {
+      id: `anulada-${i}`,
+      codigo: texto(l.material_codigo),
+      material: texto(l.material),
+      unidad: texto(l.unidad),
+      cantidad: Number(l.cantidad ?? 0),
+      precio: l.precio_unitario === null || l.precio_unitario === undefined ? null : Number(l.precio_unitario),
+      destino: texto(l.destino) || [orden ? `OT ${orden}` : null, codigo].filter(Boolean).join(' · ') || 'ALMACÉN',
+    }
+  })
 }
 
 export async function GET(_request: Request, context: RouteContext<'/compras/[id]/pdf'>) {
@@ -22,7 +41,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
     db
       .from('ordenes_compra_materiales')
       .select(
-        'id, numero, referencia, proveedor, proveedor_id, fecha_estimada, condicion_pago, dias_credito, moneda, aprobacion, con_factura, codigo_interno, motivo, origen, recojo, creado_en, aprobado_en, emisor:usuarios!ordenes_compra_materiales_creado_por_fkey(nombres, apellidos), aprobador:usuarios!ordenes_compra_materiales_aprobado_por_fkey(nombres, apellidos), padron:proveedores(tipo_documento, numero_documento, direccion, direccion_recojo, telefono, contacto)',
+        'id, numero, referencia, proveedor, proveedor_id, fecha_estimada, condicion_pago, dias_credito, moneda, aprobacion, con_factura, codigo_interno, motivo, origen, recojo, creado_en, aprobado_en, anulada_en, motivo_anulacion, lineas_anuladas, anulador:usuarios!ordenes_compra_materiales_anulada_por_fkey(nombres, apellidos), emisor:usuarios!ordenes_compra_materiales_creado_por_fkey(nombres, apellidos), aprobador:usuarios!ordenes_compra_materiales_aprobado_por_fkey(nombres, apellidos), padron:proveedores(tipo_documento, numero_documento, direccion, direccion_recojo, telefono, contacto)',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -37,8 +56,9 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
   const c = compra.data
   const titulo = c.numero ?? c.referencia
   // Una compra por aprobar o rechazada no sale en papel: el papel es lo que se
-  // le manda al proveedor.
-  if (compraDetenida(c.aprobacion)) {
+  // le manda al proveedor. La anulada sí, con su marca: es la evidencia de lo
+  // que se le pidió y de por qué ya no va.
+  if (!compraConPdf(c.aprobacion)) {
     return NextResponse.json(
       { error: `La compra ${titulo} no se puede descargar: ${APROBACION_COMPRA[c.aprobacion]?.descripcion ?? 'espera aprobación.'}` },
       { status: 409 },
@@ -86,7 +106,9 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
     if (!porCodigo) return null
     return [...porCodigo].map(([cod, rqs]) => `${cod} · ${[...rqs].sort().join(', ')}`).join('; ')
   }
-  const filas: LineaCompraPdf[] = (detalles.data ?? []).map((d) => {
+  // La anulada soltó sus líneas al anularse: salen de las que guardó (`lineas_anuladas`).
+  const anuladas = c.aprobacion === 'ANULADA' ? lineasAnuladas(c.lineas_anuladas, codigo) : null
+  const filas: LineaCompraPdf[] = anuladas ?? (detalles.data ?? []).map((d) => {
     if (d.requerimiento_detalle_id) {
       const l = porId.get(d.requerimiento_detalle_id)
       return {
@@ -128,7 +150,7 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
         divisa,
         conFactura: c.con_factura,
         motivo: c.motivo,
-        aprobada: c.aprobacion === 'APROBADA',
+        aprobada: c.aprobado_en !== null,
         emitidaPor: nombreDe(c.emisor),
         aprobadaPor: nombreDe(c.aprobador),
         aprobadaEn: c.aprobado_en,
@@ -142,6 +164,10 @@ export async function GET(_request: Request, context: RouteContext<'/compras/[id
           contacto: padron?.contacto ?? null,
         },
         cuenta: cuenta ? { banco: cuenta.banco, titular: cuenta.titular, numero: cuenta.numero_cuenta, moneda: cuenta.moneda } : null,
+        anulacion:
+          c.aprobacion === 'ANULADA' && c.anulada_en
+            ? { en: c.anulada_en, por: nombreDe(c.anulador), motivo: c.motivo_anulacion ?? '' }
+            : null,
       }}
     />,
   )

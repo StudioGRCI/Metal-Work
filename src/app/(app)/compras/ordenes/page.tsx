@@ -12,7 +12,7 @@ import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logist
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
-import { comprobantePedido, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
+import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -37,7 +37,7 @@ export default async function PaginaOrdenesCompra() {
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
   const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
-  const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA').length
+  const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA').length
 
   return (
     <>
@@ -127,8 +127,10 @@ function FilaCompra({
     .filter(Boolean)
     .join(' · ')
   const comprobante = comprobantePedido(c.con_factura)
+  // La rechazada y la anulada no se atienden ni se pagan: no esperan comprobante.
+  const sinCurso = c.aprobacion === 'RECHAZADA' || c.aprobacion === 'ANULADA'
   return (
-    <TR>
+    <TR data-compra={c.numero}>
       <TD>
         <div className="flex flex-wrap items-center gap-2">
           <span className="tabular font-semibold text-texto">{c.numero}</span>
@@ -140,6 +142,8 @@ function FilaCompra({
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
+          ) : sinCurso ? (
+            <span className="text-[11px] text-texto-suave">No se paga</span>
           ) : (
             <span className="text-[11px] text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
           )}
@@ -156,7 +160,11 @@ function FilaCompra({
             .join(' · ')}
         </p>
         {c.motivo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo}</p>}
-        {c.motivo_rechazo && <p className="mt-1 text-xs text-peligro">Rechazada: {c.motivo_rechazo}</p>}
+        {c.motivo_rechazo && (
+          <p className="mt-1 text-xs text-peligro">
+            {c.aprobacion === 'ANULADA' ? 'Anulada' : 'Rechazada'}: {c.motivo_rechazo}
+          </p>
+        )}
         <p className="text-[11px] text-texto-suave md:hidden">Para {para || '—'}</p>
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
@@ -168,10 +176,12 @@ function FilaCompra({
       <TD className="hidden sm:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
+        ) : sinCurso ? (
+          <span className="text-xs text-texto-suave">No se paga</span>
         ) : (
           <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
         )}
-        <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>
+        {!sinCurso && <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>}
         {c.facturas.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
             {c.facturas.map((f) => (
@@ -186,7 +196,7 @@ function FilaCompra({
       </TD>
       <TD className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {!compraDetenida(c.aprobacion) && (
+          {compraConPdf(c.aprobacion) && (
             <a
               href={`/compras/${c.id}/pdf`}
               download
@@ -197,7 +207,7 @@ function FilaCompra({
               PDF
             </a>
           )}
-          {emite && (
+          {emite && c.aprobacion !== 'ANULADA' && (
             <AccionesCompra
               id={c.id}
               numero={c.numero}

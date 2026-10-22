@@ -292,4 +292,15 @@ reset role;
 select test.afirmar((pg_temp.rq('rqa')).estado = 'EN_ATENCION' and (pg_temp.oc('oc4')).codigo_interno = 'PLANTA',
   'la administradora compra el RQA con la misma función');
 
+-- ============================================ 11. Anulada, sigue diciendo para qué código era
+-- Al anularla se sueltan sus líneas: el destino de cada una queda escrito en la OC
+-- para que su PDF no diga «ALMACÉN» (migración 20261022150000).
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.anular_orden_compra(current_setting('prueba.oc2')::uuid, 'El proveedor ya no tiene la plancha');
+reset role;
+select test.afirmar((pg_temp.oc('oc2')).lineas_anuladas->0->>'destino'
+                      = 'CHK383_A · ' || (pg_temp.rq('rq1')).numero || '; CHK383_B · ' || (pg_temp.rq('rq2')).numero,
+  'la OC anulada que juntaba dos RQ guarda el código y el RQ de su línea');
+
 rollback;

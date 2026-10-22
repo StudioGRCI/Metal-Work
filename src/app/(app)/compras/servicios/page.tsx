@@ -1,3 +1,5 @@
+import { FileDown } from 'lucide-react'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -14,7 +16,7 @@ import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { llaveParecido, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion'
-import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
+import { ESTADO_SERVICIO, servicioSinPapel } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -165,6 +167,18 @@ function FilaServicio({
       </TD>
       <TD className="text-right">
         <div className="flex flex-col items-end gap-2">
+          {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
+          {!servicioSinPapel(s.aprobacion, s.estado) && (
+            <a
+              href={`/compras/servicios/${s.id}/pdf`}
+              download
+              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
+              aria-label={`Descargar el PDF de la orden de servicio ${s.numero}${s.estado === 'ANULADA' ? ', anulada' : ''}`}
+            >
+              <FileDown aria-hidden className="size-4" />
+              PDF
+            </a>
+          )}
           {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
             <AvanceServicio
               id={s.id}
