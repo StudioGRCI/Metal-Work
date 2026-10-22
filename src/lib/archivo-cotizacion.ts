@@ -8,6 +8,7 @@ import {
   type CabeceraCotizacion,
   type TotalCotizacion,
 } from '@/lib/cotizacion-pdf'
+import { moneda, numero } from '@/lib/format'
 
 /**
  * El archivo de una cotización: PDF o Word (migración 103). Lo usan la subida y
@@ -54,11 +55,17 @@ export type LecturaArchivoCotizacion = {
 
 /**
  * La ayuda del monto. «Detectado» solo mientras es el que se leyó: el que la
- * persona escribió no se le atribuye al documento.
+ * persona escribió no se le atribuye al documento, y si no calza con lo leído,
+ * se dice qué trae el documento.
  */
-export function ayudaDelMonto(monto: string | null, leido: string | null): string {
-  if (leido && monto === leido) return 'Detectado en el documento; confirma o corrige el total final.'
-  if (monto) return 'El total final, como aparece en la cotización.'
+export function ayudaDelMonto(total: TotalCotizacion, leido: TotalCotizacion | null): string {
+  if (leido?.monto) {
+    const igual = Number(total.monto) === Number(leido.monto) && (!leido.moneda || total.moneda === leido.moneda)
+    if (igual) return 'Detectado en el documento; confirma o corrige el total final.'
+    const dice = leido.moneda ? moneda(leido.monto, leido.moneda) : numero(leido.monto)
+    return `El documento dice ${dice}: revisa el total.`
+  }
+  if (total.monto) return 'El total final, como aparece en la cotización.'
   return 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'
 }
 

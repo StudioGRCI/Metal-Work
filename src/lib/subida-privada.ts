@@ -131,6 +131,9 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
       const quitado = await supabase.storage.from(bucket).remove([ruta])
       if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
       if ((quitado.data?.length ?? 0) === 0) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, true) }
+      // Desde aquí, en la ruta está el elegido o nada: si la subida llega y su
+      // respuesta se pierde, volver al de antes no puede anotarlo con este adentro.
+      intentados.set(clave, este)
       ;({ error } = await subir())
     }
     if (!error) intentados.set(clave, este)

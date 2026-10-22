@@ -24,7 +24,7 @@ const esquemaAdjunto = z.object({
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: z.string().max(120).optional(),
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 export async function registrarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -54,7 +54,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type ?? null,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
     })
     .select('id')
     .maybeSingle()
@@ -72,7 +72,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
         .eq('ruta_storage', v.ruta_storage)
         .maybeSingle()
       if (ya && ya.orden_id === v.orden_id && ya.tipo === v.tipo && ya.subido_por === perfil.id
-        && ya.nombre_archivo === v.nombre_archivo && (ya.tamano_bytes === null ? null : Number(ya.tamano_bytes)) === (v.tamano_bytes ?? null)) {
+        && ya.nombre_archivo === v.nombre_archivo && Number(ya.tamano_bytes) === v.tamano_bytes) {
         revalidatePath(`/ordenes/${v.orden_id}`)
         return { ok: true, mensaje: guardado }
       }

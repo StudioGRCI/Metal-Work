@@ -147,16 +147,28 @@ function Formulario({
   // Por qué el PDF o el XML elegido no sirve: va en su campo, y no se lee.
   const [avisoArchivo, setAvisoArchivo] = useState<Record<'xml' | 'pdf', string | null>>({ xml: null, pdf: null })
   const turno = useRef<Record<Fuente, number>>({ xml: 0, pdf: 0, logistica: 0 })
-  const { alEnviar, enviando, error } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
   const campoPdf = useRef<HTMLInputElement>(null)
   const avisoError = useRef<HTMLParagraphElement>(null)
-  useCursorAlRechazo(enviando, error, () => (/\bPDF\b/.test(error ?? '') ? campoPdf.current : avisoError.current))
+  // Lo que es del PDF se dice en su campo, que se marca, y no se repite abajo.
+  const [faltaPdf, setFaltaPdf] = useState(false)
+  const errorPdf = error && /\bPDF\b/.test(error) ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorPdf ? campoPdf.current : avisoError.current))
+  // Al elegir otro PDF o la factura de Logística, el aviso del PDF ya no vale.
+  const yaNoFaltaPdf = () => {
+    setFaltaPdf(false)
+    if (errorPdf) limpiar()
+  }
 
   function registrar(e: FormEvent<HTMLFormElement>) {
-    // El PDF elegido y vacío ya lo dice su campo: no se envía, y el cursor va ahí.
-    if (campoPdf.current?.files?.[0]?.size === 0) {
+    const elegido = campoPdf.current?.files?.[0]
+    const conLogistica = Boolean(new FormData(e.currentTarget).get('documento_compra_id'))
+    // El PDF elegido y vacío ya lo dice su campo; sin PDF ni factura de
+    // Logística, lo dice también. No se envía, y el cursor va ahí.
+    if (elegido?.size === 0 || (!elegido && !conLogistica)) {
       e.preventDefault()
-      campoPdf.current.focus()
+      if (!elegido) setFaltaPdf(true)
+      campoPdf.current?.focus()
       return
     }
     alEnviar(e, (datos) => {
@@ -249,6 +261,9 @@ function Formulario({
       ? { proveedor: ahora.proveedor.trim() || primera.proveedor, condicion: primera.condicion_pago, moneda: primera.moneda, ot: ahora.ot || (primera.orden_id ?? '') }
       : { ...ahora, moneda: monedaLeida || ahora.moneda }
     const puestos = deNuevo ? cada((k) => (tocados.current.has(k) ? ahora[k] : leidos[k])) : leidos
+    // Lo que la persona cambió y esta fuente pisó al marcar por primera vez ya
+    // no es suyo: cuenta lo que cambie después.
+    if (!deNuevo) for (const k of CAMPOS) if (puestos[k] !== ahora[k]) tocados.current.delete(k)
     const ids = cs.map((c) => c.orden_compra_id)
     setMarcadas(ids)
     ponerValores(puestos)
@@ -335,6 +350,7 @@ function Formulario({
     void detectar(fuente, null)
     setAvisoArchivo((a) => ({ ...a, [fuente]: null }))
     if (!archivo) return
+    if (fuente === 'pdf') yaNoFaltaPdf()
     const vez = turno.current[fuente]
     const motivo = await revisarArchivo(archivo, accept, hastaMb)
     if (vez !== turno.current[fuente]) return
@@ -342,14 +358,6 @@ function Formulario({
     void detectar(fuente, (progreso) => leerFactura(archivo, progreso))
   }
 
-  // El detector compara con la primera fuente; si el archivo y la factura de
-  // Logística son de facturas distintas, también se dice.
-  const deLogistica = numeroDeFactura(numeroDeLogistica)
-  const delArchivo = (lecturas.xml ?? lecturas.pdf)?.numero ?? null
-  const otraFactura =
-    deLogistica && delArchivo && deLogistica !== delArchivo
-      ? [{ texto: `El ${lecturas.xml ? 'XML' : 'PDF'} es la factura ${delArchivo} y la de Logística es la ${deLogistica}: revisa que sean la misma.` }]
-      : []
   const avisos = lectura
     ? avisosDelDetector({
         lectura,
@@ -360,6 +368,16 @@ function Formulario({
         disponibles: compras,
       })
     : []
+  // El detector compara con la primera fuente; si el archivo y la factura de
+  // Logística son de facturas distintas, también se dice, una sola vez: si el
+  // número del formulario ya es el de Logística, el detector lo está diciendo.
+  const deLogistica = numeroDeFactura(numeroDeLogistica)
+  const delArchivo = (lecturas.xml ?? lecturas.pdf)?.numero ?? null
+  const yaLoDice = avisos.some((a) => a.tipo === 'NUMERO' && numeroDeFactura(a.registrado) === deLogistica)
+  const otraFactura =
+    deLogistica && delArchivo && deLogistica !== delArchivo && !yaLoDice
+      ? [{ texto: `El ${lecturas.xml ? 'XML' : 'PDF'} es la factura ${delArchivo} y la de Logística es la ${deLogistica}: revisa que sean la misma.` }]
+      : []
 
   function marcar(c: CompraSinFactura, si: boolean) {
     alEscribir()
@@ -384,6 +402,7 @@ function Formulario({
   /** La factura de Logística trae su número, su fecha y su OC: se llenan si están vacíos. */
   function elegirDeLogistica(id: string) {
     const d = documentos.find((x) => x.id === id) ?? null
+    if (d) yaNoFaltaPdf()
     soltar('logistica')
     documento.current = d
     setNumeroDeLogistica(d?.numero ?? null)
@@ -630,7 +649,7 @@ function Formulario({
           accept={ACEPTA_PDF}
           hastaMb={10}
           disabled={enviando}
-          aviso={avisoArchivo.pdf}
+          aviso={avisoArchivo.pdf ?? (faltaPdf ? 'Falta el PDF: adjúntalo o elige la factura que anexó Logística' : errorPdf)}
           estado={leyendo.pdf}
           onChange={(e) => void elegirArchivo('pdf', e.target.files?.[0], ACEPTA_PDF, 10)}
         />
@@ -657,7 +676,7 @@ function Formulario({
         <Boton type="submit" cargando={enviando}>
           Registrar comprobante
         </Boton>
-        {error && (
+        {error && !errorPdf && (
           <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
             {error}
           </p>

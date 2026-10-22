@@ -43,7 +43,7 @@ const esquemaSubir = z.object({
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.'),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 export async function registrarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -164,7 +164,7 @@ const esquemaCorregir = z.object({
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.'),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 /** Una nueva versión conserva el número y vuelve a Gerencia. */
@@ -311,7 +311,7 @@ const esquemaAprobarConOt = z.object({
   fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega'),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
-  tamano_pdf: z.coerce.number().int().min(1, 'El PDF de la OT está vacío: elige otro.'),
+  tamano_pdf: z.coerce.number({ error: 'Falta el tamaño del PDF de la OT: vuelve a elegirlo.' }).int().min(1, 'El PDF de la OT está vacío: elige otro.'),
 })
 
 /**

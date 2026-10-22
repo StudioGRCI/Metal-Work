@@ -82,6 +82,21 @@ function dentroDeOtraOracion(texto: string) {
   return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t
 }
 
+/**
+ * Por qué no se adjuntó el comprobante, con una sola indicación de qué hacer:
+ * sin permiso, desde la lista tampoco entra, así que se avisa al administrador;
+ * lo que pide volver a intentar se vuelve a intentar desde la lista.
+ */
+function noSeAdjunto(nombre: string, o: 'a' | 'o', error: string) {
+  if (error === NO_QUEDO_SIN_RESPUESTA) return `${nombre} no se adjuntó: no llegó la respuesta. Adjúntal${o} desde la lista.`
+  const motivo = dentroDeOtraOracion(error)
+  if (/\bpermiso\b/i.test(motivo)) return `${nombre} no se adjuntó: ${motivo} Avisa al administrador.`
+  const insiste = / Inténtalo de nuevo; si vuelve a pasar, avisa al administrador\.$/
+  const sinReintento = motivo.replace(insiste, '').replace(/ y vuelve a intentar\.$/, '.')
+  const siVuelve = insiste.test(motivo) ? '; si vuelve a pasar, avisa al administrador' : ''
+  return `${nombre} no se adjuntó: ${sinReintento} Adjúntal${o} desde la lista${siVuelve}.`
+}
+
 async function esPdf(archivo: File) {
   return archivo.size > 0 && archivo.size <= 20 * 1024 * 1024 && (await archivo.slice(0, 5).text()) === '%PDF-'
 }
@@ -340,8 +355,7 @@ function FormularioCompraDirecta({
             mensaje: `${emitida.mensaje} No se sabe si ${nombre.toLowerCase()} quedó adjunt${o}: recarga la lista y mira si está antes de adjuntarl${o} otra vez.`,
           }
         }
-        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta.' : dentroDeOtraOracion(adjunta.error)
-        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó: ${motivo} Adjúntal${o} desde la lista.` }
+        return { ok: true, mensaje: `${emitida.mensaje} ${noSeAdjunto(nombre, o, adjunta.error)}` }
       }
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },

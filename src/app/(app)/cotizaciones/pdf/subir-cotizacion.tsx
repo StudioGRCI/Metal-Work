@@ -55,7 +55,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
-  const [montoLeido, setMontoLeido] = useState<string | null>(null)
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
   // Si el total trae IGV: sin ese dato el margen de la OT saldría inflado en el 18 % de la venta.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
@@ -97,7 +97,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setArchivo(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
-    setMontoLeido(null)
+    setTotalLeido(null)
     setIncluyeIgv('')
     setProgreso('')
     setError(null)
@@ -152,7 +152,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     if (!elegido) return
     setError(null)
     setLectura(null)
-    setMontoLeido(null)
+    setTotalLeido(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoArchivo(noSirve)
@@ -162,7 +162,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     try {
       const resultado = await leerCabeceraDeArchivo(elegido, setProgreso)
       aplicar(resultado.cabecera)
-      setMontoLeido(resultado.total.monto)
+      setTotalLeido(resultado.total)
       const montoAMano = aMano.current.has('monto')
       const monedaAMano = aMano.current.has('moneda')
       setTotal((v) => ({
@@ -412,7 +412,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total.monto, montoLeido)} requerido>
+            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
               <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
                   aMano.current.add('monto')
                   setTotal((v) => ({ ...v, monto: e.target.value }))

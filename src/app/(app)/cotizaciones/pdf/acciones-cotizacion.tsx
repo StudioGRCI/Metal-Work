@@ -11,6 +11,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { fecha } from '@/lib/format'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
@@ -146,7 +147,7 @@ export function CorregirCotizacion({
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
-  const [montoLeido, setMontoLeido] = useState<string | null>(null)
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
   // Una versión nueva vuelve a preguntar por el IGV: el PDF corregido puede decir otra cosa.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [cliente, setCliente] = useState(clienteId)
@@ -172,7 +173,7 @@ export function CorregirCotizacion({
     setError(null)
     setAvisoArchivo(null)
     setTotal({ monto: null, moneda: null })
-    setMontoLeido(null)
+    setTotalLeido(null)
     setIncluyeIgv('')
     setCliente(clienteId)
     setCarroceria(carroceriaId)
@@ -184,7 +185,7 @@ export function CorregirCotizacion({
   async function elegir(elegido: File | undefined) {
     if (!elegido) return
     setDice(null)
-    setMontoLeido(null)
+    setTotalLeido(null)
     setError(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
@@ -194,7 +195,7 @@ export function CorregirCotizacion({
     try {
       const lectura = await leerCabeceraDeArchivo(elegido, setProgreso)
       setDice(lectura.cabecera.numero)
-      setMontoLeido(lectura.total.monto)
+      setTotalLeido(lectura.total)
       const montoAMano = aMano.current.has('monto')
       const monedaAMano = aMano.current.has('moneda')
       setTotal((v) => ({ monto: montoAMano ? v.monto : lectura.total.monto, moneda: monedaAMano ? v.moneda : lectura.total.moneda }))
@@ -353,7 +354,7 @@ export function CorregirCotizacion({
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total.monto, montoLeido)} requerido>
+            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
               <Entrada
                 id="corregir-monto"
                 value={total.monto ?? ''}
@@ -516,6 +517,9 @@ export function AprobarConOt({
   // Si el número escrito no es el del PDF, se dice.
   const otroNumero =
     !leyendo && datosLeidos?.numero && numeroOrden.trim() && !mismaOt(numeroOrden, datosLeidos.numero) ? datosLeidos.numero : null
+  // Y la fecha de entrega escrita, si no es la del PDF.
+  const otraFecha =
+    !leyendo && datosLeidos?.fechaEntrega && fechaEntrega && fechaEntrega !== datosLeidos.fechaEntrega ? datosLeidos.fechaEntrega : null
 
   function abrir() {
     aMano.current.clear()
@@ -547,10 +551,17 @@ export function AprobarConOt({
       const datos = await leerArchivoOrden(elegido, setAvisoLectura)
       setDatosLeidos(datos)
       // El número escrito a mano se queda, salvo que sea la misma OT: entonces
-      // va el del PDF, que trae el año.
+      // va el del PDF, que trae el año. Si el año lo trae solo lo escrito, se
+      // queda lo escrito: la base completaría el del PDF con el año de hoy.
       const leido = datos.numero
       const numeroAMano = aMano.current.has('numero')
-      if (leido) setNumeroOrden((escrito) => (numeroAMano && escrito.trim() && !mismaOt(escrito, leido) ? escrito : leido))
+      if (leido) {
+        setNumeroOrden((escrito) => {
+          if (!numeroAMano || !escrito.trim()) return leido
+          if (!mismaOt(escrito, leido)) return escrito
+          return conAnio(escrito) && !conAnio(leido) ? escrito : leido
+        })
+      }
       if (datos.fechaEntrega && !aMano.current.has('fecha')) setFechaEntrega(datos.fechaEntrega)
       if (datos.tipoUnidad && !aMano.current.has('tipo')) setTipo(datos.tipoUnidad)
       setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de aprobar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
@@ -791,6 +802,11 @@ export function AprobarConOt({
               }}
             />
           </Campo>
+          {otraFecha && (
+            <p role="status" className="-mt-2 text-xs text-aviso">
+              El PDF dice la entrega el {fecha(otraFecha)}: revisa la fecha.
+            </p>
+          )}
 
           <Falla ref={avisoError} texto={errorNumero ? null : error} />
 
@@ -816,6 +832,9 @@ export function AprobarConOt({
     </>
   )
 }
+
+/** «390-2025» trae el año; «390» no. */
+const conAnio = (t: string) => /-\d{4}$/.test(t.trim())
 
 /** 390, 0390 y 0390-2026 son la misma OT; el año, si se escribe en los dos, se compara. */
 function mismaOt(a: string, b: string) {

@@ -326,7 +326,8 @@ async function facturaQueNoSubeEnLaOcDirecta(viewport) {
   const aviso = p.getByText(/no se adjuntó/)
   await esperar(async () => (await aviso.count()) > 0, 40000)
   const texto = limpio(await aviso.first().innerText().catch(() => ''))
-  comprobar(texto.includes('La factura no se adjuntó: no se pudo cargar el archivo. No tienes permiso para subir o quitar ese archivo. Adjúntala desde la lista.'),
+  // Sin permiso, desde la lista tampoco entra: no se manda a adjuntarla ahí.
+  comprobar(texto.includes('La factura no se adjuntó: no se pudo cargar el archivo. No tienes permiso para subir o quitar ese archivo. Avisa al administrador.'),
     `[Logística ${tam}] la factura que no subió dice por qué: «${texto}»`)
   await p.unrouteAll({ behavior: 'ignoreErrors' })
   await contexto.close()
@@ -348,9 +349,16 @@ async function loEscritoSeQuedaEnLaCotizacion(viewport) {
   await p.getByRole('button', { name: 'Subir cotización' }).first().click()
   let d = p.getByRole('dialog').first()
   await d.waitFor({ timeout: 20000 })
-  await d.locator('#cot-archivo').setInputFiles(archivo)
+  await d.locator('#cot-archivo').setInputFiles({ ...archivo, buffer: pdfConTexto(['COTIZACION', 'Semirremolque de banco', 'TOTAL: US$ 1,180.00']) })
   await leido(d)
   const solo = await d.locator('#cot-numero').inputValue()
+  // «Detectado» mientras el monto es el leído; si se escribe otro, se dice qué trae el documento.
+  const ayudaDe = async () => limpio(await d.locator('#cot-monto').locator('xpath=ancestor::div[contains(@class,"space-y-1.5")][1]').innerText().catch(() => ''))
+  const detectado = await ayudaDe()
+  await d.locator('#cot-monto').fill('1000')
+  const otroMonto = await ayudaDe()
+  comprobar(detectado.includes('Detectado en el documento') && otroMonto.includes('El documento dice US$ 1,180.00: revisa el total.'),
+    `[Ventas ${tam}] el monto leído dice «Detectado»; otro escrito dice qué trae el documento: «${detectado}» / «${otroMonto}»`)
   await p.keyboard.press('Escape')
   await esperar(async () => (await p.getByRole('dialog').count()) === 0, 5000)
 
@@ -640,6 +648,28 @@ async function loLeidoSeVaConElArchivo(viewport) {
   const registradas = await uno('select count(*)::int as n from public.adquisiciones where documento_compra_id = $1', [doc.id])
   comprobar(cajaVacia.includes('Está vacío') && foco === 'adq-pdf' && llamadas === 0 && registradas.n === 0,
     `[Contabilidad ${tam}] con la factura de Logística, un PDF vacío no se deja de lado: «${cajaVacia}», cursor en «${foco}», ${llamadas} llamadas, ${registradas.n} registradas`)
+
+  // Sin PDF ni factura de Logística: lo dice el campo del PDF, que se marca, y
+  // el cursor va ahí, sin llamar al servidor ni repetirlo abajo. Al elegir la
+  // factura de Logística, el aviso se va.
+  await pdfR.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
+  await r.locator('#adq-documento').selectOption('')
+  await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
+  await r.locator('#adq-numero').fill(`F999-${sello}`)
+  await r.locator('#adq-emision').fill(doc.fecha)
+  await r.locator('#adq-total').fill('100.00')
+  await r.locator('#adq-vencimiento').fill(doc.fecha)
+  llamadas = 0
+  await r.getByRole('button', { name: 'Registrar comprobante' }).click()
+  await r.waitForTimeout(1000)
+  const cajaFalta = limpio(await pdfR.locator('xpath=..').innerText().catch(() => ''))
+  const focoFalta = await r.evaluate(() => document.activeElement?.id ?? '')
+  const abajo = await r.locator('form [role=alert]').count()
+  comprobar(cajaFalta.includes('Falta el PDF') && (await pdfR.getAttribute('aria-invalid')) === 'true' && focoFalta === 'adq-pdf' && llamadas === 0 && abajo === 0,
+    `[Contabilidad ${tam}] sin PDF ni factura de Logística, lo dice su campo, marcado, con el cursor ahí: «${cajaFalta}», cursor en «${focoFalta}», ${llamadas} llamadas, ${abajo} avisos abajo`)
+  await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-falta-pdf-${tam}.png`) })
+  await r.locator('#adq-documento').selectOption(doc.id)
+  comprobar(await esperar(async () => !(await dice(pdfR)).includes('Falta el PDF'), 5000), `[Contabilidad ${tam}] y al elegir la factura de Logística, el aviso se va («${await dice(pdfR)}»)`)
   await cr.close()
 }
 
