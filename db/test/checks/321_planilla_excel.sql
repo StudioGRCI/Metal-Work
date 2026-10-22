@@ -19,6 +19,7 @@ select test.crear_usuario('QA','Ventas','qa-321-ventas@demo.pe','VENDEDOR', :'se
 
 select set_config('prueba.p.taller', gen_random_uuid()::text, true);
 select set_config('prueba.p.admin', gen_random_uuid()::text, true);
+select set_config('prueba.p.sub', gen_random_uuid()::text, true);
 select set_config('prueba.p.import', gen_random_uuid()::text, true);
 select set_config('prueba.p.ot1', gen_random_uuid()::text, true);
 select set_config('prueba.p.ot2', gen_random_uuid()::text, true);
@@ -35,7 +36,8 @@ declare
 begin
   insert into public.planillas (id, tipo, periodo, moneda, estado, registrado_por) values
     (current_setting('prueba.p.taller')::uuid, 'TALLER', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh),
-    (current_setting('prueba.p.admin')::uuid, 'ADMINISTRATIVA', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh);
+    (current_setting('prueba.p.admin')::uuid, 'ADMINISTRATIVA', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh),
+    (current_setting('prueba.p.sub')::uuid, 'SUBCONTRATOS', '2099-08-01', 'PEN', 'BORRADOR', v_rrhh);
   insert into public.clientes (id, tipo_documento, numero_documento, razon_social) values (v_cliente, 'RUC', '20990000321', 'QA planilla');
   insert into public.ordenes_trabajo (id, numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, fecha_registro)
   select o.id, o.numero, v_cliente, v_sede, 'FABRICACION', 'NORMAL', 'Orden QA de planilla', 'EN_PROCESO', current_date
@@ -106,6 +108,29 @@ select test.afirmar(
     where planilla_id = current_setting('prueba.p.taller')::uuid and origen_hoja = 'RESUMEN AGOSTO MWP - 2099' and fila_origen = 8),
   'el Excel corregido con las filas corridas se vuelve a cargar: dos personas de dos cargas en la misma fila');
 
+-- A mano o cambiando el nombre tampoco entra dos veces en el mes (migración
+-- 20261021160000); en la planilla de subcontratos, a mano, sí: son proveedores.
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'ROSA ELENA HUAMAN FLORES', 100)$$,
+  'agregar a mano a quien ya está en otra planilla del mes no entra', 'ya está en la planilla de taller');
+insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'Gómez Paz, Luis', 100);
+select test.debe_fallar($$update public.planilla_personas set nombre = 'Mario Vilchez Paredes'
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis'$$,
+  'cambiar el nombre al de alguien que ya está en el mes no entra', 'ya está en la planilla de taller');
+update public.planilla_personas set monto = 120
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis';
+select test.afirmar((select monto = 120 from public.planilla_personas
+  where planilla_id = current_setting('prueba.p.admin')::uuid and nombre = 'Gómez Paz, Luis'),
+  'cambiar el importe de alguien no choca consigo mismo');
+insert into public.planilla_personas (planilla_id, nombre, monto) values
+  (current_setting('prueba.p.sub')::uuid, 'Soldaduras Huamán Flores SAC', 900),
+  (current_setting('prueba.p.sub')::uuid, 'Soldaduras Huamán Flores SAC', 400);
+select test.afirmar((select count(*) = 2 from public.planilla_personas where planilla_id = current_setting('prueba.p.sub')::uuid),
+  'en subcontratos, a mano, un proveedor puede tener dos contratos en el mes');
+select test.afirmar(pg_get_functiondef('public.importar_planilla_excel(uuid, uuid, jsonb)'::regprocedure) ~ 'bloquear_mes_de_planilla\(v_periodo\)',
+  'la importación bloquea el mes entero: dos cargas a la vez no dejan a la misma persona en dos planillas');
+
 -- Reparto en partes iguales y cierre.
 select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(current_setting('prueba.p.taller')::uuid,
   array(select id from public.planilla_personas where planilla_id = current_setting('prueba.p.taller')::uuid),
@@ -129,9 +154,5 @@ select test.debe_fallar($$select public.repartir_planilla_en_partes_iguales(curr
   'cerrada, el reparto ya no cambia', 'cerrada');
 
 reset role;
--- Dos cargas a la vez en planillas distintas del mismo mes no se prueban en una
--- transacción: se comprueba que la carga bloquea el mes (migración 20261021160000).
-select test.afirmar(pg_get_functiondef('public.importar_planilla_excel(uuid, uuid, jsonb)'::regprocedure) ~ 'pg_advisory_xact_lock\(hashtextextended\(''planilla-periodo:''',
-  'la carga bloquea el mes entero: dos a la vez no dejan a la misma persona en dos planillas');
 select 'OK: planilla desde varias hojas con su empresa, sin duplicados en el mes y con reparto en partes iguales. Ensayo revertido.' as comprobacion;
 rollback;
