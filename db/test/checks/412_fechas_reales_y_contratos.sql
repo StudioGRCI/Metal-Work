@@ -141,6 +141,20 @@ select public.adjuntar_contrato_subcontrato(pg_temp.id('c1'), pg_temp.id('sc_mtz
 select test.afirmar(public.adjuntar_contrato_subcontrato(pg_temp.id('c1'), pg_temp.id('sc_mtz'), pg_temp.ruta('sc_mtz', 'c1'), 'Contrato firmado.pdf') = pg_temp.id('c1')
                     and (select count(*) from public.subcontrato_contratos where subcontrato_id = pg_temp.id('sc_mtz')) = 1,
   'el reintento del mismo contrato no lo duplica');
+-- Otro archivo con el mismo id ya no es el mismo envío (migración 20261022160000).
+select set_config('prueba.c1b', gen_random_uuid()::text, true);
+select pg_temp.subir('subcontratos', pg_temp.ruta('sc_mtz', 'c1b'));
+select test.debe_fallar(format('select public.adjuntar_contrato_subcontrato(%L, %L, %L, ''Contrato otra vez.pdf'')',
+    pg_temp.txt('c1'), pg_temp.txt('sc_mtz'), pg_temp.ruta('sc_mtz', 'c1b')),
+  'el mismo id con otro archivo no se da por adjuntado', 'ya quedó adjuntado con otro archivo');
+do $$
+declare
+  v integer;
+begin
+  delete from storage.objects where bucket_id = 'subcontratos' and name = pg_temp.ruta('sc_mtz', 'c1b');
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 1, 'y ese archivo, que ninguna fila nombra, la pantalla lo quita');
+end $$;
 select test.debe_fallar(format('select public.adjuntar_contrato_subcontrato(%L, %L, %L, null)',
     gen_random_uuid(), pg_temp.txt('sc_mtz'), pg_temp.ruta('sc_mtz', 'c1')),
   'el mismo archivo no se adjunta dos veces', 'ya está adjunto');

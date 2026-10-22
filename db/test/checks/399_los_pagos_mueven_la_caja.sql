@@ -174,6 +174,12 @@ begin
   perform test.afirmar((select count(*) from public.movimientos_caja where origen = 'PAGO_ADQUISICION'
                          and origen_id = current_setting('prueba.pago1')::uuid) = 1,
     'pagar dos veces el mismo formulario deja un solo egreso');
+  -- Con otro voucher ya no es el mismo envío: se perdió la respuesta, se volvió
+  -- a pulsar y la pantalla subió el archivo a otra ruta (migración 20261022160000).
+  perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 500, ''OP-398-1'', %L, %L, null)',
+      current_setting('prueba.pago1'), current_setting('prueba.adq1'), v_hoy,
+      pg_temp.voucher('pagos-facturas', current_setting('prueba.adq1')), current_setting('prueba.cpen')),
+    'el mismo formulario con otro voucher no se da por pagado', 'ya quedó registrado con otro comprobante');
   perform test.afirmar((select egresos = 500 and saldo_final = -500 from public.caja_del_dia(v_hoy)
                          where caja_id = current_setting('prueba.cpen')::uuid),
     'la caja del día lo cuenta en los egresos y en el saldo');
@@ -275,6 +281,14 @@ begin
   perform test.afirmar(m.tipo = 'INGRESO' and m.monto = 400 and m.caja_id = current_setting('prueba.cusd')::uuid
       and m.codigo_interno = 'QA398-V' and m.descripcion = 'Cobro de la factura E001-398 · QA CLIENTE 398',
     'el cobro deja su ingreso en la cuenta en dólares, con el código interno');
+  perform test.afirmar(public.registrar_cobro_factura(current_setting('prueba.pago5')::uuid, current_setting('prueba.fv')::uuid, v_hoy,
+                         400, false, 'OP-398-5', v_ruta, current_setting('prueba.cusd')::uuid, null) = current_setting('prueba.pago5')::uuid
+                       and (select count(*) from public.cobros_factura_venta where id = current_setting('prueba.pago5')::uuid) = 1,
+    'el mismo cobro repetido, con su voucher, se reconoce sin duplicarse');
+  perform test.debe_fallar(format('select public.registrar_cobro_factura(%L, %L, %L, 400, false, ''OP-398-5'', %L, %L, null)',
+      current_setting('prueba.pago5'), current_setting('prueba.fv'), v_hoy,
+      pg_temp.voucher('cobros-venta', current_setting('prueba.fv')), current_setting('prueba.cusd')),
+    'con otro voucher no se da por cobrado', 'ya quedó registrado con otro voucher');
 
   -- Un cobro en dólares que entró a la cuenta en soles.
   v_ruta := pg_temp.voucher('cobros-venta', current_setting('prueba.fv'));

@@ -137,9 +137,12 @@ En la misma migración que la crea, sin excepción:
   quita el archivo si ninguna fila lo nombra. Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
-  repetido —por id en la función, o releyendo la fila por su ruta y quién la
-  anotó—, nunca a uno parecido: comparar solo el id, o solo la orden, daría
-  `ok` a otro archivo y lo dejaría suelto.
+  repetido —en la función, por su id **con la misma ruta y la misma persona**;
+  en la acción, releyendo la fila por su ruta y quién la anotó—, nunca a uno
+  parecido: comparar solo el id, o solo la orden, daría `ok` a otro archivo y
+  lo dejaría suelto. Los ocho cobros y pagos que devolvían el id existente sin
+  mirar la ruta confirmaban un voucher que ninguna fila nombra
+  (`20261022160000`); el check `417` falla si vuelve a aparecer una así.
 - El navegador nunca recibe la clave de servicio: `src/lib/supabase/server.ts`
   es `server-only`.
 

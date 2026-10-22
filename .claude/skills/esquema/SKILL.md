@@ -214,3 +214,20 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
   check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
   pantalla pinte las partes que da la base en vez de recalcularlas.
+
+- **Una regla nueva sobre filas que ya existen no va como `CHECK ... not valid`.**
+  `not valid` solo se salta la revisión al crearla: Postgres la evalúa en cada
+  UPDATE de la fila vieja, aunque el UPDATE no toque esa columna. En la
+  `20261022141500` el «archivo de 0 bytes no entra» como CHECK dejó la
+  cotización vieja con PDF vacío sin poder rechazarse, aprobarse ni corregirse
+  (lo vieron los auditores el 2026-10-22). Va como disparador `before insert or
+  update of <columnas>` que juzga solo el valor nuevo o el que cambió
+  (`fn_archivo_no_vacio`), y el check prueba con una fila vieja sembrada con
+  `session_replication_role = replica`.
+
+- **Redefinir una función que producción pudo cambiar a mano.** Una migración
+  que lleva la función entera pisa sin aviso un arreglo pegado en el editor de
+  Supabase. Antes de reemplazarla, mirar `md5(replace(prosrc, E'\r', ''))`
+  contra el texto que el repositorio conoce (antes o después del cambio) y
+  detenerse con un mensaje si no es ninguno (`20261022160000`). `prosrc` se
+  guarda tal cual, y `create or replace` conserva los permisos.
