@@ -335,7 +335,7 @@ const rechaza = async (pagina, ruta) => {
     return avisoGuia()
   }
   await ventana.getByRole('button', { name: 'Cargar guía' }).click()
-  const primeraGuia = await esperarAviso((t) => /No se confirmó/.test(t))
+  const primeraGuia = await esperarAviso((t) => /Vuelve a intentar desde esta ventana/.test(t))
   await pagina.unrouteAll({ behavior: 'ignoreErrors' })
   const ayer = new Date(Date.parse(`${fechaPrimera}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
   await ventana.locator('input[name="fecha"]').fill(ayer)
@@ -354,7 +354,7 @@ const rechaza = async (pagina, ruta) => {
   const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])
   comprobar(guia?.numero === 'T001-00000403' && objetos.length === 1, `la guía queda en la base como T001-00000403, con su PDF en storage.objects (${guia?.numero}, ${objetos.length})`)
-  comprobar(/No se confirmó/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' && guia?.fecha === fechaPrimera,
+  comprobar(/Vuelve a intentar desde esta ventana/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' && guia?.fecha === fechaPrimera,
     `la guía cuya respuesta se perdió no se da por cargada con otra fecha: «${primeraGuia}» → «${segundaGuia}» (queda del ${guia?.fecha})`)
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])

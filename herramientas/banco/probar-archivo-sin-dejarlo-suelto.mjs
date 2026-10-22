@@ -535,7 +535,7 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     const avisos = async () => limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))
     await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.jpg`, mimeType: 'image/jpeg', buffer: Buffer.concat([JPEG_MINIMO, Buffer.alloc(200)]) })
     await boton.click()
-    await esperar(async () => /No se confirmó/.test(await avisos()), 30000)
+    await esperar(async () => /Vuelve a intentar desde esta ventana/.test(await avisos()), 30000)
     const primera = await avisos()
     // Tras el rechazo, el cursor va al aviso (en el teléfono, el botón queda debajo).
     const enElAviso = () => p.evaluate(() => document.activeElement?.getAttribute('role') === 'alert')
@@ -564,7 +564,7 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     await esperar(async () => (await objetosDe()).length === 1, 25000)
     const cuenta = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
     const objetos = await objetosDe()
-    comprobar(/No se confirmó/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
+    comprobar(/Vuelve a intentar desde esta ventana/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
       && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
       `[Tesorería ${tam}] ${caso}: la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»${segunda ? ` / «${segunda}»` : ''}; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
     if (caso === 'directo') {

@@ -17,6 +17,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
 import {
   BUCKET_FOTOS_VEHICULO,
@@ -111,7 +112,20 @@ function FormularioIngreso({
   const [id] = useState(() => crypto.randomUUID())
   const [motivo, setMotivo] = useState('')
   const [codigo, setCodigo] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(registrarIngresoVehiculo, (r) => alTerminar(r.mensaje ?? 'Ingreso registrado.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const r = await registrarIngresoVehiculo(previo, datos)
+      // El ingreso ya había entrado la primera vez: las fotos de este envío no
+      // las nombra nadie y se quitan ya (las de la primera vez, que el ingreso
+      // nombra, la base no las deja quitar).
+      if (!r.ok && yaEntroLaPrimeraVez(r.error)) {
+        quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
+        setFotos([])
+      }
+      return r
+    },
+    (r) => alTerminar(r.mensaje ?? 'Ingreso registrado.'),
+  )
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length

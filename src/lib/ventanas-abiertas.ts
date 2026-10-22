@@ -1,0 +1,33 @@
+/**
+ * Las `Ventana` abiertas, y lo que espera a que se cierren.
+ *
+ * Tras «… ya quedó registrado la primera vez que lo enviaste», la pantalla de
+ * detrás se pone al día para no ofrecer otra vez lo que ya entró. Si lo hacía
+ * con la ventana abierta y el primer envío ya había quitado el botón que la
+ * abrió (el vehículo ya salió, la factura quedó pagada, la guía cargada), la
+ * ventana se desmontaba sola en menos de un segundo: el aviso no se alcanzaba a
+ * leer y las fotos nuevas de la salida quedaban sueltas en Storage
+ * (decimotercera pasada). Ahora se pone al día cuando la persona la cierra, con
+ * «Cerrar», la X o Escape. La ventana es modal: la página de detrás no se toca
+ * mientras tanto.
+ */
+const abiertas = new Set<object>()
+let pendientes: Array<() => void> = []
+
+export function abrioVentana(marca: object) {
+  abiertas.add(marca)
+}
+
+export function cerroVentana(marca: object) {
+  if (!abiertas.delete(marca) || abiertas.size > 0) return
+  const ahora = pendientes
+  pendientes = []
+  for (const hacer of ahora) hacer()
+}
+
+/** Deja `hacer` para cuando se cierre la última ventana. Sin ventana abierta no lo deja y dice que no. */
+export function alCerrarLaVentana(hacer: () => void): boolean {
+  if (abiertas.size === 0) return false
+  pendientes.push(hacer)
+  return true
+}

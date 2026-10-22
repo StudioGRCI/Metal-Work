@@ -40,22 +40,16 @@ comment on function public.escaneo_de_control_anotado(text) is
 revoke all on function public.escaneo_de_control_anotado(text) from public, anon;
 grant execute on function public.escaneo_de_control_anotado(text) to authenticated;
 
-do $$
-begin
-  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
-                  and policyname = 'mw_leer_gastos_ot_suelto_propio') then
-    create policy mw_leer_gastos_ot_suelto_propio on storage.objects for select to authenticated using (
-      bucket_id = 'gastos-ot'
-      and owner_id = (select auth.uid())::text
-      and not public.comprobante_de_gasto_anotado(name)
-    );
-  end if;
-  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
-                  and policyname = 'mw_leer_control_ot_suelto_propio') then
-    create policy mw_leer_control_ot_suelto_propio on storage.objects for select to authenticated using (
-      bucket_id = 'control-ot'
-      and owner_id = (select auth.uid())::text
-      and not public.escaneo_de_control_anotado(name)
-    );
-  end if;
-end $$;
+-- Se vuelven a crear al pegar otra vez: una que se cambió a mano queda como aquí.
+drop policy if exists mw_leer_gastos_ot_suelto_propio on storage.objects;
+create policy mw_leer_gastos_ot_suelto_propio on storage.objects for select to authenticated using (
+  bucket_id = 'gastos-ot'
+  and owner_id = (select auth.uid())::text
+  and not public.comprobante_de_gasto_anotado(name)
+);
+drop policy if exists mw_leer_control_ot_suelto_propio on storage.objects;
+create policy mw_leer_control_ot_suelto_propio on storage.objects for select to authenticated using (
+  bucket_id = 'control-ot'
+  and owner_id = (select auth.uid())::text
+  and not public.escaneo_de_control_anotado(name)
+);

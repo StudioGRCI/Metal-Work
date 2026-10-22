@@ -56,6 +56,10 @@ returns boolean language sql stable set search_path to 'public' as $$
 $$;
 revoke all on function public.anotar_envio(uuid, text, jsonb) from public, anon, authenticated;
 revoke all on function public.mismo_envio(uuid, text, jsonb) from public, anon, authenticated;
+comment on function public.anotar_envio(uuid, text, jsonb) is
+  'Anota la huella de lo que trajo el envío que creó el registro, y devuelve su id. Solo la llaman las funciones que registran (migración 20261022194000).';
+comment on function public.mismo_envio(uuid, text, jsonb) is
+  'Si el reintento con este id trae lo mismo que el envío que lo creó. Un registro sin huella (de antes de 20261022194000) no se da por el mismo.';
 
 -- 2. Las seis funciones la anotan y la miran -------------------------------------------------
 do $$

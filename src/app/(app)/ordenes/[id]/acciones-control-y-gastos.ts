@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
+import { moneda } from '@/lib/format'
 import { ocupada, subirARutaNueva } from '@/lib/ruta-nueva'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -20,6 +21,15 @@ const pdfMaximo = 15 * 1024 * 1024
 async function quitarSuelto(db: Awaited<ReturnType<typeof createClient>>, cubeta: 'gastos-ot' | 'control-ot', ruta: string) {
   const { data, error } = await db.storage.from(cubeta).remove([ruta])
   return !error && (data?.length ?? 0) > 0
+}
+
+/** El PDF guardado es este mismo, byte a byte. Si no se puede leer, no se da por el mismo. */
+async function mismoContenido(db: Awaited<ReturnType<typeof createClient>>, ruta: string | null, bytes: Uint8Array) {
+  if (!ruta) return false
+  const { data } = await db.storage.from('gastos-ot').download(ruta)
+  if (!data) return false
+  const guardado = new Uint8Array(await data.arrayBuffer())
+  return guardado.length === bytes.length && guardado.every((b, i) => b === bytes[i])
 }
 
 async function leerPdf(datos: FormData) {
@@ -48,19 +58,23 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   if (Number(v.monto) <= 0) return { ok: false, error: 'El importe debe ser mayor que cero.' }
   const db = await createClient()
   const { data: previo, error: previoError } = await db.from('ot_gastos_areas')
-    .select('id, registrado_por, orden_id, tipo, descripcion, fecha, monto, moneda, comprobante_nombre').eq('id', v.id).maybeSingle()
+    .select('id, registrado_por, orden_id, tipo, descripcion, fecha, monto, moneda, comprobante_nombre, comprobante_ruta').eq('id', v.id).maybeSingle()
   if (previoError) return { ok: false, error: mensajeDeError(previoError) }
   if (previo) {
     if (previo.registrado_por !== perfil.id) return { ok: false, error: 'El identificador del gasto ya está en uso.' }
-    // El mismo envío repetido trae todo igual. Con otro importe, otra
-    // descripción u otro PDF ya no es el mismo: antes se daba por registrado y
-    // la pantalla se vaciaba con lo de la primera vez guardado (duodécima pasada).
+    // El mismo envío repetido trae todo igual, también el PDF: otro con el
+    // mismo nombre no es el mismo. Con otro importe, otra descripción u otro
+    // PDF ya no es el mismo envío: antes se daba por registrado y la pantalla
+    // se vaciaba con lo de la primera vez guardado (duodécima y decimotercera pasadas).
     const mismo = previo.orden_id === v.orden_id && previo.tipo === v.tipo && previo.descripcion === v.descripcion
       && previo.fecha === v.fecha && Number(previo.monto) === Number(v.monto) && previo.moneda === v.moneda
       && previo.comprobante_nombre === pdf.archivo.name.slice(0, 200)
+      && await mismoContenido(db, previo.comprobante_ruta, pdf.bytes)
+    // Lo que entró y cómo se corrige: «recarga la pantalla» solo dejaba el
+    // formulario vacío, que se leía como que el cambio había entrado.
     return mismo
       ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
-      : { ok: false, error: 'Este gasto ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
+      : { ok: false, error: `Este gasto ya quedó registrado la primera vez que lo enviaste, por ${moneda(previo.monto, previo.moneda === 'USD' ? 'USD' : 'PEN')}, y lo que cambiaste después no se guardó. Está en la lista de abajo; si algo está mal, pide a Administración que lo observe.` }
   }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
   const cubeta = db.storage.from('gastos-ot')

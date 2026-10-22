@@ -2,6 +2,7 @@ import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
+import { alCerrarLaVentana } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -87,8 +88,18 @@ export function useAccion<T = never>(
         setResultado(salida)
         if (!salida.ok) {
           // El envío ya había entrado la primera vez: la pantalla de detrás se
-          // pone al día, para que no ofrezca hacerlo otra vez.
-          if (refrescar && yaEntroLaPrimeraVez(salida.error)) iniciar(() => router.refresh())
+          // pone al día, para que no ofrezca hacerlo otra vez. Con una ventana
+          // abierta, al cerrarla: antes la desmontaba con el aviso a medio leer
+          // (`ventanas-abiertas.ts`). Al cerrarla, además, el aviso se va: una
+          // ventana cuyo envío vive fuera de ella volvía a abrirse con el «ya
+          // quedó» y sin el botón, y no dejaba pagar el saldo.
+          if (refrescar && yaEntroLaPrimeraVez(salida.error)) {
+            const alCerrar = () => {
+              setResultado((r) => (r === salida ? null : r))
+              router.refresh()
+            }
+            if (!alCerrarLaVentana(alCerrar)) iniciar(() => router.refresh())
+          }
           return
         }
 

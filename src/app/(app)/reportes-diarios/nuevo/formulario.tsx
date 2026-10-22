@@ -28,7 +28,7 @@ import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -305,6 +305,9 @@ export function FormularioReporteDiario({
     { refrescar: false },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)
+  // El cursor va al aviso, al final de un formulario largo: caía a la página.
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
 
   const nombres = new Map(personal.map((p) => [p.valor, p.etiqueta]))
   // Lo que cada persona suma en todo el día, en todos los códigos: el tope es 16 horas.
@@ -433,128 +436,136 @@ export function FormularioReporteDiario({
       }
       className="space-y-6"
     >
-      <section aria-labelledby="rd-cabecera" className="space-y-4">
-        <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
-          El reporte
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
-          <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
-            <Entrada
-              id="rd-fecha"
-              name="fecha"
-              type="date"
-              required
-              value={dia}
-              onChange={(e) => {
-                setDia(e.target.value)
-                for (const s of secciones) leerCodigo(s, s.codigo, e.target.value)
-              }}
-              min={minimo}
-              max={hoy}
-            />
-          </Campo>
-          <Campo etiqueta="Asunto" htmlFor="rd-asunto" requerido>
-            <Entrada
-              id="rd-asunto"
-              name="asunto"
+      {/* Tras «ya quedó», lo de arriba ya no se envía: queda a la vista y trabado.
+          Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada). */}
+      <fieldset disabled={yaEntro} className="min-w-0 space-y-6">
+        <section aria-labelledby="rd-cabecera" className="space-y-4">
+          <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
+            El reporte
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
+              <Entrada
+                id="rd-fecha"
+                name="fecha"
+                type="date"
+                required
+                value={dia}
+                onChange={(e) => {
+                  setDia(e.target.value)
+                  for (const s of secciones) leerCodigo(s, s.codigo, e.target.value)
+                }}
+                min={minimo}
+                max={hoy}
+              />
+            </Campo>
+            <Campo etiqueta="Asunto" htmlFor="rd-asunto" requerido>
+              <Entrada
+                id="rd-asunto"
+                name="asunto"
+                required
+                minLength={3}
+                maxLength={120}
+                placeholder="Por ejemplo: armado de la tolva"
+                defaultValue={corrige?.asunto}
+                autoComplete="off"
+              />
+            </Campo>
+          </div>
+          <Campo etiqueta="Breve descripción" htmlFor="rd-descripcion" requerido>
+            <AreaTexto
+              id="rd-descripcion"
+              name="descripcion"
               required
               minLength={3}
-              maxLength={120}
-              placeholder="Por ejemplo: armado de la tolva"
-              defaultValue={corrige?.asunto}
-              autoComplete="off"
+              maxLength={1000}
+              rows={2}
+              placeholder="Lo que pasó hoy: qué se avanzó, qué falta, si algo trabó el trabajo."
+              defaultValue={corrige?.descripcion}
             />
           </Campo>
-        </div>
-        <Campo etiqueta="Breve descripción" htmlFor="rd-descripcion" requerido>
-          <AreaTexto
-            id="rd-descripcion"
-            name="descripcion"
-            required
-            minLength={3}
-            maxLength={1000}
-            rows={2}
-            placeholder="Lo que pasó hoy: qué se avanzó, qué falta, si algo trabó el trabajo."
-            defaultValue={corrige?.descripcion}
-          />
-        </Campo>
-      </section>
+        </section>
 
-      <section aria-labelledby="rd-codigos-titulo" className="space-y-4">
-        <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
-          {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
-        </h2>
-        {secciones.map((s, n) => (
-          <SeccionDelCodigo
-            key={s.clave}
-            seccion={s}
-            numero={n + 1}
-            varios={varios}
-            repetido={repetidos.has(s.clave)}
-            dia={dia}
-            hoy={hoy}
-            corrige={corrige !== null}
-            cuentaId={cuentaId}
-            codigos={codigos}
-            personal={personal}
-            sinPersonal={sinPersonal}
-            alCambiar={(cambio) => cambiar(s.clave, cambio)}
-            alEscribirCodigo={(texto) => {
-              cambiar(s.clave, { codigo: texto })
-              leerCodigo(s, texto, dia)
-            }}
-            alQuitar={varios ? () => quitarCodigo(s) : null}
-          />
-        ))}
+        <section aria-labelledby="rd-codigos-titulo" className="space-y-4">
+          <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
+            {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
+          </h2>
+          {secciones.map((s, n) => (
+            <SeccionDelCodigo
+              key={s.clave}
+              seccion={s}
+              numero={n + 1}
+              varios={varios}
+              repetido={repetidos.has(s.clave)}
+              dia={dia}
+              hoy={hoy}
+              corrige={corrige !== null}
+              cuentaId={cuentaId}
+              codigos={codigos}
+              personal={personal}
+              sinPersonal={sinPersonal}
+              alCambiar={(cambio) => cambiar(s.clave, cambio)}
+              alEscribirCodigo={(texto) => {
+                cambiar(s.clave, { codigo: texto })
+                leerCodigo(s, texto, dia)
+              }}
+              alQuitar={varios ? () => quitarCodigo(s) : null}
+            />
+          ))}
 
-        {!corrige && (
-          <Boton type="button" variante="contorno" disabled={libres.length === 0} onClick={agregarCodigo} className="w-full sm:w-auto">
-            <Plus aria-hidden className="size-4" />
-            Agregar otro código interno
-          </Boton>
-        )}
-        {!corrige && libres.length === 0 && (
-          <p className="text-xs text-texto-suave">Un reporte lleva hasta {MAXIMO_CODIGOS_REPORTE} códigos: el resto, en otro reporte.</p>
-        )}
-      </section>
+          {!corrige && (
+            <Boton type="button" variante="contorno" disabled={libres.length === 0} onClick={agregarCodigo} className="w-full sm:w-auto">
+              <Plus aria-hidden className="size-4" />
+              Agregar otro código interno
+            </Boton>
+          )}
+          {!corrige && libres.length === 0 && (
+            <p className="text-xs text-texto-suave">Un reporte lleva hasta {MAXIMO_CODIGOS_REPORTE} códigos: el resto, en otro reporte.</p>
+          )}
+        </section>
 
-      <section aria-labelledby="rd-personal" className="space-y-3">
-        <h2 id="rd-personal" className="text-sm font-semibold text-texto">
-          Tu gente en el día
-        </h2>
-        {sinPersonal ? (
-          <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
-            No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
-            a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
-          </p>
-        ) : porPersona.size === 0 ? (
-          <p className="text-xs text-texto-suave">Aquí se suman las horas de cada persona en todos los códigos del reporte.</p>
-        ) : (
-          <div className="rounded-lg bg-superficie-2 px-3 py-2 text-xs text-texto-suave" aria-live="polite" data-resumen-personal>
-            <p className="font-medium text-texto">
-              <Users aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
-              {porPersona.size} {porPersona.size === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(totalHoras)}</span> en
-              total
+        <section aria-labelledby="rd-personal" className="space-y-3">
+          <h2 id="rd-personal" className="text-sm font-semibold text-texto">
+            Tu gente en el día
+          </h2>
+          {sinPersonal ? (
+            <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
+              No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
+              a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
             </p>
-            <ul className="mt-1 space-y-0.5">
-              {[...porPersona.entries()].map(([persona, horas]) => (
-                <li key={persona} className={cn(horas > 16 && 'font-medium text-peligro')}>
-                  {nombres.get(persona) ?? 'Persona'}: <span className="tabular">{horasCortas(horas)}</span>
-                  {horas > 16 && ' — pasa de 16 horas en el día'}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+          ) : porPersona.size === 0 ? (
+            <p className="text-xs text-texto-suave">Aquí se suman las horas de cada persona en todos los códigos del reporte.</p>
+          ) : (
+            <div className="rounded-lg bg-superficie-2 px-3 py-2 text-xs text-texto-suave" aria-live="polite" data-resumen-personal>
+              <p className="font-medium text-texto">
+                <Users aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
+                {porPersona.size} {porPersona.size === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(totalHoras)}</span> en
+                total
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {[...porPersona.entries()].map(([persona, horas]) => (
+                  <li key={persona} className={cn(horas > 16 && 'font-medium text-peligro')}>
+                    {nombres.get(persona) ?? 'Persona'}: <span className="tabular">{horasCortas(horas)}</span>
+                    {horas > 16 && ' — pasa de 16 horas en el día'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      </fieldset>
 
       {error && (
         <p
+          ref={aviso}
+          tabIndex={-1}
           role="alert"
           data-ya-entro={yaEntro || undefined}
           className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
         >
-          {error}
+          {yaEntro
+            ? 'Este reporte ya quedó registrado la primera vez que lo enviaste, y lo que cambiaste después no se guardó. Ábrelo con «Ver el reporte»: ahí está lo que quedó y, si hay que cambiar algo, cómo corregirlo.'
+            : error}
         </p>
       )}
       {fallidas && !subiendo && (

@@ -21,7 +21,7 @@
  * entero al servidor, la acción se cumple y el navegador no se entera.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import pg from 'pg'
@@ -120,10 +120,14 @@ mkdirSync(archivos, { recursive: true })
 const PDF = (relleno) =>
   Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n%${'x'.repeat(relleno)}\ntrailer<</Root 1 0 R>>\n%%EOF\n`)
 const pdfs = {}
-for (const [n, relleno] of [['A', 700], ['B', 2100], ['C', 900], ['D', 1300]]) {
+for (const [n, relleno] of [['A', 700], ['B', 2100], ['C', 900], ['D', 1300], ['E', 600]]) {
   pdfs[n] = join(archivos, `QA-GASTO-${n}-${sello}.pdf`)
   writeFileSync(pdfs[n], PDF(relleno))
 }
+// Otro PDF que se llama igual que el E: el mismo nombre no es el mismo archivo.
+mkdirSync(join(archivos, 'otro'), { recursive: true })
+pdfs.Eotro = join(archivos, 'otro', `QA-GASTO-E-${sello}.pdf`)
+writeFileSync(pdfs.Eotro, PDF(3000))
 // Fotos pequeñas de verdad, cada una distinta.
 const fotos = {}
 {
@@ -184,8 +188,14 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const id2 = await form.locator('input[name="id"]').inputValue()
   const vacio = (await pagina.inputValue('#gasto-monto')) === '' && (await pagina.inputValue('#gasto-descripcion')) === ''
   const neutro = (await form.locator('[data-ya-entro]').count()) === 1
-  comprobar(dijo2.includes('Este gasto ya quedó registrado la primera vez que lo enviaste') && neutro && vacio && id2 !== id1,
-    `[Logística] con otro importe, otra descripción y otro PDF, dice sin rojo que ya quedó, y el formulario se vacía con un id nuevo («${dijo2}»; neutro ${neutro}, vacío ${vacio}, id nuevo ${id2 !== id1})`)
+  // El texto llega antes de que termine el envío; el cursor, al terminar.
+  const cursorGasto = await hasta(
+    () => form.locator('[data-ya-entro]').evaluate((p) => document.activeElement === p).catch(() => false),
+    Boolean, 8000,
+  ).catch(() => false)
+  comprobar(dijo2.includes('Este gasto ya quedó registrado la primera vez que lo enviaste, por S/ 111.11, y lo que cambiaste después no se guardó')
+    && dijo2.includes('pide a Administración que lo observe') && neutro && cursorGasto && vacio && id2 !== id1,
+    `[Logística] con otro importe, otra descripción y otro PDF, dice sin rojo qué quedó y cómo se corrige, con el cursor en el aviso, y el formulario se vacía con un id nuevo («${dijo2}»; neutro ${neutro}, cursor ${cursorGasto}, vacío ${vacio}, id nuevo ${id2 !== id1})`)
   const [fila2] = await consulta(`select monto::float as monto, descripcion, comprobante_nombre from ot_gastos_areas where id = $1`, [id1])
   const deEse = await consulta(`select name from storage.objects where bucket_id = 'gastos-ot' and name like $1`, [`%/gastos/${id1}%`])
   comprobar(fila2.monto === 111.11 && fila2.descripcion === desc1 && fila2.comprobante_nombre.includes('-A-') && deEse.length === 1,
@@ -214,6 +224,23 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const dijo4 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes('ya estaba registrado')))
   const [fila4] = await consulta(`select count(*)::int as n from ot_gastos_areas where descripcion = $1`, [desc4])
   comprobar(dijo4.includes(`El gasto ${id4} ya estaba registrado`) && fila4.n === 1, `[Logística] el mismo envío repetido se da por registrado una vez («${dijo4}»)`)
+
+  // Otro PDF con el mismo nombre, y todo lo demás igual: no es el mismo envío.
+  const id5 = await form.locator('input[name="id"]').inputValue()
+  const desc5 = `QA-GASTO quinto ${sello}, otro PDF con el mismo nombre`
+  await llenar('31.4', desc5, pdfs.E)
+  corte.armado = 'QA-GASTO quinto'
+  await enviar.click()
+  await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA))
+  await llenar('31.4', desc5, pdfs.Eotro)
+  await enviar.click()
+  const dijo5 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => /primera vez|ya estaba/.test(t)))
+  const [{ n: tamano5 }] = await consulta(
+    `select (metadata->>'size')::int as n from storage.objects where bucket_id = 'gastos-ot' and name = (select comprobante_ruta from ot_gastos_areas where id = $1)`,
+    [id5],
+  )
+  comprobar(corte.cortadas === 3 && dijo5.includes('ya quedó registrado la primera vez') && tamano5 === readFileSync(pdfs.E).length,
+    `[Logística] otro PDF que se llama igual no se da por el mismo envío, y queda el de la primera vez («${dijo5.slice(0, 90)}…»; ${tamano5} bytes)`)
   const sueltos = await consulta(
     `select o.name from storage.objects o where o.bucket_id = 'gastos-ot' and o.name like $1
         and not exists (select 1 from ot_gastos_areas g where g.comprobante_ruta = o.name)`,
@@ -262,18 +289,19 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   comprobar(dijo2.includes('Este ingreso ya quedó registrado la primera vez que lo enviaste') && Object.values(estado).every(Boolean),
     `[Requerimientos 390] con otra observación y otra foto, la ventana dice que ya quedó y solo ofrece «Cerrar» (${JSON.stringify(estado)})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-vehiculo-ingreso-390.png'), fullPage: true })
-  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
-  await v.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  // La foto nueva se quita al recibir el aviso, sin esperar a «Cerrar».
   const despues = await hasta(
     () => consulta(`select name from storage.objects where bucket_id = 'fotos-vehiculos' and name like $1`, [carpetaIngreso]),
     (r) => r.length === 1,
   )
+  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  await v.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
   const [ingreso] = await consulta(
     `select observacion_ingreso, (select count(*)::int from registro_vehiculo_fotos f where f.registro_id = v.id) as fotos from registro_vehiculos v where id = $1`,
     [reg?.id],
   )
   comprobar(antesDeCerrar.length === 2 && despues.length === 1 && ingreso?.fotos === 1 && ingreso?.observacion_ingreso === 'Llega con la llanta baja',
-    `[Requerimientos 390] al cerrar se quita la foto nueva; queda el ingreso de la primera vez con su foto (${antesDeCerrar.length} → ${despues.length} en Storage; «${ingreso?.observacion_ingreso}», ${ingreso?.fotos} foto)`)
+    `[Requerimientos 390] la foto nueva se quita con el aviso, antes de cerrar; queda el ingreso de la primera vez con su foto (${antesDeCerrar.length} → ${despues.length} en Storage; «${ingreso?.observacion_ingreso}», ${ingreso?.fotos} foto)`)
 
   // La salida, desde su detalle.
   await ir(pagina, `${BASE}/vehiculos/${reg?.id}`)
@@ -294,13 +322,20 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const soloCerrar = (await s.getByRole('button', { name: 'Registrar salida' }).count()) === 0
   comprobar(dijoS.includes('la salida quedó registrada la primera vez que la enviaste') && soloCerrar && (await s.locator('[data-ya-entro]').count()) === 1,
     `[Requerimientos 390] la salida con otra foto: dice sin rojo que ya quedó y no ofrece registrarla otra vez («${dijoS}»)`)
-  await s.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
-  await s.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  // La foto nueva se quita con el aviso, y la ventana sigue ahí hasta que se
+  // cierra. La decimotercera pasada la vio irse sola en medio segundo: el
+  // vehículo ya salió, la página dejaba de pintar el botón que la abrió y la
+  // foto quedaba suelta.
   const carpetaSalida = `${yo.id}/${reg?.id}/salida/%`
   const enSalida = await hasta(
     () => consulta(`select name from storage.objects where bucket_id = 'fotos-vehiculos' and name like $1`, [carpetaSalida]),
     (r) => r.length === 1,
   )
+  await pagina.waitForTimeout(4000)
+  const sigue = await s.locator('[data-ya-entro]').isVisible().catch(() => false)
+  comprobar(sigue, '[Requerimientos 390] el aviso sigue a la vista 4 s después, hasta que se cierra')
+  await s.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  await s.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
   const [salida] = await consulta(
     `select salida_en is not null as salio, observacion_salida,
             (select count(*)::int from registro_vehiculo_fotos f where f.registro_id = v.id and f.momento = 'SALIDA') as fotos
@@ -310,7 +345,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await quieta(pagina)
   const sinMarcar = await hasta(() => pagina.getByRole('button', { name: 'Marcar salida' }).count(), (n) => n === 0, 10000)
   comprobar(enSalida.length === 1 && salida?.salio && salida?.fotos === 1 && salida?.observacion_salida === 'Lo recoge el conductor' && sinMarcar === 0,
-    `[Requerimientos 390] queda la salida de la primera vez con su foto, la nueva se quitó y la pantalla ya no ofrece «Marcar salida» (${enSalida.length} en Storage, ${salida?.fotos} foto)`)
+    `[Requerimientos 390] queda la salida de la primera vez con su foto, la nueva se quitó antes de cerrar y, al cerrar, la pantalla ya no ofrece «Marcar salida» (${enSalida.length} en Storage, ${salida?.fotos} foto)`)
   comprobar(errores.length === 0, `[Requerimientos 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -367,9 +402,12 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
     neutro: (await pagina.locator('form [data-ya-entro]').count()) === 1,
     sinSubir: (await pagina.getByRole('button', { name: /^Subir reporte/ }).count()) === 0,
     enlace: await verReporte.isVisible(),
+    // Trabado: una foto elegida después subía y quedaba suelta (decimotercera pasada).
+    trabado: (await pagina.locator('#rd-asunto').isDisabled()) && (await galeria.isDisabled()),
+    cursor: await pagina.locator('form [data-ya-entro]').evaluate((p) => document.activeElement === p).catch(() => false),
   }
-  comprobar(dijo2.includes('Este reporte ya quedó registrado la primera vez que lo enviaste') && Object.values(estado).every(Boolean),
-    `[Maestranza 390] con otro asunto y otra foto, dice sin rojo que ya quedó y ofrece «Ver el reporte» en vez de subirlo otra vez (${JSON.stringify(estado)})`)
+  comprobar(dijo2.includes('Este reporte ya quedó registrado la primera vez que lo enviaste, y lo que cambiaste después no se guardó') && Object.values(estado).every(Boolean),
+    `[Maestranza 390] con otro asunto y otra foto, dice sin rojo qué pasó, se traba y ofrece «Ver el reporte» en vez de subirlo otra vez (${JSON.stringify(estado)})`)
   const despues = await hasta(
     () => consulta(`select name from storage.objects where bucket_id = 'fotos-reporte-diario' and name like $1`, [carpeta]),
     (r) => r.length === 1,

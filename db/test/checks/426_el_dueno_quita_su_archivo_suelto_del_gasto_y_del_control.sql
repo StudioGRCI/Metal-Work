@@ -108,6 +108,31 @@ begin
 end $$;
 reset role;
 
+-- ============================================ 3. El dueño que ya no ve la fila que nombra su archivo
+-- Logística pasa a otra área y deja de ver su gasto. Si su política preguntara
+-- con sus propios ojos si una fila nombra el PDF, no la vería y lo tomaría por
+-- suelto: lo vería y lo quitaría, y el gasto quedaría sin comprobante. Por eso
+-- pregunta una función security definer, que ve todas las filas
+-- (decimotercera pasada: el caso que la justifica no tenía prueba).
+select test.como_usuario(:'admin_id');
+update public.usuarios set area_id = (select id from public.areas where id <> :'area_id' and codigo <> 'ADM' order by codigo limit 1)
+ where id = :'logistica_id';
+select test.como_usuario(:'logistica_id');
+set local role authenticated;
+select test.afirmar((select count(*) from public.ot_gastos_areas where id = current_setting('prueba.gasto')::uuid) = 0,
+  'Logística, ya en otra área, no ve su gasto');
+select test.afirmar((select count(*) from storage.objects where bucket_id = 'gastos-ot' and name = current_setting('prueba.anotado_gasto')) = 0,
+  'ni ve como suelto el PDF que ese gasto nombra');
+do $$
+declare
+  v integer;
+begin
+  with quitado as (delete from storage.objects where bucket_id = 'gastos-ot' and name = current_setting('prueba.anotado_gasto') returning 1)
+  select count(*) into v from quitado;
+  perform test.afirmar(v = 0, 'ni lo quita');
+end $$;
+reset role;
+
 select test.afirmar(
   (select count(*) from storage.objects where name in (current_setting('prueba.anotado_gasto'), current_setting('prueba.ajeno_gasto'),
                                                      current_setting('prueba.anotado_control'), current_setting('prueba.ajeno_control'))) = 4

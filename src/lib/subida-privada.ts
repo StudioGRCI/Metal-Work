@@ -8,8 +8,13 @@ export const NO_SE_CARGO_EL_ARCHIVO = 'No se pudo cargar el archivo.'
 /** Sin respuesta dos veces, y el archivo ya no estaba suelto: ninguna fila lo nombraba, así que no quedó. */
 export const NO_QUEDO_SIN_RESPUESTA = 'No quedó registrado: no llegó la respuesta. Vuelve a intentar.'
 
-/** Lo que dice `subirArchivoPrivado` cuando no se sabe si quedó: en la misma ventana, el reintento no duplica. */
-export const NO_SE_CONFIRMO = 'No se confirmó el registro. Conserva el archivo seleccionado y vuelve a intentar; no se duplicará.'
+/**
+ * Lo que dice `subirArchivoPrivado` cuando no se sabe si quedó: en la misma
+ * ventana y con el mismo archivo, el reintento no duplica, y si trae otra cosa
+ * la base dice que ya quedó. Empieza como `SIN_RESPUESTA`: era una tercera
+ * frase para lo mismo (decimotercera pasada).
+ */
+export const NO_SE_CONFIRMO = 'No llegó la respuesta. Vuelve a intentar desde esta ventana con el mismo archivo: si ya había quedado, no se duplica.'
 
 const YA_SE_SUBIO = 'Desde esta ventana ya se subió '
 

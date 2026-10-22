@@ -217,17 +217,25 @@ En la misma migración que la crea, sin excepción:
   `comprobante_de_gasto_anotado`): un `not exists` bajo RLS cuenta como
   inexistente la fila que el dueño ya no ve, y le dejaría ver y quitar su
   archivo anotado.
-- **«Ya quedó registrado la primera vez» no es un rechazo.** La pantalla de
-  detrás se pone al día (`useAccion` refresca) y la ventana solo se cierra
-  (`PieDeVentana`, sin rojo y sin el botón que envía). En rojo y con el botón
-  activo, se cancelaba y se pagaba otra vez desde la tarjeta vieja (duodécima
-  pasada). Un aviso nuevo de «mismo envío» lleva «la primera vez que lo
-  enviaste» para que `yaEntroLaPrimeraVez` lo reconozca. Las fotos nuevas de
-  ese envío no las nombra nadie: «Cerrar» las quita (`quitarFotosSueltas`; la
-  base no deja quitar las de la primera vez), y un formulario de página (el
-  reporte diario) las quita al recibir el aviso y lleva al registro. El
-  formulario que fija su id al abrirse (el gasto del área) lo cambia también
-  tras el aviso, o el próximo envío chocaría con el mismo.
+- **«Ya quedó registrado la primera vez» no es un rechazo.** La ventana solo
+  se cierra (`PieDeVentana`, sin rojo y sin el botón que envía), y la pantalla
+  de detrás se pone al día **al cerrarla** (`useAccion` con
+  `ventanas-abiertas.ts`; sin ventana abierta, en el acto). En rojo y con el
+  botón activo, se cancelaba y se pagaba otra vez desde la tarjeta vieja
+  (duodécima pasada); refrescando con la ventana abierta, la página dejaba de
+  pintar el botón que la abrió (el vehículo ya salió, la factura quedó pagada)
+  y la ventana se desmontaba sola con el aviso a medio leer (decimotercera).
+  Al cerrarla, el aviso se va: un envío que vive fuera de su ventana la volvía
+  a abrir con el «ya quedó» y sin botón. Un aviso nuevo de «mismo envío» lleva
+  «la primera vez que lo enviaste» para que `yaEntroLaPrimeraVez` lo
+  reconozca. **Las fotos nuevas de ese envío no las nombra nadie: se quitan al
+  recibir el aviso**, en el envoltorio de la acción (`quitarFotosSueltas`; la
+  base no deja quitar las de la primera vez), no al pulsar «Cerrar», que puede
+  no llegar. El formulario de página (el reporte diario) además se traba y
+  lleva al registro, y el que fija su id al abrirse (el gasto del área) lo
+  cambia tras el aviso, o el próximo envío chocaría con el mismo. El aviso dice
+  qué quedó y cómo se corrige; «recarga la pantalla» con el formulario vacío se
+  leía como que el cambio había entrado.
 - **Un archivo vacío no es «sin archivo».** En el navegador, el campo que nadie
   tocó llega como un `File` con nombre vacío; uno de 0 bytes es un archivo
   elegido, y se rechaza diciendo que está vacío. Separarlos por `size === 0`

@@ -481,16 +481,16 @@ let pagoId
   const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
   cortando = false
   // Ya entró: el aviso sin rojo, sin «Registrar el pago», solo «Cerrar», y la
-  // tarjeta de atrás al día sin recargar. La duodécima pasada la vio seguir en el
-  // saldo de antes: se cancelaba, se volvía a pagar desde ella y entraban dos.
-  const tarjetaDespues = await hasta(laTarjeta, (t) => t !== tarjetaAntes, 15000)
+  // ventana sigue ahí hasta que la persona la cierra. La decimotercera pasada
+  // la vio irse sola a los 3 s, sin dejar leer el aviso, cuando el pago
+  // cancelaba y la tarjeta ya no pintaba el botón que la abrió.
+  await pagina.waitForTimeout(4000)
   const yaEntro = {
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
     sinEnviar: (await v.getByRole('button', { name: 'Registrar el pago' }).count()) === 0,
     cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
-    tarjetaAlDia: tarjetaDespues !== tarjetaAntes,
   }
-  comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo, solo «Cerrar» y la tarjeta al día (${JSON.stringify(yaEntro)}; «${tarjetaAntes.slice(0, 80)}» → «${tarjetaDespues.slice(0, 80)}»)`)
+  comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo y solo «Cerrar», a la vista 4 s después (${JSON.stringify(yaEntro)})`)
   const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
   const sueltos = await hasta(
     () => consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
@@ -505,7 +505,21 @@ let pagoId
     && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
     `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
   comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)
+  // Al cerrar, la tarjeta de atrás se pone al día sin recargar (la duodécima la
+  // vio seguir en el saldo de antes: se volvía a pagar desde ella y entraban
+  // dos), y la ventana se vuelve a abrir limpia para pagar el saldo (la
+  // decimotercera la vio volver con el «ya quedó» y sin botón).
   await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  const tarjetaDespues = await hasta(laTarjeta, (t) => t !== tarjetaAntes, 15000)
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  await v.waitFor()
+  const deNuevo = {
+    sinAviso: (await v.locator('[data-ya-entro], [role="alert"]').count()) === 0,
+    conBoton: await v.getByRole('button', { name: 'Registrar el pago' }).isVisible(),
+  }
+  comprobar(tarjetaDespues !== tarjetaAntes && Object.values(deNuevo).every(Boolean),
+    `al cerrar, la tarjeta al día y la ventana se abre otra vez limpia (${JSON.stringify(deNuevo)}; «${tarjetaAntes.slice(0, 80)}» → «${tarjetaDespues.slice(0, 80)}»)`)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
   await contexto.close()
 }
 

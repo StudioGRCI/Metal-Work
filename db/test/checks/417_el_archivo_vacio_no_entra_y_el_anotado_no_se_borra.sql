@@ -194,11 +194,15 @@ select test.afirmar(not exists (
 -- (`if v_reg.salida_en is not null then return p_id`). Esta segunda mirada
 -- busca cualquier `if … then return` del id que no compare el envío —su
 -- huella, su archivo o su nombre—: la primera no vio el reporte diario ni el
--- vehículo (duodécima pasada, migración 20261022194000).
+-- vehículo (duodécima pasada, migración 20261022194000). También con algo
+-- antes del `return` en el mismo bloque, con el id leído de la fila
+-- (`return v_reg.id`) y con el archivo bajo otro nombre (`p_escaneo`,
+-- `p_voucher`…): la decimotercera pasada armó las tres y esquivaban la mirada.
 select test.afirmar(not exists (
-    select 1 from pg_proc p, regexp_matches(p.prosrc, '\mif\s+([^;]*?)\s+then\s+return\s+[pv]_\w+\s*;', 'gi') m
+    select 1 from pg_proc p,
+           regexp_matches(p.prosrc, '\mif\s+([^;]*?)\s+then\s+(?:(?:(?!end\s+if|else|elsif)[^;])*;\s*)*?return\s+[pv]_\w+(?:\.\w+)?\s*;', 'gi') m
      where p.pronamespace = 'public'::regnamespace
-       and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto|codigos)\w* (text|jsonb)'
+       and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto|codigos|escaneo|pdf|voucher|adjunto|imagen|captura)\w* (text|jsonb)'
        and m[1] !~* 'mismo_envio|nombre|ruta|archivo|justificante|huella|foto|cambios'),
   'ni lo da por registrado leyendo la fila o mirando algo que no es el envío, tampoco con fotos');
 

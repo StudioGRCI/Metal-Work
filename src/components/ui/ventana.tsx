@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { abrioVentana, cerroVentana } from '@/lib/ventanas-abiertas'
 
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
@@ -101,6 +102,8 @@ export function Ventana({
   useEffect(() => {
     if (!abierta || !hidratada) return
 
+    const marca = {}
+    abrioVentana(marca)
     const veniaDe = document.activeElement as HTMLElement | null
     const rodadoPrevio = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -117,6 +120,8 @@ export function Ventana({
       document.body.style.overflow = rodadoPrevio
       // Una ventana que nace abierta no tiene botón al que volver.
       if (veniaDe && veniaDe !== document.body) veniaDe.focus()
+      // Lo que esperaba a que se cerrara: la pantalla de detrás, al día.
+      cerroVentana(marca)
     }
   }, [abierta, hidratada])
 

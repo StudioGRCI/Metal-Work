@@ -16,7 +16,7 @@ import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir
 import { faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { composicionDelCosto } from '@/lib/dominio/expediente'
 import { fecha, fechaHora, moneda } from '@/lib/format'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
@@ -166,6 +166,10 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
     return salida
   }, vaciar)
   const yaEntro = yaEntroLaPrimeraVez(error)
+  // El cursor va al aviso: con el formulario vacío, caía a la página y el «ya
+  // quedó» no se anunciaba (decimotercera pasada).
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
   return <Tarjeta>
     <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
@@ -179,7 +183,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
           <div className="sm:col-span-2"><Campo etiqueta="Descripción y referencia" htmlFor="gasto-descripcion" requerido><AreaTexto id="gasto-descripcion" name="descripcion" minLength={10} maxLength={500} required rows={2} /></Campo></div>
           <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido><ElegirArchivo id="gasto-pdf" name="pdf" accept="application/pdf,.pdf" hastaMb={15} required /></Campo></div>
-          {error && <p role="alert" data-ya-entro={yaEntro || undefined} className={yaEntro ? 'sm:col-span-2 rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'sm:col-span-2 text-sm text-peligro'}>{error}</p>}
+          {error && <p ref={aviso} tabIndex={-1} role="alert" data-ya-entro={yaEntro || undefined} className={yaEntro ? 'sm:col-span-2 rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'sm:col-span-2 text-sm text-peligro'}>{error}</p>}
           {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>
