@@ -34,8 +34,6 @@ function llenarCon(d: Llenado, fuente: Fuente, valores: Partial<Record<Dato, str
 const valoresDe = (l: LecturaFactura) => ({ total: l.total !== null ? l.total.toFixed(2) : null, numero: l.numero, emision: l.fecha_emision })
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
-/** Así empieza lo que dice `registrarAdquisicion` cuando el comprobante entró y su PDF no. */
-const CREADO_EN_BORRADOR = 'Comprobante creado en borrador'
 
 /** Lo que la primera marca de OC llena de su OC. */
 type Valores = { proveedor: string; condicion: string; moneda: string; ot: string }
@@ -153,10 +151,10 @@ function Formulario({
   const campoPdf = useRef<HTMLInputElement>(null)
   const avisoError = useRef<HTMLParagraphElement>(null)
   // Lo que es del PDF se dice en su campo, que se marca, y no se repite abajo.
-  // El borrador ya creado no se arregla eligiendo otro PDF: se completa desde
-  // la lista, así que su aviso va abajo.
+  // Lo que dejó un borrador no se arregla eligiendo otro PDF: se completa en su
+  // fila de la lista, así que su aviso va abajo.
   const [faltaPdf, setFaltaPdf] = useState(false)
-  const errorPdf = error && /\bPDF\b/.test(error) && !error.startsWith(CREADO_EN_BORRADOR) ? error : null
+  const errorPdf = error && /\bPDF\b/.test(error) && !/\bborrador\b/.test(error) ? error : null
   useCursorAlRechazo(enviando, error, () => (errorPdf ? campoPdf.current : avisoError.current))
   // Al elegir o quitar el PDF, o la factura de Logística, el aviso del PDF ya no vale.
   const yaNoFaltaPdf = () => {

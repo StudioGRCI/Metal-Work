@@ -167,6 +167,8 @@ const FACTURA_A = pdfConTexto(['FACTURA ELECTRONICA', 'F001-00000111', 'FECHA DE
 const FACTURA_B = pdfConTexto(['FACTURA ELECTRONICA', 'F002-00000222', 'FECHA DE EMISION: 12/10/2026', 'IMPORTE TOTAL: S/ 236.00'])
 
 const sello = Date.now().toString().slice(-6)
+// Una foto PNG de 1×1: la firma que mira la pantalla y un cuerpo que se abre.
+const PNG_MINIMO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
 const PDF_MINIMO = (relleno) =>
   Buffer.from(`%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n%${'x'.repeat(relleno)}\ntrailer<</Root 1 0 R>>\n%%EOF\n`)
 
@@ -255,6 +257,40 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   comprobar(adjunto && (await p.getByRole('status').filter({ hasText: 'Contrato adjunto' }).count()) > 0 && otros.n === 1 && otros.nombres === nombreD && otros.tam === pdfD.length,
     `[Administración ${tam}] con otro elegido, el de antes se quita y entra el elegido en su lugar (${otros.nombres}, ${otros.tam} bytes en Storage)`)
 
+  // Lo mismo con otro tipo de archivo: la foto va a otra ruta (.png), y el PDF
+  // de antes, que no quedó, se quita de la suya en vez de quedar suelto.
+  await ir(p, `/subcontratos/${sc.id}`)
+  const cortesF = { acciones: 0, borrados: 0 }
+  await p.route('**/*', (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sc.id) && cortesF.acciones < 2) {
+      cortesF.acciones++
+      return r.abort('failed')
+    }
+    if (q.method() === 'DELETE' && q.url().includes('/storage/v1/object/') && cortesF.borrados < 1) {
+      cortesF.borrados++
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  await p.locator('[data-adjuntar-contrato]').click()
+  const f = p.getByRole('dialog').first()
+  await f.waitFor({ timeout: 20000 })
+  const nombreE = `QA-OTRO-E-${sello}.pdf`
+  const nombreF = `QA-OTRO-F-${sello}.png`
+  await f.locator('input[name="contrato"]').setInputFiles({ name: nombreE, mimeType: 'application/pdf', buffer: PDF_MINIMO(300) })
+  await f.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => (await f.locator('[role=alert]').count()) > 0, 30000)
+  await f.locator('input[name="contrato"]').setInputFiles({ name: nombreF, mimeType: 'image/png', buffer: PNG_MINIMO })
+  await f.getByRole('button', { name: 'Adjuntar' }).click()
+  const conFoto = await esperar(async () => (await p.getByRole('dialog').count()) === 0, 30000)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const foto = await uno(`select c.archivo_nombre as nombre, c.archivo_ruta as ruta from public.subcontrato_contratos c
+                           where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3)`, [sc.id, nombreE, nombreF])
+  const suelto = foto ? Number((await uno('select count(*) from storage.objects where name = $1', [foto.ruta.replace(/\.png$/, '.pdf')])).count) : -1
+  comprobar(conFoto && foto?.nombre === nombreF && foto.ruta.endsWith('.png') && suelto === 0,
+    `[Administración ${tam}] con una foto después del PDF que no quedó, entra la foto y el PDF no queda suelto (${foto?.nombre ?? 'ninguno'}, ${suelto} PDF suelto)`)
+
   // El recibo por honorarios vacío dice que está vacío, no «Adjunta el recibo».
   await ir(p, `/subcontratos/${sc.id}`)
   await p.locator('[data-subir-recibo]').click()
@@ -315,6 +351,8 @@ async function segundoDocumentoDeLaMismaOc(viewport) {
 //   B6: A sube y no se anota (sin señal para anotarlo ni para quitarlo); B lo
 //       reemplaza y su respuesta se pierde; se vuelve a A.
 //   B7: A no llega; B sube a la ruta vacía y su respuesta se pierde; se vuelve a A.
+//   V3c: A quedó, con las dos respuestas de la acción perdidas; B no llega; se
+//        vuelve a A: es el mismo envío y se confirma, sin pedir recargar.
 // «Llega y se pierde la respuesta»: el navegador la ve cortada y el mismo pedido
 // se manda aparte con las cabeceras de la sesión (route.fetch() no reenvía el
 // cuerpo de un File). A es el mismo archivo del disco las dos veces, como cuando
@@ -337,14 +375,16 @@ async function laSubidaQueLlegaSinRespuesta(viewport) {
     writeFileSync(ruta, PDF_MINIMO(relleno))
     return { ruta, bytes: PDF_MINIMO(relleno).length }
   }
-  for (const caso of ['B6', 'B7']) {
+  for (const caso of ['B6', 'B7', 'V3c']) {
     const nombreA = `QA-SUELTO-DOC-${caso}A-${sello}-${tam}.pdf`
     const nombreB = `QA-SUELTO-DOC-${caso}B-${sello}-${tam}.pdf`
     const A = enDisco(nombreA, 600)
     const B = enDisco(nombreB, 1900)
-    const plan = caso === 'B6'
-      ? { subida: (n) => (n === 3 ? 'llega' : 'pasa'), accion: (n) => (n <= 2 ? 'corta' : 'pasa'), borrado: (n) => (n === 1 ? 'corta' : 'pasa') }
-      : { subida: (n) => (n === 1 ? 'corta' : n === 2 ? 'llega' : 'pasa'), accion: () => 'pasa', borrado: () => 'pasa' }
+    const plan = {
+      B6: { subida: (n) => (n === 3 ? 'llega' : 'pasa'), accion: (n) => (n <= 2 ? 'corta' : 'pasa'), borrado: (n) => (n === 1 ? 'corta' : 'pasa') },
+      B7: { subida: (n) => (n === 1 ? 'corta' : n === 2 ? 'llega' : 'pasa'), accion: () => 'pasa', borrado: () => 'pasa' },
+      V3c: { subida: (n) => (n === 2 ? 'corta' : 'pasa'), accion: (n) => (n <= 2 ? 'pierde' : 'pasa'), borrado: () => 'pasa' },
+    }[caso]
     const c = { subidas: 0, borrados: 0, acciones: 0, llegaron: [] }
     await p.route('**/*', async (r) => {
       const q = r.request()
@@ -358,7 +398,13 @@ async function laSubidaQueLlegaSinRespuesta(viewport) {
         if (plan.borrado(++c.borrados) === 'corta') return r.abort('failed')
       }
       if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes('nombre_archivo')) {
-        if (plan.accion(++c.acciones) === 'corta') return r.abort('failed')
+        const m = plan.accion(++c.acciones)
+        if (m === 'corta') return r.abort('failed')
+        if (m === 'pierde') {
+          // La acción llega y se cumple; la respuesta se pierde.
+          await r.fetch({ timeout: 60000 }).catch(() => {})
+          return r.abort('failed')
+        }
       }
       return r.continue()
     })
@@ -390,8 +436,8 @@ async function laSubidaQueLlegaSinRespuesta(viewport) {
                                        where o.bucket_id = 'documentos-compras' and o.name = d.ruta_storage) as en_storage
                                        from public.documentos_compra_material d where d.nombre_archivo in ($1, $2)`, [nombreA, nombreB])).rows
     const dentro = filas[0]?.en_storage === A.bytes ? 'A' : filas[0]?.en_storage === B.bytes ? 'B' : `${filas[0]?.en_storage ?? '—'} bytes`
-    comprobar(guardado === 200 && /adjuntado/.test(tercera) && filas.length === 1 && filas[0].nombre_archivo === nombreA && dentro === 'A',
-      `[Logística ${tam}] ${caso}: al volver al primero tras la subida sin respuesta del segundo, la fila dice A y en su ruta está ${dentro} ` +
+    comprobar((caso === 'V3c' || guardado === 200) && /adjuntado/.test(tercera) && filas.length === 1 && filas[0].nombre_archivo === nombreA && dentro === 'A',
+      `[Logística ${tam}] ${caso}: al volver al primero tras el segundo sin respuesta, se adjunta A, la fila dice A y en su ruta está ${dentro} ` +
       `(${filas.length} fila(s); «${primera}» / «${segunda}» / «${tercera}»; subidas ${c.subidas}, borrados ${c.borrados}, acciones ${c.acciones})`)
     await v.getByRole('button', { name: 'Cerrar' }).first().click()
     await esperar(async () => (await p.getByRole('dialog').count()) === 0, 5000)
@@ -496,6 +542,28 @@ async function loEscritoSeQuedaEnLaCotizacion(viewport) {
       `[Ventas ${tam}] el número repetido se dice junto a su campo, que se marca, y una sola vez: «${junto}»`)
     comprobar(await esperar(async () => (await enfocado(p)).id === 'cot-numero', 3000), `[Ventas ${tam}] y el cursor va al número (${(await enfocado(p)).id})`)
     await p.screenshot({ path: join(CAPTURAS, `suelto-cotizacion-numero-repetido-${tam}.png`) })
+
+    // Un pedido armado a mano sin el tamaño del archivo: la acción lo dice en
+    // castellano, no queda cotización y el archivo subido se retira.
+    const sinTamano = `QA-SIN-TAMANO-${sello}-${tam}`
+    await d.locator('#cot-numero').fill(sinTamano)
+    const rutas = []
+    await p.route((url) => url.pathname.startsWith('/cotizaciones'), async (r) => {
+      const pedido = r.request()
+      const cuerpo = pedido.method() === 'POST' && pedido.headers()['next-action'] ? pedido.postData() ?? '' : ''
+      if (!cuerpo.includes('ruta_storage')) return r.continue()
+      rutas.push(/name="(?:_?\d+_)?ruta_storage"\r?\n\r?\n([^\r\n]+)/.exec(cuerpo)?.[1] ?? '')
+      const limite = /boundary=(.+)$/.exec(pedido.headers()['content-type'] ?? '')?.[1]
+      const sinEl = pedido.postDataBuffer().toString('latin1').split(`--${limite}`).filter((x) => !/name="[^"]*tamano_bytes"/.test(x)).join(`--${limite}`)
+      return r.continue({ postData: Buffer.from(sinEl, 'latin1') }).catch(() => {})
+    })
+    await d.getByRole('button', { name: 'Subir y mandar a Gerencia' }).click()
+    const dijo = await esperar(async () => (await d.getByText('Falta el tamaño del archivo: vuelve a elegirlo.').count()) > 0, 30000)
+    await p.unrouteAll({ behavior: 'ignoreErrors' })
+    const cotizaciones = Number((await uno('select count(*) from public.cotizaciones_pdf where numero = $1', [sinTamano])).count)
+    const archivos = rutas[0] ? Number((await uno(`select count(*) from storage.objects where name = $1`, [rutas[0]])).count) : -1
+    comprobar(dijo && rutas.length === 1 && cotizaciones === 0 && archivos === 0,
+      `[Ventas ${tam}] sin el tamaño, la acción lo dice en castellano, no queda cotización y el archivo se retira (${rutas.length} llamadas, ${cotizaciones} cotizaciones, ${archivos} archivos)`)
   } else comprobar(false, `[Ventas ${tam}] hay una cotización con número para repetir`)
   await contexto.close()
 }
@@ -798,30 +866,49 @@ async function loLeidoSeVaConElArchivo(viewport) {
 
   // Si el comprobante entró en borrador y su PDF no subió, eso no se arregla
   // eligiendo otro PDF ni volviendo a registrar (chocaría con su número): se
-  // dice abajo y no en el campo, y se manda a completarlo desde la lista. Para que Storage diga
-  // que no, un disparador de banco que se quita enseguida.
-  await base.query(`create or replace function public.qa_storage_dice_que_no() returns trigger language plpgsql as $$
-                      begin raise exception 'QA: Storage no acepta este archivo'; end $$`)
+  // dice abajo y no en el campo, y la lista lo muestra sin recargar, con su
+  // «PDF pendiente». Para que Storage diga que no, un disparador de banco que
+  // rechaza solo el PDF de los comprobantes de esta prueba y se quita enseguida
+  // (y otra vez al terminar, por si la prueba se cae a la mitad).
+  await quitarElRechazoDePrueba()
+  await base.query(`create function public.qa_storage_dice_que_no() returns trigger language plpgsql security definer set search_path = public as $$
+                      begin
+                        if exists (select 1 from public.adquisiciones a
+                                    where new.name = 'adquisiciones/' || a.id || '/comprobante.pdf' and a.proveedor like 'QA proveedor %') then
+                          raise exception 'QA: Storage no acepta este archivo';
+                        end if;
+                        return new;
+                      end $$`)
   await base.query(`create trigger qa_storage_dice_que_no before insert on storage.objects for each row
-                      when (new.bucket_id = 'comprobantes-financieros' and new.name like 'adquisiciones/%/comprobante.pdf')
-                      execute function public.qa_storage_dice_que_no()`)
+                      when (new.bucket_id = 'comprobantes-financieros') execute function public.qa_storage_dice_que_no()`)
   let borrador = ''
   try {
     await pdfR.setInputFiles({ name: `QA-BORRADOR-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
     await esperar(async () => (await r.getByText('Leyendo la factura…').count()) === 0, 20000)
     await r.getByRole('button', { name: 'Registrar comprobante' }).click()
-    await esperar(async () => (await r.locator('form [role=alert]').filter({ hasText: 'Comprobante creado en borrador' }).count()) > 0, 30000)
+    await esperar(async () => (await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).count()) > 0, 30000)
     borrador = limpio(await r.locator('form [role=alert]').first().innerText().catch(() => ''))
   } finally {
-    await base.query('drop trigger if exists qa_storage_dice_que_no on storage.objects')
-    await base.query('drop function if exists public.qa_storage_dice_que_no()')
+    await quitarElRechazoDePrueba()
   }
   const campoBorrador = await dice(pdfR)
-  comprobar(borrador === 'Comprobante creado en borrador, pero no se pudo subir el PDF: el archivo no se pudo guardar. Complétalo desde la lista, en «PDF pendiente»; si vuelve a pasar, avisa al administrador.'
+  comprobar(borrador === 'El comprobante quedó en borrador sin su PDF, que no se pudo guardar. Complétalo en su fila de la lista, en «PDF pendiente»; si vuelve a fallar, avisa al administrador.'
     && !campoBorrador.includes('borrador'),
     `[Contabilidad ${tam}] el borrador sin su PDF se dice abajo y no en el campo: «${borrador}» / campo «${campoBorrador}»`)
+  const fila = r.getByText(`F998-${sello}${tam}`, { exact: true })
+  const enLaLista = await esperar(async () => (await fila.evaluateAll((es) => es.filter((e) => e.getClientRects().length > 0).length)) > 0, 10000)
+  const pendiente = enLaLista
+    ? await fila.evaluateAll((es) => es.some((e) => e.getClientRects().length > 0 && e.closest('tr, li')?.textContent?.includes('PDF pendiente')))
+    : false
+  comprobar(enLaLista && pendiente, `[Contabilidad ${tam}] y la lista lo muestra sin recargar, con su «PDF pendiente» (${enLaLista ? 'está' : 'no está'}${enLaLista && !pendiente ? ', sin «PDF pendiente» a la vista' : ''})`)
   await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-borrador-${tam}.png`) })
   await cr.close()
+}
+
+/** El disparador de banco que hace fallar el PDF del borrador, fuera. */
+async function quitarElRechazoDePrueba() {
+  await base.query('drop trigger if exists qa_storage_dice_que_no on storage.objects')
+  await base.query('drop function if exists public.qa_storage_dice_que_no()')
 }
 
 /** Una OC que espera su factura, como la ve Contabilidad. */
@@ -1187,6 +1274,8 @@ try {
   }
 } finally {
   // Lo que armó esta prueba no se queda en la orden de las demás.
+  await quitarElRechazoDePrueba()
+  await base.query(`delete from public.adquisiciones where proveedor = $1 and estado = 'BORRADOR'`, [`QA proveedor ${sello}`])
   await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
                       and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [`QA-SUELTO-${sello}-%`])
   await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [`QA-SUELTO-${sello}-%`])

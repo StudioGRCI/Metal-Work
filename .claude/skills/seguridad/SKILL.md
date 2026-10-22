@@ -152,8 +152,13 @@ En la misma migración que la crea, sin excepción:
   Mientras una subida no contesta, lo recordado no coincide con ningún archivo:
   si se recordaba el primero y la del segundo llegaba sin respuesta, volver al
   primero anotaba su nombre con el segundo adentro (pasó dos veces, por el
-  reemplazo y por la primera subida). Si no se puede quitar, dice cuál se
-  subió y si quedó registrado (`otroArchivoEnLaRuta`), sin llamar a la base. La ruta fija
+  reemplazo y por la primera subida). Si no se puede quitar porque una fila lo
+  nombra y es el último que Storage dio por subido ahí (`confirmados`) y el
+  elegido, es el mismo envío y se anota; si es otro, dice cuál quedó
+  (`otroArchivoEnLaRuta`), sin llamar a la base. La memoria es por documento,
+  con la ruta sin su extensión: el mismo contrato en PDF y después en foto va
+  a otra ruta, y el PDF que no quedó se quita de la suya en vez de quedar
+  suelto. La ruta fija
   vale **por envío**, no por ventana: el id que nace en un componente que la
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo

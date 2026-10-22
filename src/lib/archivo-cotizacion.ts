@@ -66,12 +66,13 @@ export function totalDelDocumentoSiNoCalza(total: TotalCotizacion, leido: TotalC
 
 /**
  * La ayuda del monto. «Detectado» solo mientras es el que se leyó: el que la
- * persona escribió no se le atribuye al documento.
+ * persona escribió no se le atribuye al documento. «No se leyó» solo cuando
+ * terminó de leerse uno sin total (`leido` es null antes y mientras se lee).
  */
 export function ayudaDelMonto(total: TotalCotizacion, leido: TotalCotizacion | null): string {
   if (leido?.monto && !totalDelDocumentoSiNoCalza(total, leido)) return 'Detectado en el documento; confirma o corrige el total final.'
-  if (total.monto || leido?.monto) return 'El total final, como aparece en la cotización.'
-  return 'No se leyó el total: escríbelo como aparece en la cotización.'
+  if (leido && !leido.monto && !total.monto) return 'No se leyó el total: escríbelo como aparece en la cotización.'
+  return 'El total final, como aparece en la cotización.'
 }
 
 /**

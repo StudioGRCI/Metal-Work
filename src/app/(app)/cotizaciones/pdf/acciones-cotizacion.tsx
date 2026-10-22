@@ -354,9 +354,10 @@ export function CorregirCotizacion({
             />
           </Campo>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}
-            <div className="space-y-1.5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* El monto, en su propia fila: la ventana es angosta y en un tercio su
+                ayuda y su aviso se partían en tres renglones. El aviso va pegado a él. */}
+            <div className="space-y-1.5 sm:col-span-2">
               <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
                 <Entrada
                   id="corregir-monto"

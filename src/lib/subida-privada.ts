@@ -95,12 +95,18 @@ export async function anotarSinDejarloSuelto<T = never>({
   return primera
 }
 
-// Qué archivo subió esta pestaña a cada ruta, según la última respuesta de
+// Qué archivo subió esta pestaña a cada documento, según la última respuesta de
 // Storage. La ruta sale del id del formulario, así que un 409 es el mismo envío
 // repetido... salvo que, después de una respuesta perdida, se haya elegido otro
 // archivo: ese no es el que está en Storage, y anotarlo confirmaría un archivo
-// que no es el elegido.
-const intentados = new Map<string, { huella: string; nombre: string }>()
+// que no es el elegido. La clave es la ruta sin su extensión: el mismo
+// documento con otro tipo de archivo (un contrato en PDF y después en foto) va
+// a otra ruta, y el de antes quedaba suelto en la suya.
+type Recordado = { huella: string; nombre: string; ruta: string }
+const intentados = new Map<string, Recordado>()
+// El último archivo que Storage dio por subido en cada ruta. Una vez que una
+// fila nombra la ruta, ahí no entra otro: si la fila nombra algo, es ese.
+const confirmados = new Map<string, { huella: string; nombre: string }>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
@@ -116,35 +122,50 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
   // con el mismo ID confirma el resultado guardado.
   const sinRespuesta = NO_SE_CONFIRMO
   const supabase = createClient()
-  const clave = `${bucket}/${ruta}`
-  const este = { huella: huellaDe(archivo), nombre: archivo.name }
+  const clave = `${bucket}/${ruta.replace(/\.[^./]+$/, '')}`
+  const enLaRuta = `${bucket}/${ruta}`
+  const este: Recordado = { huella: huellaDe(archivo), nombre: archivo.name, ruta }
   const subir = () => supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
-  const antes = intentados.get(clave)
+  const recordado = intentados.get(clave)
   // Hasta que Storage conteste, no se sabe qué hay en la ruta: lo recordado no
   // coincide con ningún archivo, así el próximo 409 pasa por el reemplazo y no
   // anota un nombre con otro archivo adentro.
-  const sinSaber = (nombre: string) => intentados.set(clave, { huella: '', nombre })
-  sinSaber(antes?.nombre ?? este.nombre)
+  const sinSaber = (nombre: string) => intentados.set(clave, { huella: '', nombre, ruta })
   try {
+    // Otro tipo de archivo, otra ruta: lo de antes quedó en la suya. Si ninguna
+    // fila lo nombra, la política deja quitarlo; si una lo nombra, no se quita, y
+    // la acción dirá que ese envío ya quedó con otro archivo.
+    if (recordado && recordado.ruta !== ruta) {
+      const quitado = await supabase.storage.from(bucket).remove([recordado.ruta])
+      if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(recordado.nombre, false) }
+    }
+    const antes = recordado?.ruta === ruta ? recordado : undefined
+    sinSaber(antes?.nombre ?? este.nombre)
     let { error } = await subir()
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
     if (error && error.statusCode === '409' && antes && antes.huella !== este.huella) {
       // Lo que está en Storage es el archivo de antes, o uno cuya subida no
       // contestó. Si ninguna fila lo nombra, la política deja quitarlo y el
-      // elegido entra en su lugar; si una lo nombra, quedó, y se dice cuál.
+      // elegido entra en su lugar; si una lo nombra, quedó: si es el elegido,
+      // es el mismo envío y se anota; si no, se dice cuál.
       const quitado = await supabase.storage.from(bucket).remove([ruta])
       if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
-      if ((quitado.data?.length ?? 0) === 0) {
-        intentados.set(clave, antes)
-        return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, true) }
+      if ((quitado.data?.length ?? 0) > 0) {
+        sinSaber(este.nombre)
+        ;({ error } = await subir())
+      } else {
+        const quedo = confirmados.get(enLaRuta)
+        if (quedo?.huella !== este.huella) {
+          intentados.set(clave, antes)
+          return { ok: false, error: otroArchivoEnLaRuta(quedo?.nombre ?? antes.nombre, true) }
+        }
       }
-      sinSaber(este.nombre)
-      ;({ error } = await subir())
     }
     if (error && error.statusCode !== '409') {
       return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
     }
+    if (!error) confirmados.set(enLaRuta, este)
     intentados.set(clave, este)
   } catch {
     return { ok: false, error: sinRespuesta }

@@ -62,16 +62,24 @@ const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado
 
 /**
  * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
- * chocaría con su propio número: se completa desde la lista, salvo que falte
- * el permiso, que desde la lista tampoco alcanza.
+ * chocaría con su propio número: se completa en su fila, que la lista muestra
+ * primero, salvo que falte el permiso, que desde la lista tampoco alcanza.
  */
+/** Lo que queda en borrador se ve en la lista sin recargar: el aviso manda ahí. */
+function enBorrador(error: string): ResultadoAccion {
+  revalidatePath('/adquisiciones')
+  return { ok: false, error }
+}
+
 function borradorSinPdf(motivo: string) {
-  const antes = 'Comprobante creado en borrador, pero no se pudo subir el PDF:'
+  const sinPdf = 'El comprobante quedó en borrador sin su PDF'
+  const enSuFila = 'Complétalo en su fila de la lista, en «PDF pendiente»'
+  if (motivo.startsWith('El archivo no se pudo guardar.')) {
+    return `${sinPdf}, que no se pudo guardar. ${enSuFila}; si vuelve a fallar, avisa al administrador.`
+  }
   const enMinuscula = motivo[0].toLowerCase() + motivo.slice(1)
-  if (/\bpermisos?\b/i.test(motivo)) return `${antes} ${enMinuscula} Avisa al administrador.`
-  const insiste = / Inténtalo de nuevo; si vuelve a pasar, avisa al administrador\.$/
-  const siVuelve = insiste.test(motivo) ? '; si vuelve a pasar, avisa al administrador' : ''
-  return `${antes} ${enMinuscula.replace(insiste, '')} Complétalo desde la lista, en «PDF pendiente»${siVuelve}.`
+  if (/\bpermisos?\b/i.test(motivo)) return `${sinPdf}: ${enMinuscula} Avisa al administrador.`
+  return `${sinPdf}: ${enMinuscula} ${enSuFila}.`
 }
 
 /**
@@ -164,25 +172,25 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (resto.length > 0) {
     const { data: enlazadas, error: errorEnlace } = await supabase.from('adquisiciones_ordenes_compra')
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
-    if (errorEnlace) return { ok: false, error: `El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}` }
+    if (errorEnlace) return enBorrador(`El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}`)
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
   // Las que cubre en parte, mientras sigue en borrador: registrada, solo se cambia con una corrección.
   if (enParte.data.length > 0) {
     const { data: parciales, error: errorParcial } = await supabase.from('adquisiciones_ordenes_compra')
       .update({ parcial: true }).eq('adquisicion_id', id).in('orden_compra_id', enParte.data).select('id')
-    if (errorParcial) return { ok: false, error: `El comprobante quedó en borrador sin marcar las OC parciales: ${mensajeDeError(errorParcial)}` }
+    if (errorParcial) return enBorrador(`El comprobante quedó en borrador sin marcar las OC parciales: ${mensajeDeError(errorParcial)}`)
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }
   const ruta = bytes ? `adquisiciones/${id}/comprobante.pdf` : null
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
       .upload(ruta, bytes, { contentType: 'application/pdf', upsert: false })
-    if (errorArchivo) return { ok: false, error: borradorSinPdf(mensajeDeArchivo(errorArchivo)) }
+    if (errorArchivo) return enBorrador(borradorSinPdf(mensajeDeArchivo(errorArchivo)))
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
-  if (errorRegistro) return { ok: false, error: `Comprobante en borrador: ${mensajeDeError(errorRegistro)}` }
+  if (errorRegistro) return enBorrador(`Comprobante en borrador: ${mensajeDeError(errorRegistro)}`)
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
