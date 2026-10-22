@@ -6,13 +6,13 @@ export const NO_SE_CARGO_EL_ARCHIVO = 'No se pudo cargar el archivo.'
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
-export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, registrar }: {
+export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, contentType, registrar }: {
   bucket: string
   ruta: string
   archivo: File
   contentType: string
-  registrar: () => Promise<ResultadoAccion>
-}): Promise<ResultadoAccion> {
+  registrar: () => Promise<ResultadoAccion<T>>
+}): Promise<ResultadoAccion<T>> {
   const supabase = createClient()
   try {
     const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })

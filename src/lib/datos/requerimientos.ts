@@ -47,6 +47,8 @@ export type LineaRequerimiento = {
    * `conEntregado`: entonces cuenta la etapa.
    */
   llegado: number | null
+  /** Lo que no salió del kardex cuando Almacén entregó el RQ con faltante; vacío si salió todo. */
+  sin_salida: number | null
 }
 
 /** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
@@ -67,6 +69,9 @@ export type RequerimientoListado = {
   nota_almacen: string | null
   nota_logistica: string | null
   nota_entrega: string | null
+  /** Lo que no salió del kardex cuando Almacén lo entregó con faltante, y por qué. */
+  faltante_al_entregar: string | null
+  motivo_del_faltante: string | null
   revision_stock_en: string | null
   en_atencion_en: string | null
   listo_en_almacen_en: string | null
@@ -93,7 +98,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -166,6 +171,8 @@ export async function cargarRequerimientos(
       nota_almacen: r.nota_almacen,
       nota_logistica: r.nota_logistica,
       nota_entrega: r.nota_entrega,
+      faltante_al_entregar: r.faltante_al_entregar,
+      motivo_del_faltante: r.motivo_del_faltante,
       revision_stock_en: r.revision_stock_en,
       en_atencion_en: r.en_atencion_en,
       listo_en_almacen_en: r.listo_en_almacen_en,
@@ -194,6 +201,7 @@ export async function cargarRequerimientos(
             por_comprar: l.cantidad_en_stock == null ? null : Math.max(Number(l.cantidad) - Number(l.cantidad_en_stock), 0),
             entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
             llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
+            sin_salida: l.sin_salida_al_entregar == null ? null : Number(l.sin_salida_al_entregar),
           }
         })
         .sort((a, b) => a.item - b.item),

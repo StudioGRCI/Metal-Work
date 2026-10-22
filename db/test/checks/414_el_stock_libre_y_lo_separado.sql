@@ -109,6 +109,11 @@ create or replace function pg_temp.numero(p_rq text) returns text language sql a
   select numero from public.requerimientos where id = current_setting('prueba.' || p_rq)::uuid;
 $$;
 
+-- Lo separado por la línea 1 de un RQ, como lo cuenta la función: la línea, el número y cuánto.
+create or replace function pg_temp.lineas(p_rq text, p_cantidad numeric) returns jsonb language sql as $$
+  select jsonb_build_array(jsonb_build_object('linea', pg_temp.insumo(p_rq, 1), 'numero', pg_temp.numero(p_rq), 'cantidad', p_cantidad));
+$$;
+
 -- Lo que dice la función de un material, con la sesión que esté puesta.
 create or replace function pg_temp.stock(p_material text) returns table (existencia numeric, separado numeric, libre numeric, por_codigo jsonb)
 language sql as $$
@@ -145,7 +150,8 @@ set local role authenticated;
 select test.afirmar((select existencia = 20 and separado = 0 and libre = 20 and por_codigo = '[]'::jsonb from pg_temp.stock('dis')),
   'Sin RQ revisados, los 20 discos están libres');
 select test.afirmar((select existencia = 9 and separado = 3 and libre = 6
-                            and por_codigo = '[{"codigo": "CHK414-C", "cantidad": 3, "de_requerimientos": 0, "requerimientos": []}]'::jsonb from pg_temp.stock('far')),
+                            and por_codigo = '[{"codigo": "CHK414-C", "cantidad": 3, "de_requerimientos": 0, "del_kardex": 3, "requerimientos": [], "lineas": []}]'::jsonb
+                       from pg_temp.stock('far')),
   'Los 3 faros que entraron para CHK414-C son suyos; 6 libres');
 
 -- ============================================ 3. Almacén revisa y separa
@@ -169,17 +175,17 @@ set local role authenticated;
 select test.afirmar((select existencia = 20 and separado = 13 and libre = 7 from pg_temp.stock('dis')),
   'De 20 discos: 8 de CHK414-A, 4 de CHK414-B, 1 de PLANTA; quedan 7 libres');
 select test.afirmar((select por_codigo from pg_temp.stock('dis')) = jsonb_build_array(
-    jsonb_build_object('codigo', 'CHK414-A', 'cantidad', 8, 'de_requerimientos', 8, 'requerimientos', jsonb_build_array(pg_temp.numero('rq1'))),
-    jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 4, 'de_requerimientos', 4, 'requerimientos', jsonb_build_array(pg_temp.numero('rq2'))),
-    jsonb_build_object('codigo', 'PLANTA', 'cantidad', 1, 'de_requerimientos', 1, 'requerimientos', jsonb_build_array(pg_temp.numero('rqa')))),
+    jsonb_build_object('codigo', 'CHK414-A', 'cantidad', 8, 'de_requerimientos', 8, 'del_kardex', 0, 'requerimientos', jsonb_build_array(pg_temp.numero('rq1')), 'lineas', pg_temp.lineas('rq1', 8)),
+    jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 4, 'de_requerimientos', 4, 'del_kardex', 0, 'requerimientos', jsonb_build_array(pg_temp.numero('rq2')), 'lineas', pg_temp.lineas('rq2', 4)),
+    jsonb_build_object('codigo', 'PLANTA', 'cantidad', 1, 'de_requerimientos', 1, 'del_kardex', 0, 'requerimientos', jsonb_build_array(pg_temp.numero('rqa')), 'lineas', pg_temp.lineas('rqa', 1))),
   'Cada código con lo suyo y el RQ que lo separó; el código del RQ va en mayúsculas');
 select test.afirmar((select existencia = 2 and separado = 5 and libre = 0 from pg_temp.stock('lij')),
   'Si lo separado pasa lo que hay en el kardex, no queda nada libre');
 select test.afirmar((select existencia = 9 and separado = 3 and libre = 6 from pg_temp.stock('far')),
   'Los 2 faros separados para CHK414-C son de los 3 que entraron para ella: no se cuentan dos veces');
 -- Al revisar otro RQ de CHK414-C, de sus 3 faros solo le sirve 1: los otros 2 ya son de RQ5.
-select test.afirmar((select por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-C', 'cantidad', 3, 'de_requerimientos', 2,
-                              'requerimientos', jsonb_build_array(pg_temp.numero('rq5')))) from pg_temp.stock('far')),
+select test.afirmar((select por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-C', 'cantidad', 3, 'de_requerimientos', 2, 'del_kardex', 3,
+                              'requerimientos', jsonb_build_array(pg_temp.numero('rq5')), 'lineas', pg_temp.lineas('rq5', 2))) from pg_temp.stock('far')),
   'De lo de CHK414-C se dice aparte cuánto ya separaron sus RQ: 2 de los 3');
 reset role;
 
@@ -222,8 +228,8 @@ set local role authenticated;
 select test.afirmar((select existencia = 12 and separado = 7 and libre = 5 from pg_temp.stock('pla')),
   'De las 7 planchas que llegaron, 4 son del RQ3 (el primero) y 3 del RQ4; las 5 de antes siguen libres');
 select test.afirmar((select por_codigo from pg_temp.stock('pla')) = jsonb_build_array(
-    jsonb_build_object('codigo', 'CHK414-A', 'cantidad', 4, 'de_requerimientos', 4, 'requerimientos', jsonb_build_array(pg_temp.numero('rq3'))),
-    jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 3, 'de_requerimientos', 3, 'requerimientos', jsonb_build_array(pg_temp.numero('rq4')))),
+    jsonb_build_object('codigo', 'CHK414-A', 'cantidad', 4, 'de_requerimientos', 4, 'del_kardex', 0, 'requerimientos', jsonb_build_array(pg_temp.numero('rq3')), 'lineas', pg_temp.lineas('rq3', 4)),
+    jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 3, 'de_requerimientos', 3, 'del_kardex', 0, 'requerimientos', jsonb_build_array(pg_temp.numero('rq4')), 'lineas', pg_temp.lineas('rq4', 3))),
   'Lo que llega se reparte en el orden en que se pidió, y a la misma hora por número de RQ');
 reset role;
 
@@ -243,8 +249,8 @@ select gen_random_uuid(), 'INGRESO', current_setting('prueba.ds2')::uuid, 2, 'CO
 select pg_temp.como('almacenero');
 set local role authenticated;
 select test.afirmar((select existencia = 2 and separado = 2 and libre = 0
-                            and por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-D', 'cantidad', 2, 'de_requerimientos', 2,
-                                  'requerimientos', jsonb_build_array(pg_temp.numero('rq7')))) from pg_temp.stock('ds2')),
+                            and por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-D', 'cantidad', 2, 'de_requerimientos', 2, 'del_kardex', 0,
+                                  'requerimientos', jsonb_build_array(pg_temp.numero('rq7')), 'lineas', pg_temp.lineas('rq7', 2))) from pg_temp.stock('ds2')),
   'Lo que llegó de otra marca es de CHK414-D en el material comprado');
 select test.afirmar((select existencia = 17 and separado = 9 and libre = 8 from pg_temp.stock('dis')),
   'El disco pedido no queda separado por lo que se compró de otra marca');
@@ -370,8 +376,8 @@ select public.registrar_salida_material(current_setting('prueba.salida6')::uuid,
   auth.uid()::text || '/' || current_setting('prueba.salida6') || '.jpg', pg_temp.insumo('rq3', 1));
 select public.rq_marcar_entregado(current_setting('prueba.rq3')::uuid, 'Lo recogió el soldador de MTZ (prueba 414)');
 select test.afirmar((select existencia = 8 and separado = 3 and libre = 5
-                            and por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 3, 'de_requerimientos', 3,
-                                  'requerimientos', jsonb_build_array(pg_temp.numero('rq4')))) from pg_temp.stock('pla')),
+                            and por_codigo = jsonb_build_array(jsonb_build_object('codigo', 'CHK414-B', 'cantidad', 3, 'de_requerimientos', 3, 'del_kardex', 0,
+                                  'requerimientos', jsonb_build_array(pg_temp.numero('rq4')), 'lineas', pg_temp.lineas('rq4', 3))) from pg_temp.stock('pla')),
   'Entregado el RQ3, el RQ4 conserva solo lo suyo de lo que llegó: 3 de 8, 5 libres');
 reset role;
 
