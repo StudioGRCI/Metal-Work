@@ -759,10 +759,10 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
     const yaEntro = {
       neutro: (await v.locator('[data-ya-entro]').count()) === 1,
       sinEnviar: (await v.getByRole('button', { name: 'Pasar a la factura' }).count()) === 0,
-      cerrar: await v.getByRole('button', { name: 'Cerrar' }).isVisible(),
+      cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
     }
     comprobar(Object.values(yaEntro).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntro)})`)
-    await v.getByRole('button', { name: 'Cerrar' }).click()
+    await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
     // Se deshace para seguir con la toma por menos.
     await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
     const conLaToma = pagina.locator(`article#factura-${facturaH}`)

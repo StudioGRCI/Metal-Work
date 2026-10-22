@@ -487,7 +487,7 @@ let pagoId
   const yaEntro = {
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
     sinEnviar: (await v.getByRole('button', { name: 'Registrar el pago' }).count()) === 0,
-    cerrar: await v.getByRole('button', { name: 'Cerrar' }).isVisible(),
+    cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
     tarjetaAlDia: tarjetaDespues !== tarjetaAntes,
   }
   comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo, solo «Cerrar» y la tarjeta al día (${JSON.stringify(yaEntro)}; «${tarjetaAntes.slice(0, 80)}» → «${tarjetaDespues.slice(0, 80)}»)`)
@@ -505,7 +505,7 @@ let pagoId
     && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
     `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
   comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)
-  await v.getByRole('button', { name: 'Cerrar' }).click()
+  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
   await contexto.close()
 }
 

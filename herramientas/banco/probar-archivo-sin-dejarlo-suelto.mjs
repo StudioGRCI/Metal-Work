@@ -789,7 +789,9 @@ async function loEscritoSeQuedaEnLaCotizacion(viewport) {
   const quedo = await d.locator('#cot-numero').inputValue()
   comprobar(solo === '4321' && quedo === escrito, `[Ventas ${tam}] el número escrito antes de terminar la lectura se queda («${quedo}»; sin escribir, la lectura pone «${solo}»)`)
 
-  const existente = (await uno(`select numero from public.cotizaciones_pdf where numero ~ '^[0-9]' order by creado_en desc limit 1`))?.numero
+  // Cualquier número ya usado: el banco recién armado no trae cotizaciones con
+  // número de la serie, solo las de las pruebas.
+  const existente = (await uno(`select numero from public.cotizaciones_pdf order by creado_en desc limit 1`))?.numero
   if (existente) {
     await d.locator('#cot-numero').fill(existente)
     await d.locator('#cot-monto').fill('1000')

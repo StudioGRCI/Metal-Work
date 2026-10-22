@@ -346,10 +346,10 @@ const rechaza = async (pagina, ruta) => {
   const yaEntroGuia = {
     neutro: (await ventana.locator('[data-ya-entro]').count()) === 1,
     sinEnviar: (await ventana.getByRole('button', { name: 'Cargar guía' }).count()) === 0,
-    cerrar: await ventana.getByRole('button', { name: 'Cerrar' }).isVisible(),
+    cerrar: await ventana.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
   }
   comprobar(Object.values(yaEntroGuia).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntroGuia)})`)
-  await ventana.getByRole('button', { name: 'Cerrar' }).click()
+  await ventana.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
   const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])

@@ -290,7 +290,9 @@ async function mismoNombre(viewport) {
   const nota = limpio(await p.getByText(/Vale el marcado/).innerText())
   comprobar(nota.includes(`(${original.nombre_archivo}, del ${cuandoAnterior})`),
     `[Administración ${tam}] la nota nombra el anterior por su hora: «${nota}»`)
-  const quitar = await tarjetaOrden(p).getByRole('button', { name: /^Quitar / }).evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')))
+  // Los de los dos PDF: la orden puede llevar además su cronograma, con su propio «Quitar».
+  const quitar = (await tarjetaOrden(p).getByRole('button', { name: /^Quitar / }).evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))))
+    .filter((l) => l.startsWith(`Quitar ${original.nombre_archivo},`))
   comprobar(quitar.length === 2 && quitar[0] !== quitar[1] && quitar[0].endsWith(', el vigente') && quitar[1].includes(cuandoAnterior),
     `[Administración ${tam}] los dos «Quitar» se distinguen: ${JSON.stringify(quitar)}`)
   // La hora entera en su renglón: «p. m.» no se parte.
