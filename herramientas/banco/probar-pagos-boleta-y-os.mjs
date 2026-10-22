@@ -1022,7 +1022,7 @@ let pagoId
   const vn = t.pagina.locator('[role="dialog"]')
   await vn.waitFor()
   const noSe = limpio(await vn.textContent())
-  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 50.00 o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.')
+  comprobar(noSe.includes('No se puede anular todavía: sin ella, lo pagado por la boleta (S/ 411.50) pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 50.00 o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.')
       && !noSe.includes('La OC queda pagada') && (await vn.getByRole('button', { name: 'Anular', exact: true }).count()) === 0,
     `la ventana de anularla dice por qué no se puede, en vez de prometer cómo queda la OC: «${noSe.slice(0, 300)}»`)
   await vn.getByRole('button', { name: 'Cerrar', exact: true }).last().click()
@@ -1030,6 +1030,9 @@ let pagoId
   const todo = await devolver(ocToda, '311.50', `DEV9B-${SUFIJO}`)
   comprobar(!todo.pregunto && !todo.error && todo.aviso.includes('Devolución registrada'),
     `el proveedor devuelve lo que quedaba: no pregunta y entra${todo.error ? ` (dijo «${todo.error}»)` : ''}`)
+  const devueltaDice = 'El proveedor devolvió todo lo pagado: la OC queda devuelta y se paga de nuevo solo si te la vuelve a cobrar.'
+  comprobar(todo.enVivo.includes(devueltaDice) && todo.aviso.includes(devueltaDice),
+    `la ventana y el aviso dicen lo mismo que la tarjeta, no que vuelve a deber: «${todo.enVivo.slice(-160)}» / «${todo.aviso}»`)
   const devuelta = await tarjetaToda()
   comprobar(devuelta.includes('El proveedor ya devolvió todo lo que se pagó por su boleta: págala de nuevo solo si te la vuelve a cobrar.')
       && !devuelta.includes('Si con lo que quedaba'),

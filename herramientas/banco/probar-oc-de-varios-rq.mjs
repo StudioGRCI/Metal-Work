@@ -235,8 +235,12 @@ async function entrar(clave) {
 }
 
 /** Espera a que el detector termine de leer el PDF. */
+// Desde #143 la lectura empieza después de revisar el archivo: se espera a que aparezca el «Leyendo…» (o el del
+// escaneo) y después a que se vaya. Esperar solo a que no esté pasaba antes de que empezara.
 async function esperarLectura(lugar) {
-  await lugar.getByText('Leyendo la factura…').waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
+  const leyendo = lugar.getByText(/^(Leyendo la factura…|La factura es un escaneo: leyéndola…)$/).first()
+  await leyendo.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+  await leyendo.waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
   await lugar.page().waitForTimeout(500)
 }
 

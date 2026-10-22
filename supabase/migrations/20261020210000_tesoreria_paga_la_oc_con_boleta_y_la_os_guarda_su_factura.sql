@@ -2684,7 +2684,7 @@ begin
                        where orden_compra_id = v_dev.orden_compra_id and anulado_en is null and id <> p_id), 0);
   v_mon := case when v_dev.moneda = 'USD' then 'US$ ' else 'S/ ' end;
   if v_neto > v_total then
-    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal, registra primero la correcta, de % o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.',
+    raise exception 'Sin esta devolución, lo pagado por la boleta de la % (%) pasaría de su total (%). Si la registraste mal, registra primero la correcta, de % o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.',
       v_nombre, v_mon || to_char(v_neto, 'FM999G999G990D00'), v_mon || to_char(v_total, 'FM999G999G990D00'),
       v_mon || to_char(v_neto - v_total, 'FM999G999G990D00')
       using errcode = 'check_violation';

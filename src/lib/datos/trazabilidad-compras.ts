@@ -79,7 +79,8 @@ const esquemaPagoServicio = z.object({
   fecha: z.string(),
   monto: numero,
   moneda: z.string(),
-  // En la OC con boleta, si este pago fue el que la canceló; null si la OC no tiene total.
+  // En la OC con boleta, si este pago fue el que la canceló; null si ninguno cuenta así: la OC no tiene total, la dio
+  // por pagada una devolución o el proveedor devolvió todo.
   cancela: z.boolean().nullable(),
   operacion: texto,
   comprobante: texto,

@@ -2599,7 +2599,7 @@ select test.afirmar((select cancelada and pagado = 361.50 and devuelto = 40 from
   'pagado el resto, la OC queda pagada con lo neto');
 select test.debe_fallar($$ select public.anular_devolucion_compra(pg_temp.id('v11a'), 'Se registró en la OC que no era') $$,
   'la devolución no se anula si con eso lo pagado pasa del total: la correcta, de lo que sobra o más, se registra primero',
-  'pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 40.00 o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.');
+  'pasaría de su total (S/ 361.50). Si la registraste mal, registra primero la correcta, de S/ 40.00 o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.');
 reset role;
 
 -- Antes de la factura: la OC pagada con S/ 100 y el proveedor devuelve 30; la

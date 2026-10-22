@@ -532,6 +532,10 @@ function queQuedaTrasDevolver(s: SituacionDePago | null): string {
     return 'Ya no queda nada pagado de más.'
   }
   if (s.cancelada) return 'La OC queda pagada.'
+  // Como la tarjeta: devuelta entera y sin comprobante en camino, no se le debe hasta que la vuelva a cobrar.
+  if (!s.en_camino && Number(s.neto ?? 0) <= 0 && Number(s.devuelto ?? 0) > 0) {
+    return 'El proveedor devolvió todo lo pagado: la OC queda devuelta y se paga de nuevo solo si te la vuelve a cobrar.'
+  }
   return `A la OC le quedan ${moneda(Number(s.saldo ?? 0), m)} por pagar.`
 }
 

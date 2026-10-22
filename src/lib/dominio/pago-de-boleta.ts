@@ -140,9 +140,13 @@ export function queQuedaTrasLaDevolucion(b: BoletaParaDevolver, delta: number, m
     return r.deMas > 0 ? `Quedan ${moneda(r.deMas, m)} pagados de más.` : 'Ya no queda nada pagado de más.'
   }
   if (r.saldo <= 0) return 'La OC queda pagada.'
-  return r.neto <= 0 && delta < 0
-    ? `El proveedor devolvió todo lo pagado: la OC vuelve a deber ${moneda(r.saldo, m)}.`
-    : `La OC queda debiendo ${moneda(r.saldo, m)}.`
+  if (r.neto <= 0 && delta < 0) {
+    // Sin comprobante en camino queda devuelta, como dice la tarjeta: no se le debe hasta que la vuelva a cobrar.
+    return b.enCamino
+      ? `El proveedor devolvió todo lo pagado: la OC vuelve a deber ${moneda(r.saldo, m)}.`
+      : 'El proveedor devolvió todo lo pagado: la OC queda devuelta y se paga de nuevo solo si te la vuelve a cobrar.'
+  }
+  return `La OC queda debiendo ${moneda(r.saldo, m)}.`
 }
 
 /** Lo que una factura tomó de un pago por la boleta, en la moneda de la OC. */

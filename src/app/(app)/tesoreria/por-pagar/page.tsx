@@ -667,13 +667,14 @@ function sinCompletarAlAnular(b: CompraConBoleta, devolucionId: string) {
 /**
  * Por qué la base no deja anular la devolución: sin ella, lo pagado por la boleta
  * pasaría de su total (por los pagos de después, o porque el total bajó). Null si entra.
- * Dice de cuánto tiene que ser la correcta para que entre; si es menor, sobra un pago.
+ * Dice de cuánto tiene que ser la correcta para que entre; si es menor, se le pagó de más al proveedor
+ * y la salida es registrar también la diferencia cuando la devuelva (un pago no se anula con una devolución vigente).
  */
 function noSeAnulaLaDevolucion(b: CompraConBoleta, monto: number, m: CodigoMoneda): string | null {
   const sinElla = redondear(Number(b.pagado ?? 0) + monto)
   const total = Number(b.total ?? 0)
   if (sinElla <= total) return null
-  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta, de ${moneda(redondear(sinElla - total), m)} o más, y después anula esta; si la correcta es menor, anula antes el pago que sobra.`
+  return `No se puede anular todavía: sin ella, lo pagado por la boleta (${moneda(sinElla, m)}) pasaría de su total (${moneda(total, m)}). Si la registraste mal, registra primero la correcta, de ${moneda(redondear(sinElla - total), m)} o más, y después anula esta. Si lo que devolvió fue menos, al proveedor se le pagó de más: pídele la diferencia y, cuando entre, regístrala también; después anula esta.`
 }
 
 /** Lo que le falta pagar a una OC con boleta, sobre lo neto (lo pagado menos lo devuelto); una cancelada «a cuenta» ya no debe nada. */

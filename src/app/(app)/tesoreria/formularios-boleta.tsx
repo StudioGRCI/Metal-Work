@@ -110,10 +110,13 @@ export function RegistrarDevolucion({
   const router = useRouter()
   // La OC cambió con la ventana abierta (Logística anexó o anuló su factura) y la base pide la respuesta, o la
   // rechaza: la ventana se corrige con lo que dijo la base. Repintar la página la cerraba con todo lo escrito,
-  // porque la tarjeta pasa a otra lista. Vale hasta que la página traiga otra `boleta`.
-  const [rechazo, setRechazo] = useState<{ para: BoletaParaDevolver; enCamino: boolean } | null>(null)
+  // porque la tarjeta pasa a otra lista. Vale hasta que la página traiga otra `boleta`. Si la factura no cambió,
+  // cambió lo pagado (otro pago u otra devolución): la ventana no sabe cuánto, y pide abrirla de nuevo.
+  const [rechazo, setRechazo] = useState<{ para: BoletaParaDevolver; enCamino: boolean; otro: boolean } | null>(null)
   const vigente: BoletaParaDevolver =
-    rechazo?.para === boleta ? { ...boleta, enCamino: rechazo.enCamino, factura: rechazo.enCamino ? boleta.factura : null } : boleta
+    rechazo?.para === boleta && !rechazo.otro
+      ? { ...boleta, enCamino: rechazo.enCamino, factura: rechazo.enCamino ? boleta.factura : null }
+      : boleta
   const tope = topeDeLaDevolucion(boleta)
   const sugerido = boleta.deMas > 0 ? Math.min(boleta.deMas, tope).toFixed(2) : ''
 
@@ -128,7 +131,7 @@ export function RegistrarDevolucion({
     })
     if (!r.ok) {
       const enCamino = facturaSegunElRechazo(r.error)
-      if (enCamino !== null) setRechazo({ para: boleta, enCamino })
+      if (enCamino !== null) setRechazo({ para: boleta, enCamino, otro: enCamino === (boleta.enCamino || Boolean(boleta.factura)) })
     }
     return r
   }
@@ -154,7 +157,14 @@ export function RegistrarDevolucion({
   useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
 
   // Lo que dijo la base ya está en la ventana (la pregunta, o sin ella): no es un error, es la OC que cambió.
-  const corregida = rechazo?.para === boleta && error !== null && facturaSegunElRechazo(error) !== null ? rechazo.enCamino : null
+  const corregida =
+    rechazo?.para === boleta && error !== null && facturaSegunElRechazo(error) !== null
+      ? rechazo.otro
+        ? 'otro'
+        : rechazo.enCamino
+          ? 'llego'
+          : 'se-fue'
+      : null
   const campo = (nombre: string) => `${nombre}-devolucion-${ordenCompraId}`
   const escrito = leerMonto(monto) ?? 0
   const valido = escrito > 0 && escrito <= tope
@@ -248,9 +258,11 @@ export function RegistrarDevolucion({
           </p>
           {corregida !== null ? (
             <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
-              {corregida
+              {corregida === 'llego'
                 ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
-                : 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'}
+                : corregida === 'se-fue'
+                  ? 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'
+                  : 'Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día y vuelve a registrar la devolución.'}
             </p>
           ) : (
             error && (
