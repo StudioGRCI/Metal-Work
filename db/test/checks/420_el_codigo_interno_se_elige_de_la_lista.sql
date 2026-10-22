@@ -233,7 +233,7 @@ begin
   perform test.afirmar((v_l ->> 'en_stock')::numeric = 10 and (v_l ->> 'por_comprar')::numeric = 5 and v_l ->> 'etapa' = 'POR_COMPRAR',
     format('el avance dice 10 en almacén y 5 por comprar: %s', v_l));
 end $$;
--- La vista de Almacén cuenta la salida una vez por cada devolución (4 + 4 − 2): se deja dicho, no se corrige aquí.
+-- Lo que dice de la misma línea la vista de la salida de Almacén, para compararlo (la prueba de esa vista es el check 414).
 do $$
 begin
   raise notice '  nota · v_rq_lineas_para_salida dice % entregados de la misma línea',

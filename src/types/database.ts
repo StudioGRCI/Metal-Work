@@ -15238,6 +15238,25 @@ export type Database = {
           por_codigo: Json | null
         }[]
       }
+      stock_libre_en_almacen: {
+        Args: {
+          p_materiales?: string[] | null
+        }
+        Returns: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          almacen: string | null
+          categoria: string | null
+          existencia: number | null
+          stock_minimo: number | null
+          reservado_ot: number | null
+          separado: number | null
+          libre: number | null
+          por_codigo: Json | null
+        }[]
+      }
       subcontrato_archivo: {
         Args: {
           p_subcontrato: string | null

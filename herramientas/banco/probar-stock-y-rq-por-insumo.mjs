@@ -12,8 +12,9 @@
  *      recoger en Almacén y cuántos faltan que lleguen, y cada insumo con su
  *      barra, lo que se recoge, lo que falta de Logística, su OC y en qué va.
  *      Ve también los de todas las áreas y los de un código interno.
- *   3. Requerimientos, que los lleva, los ve desplegados como siempre, y no
- *      entra al stock.
+ *   3. Requerimientos, que los lleva, los ve desplegados como siempre. Desde el
+ *      2026-10-20 entra también al stock (lo libre y lo de cada código lo
+ *      prueba `probar-stock-libre.mjs`).
  *   4. Almacén abre el stock con el enlace a su kardex.
  *
  * Necesita las cuentas `supervisor.mtz@`, `requerimientos@` y `almacen@local.test`,
@@ -99,10 +100,11 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
   const fila = (codigo) => pagina.locator(`tr[data-material="${codigo}"]`)
   const disco = await texto(fila('BCO-DIS'))
   console.log('    disco:', disco)
-  comprobar(disco.includes('34 UND') && !disco.includes('Libre'), 'el disco: 40 que entraron menos 6 que salieron')
+  // Desde el 2026-10-20 el número grande es lo libre y el kardex va en «de 34 UND en almacén» si algo está separado.
+  comprobar(/(^| )34 UND|de 34 UND en almacén/.test(disco), 'el disco: 40 que entraron menos 6 que salieron')
   const faro = await texto(fila('BCO-FAR'))
   console.log('    faro:', faro)
-  comprobar(faro.includes('8 UND') && faro.includes('MW-0123 3 UND') && faro.includes('MW-0130 2 UND') && faro.includes('Libre: 3 UND'),
+  comprobar(faro.includes('3 UND de 8 UND en almacén') && faro.includes('MW-0123 3 UND') && faro.includes('MW-0130 2 UND'),
     'el faro: 8, de ellos 3 de MW-0123 y 2 de MW-0130, y 3 libres')
   const plancha = await texto(fila('BCO-PLA'))
   comprobar(plancha.includes('12 UND') && plancha.includes('Bajo el mínimo de 15'), 'la plancha avisa que está bajo su mínimo')
@@ -189,14 +191,14 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
   await contexto.close()
 }
 
-// ============================================ 3. Requerimientos los ve abiertos y no entra al stock
+// ============================================ 3. Requerimientos los ve abiertos y, desde el 2026-10-20, entra al stock
 {
   const { pagina, contexto, errores } = await entrar('requerimientos@local.test')
   await ir(pagina, '/requerimientos')
   const abiertos = await pagina.locator('[data-insumos]').evaluateAll((ds) => ds.map((d) => d.open))
   comprobar(abiertos.length === 3 && abiertos.every(Boolean), 'Requerimientos los ve desplegados, como siempre')
   await ir(pagina, '/almacen/stock')
-  comprobar(pagina.url().includes('/sin-permiso'), 'Requerimientos no entra al stock')
+  comprobar((await texto(pagina.locator('h1'))) === 'Stock en almacén', 'Requerimientos entra al stock (migración 20261020195000)')
   comprobar(errores.length === 0, `sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }
