@@ -231,6 +231,9 @@ async function entrar(clave) {
 
 /** Espera a que el detector termine de leer el PDF. */
 async function esperarLectura(lugar) {
+  // Con el servidor cargado, la lectura puede no haber empezado todavía: se
+  // espera a que aparezca (si llega) antes de esperar a que se vaya.
+  await lugar.getByText('Leyendo la factura…').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
   await lugar.getByText('Leyendo la factura…').waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
   await lugar.page().waitForTimeout(500)
 }
