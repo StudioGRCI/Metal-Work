@@ -436,7 +436,9 @@ const movimiento = async (origen, documento, campo) =>
   comprobar(enlacePlanilla === `/planilla-diaria/${ids.pd}`, 'el pago de la planilla se anula en su planilla, no en la lista')
   const filaSaldo = limpio(await pagina.locator('table').first().locator('tr', { hasText: SOLES }).textContent().catch(() => ''))
   comprobar(filaSaldo.includes('2,290.00') && filaSaldo.includes('7,710.00'), `de la cuenta en soles salen S/ 2,290.00 y queda en S/ 7,710.00 («${filaSaldo}»)`)
-  await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-diaria.png'), fullPage: true })
+  // Con `caret: 'initial'`: la captura esconde el cursor con un estilo, y si cae mientras React hidrata la
+  // fecha de arriba, la consola dice que el HTML no cuadra (como en probar-reimportar-planilla).
+  await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-diaria.png'), fullPage: true, caret: 'initial' })
 
   // 5. Anular el pago de la factura anula su egreso.
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
@@ -530,7 +532,7 @@ const movimiento = async (origen, documento, campo) =>
     await v.locator('select[name="caja_id"]').waitFor({ timeout: 5000 }).catch(() => {})
     const caja = await v.locator('select[name="caja_id"]').boundingBox()
     comprobar(!!caja && caja.x >= 0 && caja.x + caja.width <= CELULAR.width, 'en el teléfono el desplegable de la cuenta entra en la ventana')
-    await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-telefono.png') })
+    await pagina.screenshot({ path: join(CAPTURAS, 'pagos-caja-telefono.png'), caret: 'initial' })
   } else {
     comprobar(true, '(no quedó otra orden de servicio por pagar para mirar la ventana en el teléfono)')
   }
