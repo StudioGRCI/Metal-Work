@@ -54,19 +54,24 @@ export type LecturaArchivoCotizacion = {
 }
 
 /**
+ * Lo que trae el documento cuando el total que queda no calza con el leído,
+ * para decirlo en ámbar bajo el monto; null si calza o si no se leyó nada.
+ */
+export function totalDelDocumentoSiNoCalza(total: TotalCotizacion, leido: TotalCotizacion | null): string | null {
+  if (!leido?.monto) return null
+  const igual = Number(total.monto) === Number(leido.monto) && (!leido.moneda || total.moneda === leido.moneda)
+  if (igual) return null
+  return leido.moneda ? moneda(leido.monto, leido.moneda) : numero(leido.monto)
+}
+
+/**
  * La ayuda del monto. «Detectado» solo mientras es el que se leyó: el que la
- * persona escribió no se le atribuye al documento, y si no calza con lo leído,
- * se dice qué trae el documento.
+ * persona escribió no se le atribuye al documento.
  */
 export function ayudaDelMonto(total: TotalCotizacion, leido: TotalCotizacion | null): string {
-  if (leido?.monto) {
-    const igual = Number(total.monto) === Number(leido.monto) && (!leido.moneda || total.moneda === leido.moneda)
-    if (igual) return 'Detectado en el documento; confirma o corrige el total final.'
-    const dice = leido.moneda ? moneda(leido.monto, leido.moneda) : numero(leido.monto)
-    return `El documento dice ${dice}: revisa el total.`
-  }
-  if (total.monto) return 'El total final, como aparece en la cotización.'
-  return 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'
+  if (leido?.monto && !totalDelDocumentoSiNoCalza(total, leido)) return 'Detectado en el documento; confirma o corrige el total final.'
+  if (total.monto || leido?.monto) return 'El total final, como aparece en la cotización.'
+  return 'No se leyó el total: escríbelo como aparece en la cotización.'
 }
 
 /**

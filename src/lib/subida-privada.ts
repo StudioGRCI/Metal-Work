@@ -95,10 +95,11 @@ export async function anotarSinDejarloSuelto<T = never>({
   return primera
 }
 
-// Qué archivo intentó subir esta pestaña a cada ruta. La ruta sale del id del
-// formulario, así que un 409 es el mismo envío repetido... salvo que, después de
-// una respuesta perdida, se haya elegido otro archivo: ese no es el que está en
-// Storage, y anotarlo confirmaría un archivo que no es el elegido.
+// Qué archivo subió esta pestaña a cada ruta, según la última respuesta de
+// Storage. La ruta sale del id del formulario, así que un 409 es el mismo envío
+// repetido... salvo que, después de una respuesta perdida, se haya elegido otro
+// archivo: ese no es el que está en Storage, y anotarlo confirmaría un archivo
+// que no es el elegido.
 const intentados = new Map<string, { huella: string; nombre: string }>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
 
@@ -119,27 +120,32 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
   const este = { huella: huellaDe(archivo), nombre: archivo.name }
   const subir = () => supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
   const antes = intentados.get(clave)
-  if (!antes) intentados.set(clave, este)
+  // Hasta que Storage conteste, no se sabe qué hay en la ruta: lo recordado no
+  // coincide con ningún archivo, así el próximo 409 pasa por el reemplazo y no
+  // anota un nombre con otro archivo adentro.
+  const sinSaber = (nombre: string) => intentados.set(clave, { huella: '', nombre })
+  sinSaber(antes?.nombre ?? este.nombre)
   try {
     let { error } = await subir()
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
     if (error && error.statusCode === '409' && antes && antes.huella !== este.huella) {
-      // Lo que está en Storage es el archivo de antes. Si ninguna fila lo
-      // nombra, la política deja quitarlo y el elegido entra en su lugar; si
-      // una lo nombra, quedó, y se dice cuál.
+      // Lo que está en Storage es el archivo de antes, o uno cuya subida no
+      // contestó. Si ninguna fila lo nombra, la política deja quitarlo y el
+      // elegido entra en su lugar; si una lo nombra, quedó, y se dice cuál.
       const quitado = await supabase.storage.from(bucket).remove([ruta])
       if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
-      if ((quitado.data?.length ?? 0) === 0) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, true) }
-      // Desde aquí, en la ruta está el elegido o nada: si la subida llega y su
-      // respuesta se pierde, volver al de antes no puede anotarlo con este adentro.
-      intentados.set(clave, este)
+      if ((quitado.data?.length ?? 0) === 0) {
+        intentados.set(clave, antes)
+        return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, true) }
+      }
+      sinSaber(este.nombre)
       ;({ error } = await subir())
     }
-    if (!error) intentados.set(clave, este)
     if (error && error.statusCode !== '409') {
       return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
     }
+    intentados.set(clave, este)
   } catch {
     return { ok: false, error: sinRespuesta }
   }

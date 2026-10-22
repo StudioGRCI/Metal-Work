@@ -13,7 +13,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import {
   buscarCliente,
   nombreParaCatalogo,
@@ -56,6 +56,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
   const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Si el total trae IGV: sin ese dato el margen de la OT saldría inflado en el 18 % de la venta.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
@@ -412,12 +413,20 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
-              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
-                  aMano.current.add('monto')
-                  setTotal((v) => ({ ...v, monto: e.target.value }))
-                }} inputMode="decimal" placeholder="0.00" required />
-            </Campo>
+            {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}
+            <div className="space-y-1.5">
+              <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }} inputMode="decimal" placeholder="0.00" required />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="cot-moneda" requerido>
               <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => {
                   aMano.current.add('moneda')

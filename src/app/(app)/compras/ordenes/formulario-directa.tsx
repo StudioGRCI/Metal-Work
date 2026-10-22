@@ -90,7 +90,7 @@ function dentroDeOtraOracion(texto: string) {
 function noSeAdjunto(nombre: string, o: 'a' | 'o', error: string) {
   if (error === NO_QUEDO_SIN_RESPUESTA) return `${nombre} no se adjuntó: no llegó la respuesta. Adjúntal${o} desde la lista.`
   const motivo = dentroDeOtraOracion(error)
-  if (/\bpermiso\b/i.test(motivo)) return `${nombre} no se adjuntó: ${motivo} Avisa al administrador.`
+  if (/\bpermisos?\b/i.test(motivo)) return `${nombre} no se adjuntó: ${motivo} Avisa al administrador.`
   const insiste = / Inténtalo de nuevo; si vuelve a pasar, avisa al administrador\.$/
   const sinReintento = motivo.replace(insiste, '').replace(/ y vuelve a intentar\.$/, '.')
   const siVuelve = insiste.test(motivo) ? '; si vuelve a pasar, avisa al administrador' : ''

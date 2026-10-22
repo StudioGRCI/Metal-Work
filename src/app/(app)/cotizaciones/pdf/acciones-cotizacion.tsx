@@ -14,7 +14,7 @@ import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { fecha } from '@/lib/format'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
-import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -148,6 +148,7 @@ export function CorregirCotizacion({
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
   const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Una versión nueva vuelve a preguntar por el IGV: el PDF corregido puede decir otra cosa.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [cliente, setCliente] = useState(clienteId)
@@ -354,18 +355,26 @@ export function CorregirCotizacion({
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
-              <Entrada
-                id="corregir-monto"
-                value={total.monto ?? ''}
-                onChange={(e) => {
-                  aMano.current.add('monto')
-                  setTotal((v) => ({ ...v, monto: e.target.value }))
-                }}
-                inputMode="decimal"
-                required
-              />
-            </Campo>
+            {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}
+            <div className="space-y-1.5">
+              <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada
+                  id="corregir-monto"
+                  value={total.monto ?? ''}
+                  onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }}
+                  inputMode="decimal"
+                  required
+                />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="corregir-moneda" requerido>
               <Seleccion
                 id="corregir-moneda"

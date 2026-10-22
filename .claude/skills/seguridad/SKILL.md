@@ -146,12 +146,14 @@ En la misma migración que la crea, sin excepción:
   La misma ruta sirve para un solo archivo: si la respuesta se perdió y la
   persona elige otro antes de reintentar, Storage contesta «ya existe» con el
   primero adentro, y darlo por subido anotaría el archivo que no eligió.
-  `subirArchivoPrivado` recuerda qué archivo subió con cada ruta; si es otro,
-  intenta quitar el de antes —la política solo deja quitar el que ninguna fila
-  nombra— y sube el elegido, recordándolo **antes** de subirlo: si esa subida
-  llega sin respuesta y la persona vuelve al primero, se anotaba su nombre
-  con el segundo adentro. Si no se puede quitar, dice cuál se subió y si
-  quedó registrado (`otroArchivoEnLaRuta`), sin llamar a la base. La ruta fija
+  `subirArchivoPrivado` recuerda qué archivo subió con cada ruta **según la
+  última respuesta de Storage**; si es otro, intenta quitar el de antes —la
+  política solo deja quitar el que ninguna fila nombra— y sube el elegido.
+  Mientras una subida no contesta, lo recordado no coincide con ningún archivo:
+  si se recordaba el primero y la del segundo llegaba sin respuesta, volver al
+  primero anotaba su nombre con el segundo adentro (pasó dos veces, por el
+  reemplazo y por la primera subida). Si no se puede quitar, dice cuál se
+  subió y si quedó registrado (`otroArchivoEnLaRuta`), sin llamar a la base. La ruta fija
   vale **por envío**, no por ventana: el id que nace en un componente que la
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo

@@ -152,9 +152,10 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
   vaciado al abrir) y la lectura llena solo los demás; si lo escrito no calza
-  con lo leído, se avisa al lado del campo («El PDF dice la OT …», «El
-  documento dice US$ 1,180.00: revisa el total»). «Detectado en el documento»
-  se dice solo mientras es lo que se leyó (`ayudaDelMonto`). Lo que el
+  con lo leído, se avisa bajo el campo en una línea ámbar con `role="status"`
+  («El PDF dice la OT …», «El documento dice US$ 1,180.00: revisa el total»),
+  no en su ayuda gris, que se lee como un dato más. «Detectado en el
+  documento» se dice solo mientras es lo que se leyó (`ayudaDelMonto`). Lo que el
   documento no trae no pisa lo que sí trae lo escrito: «390-2025» no pasa a
   «390» porque el PDF no dice el año. Al quitar el archivo se va lo que puso
   él, no lo escrito.

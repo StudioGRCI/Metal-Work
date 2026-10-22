@@ -61,6 +61,20 @@ function lecturaDelFormulario(formulario: FormData) {
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
 /**
+ * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
+ * chocaría con su propio número: se completa desde la lista, salvo que falte
+ * el permiso, que desde la lista tampoco alcanza.
+ */
+function borradorSinPdf(motivo: string) {
+  const antes = 'Comprobante creado en borrador, pero no se pudo subir el PDF:'
+  const enMinuscula = motivo[0].toLowerCase() + motivo.slice(1)
+  if (/\bpermisos?\b/i.test(motivo)) return `${antes} ${enMinuscula} Avisa al administrador.`
+  const insiste = / Inténtalo de nuevo; si vuelve a pasar, avisa al administrador\.$/
+  const siVuelve = insiste.test(motivo) ? '; si vuelve a pasar, avisa al administrador' : ''
+  return `${antes} ${enMinuscula.replace(insiste, '')} Complétalo desde la lista, en «PDF pendiente»${siVuelve}.`
+}
+
+/**
  * Contabilidad registra una factura o un recibo. Una factura de compra cubre una
  * o varias OC del mismo proveedor (migración 20261015122000): la principal va en
  * el comprobante —es la que fija su OT— y las demás se enlazan mientras está en
@@ -164,7 +178,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
       .upload(ruta, bytes, { contentType: 'application/pdf', upsert: false })
-    if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
+    if (errorArchivo) return { ok: false, error: borradorSinPdf(mensajeDeArchivo(errorArchivo)) }
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
