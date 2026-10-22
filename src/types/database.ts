@@ -3206,6 +3206,27 @@ export type Database = {
           }
         ]
       }
+      huellas_de_envio: {
+        Row: {
+          registro: string
+          momento: string
+          huella: string
+          anotado_en: string
+        }
+        Insert: {
+          registro: string
+          momento: string
+          huella: string
+          anotado_en?: string
+        }
+        Update: {
+          registro?: string
+          momento?: string
+          huella?: string
+          anotado_en?: string
+        }
+        Relationships: []
+      }
       ingresos_pendientes_almacen: {
         Row: {
           id: string
@@ -11094,6 +11115,14 @@ export type Database = {
           orden_compra_id: string | null
         }[]
       }
+      anotar_envio: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_envio: Json | null
+        }
+        Returns: string
+      }
       anotar_salidas_de_antes: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -13714,6 +13743,14 @@ export type Database = {
           p_nombre_uno: string | null
           p_ruc_otro: string | null
           p_nombre_otro: string | null
+        }
+        Returns: boolean
+      }
+      mismo_envio: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_envio: Json | null
         }
         Returns: boolean
       }

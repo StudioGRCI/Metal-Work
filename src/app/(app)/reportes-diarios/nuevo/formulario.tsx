@@ -13,6 +13,7 @@ import {
   type FotoLista,
 } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Progreso } from '@/components/ui/progreso'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
@@ -23,6 +24,7 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
@@ -287,10 +289,22 @@ export function FormularioReporteDiario({
   const espera = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const pedido = useRef(new Map<string, number>())
   const { alEnviar, enviando, error } = useEnvio(
-    corrige ? registrarReporteCorregido : registrarReportesDiarios,
+    async (previo: unknown, datos: FormData) => {
+      const salida = await (corrige ? registrarReporteCorregido : registrarReportesDiarios)(previo, datos)
+      // El reporte ya había entrado la primera vez: lo de este envío no se
+      // guardó, y sus fotos nuevas no las nombra nadie. Se quitan (las de la
+      // primera vez, que su reporte nombra, la base no las deja quitar), y la
+      // pantalla lleva al reporte en vez de ofrecer subirlo otra vez.
+      if (!salida.ok && yaEntroLaPrimeraVez(salida.error)) {
+        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, s.fotos)
+        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: [] })))
+      }
+      return salida
+    },
     (r) => router.push(`/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`),
     { refrescar: false },
   )
+  const yaEntro = yaEntroLaPrimeraVez(error)
 
   const nombres = new Map(personal.map((p) => [p.valor, p.etiqueta]))
   // Lo que cada persona suma en todo el día, en todos los códigos: el tope es 16 horas.
@@ -535,7 +549,11 @@ export function FormularioReporteDiario({
       </section>
 
       {error && (
-        <p role="alert" className="text-sm text-peligro">
+        <p
+          role="alert"
+          data-ya-entro={yaEntro || undefined}
+          className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
+        >
           {error}
         </p>
       )}
@@ -544,20 +562,26 @@ export function FormularioReporteDiario({
       )}
       {repetidos.size > 0 && <p className="text-sm text-peligro">Un código va dos veces: junta sus trabajos en uno solo.</p>}
       <div className="flex justify-end">
-        <Boton
-          type="submit"
-          cargando={enviando}
-          disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0}
-          className="w-full sm:w-auto"
-        >
-          {subiendo
-            ? 'Esperando las fotos…'
-            : corrige
-              ? 'Subir el reporte corregido'
-              : varios
-                ? `Subir reporte de ${secciones.length} códigos`
-                : 'Subir reporte'}
-        </Boton>
+        {yaEntro ? (
+          <EnlaceBoton href={`/reportes-diarios/${secciones[0]?.id ?? ids[0]}`} className="w-full sm:w-auto">
+            Ver el reporte
+          </EnlaceBoton>
+        ) : (
+          <Boton
+            type="submit"
+            cargando={enviando}
+            disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0}
+            className="w-full sm:w-auto"
+          >
+            {subiendo
+              ? 'Esperando las fotos…'
+              : corrige
+                ? 'Subir el reporte corregido'
+                : varios
+                  ? `Subir reporte de ${secciones.length} códigos`
+                  : 'Subir reporte'}
+          </Boton>
+        )}
       </div>
     </form>
   )

@@ -14,6 +14,7 @@ import {
 } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
@@ -38,6 +39,12 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
   const [fotos, setFotos] = useState<FotoLista[]>([])
+  // Sin registrar, las fotos subidas no las nombra nadie: se quitan.
+  function cerrar() {
+    quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
+    setFotos([])
+    setAbierta(false)
+  }
   return (
     <>
       <Boton
@@ -59,11 +66,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
       )}
       <Ventana
         abierta={abierta}
-        alCerrar={() => {
-          quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
-          setFotos([])
-          setAbierta(false)
-        }}
+        alCerrar={cerrar}
         titulo="Ingreso de vehículo"
         descripcion="Un vehículo entra a la planta, con fotos de cómo llega. La salida se marca después en la misma fila."
         ancho="lg"
@@ -74,6 +77,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
           codigos={codigos}
           fotos={fotos}
           setFotos={setFotos}
+          alCancelar={cerrar}
           alTerminar={(mensaje) => {
             // Ya son parte del ingreso: solo se sueltan las miniaturas.
             soltarMiniaturas(fotos)
@@ -92,12 +96,14 @@ function FormularioIngreso({
   codigos,
   fotos,
   setFotos,
+  alCancelar,
   alTerminar,
 }: {
   cuentaId: string
   codigos: CodigoParaIngreso[]
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
+  alCancelar: () => void
   alTerminar: (mensaje: string) => void
 }) {
   // Decidido aquí: un reintento manda el mismo y la base no duplica el ingreso.
@@ -256,22 +262,15 @@ function FormularioIngreso({
           />
         </>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
       {pideDatos && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="entrar" />}
-      <div className="flex justify-end">
-        <Boton
-          type="submit"
-          cargando={enviando}
-          disabled={!pideDatos || faltaCodigo || subiendo || fallidas || listas === 0}
-          className="w-full sm:w-auto"
-        >
-          {subiendo ? 'Esperando las fotos…' : 'Registrar ingreso'}
-        </Boton>
-      </div>
+      {/* Si el ingreso ya había entrado la primera vez, «Cerrar» quita las fotos nuevas, que no nombra nadie. */}
+      <PieDeVentana
+        error={error}
+        enviando={enviando}
+        alCancelar={alCancelar}
+        texto={subiendo ? 'Esperando las fotos…' : 'Registrar ingreso'}
+        disabled={!pideDatos || faltaCodigo || subiendo || fallidas || listas === 0}
+      />
     </form>
   )
 }

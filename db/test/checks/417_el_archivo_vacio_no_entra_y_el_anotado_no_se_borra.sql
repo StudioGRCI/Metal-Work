@@ -188,5 +188,18 @@ select test.afirmar(not exists (
        and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto)\w* text'
        and p.prosrc ~* 'where\s+(\w+\.)?id\s*=\s*p_\w+(\s+and\s+[^)]*)?\)\s*then\s+return\s+p_\w+\s*;'),
   'Ninguna función que anota un archivo da por registrado otro envío con el mismo id');
+-- Las fotos (`p_fotos jsonb`, o dentro de `p_codigos`) también son archivos, y
+-- el id también se reconoce leyendo la fila (`select … into; if found then if
+-- v.registrado_por = v_yo then return p_id`) o por algo que no es el envío
+-- (`if v_reg.salida_en is not null then return p_id`). Esta segunda mirada
+-- busca cualquier `if … then return` del id que no compare el envío —su
+-- huella, su archivo o su nombre—: la primera no vio el reporte diario ni el
+-- vehículo (duodécima pasada, migración 20261022194000).
+select test.afirmar(not exists (
+    select 1 from pg_proc p, regexp_matches(p.prosrc, '\mif\s+([^;]*?)\s+then\s+return\s+[pv]_\w+\s*;', 'gi') m
+     where p.pronamespace = 'public'::regnamespace
+       and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto|codigos)\w* (text|jsonb)'
+       and m[1] !~* 'mismo_envio|nombre|ruta|archivo|justificante|huella|foto|cambios'),
+  'ni lo da por registrado leyendo la fila o mirando algo que no es el envío, tampoco con fotos');
 
 rollback;

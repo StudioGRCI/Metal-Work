@@ -48,11 +48,20 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   if (Number(v.monto) <= 0) return { ok: false, error: 'El importe debe ser mayor que cero.' }
   const db = await createClient()
   const { data: previo, error: previoError } = await db.from('ot_gastos_areas')
-    .select('id, registrado_por').eq('id', v.id).maybeSingle()
+    .select('id, registrado_por, orden_id, tipo, descripcion, fecha, monto, moneda, comprobante_nombre').eq('id', v.id).maybeSingle()
   if (previoError) return { ok: false, error: mensajeDeError(previoError) }
-  if (previo) return previo.registrado_por === perfil.id
-    ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
-    : { ok: false, error: 'El identificador del gasto ya está en uso.' }
+  if (previo) {
+    if (previo.registrado_por !== perfil.id) return { ok: false, error: 'El identificador del gasto ya está en uso.' }
+    // El mismo envío repetido trae todo igual. Con otro importe, otra
+    // descripción u otro PDF ya no es el mismo: antes se daba por registrado y
+    // la pantalla se vaciaba con lo de la primera vez guardado (duodécima pasada).
+    const mismo = previo.orden_id === v.orden_id && previo.tipo === v.tipo && previo.descripcion === v.descripcion
+      && previo.fecha === v.fecha && Number(previo.monto) === Number(v.monto) && previo.moneda === v.moneda
+      && previo.comprobante_nombre === pdf.archivo.name.slice(0, 200)
+    return mismo
+      ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
+      : { ok: false, error: 'Este gasto ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
+  }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
   const cubeta = db.storage.from('gastos-ot')
   let { error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf')

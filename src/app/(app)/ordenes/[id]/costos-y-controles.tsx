@@ -10,6 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Pliegue, SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
 import { faltanteDelCosto } from '@/lib/dominio/codigos-internos'
@@ -152,10 +153,19 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
   const formulario = useRef<HTMLFormElement>(null)
   // Al entrar, el formulario se vacía junto con el id nuevo: lleno, un toque
   // tardío tras el verde registraba el mismo gasto otra vez (duodécima pasada).
-  const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => {
+  const vaciar = () => {
     formulario.current?.reset()
     setId(crypto.randomUUID())
-  })
+  }
+  // Si el envío ya había entrado la primera vez, lo escrito después no se
+  // guardó: el formulario se vacía igual, con un id nuevo, para que el próximo
+  // gasto no choque con ese.
+  const { alEnviar, enviando, resultado, error } = useEnvio(async (previo: unknown, datos: FormData) => {
+    const salida = await registrarGastoArea(previo, datos)
+    if (!salida.ok && yaEntroLaPrimeraVez(salida.error)) vaciar()
+    return salida
+  }, vaciar)
+  const yaEntro = yaEntroLaPrimeraVez(error)
   return <Tarjeta>
     <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
@@ -169,7 +179,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
           <div className="sm:col-span-2"><Campo etiqueta="Descripción y referencia" htmlFor="gasto-descripcion" requerido><AreaTexto id="gasto-descripcion" name="descripcion" minLength={10} maxLength={500} required rows={2} /></Campo></div>
           <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido><ElegirArchivo id="gasto-pdf" name="pdf" accept="application/pdf,.pdf" hastaMb={15} required /></Campo></div>
-          {error && <p role="alert" className="sm:col-span-2 text-sm text-peligro">{error}</p>}
+          {error && <p role="alert" data-ya-entro={yaEntro || undefined} className={yaEntro ? 'sm:col-span-2 rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'sm:col-span-2 text-sm text-peligro'}>{error}</p>}
           {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>

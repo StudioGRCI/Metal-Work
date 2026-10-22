@@ -195,9 +195,15 @@ En la misma migración que la crea, sin excepción:
   primera vez que la enviaste: recarga…» (`20261022180000`, `20261022177000`;
   undécima pasada del PR #148). Con ruta nueva en cada envío (finanzas,
   planilla, subcontratos) la ruta ya distingue un envío de otro, y el aviso no
-  dice «con otro voucher», que sería falso si eligió el mismo archivo. El
-  detector del check `417` busca funciones que reciben una ruta y devuelven el
-  id existente comparando solo el id.
+  dice «con otro voucher», que sería falso si eligió el mismo archivo. Lo que
+  lleva mucho (el reporte diario con sus trabajos, su gente y sus fotos; el
+  ingreso y la salida del vehículo) deja la huella de su envío en
+  `huellas_de_envio` (`anotar_envio` al registrar, `mismo_envio` al
+  reconocerlo; `20261022194000`, check 427). Las fotos también son archivos:
+  `p_fotos jsonb` va en la huella. El detector del check `417` busca funciones
+  que reciben una ruta o fotos y devuelven el id existente sin comparar el
+  envío, también leyendo la fila (`if v.registrado_por = v_yo then return`) o
+  mirando otra cosa (`if salida_en is not null then return`).
 - **La subida a una ruta nueva que falla sin un 4xx se quita en el acto**
   (`subirARutaNueva`, `src/lib/ruta-nueva.ts`): un 5xx o un corte pueden llegar
   con el archivo ya guardado, y esa ruta no la vuelve a usar nadie. El voucher
@@ -216,7 +222,12 @@ En la misma migración que la crea, sin excepción:
   (`PieDeVentana`, sin rojo y sin el botón que envía). En rojo y con el botón
   activo, se cancelaba y se pagaba otra vez desde la tarjeta vieja (duodécima
   pasada). Un aviso nuevo de «mismo envío» lleva «la primera vez que lo
-  enviaste» para que `yaEntroLaPrimeraVez` lo reconozca.
+  enviaste» para que `yaEntroLaPrimeraVez` lo reconozca. Las fotos nuevas de
+  ese envío no las nombra nadie: «Cerrar» las quita (`quitarFotosSueltas`; la
+  base no deja quitar las de la primera vez), y un formulario de página (el
+  reporte diario) las quita al recibir el aviso y lleva al registro. El
+  formulario que fija su id al abrirse (el gasto del área) lo cambia también
+  tras el aviso, o el próximo envío chocaría con el mismo.
 - **Un archivo vacío no es «sin archivo».** En el navegador, el campo que nadie
   tocó llega como un `File` con nombre vacío; uno de 0 bytes es un archivo
   elegido, y se rechaza diciendo que está vacío. Separarlos por `size === 0`
