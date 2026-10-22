@@ -2,7 +2,7 @@
 
 import { FileSpreadsheet, FileText, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -102,9 +102,11 @@ export function ArchivosDeOrden({
     destino.scrollIntoView({ block: quien === 'campo' ? 'center' : 'nearest' })
   }, [pide])
 
-  // La fila quitada se va con el refresco y el foco caía al <body>.
-  function alQuitar(nombre: string) {
-    setAviso(`Se quitó ${nombre} de la orden.`)
+  // La fila quitada se va con el refresco y el foco caía al <body>. Con la
+  // hora: el que queda suele llamarse igual que el quitado.
+  function alQuitar(quitado: AdjuntoEnPantalla, quedaria?: AdjuntoEnPantalla) {
+    const vale = quedaria ? `; vuelve a valer el del ${fechaHora(quedaria.creado_en)}` : ''
+    setAviso(`Se quitó ${quitado.nombre_archivo}, del ${fechaHora(quitado.creado_en)}${vale}`.replace(/\.?$/, '.'))
     ;(botonCambiar.current ?? zona.current)?.focus()
   }
 
@@ -268,13 +270,26 @@ function FilaAdjunto({
   // La fila se va con el refresco: el aviso de que el archivo quedó guardado
   // lo muestra la tarjeta, que se queda.
   alQuedarArchivo: (mensaje: string) => void
-  alQuitar: (nombre: string) => void
+  alQuitar: (quitado: AdjuntoEnPantalla, quedaria?: AdjuntoEnPantalla) => void
 }) {
   const [confirmando, setConfirmando] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(quitarAdjunto, (r) => {
     if (r.datos?.archivoQuedo && r.mensaje) alQuedarArchivo(r.mensaje)
-    alQuitar(a.nombre_archivo)
+    alQuitar(a, quedaria)
   })
+  // Al abrir la pregunta, el foco va a «No», que es lo seguro, y la pregunta se
+  // lee con él; al decir que no, vuelve al tacho. Antes caía al <body>.
+  const tacho = useRef<HTMLButtonElement>(null)
+  const botonNo = useRef<HTMLButtonElement>(null)
+  const volverAlTacho = useRef(false)
+  const idPregunta = useId()
+  useEffect(() => {
+    if (confirmando) botonNo.current?.focus()
+    else if (volverAlTacho.current) {
+      volverAlTacho.current = false
+      tacho.current?.focus()
+    }
+  }, [confirmando])
   const Icono = a.tipo === 'CRONOGRAMA' ? FileSpreadsheet : FileText
   const vigente = Boolean(quedaria)
   const cuando = fechaHora(a.creado_en)
@@ -305,6 +320,7 @@ function FilaAdjunto({
         </div>
         {a.quitable && !confirmando && (
           <Boton
+            ref={tacho}
             type="button"
             variante="fantasma"
             tamano="icono"
@@ -326,16 +342,26 @@ function FilaAdjunto({
         >
           <input type="hidden" name="id" value={a.id} />
           <input type="hidden" name="orden_id" value={ordenId} />
-          <span className="text-xs text-peligro">
+          <span id={idPregunta} className="text-xs text-peligro">
             {/* La hora termina en «p. m.»: ese punto cierra también la frase. */}
             {quedaria
               ? `Es el vigente: si lo quitas, vuelve a valer el del ${fechaHora(quedaria.creado_en).replace(/\.?$/, '.')} ¿Quitarlo igual?`
               : '¿Quitar este archivo de la orden?'}
           </span>
-          <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
+          <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando} aria-describedby={idPregunta}>
             Sí, quitar
           </Boton>
-          <Boton type="button" tamano="sm" variante="fantasma" onClick={() => setConfirmando(false)}>
+          <Boton
+            ref={botonNo}
+            type="button"
+            tamano="sm"
+            variante="fantasma"
+            aria-describedby={idPregunta}
+            onClick={() => {
+              volverAlTacho.current = true
+              setConfirmando(false)
+            }}
+          >
             No
           </Boton>
           {error && <p role="alert" className="w-full text-xs font-medium text-peligro">{error}</p>}

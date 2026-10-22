@@ -71,6 +71,15 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   // Terminado es que no quede nada por registrar, no que algo ya haya entrado:
   // si no, la salida cuya foto no subió se quedaba sin botón para volver a intentarlo.
   const terminado = !registrando && empezado && faltan.length === 0
+  // Lo que queda sin entrar, para no cerrar en verde con una salida sin foto encima.
+  const queda = fallidas
+    ? `${fallidas} no: revisa el mensaje de cada uno`
+    : faltan.length
+      ? faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`
+      : [
+          sinFoto.length && (sinFoto.length === 1 ? 'falta la foto de 1 salida' : `falta la foto de ${sinFoto.length} salidas`),
+          sinElegir.length && (sinElegir.length === 1 ? 'falta elegir el material de 1 ingreso' : `falta elegir el material de ${sinElegir.length} ingresos`),
+        ].filter(Boolean).join(' y ')
 
   function reiniciar() {
     vuelta.current++
@@ -179,7 +188,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             })
           }
         } catch {
-          resultado = { ok: false, error: 'No se confirmó: vuelve a cargar la planilla; lo registrado no se duplica.' }
+          resultado = { ok: false, error: 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.' }
         }
         setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
       }
@@ -295,13 +304,9 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
             )}
             {empezado && !registrando && (
-              <p role="status" className={fallidas || faltan.length ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
-                {fallidas
-                  ? `; ${fallidas} no: revisa el mensaje de cada uno.`
-                  : faltan.length
-                    ? `; ${faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`}.`
-                    : '.'}
+              <p role="status" className={queda ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+                {hechas === 0 ? 'No se registró ninguno' : hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
+                {queda ? `; ${queda}.` : '.'}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -313,7 +318,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                 </Boton>
               )}
               {empezado && !registrando && (
-                <Boton variante={terminado ? 'primario' : 'secundario'} onClick={cerrar}>Cerrar</Boton>
+                <Boton variante={terminado && !queda ? 'primario' : 'contorno'} onClick={cerrar}>Cerrar</Boton>
               )}
             </div>
           </>

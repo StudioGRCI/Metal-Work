@@ -113,8 +113,8 @@ const hoyLima = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Americ
 const diaCorto = (iso) => iso.split('-').reverse().join('/')
 
 // ------------------------------------------------- 1. la foto que no subió
-async function fotoQueNoSubio(viewport) {
-  const tam = nombreDe(viewport)
+async function fotoQueNoSubio(viewport, caso = 'no sube') {
+  const tam = nombreDe(viewport) + (caso === 'no sube' ? '' : '-sin-foto')
   const { pagina: p, contexto } = await entrar('almacen.local@metalwork.test', viewport)
   await ir(p, '/almacen/kardex')
   const libro = new ExcelJS.Workbook()
@@ -160,13 +160,31 @@ async function fotoQueNoSubio(viewport) {
   await v.locator('#planilla-archivo').setInputFiles(llena)
   const foto = v.locator('input[type=file][aria-label^="Elegir la foto de la salida"]').first()
   await foto.waitFor({ state: 'attached', timeout: 30000 })
+  const estado = v.locator('[role=status]').filter({ hasText: /Se registr|No se registr/ })
+  if (caso === 'sin foto') {
+    // Se registra el ingreso y la salida se queda sin foto: no se cierra en verde.
+    await v.getByRole('button', { name: 'Registrar 1 movimiento' }).click()
+    await esperar(async () => (await estado.count()) > 0, 30000)
+    comprobar(limpio(await estado.innerText()) === 'Se registró 1 movimiento; falta la foto de 1 salida.',
+      `[Almacén ${tam}] no termina en verde con una salida sin foto: «${limpio(await estado.innerText())}»`)
+    comprobar((await estado.getAttribute('class')).includes('text-aviso'), `[Almacén ${tam}] en tono de aviso`)
+    // El del pie, con su texto: la X de la ventana también se llama «Cerrar».
+    const cerrar = v.getByRole('button').filter({ hasText: /^Cerrar$/ })
+    comprobar(!(await cerrar.getAttribute('class')).includes('bg-acento'), `[Almacén ${tam}] y «Cerrar» no es el botón principal`)
+    await foto.setInputFiles({ name: `salida-${sello}.jpg`, mimeType: 'image/jpeg', buffer: JPG })
+    await v.getByRole('button', { name: 'Registrar lo que falta (1)' }).click()
+    await esperar(async () => limpio(await estado.innerText()).startsWith('Se registraron 2'), 30000)
+    comprobar(limpio(await estado.innerText()) === 'Se registraron 2 movimientos.', `[Almacén ${tam}] con la foto, la salida entra`)
+    comprobar((await cerrar.getAttribute('class')).includes('bg-acento'), `[Almacén ${tam}] y ahora sí «Cerrar» es el principal`)
+    await contexto.close()
+    return
+  }
   await foto.setInputFiles({ name: `salida-${sello}.jpg`, mimeType: 'image/jpeg', buffer: JPG })
   // La foto no sube: sin señal justo en ese momento.
   const storage = /\/storage\/v1\/object\/evidencias-almacen\//
   await p.route(storage, (r) => (r.request().method() === 'POST' ? r.abort('failed') : r.continue()))
   await v.getByRole('button', { name: 'Registrar 2 movimientos' }).click()
-  await esperar(async () => (await v.locator('[role=status]').count()) > 0, 30000)
-  const estado = v.locator('[role=status]').filter({ hasText: /Se registr/ })
+  await esperar(async () => (await estado.count()) > 0, 30000)
   comprobar(limpio(await estado.innerText()) === 'Se registró 1 movimiento; 1 no: revisa el mensaje de cada uno.',
     `[Almacén ${tam}] entró el ingreso y la salida no: «${limpio(await estado.innerText())}»`)
   comprobar((await dice(foto)).includes('No se pudo cargar el archivo. Revisa la señal'), `[Almacén ${tam}] la foto que no subió lo dice en su campo: «${await dice(foto)}»`)
@@ -279,13 +297,24 @@ async function mismoNombre(viewport) {
   const partida = await tarjetaOrden(p).locator('li span.whitespace-nowrap').first().evaluate((e) => e.getClientRects().length)
   comprobar(partida === 1, `[Administración ${tam}] la fecha con la hora va en un solo renglón`)
 
-  // Quitar el vigente avisa cuál queda; se dice que no.
+  // Quitar el vigente avisa cuál queda; se dice que no, con el teclado.
   const filaVigente = tarjetaOrden(p).locator('li').filter({ hasText: 'Vigente' }).first()
-  await filaVigente.getByRole('button', { name: /el vigente$/ }).click()
+  const tachoVigente = filaVigente.getByRole('button', { name: /el vigente$/ })
+  await tachoVigente.focus()
+  await p.keyboard.press('Enter')
+  await p.waitForTimeout(200)
+  comprobar((await enfocado(p))?.etiqueta === 'No', `[Administración ${tam}] la pregunta lleva el foco a «No», lo seguro: ${JSON.stringify(await enfocado(p))}`)
+  const describe = await p.evaluate(() => {
+    const id = document.activeElement?.getAttribute('aria-describedby')
+    return id ? document.getElementById(id)?.innerText ?? '' : ''
+  })
+  comprobar(describe.startsWith('Es el vigente'), `[Administración ${tam}] y la pregunta se lee con él`)
   const aviso = limpio(await filaVigente.locator('form span').first().innerText())
   comprobar(aviso === `Es el vigente: si lo quitas, vuelve a valer el del ${cuandoAnterior} ¿Quitarlo igual?`, `[Administración ${tam}] quitar el vigente avisa cuál queda: «${aviso}»`)
   await p.screenshot({ path: join(CAPTURAS, `borde-pdf-vigente-${tam}.png`) })
-  await filaVigente.getByRole('button', { name: 'No', exact: true }).click()
+  await p.keyboard.press('Enter')
+  await p.waitForTimeout(200)
+  comprobar(((await enfocado(p))?.etiqueta ?? '').endsWith(', el vigente'), `[Administración ${tam}] al decir que no, el foco vuelve al tacho: ${JSON.stringify(await enfocado(p))}`)
 
   // Se quita el anterior, como dice la nota.
   const filaAnterior = tarjetaOrden(p).locator('li').filter({ hasNotText: 'Vigente' }).filter({ hasText: original.nombre_archivo }).first()
@@ -296,8 +325,9 @@ async function mismoNombre(viewport) {
   const quedo = await pdfs()
   comprobar(quedo.length === 1 && quedo[0].id === nuevo.id, `[Administración ${tam}] queda el corregido, el más nuevo`)
   await esperar(async () => (await p.locator('[role=status]').filter({ hasText: 'Se quitó' }).count()) > 0, 10000)
-  comprobar(limpio(await p.locator('[role=status]').filter({ hasText: 'Se quitó' }).innerText()) === `Se quitó ${original.nombre_archivo} de la orden.`,
-    `[Administración ${tam}] lo dice`)
+  const seQuito = limpio(await p.locator('[role=status]').filter({ hasText: 'Se quitó' }).innerText())
+  comprobar(seQuito === `Se quitó ${original.nombre_archivo}, del ${cuandoAnterior}`.replace(/\.?$/, '.'),
+    `[Administración ${tam}] dice cuál se quitó, con su hora: «${seQuito}»`)
   comprobar((await enfocado(p))?.etiqueta === 'Cambiar el PDF', `[Administración ${tam}] y el foco vuelve a «Cambiar el PDF»: ${JSON.stringify(await enfocado(p))}`)
   await p.screenshot({ path: join(CAPTURAS, `borde-pdf-quitado-${tam}.png`) })
 
@@ -447,6 +477,7 @@ async function excelQueNoQuedo(viewport) {
 for (const viewport of [TELEFONO, MONITOR]) {
   console.log(`\n=========== ${nombreDe(viewport)}`)
   await fotoQueNoSubio(viewport)
+  await fotoQueNoSubio(viewport, 'sin foto')
   await relojAdelantado(viewport)
   await mismoNombre(viewport)
   await noSirveAlEnviar(viewport)
