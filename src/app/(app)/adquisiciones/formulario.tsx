@@ -1,13 +1,13 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
-import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
-import { useEnvio } from '@/lib/envio'
+import { avisosDelDetector, numeroDeFactura, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as dia, moneda as dinero } from '@/lib/format'
 import { ACEPTA_XML_FACTURA, camposDeLectura, leerFactura, leerFacturaDeEnlace } from '@/lib/leer-factura'
 
@@ -126,9 +126,14 @@ function Formulario({
   // (`puestos`) y lo que había antes de la primera (`base`): cuando ya no queda
   // ninguna, vuelve lo de antes en lo que nadie cambió.
   const puesto = useRef<{ base: Valores; puestos: Valores } | null>(null)
+  // Los de esos cuatro que la persona cambió a mano: una fuente que vuelve a
+  // marcar lo suyo después de que se fue otra no se los pisa.
+  const tocados = useRef(new Set<keyof Valores>())
+  const tocar = (k: keyof Valores) => tocados.current.add(k)
   // La factura de Logística elegida: su número, su fecha y su OC cuentan como
   // lo leído de esa fuente, aunque su PDF no se pueda leer.
   const documento = useRef<FacturaDeLogistica | null>(null)
+  const [numeroDeLogistica, setNumeroDeLogistica] = useState<string | null>(null)
   // El total, el número y la emisión, con la fuente que los llenó: lo que llenó un
   // archivo se va con él si nadie lo cambió (`soltar`).
   const [llenado, setLlenado] = useState<Llenado>(SIN_LLENAR)
@@ -143,6 +148,25 @@ function Formulario({
   const [avisoArchivo, setAvisoArchivo] = useState<Record<'xml' | 'pdf', string | null>>({ xml: null, pdf: null })
   const turno = useRef<Record<Fuente, number>>({ xml: 0, pdf: 0, logistica: 0 })
   const { alEnviar, enviando, error } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
+  const campoPdf = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => (/\bPDF\b/.test(error ?? '') ? campoPdf.current : avisoError.current))
+
+  function registrar(e: FormEvent<HTMLFormElement>) {
+    // El PDF elegido y vacío ya lo dice su campo: no se envía, y el cursor va ahí.
+    if (campoPdf.current?.files?.[0]?.size === 0) {
+      e.preventDefault()
+      campoPdf.current.focus()
+      return
+    }
+    alEnviar(e, (datos) => {
+      // El campo que nadie tocó no se manda: en el servidor llegaría como un
+      // archivo vacío con un nombre inventado («undefined») y no se distinguiría
+      // de uno elegido vacío.
+      const pdf = datos.get('pdf')
+      if (pdf instanceof File && pdf.name === '') datos.delete('pdf')
+    })
+  }
 
   const elegidas = compras.filter((c) => marcadas.includes(c.orden_compra_id))
   const enParte = elegidas.filter((c) => parciales.includes(c.orden_compra_id))
@@ -182,11 +206,11 @@ function Formulario({
   }
 
   /** Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera. */
-  function marcarDeLectura(fuente: Fuente, leida: LecturaFactura) {
+  function marcarDeLectura(fuente: Fuente, leida: LecturaFactura, deNuevo = false) {
     const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
     const primera = nombradas.at(0)
     const juntas = primera ? nombradas.filter((c) => mismoNombre(c.proveedor, primera.proveedor) && c.condicion_pago === primera.condicion_pago) : []
-    if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda)
+    if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda, deNuevo)
   }
 
   /** La OC de la factura de Logística elegida, si espera su factura. */
@@ -211,17 +235,20 @@ function Formulario({
    * Una fuente marca sola las primeras OC: llena con la primera el proveedor (si
    * está vacío), la condición, la moneda y la OT (si está vacía). Sin OC, pone
    * la moneda que leyó. Queda anotado qué marcó y qué había, para soltarlo.
+   * `deNuevo`: la fuente seguía puesta y vuelve a marcar porque se fue otra; lo
+   * que la persona cambió a mano se queda.
    */
-  function marcarSolas(fuente: Fuente, cs: CompraSinFactura[], monedaLeida?: string | null) {
+  function marcarSolas(fuente: Fuente, cs: CompraSinFactura[], monedaLeida?: string | null, deNuevo = false) {
     const primera = cs.at(0)
     const ahora = valoresAhora()
     const antes = puesto.current
     // Lo de antes de la primera fuente se guarda; lo que la persona cambió
     // después de una fuente pasa a ser lo suyo.
     const base = antes ? cada((k) => (ahora[k] === antes.puestos[k] ? antes.base[k] : ahora[k])) : ahora
-    const puestos: Valores = primera
+    const leidos: Valores = primera
       ? { proveedor: ahora.proveedor.trim() || primera.proveedor, condicion: primera.condicion_pago, moneda: primera.moneda, ot: ahora.ot || (primera.orden_id ?? '') }
       : { ...ahora, moneda: monedaLeida || ahora.moneda }
+    const puestos = deNuevo ? cada((k) => (tocados.current.has(k) ? ahora[k] : leidos[k])) : leidos
     const ids = cs.map((c) => c.orden_compra_id)
     setMarcadas(ids)
     ponerValores(puestos)
@@ -232,9 +259,9 @@ function Formulario({
   /** Una fuente que sigue puesta vuelve a marcar lo suyo: la de Logística, su OC; las demás, lo que leyeron. */
   function marcarDeFuente(f: Fuente) {
     const c = f === 'logistica' ? compraDelDocumento() : undefined
-    if (c) return marcarSolas('logistica', [c])
+    if (c) return marcarSolas('logistica', [c], null, true)
     const l = lecturas[f]
-    if (l) marcarDeLectura(f, l)
+    if (l) marcarDeLectura(f, l, true)
   }
 
   /**
@@ -272,8 +299,21 @@ function Formulario({
     const quedan = marcadasAhora.current.filter((id) => !sueltas.includes(id))
     setMarcadas(quedan)
     setParciales((p) => p.filter((id) => !sueltas.includes(id)))
-    if (quedan.length > 0) return
     const p = puesto.current
+    if (quedan.length > 0) {
+      // La moneda y la OT de la OC que se fue pasan a ser las de la primera que
+      // queda, en lo que nadie cambió; el proveedor y la condición son los mismos.
+      const sigue = compras.find((c) => quedan.includes(c.orden_compra_id))
+      if (p && sigue && sueltas.length > 0) {
+        const ahora = valoresAhora()
+        const sigueSiNadieLoCambio = (k: 'moneda' | 'ot', valor: string) =>
+          ahora[k] === p.puestos[k] && !tocados.current.has(k) ? valor : ahora[k]
+        const puestos = { ...ahora, moneda: sigueSiNadieLoCambio('moneda', sigue.moneda), ot: sigueSiNadieLoCambio('ot', sigue.orden_id ?? p.base.ot) }
+        ponerValores(puestos)
+        puesto.current = { base: p.base, puestos }
+      }
+      return
+    }
     if (p) {
       // En lo que nadie cambió vuelve lo de antes; lo que cambió la persona se queda.
       const vuelto = cada((k) => (valoresAhora()[k] === p.puestos[k] ? p.base[k] : valoresAhora()[k]))
@@ -302,6 +342,14 @@ function Formulario({
     void detectar(fuente, (progreso) => leerFactura(archivo, progreso))
   }
 
+  // El detector compara con la primera fuente; si el archivo y la factura de
+  // Logística son de facturas distintas, también se dice.
+  const deLogistica = numeroDeFactura(numeroDeLogistica)
+  const delArchivo = (lecturas.xml ?? lecturas.pdf)?.numero ?? null
+  const otraFactura =
+    deLogistica && delArchivo && deLogistica !== delArchivo
+      ? [{ texto: `El ${lecturas.xml ? 'XML' : 'PDF'} es la factura ${delArchivo} y la de Logística es la ${deLogistica}: revisa que sean la misma.` }]
+      : []
   const avisos = lectura
     ? avisosDelDetector({
         lectura,
@@ -338,6 +386,7 @@ function Formulario({
     const d = documentos.find((x) => x.id === id) ?? null
     soltar('logistica')
     documento.current = d
+    setNumeroDeLogistica(d?.numero ?? null)
     if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha }))
     const c = compraDelDocumento()
     // Su OC se marca sola (o queda anotada como suya si otra fuente ya la
@@ -362,7 +411,7 @@ function Formulario({
   }
 
   return (
-    <form onSubmit={alEnviar} onChange={alEscribir} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <form onSubmit={registrar} onChange={alEscribir} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <Campo etiqueta="Tipo de comprobante" htmlFor="adq-tipo" requerido>
         <Seleccion id="adq-tipo" name="tipo" required>
           <option value="FACTURA_COMPRA">Factura de compra</option>
@@ -373,7 +422,18 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="Proveedor o emisor" htmlFor="adq-proveedor" requerido>
-        <Entrada id="adq-proveedor" name="proveedor" minLength={2} maxLength={160} required value={proveedor} onChange={(e) => setProveedor(e.target.value)} />
+        <Entrada
+          id="adq-proveedor"
+          name="proveedor"
+          minLength={2}
+          maxLength={160}
+          required
+          value={proveedor}
+          onChange={(e) => {
+            tocar('proveedor')
+            setProveedor(e.target.value)
+          }}
+        />
       </Campo>
       <Campo etiqueta="Número de comprobante" htmlFor="adq-numero" requerido>
         <Entrada
@@ -460,7 +520,15 @@ function Formulario({
       </fieldset>
 
       <Campo etiqueta="OT relacionada" htmlFor="adq-ot" ayuda="Sale sola de la OC marcada, si tiene OT.">
-        <Seleccion id="adq-ot" name="orden_id" value={ot} onChange={(e) => setOt(e.target.value)}>
+        <Seleccion
+          id="adq-ot"
+          name="orden_id"
+          value={ot}
+          onChange={(e) => {
+            tocar('ot')
+            setOt(e.target.value)
+          }}
+        >
           <option value="">Sin OT específica</option>
           {ordenes.map((o) => (
             <option key={o.id} value={o.id}>
@@ -470,7 +538,15 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="Moneda" htmlFor="adq-moneda">
-        <Seleccion id="adq-moneda" name="moneda" value={monedaFactura} onChange={(e) => setMonedaFactura(e.target.value)}>
+        <Seleccion
+          id="adq-moneda"
+          name="moneda"
+          value={monedaFactura}
+          onChange={(e) => {
+            tocar('moneda')
+            setMonedaFactura(e.target.value)
+          }}
+        >
           <option value="PEN">Soles</option>
           <option value="USD">Dólares</option>
         </Seleccion>
@@ -479,7 +555,15 @@ function Formulario({
         <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => escribir('emision', e.target.value)} />
       </Campo>
       <Campo etiqueta="Condición de pago" htmlFor="adq-condicion">
-        <Seleccion id="adq-condicion" name="condicion_pago" value={condicion} onChange={(e) => setCondicion(e.target.value)}>
+        <Seleccion
+          id="adq-condicion"
+          name="condicion_pago"
+          value={condicion}
+          onChange={(e) => {
+            tocar('condicion')
+            setCondicion(e.target.value)
+          }}
+        >
           <option value="CONTADO">Contado</option>
           <option value="CREDITO">Crédito</option>
         </Seleccion>
@@ -511,10 +595,13 @@ function Formulario({
         lectura={lectura}
         leyendo={leyendo.logistica}
         sinLeer={sinLeer}
-        avisos={avisos.map((a) => ({
-          texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
-          marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => (c.numero ?? c.referencia) === a.oc && encaja(c)) : undefined,
-        }))}
+        avisos={[
+          ...avisos.map((a) => ({
+            texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
+            marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => (c.numero ?? c.referencia) === a.oc && encaja(c)) : undefined,
+          })),
+          ...otraFactura,
+        ]}
         alMarcar={(c) => marcar(c, true)}
       />
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
@@ -537,6 +624,7 @@ function Formulario({
       </Campo>
       <Campo etiqueta="PDF del comprobante" htmlFor="adq-pdf" ayuda="Obligatorio si no eliges una factura de Logística.">
         <ElegirArchivo
+          ref={campoPdf}
           id="adq-pdf"
           name="pdf"
           accept={ACEPTA_PDF}
@@ -570,7 +658,7 @@ function Formulario({
           Registrar comprobante
         </Boton>
         {error && (
-          <p role="alert" className="text-sm text-peligro">
+          <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
             {error}
           </p>
         )}

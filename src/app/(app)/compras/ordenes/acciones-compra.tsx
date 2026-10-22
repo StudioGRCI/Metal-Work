@@ -57,8 +57,11 @@ export function AccionesCompra({
     const r = await lineasDeLaCompra(id).catch(() => null)
     setLineas(r?.ok ? (r.datos ?? []) : (r?.error ?? 'No se pudieron leer las líneas. Vuelve a abrir la corrección.'))
   }
-  // La primera carga lleva un identificador fijo: un reintento no duplica el documento.
-  const [idDocumento] = useState(() => crypto.randomUUID())
+  // El documento lleva un identificador fijo: un reintento no lo duplica. La
+  // ventana desmonta el formulario al cerrarse, así que se guarda aquí, y cambia
+  // solo cuando uno entró: si no, el segundo documento de la OC volvía con el
+  // id y la ruta del primero.
+  const [idDocumento, setIdDocumento] = useState(() => crypto.randomUUID())
   const envio = useAccion(mandarARecojo)
 
   return (
@@ -115,6 +118,7 @@ export function AccionesCompra({
         <SubirDocumentoCompra
           ordenCompraId={id}
           solicitudId={idDocumento}
+          alAdjuntar={() => setIdDocumento(crypto.randomUUID())}
           tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
           orden={{ numero, total, moneda }}
         />

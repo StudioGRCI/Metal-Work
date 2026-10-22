@@ -15,9 +15,15 @@
  *      vuelve a lo que había; la que marca la persona, se queda; la de la
  *      factura de Logística que sigue elegida, también, con su número y su
  *      fecha aunque su PDF no se pueda leer. Sin ninguna fuente, la moneda
- *      vuelve a la de antes.
+ *      vuelve a la de antes. Con esa factura elegida, un PDF vacío no se
+ *      envía: su campo dice que está vacío y el cursor queda ahí.
+ *      Lo que la persona cambió después de la lectura (la moneda) se queda
+ *      aunque otra fuente vuelva a marcar lo suyo, y si el PDF y la factura de
+ *      Logística son facturas distintas, se avisa.
  *      La factura vacía de la OC directa no pide su número ni su fecha, dice
- *      que está vacía sin llamar al servidor y deja el cursor en su campo.
+ *      que está vacía sin llamar al servidor y deja el cursor en su campo; la
+ *      que no sube por un permiso dice por qué. El segundo documento de la
+ *      misma OC entra sin recargar (antes volvía con la ruta del primero).
  *   2. Administración, el PDF de una orden, cuando se pierde la conexión al
  *      anotarlo (`anotarSinDejarloSuelto`):
  *      - el pedido no llegó: se pregunta otra vez y queda una sola fila;
@@ -27,7 +33,8 @@
  *      - sin señal las dos veces: no queda fila ni archivo suelto en Storage, y
  *        la pantalla dice que no quedó.
  *      - y si después se elige otro archivo en la misma ventana (el contrato
- *        de un subcontrato), no se da por adjunto: en Storage está el primero.
+ *        de un subcontrato): si el primero quedó, no se da por adjunto y se
+ *        dice cuál quedó; si no quedó, se quita y entra el elegido.
  *      El recibo por honorarios vacío dice que está vacío.
  *   3. Administración, «Nueva orden de trabajo», cuando se pierde la respuesta
  *      al registrarla: la segunda vez la acción reconoce su propio PDF, abre la
@@ -36,7 +43,10 @@
  *      Gerencia la aprueba con su código y su OT. Cada vez, la segunda vuelta
  *      reconoce lo suyo, la ventana se cierra como si nada y no hay otra
  *      cotización, versión ni OT. (En el monitor; deja una cotización
- *      aprobada de banco.)
+ *      aprobada de banco.) Lo escrito antes de que termine la lectura se
+ *      queda (el número de la cotización, el de la OT, que avisa si el PDF
+ *      dice otra), el monto escrito no dice «Detectado», y un número que ya
+ *      existe se dice junto a su campo, con el cursor ahí.
  *   5. Diseño manda el PDF de un plano a un área con la respuesta perdida: la
  *      pantalla pregunta otra vez (antes quitaba el archivo a ciegas y decía
  *      que no se confirmó) y queda una sola versión. (En el monitor; arma un
@@ -185,16 +195,56 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   await v.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-B-${sello}.pdf`, mimeType: 'application/pdf', buffer: PDF_MINIMO(900) })
   const antes = acciones
   await v.getByRole('button', { name: 'Adjuntar' }).click()
-  await esperar(async () => /otro archivo/.test(await alerta.innerText().catch(() => '')), 20000)
+  await esperar(async () => /ya se subió/.test(await alerta.innerText().catch(() => '')), 20000)
   const segunda = limpio(await alerta.innerText().catch(() => ''))
   const contratos = await uno(`select count(*)::int as n, string_agg(archivo_nombre, ', ') as nombres from public.subcontrato_contratos
                                 where subcontrato_id = $1 and archivo_nombre like $2`, [sc.id, `QA-OTRO-%-${sello}.pdf`])
   comprobar(/Conserva el archivo/.test(primera), `[Administración ${tam}] sin respuesta, pide conservar el archivo: «${primera}»`)
-  comprobar(/ya se subió otro archivo/.test(segunda) && acciones === antes,
-    `[Administración ${tam}] con otro archivo elegido no lo da por adjunto ni llama a la base: «${segunda}» (${acciones - antes} llamadas)`)
+  comprobar(segunda.includes(`Desde esta ventana ya se subió ${nombreA} y quedó registrado`) && acciones === antes,
+    `[Administración ${tam}] con otro archivo elegido no lo da por adjunto, dice cuál quedó y no llama a la base: «${segunda}» (${acciones - antes} llamadas)`)
   comprobar(contratos.n === 1 && contratos.nombres === nombreA, `[Administración ${tam}] en la base queda solo el primero (${contratos.nombres})`)
   await p.keyboard.press('Escape')
   await p.unrouteAll({ behavior: 'ignoreErrors' })
+
+  // Si el primero no quedó (el pedido no llegó dos veces y no hubo señal para
+  // quitarlo), al elegir otro el de antes se quita y el elegido entra en su
+  // lugar, sin recargar y sin dejar nada suelto.
+  await ir(p, `/subcontratos/${sc.id}`)
+  const cortes = { acciones: 0, borrados: 0 }
+  await p.route('**/*', (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sc.id) && cortes.acciones < 2) {
+      cortes.acciones++
+      return r.abort('failed')
+    }
+    if (q.method() === 'DELETE' && q.url().includes('/storage/v1/object/') && cortes.borrados < 1) {
+      cortes.borrados++
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  await p.locator('[data-adjuntar-contrato]').click()
+  const w = p.getByRole('dialog').first()
+  await w.waitFor({ timeout: 20000 })
+  const nombreC = `QA-OTRO-C-${sello}.pdf`
+  const nombreD = `QA-OTRO-D-${sello}.pdf`
+  const pdfD = PDF_MINIMO(900)
+  await w.locator('input[name="contrato"]').setInputFiles({ name: nombreC, mimeType: 'application/pdf', buffer: PDF_MINIMO(300) })
+  await w.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => (await w.locator('[role=alert]').count()) > 0, 30000)
+  const sinQuedar = limpio(await w.locator('[role=alert]').innerText().catch(() => ''))
+  await w.locator('input[name="contrato"]').setInputFiles({ name: nombreD, mimeType: 'application/pdf', buffer: pdfD })
+  await w.getByRole('button', { name: 'Adjuntar' }).click()
+  const adjunto = await esperar(async () => (await p.getByRole('dialog').count()) === 0, 30000)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  const otros = await uno(`select count(*)::int as n, string_agg(c.archivo_nombre, ', ') as nombres,
+                                  max((o.metadata ->> 'size')::int) as tam
+                             from public.subcontrato_contratos c left join storage.objects o on o.name = c.archivo_ruta
+                            where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3)`, [sc.id, nombreC, nombreD])
+  comprobar(/Conserva el archivo/.test(sinQuedar) && cortes.acciones === 2 && cortes.borrados === 1,
+    `[Administración ${tam}] sin señal para anotarlo ni para quitarlo, pide conservar el archivo: «${sinQuedar}»`)
+  comprobar(adjunto && (await p.getByRole('status').filter({ hasText: 'Contrato adjunto' }).count()) > 0 && otros.n === 1 && otros.nombres === nombreD && otros.tam === pdfD.length,
+    `[Administración ${tam}] con otro elegido, el de antes se quita y entra el elegido en su lugar (${otros.nombres}, ${otros.tam} bytes en Storage)`)
 
   // El recibo por honorarios vacío dice que está vacío, no «Adjunta el recibo».
   await ir(p, `/subcontratos/${sc.id}`)
@@ -209,6 +259,133 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const dijo = limpio(await r.locator('[role=alert]').innerText().catch(() => ''))
   const recibos = await uno(`select count(*)::int as n from public.recibos_honorarios where numero = $1`, [`E001-${sello}`])
   comprobar(dijo === 'El archivo está vacío: elige otro.' && recibos.n === 0, `[Administración ${tam}] el recibo vacío dice que está vacío y no se registra: «${dijo}»`)
+  await contexto.close()
+}
+
+// ------------------------------------------------- 1d. el segundo documento de la misma OC
+// Logística adjunta un documento a una OC, cierra la ventana, la vuelve a abrir
+// y adjunta otro. Antes el segundo volvía con el id (y la ruta) del primero.
+async function segundoDocumentoDeLaMismaOc(viewport) {
+  const tam = nombreDe(viewport)
+  const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
+  await ir(p, '/compras/ordenes')
+  const fila = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) }).last()
+  if ((await fila.count()) === 0) {
+    await contexto.close()
+    return comprobar(false, `[Logística ${tam}] hay una OC donde adjuntar documentos`)
+  }
+  const nombres = [`QA-SUELTO-DOC-A-${sello}-${tam}.pdf`, `QA-SUELTO-DOC-B-${sello}-${tam}.pdf`]
+  const dijo = []
+  // La fila se fija por el número de la OC: al refrescar, la lista puede cambiar de orden.
+  const numero = (await fila.locator('a[aria-label^="Descargar el PDF de la orden "]').first().getAttribute('aria-label').catch(() => ''))?.replace('Descargar el PDF de la orden ', '')
+  const laOc = numero ? p.locator('tbody tr').filter({ has: p.locator(`a[aria-label="Descargar el PDF de la orden ${numero}"]`) }) : fila
+  for (const [i, nombre] of nombres.entries()) {
+    await laOc.getByRole('button', { name: 'Adjuntar', exact: true }).click()
+    const v = p.getByRole('dialog').first()
+    await v.waitFor({ timeout: 20000 })
+    await v.locator('select[id^="tipo-doc-compra-"]').selectOption('OTRO')
+    await v.locator('input[name="archivo"]').setInputFiles({ name: nombre, mimeType: 'application/pdf', buffer: PDF_MINIMO(200 + i * 100) })
+    await esperar(async () => !(await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()), 20000)
+    await v.getByRole('button', { name: 'Adjuntar' }).click()
+    await esperar(async () => (await v.locator('[role=status], [role=alert]').filter({ hasText: /adjuntado|subió|No se/ }).count()) > 0, 30000)
+    dijo.push(limpio((await v.locator('[role=status], [role=alert]').allInnerTexts()).join(' ')))
+    await v.getByRole('button', { name: 'Cerrar' }).click()
+    await esperar(async () => (await p.getByRole('dialog').count()) === 0, 5000)
+  }
+  const entraron = await uno(`select count(*)::int as n, count(distinct orden_compra_id)::int as ocs
+                                from public.documentos_compra_material where nombre_archivo = any($1)`, [nombres])
+  comprobar(dijo.every((t) => /adjuntado/.test(t)) && entraron.n === 2 && entraron.ocs === 1,
+    `[Logística ${tam}] el segundo documento de la misma OC (${numero}) entra sin recargar: «${dijo.join(' » / « ')}» (${entraron.n} en la base, ${entraron.ocs} OC)`)
+  await contexto.close()
+}
+
+// ------------------------------------------------- 1e. la factura de la OC directa que no sube
+// La OC se emite (queda una de banco) y la factura no sube por un permiso: el
+// aviso dice por qué, no solo que no se pudo.
+async function facturaQueNoSubeEnLaOcDirecta(viewport) {
+  const tam = nombreDe(viewport)
+  const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
+  await ir(p, '/compras/ordenes')
+  await p.route((u) => u.pathname.includes('/storage/v1/object/documentos-compras/'), (r) =>
+    r.request().method() === 'POST'
+      ? r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }) })
+      : r.continue())
+  await p.getByRole('button', { name: /Nueva OC directa/ }).first().click()
+  const d = p.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#ocd-proveedor').click()
+  await p.locator('[role="option"]').first().click()
+  await d.locator('#ocd-motivo').fill(`QA-SUELTO factura sin permiso ${sello}`)
+  await d.locator('[id^="ocd-mat-"]').first().click()
+  await p.locator('[role="option"]').first().click()
+  await d.locator('[id^="ocd-cant-"]').first().fill('1')
+  await d.locator('[id^="ocd-precio-"]').first().fill('100')
+  await d.locator('#ocd-factura').setInputFiles({ name: `QA-SUELTO-FACT-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_A })
+  await esperar(async () => (await d.locator('#ocd-factura-numero').inputValue().catch(() => '')) === 'F001-111', 20000)
+  await d.getByRole('button', { name: 'Emitir orden de compra' }).click()
+  const aviso = p.getByText(/no se adjuntó/)
+  await esperar(async () => (await aviso.count()) > 0, 40000)
+  const texto = limpio(await aviso.first().innerText().catch(() => ''))
+  comprobar(texto.includes('La factura no se adjuntó: no se pudo cargar el archivo. No tienes permiso para subir o quitar ese archivo. Adjúntala desde la lista.'),
+    `[Logística ${tam}] la factura que no subió dice por qué: «${texto}»`)
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  await contexto.close()
+}
+
+// ------------------------------------------------- 4d. lo escrito no lo pisa la lectura
+// Ventas escribe el número antes de que termine de leerse el archivo: se queda.
+// Sin escribir nada, el mismo archivo sí lo llena. Un número que ya existe se
+// dice junto a su campo, que se marca, y el cursor va ahí.
+async function loEscritoSeQuedaEnLaCotizacion(viewport) {
+  const tam = nombreDe(viewport)
+  const { pagina: p, contexto } = await entrar('ventas.local@metalwork.test', viewport)
+  await ir(p, '/cotizaciones/pdf')
+  const archivo = { name: 'COT N° 4321.pdf', mimeType: 'application/pdf', buffer: pdfConTexto(['COTIZACION', 'Semirremolque de banco']) }
+  const leido = async (d) => {
+    await p.waitForTimeout(1500)
+    await esperar(async () => !/Leyendo/.test(await d.innerText()) && !(await d.getByRole('button', { name: 'Subir y mandar a Gerencia' }).isDisabled()), 30000)
+  }
+  await p.getByRole('button', { name: 'Subir cotización' }).first().click()
+  let d = p.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#cot-archivo').setInputFiles(archivo)
+  await leido(d)
+  const solo = await d.locator('#cot-numero').inputValue()
+  await p.keyboard.press('Escape')
+  await esperar(async () => (await p.getByRole('dialog').count()) === 0, 5000)
+
+  await p.getByRole('button', { name: 'Subir cotización' }).first().click()
+  d = p.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  const escrito = `QA-ESCRITO-${sello}`
+  await d.locator('#cot-numero').fill(escrito)
+  await d.locator('#cot-archivo').setInputFiles(archivo)
+  await leido(d)
+  const quedo = await d.locator('#cot-numero').inputValue()
+  comprobar(solo === '4321' && quedo === escrito, `[Ventas ${tam}] el número escrito antes de terminar la lectura se queda («${quedo}»; sin escribir, la lectura pone «${solo}»)`)
+
+  const existente = (await uno(`select numero from public.cotizaciones_pdf where numero ~ '^[0-9]' order by creado_en desc limit 1`))?.numero
+  if (existente) {
+    await d.locator('#cot-numero').fill(existente)
+    await d.locator('#cot-monto').fill('1000')
+    // El monto escrito a mano no se le atribuye al documento.
+    const ayudaMonto = limpio(await d.locator('#cot-monto').locator('xpath=ancestor::div[contains(@class,"space-y-1.5")][1]').innerText().catch(() => ''))
+    comprobar(ayudaMonto.includes('El total final, como aparece en la cotización.') && !ayudaMonto.includes('Detectado'),
+      `[Ventas ${tam}] el monto escrito a mano no dice «Detectado en el documento»: «${ayudaMonto}»`)
+    await d.locator('#cot-moneda').selectOption('USD')
+    await d.locator('#cot-igv').selectOption('no')
+    if (await d.locator('#cot-cliente').count()) await d.locator('#cot-cliente').selectOption({ index: 1 })
+    if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+    await d.getByRole('button', { name: 'Subir y mandar a Gerencia' }).click()
+    const numero = d.locator('#cot-numero')
+    await esperar(async () => (await numero.getAttribute('aria-invalid')) === 'true', 30000)
+    const junto = limpio(await numero.locator('xpath=ancestor::div[contains(@class,"space-y-1.5")][1]').innerText().catch(() => ''))
+    const abajo = await d.locator('[role=alert]', { hasText: 'Ya hay una cotización' }).count()
+    comprobar(junto.includes(`Ya hay una cotización con el número ${existente}`) && abajo === 1,
+      `[Ventas ${tam}] el número repetido se dice junto a su campo, que se marca, y una sola vez: «${junto}»`)
+    comprobar(await esperar(async () => (await enfocado(p)).id === 'cot-numero', 3000), `[Ventas ${tam}] y el cursor va al número (${(await enfocado(p)).id})`)
+    await p.screenshot({ path: join(CAPTURAS, `suelto-cotizacion-numero-repetido-${tam}.png`) })
+  } else comprobar(false, `[Ventas ${tam}] hay una cotización con número para repetir`)
   await contexto.close()
 }
 
@@ -428,6 +605,41 @@ async function loLeidoSeVaConElArchivo(viewport) {
   await pdfR.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
   comprobar(await esperar(async () => (await valor(r, '#adq-moneda')) === 'PEN', 5000),
     `[Contabilidad ${tam}] el PDF en dólares, la de Logística y quitar los dos: la moneda vuelve a soles (${await valor(r, '#adq-moneda')})`)
+
+  // La moneda que la persona cambió después del PDF se queda, aunque el PDF
+  // vuelva a marcar lo suyo al quitar la de Logística.
+  await pdfR.setInputFiles({ name: `QA-LEIDA-USD2-${sello}.pdf`, mimeType: 'application/pdf', buffer: dolares })
+  await esperar(async () => (await valor(r, '#adq-moneda')) === 'USD', 20000)
+  await r.locator('#adq-moneda').selectOption('PEN')
+  await r.locator('#adq-documento').selectOption(doc.id)
+  await esperar(async () => (await casillaR.isChecked()), 10000)
+  // El PDF y la factura de Logística son de facturas distintas: se dice.
+  const distintas = r.getByText(/y la de Logística es la .*: revisa que sean la misma\./)
+  comprobar(await esperar(async () => (await distintas.count()) > 0, 15000),
+    `[Contabilidad ${tam}] el PDF de otra factura que la de Logística se avisa: «${limpio(await distintas.first().innerText().catch(() => ''))}»`)
+  await r.locator('#adq-documento').selectOption('')
+  await r.waitForTimeout(800)
+  comprobar((await valor(r, '#adq-moneda')) === 'PEN', `[Contabilidad ${tam}] la moneda que puso la persona se queda al volver a «Ninguna» (${await valor(r, '#adq-moneda')})`)
+  await pdfR.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
+
+  // Con la factura de Logística elegida, el PDF es opcional, pero uno vacío no
+  // se deja de lado callado: no se envía, su campo lo dice y el cursor va ahí.
+  // Sin PDF propio sí se registra (eso lo prueba probar-oc-de-varios-rq, y aquí
+  // no se gasta la factura).
+  await r.locator('#adq-documento').selectOption(doc.id)
+  await esperar(async () => (await casillaR.isChecked()), 10000)
+  await pdfR.setInputFiles({ name: `QA-VACIO-${sello}.pdf`, mimeType: 'application/pdf', buffer: Buffer.alloc(0) })
+  await r.locator('#adq-total').fill('100.00')
+  await r.locator('#adq-vencimiento').fill(doc.fecha)
+  let llamadas = 0
+  r.on('request', (q) => { if (q.method() === 'POST' && q.headers()['next-action']) llamadas++ })
+  await r.getByRole('button', { name: 'Registrar comprobante' }).click()
+  await r.waitForTimeout(1500)
+  const cajaVacia = limpio(await pdfR.locator('xpath=..').innerText().catch(() => ''))
+  const foco = await r.evaluate(() => document.activeElement?.id ?? '')
+  const registradas = await uno('select count(*)::int as n from public.adquisiciones where documento_compra_id = $1', [doc.id])
+  comprobar(cajaVacia.includes('Está vacío') && foco === 'adq-pdf' && llamadas === 0 && registradas.n === 0,
+    `[Contabilidad ${tam}] con la factura de Logística, un PDF vacío no se deja de lado: «${cajaVacia}», cursor en «${foco}», ${llamadas} llamadas, ${registradas.n} registradas`)
   await cr.close()
 }
 
@@ -655,9 +867,29 @@ async function cotizacionSinRespuesta(viewport) {
   const a = g.getByRole('dialog').first()
   await a.waitFor({ timeout: 20000 })
   await a.locator('#eo-codigo-interno').fill(`QA_SUELTO_${sello}/26`)
+  // El número escrito antes de leer el PDF se queda, y si no es el del PDF se avisa.
+  await a.locator('#eo-numero').fill('1')
   await a.locator(`#aprobar-pdf-${cot.id}`).setInputFiles({ name: `OT-${libre}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}-${anio}`]) })
   await leido(a, 'Aprobar con código y OT')
+  const otroNumero = a.getByText(`El PDF dice la OT ${libre}-${anio}: revisa el número.`)
+  comprobar((await a.locator('#eo-numero').inputValue()) === '1' && (await otroNumero.count()) === 1,
+    `[Gerencia ${tam}] el número escrito antes de leer el PDF se queda y se avisa que el PDF dice otro («${await a.locator('#eo-numero').inputValue()}»)`)
+  // Una OT que ya existe se dice junto a su número, y el cursor va ahí.
+  const repetida = (await uno(`select split_part(numero, '-', 1) as n from public.ordenes_trabajo where numero like '%-' || $1 order by numero limit 1`, [anio]))?.n
+  if (repetida) {
+    await a.locator('#eo-numero').fill(repetida)
+    await a.locator('#eo-fecha').fill(`${anio}-12-15`)
+    await a.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
+    await a.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+    const campo = a.locator('#eo-numero')
+    await esperar(async () => (await campo.getAttribute('aria-invalid')) === 'true', 30000)
+    const junto = limpio(await campo.locator('xpath=ancestor::div[contains(@class,"space-y-1.5")][1]').innerText().catch(() => ''))
+    comprobar(junto.includes('Ya hay una OT') && (await a.locator('[role=alert]', { hasText: 'Ya hay una OT' }).count()) === 1,
+      `[Gerencia ${tam}] la OT repetida se dice junto a su número, una sola vez: «${junto}»`)
+    comprobar(await esperar(async () => (await enfocado(g)).id === 'eo-numero', 3000), `[Gerencia ${tam}] y el cursor va al número (${(await enfocado(g)).id})`)
+  } else comprobar(false, `[Gerencia ${tam}] hay una OT de este año para repetir`)
   await a.locator('#eo-numero').fill(String(libre))
+  comprobar(await esperar(async () => (await otroNumero.count()) === 0, 3000), `[Gerencia ${tam}] con el número del PDF, el aviso se va`)
   await a.locator('#eo-fecha').fill(`${anio}-12-15`)
   await a.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
   const aprobar = await perderLaPrimeraRespuesta(g, 'ruta_pdf')
@@ -722,9 +954,12 @@ try {
   await cotizacionSinRespuesta(MONITOR)
   await ordenNuevaSinRespuesta(MONITOR)
   await otroArchivoTrasLaRespuestaPerdida(MONITOR)
+  await facturaQueNoSubeEnLaOcDirecta(MONITOR)
   for (const viewport of [MONITOR, TELEFONO]) {
     await quitarElOpcional(viewport)
     await facturaVaciaEnLaOcDirecta(viewport)
+    await segundoDocumentoDeLaMismaOc(viewport)
+    await loEscritoSeQuedaEnLaCotizacion(viewport)
     await loLeidoSeVaConElArchivo(viewport)
     await conexionQueSePierde(viewport)
   }
@@ -733,6 +968,9 @@ try {
   await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
                       and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [`QA-SUELTO-${sello}-%`])
   await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [`QA-SUELTO-${sello}-%`])
+  await base.query(`delete from storage.objects where bucket_id = 'documentos-compras'
+                      and name in (select ruta_storage from public.documentos_compra_material where nombre_archivo like $1)`, [`QA-SUELTO-DOC-%-${sello}-%`])
+  await base.query('delete from public.documentos_compra_material where nombre_archivo like $1', [`QA-SUELTO-DOC-%-${sello}-%`])
   await navegador.close()
   await base.end()
 }

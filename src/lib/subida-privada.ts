@@ -10,9 +10,19 @@ export const NO_QUEDO_SIN_RESPUESTA = 'No quedó registrado: no llegó la respue
 /** Lo que dice `subirArchivoPrivado` cuando no se sabe si quedó: en la misma ventana, el reintento no duplica. */
 export const NO_SE_CONFIRMO = 'No se confirmó el registro. Conserva el archivo seleccionado y vuelve a intentar; no se duplicará.'
 
-/** Después de una respuesta perdida se eligió otro archivo, y en Storage puede estar el primero. */
-export const OTRO_ARCHIVO_EN_LA_RUTA =
-  'Con este formulario ya se subió otro archivo y no se sabe si quedó: recarga la pantalla y mira si está antes de volver a intentar.'
+const YA_SE_SUBIO = 'Desde esta ventana ya se subió '
+
+/**
+ * Después de una respuesta perdida se eligió otro archivo, y en Storage sigue
+ * el primero: una fila lo nombra (quedó), o no hubo señal para quitarlo.
+ */
+export function otroArchivoEnLaRuta(nombre: string, quedo: boolean) {
+  return quedo
+    ? `${YA_SE_SUBIO}${nombre} y quedó registrado: recarga la pantalla para verlo antes de subir otro.`
+    : `${YA_SE_SUBIO}${nombre} y no se sabe si quedó: recarga la pantalla y mira si está antes de volver a intentar.`
+}
+
+export const esOtroArchivoEnLaRuta = (error: string) => error.startsWith(YA_SE_SUBIO)
 
 /** Lo que se espera antes de preguntar otra vez: lo justo para que un corte breve pase. */
 const PAUSA_ANTES_DE_PREGUNTAR_MS = 1500
@@ -89,7 +99,7 @@ export async function anotarSinDejarloSuelto<T = never>({
 // formulario, así que un 409 es el mismo envío repetido... salvo que, después de
 // una respuesta perdida, se haya elegido otro archivo: ese no es el que está en
 // Storage, y anotarlo confirmaría un archivo que no es el elegido.
-const intentados = new Map<string, string>()
+const intentados = new Map<string, { huella: string; nombre: string }>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
@@ -106,18 +116,26 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
   const sinRespuesta = NO_SE_CONFIRMO
   const supabase = createClient()
   const clave = `${bucket}/${ruta}`
+  const este = { huella: huellaDe(archivo), nombre: archivo.name }
+  const subir = () => supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
   const antes = intentados.get(clave)
-  if (!antes) intentados.set(clave, huellaDe(archivo))
+  if (!antes) intentados.set(clave, este)
   try {
-    const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
-    if (!error) intentados.set(clave, huellaDe(archivo))
+    let { error } = await subir()
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
+    if (error && error.statusCode === '409' && antes && antes.huella !== este.huella) {
+      // Lo que está en Storage es el archivo de antes. Si ninguna fila lo
+      // nombra, la política deja quitarlo y el elegido entra en su lugar; si
+      // una lo nombra, quedó, y se dice cuál.
+      const quitado = await supabase.storage.from(bucket).remove([ruta])
+      if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
+      if ((quitado.data?.length ?? 0) === 0) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, true) }
+      ;({ error } = await subir())
+    }
+    if (!error) intentados.set(clave, este)
     if (error && error.statusCode !== '409') {
       return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
-    }
-    if (error && antes && antes !== huellaDe(archivo)) {
-      return { ok: false, error: OTRO_ARCHIVO_EN_LA_RUTA }
     }
   } catch {
     return { ok: false, error: sinRespuesta }

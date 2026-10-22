@@ -43,7 +43,7 @@ const esquemaSubir = z.object({
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
+  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 export async function registrarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -75,7 +75,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
       registrado_por: perfil.id,
     })
     .select('id')
@@ -164,7 +164,7 @@ const esquemaCorregir = z.object({
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
+  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 /** Una nueva versión conserva el número y vuelve a Gerencia. */
@@ -193,7 +193,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
       monto_venta: Number(v.monto_venta),
       moneda: v.moneda,
     })
@@ -311,7 +311,7 @@ const esquemaAprobarConOt = z.object({
   fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega'),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
-  tamano_pdf: z.coerce.number().int().min(1, 'El PDF de la OT está vacío: elige otro.').optional(),
+  tamano_pdf: z.coerce.number().int().min(1, 'El PDF de la OT está vacío: elige otro.'),
 })
 
 /**
@@ -350,7 +350,7 @@ export async function aprobarCotizacionConOt(
     p_fecha_entrega: v.fecha_entrega,
     p_ruta_pdf: v.ruta_pdf,
     p_nombre_pdf: v.nombre_pdf,
-    p_tamano_pdf: v.tamano_pdf ?? null,
+    p_tamano_pdf: v.tamano_pdf,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
   })

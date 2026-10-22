@@ -13,7 +13,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
 import {
   buscarCliente,
   nombreParaCatalogo,
@@ -55,6 +55,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [montoLeido, setMontoLeido] = useState<string | null>(null)
   // Si el total trae IGV: sin ese dato el margen de la OT saldría inflado en el 18 % de la venta.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
@@ -68,7 +69,12 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   // Al volver de un rechazo, el cursor va al número repetido o al aviso.
   const campoNumero = useRef<HTMLInputElement>(null)
   const avisoError = useRef<HTMLParagraphElement>(null)
-  useCursorAlRechazo(enviando, error, () => (error?.startsWith('Ya hay una cotización con el número') ? campoNumero.current : avisoError.current))
+  // El número repetido se dice junto a su campo, que se marca; lo demás, abajo.
+  const errorNumero = error?.startsWith('Ya hay una cotización con el número') ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
+  // Lo que la persona escribió o eligió a mano: la lectura del archivo, aunque
+  // termine después o sea de otro archivo, no lo pisa.
+  const aMano = useRef(new Set<'numero' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
 
@@ -87,9 +93,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [nombreCarroceria, setNombreCarroceria] = useState('')
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
+    setMontoLeido(null)
     setIncluyeIgv('')
     setProgreso('')
     setError(null)
@@ -111,35 +119,40 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setAbierto(true)
   }
 
-  /** Lo que se leyó llena el formulario; lo que no, se deja como estaba. */
+  /** Lo que se leyó llena el formulario; lo que no, o lo que la persona ya puso a mano, se deja como estaba. */
   function aplicar(r: CabeceraCotizacion) {
     setLectura(r)
-    if (r.numero) setNumero(r.numero)
+    if (r.numero && !aMano.current.has('numero')) setNumero(r.numero)
 
-    const registrado = buscarCliente(r, listaClientes)
-    setReconocido(Boolean(registrado))
-    if (registrado) {
-      setClienteNuevo(false)
-      setClienteId(registrado.id)
-    } else if (r.cliente || r.documento) {
-      setClienteNuevo(true)
-      setClienteId('')
-      setTipoDoc(r.documento?.tipo ?? 'RUC')
-      setNumeroDoc(r.documento?.numero ?? '')
-      setRazonSocial(r.cliente ?? '')
+    if (!aMano.current.has('cliente')) {
+      const registrado = buscarCliente(r, listaClientes)
+      setReconocido(Boolean(registrado))
+      if (registrado) {
+        setClienteNuevo(false)
+        setClienteId(registrado.id)
+      } else if (r.cliente || r.documento) {
+        setClienteNuevo(true)
+        setClienteId('')
+        setTipoDoc(r.documento?.tipo ?? 'RUC')
+        setNumeroDoc(r.documento?.numero ?? '')
+        setRazonSocial(r.cliente ?? '')
+      }
     }
 
     const prop = proponerCarroceria(r.producto, listaCarrocerias)
     setPropuesta(prop)
-    setCarroceriaNueva(false)
-    setCarroceriaId(prop?.id ?? '')
-    setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    if (!aMano.current.has('carroceria')) {
+      setCarroceriaNueva(false)
+      setCarroceriaId(prop?.id ?? '')
+      setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    }
   }
 
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
     setError(null)
     setLectura(null)
+    setMontoLeido(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoArchivo(noSirve)
@@ -149,8 +162,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     try {
       const resultado = await leerCabeceraDeArchivo(elegido, setProgreso)
       aplicar(resultado.cabecera)
-      setTotal(resultado.total)
-      setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
+      setMontoLeido(resultado.total.monto)
+      const montoAMano = aMano.current.has('monto')
+      const monedaAMano = aMano.current.has('moneda')
+      setTotal((v) => ({
+        monto: montoAMano ? v.monto : resultado.total.monto,
+        moneda: monedaAMano ? v.moneda : resultado.total.moneda,
+      }))
+      if (!aMano.current.has('igv')) setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
     } finally {
       setLeyendo(false)
     }
@@ -375,12 +394,16 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             </div>
           )}
 
-          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" requerido>
+          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" error={errorNumero ?? undefined} requerido>
             <Entrada
               ref={campoNumero}
               id="cot-numero"
               value={numero}
-              onChange={(e) => setNumero(e.target.value)}
+              onChange={(e) => {
+                aMano.current.add('numero')
+                if (errorNumero) setError(null)
+                setNumero(e.target.value)
+              }}
               required
               maxLength={40}
               placeholder="3522-2025"
@@ -389,11 +412,17 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
-              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" placeholder="0.00" required />
+            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total.monto, montoLeido)} requerido>
+              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
+                  aMano.current.add('monto')
+                  setTotal((v) => ({ ...v, monto: e.target.value }))
+                }} inputMode="decimal" placeholder="0.00" required />
             </Campo>
             <Campo etiqueta="Moneda" htmlFor="cot-moneda" requerido>
-              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => {
+                  aMano.current.add('moneda')
+                  setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))
+                }} required>
                 <option value="" disabled>Confirma</option>
                 <option value="PEN">Soles (S/)</option>
                 <option value="USD">Dólares (US$)</option>
@@ -403,7 +432,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               <Seleccion
                 id="cot-igv"
                 value={incluyeIgv}
-                onChange={(e) => setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')}
+                onChange={(e) => {
+                  aMano.current.add('igv')
+                  setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')
+                }}
                 required
               >
                 <option value="" disabled>Confirma</option>
@@ -422,7 +454,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               </p>
               <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
                 <Campo etiqueta="Documento" htmlFor="cot-tipo-doc" requerido>
-                  <Seleccion id="cot-tipo-doc" value={tipoDoc} onChange={(e) => setTipoDoc(e.target.value as TipoDocumento)}>
+                  <Seleccion
+                    id="cot-tipo-doc"
+                    value={tipoDoc}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setTipoDoc(e.target.value as TipoDocumento)
+                    }}
+                  >
                     <option value="RUC">RUC</option>
                     <option value="DNI">DNI</option>
                     <option value="CE">CE</option>
@@ -433,7 +472,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   <Entrada
                     id="cot-num-doc"
                     value={numeroDoc}
-                    onChange={(e) => setNumeroDoc(e.target.value)}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setNumeroDoc(e.target.value)
+                    }}
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={20}
@@ -444,12 +486,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-razon"
                   value={razonSocial}
-                  onChange={(e) => setRazonSocial(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('cliente')
+                    setRazonSocial(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={200}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setClienteNuevo(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('cliente')
+                  setClienteNuevo(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir uno registrado
               </Boton>
@@ -466,6 +519,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   id="cot-cliente"
                   value={clienteId}
                   onChange={(e) => {
+                    aMano.current.add('cliente')
                     setClienteId(e.target.value)
                     setReconocido(false)
                   }}
@@ -485,6 +539,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 variante="fantasma"
                 tamano="sm"
                 onClick={() => {
+                  aMano.current.add('cliente')
                   setClienteNuevo(true)
                   if (!razonSocial && lectura?.cliente) setRazonSocial(lectura.cliente)
                 }}
@@ -506,12 +561,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-carroceria-nueva"
                   value={nombreCarroceria}
-                  onChange={(e) => setNombreCarroceria(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setNombreCarroceria(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={120}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir del catálogo
               </Boton>
@@ -532,7 +598,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 }
                 requerido
               >
-                <Seleccion id="cot-carroceria" value={carroceriaId} onChange={(e) => setCarroceriaId(e.target.value)}>
+                <Seleccion
+                  id="cot-carroceria"
+                  value={carroceriaId}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setCarroceriaId(e.target.value)
+                  }}
+                >
                   <option value="" disabled>
                     Elige la carrocería
                   </option>
@@ -543,14 +616,22 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   ))}
                 </Seleccion>
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(true)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(true)
+                }}
+              >
                 <Plus aria-hidden className="size-3.5" />
                 No está en el catálogo
               </Boton>
             </div>
           )}
 
-          {error && (
+          {error && !errorNumero && (
             <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
               {error}
             </p>

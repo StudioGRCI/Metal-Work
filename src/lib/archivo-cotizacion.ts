@@ -53,6 +53,16 @@ export type LecturaArchivoCotizacion = {
 }
 
 /**
+ * La ayuda del monto. «Detectado» solo mientras es el que se leyó: el que la
+ * persona escribió no se le atribuye al documento.
+ */
+export function ayudaDelMonto(monto: string | null, leido: string | null): string {
+  if (leido && monto === leido) return 'Detectado en el documento; confirma o corrige el total final.'
+  if (monto) return 'El total final, como aparece en la cotización.'
+  return 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'
+}
+
+/**
  * La cabecera de la cotización, leída del archivo. Del PDF, la primera hoja; del
  * Word, el encabezado de página y el cuerpo, en ese orden. Un .doc viejo, un
  * escaneo o un archivo dañado no se leen: queda lo que diga el nombre.

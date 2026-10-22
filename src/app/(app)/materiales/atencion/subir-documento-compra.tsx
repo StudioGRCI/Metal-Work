@@ -29,9 +29,16 @@ const TIPOS = [
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
-export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden }: {
+export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden, alAdjuntar }: {
   ordenCompraId: string
+  /**
+   * El id del documento, que también es su ruta: el reintento de un envío sin
+   * respuesta usa el mismo. Después de adjuntar, el siguiente lleva otro; si
+   * la ventana se cierra y se vuelve a abrir, `alAdjuntar` le avisa a quien lo
+   * guarda para que no vuelva con el del documento que ya entró.
+   */
   solicitudId: string
+  alAdjuntar?: () => void
   /** El que pide la compra: FACTURA, o COMPROBANTE si es sin factura. */
   tipoInicial?: 'FACTURA' | 'COMPROBANTE'
   /** El número, el total con IGV y la moneda de la orden: el detector compara la factura con ellos. */
@@ -60,6 +67,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setId(crypto.randomUUID())
+    alAdjuntar?.()
     factura.vaciar()
     void detector.leer(undefined)
   })

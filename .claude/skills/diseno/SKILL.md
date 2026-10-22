@@ -144,6 +144,15 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   (`tabIndex={-1}`) si no es de un campo. No se llama a `focus()` dentro del
   `alEnviar`: mientras envía, el `<fieldset disabled>` no acepta el foco y se
   pierde sin aviso (el banco de Administración lo vio el 2026-10-22).
+  El error de un campo (un número que ya existe) va en el `error` de su
+  `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo.
+- **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
+  lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
+  lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
+  vaciado al abrir) y la lectura llena solo los demás; si lo escrito no calza
+  con lo leído, se avisa al lado del campo («El PDF dice la OT …»). Lo que
+  dice «Detectado en el documento» lo dice solo mientras es lo que se leyó
+  (`ayudaDelMonto`). Al quitar el archivo se va lo que puso él, no lo escrito.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en

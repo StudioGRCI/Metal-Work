@@ -146,13 +146,24 @@ En la misma migración que la crea, sin excepción:
   La misma ruta sirve para un solo archivo: si la respuesta se perdió y la
   persona elige otro antes de reintentar, Storage contesta «ya existe» con el
   primero adentro, y darlo por subido anotaría el archivo que no eligió.
-  `subirArchivoPrivado` recuerda qué archivo subió con cada ruta y en ese caso
-  devuelve `OTRO_ARCHIVO_EN_LA_RUTA` sin llamar a la base.
-- **Un archivo vacío no es «sin archivo».** El campo que nadie tocó llega como
-  un `File` con nombre vacío; uno de 0 bytes es un archivo elegido, y se
-  rechaza diciendo que está vacío. Separarlos por `size === 0` dejaba de lado,
-  callado, el que la persona sí eligió. La base lo rechaza igual
-  (`fn_archivo_no_vacio`), pero el aviso tiene que salir antes de subirlo.
+  `subirArchivoPrivado` recuerda qué archivo subió con cada ruta; si es otro,
+  intenta quitar el de antes —la política solo deja quitar el que ninguna fila
+  nombra— y sube el elegido. Si no se puede quitar, dice cuál se subió y si
+  quedó registrado (`otroArchivoEnLaRuta`), sin llamar a la base. La ruta fija
+  vale **por envío**, no por ventana: el id que nace en un componente que la
+  `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
+  de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo
+  cambia cuando uno entró (`alAdjuntar`).
+- **Un archivo vacío no es «sin archivo».** En el navegador, el campo que nadie
+  tocó llega como un `File` con nombre vacío; uno de 0 bytes es un archivo
+  elegido, y se rechaza diciendo que está vacío. Separarlos por `size === 0`
+  dejaba de lado, callado, el que la persona sí eligió. **En la acción de
+  servidor no vale el nombre:** el campo sin tocar llega sin tipo
+  (`application/octet-stream`) y con un nombre que pone el servidor («blob»,
+  «undefined»); lo que dice que se eligió un PDF es su tipo. Un `name !== ''`
+  en `registrarAdquisicion` rechazó toda factura de Logística sin PDF propio
+  con «El PDF está vacío», y solo lo vio el banco (2026-10-22). La base lo
+  rechaza igual (`fn_archivo_no_vacio`), pero el aviso sale antes de subirlo.
 - El navegador nunca recibe la clave de servicio: `src/lib/supabase/server.ts`
   es `server-only`.
 

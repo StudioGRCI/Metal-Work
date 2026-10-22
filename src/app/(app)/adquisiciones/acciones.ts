@@ -81,8 +81,11 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const archivo = formulario.get('pdf')
   const v = entrada.data
   const tieneArchivo = archivo instanceof File && archivo.size > 0
-  // Un PDF elegido y vacío no se deja de lado callado, aunque haya factura de Logística.
-  if (archivo instanceof File && archivo.name !== '' && archivo.size === 0) {
+  // Un PDF elegido y vacío no se deja de lado callado, aunque haya factura de
+  // Logística. La pantalla no manda el campo que nadie tocó; si llega igual
+  // (una pestaña de antes), viene vacío, sin tipo y con un nombre que pone el
+  // servidor («undefined»): lo que dice que se eligió un PDF es su tipo.
+  if (archivo instanceof File && archivo.size === 0 && archivo.type === 'application/pdf') {
     return { ok: false, error: 'El PDF está vacío: elige otro o quítalo.' }
   }
   if (!tieneArchivo && !v.documento_compra_id) return { ok: false, error: 'Adjunta el PDF o elige una factura ya subida por Logística.' }

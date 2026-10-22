@@ -23,8 +23,9 @@
 -- El tamaño que vale es el que guardó Storage al recibir el archivo, no el que
 -- dice el navegador: si el archivo ya está en su bucket, la fila se anota con
 -- ese tamaño y con ese se juzga. Si no está (una fila que nombra un archivo que
--- todavía no subió), se juzga el que llega; vacío (`null`) solo lo dejan las
--- filas viejas que no lo anotaron.
+-- todavía no subió, como las semillas de la demo), se juzga el que llega, y sin
+-- tamaño (`null`) pasa: no es un archivo vacío, y las pantallas siempre lo
+-- mandan.
 --
 -- La primera versión de esta migración ponía la restricción; si una base ya la
 -- tiene (el banco), aquí se quita.

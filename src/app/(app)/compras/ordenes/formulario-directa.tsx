@@ -18,7 +18,7 @@ import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
-import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, OTRO_ARCHIVO_EN_LA_RUTA, subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, esOtroArchivoEnLaRuta, subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDeInsumos, emitirCompraDirecta } from './acciones'
@@ -72,10 +72,14 @@ function lineasDeInsumos(insumos: InsumoParaCompra[], delCatalogo: Set<string>):
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
-/** «No se pudo cargar el archivo. Revisa la señal…» → «no se pudo cargar el archivo», para ir dentro de otra oración. */
-function primeraOracion(texto: string) {
-  const o = texto.split(/(?<=[.!?])\s/)[0].replace(/[.!?]$/, '')
-  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(o) ? o[0].toLowerCase() + o.slice(1) : o
+/**
+ * «No se pudo cargar el archivo. No tienes permiso…» → «no se pudo cargar el
+ * archivo. No tienes permiso…», para ir detrás de «no se adjuntó:» sin perder el
+ * motivo, que es lo que dice qué hacer.
+ */
+function dentroDeOtraOracion(texto: string) {
+  const t = /[.!?]$/.test(texto.trim()) ? texto.trim() : `${texto.trim()}.`
+  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t
 }
 
 async function esPdf(archivo: File) {
@@ -330,14 +334,14 @@ function FormularioCompraDirecta({
       // saldría dos veces.
       if (!adjunta.ok) {
         aRevisar.current = true
-        if (adjunta.error.startsWith(NO_SE_CONFIRMO) || adjunta.error === OTRO_ARCHIVO_EN_LA_RUTA) {
+        if (adjunta.error.startsWith(NO_SE_CONFIRMO) || esOtroArchivoEnLaRuta(adjunta.error)) {
           return {
             ok: true,
             mensaje: `${emitida.mensaje} No se sabe si ${nombre.toLowerCase()} quedó adjunt${o}: recarga la lista y mira si está antes de adjuntarl${o} otra vez.`,
           }
         }
-        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : primeraOracion(adjunta.error)
-        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó: ${motivo}. Adjúntal${o} desde la lista.` }
+        const motivo = adjunta.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta.' : dentroDeOtraOracion(adjunta.error)
+        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó: ${motivo} Adjúntal${o} desde la lista.` }
       }
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },
