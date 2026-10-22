@@ -60,7 +60,7 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   // dejó un intento anterior del mismo formulario (la subida llegó y la
   // respuesta no), `subirARutaNueva` ya lo quitó, y se sube otra vez. Antes
   // cada reintento chocaba con ese archivo para siempre. Quitarlo pide que su
-  // dueño lo vea mientras ninguna fila lo nombra (migración 20261022190000).
+  // dueño lo vea mientras ninguna fila lo nombra (migración 20261022193000).
   if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf'))
   if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {

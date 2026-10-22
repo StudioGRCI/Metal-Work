@@ -27,7 +27,7 @@ returns boolean language sql stable security definer set search_path to 'public'
   select exists (select 1 from public.ot_gastos_areas where comprobante_ruta = p_ruta);
 $$;
 comment on function public.comprobante_de_gasto_anotado(text) is
-  'Si algún gasto del área nombra ese archivo de gastos-ot, lo vea o no quien pregunta (migración 20261022190000).';
+  'Si algún gasto del área nombra ese archivo de gastos-ot, lo vea o no quien pregunta (migración 20261022193000).';
 revoke all on function public.comprobante_de_gasto_anotado(text) from public, anon;
 grant execute on function public.comprobante_de_gasto_anotado(text) to authenticated;
 
@@ -36,7 +36,7 @@ returns boolean language sql stable security definer set search_path to 'public'
   select exists (select 1 from public.ot_control_vehicular where escaneo_ruta = p_ruta);
 $$;
 comment on function public.escaneo_de_control_anotado(text) is
-  'Si alguna ficha de control vehicular nombra ese archivo de control-ot, la vea o no quien pregunta (migración 20261022190000).';
+  'Si alguna ficha de control vehicular nombra ese archivo de control-ot, la vea o no quien pregunta (migración 20261022193000).';
 revoke all on function public.escaneo_de_control_anotado(text) from public, anon;
 grant execute on function public.escaneo_de_control_anotado(text) to authenticated;
 

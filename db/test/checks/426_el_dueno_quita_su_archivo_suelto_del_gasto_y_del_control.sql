@@ -1,5 +1,5 @@
 -- El dueño ve y quita su archivo suelto en `gastos-ot` y `control-ot`
--- (migración 20261022190000). La pantalla sube el comprobante del gasto y el
+-- (migración 20261022193000). La pantalla sube el comprobante del gasto y el
 -- escaneo del control antes de anotarlos; si la respuesta de Storage se pierde,
 -- los quita en el acto, con la sesión de quien subió. Storage quita con un
 -- DELETE … RETURNING, y Postgres le aplica también la política de leer: con la

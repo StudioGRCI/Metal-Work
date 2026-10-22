@@ -206,7 +206,7 @@ En la misma migración que la crea, sin excepción:
   `DELETE … RETURNING`, y Postgres le aplica también la política de leer. En
   `gastos-ot` y `control-ot` la de leer pedía una fila que lo nombrara, y el
   borrado afectaba cero archivos sin error (duodécima pasada; migración
-  `20261022190000`, check 426). «Ninguna fila lo nombra» se pregunta con una
+  `20261022193000`, check 426). «Ninguna fila lo nombra» se pregunta con una
   función `security definer` (`archivo_plano_vinculado`,
   `comprobante_de_gasto_anotado`): un `not exists` bajo RLS cuenta como
   inexistente la fila que el dueño ya no ve, y le dejaría ver y quitar su
