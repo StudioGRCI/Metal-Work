@@ -23,7 +23,8 @@ const SIGUIENTE_PASO: Record<string, 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO'> = {
 }
 
 export default async function PaginaRecojos() {
-  const perfil = await exigirPermiso(['compras.recojo', 'compras.crear'])
+  // Logística la sigue desde aquí; quien solo emite compras, no (migración 20261020171000).
+  const perfil = await exigirPermiso(['compras.recojo', 'compras.programar_recojo'])
   const conductor = puede(perfil, 'compras.recojo')
   const recojos = await cargarRecojos()
   // Lo que lleva encima va primero; después, la lista que le programó
@@ -144,7 +145,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             <li className="flex items-start gap-2">
               <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
               {r.guia ? (
-                <Link className="font-medium text-acento hover:underline" href={`/compras/gestion/guia/${r.guia.id}`} target="_blank" prefetch={false}>
+                <Link className="font-medium text-acento hover:underline" href={`/compras/guia/${r.guia.id}`} target="_blank" prefetch={false}>
                   Guía de remisión {r.guia.numero} (PDF)
                 </Link>
               ) : (

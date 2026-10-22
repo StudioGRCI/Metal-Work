@@ -62,8 +62,10 @@ BANCO_CLAVE='...' node herramientas/banco/recorrer.mjs  # todas las pantallas
 npx tsc --noEmit && npx eslint && npx next build
 ```
 
-- Postgres local corre en el socket `/tmp` puerto `5433`; si no responde:
-  `/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/main -o "-p 5433 -k /tmp" start`.
+- Postgres local corre en el socket `/tmp` puerto `5433`; si no responde (en la
+  nube, `pg_ctl` no corre como root y sin `config_file` no encuentra su
+  configuración; `jit=off`, como Supabase, ver la skill `datos` › Rendimiento):
+  `su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/main -o '-c config_file=/etc/postgresql/16/main/postgresql.conf -c jit=off -p 5433 -k /tmp' -l /var/lib/postgresql/pg-5433.log -w -t 120 start"`.
 - Columna nueva en una tabla → regenerar tipos **y** agregarla al `select`
   de la consulta que la necesita (`src/lib/datos/*`): el select es explícito.
 - Tabla nueva con relación → el banco (PostgREST propio en
@@ -214,19 +216,104 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   el auditor, no la prueba. Cuando una cifra sale de dos partes, escribir en el
   check la cuenta a mano con lo que **no** debe entrar en cada parte, y que la
   pantalla pinte las partes que da la base en vez de recalcularlas.
+  Volvió a pasar con el stock (sección 8 de la `20261020196000`): una salida con
+  un RQ de PLANTA hacia una unidad se le descontaba al RQ por su línea y a la
+  unidad por su código, y sacar 2 bajaba lo separado en 4. Un movimiento que
+  lleva dos llaves de dueño se reparte entre ellos una sola vez; el check 416 lo
+  prueba con la existencia, lo libre y lo de cada código escritos a mano antes
+  y después.
+  Y el reparto **se anota en el movimiento al registrarlo**
+  (`movimientos_materiales.de_la_unidad`), no se recalcula al leer. La primera
+  versión lo deducía después con lo que el RQ es hoy, y una revisión dio seis
+  contraejemplos: marcar el RQ «Listo», corregir su código o devolver parte
+  cambiaba lo ya descontado sin ningún movimiento, y el orden de dos salidas de
+  la misma línea dependía del alfabeto. Si una cuenta depende del estado de otro
+  documento en el momento del movimiento, ese estado se congela en el movimiento.
+  **Y las filas de antes de esa columna se anotan una vez, en la misma
+  migración, no se estiman al leer.** Con `de_la_unidad` se estimó al leer tres
+  vueltas seguidas y las tres fallaron: cada función que la usaba daba otra
+  cifra (lo libre subía), y la estimación cambiaba con lo que pasaba después
+  (un ingreso para la unidad, el código del RQ corregido). Se arregló con
+  `anotar_salidas_de_antes()`, que es idempotente. La condición de qué filas
+  anotar se mira **con el estado que tenían al moverse**, no con el de hoy: un
+  RQ cuyo código se corrigió después quedaba fuera, y el historial de
+  `audit_log` dice qué código tenía (la octava vuelta lo encontró). Si la regla
+  no se puede reconstruir exacta, se dice en qué casos difiere y hacia dónde,
+  sin prometer un sentido que no se probó («lo libre menor, nunca mayor» salió
+  falso dos vueltas seguidas), y se prueba con los datos que de verdad hay:
+  buscar quién escribe las columnas de las que depende (`grep` en las
+  migraciones) y poner en el check el caso común, el raro y el límite conocido.
 
-- **Una regla nueva sobre filas que ya existen no va como `CHECK ... not valid`.**
-  `not valid` solo se salta la revisión al crearla: Postgres la evalúa en cada
-  UPDATE de la fila vieja, aunque el UPDATE no toque esa columna. En la
-  `20261022141500` el «archivo de 0 bytes no entra» como CHECK dejó la
-  cotización vieja con PDF vacío sin poder rechazarse, aprobarse ni corregirse
-  (lo vieron los auditores el 2026-10-22). Va como disparador `before insert or
-  update of <columnas>` que juzga solo el valor nuevo o el que cambió
+- **Dos caminos que se excluyen se cierran desde los dos lados, en cada entrada.**
+  En la `20261020210000` la OC con boleta empezó a pagarse directo, y la función
+  del pago rechazaba la OC con factura registrada; pero nada impedía lo inverso:
+  registrar la factura de una OC que Tesorería ya había pagado directo, y pagarla
+  otra vez por Cuentas por pagar. Los checks pasaban porque solo probaban el
+  sentido que se había escrito; lo vieron los dos auditores. Cuando una regla dice
+  «o esto o lo otro», listar **cada** sentencia que puede crear la segunda mitad
+  (insertar, devolver una fila quitada, cambiar la llave, pasar a REGISTRADA,
+  pagar) y poner la guarda en un disparador propio de cada tabla, sin lista de
+  columnas; y en el check, una prueba que falle por cada una de esas puertas.
+
+- **Una función que la aplicación llama por `rpc` devuelve columnas con nombre.**
+  Con `returns setof uuid`, Supabase entrega una lista de valores y el banco una
+  lista de objetos: `new Set(data)` funcionaba en uno y en el otro no encontraba
+  nada, y el desplegable «Factura que anexó Logística» volvía a ofrecer una
+  factura ya registrada (2026-10-21, lo cazó `probar-oc-de-varios-rq.mjs`). Se
+  escribe `returns table (documento uuid)` y se lee `fila.documento`, como
+  `rrhh_codigos_internos`: igual en los dos.
+
+- **Una función que va en un índice se escribe distinto que las demás.** En la
+  `20261020210000` las claves `clave_proveedor` y `clave_numero_comprobante` van
+  en índices de expresión, y la revisión de la sexta vuelta cazó dos fallos que
+  ningún check veía:
+  - Se les quitó el `execute` a `authenticated`, como a todo ayudante interno, y
+    Postgres evalúa la expresión del índice **con el rol que escribe**: Logística
+    no podía anexar una factura ni Contabilidad dar de alta un comprobante
+    («permission denied for function»). Los checks que escribían sin `set local
+    role authenticated` pasaban. A esas funciones (y a las que ellas llaman) no
+    se les revoca el `execute` del rol que escribe en la tabla.
+  - Son `immutable`, y Postgres guarda en el índice lo que devolvían al
+    escribirse cada fila: si otra migración les cambia el cuerpo con `create or
+    replace`, el índice sigue con los valores viejos y la búsqueda por la clave
+    no encuentra la fila, sin error. La migración que cambia el cuerpo hace
+    `reindex index` de cada índice que la usa.
+
+- **Un `check … not valid` no perdona a las filas viejas: se vuelve a mirar en
+  cada `update`.** `not valid` solo se salta la comprobación al crearlo; la
+  primera vez que una fila de antes se toca, tiene que cumplirla. En la
+  `20261020210000` la factura anexada antes de pedir número no se podía anular
+  (el `update` que pone `anulado_en` caía en la regla del número). Al poner una
+  regla nueva sobre filas que ya existen, preguntarse qué `update` legítimo les
+  queda (anular, corregir) y dejarlo fuera de la regla en la misma expresión
+  (`anulado_en is not null or …`), con su prueba en el check sobre una fila
+  insertada como era antes.
+  Y cuando todo `update` de la fila vieja es legítimo, no hay qué dejar fuera:
+  en la `20261022141500` el «archivo de 0 bytes no entra» como CHECK dejó la
+  cotización vieja con PDF vacío sin poder rechazarse, aprobarse ni corregirse,
+  aunque el UPDATE no tocara esa columna (lo vieron los auditores el
+  2026-10-22). Entonces va como disparador `before insert or update of
+  <columnas>` que juzga solo el valor nuevo o el que cambió
   (`fn_archivo_no_vacio`), y el check prueba con una fila vieja sembrada con
   `session_replication_role = replica`. El tamaño que juzga es el que guardó
   Storage (`storage.objects.metadata->>'size'`), no el que manda el navegador:
   quien llama a la función puede declarar 4096 bytes de un archivo vacío, o no
   declarar nada. El disparador anota el tamaño real encima del declarado.
+
+- **Una línea de RQ no es de un solo material.** `requerimiento_lineas.material_id`
+  es lo que se pidió, pero Logística puede comprar otro
+  (`orden_compra_material_detalles.material_id`, otra marca u otra medida) y
+  Almacén puede entregar otro del mismo almacén (`registrar_salida_material` solo
+  exige el almacén). Todo cálculo de stock por línea —lo separado, lo que llegó,
+  lo entregado— cuenta lo comprado en el material comprado y descuenta lo
+  entregado de la línea entera, sea del material que sea. Si se filtra por el
+  material pedido, lo comprado queda libre y lo pedido separado de más, o lo que
+  no salió queda separado para siempre en un RQ ya atendido. En
+  `stock_libre_en_almacen` (migración `20261020195000`) el auditor lo encontró
+  dos veces, una por cada lado; el check 414 tiene los dos casos: compra de otra
+  marca y entrega con otro material. Al escribir el check de algo por línea de
+  RQ, incluir siempre una línea comprada y entregada con un material distinto
+  del pedido.
 
 - **Redefinir una función que producción pudo cambiar a mano.** Una migración
   que lleva la función entera pisa sin aviso un arreglo pegado en el editor de

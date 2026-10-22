@@ -214,8 +214,13 @@ async function entrar(clave) {
   const errores = []
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
+  // El de hidratación va entero: dice qué atributo no calzó al final, y salió dos
+  // veces suelto como Contabilidad sin que se pudiera repetir.
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
+    const texto = m.text()
+    if (m.type() === 'error' && !texto.includes('_next/hmr') && !texto.includes('WebSocket')) {
+      errores.push(texto.includes('hydrated') ? `${pagina.url()} ${texto}` : texto.slice(0, 300))
+    }
   })
   pagina.on('pageerror', (e) => errores.push(String(e).slice(0, 300)))
   await ir(pagina, `${BASE}/ingresar`)
@@ -230,11 +235,12 @@ async function entrar(clave) {
 }
 
 /** Espera a que el detector termine de leer el PDF. */
+// Desde #143 la lectura empieza después de revisar el archivo: se espera a que aparezca el «Leyendo…» (o el del
+// escaneo) y después a que se vaya. Esperar solo a que no esté pasaba antes de que empezara.
 async function esperarLectura(lugar) {
-  // Con el servidor cargado, la lectura puede no haber empezado todavía: se
-  // espera a que aparezca (si llega) antes de esperar a que se vaya.
-  await lugar.getByText('Leyendo la factura…').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
-  await lugar.getByText('Leyendo la factura…').waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
+  const leyendo = lugar.getByText(/^(Leyendo la factura…|La factura es un escaneo: leyéndola…)$/).first()
+  await leyendo.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+  await leyendo.waitFor({ state: 'hidden', timeout: 60000 }).catch(() => {})
   await lugar.page().waitForTimeout(500)
 }
 
@@ -294,7 +300,8 @@ let ocNumero
   comprobar(enlazados?.n === 2, 'los dos insumos quedan anexados a la línea de la OC')
   const doc = await uno(`select numero_documento, fecha_emision::text as fecha_emision from public.documentos_compra_material where orden_compra_id = $1 and tipo = 'FACTURA'`, [ocId])
   comprobar(doc?.numero_documento === `${serie}-71` && doc?.fecha_emision === hoy, `la factura quedó con su número sin ceros (${doc?.numero_documento}) y su fecha`)
-  await pagina.waitForTimeout(800)
+  // La lista se repinta después del aviso: se espera a que la plancha salga, no un tiempo fijo.
+  await pagina.waitForFunction((texto) => !document.querySelector('main')?.innerText.includes(texto), plancha, { timeout: 15000 }).catch(() => {})
   const despues = limpio(await pagina.locator('main').innerText())
   comprobar(!despues.includes(plancha), 'lo que ya va en la orden sale de «Por comprar»')
   await pagina.screenshot({ path: `${CAPTURAS}/vrq-1-por-comprar.png`, fullPage: true })
@@ -380,7 +387,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 // ------------------------------------------------ 3. Contabilidad registra las dos facturas
 {
   const { pagina, contexto, errores } = await entrar('contabilidad')
-  await ir(pagina, `${BASE}/adquisiciones`)
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const espera = limpio(await pagina.locator('tbody tr', { hasText: ocNumero }).innerText())
   comprobar(espera.includes(`Logística anexó ${serie}-71`) && espera.includes(`${serie}-72`), 'la OC que espera dice las dos facturas que anexó Logística')
   comprobar(espera.includes(codigoA) && espera.includes(codigoB), 'con los dos códigos internos')
@@ -436,13 +443,13 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
 {
   const { pagina, contexto, errores } = await entrar('tesoreria')
   await ir(pagina, `${BASE}/adquisiciones`)
-  // La tarjeta entera: el ancestro más cercano del título que ya trae los
-  // documentos. Desde que el título lleva su botón «i» queda un nivel más hondo
-  // y el «tercer ancestro» era solo la cabecera, sin ningún documento.
-  const docs = limpio(
-    await pagina.getByText('Documentos de compras de Logística').locator('xpath=ancestor::*[.//article][1]').innerText().catch(() => ''),
+  // Desde el PR #130 Adquisiciones es una fila por OC: sus facturas van en la
+  // columna de documentos, y la de borrador lleva «En borrador».
+  const docs = limpio((await pagina.locator(`tr[data-orden="${ocNumero}"]`).textContent().catch(() => '')) ?? '')
+  comprobar(
+    docs.includes(`Factura ${serie}-71`) && docs.includes(`Factura ${serie}-72`) && !docs.includes('En borrador'),
+    'Tesorería ve en la fila de la OC las dos facturas de Logística con su número, ya registradas',
   )
-  comprobar(docs.includes(`${serie}-71`) && docs.includes('Registrada por Contabilidad'), 'Tesorería ve las facturas de Logística con su número, ya registradas')
   await ir(pagina, `${BASE}/tesoreria/por-pagar`)
   const porPagar = limpio(await pagina.locator('main').innerText())
   // Con la OC ya completa, cada una calza con lo que le tocaba y dice con cuál la completa.

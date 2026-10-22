@@ -30,9 +30,12 @@ export function AccionesCompra({
   total,
   moneda,
   entregada,
+  verAdquisiciones,
 }: {
   id: string
   numero: string
+  /** Quien adjunta entra a Adquisiciones: el aviso de un anexo por revisar enlaza a la OC. */
+  verAdquisiciones: boolean
   /** El total con IGV (si va con factura) y la moneda: el detector compara la factura con ellos. */
   total: number
   moneda: string
@@ -121,6 +124,7 @@ export function AccionesCompra({
           alAdjuntar={() => setIdDocumento(crypto.randomUUID())}
           tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
           orden={{ numero, total, moneda }}
+          verAdquisiciones={verAdquisiciones}
         />
       </Ventana>
       <Ventana

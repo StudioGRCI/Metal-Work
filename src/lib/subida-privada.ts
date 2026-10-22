@@ -130,13 +130,13 @@ const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.l
 
 /** El archivo nunca viaja dentro de una Server Action. La acción recibe solo
  * metadatos y valida el objeto antes de enlazarlo al documento de negocio. */
-export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, registrar }: {
+export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, contentType, registrar }: {
   bucket: string
   ruta: string
   archivo: File
   contentType: string
-  registrar: () => Promise<ResultadoAccion>
-}): Promise<ResultadoAccion> {
+  registrar: () => Promise<ResultadoAccion<T>>
+}): Promise<ResultadoAccion<T>> {
   // Una respuesta perdida puede haber registrado el documento: el reintento
   // con el mismo ID confirma el resultado guardado.
   const sinRespuesta = NO_SE_CONFIRMO

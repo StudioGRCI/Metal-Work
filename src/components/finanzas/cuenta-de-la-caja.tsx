@@ -5,14 +5,16 @@ import { useState } from 'react'
 
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
-import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { nombreMoneda, type CuentaParaPagar, type TipoDeLaCaja } from '@/lib/dominio/caja'
 import { fecha, type CodigoMoneda } from '@/lib/format'
 
-type Tipo = 'pago' | 'cobro'
+/** «este pago», «este cobro», «esta devolución». */
+const ESTE: Record<TipoDeLaCaja, string> = { pago: 'este pago', cobro: 'este cobro', devolucion: 'esta devolución' }
 
 /**
- * La cuenta de la caja de la que salió un pago o a la que entró un cobro
- * (migración 20261019100000): al registrarlo, la caja diaria se mueve sola.
+ * La cuenta de la caja de la que salió un pago o a la que entró un cobro o la
+ * devolución de un proveedor (migraciones 20261019100000 y 20261020210000): al
+ * registrarlo, la caja diaria se mueve sola.
  * Si la cuenta es de otra moneda que el documento, pide además lo que salió o
  * entró en ella, como dice el estado de cuenta. Va dentro de la rejilla de dos
  * columnas del formulario, y la cuenta ocupa las dos.
@@ -31,8 +33,8 @@ export function CuentaDeLaCaja({
 }: {
   cuentas: CuentaParaPagar[]
   monedaDocumento: CodigoMoneda
-  tipo: Tipo
-  /** El día del pago o del cobro que tiene escrito el formulario. */
+  tipo: TipoDeLaCaja
+  /** El día del pago, del cobro o de la devolución que tiene escrito el formulario. */
   dia: string
   /** Para los id de los campos: puede haber varios formularios en la misma pantalla. */
   prefijo: string
@@ -40,16 +42,19 @@ export function CuentaDeLaCaja({
   const [elegida, setElegida] = useState(cuentas.length === 1 ? cuentas[0].id : '')
   const cuenta = cuentas.find((c) => c.id === elegida)
   const otraMoneda = !!cuenta && cuenta.moneda !== monedaDocumento
-  const cobro = tipo === 'cobro'
+  // El cobro y la devolución entran a la cuenta; el pago sale.
+  const entra = tipo !== 'pago'
   const id = (nombre: string) => `${nombre}-${prefijo}`
 
   const antesDelInicio = !!cuenta && !!dia && dia < cuenta.fecha_inicio
   const diaCerrado = !!cuenta && !!dia && !antesDelInicio && !!cuenta.cerrada_hasta && dia <= cuenta.cerrada_hasta
   const ayuda = antesDelInicio
-    ? `La cuenta lleva la caja desde el ${fecha(cuenta.fecha_inicio)}: este ${tipo} se registra sin moverla, porque ya está en su saldo inicial.`
-    : cobro
+    ? `La cuenta lleva la caja desde el ${fecha(cuenta.fecha_inicio)}: ${ESTE[tipo]} se registra sin moverla, porque ya está en su saldo inicial.`
+    : tipo === 'cobro'
       ? 'De la caja diaria: el ingreso entra solo, el día del cobro.'
-      : 'De la caja diaria: el egreso sale solo, el día del pago.'
+      : tipo === 'devolucion'
+        ? 'De la caja diaria: el ingreso entra solo, el día en que entró la devolución.'
+        : 'De la caja diaria: el egreso sale solo, el día del pago.'
   const error = diaCerrado
     ? `La cuenta está cerrada hasta el ${fecha(cuenta.cerrada_hasta!)}: elige un día posterior o reabre ese cierre en Caja diaria.`
     : undefined
@@ -58,7 +63,7 @@ export function CuentaDeLaCaja({
     <>
       {/* Las dos columnas: el nombre de la cuenta y su moneda se leen enteros, que es lo que distingue dos cuentas del mismo banco. */}
       <Campo
-        etiqueta={cobro ? 'Cuenta a la que entró' : 'Cuenta de la que salió'}
+        etiqueta={entra ? 'Cuenta a la que entró' : 'Cuenta de la que salió'}
         htmlFor={id('caja')}
         requerido
         ayuda={ayuda}
@@ -86,10 +91,14 @@ export function CuentaDeLaCaja({
       </Campo>
       {otraMoneda && cuenta && (
         <Campo
-          etiqueta={`Lo que ${cobro ? 'entró a' : 'salió de'} la cuenta, en ${nombreMoneda(cuenta.moneda)}`}
+          etiqueta={`Lo que ${entra ? 'entró a' : 'salió de'} la cuenta, en ${nombreMoneda(cuenta.moneda)}`}
           htmlFor={id('monto-cuenta')}
           requerido
-          ayuda={`Como dice el estado de cuenta. El documento queda ${cobro ? 'cobrado' : 'pagado'} en ${nombreMoneda(monedaDocumento)}.`}
+          ayuda={
+            tipo === 'devolucion'
+              ? `Como dice el estado de cuenta. La devolución queda anotada en ${nombreMoneda(monedaDocumento)}, la moneda de la OC.`
+              : `Como dice el estado de cuenta. El documento queda ${tipo === 'cobro' ? 'cobrado' : 'pagado'} en ${nombreMoneda(monedaDocumento)}.`
+          }
         >
           <Entrada
             id={id('monto-cuenta')}
@@ -111,13 +120,14 @@ export function CuentaDeLaCaja({
  * no se registra, así que se dice antes de que lo llenen. El botón de pagar
  * solo lo ve quien lleva la caja, que es quien da de alta sus cuentas.
  */
-export function SinCuentasEnLaCaja({ cuentas, tipo }: { cuentas: CuentaParaPagar[]; tipo: Tipo }) {
+export function SinCuentasEnLaCaja({ cuentas, tipo }: { cuentas: CuentaParaPagar[]; tipo: TipoDeLaCaja }) {
   if (cuentas.length > 0) return null
+  const cada = tipo === 'devolucion' ? 'Cada devolución entra a' : tipo === 'cobro' ? 'Cada cobro entra a' : 'Cada pago sale de'
   return (
     <div role="alert" className="space-y-3 rounded-[var(--radius-base)] bg-aviso-suave px-4 py-3 text-sm text-texto">
       <p>
-        Cada {tipo} {tipo === 'cobro' ? 'entra a' : 'sale de'} una cuenta de la caja diaria, y todavía no hay ninguna activa. Da de alta la
-        cuenta con su saldo inicial y vuelve a este {tipo}.
+        {cada} una cuenta de la caja diaria, y todavía no hay ninguna activa. Da de alta la cuenta con su saldo inicial y vuelve a{' '}
+        {ESTE[tipo]}.
       </p>
       <EnlaceBoton href="/tesoreria/caja-diaria" variante="contorno" className="min-h-11">
         <Landmark aria-hidden className="size-4" />

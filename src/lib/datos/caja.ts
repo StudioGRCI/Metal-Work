@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
-import { CAJA_NO_SE_MOVIO, CAJA_SIN_LEER, monedaDeCuenta, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { CAJA_NO_SE_MOVIO, CAJA_SIN_LEER, monedaDeCuenta, tipoPropioDelOrigen, type CuentaParaPagar, type TipoDeLaCaja } from '@/lib/dominio/caja'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { fecha as textoFecha, hoyLima, type CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
@@ -225,15 +225,12 @@ export async function cuentasParaPagar(): Promise<CuentaParaPagar[]> {
 }
 
 /**
- * La cuenta que movió un pago o un cobro del sistema, cuánto movió en su moneda
- * y si ese movimiento ya se anuló. `devuelto` es el día en que volvió a la
- * cuenta al anularlo, cuando el día del pago ya estaba cerrado y no se podía
- * tocar (la devolución entra ese día, del otro tipo).
+ * La cuenta que movió un pago, un cobro o una devolución del sistema, cuánto
+ * movió en su moneda y si ese movimiento ya se anuló. `extornado` es el día en
+ * que se le dio la vuelta al anularlo, cuando su día ya estaba cerrado y no se
+ * podía tocar (el extorno entra ese día, del otro tipo).
  */
-export type CajaDelPago = { cuenta: string; anulado: boolean; devuelto: string | null; monto: number; moneda: CodigoMoneda }
-
-/** El tipo del movimiento que deja cada origen: el cobro entra, el pago sale. La devolución de una anulación es del otro. */
-const tipoDelOrigen = (origen: string) => (origen === 'COBRO_FACTURA_VENTA' ? 'INGRESO' : 'EGRESO')
+export type CajaDelPago = { cuenta: string; anulado: boolean; extornado: string | null; monto: number; moneda: CodigoMoneda }
 
 /**
  * La cuenta de la caja que movió cada pago o cobro (migración 20261019100000),
@@ -256,7 +253,7 @@ export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map
     if (error) throw new Error(`No se pudo leer la caja de los pagos: ${error.message}`)
     filas.push(...(data ?? []))
   }
-  const propio = tipoDelOrigen(origen)
+  const propio = tipoPropioDelOrigen(origen)
   // Primero el movimiento del pago o del cobro: uno vigente manda sobre uno anulado.
   for (const m of filas) {
     if (!m.origen_id || m.tipo !== propio) continue
@@ -265,27 +262,30 @@ export async function cajaDeLosPagos(origen: string, ids: string[]): Promise<Map
     mapa.set(m.origen_id, {
       cuenta: m.caja?.nombre ?? 'una cuenta',
       anulado: !!m.anulado_en,
-      devuelto: null,
+      extornado: null,
       monto: Number(m.monto),
       moneda: monedaDeCuenta(m.caja?.moneda),
     })
   }
-  // Después su devolución, si al anularlo su día ya estaba cerrado.
+  // Después su extorno, si al anularlo su día ya estaba cerrado.
   for (const m of filas) {
     if (!m.origen_id || m.tipo === propio || m.anulado_en) continue
     const mov = mapa.get(m.origen_id)
-    if (mov) mapa.set(m.origen_id, { ...mov, devuelto: m.fecha })
+    if (mov) mapa.set(m.origen_id, { ...mov, extornado: m.fecha })
   }
   return mapa
 }
 
+/** Cómo se nombra lo que movió la caja en los avisos. */
+const NOMBRE_DEL_TIPO: Record<TipoDeLaCaja, string> = { pago: 'pago', cobro: 'cobro', devolucion: 'devolución' }
+
 /**
- * Cómo quedó la caja después del pago o el cobro, para decirlo en el aviso: de
- * qué cuenta salió —la del movimiento, no la del formulario: un reintento con
- * otra cuenta devuelve el pago que ya estaba— o por qué no se movió. Si no se
- * puede leer, lo dice en vez de callar.
+ * Cómo quedó la caja después del pago, el cobro o la devolución, para decirlo
+ * en el aviso: de qué cuenta salió o a cuál entró —la del movimiento, no la del
+ * formulario: un reintento con otra cuenta devuelve el que ya estaba— o por qué
+ * no se movió. Si no se puede leer, lo dice en vez de callar.
  */
-export async function cajaTrasElPago(origen: string, id: string, cajaId: string, dia: string, tipo: 'pago' | 'cobro'): Promise<string> {
+export async function cajaTrasElPago(origen: string, id: string, cajaId: string, dia: string, tipo: TipoDeLaCaja): Promise<string> {
   const supabase = await createClient()
   const [movimientos, caja] = await Promise.all([
     cajaDeLosPagos(origen, [id]).catch(() => null),
@@ -293,26 +293,28 @@ export async function cajaTrasElPago(origen: string, id: string, cajaId: string,
   ])
   if (!movimientos || caja.error) return CAJA_SIN_LEER
   const mov = movimientos.get(id)
-  if (mov && !mov.anulado) return tipo === 'cobro' ? `Entró a ${mov.cuenta}.` : `Salió de ${mov.cuenta}.`
+  if (mov && !mov.anulado) return tipo === 'pago' ? `Salió de ${mov.cuenta}.` : `Entró a ${mov.cuenta}.`
   const inicio = caja.data?.fecha_inicio
   if (!caja.data || !inicio || dia >= inicio) return ''
-  return `${CAJA_NO_SE_MOVIO}: la cuenta ${caja.data.nombre} lleva la caja desde el ${textoFecha(inicio)} y este ${tipo} ya está en su saldo inicial.`
+  const este = tipo === 'devolucion' ? 'esta devolución' : `este ${NOMBRE_DEL_TIPO[tipo]}`
+  return `${CAJA_NO_SE_MOVIO}: la cuenta ${caja.data.nombre} lleva la caja desde el ${textoFecha(inicio)} y ${este} ya está en su saldo inicial.`
 }
 
 /**
- * Tras anular un pago o un cobro: si había movido la caja, que su movimiento
- * quedó anulado o, si su día ya estaba cerrado, que la devolución entró hoy.
+ * Tras anular un pago, un cobro o una devolución: si había movido la caja, que
+ * su movimiento quedó anulado o, si su día ya estaba cerrado, que el extorno
+ * entró o salió hoy.
  */
-export async function cajaTrasAnular(origen: string, id: string, tipo: 'pago' | 'cobro'): Promise<string> {
+export async function cajaTrasAnular(origen: string, id: string, tipo: TipoDeLaCaja): Promise<string> {
   const movimientos = await cajaDeLosPagos(origen, [id]).catch(() => null)
   if (!movimientos) return CAJA_SIN_LEER
   const mov = movimientos.get(id)
   if (!mov) return ''
-  if (mov.devuelto) {
-    return tipo === 'cobro'
-      ? `Su día ya estaba cerrado en la caja: hoy sale de ${mov.cuenta} lo que entró con el cobro.`
-      : `Su día ya estaba cerrado en la caja: hoy vuelve a ${mov.cuenta} lo que salió con el pago.`
+  if (mov.extornado) {
+    return tipo === 'pago'
+      ? `Su día ya estaba cerrado en la caja: hoy vuelve a ${mov.cuenta} lo que salió con el pago.`
+      : `Su día ya estaba cerrado en la caja: hoy sale de ${mov.cuenta} lo que entró con ${tipo === 'cobro' ? 'el cobro' : 'la devolución'}.`
   }
   if (!mov.anulado) return ''
-  return tipo === 'cobro' ? 'Su ingreso en la caja diaria también quedó anulado.' : 'Su egreso en la caja diaria también quedó anulado.'
+  return tipo === 'pago' ? 'Su egreso en la caja diaria también quedó anulado.' : 'Su ingreso en la caja diaria también quedó anulado.'
 }

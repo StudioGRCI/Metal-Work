@@ -9,8 +9,9 @@
 --      TODOS LOS ACTIVOS, el código de un RQ anulado ni el de una unidad dada de
 --      baja. `registrada` marca el del padrón de unidades: entre CHK420_A y la
 --      variante CHK42O_A (con O) que escribió un RQ, el bueno. La abre cada uno
---      de los permisos de los formularios que la usan, uno por uno; Almacén y la
---      portería no la leen.
+--      de los permisos de los formularios que la usan, uno por uno, y desde la
+--      20261021131000 también Almacén, que registra la salida sin RQ; la
+--      portería no la lee.
 --   2. Lo entregado de cada insumo: Maestranza ve cuánto salió ya del almacén
 --      para su RQ, menos lo devuelto, aunque no lea el kardex. Con 15 pedidos,
 --      10 en almacén y 4 entregados de los que devolvieron 2, la lista dice
@@ -166,7 +167,7 @@ do $$
 declare v_permiso text; v_rol uuid; v_usuario uuid; v int; i int := 0;
 begin
   foreach v_permiso in array array['requerimientos.emitir', 'requerimientos.administracion', 'tesoreria.caja', 'rrhh.personal',
-                                   'reporte_diario.registrar', 'compras.crear', 'subcontratos.gestionar'] loop
+                                   'reporte_diario.registrar', 'compras.crear', 'subcontratos.gestionar', 'almacen.despachar'] loop
     i := i + 1;
     insert into public.roles (codigo, nombre) values ('CHK420_' || i, 'Prueba 420 · ' || v_permiso) returning id into v_rol;
     insert into public.roles_permisos (rol_id, permiso_codigo) values (v_rol, v_permiso);
@@ -183,11 +184,9 @@ begin
   end loop;
 end $$;
 
-select pg_temp.como('almacenero');
-set local role authenticated;
-select test.debe_fallar('select * from public.codigos_internos_para_elegir()',
-  'Almacén no lee la lista: su salida sin RQ pide el código o la placa, y queda fuera de este cambio', 'No tienes permiso para ver la lista de códigos internos');
-reset role;
+-- Desde la migración 20261021131000, también Almacén: su salida sin RQ elige el
+-- código de la misma lista.
+select pg_temp.lee_la_lista('almacenero', 'la salida del kardex sin RQ');
 
 select pg_temp.como('portero');
 set local role authenticated;
@@ -233,7 +232,7 @@ begin
   perform test.afirmar((v_l ->> 'en_stock')::numeric = 10 and (v_l ->> 'por_comprar')::numeric = 5 and v_l ->> 'etapa' = 'POR_COMPRAR',
     format('el avance dice 10 en almacén y 5 por comprar: %s', v_l));
 end $$;
--- La vista de Almacén cuenta la salida una vez por cada devolución (4 + 4 − 2): se deja dicho, no se corrige aquí.
+-- Lo que dice de la misma línea la vista de la salida de Almacén, para compararlo (la prueba de esa vista es el check 414).
 do $$
 begin
   raise notice '  nota · v_rq_lineas_para_salida dice % entregados de la misma línea',

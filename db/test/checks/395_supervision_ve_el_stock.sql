@@ -1,7 +1,8 @@
 -- Supervisión ve el stock de Almacén (migración 20261016950000). El supervisor
 -- de área ve cuánto hay de cada material, en qué almacén y, de cada accesorio,
 -- cuánto es de cada código interno; lo mismo que dice el kardex, sin abrir el
--- kardex. Almacén lo ve igual. Requerimientos y Ventas no. Cada paso con el rol
+-- kardex. Almacén lo ve igual. Desde la migración 20261020195000 también
+-- Requerimientos, sin el kardex (check 414); Ventas no. Cada paso con el rol
 -- que lo da —nunca ADMIN— y `set local role authenticated`. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -108,10 +109,12 @@ select test.afirmar(
   'El supervisor ve los mismos materiales que tienen kardex, ni uno más ni uno menos');
 reset role;
 
--- 4. Requerimientos y Ventas no lo ven.
+-- 4. Requerimientos lo ve desde el 2026-10-20, para saber qué hay antes de pedir;
+-- Ventas no.
 select pg_temp.como('requerimientos');
 set local role authenticated;
-select test.debe_fallar('select * from public.stock_en_almacen()', 'Requerimientos no ve el stock de Almacén', 'No tienes permiso');
+select test.afirmar((select count(*) from public.stock_en_almacen()) = current_setting('prueba.vistos')::integer,
+  'Requerimientos ve el mismo stock que el supervisor');
 reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;

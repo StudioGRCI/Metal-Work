@@ -249,6 +249,17 @@ export const NAVEGACION = [
         descripcion: 'Saldos, ingresos, egresos por unidad y conteo físico',
         disponible: true,
       },
+      // El apartado que Almacén comparte (DKS, 2026-10-20): lo mismo que ven
+      // Supervisión, Requerimientos y Administración antes de pedir, sin precios
+      // ni movimientos. Su entrada de Supervisión, más abajo, lleva su permiso.
+      {
+        titulo: 'Stock en almacén',
+        ruta: '/almacen/stock',
+        icono: Warehouse,
+        permiso: 'almacen.ver',
+        descripcion: 'Lo que ven Supervisión y quien pide: cuánto hay libre de cada material y cuánto es de cada código interno',
+        disponible: true,
+      },
     ],
   },
   {
@@ -290,13 +301,14 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Logística decide qué OC recoge el conductor, en qué orden y con qué
-      // peso; Contabilidad emite con ese peso la guía de remisión y la carga en
-      // la misma pantalla (está también en Finanzas, con su permiso).
+      // peso. Es de Logística y del conductor, nada más (DKS, 2026-10-20):
+      // Contabilidad carga la guía de remisión desde Adquisiciones, y quien
+      // solo emite compras —Gerencia, Administración— no la abre.
       {
         titulo: 'Gestión de compras',
         ruta: '/compras/gestion',
         icono: Route,
-        permiso: 'compras.crear',
+        permiso: 'compras.programar_recojo',
         descripcion: 'Qué órdenes de compra recoge el conductor, en qué orden y con qué peso',
         disponible: true,
       },
@@ -306,7 +318,7 @@ export const NAVEGACION = [
         titulo: 'Recojos',
         ruta: '/recojos',
         icono: Truck,
-        permiso: ['compras.recojo', 'compras.crear'],
+        permiso: ['compras.recojo', 'compras.programar_recojo'],
         descripcion: 'Compras aprobadas por recoger y dejar en almacén',
         disponible: true,
       },
@@ -368,14 +380,15 @@ export const NAVEGACION = [
       },
       // Maestranza pidió el 2026-10-15 ver lo que Almacén tiene antes de
       // pedirlo: el stock de cada material, sin precios ni el kardex
-      // (migración 20261016950000). Almacén también la abre, pero lo suyo es el
-      // kardex.
+      // (migración 20261016950000). Desde el 2026-10-20 lo ven también
+      // Requerimientos y Administración, que piden por RQ (migración
+      // 20261020195000), y Almacén lo tiene en su menú (entrada de arriba).
       {
         titulo: 'Stock en almacén',
         ruta: '/almacen/stock',
         icono: Warehouse,
         permiso: 'almacen.stock',
-        descripcion: 'Cuánto hay de cada material en los cuatro almacenes, y de qué código interno es cada accesorio',
+        descripcion: 'Cuánto hay libre de cada material en los cuatro almacenes, y cuánto es de cada código interno',
         disponible: true,
       },
       // Los subcontratos que Administración registró para Maestranza, Producción o
@@ -426,14 +439,6 @@ export const NAVEGACION = [
     titulo: 'Finanzas',
     items: [
       { titulo: 'Facturación', ruta: '/contabilidad/facturacion', icono: ReceiptText, permiso: 'contabilidad.facturar', descripcion: 'Las cotizaciones aprobadas, por código interno: registrar su factura', disponible: true },
-      {
-        titulo: 'Gestión de compras',
-        ruta: '/compras/gestion',
-        icono: Route,
-        permiso: 'compras.guia_remision',
-        descripcion: 'Las OC que recoge el conductor, con su peso: cargar su guía de remisión',
-        disponible: true,
-      },
       // Contabilidad responde por la detracción de cada orden de servicio.
       {
         titulo: 'Órdenes de servicio',
@@ -443,7 +448,7 @@ export const NAVEGACION = [
         descripcion: 'Si cada orden de servicio lleva detracción y de qué tipo según SUNAT',
         disponible: true,
       },
-      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Todo lo comprado, por factura: cada factura con sus OC y si calza con ellas', disponible: true },
+      { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Cada OC y OS de su RQ a su pago, con sus documentos; y cada factura con sus OC', disponible: true },
       { titulo: 'Cuentas por cobrar', ruta: '/tesoreria/por-cobrar', icono: HandCoins, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de venta por código interno, cobradas con su voucher', disponible: true },
       { titulo: 'Cuentas por pagar', ruta: '/tesoreria/por-pagar', icono: CreditCard, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de compra, al contado o a crédito, pagadas con su voucher', disponible: true },
       { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
@@ -565,23 +570,26 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // valorización del almacén (la base le quitó almacen.ver y costos.ver): ve lo
   // gastado en cada código interno. Sin la OT desde el 2026-10-15: la ficha de
   // ingreso y salida del vehículo y la revisión de Tesorería para la salida van
-  // en Vehículos.
+  // en Vehículos. Desde el 2026-10-20 consulta el stock de Almacén antes de
+  // pedir (migración 20261020195000): primero en «Consultas» y, en el
+  // teléfono, junto a sus RQ, en lugar del dashboard.
   REQUERIMIENTOS: {
     grupos: [
       { titulo: 'Requerimientos', rutas: ['/requerimientos', '/vehiculos'] },
-      { titulo: 'Consultas', rutas: ['/requerimientos/gasto-por-codigo'] },
+      { titulo: 'Consultas', rutas: ['/almacen/stock', '/requerimientos/gasto-por-codigo'] },
     ],
-    telefono: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo', '/'],
+    telefono: ['/requerimientos', '/almacen/stock', '/vehiculos', '/requerimientos/gasto-por-codigo'],
   },
   // Trabaja los RQ desde su bandeja de atención, no desde la lista de
   // Requerimientos, aunque `requerimientos.ver` le deje leerla. Sin la OT desde
   // el 2026-10-15: lo que lleva cada unidad lo ve por código, para tenerlo a
   // tiempo. Aparte, el kardex: sus cuatro almacenes se abren desde su tablero,
-  // no desde el menú (2026-10-15).
+  // no desde el menú (2026-10-15). Después del kardex, el stock que comparte
+  // con Supervisión y con quien pide (DKS, 2026-10-20).
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      { titulo: 'Almacén', rutas: ['/almacen/kardex'] },
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/stock'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -654,17 +662,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/adquisiciones', '/tesoreria/caja-diaria', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
   },
   // Primero Adquisiciones, lo que entra de Logística por factura, y encima de
-  // la facturación (DKS, 2026-10-20). Después las compras en su orden: la guía
-  // de remisión de cada OC que recoge el conductor y la detracción de las
-  // órdenes de servicio. El kardex lo consulta en lectura: ingresos con su
-  // guía, atenciones y egresos. Proveedores y el tipo de cambio —que registra
-  // ella— van en Consultas. Sin la cotización (la abre desde su factura en
-  // Facturación) ni los requerimientos, que no son de su trabajo (2026-10-20).
+  // la facturación (DKS, 2026-10-20). Después la detracción de las órdenes de
+  // servicio; la guía de remisión de cada OC que recoge el conductor la carga
+  // en Adquisiciones, en la fila de la OC (la Gestión de compras ya no es suya:
+  // es de Logística y el conductor, 2026-10-20). El kardex lo consulta en
+  // lectura: ingresos con su guía, atenciones y egresos. Proveedores y el tipo
+  // de cambio —que registra ella— van en Consultas. Sin la cotización (la abre
+  // desde su factura en Facturación) ni los requerimientos, que no son de su
+  // trabajo (2026-10-20).
   CONTABILIDAD: {
     grupos: [
       {
         titulo: 'Contabilidad',
-        rutas: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/compras/servicios'],
+        rutas: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios'],
       },
       // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
       {
@@ -672,7 +682,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
-    telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/gestion', '/almacen/kardex'],
+    telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios', '/almacen/kardex'],
   },
   // Unidades y Carrocerías las lleva Diseño e Ingeniería (pedido de la
   // empresa, 2026-10-01). Configuración la alcanza por `configuracion.ver`,
@@ -714,7 +724,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Administración',
         rutas: ['/cotizaciones/pdf', '/ordenes', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
-      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes'] },
+      // El stock de Almacén, para ver qué hay antes de pedir (2026-10-20).
+      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'] },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],

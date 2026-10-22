@@ -20,6 +20,12 @@ export const BUCKET_PAGOS_SERVICIO = 'pagos-servicio'
 /** El bucket privado de los vouchers con que Tesorería paga las facturas de compra: la ruta es `{factura}/{archivo}`. */
 export const BUCKET_PAGOS_FACTURAS = 'pagos-facturas'
 
+/** El bucket privado de los vouchers con que Tesorería paga las OC con boleta: la ruta es `{OC}/{archivo}` (migración 20261020210000). */
+export const BUCKET_PAGOS_COMPRAS = 'pagos-compras'
+
+/** El bucket privado de la factura, el contrato y demás documentos de la OS: la ruta es `{orden de servicio}/{archivo}`. */
+export const BUCKET_DOCUMENTOS_SERVICIO = 'documentos-servicio'
+
 /** Lo que puede pesar una factura o un comprobante. */
 export const MAXIMO_MB_FINANZAS = 10
 

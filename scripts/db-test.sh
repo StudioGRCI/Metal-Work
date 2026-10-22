@@ -15,6 +15,8 @@ export PGHOST PGPORT PGUSER
 
 psql -q -d postgres -c "drop database if exists ${DB} with (force);" >/dev/null
 psql -q -d postgres -c "create database ${DB};" >/dev/null
+# Sin JIT, como Supabase: aquí no se compila lo que allá no se compila.
+psql -q -d postgres -c "alter database ${DB} set jit = off;" >/dev/null
 
 run() { psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$1"; }
 # Las migraciones van cada una en su transacción, como las aplica Supabase

@@ -51,6 +51,7 @@ export function TituloConAyuda({
           aria-expanded={abierta}
           aria-controls={id}
           aria-label={nombre ? `Para qué sirve: ${nombre}` : 'Para qué sirve'}
+          data-ayuda
           onClick={() => setAbierta((a) => !a)}
           className={cn(
             "relative inline-flex size-6 shrink-0 items-center justify-center rounded-full transition-colors after:absolute after:-inset-2.5 after:content-[''] hover:bg-superficie-2 hover:text-acento print:hidden",

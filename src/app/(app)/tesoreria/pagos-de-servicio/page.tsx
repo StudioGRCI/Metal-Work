@@ -3,11 +3,14 @@ import { FileText, Wrench } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
+import { ParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacion'
+import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
+import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
@@ -26,13 +29,18 @@ export const metadata = { title: 'Pagos de servicio' }
  * los paga contra la factura del proveedor, con el voucher; primero los que ya
  * volvieron conformes. Si la OS lleva detracción, esa parte se deposita en el
  * Banco de la Nación y al proveedor se le paga el resto (20261015141000).
+ * Al pagar se ven la factura y el contrato que adjuntó Logística a la OS y las
+ * cuentas del proveedor; si la factura llega a Tesorería, la adjunta aquí
+ * (migración 20261020210000).
  */
 export default async function PaginaPagosDeServicio() {
   const perfil = await exigirPermiso(['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'])
   // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const paga = puede(perfil, 'tesoreria.pagar_servicios') && puede(perfil, 'tesoreria.caja')
+  const adjunta = puede(perfil, 'tesoreria.pagar_servicios')
+  const verCuentas = puede(perfil, 'proveedores.ver_cuentas')
   const [servicios, cuentasCaja] = await Promise.all([
-    serviciosPorPagar(puede(perfil, 'proveedores.ver_cuentas')),
+    serviciosPorPagar(verCuentas),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
   ])
@@ -70,7 +78,7 @@ export default async function PaginaPagosDeServicio() {
               </p>
             </div>
           ) : (
-            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />)
+            porPagar.map((s) => <Servicio key={s.id} servicio={s} paga={paga} adjunta={adjunta} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -79,7 +87,7 @@ export default async function PaginaPagosDeServicio() {
         <SeccionDesplegable titulo={`Pagados (${pagados.length})`} className="mt-5">
           <div className="space-y-3">
             {pagados.map((s) => (
-              <Servicio key={s.id} servicio={s} paga={paga} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
+              <Servicio key={s.id} servicio={s} paga={paga} adjunta={adjunta} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajas} />
             ))}
           </div>
         </SeccionDesplegable>
@@ -93,12 +101,16 @@ const saldoDe = (s: ServicioPorPagar) => Math.max(Number(s.monto ?? 0) - Number(
 function Servicio({
   servicio: s,
   paga,
+  adjunta,
+  verCuentas,
   hoy,
   cuentasCaja,
   cajas,
 }: {
   servicio: ServicioPorPagar
   paga: boolean
+  adjunta: boolean
+  verCuentas: boolean
   hoy: string
   cuentasCaja: CuentaParaPagar[]
   cajas: Map<string, CajaDelPago> | undefined
@@ -107,6 +119,10 @@ function Servicio({
   const saldo = saldoDe(s)
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
+  // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
+  const documentos = s.documentos.map((d) => ({ clave: d.id, etiqueta: etiquetaDocumentoServicio(d), url: d.url }))
+  const comprobante = s.documentos.some((d) => d.tipo === 'FACTURA' || d.tipo === 'BOLETA' || d.tipo === 'RECIBO')
+  const sinCuentas = verCuentas ? 'El proveedor no tiene cuentas activas en Proveedores: pídeselas a Logística.' : null
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -141,30 +157,32 @@ function Servicio({
         </div>
       </div>
 
-      {!s.cancelada && s.cuentas.length > 0 && (
-        <ul className="mt-2 space-y-0.5 rounded-[var(--radius-base)] bg-superficie-2 p-2 text-xs text-texto-suave">
-          {s.cuentas.map((c) => (
-            <li key={c.id}>
-              {c.banco} · <span className="tabular text-texto">{c.numero_cuenta}</span> · {c.moneda === 'USD' ? 'dólares' : 'soles'} · {c.titular}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
-      {paga && !s.cancelada && s.id && (
-        <div className="mt-2">
-          <PagarServicio
-            ordenServicioId={s.id}
-            numero={s.numero ?? 'orden de servicio'}
-            proveedor={s.proveedor ?? 'Proveedor'}
-            hoy={hoy}
-            saldo={saldo}
-            codigoMoneda={m}
-            cuentas={cuentasCaja}
-          />
-        </div>
-      )}
+      <div className="mt-2 space-y-2">
+        <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
+        {!s.cancelada && !comprobante && (
+          <p className="text-xs text-texto-suave">
+            Falta la factura o el recibo del proveedor: la adjunta Logística en la OS{adjunta ? ', o tú aquí' : ''}.
+          </p>
+        )}
+        {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
+        {s.id && !s.cancelada && (paga || adjunta) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {paga && (
+              <PagarServicio
+                ordenServicioId={s.id}
+                numero={s.numero ?? 'orden de servicio'}
+                proveedor={s.proveedor ?? 'Proveedor'}
+                hoy={hoy}
+                saldo={saldo}
+                codigoMoneda={m}
+                cuentas={cuentasCaja}
+                paraPagar={<ParaPagar documentos={documentos} cuentas={s.cuentas} monedaDocumento={m} sinCuentas={sinCuentas} />}
+              />
+            )}
+            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
+          </div>
+        )}
+      </div>
       {s.pagos.length > 0 && (
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {s.pagos.map((p) => (

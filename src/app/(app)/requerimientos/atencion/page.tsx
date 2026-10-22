@@ -1,5 +1,4 @@
-import { ShoppingCart } from 'lucide-react'
-import Link from 'next/link'
+import { ArrowUpFromLine, ShoppingCart } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
@@ -10,14 +9,17 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
+import { insumosPorSacarDelKardex, type InsumoPorSacar } from '@/lib/datos/kardex'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ESTADO_REQUERIMIENTO, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
+import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from '../avance'
-import { PasoRequerimiento, RevisarStock } from './controles'
+import { ConAvisos } from './avisos'
+import { EntregarConFaltante, PasoRequerimiento, RevisarStock, type StockDelSistema } from './controles'
 import { PorComprar, type GrupoPorComprar } from './por-comprar'
 
 export const metadata = { title: 'Atención de requerimiento' }
@@ -70,8 +72,23 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // Almacén asocia o da de alta el material nuevo al revisar el stock: el catálogo
   // solo se carga si hay alguno por revisar.
   const hayNuevos = recibe && requerimientos.some((r) => r.estado === 'POR_ATENDER' && r.lineas.some((l) => l.material_nuevo && !l.material_id))
-  const catalogo: MaterialParaRequerimiento[] = hayNuevos ? await catalogoParaRequerimiento() : []
-  const correcciones = await correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id))
+  // Al revisar el stock, Almacén ve al lado de cada insumo lo que dice el
+  // sistema: cuánto está libre y cuánto ya es de otros códigos internos (DKS,
+  // 2026-10-20). Solo de los materiales de los RQ que esperan esa revisión; si
+  // hay un material nuevo por asociar, de todos, para ver el del que elija.
+  const porRevisar = recibe
+    ? [...new Set(requerimientos.flatMap((r) => (r.estado === 'POR_ATENDER' ? r.lineas.flatMap((l) => (l.material_id ? [l.material_id] : [])) : [])))]
+    : []
+  // «Entregado» pide antes la salida del kardex de cada insumo: a quien despacha
+  // se le dice cuántos faltan en cada RQ listo.
+  const listos = despacha ? requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').map((r) => r.id) : []
+  const [catalogo, correcciones, stock, porSacar] = await Promise.all([
+    hayNuevos ? catalogoParaRequerimiento() : Promise.resolve<MaterialParaRequerimiento[]>([]),
+    correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id)),
+    stockDelSistema(hayNuevos ? null : porRevisar),
+    insumosPorSacarDelKardex(listos),
+  ])
+  const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
   const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe) : []
@@ -107,44 +124,89 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       {vista === 'comprar' && paraComprar ? (
         <PorComprar grupos={grupos} preseleccion={preseleccion} {...paraComprar} />
       ) : (
-        <Tarjeta className="overflow-hidden">
-          <Tabla>
-            <TablaCabecera>
-              <tr>
-                <TH>Requerimiento</TH>
-                <TH>Insumos</TH>
-                <TH>En qué va</TH>
-                <TH className="text-right">
-                  <span className="sr-only">Acciones</span>
-                </TH>
-              </tr>
-            </TablaCabecera>
-            <tbody>
-              {requerimientos.length === 0 ? (
-                <SinDatos
-                  titulo={vista === 'abiertos' ? 'Nada por atender' : 'Todavía no hay requerimientos'}
-                  descripcion="Cuando se registre un requerimiento, aparece aquí y te llega un aviso."
-                />
-              ) : (
-                requerimientos.map((r) => (
-                  <Fila
-                    key={r.id}
-                    rq={r}
-                    recibe={recibe}
-                    despacha={despacha}
-                    compra={compraDe[tipoDeRequerimiento(r)]}
-                    paraComprar={paraComprar}
-                    catalogo={catalogo}
-                    correcciones={correcciones.get(r.id)}
+        <ConAvisos>
+          <Tarjeta className="overflow-hidden">
+            {/* En el teléfono cada RQ va apilado, una celda debajo de otra: la
+                tabla medía 681 px en una tarjeta de 356 y las acciones (revisar,
+                la salida del kardex, «Entregado») quedaban fuera de la pantalla
+                sin que nada lo dijera. */}
+            <Tabla>
+              <TablaCabecera className="hidden sm:table-header-group">
+                <tr>
+                  <TH>Requerimiento</TH>
+                  <TH>Insumos</TH>
+                  <TH>En qué va</TH>
+                  <TH className="text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TH>
+                </tr>
+              </TablaCabecera>
+              <tbody>
+                {requerimientos.length === 0 ? (
+                  <SinDatos
+                    titulo={vista === 'abiertos' ? 'Nada por atender' : 'Todavía no hay requerimientos'}
+                    descripcion="Cuando se registre un requerimiento, aparece aquí y te llega un aviso."
                   />
-                ))
-              )}
-            </tbody>
-          </Tabla>
-        </Tarjeta>
+                ) : (
+                  requerimientos.map((r) => (
+                    <Fila
+                      key={r.id}
+                      rq={r}
+                      recibe={recibe}
+                      despacha={despacha}
+                      compra={compraDe[tipoDeRequerimiento(r)]}
+                      paraComprar={paraComprar}
+                      catalogo={catalogo}
+                      stock={stock}
+                      stockDelCatalogo={stockDelCatalogo}
+                      porSacar={porSacar === null ? null : porSacar[r.id] ?? []}
+                      correcciones={correcciones.get(r.id)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </Tabla>
+          </Tarjeta>
+        </ConAvisos>
       )}
     </>
   )
+}
+
+/**
+ * El stock que dice el sistema de los materiales por revisar (`null`: de todos).
+ * Si no se pudo leer, la revisión sigue —Almacén cuenta lo que tiene— y la
+ * ventana lo dice; la causa queda en el registro del servidor.
+ */
+async function stockDelSistema(materiales: string[] | null): Promise<Map<string, MaterialEnStock> | 'no_se_pudo'> {
+  if (materiales?.length === 0) return new Map()
+  try {
+    return new Map((await stockEnAlmacen(materiales ?? undefined)).map((m) => [m.material_id, m]))
+  } catch (error) {
+    console.error('Revisar stock: no se pudo leer el stock de Almacén.', error)
+    return 'no_se_pudo'
+  }
+}
+
+function sistemaDe(m: MaterialEnStock): StockDelSistema {
+  return {
+    existencia: m.existencia,
+    libre: m.libre,
+    reservado_ot: m.reservado_ot,
+    unidad: m.unidad,
+    codigos: m.por_codigo,
+  }
+}
+
+/** Lo que dice el sistema de un insumo: nada si es un material nuevo, cero si su material no tiene kardex. */
+function sistemaDelInsumo(
+  l: RequerimientoListado['lineas'][number],
+  stock: Map<string, MaterialEnStock> | 'no_se_pudo',
+): StockDelSistema | 'no_se_pudo' | null {
+  if (!l.material_id) return null
+  if (stock === 'no_se_pudo') return 'no_se_pudo'
+  const m = stock.get(l.material_id)
+  return m ? sistemaDe(m) : { existencia: 0, libre: 0, reservado_ot: 0, unidad: l.unidad, codigos: [] }
 }
 
 /** Lo que falta comprar de un insumo: todo si Almacén no lo revisó, o lo que no tenía. */
@@ -195,6 +257,9 @@ function Fila({
   compra,
   paraComprar,
   catalogo,
+  stock,
+  stockDelCatalogo,
+  porSacar,
   correcciones,
 }: {
   rq: RequerimientoListado
@@ -204,9 +269,15 @@ function Fila({
   paraComprar: ParaComprar | null
   /** El catálogo de Almacén para asociar los materiales nuevos al revisar el stock. */
   catalogo: MaterialParaRequerimiento[]
+  /** Lo que dice el sistema de los materiales por revisar. */
+  stock: Map<string, MaterialEnStock> | 'no_se_pudo'
+  /** El de cada material del catálogo con kardex, para el material nuevo que Almacén asocie; vacío si no se pudo leer. */
+  stockDelCatalogo: Record<string, StockDelSistema> | null
+  /** Insumos de este RQ que falta sacar del kardex; `null` si no se pudo leer. */
+  porSacar: InsumoPorSacar[] | null
   correcciones: CorreccionVista[] | undefined
 }) {
-  const estado = ESTADO_REQUERIMIENTO[rq.estado]
+  const estado = estadoDelRequerimiento(rq)
   const administracion = rq.tipo === 'ADMINISTRACION'
   const quienCompra = administracion ? 'la administradora' : 'Logística'
   // Quien compra genera la OC mientras el RQ está por comprar o en compra y
@@ -221,12 +292,17 @@ function Fila({
     rq.nota_logistica ? `${administracion ? 'Administración' : 'Logística'}: ${rq.nota_logistica}` : null,
     rq.listo_en_almacen_en ? `Listo en almacén ${fechaHora(rq.listo_en_almacen_en)}` : null,
     rq.entregado_en ? `Entregado ${fechaHora(rq.entregado_en)}${rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}` : null,
+    // Lo que no salió del kardex y su motivo se leen como en Requerimientos: la
+    // etiqueta resaltada, lo que no salió en tono de aviso.
+    rq.faltante_al_entregar ? { etiqueta: 'No salió del kardex:', texto: rq.faltante_al_entregar, clase: 'text-aviso', faltante: true } : null,
+    rq.motivo_del_faltante ? { etiqueta: 'Motivo:', texto: rq.motivo_del_faltante, clase: 'text-texto', faltante: false } : null,
     rq.motivo_anulacion ? `Anulado: ${rq.motivo_anulacion}` : null,
-  ].filter((p): p is string => Boolean(p))
+  ].filter((p): p is string | { etiqueta: string; texto: string; clase: string; faltante: boolean } => Boolean(p))
 
   return (
-    <TR>
-      <TD className="align-top">
+    // El ancla de la fila: la salida del kardex vuelve aquí para marcarlo entregado.
+    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row">
+      <TD className="block pt-3 pb-1 align-top sm:table-cell sm:py-2">
         <p className="tabular font-semibold text-texto">
           {rq.numero}
           {administracion && (
@@ -241,7 +317,7 @@ function Fila({
         <p className="mt-1 max-w-sm text-xs text-texto-suave">{rq.justificacion}</p>
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
-      <TD className="align-top">
+      <TD className="block py-1 align-top sm:table-cell sm:py-2">
         <ul className="space-y-1 text-xs">
           {rq.lineas.map((l) => (
             <li key={l.item}>
@@ -253,26 +329,42 @@ function Fila({
                 <MaterialDelInsumo linea={l} />
                 {l.categoria}
                 <CompraDelInsumo linea={l} estadoRq={rq.estado} />
+                {l.sin_salida !== null && (
+                  <>
+                    {' · '}
+                    <span className="font-medium text-aviso">
+                      No salió del kardex: {cantidad(l.sin_salida)} {l.unidad}
+                    </span>
+                  </>
+                )}
               </span>
             </li>
           ))}
         </ul>
       </TD>
-      <TD className="align-top">
+      <TD className="block pt-1 pb-3 align-top sm:table-cell sm:py-2">
         {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
         <AvanceDelRequerimiento rq={rq} />
         <ul className="mt-1 space-y-0.5 text-[11px] text-texto-suave">
-          {pasos.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
+          {pasos.map((p) =>
+            typeof p === 'string' ? (
+              <li key={p}>{p}</li>
+            ) : (
+              <li key={p.etiqueta} className={p.faltante ? 'text-texto' : undefined} data-faltante={p.faltante || undefined}>
+                <span className={`font-medium ${p.clase}`}>{p.etiqueta}</span> {p.texto}
+              </li>
+            ),
+          )}
         </ul>
       </TD>
-      <TD className="text-right align-top">
-        <div className="flex flex-col items-end gap-1.5">
+      {/* Sin acciones, la celda no deja un hueco en el teléfono. */}
+      <TD className="block p-0 align-top sm:table-cell sm:px-3 sm:py-2 sm:text-right">
+        <div className="flex flex-col items-start gap-2 px-3 pb-3 empty:hidden sm:items-end sm:p-0">
           {recibe && rq.estado === 'POR_ATENDER' && (
             <RevisarStock
               id={rq.id}
               numero={rq.numero}
+              codigo={rq.codigo_interno}
               compra={quienCompra}
               insumos={rq.lineas.map((l) => ({
                 item: l.item,
@@ -282,8 +374,10 @@ function Fila({
                 nuevo: l.material_nuevo && !l.material_id,
                 codigo: l.material_codigo,
                 unidad_pendiente: l.material_unidad_pendiente,
+                sistema: sistemaDelInsumo(l, stock),
               }))}
               materiales={rq.lineas.some((l) => l.material_nuevo && !l.material_id) ? catalogo : []}
+              stockDelCatalogo={rq.lineas.some((l) => l.material_nuevo && !l.material_id) ? stockDelCatalogo : {}}
             />
           )}
           {generaOc && (
@@ -296,14 +390,30 @@ function Fila({
           {recibe && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && (
             <PasoRequerimiento id={rq.id} numero={rq.numero} paso="listo" />
           )}
-          {despacha && rq.estado === 'LISTO_EN_ALMACEN' && (
+          {despacha && rq.estado === 'LISTO_EN_ALMACEN' && (porSacar?.length === 0 ? (
+            <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />
+          ) : (
             <>
-              <Link href={`/almacen/kardex?rq=${rq.id}`} className="text-xs text-acento hover:underline">
+              {/* Si no se pudo leer lo que falta, «Entregado» va al lado y el
+                  primario es él: dos primarios juntos no dicen cuál va primero. */}
+              <EnlaceBoton href={`/almacen/kardex?rq=${rq.id}`} tamano="sm" variante={porSacar === null ? 'secundario' : 'primario'}>
+                <ArrowUpFromLine aria-hidden className="size-4" />
                 Registrar la salida en el kardex
-              </Link>
-              <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />
+              </EnlaceBoton>
+              {porSacar === null ? (
+                <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />
+              ) : (
+                <p className="text-xs text-texto-suave" data-por-sacar={porSacar.length}>
+                  {porSacar.length === 1 ? 'Falta la salida de 1 insumo' : `Falta la salida de ${porSacar.length} insumos`}; después se
+                  marca entregado. Si ya no va a salir, se entrega con faltante.
+                </p>
+              )}
+              {/* Para lo que ya no va a salir: sin esto el RQ quedaba listo para
+                  siempre. También cuando no se pudo leer lo que falta, porque la
+                  base igual rechaza «Entregado» y pide entregarlo con faltante. */}
+              <EntregarConFaltante id={rq.id} numero={rq.numero} faltan={porSacar} />
             </>
-          )}
+          ))}
         </div>
       </TD>
     </TR>

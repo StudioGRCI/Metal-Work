@@ -426,3 +426,14 @@ en un check con `set local role authenticated`.
   más para esconder un bloque de otra área, esa es la señal de que falta una
   pantalla. Lo que no se separa se vuelve a colar, y quien lo descubre es el
   cliente mirando por encima del hombro de alguien.
+
+- **Las cantidades se suman y restan redondeadas a sus tres decimales.** La base
+  rechaza una cantidad con más, y en el navegador 5.3 − 2.1 da
+  3.1999999999999997. La salida del kardex lo proponía como cantidad y como
+  `max` (2026-10-21): la base la rechazaba con «Indica material, cantidad…», que
+  no era el motivo, no dejaba escribir 3.2, y con 0.1 + 0.2 separados de 0.3 la
+  ficha avisaba «Se separó 0 M más de lo que hay». Lo que se puede lo cuenta la
+  capa de datos (`stock-almacen.ts` da `disponible` y `de_mas`), y lo que la
+  pantalla tenga que componer pasa por `redondearCantidad`
+  (`src/lib/dominio/almacen.ts`). Las pruebas con unidades enteras no lo ven: el
+  `probar-*.mjs` de una cantidad lleva un material en metros.

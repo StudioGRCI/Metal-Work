@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { materialesDelKardex, materialesParaPlanilla, type MaterialParaPlanilla } from '@/lib/datos/kardex'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { DIAS_DEL_CONTEO, leerHojaConteo, motivoConteoInicial, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
 import { leerHoja, normalizarNombre, similitud, type Celda, type FilaLeida } from '@/lib/dominio/planilla-almacen'
 import { cantidad, fechaHora, hoyLima, sumarDias } from '@/lib/format'
@@ -35,13 +36,16 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor : ''
 }
 
+/** Con un RQ de PLANTA hacia una unidad, cuánto se le descontó a lo que entró para ella, ya dicho. */
+export type SalidaRegistrada = { deLaUnidad: string }
+
 /**
  * Salida de almacén sin solicitud de OT: lo que el taller retira para una
  * unidad. La base exige el destino —vehículo registrado o código de la unidad—,
  * la foto y que haya saldo libre; aquí solo se filtra lo que ni siquiera tiene
  * forma de salida antes de tocarla.
  */
-export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<SalidaRegistrada>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Solo Almacén registra salidas de material.' }
 
@@ -52,7 +56,8 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
     cantidad: z.coerce.number().positive().multipleOf(0.001),
     destino: z.enum(['UNIDAD', 'CODIGO']),
     unidad_id: z.guid().optional(),
-    codigo_unidad: z.string().trim().min(3).max(60).optional(),
+    // De 2 a 60, como el código interno de un RQ y como la base (migración 20261020196000).
+    codigo_unidad: z.string().trim().min(2).max(60).optional(),
     motivo: z.string().trim().min(3).max(200),
     recibido_por_nombre: z.string().trim().min(3).max(160),
     foto_ruta: z.string().min(40).max(200),
@@ -73,7 +78,7 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
   // Si la salida atiende un requerimiento, el destino lo pone el propio RQ y aquí puede venir vacío.
   const porRq = Boolean(v.data.requerimiento_linea_id)
   if (!porRq && v.data.destino === 'UNIDAD' && !v.data.unidad_id) return { ok: false, error: 'Elige el vehículo que recibe el material.' }
-  if (!porRq && v.data.destino === 'CODIGO' && !v.data.codigo_unidad) return { ok: false, error: 'Escribe el código de la unidad (de 3 a 60 caracteres).' }
+  if (!porRq && v.data.destino === 'CODIGO' && !v.data.codigo_unidad) return { ok: false, error: 'Elige el código de la unidad (de 2 a 60 caracteres).' }
 
   const supabase = await createClient()
   const foto = await comprobarFoto(supabase, v.data.foto_ruta)
@@ -95,7 +100,34 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
 
   revalidatePath('/almacen/kardex')
   revalidatePath('/requerimientos')
-  return { ok: true, mensaje: porRq ? 'Salida registrada y descontada del requerimiento.' : 'Salida registrada en el kardex con su unidad.' }
+  // PLANTA o un código sin unidad registrada no son «su unidad»: se dice el
+  // código. Se lee el que puso la base, que con la placa de una unidad
+  // registrada es el código de esa unidad y no lo escrito; y, con un RQ de
+  // PLANTA hacia una unidad, cuánto se le descontó a lo que entró para ella.
+  // La salida ya entró: si la lectura falla, el mensaje no dice el código.
+  const { data: salida, error: alLeer } = await supabase.from('movimientos_materiales')
+    .select('codigo_interno, de_la_unidad, material:materiales(unidad:unidades_medida(codigo))').eq('id', data).maybeSingle()
+  if (alLeer) console.error('registrarSalidaAlmacen: no se pudo leer la salida registrada', alLeer)
+  if (porRq) {
+    const deLaUnidad = Number(salida?.de_la_unidad ?? 0)
+    const medida = salida?.material?.unidad?.codigo
+    // La ventana lo repite al seguir con el ítem siguiente del RQ, donde no se ve este mensaje.
+    const frase = deLaUnidad > 0 && salida?.codigo_interno
+      ? `${cantidad(deLaUnidad)}${medida ? ` ${medida}` : ''} ${deLaUnidad === 1 ? 'salió' : 'salieron'} de lo que entró para ${salida.codigo_interno}`
+      : null
+    return {
+      ok: true,
+      mensaje: frase ? `Salida registrada y descontada del requerimiento: ${frase}.` : 'Salida registrada y descontada del requerimiento.',
+      datos: frase ? { deLaUnidad: frase } : undefined,
+    }
+  }
+  let destinoDicho = 'con su unidad'
+  if (v.data.codigo_unidad) {
+    const codigo = salida ? salida.codigo_interno : alLeer ? null : normalizarCodigo(v.data.codigo_unidad)
+    if (codigo) destinoDicho = `para ${codigo}`
+    else if (alLeer) destinoDicho = ''
+  }
+  return { ok: true, mensaje: `Salida registrada en el kardex${destinoDicho ? ` ${destinoDicho}` : ''}.` }
 }
 
 /**

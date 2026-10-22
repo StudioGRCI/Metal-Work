@@ -220,6 +220,22 @@ haber hecho nada, igual que la pantalla que dice «listo» y miente.
   cuatro filas de demostración todo parece rápido.
 - Los listados paginan en la base, no en el servidor: traer todo para mostrar
   veinte filas funciona hasta el día en que la empresa lleva tres años de OTs.
+- **Supabase no compila con JIT y el Postgres local sí, si nadie lo apaga.**
+  Supabase trae `jit = off` desde su configuración; el Postgres 16 local (el de
+  la sesión en la nube, puerto 5433) lo trae prendido. Una función `returns
+  table` sin `rows` le hace creer al planificador que da mil filas por llamada,
+  el costo pasa el umbral y la consulta se compila en cada lectura:
+  `trazabilidad_de_compras()`, la lista de Adquisiciones, tarda en `mw_demo`
+  como Tesorería 4,4 s con el JIT, de los que 4,2 s son la compilación, y 60 ms
+  sin él (2026-10-22, 25 OC). Lo dispara `pago_que_cancela_la_compra`, que da
+  siempre una fila y sigue con `rows 1000`, y por ella también puede compilar
+  Cuentas por pagar (`compras_con_boleta_por_pagar()`: se midieron 2,4 a 3,1 s
+  contra unos 50 ms). En el PR #130 ya había pasado con `comprobante_en_camino`,
+  que por eso lleva `rows 1`. Ahora `preparar.sh` y `db-test.sh` crean su base
+  con `jit = off`, y el servidor se arranca con `-c jit=off` (skill `esquema`).
+  Una base que se arma a mano para medir en un servidor que no lo trae apagado
+  lleva `alter database … set jit = off`, o mide lo que producción no hace. Y la
+  función que da una fila o ninguna lleva `rows 1`.
 
 ## Escribir sobre datos reales
 

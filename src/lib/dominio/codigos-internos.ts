@@ -13,6 +13,26 @@ export function normalizarCodigo(codigo: string): string {
 }
 
 /**
+ * La placa solo por sus letras y números, como la compara la base al vincular
+ * la salida a una unidad (registrar_salida_material): «W22MQ0» y «W22 MQ0» son
+ * la W22-MQ0.
+ */
+export function llavePlaca(placa: string): string {
+  return placa.toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+/**
+ * Los vehículos de una placa ya normalizada: los que la tienen tal cual y, si
+ * ninguno, los que tienen sus mismas letras y números, como los vincula la base
+ * a la salida. La usan la salida del kardex y su página (para el aviso del RQ
+ * cuyo código es una placa): eran dos copias de la misma búsqueda.
+ */
+export function vehiculosDeLaPlaca<T extends { placa: string | null }>(unidades: readonly T[], placa: string): T[] {
+  const talCual = unidades.filter((u) => u.placa !== null && normalizarCodigo(u.placa) === placa)
+  return talCual.length > 0 || llavePlaca(placa) === '' ? talCual : unidades.filter((u) => llavePlaca(u.placa ?? '') === llavePlaca(placa))
+}
+
+/**
  * La llave para ver si dos códigos son el mismo mal escrito: solo letras y
  * números, y la O como cero. En el sistema conviven `PLA_SR_O4_1_26/28` (con O)
  * y `PLA_SR_04_1_26/27` (con cero), y `ABR_CM_N1_1_26-12` junto a
