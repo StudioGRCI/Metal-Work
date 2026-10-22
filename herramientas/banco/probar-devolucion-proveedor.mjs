@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la devolución al proveedor (migración 20261022180000), con la
+ * Clic real sobre la devolución al proveedor (migración 20261022185000), con la
  * cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Un RQ de Maestranza pide 5 de un material sin stock; Logística los compra,
@@ -77,11 +77,11 @@ const [{ id: proveedor }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. de prueba 426, Trujillo', '999 000 426') returning id`,
   [await rucNuevo(), PROVEEDOR],
 )
-const MATERIAL = `Disco de corte banco ${SUFIJO}`
+const MATERIAL = `Platina banco ${SUFIJO}`
 const [{ id: material }] = await consulta(
   `insert into materiales (codigo, descripcion, categoria_id, unidad_medida_id)
    values ($1, $2, (select id from categorias_material where activo and almacen = 'CONSUMIBLES' and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
-           (select id from unidades_medida where codigo = 'UND')) returning id`,
+           (select id from unidades_medida where codigo = 'M')) returning id`,
   [`BAN426-${SUFIJO}`, MATERIAL],
 )
 const [{ rq, oc, ing }] = await consulta(`select gen_random_uuid() as rq, gen_random_uuid() as oc, gen_random_uuid() as ing`)
@@ -91,14 +91,14 @@ await consulta(`insert into unidades (placa, tipo_vehiculo, marca, codigo_intern
   [`B${SUFIJO.slice(0, 2)}-${SUFIJO.slice(2, 5)}`, codigoUnidad])
 await como('requerimientos')
 await consulta(`select public.emitir_requerimiento($1, 'OPERACION', $2, $3, 'Discos para el banco de la devolución', null, $4::jsonb)`,
-  [rq, areaMtz, codigoUnidad, JSON.stringify([{ material_id: material, cantidad: 5 }])])
+  [rq, areaMtz, codigoUnidad, JSON.stringify([{ material_id: material, cantidad: 8.5 }])])
 await como('almacen')
 await consulta(`select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]'::jsonb, null)`, [rq])
 const [{ id: linea, numero: rqNumero }] = await consulta(
   `select l.id, r.numero from requerimiento_lineas l join requerimientos r on r.id = l.requerimiento_id where r.id = $1`, [rq])
 await como('logistica')
 await consulta(`select public.emitir_compra_de_requerimientos($1, $2::jsonb, $3, $4, null, 'CONTADO', 0, 'PEN', true)`,
-  [oc, JSON.stringify([{ material_id: material, cantidad: 5, precio: 9, insumos: [linea] }]), proveedor, `COT-DEV-${SUFIJO}`])
+  [oc, JSON.stringify([{ material_id: material, cantidad: 8.5, precio: 9, insumos: [linea] }]), proveedor, `COT-DEV-${SUFIJO}`])
 await como('gerencia')
 await consulta(`select public.aprobar_compra($1) from ordenes_compra_materiales where id = $1 and aprobacion = 'POR_APROBAR'`, [oc])
 await como('logistica')
@@ -110,10 +110,10 @@ await consulta(`select public.marcar_compra_recogida($1)`, [oc])
 await consulta(`select public.marcar_compra_dejada_almacen($1)`, [oc])
 await como('almacen')
 const [{ id: pendiente }] = await consulta(`select id from ingresos_pendientes_almacen where orden_compra_id = $1`, [oc])
-await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [oc, JSON.stringify([{ id: pendiente, movimiento_id: ing, cantidad: 5 }])])
+await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [oc, JSON.stringify([{ id: pendiente, movimiento_id: ing, cantidad: 8.5 }])])
 const [{ numero: ocNumero, detalle }] = await consulta(
   `select c.numero, d.id as detalle from ordenes_compra_materiales c join orden_compra_material_detalles d on d.orden_compra_id = c.id where c.id = $1`, [oc])
-console.log(`  siembra: ${rqNumero} pide 5 de ${MATERIAL}; ${ocNumero} los compra y Almacén los valida`)
+console.log(`  siembra: ${rqNumero} pide 8.5 M de ${MATERIAL}; ${ocNumero} los compra y Almacén los valida`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
@@ -151,45 +151,63 @@ const pendienteDeLaOc = async () =>
   comprobar((await opcion.count()) === 1, `el ingreso de ${ocNumero} sale en la lista para devolver`)
   await dialogo.locator('#dev-ingreso').selectOption(ing)
   const detalleTexto = limpio(await dialogo.getByText(/se pueden devolver/).textContent())
-  comprobar(detalleTexto.includes(PROVEEDOR) && detalleTexto.includes('se pueden devolver 5'), `elegido, dice el proveedor y cuánto se puede devolver («${detalleTexto}»)`)
-  await dialogo.locator('#dev-cantidad').fill('6')
+  comprobar(detalleTexto.includes(PROVEEDOR) && detalleTexto.includes('se pueden devolver 8.5 M'), `elegido, dice el proveedor y cuánto se puede devolver («${detalleTexto}»)`)
+  await dialogo.locator('#dev-cantidad').fill('9')
   await dialogo.locator('#dev-documento').fill(`GR-DEV-${SUFIJO}`)
-  await dialogo.locator('#dev-motivo').fill('Dos discos llegaron partidos (banco)')
+  await dialogo.locator('#dev-motivo').fill('Un tramo llegó doblado (banco)')
   await dialogo.locator('#dev-repone').selectOption('si')
   await dialogo.getByRole('button', { name: 'Devolver' }).click()
   await pagina.waitForTimeout(800)
   comprobar((await consulta(`select count(*)::int as n from movimientos_materiales where devuelve_ingreso = $1`, [ing]))[0].n === 0,
     'con más de lo que se puede, el navegador no lo manda')
-  await dialogo.locator('#dev-cantidad').fill('2')
+  await dialogo.locator('#dev-cantidad').fill('5.3')
   await dialogo.getByRole('button', { name: 'Devolver' }).click()
   await pagina.getByText('Devuelto al proveedor: la OC vuelve a esperar').waitFor({ timeout: 30000 }).catch(() => {})
   const [dev] = await consulta(`select id, cantidad::numeric as cantidad, se_repone, documento_referencia from movimientos_materiales where devuelve_ingreso = $1`, [ing])
-  comprobar(dev && Number(dev.cantidad) === 2 && dev.se_repone === true, 'la base anota la devolución de 2, con reposición')
-  comprobar((await pendienteDeLaOc()) === 2, 'la OC vuelve a esperar 2')
+  comprobar(dev && Number(dev.cantidad) === 5.3 && dev.se_repone === true, 'la base anota la devolución de 5.3 M, con reposición')
+  comprobar((await pendienteDeLaOc()) === 5.3, 'la OC vuelve a esperar 5.3')
   await pagina.screenshot({ path: join(CAPTURAS, '1-devuelto.png'), fullPage: true })
 
   // ----------------------------------------------------- 3. Llega 1 de la reposición
   const tarjeta = pagina.locator('#por-reponer')
   const fila = tarjeta.locator('li', { hasText: MATERIAL })
+  // La lista se repinta con el refresco que sigue al aviso: se espera la fila antes de leerla.
+  await fila.filter({ hasText: 'Faltan 5.3' }).waitFor({ timeout: 15000 }).catch(() => {})
   const filaAntes = (await fila.count()) === 1 ? limpio(await fila.textContent()) : ''
-  comprobar(filaAntes.includes('Faltan 2'), `«Esperan reposición» lo muestra: faltan 2 de ${ocNumero} («${filaAntes}»)`)
+  comprobar(filaAntes.includes('Faltan 5.3 M'), `«Esperan reposición» lo muestra: faltan 5.3 M de ${ocNumero} («${filaAntes}»)`)
   await fila.getByRole('button', { name: 'Llegó la reposición' }).click()
   const ventana = pagina.getByRole('dialog')
-  await ventana.locator('#rep-cantidad').fill('1')
+  await ventana.locator('#rep-cantidad').fill('2.1')
   await ventana.locator('#rep-documento').fill(`GR-REP-${SUFIJO}`)
   await ventana.getByRole('button', { name: 'Recibir' }).click()
   await pagina.getByText('La reposición entró al kardex.').waitFor({ timeout: 30000 }).catch(() => {})
-  comprobar((await pendienteDeLaOc()) === 1, 'entra 1 de la reposición: la OC espera 1')
+  comprobar((await pendienteDeLaOc()) === 3.2, 'entran 2.1 de la reposición: la OC espera 3.2')
   comprobar(limpio(await tarjeta.textContent()).includes('La reposición entró al kardex.'), 'el aviso queda a la vista en la tarjeta')
   // El aviso sale con la respuesta; la lista se repinta con el refresco que le sigue.
-  await tarjeta.locator('li', { hasText: MATERIAL }).filter({ hasText: 'Faltan 1' }).waitFor({ timeout: 15000 }).catch(() => {})
+  await tarjeta.locator('li', { hasText: MATERIAL }).filter({ hasText: 'Faltan 3.2' }).waitFor({ timeout: 15000 }).catch(() => {})
   const filaDespues = limpio(await tarjeta.locator('li', { hasText: MATERIAL }).textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(filaDespues.includes('Faltan 1') && filaDespues.includes('ya llegaron 1'), `la fila dice lo que falta («${filaDespues}»)`)
+  comprobar(filaDespues.includes('Faltan 3.2 M') && filaDespues.includes('ya llegaron 2.1'), `la fila dice lo que falta («${filaDespues}»)`)
+  // Lo que falta se propone redondeado: en el navegador 5.3 − 2.1 da 3.1999999999999997.
+  await tarjeta.locator('li', { hasText: MATERIAL }).getByRole('button', { name: 'Llegó la reposición' }).click()
+  const propuesta = await pagina.getByRole('dialog').locator('#rep-cantidad').inputValue()
+  comprobar(propuesta === '3.2', `«Llegó la reposición» propone lo que falta, 3.2 («${propuesta}»)`)
+  await pagina.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
   // El kardex lo muestra como egreso.
   await pagina.goto(`${BASE}/almacen/kardex?material=${material}`, { waitUntil: 'networkidle' })
   const egreso = pagina.locator('tbody tr', { hasText: 'Devuelto al proveedor' })
   comprobar((await egreso.count()) >= 1, 'el kardex del material muestra «Devuelto al proveedor»')
   await pagina.screenshot({ path: join(CAPTURAS, '2-kardex.png'), fullPage: true })
+  await contexto.close()
+}
+
+// Quien pidió el RQ ve que el proveedor lo repone, no que tiene que pedirlo otra vez.
+{
+  const { pagina, contexto } = await entrar(CUENTAS.requerimientos, { width: 390, height: 844 })
+  await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+  const tarjetaRq = pagina.locator(`[data-rq="${rqNumero}"]`)
+  const texto = limpio(await tarjetaRq.textContent().catch(() => ''))
+  comprobar(texto.includes('El proveedor lo repone') && !texto.includes('pide el resto en un RQ nuevo'),
+    `el RQ dice «El proveedor lo repone» y no pide otro RQ («${texto.slice(0, 160)}»)`)
   await contexto.close()
 }
 
@@ -200,19 +218,19 @@ const pendienteDeLaOc = async () =>
   const fila = pagina.locator('li', { hasText: MATERIAL })
   comprobar((await fila.count()) === 1, 'Logística ve la devolución que espera reposición en Órdenes de compra')
   comprobar((await fila.getByRole('button', { name: 'Llegó la reposición' }).count()) === 0, 'Logística no recibe: ese botón es de Almacén')
-  await fila.getByRole('button', { name: 'Ya no la repone' }).click()
+  await fila.getByRole('button', { name: 'No lo repone' }).click()
   const ventana = pagina.getByRole('dialog')
   await ventana.locator('#yano-motivo').fill('corto')
-  await ventana.getByRole('button', { name: 'Ya no se espera' }).click()
+  await ventana.getByRole('button', { name: 'No lo repone' }).click()
   await pagina.waitForTimeout(800)
   comprobar((await consulta(`select se_repone from movimientos_materiales where devuelve_ingreso = $1`, [ing]))[0].se_repone === true,
     'con un motivo corto no se manda')
   await ventana.locator('#yano-motivo').fill('El proveedor ya no tiene ese disco y emite nota de crédito')
-  await ventana.getByRole('button', { name: 'Ya no se espera' }).click()
+  await ventana.getByRole('button', { name: 'No lo repone' }).click()
   await pagina.getByText(/Ya no se espera: lo que falte vuelve/).waitFor({ timeout: 30000 }).catch(() => {})
   const lineas = await consulta(`select item, cantidad::numeric as cantidad, orden_compra_id, recompra_de from requerimiento_lineas where requerimiento_id = $1 order by item`, [rq])
-  comprobar(lineas.length === 2 && Number(lineas[0].cantidad) === 4 && Number(lineas[1].cantidad) === 1 && !lineas[1].orden_compra_id && lineas[1].recompra_de === linea,
-    `el RQ se parte: 4 que tiene y 1 nuevo, sin compra (${JSON.stringify(lineas.map((l) => [l.item, Number(l.cantidad), Boolean(l.orden_compra_id)]))})`)
+  comprobar(lineas.length === 2 && Number(lineas[0].cantidad) === 5.3 && Number(lineas[1].cantidad) === 3.2 && !lineas[1].orden_compra_id && lineas[1].recompra_de === linea,
+    `el RQ se parte: 5.3 que tiene y 3.2 nuevos, sin compra (${JSON.stringify(lineas.map((l) => [l.item, Number(l.cantidad), Boolean(l.orden_compra_id)]))})`)
   comprobar((await pendienteDeLaOc()) === 0, 'la OC ya no espera nada')
   const anchoPagina = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(anchoPagina <= 390, `la página no se sale del teléfono (${anchoPagina} px)`)

@@ -112,6 +112,53 @@ $$;
 revoke all on function public.cuenta_de_la_linea_de_compra(uuid) from public, anon;
 grant execute on function public.cuenta_de_la_linea_de_compra(uuid) to authenticated;
 
+-- Cuánto de lo que entró de una línea de OC le tocó a cada insumo que la espera.
+-- Lo que ya se le entregó a un insumo llegó de seguro: se le cuenta primero (sin
+-- lo que tenía en stock y sin lo que volvió del taller); lo demás que entró se
+-- reparte en el orden en que se pidió. Sin esto, devolver de una línea cuyo RQ
+-- más nuevo ya se entregó le quitaba lo devuelto a ese RQ, y el RQ abierto decía
+-- que le llegó todo con la mitad en el almacén (auditor de funcionamiento, 22/10).
+create or replace function public.llegado_de_la_linea_de_compra(p_detalle uuid, p_neto numeric)
+returns table (linea_id uuid, requerimiento_id uuid, falta numeric, entregado numeric, llegado numeric)
+language sql stable set search_path to 'public' as $$
+  with l as (
+    select l.id, l.requerimiento_id, r.creado_en, r.numero, l.item,
+           greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0)::numeric as falta,
+           least(greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0),
+                 greatest(coalesce((
+                   select sum(greatest(m.cantidad::numeric - coalesce((
+                            select sum(d.cantidad::numeric) from public.movimientos_materiales d
+                             where d.devolucion_de = m.id and d.tipo = 'INGRESO'), 0), 0))
+                     from public.movimientos_materiales m
+                    where m.requerimiento_linea_id = l.id and m.tipo = 'SALIDA'), 0) - coalesce(l.cantidad_en_stock, 0), 0))::numeric
+             as entregado
+      from public.requerimiento_lineas l
+      join public.requerimientos r on r.id = l.requerimiento_id
+     where l.orden_compra_detalle_id = p_detalle and r.estado <> 'ANULADO'
+  ), c as (
+    select l.*,
+           coalesce(sum(l.falta - l.entregado) over (order by l.creado_en, l.numero, l.item
+                                                     rows between unbounded preceding and 1 preceding), 0) as antes,
+           greatest(coalesce(p_neto, 0) - sum(l.entregado) over (), 0) as libre
+      from l
+  )
+  select c.id, c.requerimiento_id, c.falta, c.entregado,
+         c.entregado + least(c.falta - c.entregado, greatest(c.libre - c.antes, 0))
+    from c
+$$;
+revoke all on function public.llegado_de_la_linea_de_compra(uuid, numeric) from public, anon, authenticated;
+
+-- Lo que de una línea de OC sigue en el almacén: lo neto que entró menos lo que ya
+-- se entregó a sus insumos. Es el tope de lo que se devuelve de ella: el saldo del
+-- material entero dejaba devolver «de un ingreso» stock de otro origen cuando lo
+-- de la OC ya había salido al taller (auditor de funcionamiento, 22/10).
+create or replace function public.en_mano_de_la_linea_de_compra(p_detalle uuid)
+returns numeric language sql stable set search_path to 'public' as $$
+  select greatest(k.neto - coalesce((select sum(x.entregado) from public.llegado_de_la_linea_de_compra(p_detalle, k.neto) x), 0), 0)
+    from public.cuenta_de_la_linea_de_compra(p_detalle) k
+$$;
+revoke all on function public.en_mano_de_la_linea_de_compra(uuid) from public, anon, authenticated;
+
 create or replace view public.v_orden_compra_material_pendiente with (security_invoker = true) as
 select d.id, d.requerimiento_id, d.requerimiento_detalle_id, c.proveedor, c.referencia, c.fecha_estimada,
        d.cantidad as cantidad_comprada,
@@ -206,7 +253,8 @@ begin
     raise exception 'El conductor ya dejó esta compra en almacén: valídala en el kardex, en «Ingresos por validar».'
       using errcode = 'check_violation';
   end if;
-  select ocd.cantidad - k.sin_reponer - k.neto
+  -- Lo que espera reposición entra solo por `recibir_reposicion`, contra su devolución.
+  select ocd.cantidad - k.sin_reponer - k.por_reponer - k.neto
     into v_pendiente from public.orden_compra_material_detalles ocd
    cross join lateral public.cuenta_de_la_linea_de_compra(ocd.id) k
    where ocd.id = p_orden_compra_detalle_id;
@@ -290,7 +338,7 @@ begin
     end if;
     -- Una compra de requerimiento todavía puede recibirse a mano: lo que se
     -- valida no pasa de lo que de verdad falta recibir de la línea ahora.
-    select d.cantidad - k.sin_reponer - k.neto into v_falta
+    select d.cantidad - k.sin_reponer - k.por_reponer - k.neto into v_falta
       from public.orden_compra_material_detalles d
      cross join lateral public.cuenta_de_la_linea_de_compra(d.id) k
      where d.id = v_fila.orden_compra_detalle_id;
@@ -368,7 +416,7 @@ begin
     (orden_compra_id, orden_compra_detalle_id, material_id, requerimiento_detalle_id, orden_id,
      cantidad, precio_unitario, moneda, dejado_por, dejado_en)
   select p_compra, d.id, coalesce(d.material_id, om.material_id), d.requerimiento_detalle_id, r.orden_id,
-         d.cantidad - rec.sin_reponer - rec.neto, d.precio_unitario, v_compra.moneda,
+         d.cantidad - rec.sin_reponer - rec.por_reponer - rec.neto, d.precio_unitario, v_compra.moneda,
          public.usuario_actual(), now()
     from public.orden_compra_material_detalles d
     left join public.requerimientos_materiales r on r.id = d.requerimiento_id
@@ -376,7 +424,7 @@ begin
     left join public.ot_materiales om on om.id = rd.ot_material_id
     cross join lateral public.cuenta_de_la_linea_de_compra(d.id) rec
    where d.orden_compra_id = p_compra
-     and d.cantidad - rec.sin_reponer - rec.neto > 0
+     and d.cantidad - rec.sin_reponer - rec.por_reponer - rec.neto > 0
   on conflict (orden_compra_detalle_id) do nothing;
   get diagnostics v_lineas = row_count;
 
@@ -417,20 +465,6 @@ begin
       join public.requerimientos r on r.id = l.requerimiento_id
      where r.id = any(p_ids) and r.estado <> 'ANULADO'
   ),
-  -- Todos los insumos que comparten la línea de OC, también los de RQ que no se
-  -- pidieron aquí: lo que ingresó se reparte entre ellos en el orden en que se pidieron.
-  compartidas as (
-    select l.id,
-           greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0) as falta,
-           coalesce(sum(greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0)) over (
-             partition by l.orden_compra_detalle_id order by r.creado_en, r.numero, l.item
-             rows between unbounded preceding and 1 preceding), 0) as antes,
-           l.orden_compra_detalle_id as detalle
-      from public.requerimiento_lineas l
-      join public.requerimientos r on r.id = l.requerimiento_id
-     where l.orden_compra_detalle_id in (select p.detalle from pedidas p where p.detalle is not null)
-       and r.estado <> 'ANULADO'
-  ),
   ingresado as (
     select m.orden_compra_detalle_id as detalle,
            sum(case when m.tipo = 'INGRESO' then m.cantidad::numeric else -m.cantidad::numeric end) as cantidad
@@ -446,11 +480,12 @@ begin
                      where d.devolucion_de = m.id and d.tipo = 'INGRESO'), 0), 0))
              from public.movimientos_materiales m
             where m.requerimiento_linea_id = p.id and m.tipo = 'SALIDA'), 0)::numeric,
+         -- Lo que ingresó se reparte entre todos los insumos de la línea de OC, también
+         -- los de RQ que no se pidieron aquí: primero lo que ya se le entregó a cada uno.
          case when p.detalle is not null then
-           least(c.falta, greatest(coalesce(i.cantidad, 0) - c.antes, 0))::numeric
+           (select x.llegado from public.llegado_de_la_linea_de_compra(p.detalle, coalesce(i.cantidad, 0)) x where x.linea_id = p.id)
          end
     from pedidas p
-    left join compartidas c on c.id = p.id
     left join ingresado i on i.detalle = p.detalle
    order by p.requerimiento_id, p.item;
 end;
@@ -778,17 +813,12 @@ declare
   v_ya  uuid[] := '{}';
 begin
   for v_l in
-    select l.requerimiento_id,
-           greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0) as falta,
-           coalesce(sum(greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0)) over (
-             order by r.creado_en, r.numero, l.item rows between unbounded preceding and 1 preceding), 0) as antes
-      from public.requerimiento_lineas l
-      join public.requerimientos r on r.id = l.requerimiento_id
-     where l.orden_compra_detalle_id = p_detalle and r.estado <> 'ANULADO'
+    select a.requerimiento_id, a.llegado as antes, d.llegado as despues
+      from public.llegado_de_la_linea_de_compra(p_detalle, p_neto_antes) a
+      join public.llegado_de_la_linea_de_compra(p_detalle, p_neto_despues) d on d.linea_id = a.linea_id
   loop
     continue when v_l.requerimiento_id = any (v_ya);
-    continue when least(v_l.falta, greatest(p_neto_despues - v_l.antes, 0))
-               >= least(v_l.falta, greatest(p_neto_antes - v_l.antes, 0));
+    continue when v_l.despues >= v_l.antes;
     select * into v_rq from public.requerimientos where id = v_l.requerimiento_id for update;
     continue when v_rq.estado <> 'LISTO_EN_ALMACEN';
     update public.requerimientos
@@ -840,15 +870,17 @@ begin
     join public.requerimientos r on r.id = l.requerimiento_id
    where l.orden_compra_detalle_id = p_detalle and r.estado <> 'ANULADO';
 
+  -- Solo lo que todavía no se le entregó a cada insumo puede faltarle; primero a los
+  -- RQ abiertos, del último al primero, y al final a los ya entregados, que solo se avisan.
   for v_l in
-    select l.*, greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0) as falta
-      from public.requerimiento_lineas l
+    select l.*, x.falta - x.entregado as resto
+      from public.llegado_de_la_linea_de_compra(p_detalle, v_k.neto) x
+      join public.requerimiento_lineas l on l.id = x.linea_id
       join public.requerimientos r on r.id = l.requerimiento_id
-     where l.orden_compra_detalle_id = p_detalle and r.estado <> 'ANULADO'
-     order by r.creado_en desc, r.numero desc, l.item desc
+     order by r.estado = 'ENTREGADO', r.creado_en desc, r.numero desc, l.item desc
   loop
     exit when v_deficit <= 0;
-    v_x := least(v_l.falta, v_deficit);
+    v_x := least(v_l.resto, v_deficit);
     continue when v_x <= 0;
     v_deficit := v_deficit - v_x;
     select * into v_rq from public.requerimientos where id = v_l.requerimiento_id;
@@ -963,6 +995,12 @@ begin
     raise exception 'En el almacén hay % % de %: lo que ya salió al taller vuelve primero como devolución del taller.',
       public.cantidad_en_texto(greatest(v_saldo, 0)), coalesce(v_unidad, ''), v_mat.descripcion using errcode = 'check_violation';
   end if;
+  -- De la OC, no del material entero: lo que de ella se entregó a sus RQ ya no está aquí.
+  v_saldo := public.en_mano_de_la_linea_de_compra(v_d.id);
+  if p_cantidad > v_saldo then
+    raise exception 'De lo que llegó con la % quedan % % en el almacén: lo que ya se entregó a sus RQ vuelve primero como devolución del taller.',
+      v_compra, public.cantidad_en_texto(v_saldo), coalesce(v_unidad, '') using errcode = 'check_violation';
+  end if;
 
   select k.neto into v_neto from public.cuenta_de_la_linea_de_compra(v_d.id) k;
   insert into public.movimientos_materiales
@@ -985,7 +1023,7 @@ begin
   if not p_se_repone then
     perform public.avisar_a_permiso('adquisiciones.registrar', 'Espera la nota de crédito: ' || v_compra,
       v_texto || ' El proveedor no lo repone: registra su nota de crédito contra la factura.',
-      '/adquisiciones', 'ordenes_compra_materiales', v_c.id);
+      '/adquisiciones?vista=facturas#notas-credito', 'ordenes_compra_materiales', v_c.id);
   end if;
   return p_id;
 end;
@@ -1000,6 +1038,7 @@ declare
   v_dev     public.movimientos_materiales%rowtype;
   v_c       public.ordenes_compra_materiales%rowtype;
   v_repuesto numeric;
+  v_falta   numeric;
   v_unidad  text;
 begin
   perform public.exigir_permiso('almacen.recibir');
@@ -1032,10 +1071,20 @@ begin
     raise exception 'De esa devolución faltan reponer % %.', public.cantidad_en_texto(greatest(v_dev.cantidad - v_repuesto, 0)),
       coalesce(v_unidad, '') using errcode = 'check_violation';
   end if;
+  -- Tampoco pasa de lo que la línea de OC todavía espera: lo que entró por otro lado ya cuenta.
+  select d.cantidad - k.sin_reponer - k.neto into v_falta
+    from public.orden_compra_material_detalles d
+   cross join lateral public.cuenta_de_la_linea_de_compra(d.id) k
+   where d.id = v_dev.orden_compra_detalle_id;
+  if p_cantidad > coalesce(v_falta, 0) then
+    raise exception 'La compra ya recibió por otro lado lo que se devolvió: solo espera % %.', public.cantidad_en_texto(greatest(coalesce(v_falta, 0), 0)),
+      coalesce(v_unidad, '') using errcode = 'check_violation';
+  end if;
   insert into public.movimientos_materiales
-    (id, tipo, origen, orden_compra_detalle_id, material_id, cantidad, documento_referencia, registrado_por, repone_devolucion)
+    (id, tipo, origen, orden_compra_detalle_id, material_id, cantidad, documento_referencia, registrado_por, repone_devolucion,
+     precio_unitario, moneda)
   values (p_id, 'INGRESO', 'COMPRA', v_dev.orden_compra_detalle_id, v_dev.material_id, p_cantidad, btrim(p_documento),
-          public.usuario_actual(), p_devolucion);
+          public.usuario_actual(), p_devolucion, v_dev.precio_unitario, v_dev.moneda);
   return p_id;
 end;
 $$;
@@ -1054,7 +1103,10 @@ declare
   v_compra  text;
   v_texto   text;
 begin
+  -- Contabilidad también, sin pedirlo aparte: al registrar la nota de crédito de
+  -- esa devolución (`registrar_nota_credito`, migración 20261022190000).
   if public.usuario_actual() is not null
+     and current_setting('metalwork.nota_credito', true) is distinct from p_devolucion::text
      and not (public.es_admin() or public.tiene_permiso('almacen.recibir') or public.tiene_permiso('compras.crear')) then
     raise exception 'Lo dice Almacén o Logística.' using errcode = 'insufficient_privilege';
   end if;
@@ -1088,8 +1140,11 @@ begin
                     (select mt.descripcion from public.materiales mt where mt.id = v_dev.material_id), btrim(p_motivo));
   perform public.avisar_a_permiso('compras.crear', 'No repone lo devuelto: ' || v_compra,
     v_texto || ' Lo que haga falta vuelve a la lista para comprarlo en otra OC.', '/compras', 'ordenes_compra_materiales', v_c.id);
-  perform public.avisar_a_permiso('adquisiciones.registrar', 'Espera la nota de crédito: ' || v_compra,
-    v_texto || ' Registra su nota de crédito contra la factura.', '/adquisiciones', 'ordenes_compra_materiales', v_c.id);
+  if current_setting('metalwork.nota_credito', true) is distinct from p_devolucion::text then
+    perform public.avisar_a_permiso('adquisiciones.registrar', 'Espera la nota de crédito: ' || v_compra,
+      v_texto || ' Registra su nota de crédito contra la factura.', '/adquisiciones?vista=facturas#notas-credito',
+      'ordenes_compra_materiales', v_c.id);
+  end if;
   return p_devolucion;
 end;
 $$;
@@ -1110,20 +1165,25 @@ begin
   end if;
   return query
   select x.id, x.registrado_en, x.compra, x.proveedor, x.material_id, x.material, x.unidad, x.cantidad,
-         least(x.cantidad - x.devuelto, greatest(public.saldo_material_interno(x.material_id), 0)), x.documento_referencia
+         least(x.cantidad - x.devuelto, greatest(public.saldo_material_interno(x.material_id), 0),
+               public.en_mano_de_la_linea_de_compra(x.detalle)), x.documento_referencia
     from (select m.id, m.registrado_en, coalesce(c.numero, 'OC ' || c.referencia) as compra, c.proveedor, m.material_id,
                  mt.descripcion as material, um.codigo as unidad, m.cantidad::numeric as cantidad, m.documento_referencia,
-                 coalesce((select sum(d.cantidad::numeric) from public.movimientos_materiales d
-                            where d.devuelve_ingreso = m.id), 0) as devuelto
+                 dv.devuelto, m.orden_compra_detalle_id as detalle
             from public.movimientos_materiales m
             join public.orden_compra_material_detalles od on od.id = m.orden_compra_detalle_id
             join public.ordenes_compra_materiales c on c.id = od.orden_compra_id
             join public.materiales mt on mt.id = m.material_id
             left join public.unidades_medida um on um.id = mt.unidad_medida_id
+           cross join lateral (
+             select coalesce(sum(d.cantidad::numeric), 0) as devuelto
+               from public.movimientos_materiales d where d.devuelve_ingreso = m.id) dv
+           -- Primero lo que todavía se puede devolver, y de eso los 300 más recientes.
            where m.tipo = 'INGRESO' and m.origen = 'COMPRA' and m.requerimiento_detalle_id is null
+             and m.cantidad::numeric - dv.devuelto > 0 and public.saldo_material_interno(m.material_id) > 0
+             and public.en_mano_de_la_linea_de_compra(m.orden_compra_detalle_id) > 0
            order by m.registrado_en desc
            limit 300) x
-   where x.cantidad - x.devuelto > 0
    order by x.registrado_en desc;
 end;
 $$;
@@ -1161,3 +1221,97 @@ end;
 $$;
 revoke all on function public.devoluciones_por_reponer() from public, anon;
 grant execute on function public.devoluciones_por_reponer() to authenticated;
+
+-- 10. El avance del RQ: lo que espera reposición no se pinta como si hubiera llegado --------------------
+-- Copia de la versión de la 20261015162000. Cambia solo el paso nuevo, `POR_REPONER`: la OC ya se
+-- validó, el proveedor repone lo devuelto y a este insumo todavía le falta. Sin él, el RQ decía
+-- «Ingresó al kardex» y «La OC compró menos: pide el resto en un RQ nuevo», y empujaba a comprar dos veces.
+CREATE OR REPLACE FUNCTION public.avance_de_requerimientos(p_ids uuid[])
+ RETURNS TABLE(requerimiento_id uuid, porcentaje integer, etapa text, lineas jsonb)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+begin
+  if not public.puede_ver_requerimientos() then
+    raise exception 'No tienes permiso para ver los requerimientos.' using errcode = 'insufficient_privilege';
+  end if;
+  if p_ids is null or cardinality(p_ids) = 0 then
+    return;
+  end if;
+  if cardinality(p_ids) > 500 then
+    raise exception 'Pide el avance de hasta 500 requerimientos a la vez.' using errcode = 'check_violation';
+  end if;
+
+  return query
+  with etapas (codigo, pct, orden) as (
+    values ('POR_REVISAR', 10, 1), ('POR_COMPRAR', 20, 2), ('OC_POR_APROBAR', 30, 3),
+           ('PENDIENTE_RECOJO', 45, 4), ('EN_RECOJO', 60, 5), ('RECOGIDO', 70, 6),
+           ('OBSERVADO', 80, 7), ('POR_VALIDAR', 80, 8), ('POR_REPONER', 80, 8), ('EN_KARDEX', 85, 9), ('EN_STOCK', 85, 9),
+           ('LISTO_EN_ALMACEN', 90, 10), ('ENTREGADO', 100, 11)
+  ),
+  validacion as (
+    select i.orden_compra_id as compra,
+           case when bool_or(i.estado = 'PENDIENTE') then 'PENDIENTE'
+                when bool_or(i.estado = 'OBSERVADO') then 'OBSERVADO'
+                else 'VALIDADO' end as estado
+      from public.ingresos_pendientes_almacen i
+     where i.orden_compra_id in (select rl.orden_compra_id from public.requerimiento_lineas rl
+                                  where rl.requerimiento_id = any(p_ids) and rl.orden_compra_id is not null)
+     group by i.orden_compra_id
+  ),
+  llegado as (
+    select e.requerimiento_id, e.item, e.llegado from public.entregado_de_requerimientos(p_ids) e
+  ),
+  por_linea as (
+    select r.id as rq, l.item as item,
+           coalesce(c.numero, c.referencia) as compra,
+           coalesce(c.aprobacion in ('RECHAZADA', 'ANULADA'), false) as rechazada,
+           coalesce(c.aprobacion = 'ANULADA', false) as anulada,
+           l.cantidad_en_stock as en_stock,
+           case when l.cantidad_en_stock is not null then greatest(l.cantidad - l.cantidad_en_stock, 0) end as por_comprar,
+           case
+             when r.estado = 'ENTREGADO' then 'ENTREGADO'
+             when r.estado = 'LISTO_EN_ALMACEN' then 'LISTO_EN_ALMACEN'
+             when r.estado = 'POR_ATENDER' then 'POR_REVISAR'
+             when l.cantidad_en_stock is not null and l.cantidad_en_stock >= l.cantidad then 'EN_STOCK'
+             when c.id is null or c.aprobacion in ('RECHAZADA', 'ANULADA') then 'POR_COMPRAR'
+             when c.aprobacion = 'POR_APROBAR' then 'OC_POR_APROBAR'
+             -- Almacén devolvió parte y el proveedor la repone: al insumo todavía le falta (migración 20261022185000).
+             when (c.recojo = 'DEJADO' or (c.recojo is null and c.entregado_almacen_en is not null)) and v.estado = 'VALIDADO'
+                  and l.orden_compra_detalle_id is not null
+                  and (select k.por_reponer from public.cuenta_de_la_linea_de_compra(l.orden_compra_detalle_id) k) > 0
+                  and coalesce(ll.llegado, 0) < coalesce(greatest(l.cantidad - l.cantidad_en_stock, 0), l.cantidad) then 'POR_REPONER'
+             when c.recojo = 'DEJADO' or (c.recojo is null and c.entregado_almacen_en is not null) then
+               case v.estado when 'VALIDADO' then 'EN_KARDEX' when 'OBSERVADO' then 'OBSERVADO' else 'POR_VALIDAR' end
+             when c.recojo = 'RECOGIDO' then 'RECOGIDO'
+             when c.recojo = 'EN_RECOJO' then 'EN_RECOJO'
+             else 'PENDIENTE_RECOJO'
+           end as paso,
+           case
+             when r.estado in ('ENTREGADO', 'LISTO_EN_ALMACEN', 'POR_ATENDER') or c.aprobacion in ('RECHAZADA', 'ANULADA') then null
+             when l.cantidad_en_stock is not null and l.cantidad_en_stock >= l.cantidad then l.stock_revisado_en
+             when c.recojo = 'DEJADO' then c.dejado_en
+             when c.recojo = 'RECOGIDO' then c.recogido_en
+             when c.recojo = 'EN_RECOJO' then c.en_recojo_en
+             when c.recojo = 'POR_RECOGER' then c.recojo_pedido_en
+           end as desde
+      from public.requerimientos r
+      join public.requerimiento_lineas l on l.requerimiento_id = r.id
+      left join public.ordenes_compra_materiales c on c.id = l.orden_compra_id
+      left join validacion v on v.compra = c.id
+      left join llegado ll on ll.requerimiento_id = r.id and ll.item = l.item
+     where r.id = any(p_ids) and r.estado <> 'ANULADO'
+  )
+  select p.rq,
+         round(avg(e.pct))::integer,
+         (array_agg(p.paso order by e.orden, p.item))[1],
+         jsonb_agg(jsonb_build_object('item', p.item, 'orden_compra', p.compra, 'rechazada', p.rechazada, 'anulada', p.anulada,
+                                      'etapa', p.paso, 'porcentaje', e.pct, 'desde', p.desde,
+                                      'en_stock', p.en_stock, 'por_comprar', p.por_comprar) order by p.item)
+    from por_linea p
+    join etapas e on e.codigo = p.paso
+   group by p.rq;
+end;
+$function$;

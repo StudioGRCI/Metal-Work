@@ -1,5 +1,5 @@
 -- Lo que llegó malo vuelve al proveedor, y si no lo repone, Logística lo recompra
--- (decisiones de DKS del 22/10, migración 20261022180000). Con la cuenta de cada
+-- (decisiones de DKS del 22/10, migración 20261022185000). Con la cuenta de cada
 -- puesto —nunca ADMIN— y `set local role authenticated`. Termina en rollback.
 --
 -- Dos RQ de Maestranza piden 6 y 4 de un material que Almacén no tiene; Logística
@@ -217,6 +217,25 @@ reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select test.debe_fallar('select * from public.devoluciones_por_reponer()', 'Requerimientos no lee las devoluciones al proveedor');
+reset role;
+
+-- Lo que espera reposición entra solo contra su devolución: la recepción a mano no lo toma (auditoría del 22/10).
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.registrar_recepcion_material('%s', '%s', 3, 'GR-OTRO-426')$q$,
+  gen_random_uuid(), current_setting('prueba.detalle')), 'la recepción a mano no toma lo que espera reposición');
+reset role;
+-- El RQ que espera la reposición no dice «Ingresó al kardex» ni que la OC compró menos.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select l->>'etapa' from public.avance_de_requerimientos(array[current_setting('prueba.rq_b')::uuid]) a,
+                               jsonb_array_elements(a.lineas) l where (l->>'item')::int = 1) = 'POR_REPONER',
+    'el insumo del segundo RQ espera la reposición');
+  perform test.afirmar((select l->>'etapa' from public.avance_de_requerimientos(array[current_setting('prueba.rq_a')::uuid]) a,
+                               jsonb_array_elements(a.lineas) l where (l->>'item')::int = 1) = 'EN_KARDEX',
+    'el primero, que ya tiene sus 6, sigue en el kardex');
+end $$;
 reset role;
 
 -- ============================================ 2. Llega parte de la reposición y el resto ya no

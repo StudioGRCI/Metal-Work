@@ -19,6 +19,7 @@ import {
 } from '@/lib/datos/adquisiciones'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
+import { notasAFavor, type NotaAFavor } from '@/lib/datos/notas-credito'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
@@ -36,6 +37,7 @@ import {
   TomarAlCambio,
   type FacturaParaDescontar,
 } from '../formularios-boleta'
+import { DescontarNota, DeshacerUsoDeLaNota, DevolvioLaNota } from '../notas-credito'
 import { codigoMoneda, Vencimiento } from '../vencimiento'
 
 export const metadata = { title: 'Cuentas por pagar' }
@@ -62,13 +64,15 @@ export default async function PaginaPorPagar() {
   const verCuentas = puede(perfil, 'proveedores.ver_cuentas')
   const verOc = puede(perfil, 'compras.ver')
   const db = await createClient()
-  const [cuentas, boletas, pendientes, planillas, cuentasCaja] = await Promise.all([
+  const [cuentas, boletas, pendientes, planillas, cuentasCaja, notas] = await Promise.all([
     cuentasPorPagar(verCuentas),
     comprasConBoletaPorPagar(verCuentas),
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
+    // Lo que queda a favor de las notas de crédito del proveedor (migración 20261022190000).
+    notasAFavor(pasa),
   ])
   for (const r of [pendientes, planillas]) if (r.error) throw new Error(`No se pudieron cargar las cuentas por pagar: ${r.error.message}`)
   const hoy = hoyLima()
@@ -117,7 +121,11 @@ export default async function PaginaPorPagar() {
   // La que espera no le pide nada a Tesorería: va en el tono de aviso y lleva a la primera.
   const primeraEnEspera = porPagar.find((c) => c.enEspera)
   const enEspera = porPagar.length - exigibles.length
+  const conSaldo = notas.filter((n) => n.aFavor > 0).length
   const avisos = [
+    conSaldo > 0
+      ? { texto: conSaldo === 1 ? 'una nota de crédito a favor' : `${conSaldo} notas de crédito a favor`, href: '#notas-credito', tono: 'text-aviso' }
+      : null,
     primeraEnEspera
       ? {
           texto: enEspera === 1 ? 'una espera a Contabilidad' : `${enEspera} esperan a Contabilidad`,
@@ -189,6 +197,8 @@ export default async function PaginaPorPagar() {
           )}
         </TarjetaCuerpo>
       </Tarjeta>
+
+      {notas.length > 0 && <NotasAFavor notas={notas} pasa={pasa} paga={paga} hoy={hoy} cuentas={cuentasCaja} />}
 
       {/* El id es el ancla con que Adquisiciones salta a las OC con boleta. */}
       <Tarjeta id="compras-con-boleta" className="mt-5 scroll-mt-20">
@@ -921,6 +931,31 @@ function Factura({
         <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
           {c.pagos.map((p) => {
             const deLaBoleta = Boolean(p.pago_orden_compra_id)
+            // Lo que bajó una nota de crédito no salió de la caja ni se anula como un pago (migración 20261022190000).
+            const nota = p.notaCredito
+            if (nota) {
+              return (
+                <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span className={`text-texto-suave ${p.anulado_en ? 'line-through' : ''}`}>
+                    Nota de crédito del {fecha(p.fecha)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    {p.anulado_en && <span className="text-peligro">Anulada: {p.motivo_anulacion}</span>}
+                    {p.url && (
+                      <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0">
+                        <FileText aria-hidden className="size-3.5" />
+                        Nota {nota.numero}
+                      </a>
+                    )}
+                    {nota.deOtraFactura && !p.anulado_en && (
+                      <a href="#notas-credito" className="inline-flex min-h-11 items-center text-acento hover:underline sm:min-h-0">
+                        Descontada de otra factura
+                      </a>
+                    )}
+                  </span>
+                </li>
+              )
+            }
             const aMano = p.monto_de_la_boleta !== null
             const otraMoneda = aMano && p.monedaDeLaBoleta !== null && codigoMoneda(p.monedaDeLaBoleta) !== m
             return (
@@ -1334,5 +1369,97 @@ function CompraConBoletaFila({
         </ol>
       )}
     </article>
+  )
+}
+
+/**
+ * Las notas de crédito del proveedor con algo a favor (decisiones de DKS del
+ * 22/10, migración 20261022190000): lo que no cupo en su factura porque ya
+ * estaba pagada o debía menos. Tesorería lo descuenta de otra factura del mismo
+ * proveedor o registra que lo devolvió; cada uso se deshace aquí con su motivo.
+ * Las que ya no tienen nada a favor siguen mientras tengan algo que deshacer.
+ */
+function NotasAFavor({
+  notas,
+  pasa,
+  paga,
+  hoy,
+  cuentas,
+}: {
+  notas: NotaAFavor[]
+  pasa: boolean
+  paga: boolean
+  hoy: string
+  cuentas: CuentaParaPagar[]
+}) {
+  return (
+    <Tarjeta id="notas-credito" className="mt-5 scroll-mt-20">
+      <TarjetaCabecera
+        titulo="Notas de crédito a favor"
+        ayuda="Contabilidad registra la nota de crédito del proveedor contra su factura, y la factura baja sola. Si ya estaba pagada o debía menos, lo que sobra queda aquí: descuéntalo de otra factura del mismo proveedor o registra que te lo devolvió."
+      />
+      <TarjetaCuerpo className="space-y-3">
+        {notas.map((n) => {
+          const m = codigoMoneda(n.moneda)
+          const nota = { id: n.id, numero: n.numero, proveedor: n.proveedor, moneda: m, fecha: n.fecha, aFavor: n.aFavor }
+          return (
+            <article key={n.id} data-nota-a-favor={n.numero} className="rounded-[var(--radius-base)] border border-borde p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-texto">
+                    {n.url ? (
+                      <a href={n.url} target="_blank" rel="noreferrer" className="tabular text-acento hover:underline">
+                        Nota {n.numero}
+                      </a>
+                    ) : (
+                      <span className="tabular">Nota {n.numero}</span>
+                    )}{' '}
+                    · {n.proveedor}
+                  </p>
+                  <p className="text-xs text-texto-suave">
+                    Contra la factura <span className="tabular">{n.factura}</span>, del <span className="tabular">{fecha(n.fecha)}</span>, por{' '}
+                    <span className="tabular">{moneda(n.monto, m)}</span>
+                  </p>
+                </div>
+                <p className="text-right">
+                  {n.aFavor > 0 ? (
+                    <span className="tabular text-sm font-semibold text-texto">A favor {moneda(n.aFavor, m)}</span>
+                  ) : (
+                    <Insignia tono="exito">Usada entera</Insignia>
+                  )}
+                </p>
+              </div>
+              {n.usado.length > 0 && (
+                <ul className="mt-2 space-y-1.5 border-t border-borde pt-2 text-xs" aria-label={`En qué se usó la nota ${n.numero}`}>
+                  {n.usado.map((u) => {
+                    const que =
+                      u.que === 'DESCUENTO'
+                        ? `descuento de la factura ${u.factura}`
+                        : `devolución del proveedor${u.operacion ? `, op. ${u.operacion}` : ''}`
+                    return (
+                      <li key={u.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="text-texto-suave">
+                          {fecha(u.fecha)} · <span className="tabular text-texto">{moneda(u.monto, m)}</span> · {que}
+                        </span>
+                        {pasa && (u.que === 'DESCUENTO' || paga) && <DeshacerUsoDeLaNota uso={u} etiqueta={`el ${que}`} />}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {pasa && n.aFavor > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <DescontarNota nota={nota} facturas={n.facturas} />
+                  {paga && <DevolvioLaNota nota={nota} hoy={hoy} cuentas={cuentas} />}
+                  {n.facturas.length === 0 && (
+                    <p className="basis-full text-xs text-texto-suave">Este proveedor no tiene otra factura por pagar en {nombreMoneda(m)}: si te lo devolvió, regístralo.</p>
+                  )}
+                </div>
+              )}
+            </article>
+          )
+        })}
+      </TarjetaCuerpo>
+    </Tarjeta>
   )
 }

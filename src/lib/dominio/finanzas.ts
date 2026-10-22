@@ -23,6 +23,9 @@ export const BUCKET_PAGOS_FACTURAS = 'pagos-facturas'
 /** El bucket privado de los vouchers con que Tesorería paga las OC con boleta: la ruta es `{OC}/{archivo}` (migración 20261020210000). */
 export const BUCKET_PAGOS_COMPRAS = 'pagos-compras'
 
+/** La nota de crédito del proveedor (Contabilidad) y la constancia de lo que devolvió de ella (Tesorería), migración 20261022190000. */
+export const BUCKET_NOTAS_CREDITO = 'notas-credito'
+
 /** El bucket privado de la factura, el contrato y demás documentos de la OS: la ruta es `{orden de servicio}/{archivo}`. */
 export const BUCKET_DOCUMENTOS_SERVICIO = 'documentos-servicio'
 

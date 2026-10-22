@@ -7,13 +7,14 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio } from '@/lib/envio'
+import { redondearCantidad } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 
 import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from './acciones'
 
 /**
  * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
- * 22/10, migración 20261022180000). Sale del kardex como un egreso; si el
+ * 22/10, migración 20261022185000). Sale del kardex como un egreso; si el
  * proveedor lo repone, la OC lo vuelve a esperar, y si no, lo que falte vuelve
  * a la lista de Logística y Contabilidad espera la nota de crédito.
  */
@@ -53,14 +54,15 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 <option value="">Elige el ingreso</option>
                 {ingresos.map((i) => (
                   <option key={i.ingreso_id} value={i.ingreso_id ?? ''}>
-                    {`${i.compra} · ${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${fechaHora(i.fecha)}`}
+                    {`${i.compra} · ${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
                   </option>
                 ))}
               </Seleccion>
             </Campo>
             {ingreso && (
               <p className="-mt-2 text-xs text-texto-suave">
-                {ingreso.proveedor}. Entraron {cantidad(ingreso.ingresado)} con {ingreso.documento}; se pueden devolver {cantidad(ingreso.se_puede)}.
+                Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)} {ingreso.unidad ?? ''} con {ingreso.documento} · se
+                pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -80,9 +82,11 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
               etiqueta="¿El proveedor lo repone?"
               htmlFor="dev-repone"
               requerido
+              ayudaEnIcono={false}
               ayuda={repone === 'no'
                 ? 'Lo que falte vuelve a la lista de Logística para comprarlo en otra OC, y Contabilidad espera la nota de crédito.'
-                : repone === 'si' ? 'La OC lo vuelve a esperar. Si después no lo repone, dilo en «Esperan reposición».' : undefined}
+                : repone === 'si' ? 'La OC lo vuelve a esperar. Si después no lo repone, dilo en «Esperan reposición».'
+                : 'Si no lo repone, lo que falte vuelve a Logística para otra OC. No vuelve atrás.'}
             >
               <Seleccion id="dev-repone" name="se_repone" required value={repone} onChange={(e) => setRepone(e.target.value)}>
                 <option value="">Elige</option>
@@ -107,7 +111,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
         )}
       </Ventana>
       {envio.resultado?.ok && (
-        <p role="status" className="mt-2 text-sm text-exito">
+        <p role="status" className="basis-full text-sm text-exito">
           {envio.resultado.mensaje}
         </p>
       )}
@@ -115,7 +119,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
   )
 }
 
-/** Lo devuelto que espera su reposición: Almacén la recibe, o Almacén o Logística dicen que ya no viene. */
+/** Lo devuelto que espera su reposición: Almacén la recibe, o Almacén o Logística dicen que el proveedor no lo repone. */
 export function EsperanReposicion({
   devoluciones,
   puedeRecibir,
@@ -154,7 +158,8 @@ function Devolucion({
   alTerminar: (mensaje: string) => void
 }) {
   const [abierta, setAbierta] = useState<'llego' | 'ya-no' | null>(null)
-  const falta = Number(d.devuelto) - Number(d.repuesto)
+  // En metros, 5.3 − 2.1 da 3.1999999999999997 en el navegador, y la base no lo acepta.
+  const falta = redondearCantidad(Number(d.devuelto) - Number(d.repuesto))
   const unidad = d.unidad ?? ''
   return (
     <li className="flex flex-wrap items-start justify-between gap-2 py-2">
@@ -164,7 +169,7 @@ function Devolucion({
           {d.compra} · {d.proveedor} · devuelto el {fechaHora(d.fecha)} con {d.documento}
         </p>
         <p className="text-xs">
-          <span className="tabular">
+          <span className="tabular text-sm font-semibold">
             Faltan {cantidad(falta)} {unidad}
           </span>
           {Number(d.repuesto) > 0 && (
@@ -185,7 +190,7 @@ function Devolucion({
           )}
           {puedeDejar && (
             <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierta('ya-no')}>
-              Ya no la repone
+              No lo repone
             </Boton>
           )}
         </div>
@@ -269,7 +274,7 @@ function YaNoRepone({ devolucion: d, alCancelar, alTerminar }: {
       )}
       <div className="flex flex-wrap gap-2">
         <Boton type="submit" cargando={enviando}>
-          Ya no se espera
+          No lo repone
         </Boton>
         <Boton type="button" variante="secundario" onClick={alCancelar} disabled={enviando}>
           Cancelar

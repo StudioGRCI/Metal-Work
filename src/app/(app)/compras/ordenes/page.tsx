@@ -42,6 +42,7 @@ export default async function PaginaOrdenesCompra() {
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
   const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
+  const esperan = new Set(porReponer.map((d) => d.orden_compra_id))
   const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA').length
 
   return (
@@ -72,7 +73,7 @@ export default async function PaginaOrdenesCompra() {
       )}
 
       {porReponer.length > 0 && (
-        <Tarjeta className="mb-4">
+        <Tarjeta id="por-reponer" className="mb-4 scroll-mt-20">
           <TarjetaCabecera
             titulo={`Devuelto al proveedor · ${porReponer.length === 1 ? '1 espera reposición' : `${porReponer.length} esperan reposición`}`}
             ayuda="Almacén devolvió lo que llegó malo y el proveedor dijo que lo repone. Si ya no viene, dilo: lo que falta vuelve a la lista para comprarlo en otra OC."
@@ -110,7 +111,7 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -124,12 +125,20 @@ function FilaCompra({
   emite,
   verAdquisiciones,
   correcciones,
+  esperaReposicion,
 }: {
   compra: OrdenCompraListada
   emite: boolean
   verAdquisiciones: boolean
   correcciones: CorreccionVista[] | undefined
+  esperaReposicion: boolean
 }) {
+  // Validada en el almacén, pero Almacén devolvió parte y el proveedor la repone: la tarjeta de arriba dice cuánto.
+  const reposicion = esperaReposicion && (
+    <a href="#por-reponer" className="rounded focus-visible:outline-2 focus-visible:outline-acento">
+      <Insignia tono="aviso">Espera reposición</Insignia>
+    </a>
+  )
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
   const situacion = situacionCompra(c)
   const para = [
@@ -157,6 +166,7 @@ function FilaCompra({
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-[11px] text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          {reposicion}
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
           ) : sinCurso ? (
@@ -188,7 +198,10 @@ function FilaCompra({
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
       <TD className="hidden sm:table-cell">
-        <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+        <div className="flex flex-wrap gap-1">
+          <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          {reposicion}
+        </div>
       </TD>
       <TD className="hidden sm:table-cell">
         {c.tiene_factura ? (

@@ -3776,6 +3776,104 @@ export type Database = {
           }
         ]
       }
+      notas_credito_compra: {
+        Row: {
+          id: string
+          adquisicion_id: string
+          numero: string
+          proveedor: string
+          ruc_proveedor: string | null
+          fecha_emision: string
+          moneda: string
+          monto: number
+          tipo: string
+          devolucion_id: string | null
+          motivo: string
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }
+        Insert: {
+          id?: string
+          adquisicion_id: string
+          numero: string
+          proveedor: string
+          ruc_proveedor?: string | null
+          fecha_emision: string
+          moneda: string
+          monto: number
+          tipo: string
+          devolucion_id?: string | null
+          motivo: string
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Update: {
+          id?: string
+          adquisicion_id?: string
+          numero?: string
+          proveedor?: string
+          ruc_proveedor?: string | null
+          fecha_emision?: string
+          moneda?: string
+          monto?: number
+          tipo?: string
+          devolucion_id?: string | null
+          motivo?: string
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_credito_compra_adquisicion_id_fkey"
+            columns: ["adquisicion_id"]
+            isOneToOne: false
+            referencedRelation: "adquisiciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_devolucion_id_fkey"
+            columns: ["devolucion_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_credito_compra_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       notificaciones: {
         Row: {
           id: string
@@ -6644,6 +6742,7 @@ export type Database = {
           actualizado_en: string
           pago_orden_compra_id: string | null
           monto_de_la_boleta: number | null
+          nota_credito_id: string | null
         }
         Insert: {
           id?: string
@@ -6662,6 +6761,7 @@ export type Database = {
           actualizado_en?: string
           pago_orden_compra_id?: string | null
           monto_de_la_boleta?: number | null
+          nota_credito_id?: string | null
         }
         Update: {
           id?: string
@@ -6680,6 +6780,7 @@ export type Database = {
           actualizado_en?: string
           pago_orden_compra_id?: string | null
           monto_de_la_boleta?: number | null
+          nota_credito_id?: string | null
         }
         Relationships: [
           {
@@ -6694,6 +6795,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_adquisicion_nota_credito_id_fkey"
+            columns: ["nota_credito_id"]
+            isOneToOne: false
+            referencedRelation: "notas_credito_compra"
             referencedColumns: ["id"]
           },
           {
@@ -8041,6 +8149,82 @@ export type Database = {
             columns: ["subcontrato_id"]
             isOneToOne: false
             referencedRelation: "subcontratos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reembolsos_nota_credito: {
+        Row: {
+          id: string
+          nota_credito_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          operacion: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }
+        Insert: {
+          id?: string
+          nota_credito_id: string
+          fecha: string
+          moneda: string
+          monto: number
+          operacion?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Update: {
+          id?: string
+          nota_credito_id?: string
+          fecha?: string
+          moneda?: string
+          monto?: number
+          operacion?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reembolsos_nota_credito_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_nota_credito_nota_credito_id_fkey"
+            columns: ["nota_credito_id"]
+            isOneToOne: false
+            referencedRelation: "notas_credito_compra"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_nota_credito_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -11220,6 +11404,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_orden_compra: {
         Args: {
           p_compra: string | null
@@ -11277,6 +11468,13 @@ export type Database = {
         Returns: string
       }
       anular_recibo_honorarios: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      anular_reembolso_nota_credito: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -11998,6 +12196,27 @@ export type Database = {
         }[]
       }
       codigo_interno_lineas_gastos_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_nota_credito: {
         Args: {
           p_codigo: string | null
         }
@@ -12899,6 +13118,14 @@ export type Database = {
         }
         Returns: string
       }
+      descontar_nota_credito: {
+        Args: {
+          p_nota: string | null
+          p_factura: string | null
+          p_monto: number | null
+        }
+        Returns: string
+      }
       despachar_material: {
         Args: {
           p_id: string | null
@@ -12963,6 +13190,23 @@ export type Database = {
           repuesto: number | null
           documento: string | null
           motivo: string | null
+        }[]
+      }
+      devoluciones_sin_nota_credito: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          devolucion_id: string | null
+          fecha: string | null
+          compra: string | null
+          orden_compra_id: string | null
+          proveedor: string | null
+          material: string | null
+          unidad: string | null
+          cantidad: number | null
+          importe: number | null
+          moneda: string | null
+          documento: string | null
+          facturas: Json | null
         }[]
       }
       devolver_al_proveedor: {
@@ -13344,6 +13588,18 @@ export type Database = {
           numero: string | null
           moneda: string | null
           fecha_emision: string | null
+          total: number | null
+          saldo: number | null
+        }[]
+      }
+      facturas_para_la_nota: {
+        Args: {
+          p_nota: string | null
+        }
+        Returns: {
+          factura_id: string | null
+          numero: string | null
+          fecha: string | null
           total: number | null
           saldo: number | null
         }[]
@@ -13906,6 +14162,23 @@ export type Database = {
         }
         Returns: string
       }
+      notas_credito_a_favor: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          nota_id: string | null
+          numero: string | null
+          proveedor: string | null
+          ruc_proveedor: string | null
+          factura_id: string | null
+          factura: string | null
+          fecha: string | null
+          moneda: string | null
+          monto: number | null
+          a_favor: number | null
+          archivo_ruta: string | null
+          usado: Json | null
+        }[]
+      }
       notificar_a_permiso: {
         Args: {
           p_permiso: string | null
@@ -14385,6 +14658,13 @@ export type Database = {
         }
         Returns: string
       }
+      quitar_descuento_nota_credito: {
+        Args: {
+          p_pago: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       quitar_etapa_codigo: {
         Args: {
           p_id: string | null
@@ -14661,6 +14941,20 @@ export type Database = {
         }
         Returns: string
       }
+      registrar_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_factura: string | null
+          p_numero: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_tipo: string | null
+          p_devolucion: string | null
+          p_motivo: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
       registrar_orden_sin_cotizacion: {
         Args: {
           p_orden: string | null
@@ -14785,6 +15079,19 @@ export type Database = {
           p_monto_bruto: number | null
           p_retencion: boolean | null
           p_ruta: string | null
+        }
+        Returns: string
+      }
+      registrar_reembolso_nota_credito: {
+        Args: {
+          p_id: string | null
+          p_nota: string | null
+          p_fecha: string | null
+          p_monto: number | null
+          p_operacion: string | null
+          p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
         }
         Returns: string
       }
@@ -15430,6 +15737,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      saldo_de_la_nota_credito: {
+        Args: {
+          p_nota: string | null
+        }
+        Returns: number
+      }
       saldo_horas_de: {
         Args: {
           p_trabajador_id: string | null
@@ -15761,6 +16074,13 @@ export type Database = {
         Args: {
           p_desde: string | null
           p_dias: number | null
+        }
+        Returns: string
+      }
+      texto_monto: {
+        Args: {
+          p_moneda: string | null
+          p_monto: number | null
         }
         Returns: string
       }

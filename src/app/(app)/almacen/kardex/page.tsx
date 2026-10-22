@@ -317,7 +317,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             acciones={porReponer.length > 0 ? <Insignia tono="aviso">Por reponer</Insignia> : undefined}
           />
           <TarjetaCuerpo>
-            {porReponer.length === 0 && <p className="mb-2 text-sm text-texto-suave">Nada devuelto espera reposición.</p>}
+            {porReponer.length === 0 && (
+              <p className="mb-2 text-sm text-texto-suave">Nada devuelto espera reposición. Cuando devuelvas algo que el proveedor repone, aparece aquí para recibirlo.</p>
+            )}
             <EsperanReposicion devoluciones={porReponer} puedeRecibir={puedeIngreso} puedeDejar={puedeIngreso} />
           </TarjetaCuerpo>
         </Tarjeta>

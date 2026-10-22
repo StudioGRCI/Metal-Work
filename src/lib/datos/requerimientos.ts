@@ -20,7 +20,7 @@ export type LineaRequerimiento = {
   material_nombre: string | null
   /** Se pidió como material nuevo, porque no estaba en el catálogo. */
   material_nuevo: boolean
-  /** Salió de otro insumo: el proveedor no repuso lo devuelto y se compra otra vez (migración 20261022180000). */
+  /** Salió de otro insumo: el proveedor no repuso lo devuelto y se compra otra vez (migración 20261022185000). */
   recompra: boolean
   /** La unidad del material es provisional: Almacén la confirma con la de este insumo al revisarlo. */
   material_unidad_pendiente: boolean
