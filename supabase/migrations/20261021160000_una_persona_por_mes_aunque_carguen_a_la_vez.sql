@@ -22,9 +22,10 @@
 -- importación toma el mismo bloqueo antes de su propia comprobación, para que
 -- su mensaje —con el nombre como venía en el Excel— siga siendo el que se ve.
 --
--- Las planillas de subcontratos quedan fuera de lo que se agrega a mano: ahí
--- se anotan proveedores y contratos, y uno puede tener dos en el mes. La
--- importación no cambia: sigue contando las tres planillas, como antes.
+-- En la planilla de subcontratos se anotan a mano proveedores y contratos, y
+-- uno puede tener dos en el mes: dos anotaciones a mano de subcontratos no
+-- chocan entre sí. Con cualquier otra cosa del mes sí, igual que en la
+-- importación, que sigue contando las tres planillas como antes.
 -- =============================================================================
 
 -- La llave del mes, igual para todos sin depender de cómo muestre las fechas
@@ -51,11 +52,12 @@ declare
   v_tipo    text;
   v_choque  record;
 begin
-  if tg_op = 'UPDATE' and public.clave_nombre_planilla(new.nombre) = public.clave_nombre_planilla(old.nombre) then
+  if tg_op = 'UPDATE' and public.clave_nombre_planilla(new.nombre) = public.clave_nombre_planilla(old.nombre)
+     and new.importacion_id is not distinct from old.importacion_id then
     return new;
   end if;
   select periodo, tipo into v_periodo, v_tipo from public.planillas where id = new.planilla_id;
-  if not found or (v_tipo = 'SUBCONTRATOS' and new.importacion_id is null) then
+  if not found then
     return new;
   end if;
   perform public.bloquear_mes_de_planilla(v_periodo);
@@ -64,7 +66,8 @@ begin
     join public.planillas p on p.id = pp.planilla_id and p.periodo = v_periodo
    where pp.id <> new.id
      and public.clave_nombre_planilla(pp.nombre) = public.clave_nombre_planilla(new.nombre)
-     and (p.tipo <> 'SUBCONTRATOS' or pp.importacion_id is not null)
+     and not (v_tipo = 'SUBCONTRATOS' and new.importacion_id is null
+              and p.tipo = 'SUBCONTRATOS' and pp.importacion_id is null)
    limit 1;
   if found then
     raise exception '% ya está en la planilla % de este mes: una persona se cuenta una sola vez.',
@@ -80,7 +83,7 @@ revoke all on function public.fn_planilla_persona_una_por_mes() from public, ano
 -- Después de `planilla_persona_abierta` (los disparadores van por nombre), que
 -- ya bloqueó la fila de la planilla.
 create or replace trigger planilla_persona_una_por_mes
-  before insert or update of nombre on public.planilla_personas
+  before insert or update of nombre, importacion_id on public.planilla_personas
   for each row execute function public.fn_planilla_persona_una_por_mes();
 
 -- La importación toma el bloqueo del mes antes de su propia comprobación. Se

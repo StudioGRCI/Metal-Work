@@ -128,6 +128,12 @@ insert into public.planilla_personas (planilla_id, nombre, monto) values
   (current_setting('prueba.p.sub')::uuid, 'Soldaduras Huamán Flores SAC', 400);
 select test.afirmar((select count(*) = 2 from public.planilla_personas where planilla_id = current_setting('prueba.p.sub')::uuid),
   'en subcontratos, a mano, un proveedor puede tener dos contratos en el mes');
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.sub')::uuid, 'Vilchez Paredes, Mario', 100)$$,
+  'a mano en subcontratos, quien ya cobra en la planilla de taller no entra', 'ya está en la planilla de taller');
+select test.debe_fallar($$insert into public.planilla_personas (planilla_id, nombre, monto)
+  values (current_setting('prueba.p.admin')::uuid, 'Soldaduras Huamán Flores SAC', 100)$$,
+  'quien está a mano en subcontratos no entra en otra planilla del mes', 'ya está en la planilla de subcontratos');
 select test.afirmar(pg_get_functiondef('public.importar_planilla_excel(uuid, uuid, jsonb)'::regprocedure) ~ 'bloquear_mes_de_planilla\(v_periodo\)',
   'la importación bloquea el mes entero: dos cargas a la vez no dejan a la misma persona en dos planillas');
 
