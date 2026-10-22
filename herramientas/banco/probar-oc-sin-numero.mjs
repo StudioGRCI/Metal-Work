@@ -251,14 +251,17 @@ writeFileSync(
   // En Aprobación, las que puede anular: el nombre lo arma la base (migración 20261022200000).
   await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
   const anulables = await pagina.locator('tr[data-anulable]').evaluateAll((filas) => filas.map((f) => f.getAttribute('data-anulable')))
-  comprobar(anulables.includes(NOMBRE) && !anulables.includes(REFERENCIA) && !anulables.includes(`OC ${REFERENCIA}`),
-    `en «Aprobadas que se pueden anular» la base la nombra «${NOMBRE}»`)
+  const filaAnulable = limpio(await pagina.locator(`tr[data-anulable="${NOMBRE}"]`).first().textContent().catch(() => ''))
+  comprobar(anulables.includes(NOMBRE) && !anulables.includes(REFERENCIA) && !anulables.includes(`OC ${REFERENCIA}`) &&
+    filaAnulable.startsWith('OC sin número ·') && filaAnulable.includes(`Ref. del proveedor: ${REFERENCIA}`),
+    `en «Aprobadas que se pueden anular» la base la nombra «${NOMBRE}» y la fila dice «OC sin número» con su referencia aparte («${filaAnulable.slice(0, 80)}»)`)
   await contexto.close()
   const tel = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
   await tel.pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
-  const enTelefono = limpio(await tel.pagina.locator('main').textContent().catch(() => ''))
+  const ref3 = tel.pagina.locator(`tr[data-anulable="${NOMBRE_3}"] span.whitespace-nowrap`, { hasText: REFERENCIA_3 }).first()
+  const renglones = await ref3.evaluate((e) => e.getClientRects().length).catch(() => 0)
   const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
-  comprobar(enTelefono.includes(NOMBRE_3) && ancho <= 390, `en el teléfono, el nombre largo («${NOMBRE_3}») no ensancha la página (${ancho} px)`)
+  comprobar(renglones === 1 && ancho <= 390, `en el teléfono, la referencia larga (${REFERENCIA_3}) va en un renglón y la página no se ensancha (${renglones} renglón, ${ancho} px)`)
   await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-aprobacion-telefono.png'), fullPage: true, caret: 'initial' })
   await tel.contexto.close()
 }
@@ -346,6 +349,10 @@ writeFileSync(
   const historial = limpio(await cuerpo.textContent().catch(() => ''))
   comprobar(historial.includes(`Se sumó la ${NOMBRE_2}`) && !historial.includes(`Se sumó la ${REFERENCIA_2}`),
     `el historial dice «Se sumó la ${NOMBRE_2}»`)
+  // El detector de la factura registrada busca la OC sin número por su referencia: la que el PDF cita es suya.
+  const citada = REFERENCIA_2.replace(/\D/g, '')
+  comprobar(!historial.includes(`menciona la OC ${citada}`) && historial.includes(`La ${NOMBRE} es de esta factura y la factura no la menciona`),
+    'el detector reconoce la OC sin número que el PDF cita, y avisa solo de la que no cita')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-contabilidad.png'), fullPage: true, caret: 'initial' })
   await contexto.close()
 

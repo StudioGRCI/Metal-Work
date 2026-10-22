@@ -28,15 +28,17 @@
 --
 -- De paso, el aviso «Adquisiciones la ven Contabilidad, Tesorería y Logística»
 -- ya no era cierto (Gerencia y Compras también la ven) y nombraba puestos. Pasa a
--- «No tienes permiso para ver Adquisiciones.». Lo mismo con «El pago de la OC lo
--- ven Tesorería y Logística»: también lo ven Gerencia, Costos y Compras.
+-- «No tienes permiso para ver Adquisiciones.». Igual «Lo ve Contabilidad.», de lo
+-- que espera nota de crédito, que también lo ven Gerencia y Tesorería. Y «El pago
+-- de la OC lo ven Tesorería y Logística»: también lo ven Gerencia, Costos y
+-- Compras.
 --
 -- Cómo cambia cada función: no se copia entera. Hay hilos que las cambiaron
 -- hace poco, y copiar una versión anterior les borraría eso. Se reemplaza solo
 -- el fragmento exacto, como en 20261022185000. Si un fragmento no está y
 -- tampoco su reemplazo, la función cambió por otro lado: la migración se detiene
 -- sin tocar nada para revisarla a mano. Al final se comprueba que no quede
--- ninguna función armando «OC » || referencia.
+-- ninguna función armando «OC » || referencia ni diciendo «la orden de compra %».
 --
 -- Dos cambios van más allá del nombre:
 -- * `avisar_pago_directo` daba por leído el aviso viejo comparando el título
@@ -46,8 +48,9 @@
 -- * La línea de pago que deja la boleta (`conciliar_pago_directo`,
 --   `tomar_pago_de_la_boleta`) se corta a 108 letras. Con un nombre largo, el
 --   corte caía en medio de la operación y dejaba un número de operación que no
---   existe. Ahora la fecha y la operación van enteras o no van. Si el texto
---   cabe, sale igual que antes.
+--   existe. Ahora la fecha y la operación van enteras o no van, y si no caben
+--   las dos queda la operación, porque la fecha del pago se ve a su lado. Si el
+--   texto cabe, sale igual que antes.
 
 -- 1. El nombre ------------------------------------------------------------------------------------
 create or replace function public.nombre_de_oc(p_numero text, p_referencia text)
@@ -102,12 +105,14 @@ begin
        $v$    v_ref := left('Pago por la boleta de la ' || v_nombre, 108);$v$),
       (9, 'conciliar_pago_directo(uuid[])',
        $v$                  || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);$v$,
-       $v$    -- La fecha y la operación van enteras o no van: cortadas no se leen.
-    if char_length(v_ref) <= 108 - 15 then
+       $v$    -- La fecha y la operación van enteras o no van: cortadas no se leen. Si no
+    -- caben las dos, la operación primero: la fecha del pago se ve a su lado.
+    if char_length(v_ref || ' del DD/MM/YYYY' || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
+      v_ref := v_ref || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY') || coalesce(' · op. ' || btrim(v_pago.operacion), '');
+    elsif char_length(v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
+      v_ref := v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '');
+    elsif char_length(v_ref || ' del DD/MM/YYYY') <= 108 then
       v_ref := v_ref || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY');
-      if char_length(v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
-        v_ref := v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '');
-      end if;
     end if;$v$),
       (10, 'confirmar_pago_de_la_boleta(uuid,boolean,date,numeric,text)',
        $v$coalesce(v_oc.numero, 'OC ' || v_oc.referencia)$v$,
@@ -153,12 +158,14 @@ begin
        $v$                  || v_nombre, 108);$v$),
       (24, 'tomar_pago_de_la_boleta(uuid,uuid,uuid,numeric,numeric,text)',
        $v$                  || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);$v$,
-       $v$    -- La fecha y la operación van enteras o no van: cortadas no se leen.
-    if char_length(v_ref) <= 108 - 15 then
+       $v$    -- La fecha y la operación van enteras o no van: cortadas no se leen. Si no
+    -- caben las dos, la operación primero: la fecha del pago se ve a su lado.
+    if char_length(v_ref || ' del DD/MM/YYYY' || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
+      v_ref := v_ref || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY') || coalesce(' · op. ' || btrim(v_pago.operacion), '');
+    elsif char_length(v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
+      v_ref := v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '');
+    elsif char_length(v_ref || ' del DD/MM/YYYY') <= 108 then
       v_ref := v_ref || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY');
-      if char_length(v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '')) <= 108 then
-        v_ref := v_ref || coalesce(' · op. ' || btrim(v_pago.operacion), '');
-      end if;
     end if;$v$),
       (25, 'corregir_factura_compra(uuid,uuid,text,text,text,jsonb)',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
@@ -179,203 +186,218 @@ begin
        $v$coalesce(v_oc.numero, v_oc.referencia)$v$,
        $v$public.nombre_de_oc(v_oc.numero, v_oc.referencia)$v$),
       (31, 'fn_adquisicion_oc_valida()',
-       $v$'La orden de compra %$v$,
-       $v$'La %$v$),
+       $v$'La orden de compra % está rechazada: no se factura.'$v$,
+       $v$'La % está rechazada: no se factura.'$v$),
       (32, 'fn_adquisicion_oc_valida()',
+       $v$'La orden de compra % está anulada: no se factura.'$v$,
+       $v$'La % está anulada: no se factura.'$v$),
+      (33, 'fn_adquisicion_oc_valida()',
+       $v$'La orden de compra % es al %: la factura tiene que ir igual.'$v$,
+       $v$'La % es al %: la factura tiene que ir igual.'$v$),
+      (34, 'fn_adquisicion_oc_valida()',
+       $v$'La orden de compra % ya tiene su factura completa (%): si esta es otra parte$v$,
+       $v$'La % ya tiene su factura completa (%): si esta es otra parte$v$),
+      (35, 'fn_adquisicion_oc_valida()',
        $v$y la orden de compra % es de % (RUC %)$v$,
        $v$y la % es de % (RUC %)$v$),
-      (33, 'fn_adquisicion_oc_valida()',
+      (36, 'fn_adquisicion_oc_valida()',
        $v$proveedor: la orden de compra % es de %.$v$,
        $v$proveedor: la % es de %.$v$),
-      (34, 'fn_vinculo_con_anexo()',
+      (37, 'fn_vinculo_con_anexo()',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
        $v$public.nombre_de_oc(c.numero, c.referencia)$v$),
-      (35, 'anular_documento_compra(uuid,text)',
+      (38, 'anular_documento_compra(uuid,text)',
        $v$v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);$v$,
        $v$v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);$v$),
-      (36, 'adquisiciones_control(uuid[])',
+      (39, 'adquisiciones_control(uuid[])',
        $v$'Adquisiciones la ven Contabilidad, Tesorería y Logística.'$v$,
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
-      (37, 'compras_sin_factura()',
+      (40, 'compras_sin_factura()',
        $v$'Adquisiciones la ven Contabilidad, Tesorería y Logística.'$v$,
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
-      (38, 'facturado_de_compras(uuid[])',
+      (41, 'facturado_de_compras(uuid[])',
        $v$'Adquisiciones la ven Contabilidad, Tesorería y Logística.'$v$,
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
-      (39, 'situacion_de_facturas_anexadas(uuid[])',
+      (42, 'situacion_de_facturas_anexadas(uuid[])',
        $v$'Adquisiciones la ven Contabilidad, Tesorería, Logística y Gerencia.'$v$,
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
-      (40, 'trazabilidad_de_compras()',
+      (43, 'trazabilidad_de_compras()',
        $v$'Adquisiciones la ven Contabilidad, Tesorería, Logística y Gerencia.'$v$,
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
-      (41, 'anular_orden_compra(uuid,text)',
+      (44, 'anular_orden_compra(uuid,text)',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (42, 'compras_que_se_pueden_anular()',
+      (45, 'compras_que_se_pueden_anular()',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
        $v$public.nombre_de_oc(c.numero, c.referencia)$v$),
-      (43, 'motivo_para_no_anular_compra(uuid)',
+      (46, 'motivo_para_no_anular_compra(uuid)',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (44, 'fn_compra_anulada_congelada()',
+      (47, 'fn_compra_anulada_congelada()',
        $v$coalesce(old.numero, 'OC ' || old.referencia)$v$,
        $v$public.nombre_de_oc(old.numero, old.referencia)$v$),
-      (45, 'fn_hijo_de_compra_anulada()',
+      (48, 'fn_hijo_de_compra_anulada()',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (46, 'dejar_de_esperar_reposicion(uuid,text)',
+      (49, 'dejar_de_esperar_reposicion(uuid,text)',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (47, 'devoluciones_por_reponer()',
+      (50, 'devoluciones_por_reponer()',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
        $v$public.nombre_de_oc(c.numero, c.referencia)$v$),
-      (48, 'devoluciones_sin_nota_credito()',
+      (51, 'devoluciones_sin_nota_credito()',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
        $v$public.nombre_de_oc(c.numero, c.referencia)$v$),
-      (49, 'devolver_al_proveedor(uuid,uuid,numeric,text,text,boolean)',
+      (52, 'devolver_al_proveedor(uuid,uuid,numeric,text,text,boolean)',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (50, 'ingresos_para_devolver()',
+      (53, 'ingresos_para_devolver()',
        $v$coalesce(c.numero, 'OC ' || c.referencia)$v$,
        $v$public.nombre_de_oc(c.numero, c.referencia)$v$),
-      (51, 'recomprar_lo_devuelto(uuid,uuid)',
+      (54, 'recomprar_lo_devuelto(uuid,uuid)',
        $v$coalesce(v_c.numero, 'OC ' || v_c.referencia)$v$,
        $v$public.nombre_de_oc(v_c.numero, v_c.referencia)$v$),
-      (52, 'aprobar_compra(uuid)',
+      (55, 'aprobar_compra(uuid)',
        $v$raise exception 'La compra % no está esperando aprobación.', v_compra.referencia using errcode$v$,
        $v$raise exception 'La % no está esperando aprobación.', public.nombre_de_oc(v_compra.numero, v_compra.referencia) using errcode$v$),
-      (53, 'aprobar_compra(uuid)',
+      (56, 'aprobar_compra(uuid)',
        $v$'Compra aprobada: ' || coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'Compra aprobada: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (54, 'evaluar_aprobacion_compra(uuid)',
+      (57, 'evaluar_aprobacion_compra(uuid)',
        $v$'Compra por aprobar: ' || coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'Compra por aprobar: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (55, 'rechazar_compra(uuid,text)',
+      (58, 'rechazar_compra(uuid,text)',
        $v$raise exception 'La compra % no está esperando aprobación.', coalesce(v_compra.numero, v_compra.referencia) using errcode$v$,
        $v$raise exception 'La % no está esperando aprobación.', public.nombre_de_oc(v_compra.numero, v_compra.referencia) using errcode$v$),
-      (56, 'rechazar_compra(uuid,text)',
+      (59, 'rechazar_compra(uuid,text)',
        $v$'Compra rechazada: ' || coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'Compra rechazada: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (57, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
+      (60, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
        $v$raise exception 'La orden % está rechazada: no se corrige. Genera otra.', coalesce(v_oc.numero, v_oc.referencia)$v$,
        $v$raise exception 'La % está rechazada: no se corrige. Genera otra.', public.nombre_de_oc(v_oc.numero, v_oc.referencia)$v$),
-      (58, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
+      (61, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
        $v$raise exception 'La orden % está anulada: queda como evidencia y no se corrige. Genera otra.', coalesce(v_oc.numero, v_oc.referencia)$v$,
        $v$raise exception 'La % está anulada: queda como evidencia y no se corrige. Genera otra.', public.nombre_de_oc(v_oc.numero, v_oc.referencia)$v$),
-      (59, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
+      (62, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
        $v$raise exception 'La compra % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$,
        $v$raise exception 'La % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$),
-      (60, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
+      (63, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
        $v$coalesce(v_oc.numero, v_oc.referencia) using errcode = 'check_violation';$v$,
        $v$public.nombre_de_oc(v_oc.numero, v_oc.referencia) using errcode = 'check_violation';$v$),
-      (61, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
+      (64, 'corregir_orden_compra(uuid,uuid,text,text,text,jsonb)',
        $v$perform public.registrar_correccion(p_correccion, 'ORDEN_COMPRA', p_id, coalesce(v_oc.numero, v_oc.referencia), p_motivo,$v$,
        $v$perform public.registrar_correccion(p_correccion, 'ORDEN_COMPRA', p_id, left(public.nombre_de_oc(v_oc.numero, v_oc.referencia), 80), p_motivo,$v$),
-      (62, 'corregir_requerimiento(uuid,uuid,text,text,text,jsonb)',
+      (65, 'corregir_requerimiento(uuid,uuid,text,text,text,jsonb)',
        $v$select coalesce(c.numero, c.referencia) into v_oc from public.ordenes_compra_materiales c$v$,
        $v$select public.nombre_de_oc(c.numero, c.referencia) into v_oc from public.ordenes_compra_materiales c$v$),
-      (63, 'emitir_compra_de_requerimientos(uuid,jsonb,uuid,text,date,text,integer,text,boolean)',
+      (66, 'emitir_compra_de_requerimientos(uuid,jsonb,uuid,text,date,text,integer,text,boolean)',
        $v$select string_agg(format('el %s del %s (%s)', l.item, r.numero, coalesce(c.numero, c.referencia)), ', '$v$,
        $v$select string_agg(format('el %s del %s, en la %s', l.item, r.numero, public.nombre_de_oc(c.numero, c.referencia)), '; '$v$),
-      (64, 'fijar_datos_compra(uuid,boolean,text)',
+      (67, 'emitir_compra_de_requerimientos(uuid,jsonb,uuid,text,date,text,integer,text,boolean)',
+       $v$'Ya va en otra orden de compra %: desmárcalo o espera a que Gerencia la rechace.'$v$,
+       $v$'Ya va en otra compra: %. Desmárcalo o espera a que Gerencia la rechace.'$v$),
+      (68, 'fijar_datos_compra(uuid,boolean,text)',
        $v$raise exception 'La compra % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$,
        $v$raise exception 'La % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$),
-      (65, 'fijar_datos_compra(uuid,boolean,text)',
+      (69, 'fijar_datos_compra(uuid,boolean,text)',
        $v$coalesce(v_compra.numero, v_compra.referencia) using errcode = 'check_violation';$v$,
        $v$public.nombre_de_oc(v_compra.numero, v_compra.referencia) using errcode = 'check_violation';$v$),
-      (66, 'fn_compra_con_factura_no_cambia_pago()',
+      (70, 'fn_compra_con_factura_no_cambia_pago()',
        $v$raise exception 'La orden de compra % ya tiene factura en Adquisiciones: su condición de pago y su moneda no cambian.',$v$,
        $v$raise exception 'La % ya tiene factura en Adquisiciones: su condición de pago y su moneda no cambian.',$v$),
-      (67, 'fn_compra_con_factura_no_cambia_pago()',
+      (71, 'fn_compra_con_factura_no_cambia_pago()',
        $v$coalesce(new.numero, new.referencia) using errcode = 'check_violation';$v$,
        $v$public.nombre_de_oc(new.numero, new.referencia) using errcode = 'check_violation';$v$),
-      (68, 'fn_compra_pagada_no_cambia()',
+      (72, 'fn_compra_pagada_no_cambia()',
        $v$raise exception 'La OC % ya tiene un pago de Tesorería: no cambia de comprobante ni de moneda mientras ese pago siga vigente.',$v$,
        $v$raise exception 'La % ya tiene un pago de Tesorería: no cambia de comprobante ni de moneda mientras ese pago siga vigente.',$v$),
-      (69, 'fn_compra_pagada_no_cambia()',
+      (73, 'fn_compra_pagada_no_cambia()',
        $v$coalesce(new.numero, new.referencia) using errcode = 'check_violation';$v$,
        $v$public.nombre_de_oc(new.numero, new.referencia) using errcode = 'check_violation';$v$),
-      (70, 'anular_guia_remision(uuid,text)',
+      (74, 'anular_guia_remision(uuid,text)',
        $v$'Guía de remisión anulada: ' || coalesce(v_compra.numero, v_compra.referencia),$v$,
        $v$'Guía de remisión anulada: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia),$v$),
-      (71, 'cargar_guia_remision(uuid,uuid,text,date,text)',
+      (75, 'cargar_guia_remision(uuid,uuid,text,date,text)',
        $v$v_nombre := coalesce(v_compra.numero, v_compra.referencia);$v$,
        $v$v_nombre := public.nombre_de_oc(v_compra.numero, v_compra.referencia);$v$),
-      (72, 'cargar_guia_remision(uuid,uuid,text,date,text)',
+      (76, 'cargar_guia_remision(uuid,uuid,text,date,text)',
        $v$'La compra % no va con el conductor: no lleva guía de remisión de recojo.'$v$,
        $v$'La % no va con el conductor: no lleva guía de remisión de recojo.'$v$),
-      (73, 'cargar_guia_remision(uuid,uuid,text,date,text)',
+      (77, 'cargar_guia_remision(uuid,uuid,text,date,text)',
        $v$'Logística todavía no pone el peso de la compra %: la guía de remisión se emite con ese peso.'$v$,
        $v$'Logística todavía no pone el peso de la %: la guía de remisión se emite con ese peso.'$v$),
-      (74, 'cargar_guia_remision(uuid,uuid,text,date,text)',
+      (78, 'cargar_guia_remision(uuid,uuid,text,date,text)',
        $v$'La compra % ya tiene la guía %: anúlala con su motivo para cargar otra.'$v$,
        $v$'La % ya tiene la guía %: anúlala con su motivo para cargar otra.'$v$),
-      (75, 'cargar_guia_remision(uuid,uuid,text,date,text)',
+      (79, 'cargar_guia_remision(uuid,uuid,text,date,text)',
        $v$'La guía no puede ser anterior a la compra %: revisa la fecha.'$v$,
        $v$'La guía no puede ser anterior a la %: revisa la fecha.'$v$),
-      (76, 'fn_compra_recojo()',
+      (80, 'fn_compra_recojo()',
        $v$'Programa el recojo: ' || coalesce(new.numero, new.referencia),$v$,
        $v$'Programa el recojo: ' || public.nombre_de_oc(new.numero, new.referencia),$v$),
-      (77, 'fn_compra_recojo()',
+      (81, 'fn_compra_recojo()',
        $v$coalesce(new.numero, new.referencia)$v$,
        $v$public.nombre_de_oc(new.numero, new.referencia)$v$),
-      (78, 'fn_compra_recojo()',
+      (82, 'fn_compra_recojo()',
        $v$'El recojo de la compra % $v$,
        $v$'El recojo de la % $v$),
-      (79, 'fn_compra_recojo()',
+      (83, 'fn_compra_recojo()',
        $v$'Logística todavía no programa el recojo de la compra %: espera a que la ponga en tu lista.'$v$,
        $v$'Logística todavía no programa el recojo de la %: espera a que la ponga en tu lista.'$v$),
-      (80, 'fn_compra_recojo()',
+      (84, 'fn_compra_recojo()',
        $v$'La compra % está con el conductor: la entrega a Almacén se marca cuando él la deja.'$v$,
        $v$'La % está con el conductor: la entrega a Almacén se marca cuando él la deja.'$v$),
-      (81, 'mandar_compra_a_recojo(uuid)',
+      (85, 'mandar_compra_a_recojo(uuid)',
        $v$'La compra % ya se entregó a Almacén.', coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'La % ya se entregó a Almacén.', public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (82, 'marcar_compra_dejada_almacen(uuid)',
+      (86, 'marcar_compra_dejada_almacen(uuid)',
        $v$'Marca primero que recogiste la compra %.', coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'Marca primero que recogiste la %.', public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (83, 'marcar_compra_dejada_almacen(uuid)',
+      (87, 'marcar_compra_dejada_almacen(uuid)',
        $v$'Ingreso por validar: ' || coalesce(v_compra.numero, v_compra.referencia),$v$,
        $v$'Ingreso por validar: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia),$v$),
-      (84, 'marcar_compra_en_recojo(uuid)',
+      (88, 'marcar_compra_en_recojo(uuid)',
        $v$'La compra % no está mandada a recojo.', coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'La % no está mandada a recojo.', public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (85, 'marcar_compra_recogida(uuid)',
+      (89, 'marcar_compra_recogida(uuid)',
        $v$'La compra % no está mandada a recojo.', coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'La % no está mandada a recojo.', public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (86, 'programar_recojo(uuid,numeric,integer)',
+      (90, 'programar_recojo(uuid,numeric,integer)',
        $v$v_nombre := coalesce(v_compra.numero, v_compra.referencia);$v$,
        $v$v_nombre := public.nombre_de_oc(v_compra.numero, v_compra.referencia);$v$),
-      (87, 'programar_recojo(uuid,numeric,integer)',
+      (91, 'programar_recojo(uuid,numeric,integer)',
        $v$'La compra % no va con el conductor.'$v$,
        $v$'La % no va con el conductor.'$v$),
-      (88, 'programar_recojo(uuid,numeric,integer)',
+      (92, 'programar_recojo(uuid,numeric,integer)',
        $v$'El conductor ya salió a recoger la compra %: su lugar y su peso ya no se cambian.'$v$,
        $v$'El conductor ya salió a recoger la %: su lugar y su peso ya no se cambian.'$v$),
-      (89, 'programar_recojo(uuid,numeric,integer)',
+      (93, 'programar_recojo(uuid,numeric,integer)',
        $v$'Escribe el peso de la compra % en kilos: más de cero.'$v$,
        $v$'Escribe el peso de la % en kilos: más de cero.'$v$),
-      (90, 'quitar_recojo_de_la_lista(uuid)',
+      (94, 'quitar_recojo_de_la_lista(uuid)',
        $v$'El conductor ya salió a recoger la compra %: ya no se saca de su lista.'$v$,
        $v$'El conductor ya salió a recoger la %: ya no se saca de su lista.'$v$),
-      (91, 'quitar_recojo_de_la_lista(uuid)',
+      (95, 'quitar_recojo_de_la_lista(uuid)',
        $v$coalesce(v_compra.numero, v_compra.referencia) using errcode = 'check_violation';$v$,
        $v$public.nombre_de_oc(v_compra.numero, v_compra.referencia) using errcode = 'check_violation';$v$),
-      (92, 'quitar_recojo_de_la_lista(uuid)',
+      (96, 'quitar_recojo_de_la_lista(uuid)',
        $v$'Recojo retirado de tu lista: ' || coalesce(v_compra.numero, v_compra.referencia),$v$,
        $v$'Recojo retirado de tu lista: ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia),$v$),
-      (93, 'validar_ingresos_compra(uuid,jsonb,text)',
+      (97, 'validar_ingresos_compra(uuid,jsonb,text)',
        $v$'Un material no pertenece a la compra %. Vuelve a cargar el kardex.', coalesce(v_compra.numero, v_compra.referencia)$v$,
        $v$'Un material no pertenece a la %. Vuelve a cargar el kardex.', public.nombre_de_oc(v_compra.numero, v_compra.referencia)$v$),
-      (94, 'validar_ingresos_compra(uuid,jsonb,text)',
+      (98, 'validar_ingresos_compra(uuid,jsonb,text)',
        $v$'Almacén observó la compra ' || coalesce(v_compra.numero, v_compra.referencia),$v$,
        $v$'Almacén observó la ' || public.nombre_de_oc(v_compra.numero, v_compra.referencia),$v$),
-      (95, 'mensaje_compra_sin_aprobar(ordenes_compra_materiales)',
+      (99, 'mensaje_compra_sin_aprobar(ordenes_compra_materiales)',
        $v$'La compra ' || coalesce(p_compra.numero, p_compra.referencia, 'sin número')$v$,
        $v$'La ' || public.nombre_de_oc(p_compra.numero, p_compra.referencia)$v$),
-      (96, 'situacion_de_pago_de_compra(uuid)',
+      (100, 'situacion_de_pago_de_compra(uuid)',
        $v$'El pago de la OC lo ven Tesorería y Logística.'$v$,
-       $v$'No tienes permiso para ver el pago de la OC.'$v$)
+       $v$'No tienes permiso para ver el pago de la OC.'$v$),
+      (101, 'devoluciones_sin_nota_credito()',
+       $v$'Lo ve Contabilidad.'$v$,
+       $v$'No tienes permiso para ver Adquisiciones.'$v$)
     ) as c(orden, funcion, viejo, nuevo)
     union all
     select null::integer, null, null, null  -- cierra la última función
@@ -406,7 +428,11 @@ begin
    where n.nspname = 'public'
      and (p.prosrc ~ '''OC '' *\|\| *[a-z_]+\.referencia'
           or p.prosrc ~ 'Adquisiciones la ven'
-          or p.prosrc ~ 'El pago de la OC lo ven');
+          or p.prosrc ~ 'Lo ve Contabilidad\.'
+          or p.prosrc ~ 'El pago de la OC lo ven'
+          -- Los fragmentos de solo mensaje se dan por hechos si su texto nuevo está;
+          -- esto ataja el que se haya saltado porque la función decía otra cosa.
+          or p.prosrc ~* '(la orden de compra|la compra) %');
   if v_quedan is not null then
     raise exception 'Todavía nombran la OC sin número con su referencia o el aviso viejo: %. Revisarlas a mano.', v_quedan;
   end if;

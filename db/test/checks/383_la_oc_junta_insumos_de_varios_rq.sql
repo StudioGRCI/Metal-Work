@@ -165,7 +165,7 @@ select test.afirmar(public.emitir_compra_de_requerimientos(current_setting('prue
 select test.afirmar((select count(*) from public.insumos_de_compras(array[current_setting('prueba.oc1')::uuid])) = 3,
   'Logística ve los tres insumos de la orden');
 select test.debe_fallar(pg_temp.comprar('oc2', '[{"material_id": "{m1}", "cantidad": 4, "precio": 10, "insumos": ["{rq1.1}"]}]'),
-  'un insumo que ya tiene su orden no va en otra', 'Ya va en otra orden');
+  'un insumo que ya tiene su orden no va en otra', 'Ya va en otra compra');
 reset role;
 -- La aprobación se decide al confirmar la transacción: se adelanta aquí.
 set constraints all immediate;

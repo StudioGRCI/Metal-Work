@@ -73,8 +73,24 @@ begin
                                     where n.nspname = 'public'
                                       and (p.prosrc ~ '''OC '' *\|\| *[a-z_]+\.referencia'
                                            or p.prosrc ~ 'Adquisiciones la ven'
-                                           or p.prosrc ~ 'El pago de la OC lo ven')),
+                                           or p.prosrc ~ 'Lo ve Contabilidad\.'
+                                           or p.prosrc ~ 'El pago de la OC lo ven'
+                                           or p.prosrc ~* '(la orden de compra|la compra) %')),
                        'ninguna función nombra la OC con «OC » || referencia ni el aviso viejo de Adquisiciones');
+  -- Y las que la nombraban con coalesce(numero, referencia) en sus mensajes ya no lo hacen.
+  perform test.afirmar(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                    where n.nspname = 'public'
+                                      and p.proname = any (array['anular_guia_remision', 'aprobar_compra', 'cargar_guia_remision',
+                                                                 'corregir_orden_compra', 'corregir_requerimiento',
+                                                                 'emitir_compra_de_requerimientos', 'evaluar_aprobacion_compra',
+                                                                 'fijar_datos_compra', 'fn_adquisicion_oc_valida',
+                                                                 'fn_compra_con_factura_no_cambia_pago', 'fn_compra_pagada_no_cambia',
+                                                                 'fn_compra_recojo', 'mandar_compra_a_recojo',
+                                                                 'marcar_compra_dejada_almacen', 'marcar_compra_en_recojo',
+                                                                 'marcar_compra_recogida', 'programar_recojo',
+                                                                 'quitar_recojo_de_la_lista', 'rechazar_compra', 'validar_ingresos_compra'])
+                                      and p.prosrc ~ 'coalesce\([a-z_]+\.numero, *[a-z_]+\.referencia\)'),
+                       'las que nombraban la OC con coalesce(numero, referencia) en sus mensajes ya no lo hacen');
 end $$;
 
 -- ============================================ 1. Un RQ con dos OC, una de antes de la serie
@@ -124,6 +140,19 @@ select test.afirmar(not exists (select 1 from public.notificaciones
                                  where origen_id = pg_temp.id('oc2')
                                    and replace(titulo || ' ' || coalesce(cuerpo, ''), 'ref. del proveedor OC-0429', '') like '%OC-0429%'),
   'ningún aviso de la OC sin número nombra su referencia como número');
+-- Logística quiere volver a comprar el insumo que ya va en ella: el mensaje la nombra bien.
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.debe_fallar(format($q$ select public.emitir_compra_de_requerimientos(gen_random_uuid(),
+                                     '[{"material_id": "%s", "cantidad": 3, "precio": 10, "insumos": ["%s"]}]'::jsonb,
+                                     '%s', null, null, 'CONTADO', 0, 'PEN', false) $q$,
+                               current_setting('prueba.mat'),
+                               (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq') and item = 2),
+                               current_setting('prueba.proveedor')),
+  'el insumo que ya va en la OC sin número no va en otra, y el mensaje no hace pasar su referencia por número',
+  'Ya va en otra compra: el 2 del ' || (select numero from public.requerimientos where id = pg_temp.id('rq'))
+    || ', en la OC sin número (ref. del proveedor OC-0429). Desmárcalo');
+reset role;
 
 -- ============================================ 3. La lista de las que se pueden anular, y la anulada
 select pg_temp.como('gerente');
@@ -138,6 +167,9 @@ select test.debe_fallar($$ select public.aprobar_compra(pg_temp.id('oc2')) $$,
   'la anulada no se aprueba, y el mensaje no hace pasar la referencia por número',
   'La OC sin número (ref. del proveedor OC-0429) no está esperando aprobación');
 reset role;
+-- El disparador que la congela es la última puerta: la tabla no tiene política de
+-- UPDATE, así que solo llegan a él las funciones de la base. Se le escribe como
+-- ellas, sin rol.
 select test.debe_fallar($$ update public.ordenes_compra_materiales set motivo = 'Otro motivo' where id = pg_temp.id('oc2') $$,
   'la anulada queda congelada y el mensaje la nombra bien',
   'La OC sin número (ref. del proveedor OC-0429) está anulada');
@@ -149,6 +181,8 @@ select test.debe_fallar('select * from public.compras_sin_factura()', 'Ventas no
   'No tienes permiso para ver Adquisiciones.');
 select test.debe_fallar($$ select * from public.situacion_de_pago_de_compra(pg_temp.id('oc1')) $$,
   'ni el pago de la OC', 'No tienes permiso para ver el pago de la OC.');
+select test.debe_fallar('select * from public.devoluciones_sin_nota_credito()',
+  'ni lo que espera nota de crédito, con el mismo aviso', 'No tienes permiso para ver Adquisiciones.');
 reset role;
 
 rollback;

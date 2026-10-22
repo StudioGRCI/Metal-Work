@@ -1061,8 +1061,8 @@ function Factura({
             <p className="text-xs text-aviso">
               {tomasAnuladas.length === 1 ? (
                 <>
-                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta ({tomasAnuladas[0].referencia}), que se anuló.{' '}
-                  {tomasAnuladas[0].motivo_anulacion}.
+                  {/* El motivo ya nombra la OC; la línea guardada entre paréntesis la repetía con otro paréntesis adentro. */}
+                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta, que se anuló. {tomasAnuladas[0].motivo_anulacion}.
                 </>
               ) : (
                 <>

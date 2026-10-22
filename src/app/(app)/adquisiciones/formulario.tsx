@@ -6,7 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
-import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { nombreDeOc, ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
@@ -148,7 +148,8 @@ function Formulario({
     if (leida.ruc) setRuc((r) => r || leida.ruc!)
     if (!sinMarcar) return
     // Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera.
-    const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
+    // La OC sin número, por su referencia: es lo que cita la factura del proveedor.
+    const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(ocParaDetector(c).numero) ?? ''))
     const primera = nombradas.at(0)
     if (primera) {
       const juntas = nombradas.filter((c) => mismoEmisor(c, primera) && c.condicion_pago === primera.condicion_pago)
@@ -183,8 +184,8 @@ function Formulario({
         moneda: monedaFactura,
         numero,
         ruc: rucEscrito,
-        marcadas: elegidas,
-        disponibles: compras,
+        marcadas: elegidas.map(ocParaDetector),
+        disponibles: compras.map(ocParaDetector),
       })
     : []
 
