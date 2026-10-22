@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { enlaces } from '@/lib/datos/facturacion'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_JUSTIFICANTES, cambiosDeCorreccion, idsDeCorreccion, type DocumentoCorregible } from '@/lib/dominio/correcciones'
 import { cantidad, fecha, moneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
@@ -63,7 +64,7 @@ export async function correccionesDe(
     enlaces(BUCKET_JUSTIFICANTES, filas.map((c) => c.justificante_ruta)),
   ])
   // Si alguien no puede leer las OC o el catálogo, el historial sale igual, con «una OC» o «Línea 1».
-  const numeroDe = new Map((oc.data ?? []).map((o) => [o.id, o.numero ?? o.referencia]))
+  const numeroDe = new Map((oc.data ?? []).map((o) => [o.id, nombreDeOc(o)]))
   const nombreDe = new Map((mat.data ?? []).map((m) => [m.id, m.descripcion]))
   const formatos = {
     dinero: (n: number, m: 'PEN' | 'USD') => moneda(n, m),

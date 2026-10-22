@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { rucEsValido } from '@/lib/dominio/proveedores'
 import { moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -132,7 +133,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       return rucEsValido(suyo) && suyo !== v.ruc_proveedor
     })
     if (otra) {
-      return { ok: false, error: `La ${otra.numero ?? `OC ${otra.referencia}`} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
+      return { ok: false, error: `La ${nombreDeOc(otra)} es del RUC ${otra.padron?.numero_documento?.trim()}, y la factura del ${v.ruc_proveedor}: una factura se liga solo a las OC de su proveedor.` }
     }
   }
 
@@ -149,10 +150,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     const conocidas = ordenes.flatMap((o) => porId.get(o) ?? [])
     const nombre = (p: string | null) => (p ?? '').trim().toUpperCase()
     const otroProveedor = conocidas.find((c) => nombre(c.proveedor) !== nombre(conocidas[0].proveedor))
-    if (otroProveedor) return { ok: false, error: `Una factura es de un solo proveedor: la OC ${otroProveedor.numero ?? otroProveedor.referencia} es de ${otroProveedor.proveedor}.` }
+    if (otroProveedor) return { ok: false, error: `Una factura es de un solo proveedor: la ${nombreDeOc(otroProveedor)} es de ${otroProveedor.proveedor}.` }
     const otraCondicion = conocidas.find((c) => c.condicion_pago !== v.condicion_pago)
     if (otraCondicion) {
-      return { ok: false, error: `La OC ${otraCondicion.numero ?? otraCondicion.referencia} es al ${condicionEnTexto(otraCondicion.condicion_pago ?? '')}: la factura tiene que ir igual.` }
+      return { ok: false, error: `La ${nombreDeOc(otraCondicion)} es al ${condicionEnTexto(otraCondicion.condicion_pago ?? '')}: la factura tiene que ir igual.` }
     }
     // La principal fija la OT del comprobante: la de la OT elegida, si hay una.
     principal ??= (v.orden_id && conocidas.find((c) => c.orden_id === v.orden_id)?.orden_compra_id) || ordenes[0]
@@ -203,7 +204,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   // Sin OC marcada, la base la liga sola a la OC con boleta a la que Logística
   // anexó esa factura (migración 20261020210000): se dice, para que no se busque.
   if (ordenes.length === 0 && registrado.orden_compra_id) {
-    const oc = registrado.oc ? (registrado.oc.numero ?? `OC ${registrado.oc.referencia}`) : 'OC con boleta'
+    const oc = registrado.oc ? nombreDeOc(registrado.oc) : 'OC con boleta'
     return {
       ok: true,
       mensaje: `Comprobante ${v.numero_documento} registrado y ligado a la ${oc}, a la que Logística lo anexó${tomo ?? ': se paga por él en Cuentas por pagar.'}`,
@@ -246,11 +247,18 @@ async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createCli
   }
   const filas = data ?? []
   if (filas.length === 0) return null
+  // La base nombra la de antes de la serie «OC <referencia>», que pasa por un
+  // número de OC: se nombra con `nombreDeOc`. Si no se pueden leer, sin su número.
+  const ids = filas.flatMap((f) => (f.compra_id ? [f.compra_id] : []))
+  const { data: ordenes, error: errorOrdenes } = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)
+  if (errorOrdenes) console.error('No se pudieron leer las OC con boleta que tomó la factura', errorOrdenes)
+  const nombres = new Map((ordenes ?? []).map((o) => [o.id, nombreDeOc(o)]))
+  const nombre = (f: (typeof filas)[number]) => (f.compra_id && nombres.get(f.compra_id)) || 'OC con boleta'
   // Con una OC la nombra; con varias, las suma.
-  const oc = filas.length === 1 ? `la ${filas[0].compra}` : 'sus OC con boleta'
+  const oc = filas.length === 1 ? `la ${nombre(filas[0])}` : 'sus OC con boleta'
   const otra = filas.find((f) => f.otra_moneda)
   if (otra) {
-    return `. Va en otra moneda que la ${otra.compra}, que Tesorería ya pagó por su boleta: no toma ese pago sola; Tesorería lo pasa al cambio o registra la devolución antes de pagar lo que falte.`
+    return `. Va en otra moneda que la ${nombre(otra)}, que Tesorería ya pagó por su boleta: no toma ese pago sola; Tesorería lo pasa al cambio o registra la devolución antes de pagar lo que falte.`
   }
   // `tomado` y `falta` van en la moneda de la factura; lo pagado de más, en la de cada OC.
   const tomado = filas.reduce((suma, f) => suma + Number(f.tomado ?? 0), 0)

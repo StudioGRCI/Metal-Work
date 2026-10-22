@@ -304,7 +304,9 @@ let ocNumero
   await pagina.waitForFunction((texto) => !document.querySelector('main')?.innerText.includes(texto), plancha, { timeout: 15000 }).catch(() => {})
   const despues = limpio(await pagina.locator('main').innerText())
   comprobar(!despues.includes(plancha), 'lo que ya va en la orden sale de «Por comprar»')
-  await pagina.screenshot({ path: `${CAPTURAS}/vrq-1-por-comprar.png`, fullPage: true })
+  // Con `caret: 'initial'`: la captura esconde el cursor con un estilo, y si cae mientras React hidrata, la
+  // consola marca un desajuste que no es de la pantalla (como en probar-pagos-mueven-la-caja).
+  await pagina.screenshot({ path: `${CAPTURAS}/vrq-1-por-comprar.png`, fullPage: true, caret: 'initial' })
   comprobar(errores.length === 0, `sin errores de consola como Logística ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -379,7 +381,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
   await recargar(pagina)
   const t2 = limpio(await pagina.locator('tbody tr', { hasText: ocNumero }).innerText())
   comprobar(t2.includes(`${serie}-71`) && t2.includes(`${serie}-72`), 'la lista dice las dos facturas de la OC')
-  await pagina.screenshot({ path: `${CAPTURAS}/vrq-2-ordenes.png`, fullPage: true })
+  await pagina.screenshot({ path: `${CAPTURAS}/vrq-2-ordenes.png`, fullPage: true, caret: 'initial' })
   comprobar(errores.length === 0, `sin errores de consola como Logística ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -434,7 +436,7 @@ if (!ocId) throw new Error('No salió la OC: no se puede seguir.')
   const grupo2 = limpio(await pagina.locator('tbody', { hasText: `${serie}-72` }).first().innerText())
   comprobar(grupo2.includes('Calza con sus OC') && grupo2.includes(`junto con ${serie}-71`), 'la segunda completa la OC junto con la primera')
   comprobar((await pagina.locator('tbody tr', { hasText: 'Facturada en parte' }).filter({ hasText: ocNumero }).count()) === 0, 'la OC ya no espera factura')
-  await pagina.screenshot({ path: `${CAPTURAS}/vrq-3-adquisiciones.png`, fullPage: true })
+  await pagina.screenshot({ path: `${CAPTURAS}/vrq-3-adquisiciones.png`, fullPage: true, caret: 'initial' })
   comprobar(errores.length === 0, `sin errores de consola como Contabilidad ${errores.join(' | ')}`)
   await contexto.close()
 }

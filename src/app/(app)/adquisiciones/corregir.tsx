@@ -9,6 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { CompraSinFactura, OrdenDeFactura } from '@/lib/datos/adquisiciones'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { avisosDelDetector, lecturaUtil, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useEnvio } from '@/lib/envio'
 import { moneda as dinero } from '@/lib/format'
@@ -39,7 +40,13 @@ export type FacturaParaCorregir = {
  */
 type OcElegible = {
   id: string
+  /** Lo que lee el detector: el número, o la referencia en las OC de antes de la serie. */
   numero: string
+  /** Cómo la nombran los avisos del detector (`nombreDeOc`): la referencia sola pasaría por un número de OC. */
+  nombre: string
+  /** El número de la casa; null en las de antes de la serie, que se ven con su `referencia` aparte. */
+  numeroDeLaCasa: string | null
+  referencia: string
   proveedor: string | null
   total: number | null
   pendiente: number | null
@@ -148,6 +155,9 @@ function Formulario({
     ...ordenes.map((o) => ({
       id: o.id,
       numero: o.numero ?? o.referencia,
+      nombre: nombreDeOc(o),
+      numeroDeLaCasa: o.numero,
+      referencia: o.referencia,
       proveedor: null,
       total: o.sin_precio ? null : o.total,
       pendiente: o.sin_precio ? null : Math.max(o.total - o.facturado_otras, 0),
@@ -160,6 +170,9 @@ function Formulario({
       .map((c) => ({
         id: c.orden_compra_id,
         numero: c.numero ?? c.referencia,
+        nombre: nombreDeOc(c),
+        numeroDeLaCasa: c.numero,
+        referencia: c.referencia,
         proveedor: c.proveedor,
         total: c.sin_precio ? null : c.total,
         pendiente: c.sin_precio ? null : Math.max(c.total - c.facturado, 0),
@@ -197,8 +210,8 @@ function Formulario({
         total: Number(total) > 0 ? Number(total) : null,
         moneda: monedaFactura,
         numero,
-        marcadas: elegidas.map((o) => ({ numero: o.numero, referencia: o.numero })),
-        disponibles: elegibles.map((o) => ({ numero: o.numero, referencia: o.numero })),
+        marcadas: elegidas.map((o) => ({ numero: o.numero, referencia: o.numero, nombre: o.nombre })),
+        disponibles: elegibles.map((o) => ({ numero: o.numero, referencia: o.numero, nombre: o.nombre })),
       }).map((a) => textoDelAviso(a, (n, m) => dinero(n, m)))
     : []
   const suma = elegidas.every((o) => o.pendiente !== null && o.moneda === monedaFactura)
@@ -352,8 +365,15 @@ function Formulario({
                       checked={marcadas.includes(o.id)}
                       onChange={(e) => setMarcadas((m) => (e.target.checked ? [...m, o.id] : m.filter((x) => x !== o.id)))}
                     />
-                    <span className="tabular text-texto">{o.numero}</span>
-                    <span className="ml-auto text-right tabular text-texto-suave">
+                    <span className="tabular text-texto">
+                      {o.numeroDeLaCasa ?? 'OC sin número'}
+                      {!o.numeroDeLaCasa && o.referencia && (
+                        <span className="block text-xs text-texto-suave">
+                          Ref. del proveedor: <span className="whitespace-nowrap">{o.referencia}</span>
+                        </span>
+                      )}
+                    </span>
+                    <span className="ml-auto shrink-0 whitespace-nowrap text-right tabular text-texto-suave">
                       {o.total === null ? 'sin precio' : dinero(o.total, codigo(o.moneda))}
                       {o.pendiente !== null && o.total !== null && o.pendiente < o.total && (
                         <span className="block text-xs">falta {dinero(o.pendiente, codigo(o.moneda))}</span>

@@ -78,6 +78,18 @@ export function etiquetaDocumentoServicio(d: { tipo: string; numero: string | nu
   return d.numero ? `${tipo} ${d.numero}` : tipo
 }
 
+/**
+ * Cómo se nombra una OC en una frase o en una lista. Las de antes de la serie
+ * OC-…-MW no tienen número de la casa, y su referencia es la cotización o la
+ * proforma del proveedor: escrita sola pasa por un número de OC (en
+ * Adquisiciones › Facturas salía «OC-0001», visto en producción el 2026-10-22).
+ */
+export function nombreDeOc(o: { numero: string | null; referencia?: string | null }): string {
+  if (o.numero) return o.numero
+  const referencia = o.referencia?.trim()
+  return referencia ? `OC sin número (ref. del proveedor ${referencia})` : 'OC sin número'
+}
+
 /** Lo que necesitan los filtros de cada fila. */
 export type FilaParaFiltrar = {
   tipo: 'OC' | 'OS'

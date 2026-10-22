@@ -626,11 +626,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // paga, sin registrar cobros ni pagos. La planilla diaria, las horas extras,
   // los subcontratos, las tardanzas, las observaciones y los proveedores
   // salieron de su menú ese día: su permiso sigue, y los abre por su dirección.
+  // Desde el 2026-10-22 consulta Adquisiciones (`adquisiciones.ver`): cada OC y
+  // cada OS, de su RQ o su OT a su pago. Antes solo entraba por la dirección.
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
-      { titulo: 'Consultas', rutas: ['/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
+      { titulo: 'Consultas', rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },

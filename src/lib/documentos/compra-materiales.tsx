@@ -18,7 +18,8 @@ export type LineaCompraPdf = {
 }
 
 export type CompraPdf = {
-  numero: string
+  /** null en las de antes de la serie OC-…-MW: salen «SIN NÚMERO», y su referencia no pasa por número. */
+  numero: string | null
   referenciaProveedor: string | null
   /** Cuándo se emitió (ISO). */
   emitida: string
@@ -155,20 +156,22 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
     c.referenciaProveedor && c.referenciaProveedor !== c.numero ? `Según su cotización ${c.referenciaProveedor}.` : null,
     c.motivo,
     c.conFactura
-      ? `Emitir la factura a nombre de ${EMPRESA.razonSocial} y enviarla a los correos indicados, con el número ${c.numero}.`
+      ? `Emitir la factura a nombre de ${EMPRESA.razonSocial} y enviarla a los correos indicados${
+          c.numero ? `, con el número ${c.numero}` : c.referenciaProveedor ? `, citando su cotización ${c.referenciaProveedor}` : ''
+        }.`
       : 'Compra sin factura: entregar boleta, nota de venta o recibo junto con la mercadería.',
     pendiente ? 'Hay líneas con precio pendiente: el total es parcial.' : null,
   ].filter(Boolean)
 
   return (
-    <Document title={`Orden de compra ${c.numero}`} author={EMPRESA.razonSocial}>
+    <Document title={`Orden de compra ${c.numero ?? 'sin número'}`} author={EMPRESA.razonSocial}>
       <Page size="A4" style={s.pagina}>
         {c.anulacion && (
           <Text style={s.marca} fixed>
             ANULADA
           </Text>
         )}
-        <CabeceraDocumento logo={logo} titulo="ORDEN DE COMPRA" numero={`N°: ${c.numero}`} lineas={[`FECHA DE EMISIÓN: ${fecha(c.emitida)}`]} />
+        <CabeceraDocumento logo={logo} titulo="ORDEN DE COMPRA" numero={`N°: ${c.numero ?? 'SIN NÚMERO'}`} lineas={[`FECHA DE EMISIÓN: ${fecha(c.emitida)}`]} />
         {c.anulacion && (
           <View style={s.anulada} wrap={false}>
             <Text style={s.anuladaTitulo}>
@@ -317,7 +320,7 @@ export function DocumentoCompraMateriales({ compra: c, lineas, logo }: { compra:
           <Text style={s.pieTexto}>
             {`Si tiene problemas o consultas relacionados a esta orden de compra comunicarse con ${EMPRESA.consultas.area} - ${EMPRESA.consultas.telefono} - ${EMPRESA.consultas.correo}`}
           </Text>
-          <Text style={s.pieTexto} render={({ pageNumber, totalPages }) => `${c.numero}${c.anulacion ? ' · ANULADA' : ''} · página ${pageNumber} de ${totalPages}`} />
+          <Text style={s.pieTexto} render={({ pageNumber, totalPages }) => `${c.numero ?? 'OC sin número'}${c.anulacion ? ' · ANULADA' : ''} · página ${pageNumber} de ${totalPages}`} />
         </View>
       </Page>
     </Document>
