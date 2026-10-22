@@ -8,6 +8,7 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { CampoContrato, sacarContrato } from '@/components/estructura/contrato-adjunto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -185,19 +186,7 @@ function FormularioSubcontrato({
         </Campo>
       </div>
       <CampoContrato id="sc-contrato" disabled={enviando} />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={!subcontratistaId}>
-          Registrar subcontrato
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar subcontrato" disabled={!subcontratistaId} />
     </form>
   )
 }

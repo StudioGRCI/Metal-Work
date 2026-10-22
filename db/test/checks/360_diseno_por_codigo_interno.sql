@@ -106,13 +106,18 @@ select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current
 -- envío: se cambió antes de volver a pulsar (migración 20261022180000).
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current_setting('prueba.codigo'),
   '001', 'Estructura del cajón reforzado', pg_temp.id('mtz'), null, 'cajon-r1.pdf', 30)$q$,
-  'con otro nombre y el mismo id, el plano no se da por cargado', 'ya se cargó con otros datos');
+  'con otro nombre y el mismo id, el plano no se da por cargado', 'ya quedó cargad');
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current_setting('prueba.codigo'),
   '001', 'Estructura del cajón', pg_temp.id('mtz'), 'Ojo con la soldadura', 'cajon-r1.pdf', 30)$q$,
-  'ni con otra observación', 'ya se cargó con otros datos');
+  'ni con otra observación', 'ya quedó cargad');
 select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current_setting('prueba.codigo'),
   '001', 'Estructura del cajón', pg_temp.id('mtz'), null, 'otro-plano.pdf', 30)$q$,
-  'ni con el PDF de otro nombre', 'ya se cargó con otros datos');
+  'ni con el PDF de otro nombre', 'ya quedó cargad');
+-- Ni con otro peso: el reintento se lo cambiaba al plano (duodécima pasada).
+-- El peso se cambia con `fijar_peso_plano`.
+select test.debe_fallar($q$select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), current_setting('prueba.codigo'),
+  '001', 'Estructura del cajón', pg_temp.id('mtz'), null, 'cajon-r1.pdf', 45)$q$,
+  'ni con otro peso', 'ya quedó cargado la primera vez que lo enviaste');
 reset role;
 select test.afirmar(
   (select count(*) from public.codigo_planos where id = pg_temp.id('p1') and codigo_interno = current_setting('prueba.codigo')
@@ -120,6 +125,8 @@ select test.afirmar(
   and (select count(*) from public.codigo_plano_revisiones where plano_id = pg_temp.id('p1') and revision = 1
           and tamano_bytes = 81234 and ruta = pg_temp.ruta('p1', 'r1')) = 1,
   'el plano queda con el código escrito siempre igual, su área y su R1, una sola vez aunque se reintente');
+select test.afirmar((select peso from public.codigo_planos where id = pg_temp.id('p1')) = 30,
+  'y con el peso de la primera vez: el reintento con otro peso no se lo cambió');
 select test.afirmar(
   pg_temp.avisos('supervisor_mtz', 'Plano nuevo para') = 1
   and pg_temp.avisos('supervisor_prd', 'Plano nuevo') = 0 and pg_temp.avisos('diseno_dis', 'Plano nuevo') = 0
@@ -206,9 +213,9 @@ select public.subir_revision_plano(pg_temp.id('p1'), pg_temp.id('r1b'), 'Se alar
 select public.subir_revision_plano(pg_temp.id('p1'), pg_temp.id('r1b'), 'Se alargó el cajón 20 cm', 'cajon-r2.pdf');
 -- Con otro «qué cambió» o el PDF de otro nombre ya no es el mismo envío (migración 20261022180000).
 select test.debe_fallar($q$select public.subir_revision_plano(pg_temp.id('p1'), pg_temp.id('r1b'), 'Se alargó el cajón 30 cm', 'cajon-r2.pdf')$q$,
-  'con otro «qué cambió» y el mismo id, la revisión no se da por cargada', 'ya se cargó con otros datos');
+  'con otro «qué cambió» y el mismo id, la revisión no se da por cargada', 'ya quedó cargad');
 select test.debe_fallar($q$select public.subir_revision_plano(pg_temp.id('p1'), pg_temp.id('r1b'), 'Se alargó el cajón 20 cm', 'otra.pdf')$q$,
-  'ni con el PDF de otro nombre', 'ya se cargó con otros datos');
+  'ni con el PDF de otro nombre', 'ya quedó cargad');
 select test.afirmar(
   (select revision from public.codigo_interno_planos(current_setting('prueba.codigo')) where id = pg_temp.id('p1')) = 2
   and (select revisiones from public.codigo_interno_planos(current_setting('prueba.codigo')) where id = pg_temp.id('p1')) = 2

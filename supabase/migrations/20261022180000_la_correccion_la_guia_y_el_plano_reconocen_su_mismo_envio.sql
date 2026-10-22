@@ -24,12 +24,17 @@
 -- la ventana como si la fecha nueva hubiera entrado. Ahora mira también la
 -- fecha y el nombre del PDF. El plano de Diseño y su revisión tenían lo mismo
 -- (el nombre, la observación, «qué cambió»): lo vio el detector del check 417
--- al buscar también por el nombre del PDF.
+-- al buscar también por el nombre del PDF. El plano con su peso, además, le
+-- cambiaba el peso al reintento que traía otro (duodécima pasada). El aviso de
+-- las tres es el de los demás envíos repetidos, «… ya quedó cargada la primera
+-- vez que la enviaste: recarga la pantalla…», no «ya se cargó con otros datos»,
+-- y la pantalla lo reconoce igual: se pone al día y la ventana solo se cierra.
 --
--- Esas seis funciones se reescriben desde su definición vigente, cambiando
--- solo el bloque que reconoce el id: otra migración (la que anula la OC
--- aprobada con su motivo) también redefine dos correcciones, y así no se pisa
--- lo que ella cambie. Si el bloque no está como lo conoce el repositorio, la
+-- Esas siete funciones se reescriben desde su definición vigente, cambiando
+-- solo el bloque que reconoce el id: otras migraciones (la que anula la OC
+-- aprobada con su motivo, y la del RUC del PR #153 para la factura de compra)
+-- también redefinen correcciones, y así no se pisa lo que ellas cambien. Si
+-- una de ellas se pega después, se vuelve a pegar esta. Si el bloque no está como lo conoce el repositorio, la
 -- migración se detiene en vez de adivinar. `registrar_correccion` va entera,
 -- con la guardia de su huella como la 20261022160000.
 
@@ -150,20 +155,32 @@ begin
   for v_cambio in
     select * from (values
       ('cargar_guia_remision(uuid,uuid,text,date,text)',
-       E'    if v_existe.orden_compra_id = p_compra and v_existe.numero = v_numero and v_existe.cargada_por = v_yo then\n',
+       E'    if v_existe.orden_compra_id = p_compra and v_existe.numero = v_numero and v_existe.cargada_por = v_yo then\n'
+       || E'      return p_id;\n'
+       || E'    end if;\n'
+       || E'    raise exception ''Esa guía ya se cargó con otros datos. Vuelve a cargar la pantalla.'' using errcode = ''unique_violation'';\n',
        E'    -- El mismo envío repetido (la respuesta se perdió) trae todo igual: con\n'
        || E'    -- otra fecha o el PDF de otro nombre ya no es el mismo (undécima pasada).\n'
        || E'    if v_existe.orden_compra_id = p_compra and v_existe.numero = v_numero and v_existe.cargada_por = v_yo\n'
-       || E'       and v_existe.fecha_emision = p_fecha and v_existe.nombre_archivo = btrim(p_nombre_archivo) then\n'),
+       || E'       and v_existe.fecha_emision = p_fecha and v_existe.nombre_archivo = btrim(p_nombre_archivo) then\n'
+       || E'      return p_id;\n'
+       || E'    end if;\n'
+       || E'    raise exception ''Esta guía ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.'' using errcode = ''check_violation'';\n'),
       ('registrar_plano_codigo(uuid,uuid,text,text,text,uuid,text,text)',
        E'       and v_existe.creado_por = v_yo\n'
-       || E'       and exists (select 1 from public.codigo_plano_revisiones r where r.id = p_revision and r.plano_id = p_plano) then\n',
+       || E'       and exists (select 1 from public.codigo_plano_revisiones r where r.id = p_revision and r.plano_id = p_plano) then\n'
+       || E'      return p_plano;\n'
+       || E'    end if;\n'
+       || E'    raise exception ''Ese plano ya se cargó con otros datos. Vuelve a cargar la pantalla.'' using errcode = ''check_violation'';\n',
        E'       and v_existe.creado_por = v_yo\n'
        || E'       -- Con otro nombre, otra observación o el PDF de otro nombre ya no es el\n'
        || E'       -- mismo envío (undécima pasada).\n'
        || E'       and v_existe.nombre = v_nombre and v_existe.observacion is not distinct from v_obs\n'
        || E'       and exists (select 1 from public.codigo_plano_revisiones r\n'
-       || E'                    where r.id = p_revision and r.plano_id = p_plano and r.nombre_archivo = btrim(p_nombre_archivo)) then\n'),
+       || E'                    where r.id = p_revision and r.plano_id = p_plano and r.nombre_archivo = btrim(p_nombre_archivo)) then\n'
+       || E'      return p_plano;\n'
+       || E'    end if;\n'
+       || E'    raise exception ''Ese plano ya quedó cargado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.'' using errcode = ''check_violation'';\n'),
       ('subir_revision_plano(uuid,uuid,text,text)',
        E'    if v_existe.plano_id = p_plano and v_existe.subido_por = v_yo then\n'
        || E'      return p_revision;\n'
@@ -175,7 +192,16 @@ begin
        || E'       and v_existe.cambios is not distinct from v_cambios and v_existe.nombre_archivo = btrim(p_nombre_archivo) then\n'
        || E'      return p_revision;\n'
        || E'    end if;\n'
-       || E'    raise exception ''Esa revisión ya se cargó con otros datos. Vuelve a cargar la pantalla.'' using errcode = ''check_violation'';\n')
+       || E'    raise exception ''Esta revisión ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.'' using errcode = ''check_violation'';\n'),
+      -- El plano con su peso: el mismo envío repetido trae el mismo peso. Con
+      -- otro, la de arriba lo daba por el mismo y esta le cambiaba el peso
+      -- (duodécima pasada). El peso se cambia con `fijar_peso_plano`.
+      ('registrar_plano_codigo(uuid,uuid,text,text,text,uuid,text,text,numeric)',
+       E'  perform set_config(''metalwork.plano_con_peso'', p_plano::text, true);\n',
+       E'  if exists (select 1 from public.codigo_planos where id = p_plano and peso is distinct from p_peso) then\n'
+       || E'    raise exception ''Ese plano ya quedó cargado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.'' using errcode = ''check_violation'';\n'
+       || E'  end if;\n'
+       || E'  perform set_config(''metalwork.plano_con_peso'', p_plano::text, true);\n')
     ) as c(funcion, viejo, nuevo)
   loop
     v_def := replace(pg_get_functiondef(('public.' || v_cambio.funcion)::regprocedure), E'\r', '');

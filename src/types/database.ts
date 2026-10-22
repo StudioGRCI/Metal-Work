@@ -12475,6 +12475,12 @@ export type Database = {
           orden_id: string | null
         }[]
       }
+      comprobante_de_gasto_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       comprobante_en_camino: {
         Args: {
           p_compra: string | null
@@ -13022,6 +13028,12 @@ export type Database = {
       }
       es_usuario_activo: {
         Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      escaneo_de_control_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
         Returns: boolean
       }
       estado_del_plazo: {

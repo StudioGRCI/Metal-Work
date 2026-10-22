@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { SubirDocumentoCompra } from '@/app/(app)/materiales/atencion/subir-documento-compra'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
@@ -290,20 +291,14 @@ function CorregirCompra({
       </fieldset>
 
       <CamposDeCorreccion id={id} disabled={enviando} />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {sinCambios && <p className="mr-auto text-xs text-texto-suave">Todavía no cambiaste nada.</p>}
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={sinCambios}>
-          Corregir
-        </Boton>
-      </div>
+      <PieDeVentana
+        error={error}
+        enviando={enviando}
+        alCancelar={alTerminar}
+        texto="Corregir"
+        disabled={sinCambios}
+        nota={sinCambios && 'Todavía no cambiaste nada.'}
+      />
     </form>
   )
 }

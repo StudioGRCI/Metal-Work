@@ -727,7 +727,7 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   comprobar(limpio(await pagina.locator(`article#compra-${oc.H}`).innerText().catch(() => '')).includes('Factura en otra moneda'), 'la OC vuelve a «Factura en otra moneda»')
 
   // La respuesta se pierde (la toma entra) y se vuelve a enviar desde la misma ventana con otro monto: la base
-  // no da por tomado lo nuevo con lo de la primera vez (undécima pasada, migración 20261022170000). Lo dice con
+  // no da por tomado lo nuevo con lo de la primera vez (undécima pasada, migración 20261022177000). Lo dice con
   // los montos que sí quedaron, y la toma queda como entró.
   {
     await pagina.locator(`article#compra-${oc.H} [data-tomar-al-cambio]`).click()
@@ -755,7 +755,14 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
     comprobar(/No llegó la respuesta/.test(primera) && segunda.startsWith('Lo que toma la factura ya quedó registrado la primera vez que lo enviaste')
       && tomasAhora.length === 1 && tomasAhora[0].monto === 97.7 && tomasAhora[0].boleta === total,
       `la toma cuya respuesta se perdió no se da por hecha con otro monto: «${primera}» → «${segunda}» (${JSON.stringify(tomasAhora)})`)
-    await v.getByRole('button', { name: 'Cancelar' }).click()
+    // Ya entró: sin rojo y sin «Pasar a la factura»; la ventana solo se cierra (duodécima pasada).
+    const yaEntro = {
+      neutro: (await v.locator('[data-ya-entro]').count()) === 1,
+      sinEnviar: (await v.getByRole('button', { name: 'Pasar a la factura' }).count()) === 0,
+      cerrar: await v.getByRole('button', { name: 'Cerrar' }).isVisible(),
+    }
+    comprobar(Object.values(yaEntro).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntro)})`)
+    await v.getByRole('button', { name: 'Cerrar' }).click()
     // Se deshace para seguir con la toma por menos.
     await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
     const conLaToma = pagina.locator(`article#factura-${facturaH}`)

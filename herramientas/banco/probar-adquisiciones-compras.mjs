@@ -340,14 +340,21 @@ const rechaza = async (pagina, ruta) => {
   const ayer = new Date(Date.parse(`${fechaPrimera}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
   await ventana.locator('input[name="fecha"]').fill(ayer)
   await ventana.getByRole('button', { name: 'Cargar guía' }).click()
-  const segundaGuia = await esperarAviso((t) => /ya se cargó/.test(t))
+  const segundaGuia = await esperarAviso((t) => /ya quedó cargada/.test(t))
   cortando = false
-  await ventana.getByRole('button', { name: 'Cancelar' }).click()
+  // Ya entró: sin rojo y sin «Cargar guía»; la ventana solo se cierra (duodécima pasada).
+  const yaEntroGuia = {
+    neutro: (await ventana.locator('[data-ya-entro]').count()) === 1,
+    sinEnviar: (await ventana.getByRole('button', { name: 'Cargar guía' }).count()) === 0,
+    cerrar: await ventana.getByRole('button', { name: 'Cerrar' }).isVisible(),
+  }
+  comprobar(Object.values(yaEntroGuia).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntroGuia)})`)
+  await ventana.getByRole('button', { name: 'Cerrar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
   const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])
   comprobar(guia?.numero === 'T001-00000403' && objetos.length === 1, `la guía queda en la base como T001-00000403, con su PDF en storage.objects (${guia?.numero}, ${objetos.length})`)
-  comprobar(/No se confirmó/.test(primeraGuia) && segundaGuia === 'Esa guía ya se cargó con otros datos. Vuelve a cargar la pantalla.' && guia?.fecha === fechaPrimera,
+  comprobar(/No se confirmó/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' && guia?.fecha === fechaPrimera,
     `la guía cuya respuesta se perdió no se da por cargada con otra fecha: «${primeraGuia}» → «${segundaGuia}» (queda del ${guia?.fecha})`)
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])

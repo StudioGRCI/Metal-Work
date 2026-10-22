@@ -1,7 +1,7 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -85,7 +85,12 @@ export function useAccion<T = never>(
         // devuelve nada: Next ya está navegando a la pantalla nueva.
         if (!salida) return
         setResultado(salida)
-        if (!salida.ok) return
+        if (!salida.ok) {
+          // El envío ya había entrado la primera vez: la pantalla de detrás se
+          // pone al día, para que no ofrezca hacerlo otra vez.
+          if (refrescar && yaEntroLaPrimeraVez(salida.error)) iniciar(() => router.refresh())
+          return
+        }
 
         alTerminar?.(salida)
         if (refrescar) iniciar(() => router.refresh())

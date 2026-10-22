@@ -281,7 +281,15 @@ try {
     const segunda = await hasta(aviso, (t) => /ya quedó registrada/.test(t))
     cortando = false
     const alerta = segunda.startsWith('Esta corrección ya quedó registrada la primera vez que la enviaste') ? '' : segunda
-    await v.getByRole('button', { name: 'Cancelar' }).click()
+    // Ya entró: sin rojo y sin «Corregir»; la ventana solo se cierra, con el cursor en el aviso (duodécima pasada).
+    const yaEntro = {
+      neutro: (await v.locator('[data-ya-entro]').count()) === 1,
+      sinEnviar: (await v.getByRole('button', { name: 'Corregir', exact: true }).count()) === 0,
+      cerrar: await v.getByRole('button', { name: 'Cerrar' }).isVisible(),
+      cursor: await v.locator('[data-ya-entro]').evaluate((p) => document.activeElement === p).catch(() => false),
+    }
+    comprobar(Object.values(yaEntro).every(Boolean), `ya entró: el aviso sin rojo, con el cursor, y solo «Cerrar» (${JSON.stringify(yaEntro)})`)
+    await v.getByRole('button', { name: 'Cerrar' }).click()
     const linea = await uno('select material_id, cantidad::float as cantidad from public.requerimiento_lineas where requerimiento_id = $1 and item = 1', [rqId])
     comprobar(/No se confirmó/.test(primera) && !alerta && linea.material_id === mat[1] && linea.cantidad === 6,
       `Requerimientos corrige material y cantidad, y el reenvío con otra cantidad no pasa por el mismo: «${primera}» → «${segunda}» (cantidad ${linea.cantidad})`)

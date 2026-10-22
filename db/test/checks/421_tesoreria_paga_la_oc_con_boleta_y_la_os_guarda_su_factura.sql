@@ -296,7 +296,7 @@ select test.afirmar(pg_temp.pagar('p1', 'oc1', 100, false, current_setting('prue
 select test.afirmar(pg_temp.pagar('p1', 'oc1', 100, false, current_setting('prueba.v1')) = pg_temp.id('p1'),
   'el reintento con el mismo id devuelve el mismo pago');
 -- Con otro voucher ya no es el mismo envío: se perdió la respuesta, se volvió
--- a pulsar y la pantalla subió el archivo a otra ruta (migración 20261022170000).
+-- a pulsar y la pantalla subió el archivo a otra ruta (migración 20261022177000).
 select test.debe_fallar($$ select pg_temp.pagar('p1', 'oc1', 100, false, pg_temp.subir('pagos-compras', 'oc1')) $$,
   'el mismo formulario con otro voucher no se da por pagado', 'ya quedó registrado la primera vez que lo enviaste');
 select test.afirmar((select count(*) from public.pagos_orden_compra where orden_compra_id = pg_temp.id('oc1')) = 1,
@@ -938,7 +938,7 @@ begin
       'Tesorería registra los S/ 5 que devolvió el proveedor, con su constancia');
     -- En otra sentencia: la que llama a la función no ve la fila que la función inserta.
     perform pg_temp.devolver('dv1', 'oc1', 5, current_setting('prueba.vh1'), null, 'DEV-4219');
-    -- Con otra constancia ya no es el mismo envío (migración 20261022170000).
+    -- Con otra constancia ya no es el mismo envío (migración 20261022177000).
     perform test.debe_fallar($q$ select pg_temp.devolver('dv1', 'oc1', 5, pg_temp.subir('pagos-compras', 'oc1'), null, 'DEV-4219') $q$,
       'la misma devolución con otra constancia no se da por registrada', 'ya quedó registrada la primera vez que la enviaste');
     reset role;
@@ -1139,7 +1139,7 @@ begin
                                          current_setting('prueba.nc1')) $q$,
         'ni más de lo pagado de más', 'no se descuenta más');
       perform public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100, current_setting('prueba.nc1'));
-      -- El mismo envío, con su nota de crédito, se reconoce; con otro documento, no (migración 20261022170000).
+      -- El mismo envío, con su nota de crédito, se reconoce; con otro documento, no (migración 20261022177000).
       perform test.afirmar(public.tomar_pago_de_la_boleta(pg_temp.id('tj'), pg_temp.id('oc1'), pg_temp.id('f4216'), 100, 100,
                                                           current_setting('prueba.nc1')) = pg_temp.id('tj'),
         'el descuento repetido con su nota de crédito devuelve el mismo');
@@ -1295,7 +1295,7 @@ begin
     perform public.tomar_pago_de_la_boleta(pg_temp.id('pt'), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 27.03);
     -- «Al cambio» no lleva archivo: con otros montos y el mismo id ya no es el
     -- mismo envío (se perdió la respuesta y se cambiaron antes de volver a
-    -- pulsar), ni en un centavo (migración 20261022170000, undécima pasada).
+    -- pulsar), ni en un centavo (migración 20261022177000, undécima pasada).
     perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(pg_temp.id('pt'), pg_temp.id('oc1'), pg_temp.id('fd'), 50, 13.52) $q$,
       'con otros montos y el mismo id, lo tomado al cambio no se da por registrado', 'ya quedó registrado la primera vez que lo enviaste');
     perform test.debe_fallar($q$ select public.tomar_pago_de_la_boleta(pg_temp.id('pt'), pg_temp.id('oc1'), pg_temp.id('fd'), 100, 27.04) $q$,
@@ -3008,7 +3008,7 @@ select test.afirmar((select numero = 'E001-421' and tipo = 'FACTURA' and subido_
                        from public.documentos_orden_servicio where id = pg_temp.id('d1')),
   'con su número normalizado, quién la subió y su tamaño');
 -- El mismo envío repetido (la respuesta se perdió) devuelve el mismo; con otro
--- archivo, o de otra persona, ya no es el mismo (migración 20261022170000).
+-- archivo, o de otra persona, ya no es el mismo (migración 20261022177000).
 select test.afirmar(public.adjuntar_documento_servicio(pg_temp.id('d1'), pg_temp.id('os1'), 'FACTURA', 'e001-421',
                                                        'factura-421.pdf', current_setting('prueba.r1')) = pg_temp.id('d1')
                     and (select count(*) from public.documentos_orden_servicio where orden_servicio_id = pg_temp.id('os1')) = 1,

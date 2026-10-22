@@ -474,6 +474,24 @@ async function excelQueNoQuedo(viewport) {
   }
 }
 
+// La salida del kardex necesita un material con saldo libre. En una base recién
+// armada no hay ninguno: se ingresa como Almacén, con su permiso.
+if (!(await uno(`select 1 as hay from public.v_existencias_materiales where disponible >= 6 limit 1`))) {
+  const material = await uno(`select id from public.materiales where activo order by codigo limit 1`)
+  const { id: almacenero } = await uno(`select id from public.usuarios where lower(correo) = 'almacen.local@metalwork.test'`)
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+                             set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [almacenero])
+    await base.query('set local role authenticated')
+    await base.query(`select public.registrar_ingreso_almacen(gen_random_uuid(), $1, 10, 'INGRESO_GENERAL', 'Ingreso del banco', 1, 'PEN')`, [material.id])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+}
+
 for (const viewport of [TELEFONO, MONITOR]) {
   console.log(`\n=========== ${nombreDe(viewport)}`)
   await fotoQueNoSubio(viewport)

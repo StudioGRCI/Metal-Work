@@ -1,5 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_SUBCONTRATOS, MAXIMO_MB_SUBCONTRATOS, TIPOS_ARCHIVO_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
+import { SIN_RESPUESTA } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -35,6 +36,6 @@ export async function subirArchivoSubcontrato(
     bucket: BUCKET_SUBCONTRATOS,
     ruta,
     anotar: () => anotar(ruta),
-    sinRespuesta: 'No llegó la respuesta. Recarga la pantalla y mira si quedó registrado antes de volver a intentar.',
+    sinRespuesta: SIN_RESPUESTA,
   })
 }

@@ -220,10 +220,10 @@ select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current
 -- entrado (migración 20261022180000).
 select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
     'T001-00000123', (now() at time zone 'America/Lima')::date - 1, 'guia-t001-123.pdf')$q$,
-  'con otra fecha y el mismo id, la guía no se da por cargada', 'ya se cargó con otros datos');
+  'con otra fecha y el mismo id, la guía no se da por cargada', 'ya quedó cargada la primera vez que la enviaste');
 select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
     'T001-00000123', (now() at time zone 'America/Lima')::date, 'otra-guia.pdf')$q$,
-  'ni con el PDF de otro nombre', 'ya se cargó con otros datos');
+  'ni con el PDF de otro nombre', 'ya quedó cargada la primera vez que la enviaste');
 select test.afirmar(
   (select numero = 'T001-00000123' from public.guias_remision_compra
     where orden_compra_id = current_setting('prueba.oc2')::uuid and anulada_en is null and id = current_setting('prueba.guia')::uuid)

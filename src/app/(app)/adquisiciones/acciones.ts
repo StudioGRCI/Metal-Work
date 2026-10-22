@@ -114,7 +114,10 @@ function borradorSinOc(
   error: { message: string; code?: string },
   queHacer: { hazlo: string; hacerlo: string },
 ) {
-  const motivo = mensajeDeError(error)
+  // Tras «quedó en borrador», el «y esto no se guardó» de un fallo de paso
+  // sonaba a que el borrador tampoco (duodécima pasada): lo que no se guardó ya
+  // lo dice «sin marcar…».
+  const motivo = mensajeDeError(error).replace(/ y esto no se guardó\.$/, '.')
   // «Avisa al administrador» va una vez, al final, con lo que hay que pedirle.
   const aviso = `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo.replace(/ Avisa al administrador\.$/, ''))}`
   if (/\bpermisos?\b/i.test(motivo) || error.code?.startsWith('42')) {
@@ -234,8 +237,11 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       const cuales = lasOc(enParte.data, numeroDeOc)
       const unaSola = enParte.data.length === 1
       const comoParcial = unaSola ? 'como parcial' : 'como parciales'
-      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar ${comoParcial} ${cuales ?? (unaSola ? 'su OC' : 'sus OC')}`,
-        errorParcial, { hazlo: `${unaSola ? 'márcala' : 'márcalas'} ${comoParcial}`, hacerlo: `${unaSola ? 'marcarla' : 'marcarlas'} ${comoParcial}` }))
+      const laOc = cuales ?? (unaSola ? 'su OC' : 'sus OC')
+      // El «Después, …» nombra la OC: al completarlo queda solo, sin el aviso
+      // que la nombraba, y «márcala» no decía cuál (duodécima pasada).
+      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar ${comoParcial} ${laOc}`,
+        errorParcial, { hazlo: `marca ${laOc} ${comoParcial}`, hacerlo: `marcar ${laOc} ${comoParcial}` }))
     }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }

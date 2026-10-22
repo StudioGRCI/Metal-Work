@@ -8,7 +8,7 @@
 -- pero no con otro vacío; el administrador no quita de Storage el PDF que una
 -- cotización nombra, y sí uno suelto. Y ninguna función que anota un archivo
 -- da por registrado otro envío con el mismo id (migraciones 20261022160000,
--- 20261022170000 y 20261022180000; el caso de cada una, en los checks 347, 357,
+-- 20261022177000 y 20261022180000; el caso de cada una, en los checks 347, 357,
 -- 360, 361, 382, 399, 412 y 421). El armazón lo pone el administrador. Termina
 -- en rollback.
 \set ON_ERROR_STOP on

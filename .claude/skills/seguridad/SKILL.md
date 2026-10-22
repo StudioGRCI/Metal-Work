@@ -192,7 +192,7 @@ En la misma migración que la crea, sin excepción:
   el envío trae (la guía, su fecha y su nombre de archivo; la corrección, una
   huella de su motivo y sus cambios en `correcciones.huella_del_envio`; la toma
   al cambio, sus montos), y si no coincide lo dice: «… ya quedó registrada la
-  primera vez que la enviaste: recarga…» (`20261022180000`, `20261022170000`;
+  primera vez que la enviaste: recarga…» (`20261022180000`, `20261022177000`;
   undécima pasada del PR #148). Con ruta nueva en cada envío (finanzas,
   planilla, subcontratos) la ruta ya distingue un envío de otro, y el aviso no
   dice «con otro voucher», que sería falso si eligió el mismo archivo. El
@@ -202,7 +202,21 @@ En la misma migración que la crea, sin excepción:
   (`subirARutaNueva`, `src/lib/ruta-nueva.ts`): un 5xx o un corte pueden llegar
   con el archivo ya guardado, y esa ruta no la vuelve a usar nadie. El voucher
   del pago de la OC con boleta quedaba suelto así aunque el segundo intento
-  entrara.
+  entrara. **Quitarlo pide que su dueño lo vea:** Storage quita con un
+  `DELETE … RETURNING`, y Postgres le aplica también la política de leer. En
+  `gastos-ot` y `control-ot` la de leer pedía una fila que lo nombrara, y el
+  borrado afectaba cero archivos sin error (duodécima pasada; migración
+  `20261022190000`, check 426). «Ninguna fila lo nombra» se pregunta con una
+  función `security definer` (`archivo_plano_vinculado`,
+  `comprobante_de_gasto_anotado`): un `not exists` bajo RLS cuenta como
+  inexistente la fila que el dueño ya no ve, y le dejaría ver y quitar su
+  archivo anotado.
+- **«Ya quedó registrado la primera vez» no es un rechazo.** La pantalla de
+  detrás se pone al día (`useAccion` refresca) y la ventana solo se cierra
+  (`PieDeVentana`, sin rojo y sin el botón que envía). En rojo y con el botón
+  activo, se cancelaba y se pagaba otra vez desde la tarjeta vieja (duodécima
+  pasada). Un aviso nuevo de «mismo envío» lleva «la primera vez que lo
+  enviaste» para que `yaEntroLaPrimeraVez` lo reconozca.
 - **Un archivo vacío no es «sin archivo».** En el navegador, el campo que nadie
   tocó llega como un `File` con nombre vacío; uno de 0 bytes es un archivo
   elegido, y se rechaza diciendo que está vacío. Separarlos por `size === 0`

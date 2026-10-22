@@ -24,21 +24,28 @@
 -- la base guardaba los primeros (undécima pasada). Ahí se mira todo lo que
 -- dice el envío: la OC, la factura y los dos montos, contra la toma que entró.
 --
--- Cada función va entera, tal como la dejó la 20261020210000; cambia solo la
--- línea que reconoce el id (dos en las que la miran otra vez después de tomar
--- los candados). `create or replace` conserva sus permisos y su comentario.
+-- Las tres primeras van enteras, tal como las dejó la 20261020210000; cambia
+-- solo la línea que reconoce el id (dos en la que la mira otra vez después de
+-- tomar los candados). `create or replace` conserva sus permisos y su
+-- comentario. La cuarta, la que pasa lo pagado por la boleta a una factura, la
+-- redefine también el PR #153 (la factura se liga por el RUC): de ella se
+-- cambia solo ese bloque, sobre la versión que esté.
 --
--- Antes de reemplazarlas se mira que cada una sea la que el repositorio conoce
--- (su texto antes o después de este cambio, sin los `\r` de un pegado desde
--- Windows). Si alguna se cambió a mano en la base, la migración se detiene en
--- vez de pisar ese cambio sin que nadie lo vea.
+-- Antes de reemplazar las tres se mira que cada una sea la que el repositorio
+-- conoce (su texto antes o después de este cambio, sin los `\r` de un pegado
+-- desde Windows), y la cuarta, que tenga el bloque como lo conoce. Si alguna se
+-- cambió a mano en la base, la migración se detiene en vez de pisar ese cambio
+-- sin que nadie lo vea.
+--
+-- Se numeró 20261022170000 hasta que el PR #153 tomó ese número: va después de
+-- su 20261022175000 para que, en una base nueva, cambie el bloque sobre la
+-- versión con el RUC.
 do $$
 declare
   conocidas constant jsonb := '{
     "registrar_pago_compra(uuid,uuid,date,numeric,boolean,text,text,text,uuid,numeric)": ["21ec90982ea47c46f62a4e4be1932cc0", "eeedf50cc44bdcd461ca881fb2e1481d"],
     "registrar_devolucion_compra(uuid,uuid,date,numeric,text,text,uuid,numeric,boolean)": ["c5c3e1636b39d9c418f65ed5fe6f6c27", "0fc4807aef7722ff98c24ec00a7af23d"],
-    "adjuntar_documento_servicio(uuid,uuid,text,text,text,text)": ["1ec020d5302de240d7c982b10f0466e8", "28688d52d83918181e86ea2e9c0f9d6e"],
-    "tomar_pago_de_la_boleta(uuid,uuid,uuid,numeric,numeric,text)": ["9b408f5334accc1f39ef0cb37087f0d9", "eab3258486b414fa784026208c317ac6"]
+    "adjuntar_documento_servicio(uuid,uuid,text,text,text,text)": ["1ec020d5302de240d7c982b10f0466e8", "28688d52d83918181e86ea2e9c0f9d6e"]
   }';
   firma text;
   huella text;
@@ -373,34 +380,19 @@ begin
 end;
 $$;
 
--- tomar_pago_de_la_boleta: pagos_adquisicion: el archivo, la OC, la factura y los montos
-create or replace function public.tomar_pago_de_la_boleta(
-  p_id uuid, p_compra uuid, p_factura uuid, p_monto_boleta numeric, p_monto_factura numeric, p_ruta text default null
-) returns uuid language plpgsql security definer set search_path to 'public' as $$
+-- tomar_pago_de_la_boleta: pagos_adquisicion: el archivo, la OC, la factura y los montos.
+-- Esta no va entera: el PR #153 (la factura se liga por el RUC, 20261022170000)
+-- también la redefine, con otra línea, y la entera de aquí le quitaría el RUC.
+-- Se cambia solo el bloque que reconoce el id, sobre la que esté: la de la
+-- 20261020210000 o la del RUC. Si una redefinición posterior vuelve a poner el
+-- bloque viejo, se pega esta migración otra vez y lo cambia de nuevo.
+do $$
 declare
-  v_cierre  uuid[];
-  v_oc      public.ordenes_compra_materiales%rowtype;
-  v_adq     public.adquisiciones%rowtype;
-  v_nombre  text;
-  v_pd      record;
-  v_suya    boolean;
-  v_saldo   numeric;
-  v_cambio  numeric;
-  v_resto   numeric;
-  v_resto_f numeric;
-  v_parte   numeric;
-  v_monto   numeric;
-  v_p       record;
-  v_pago    public.pagos_orden_compra%rowtype;
-  v_ref     text;
-  v_id      uuid;
-  v_primera boolean := true;
-  v_s_oc    text;
-  v_s_f     text;
-  v_obj     storage.objects%rowtype;
-begin
-  perform public.exigir_permiso('tesoreria.registrar_pagos');
-  if p_id is null then raise exception 'Vuelve a abrir la ventana.' using errcode = 'check_violation'; end if;
+  v_viejo constant text :=
+       E'\n  if exists (select 1 from public.pagos_adquisicion where id = p_id) then return p_id; end if;\n'
+    || E'  v_cierre := public.bloquear_cierre(array[p_compra], p_factura);\n'
+    || E'  if exists (select 1 from public.pagos_adquisicion where id = p_id) then return p_id; end if;\n';
+  v_nuevo constant text := $b$
   -- El mismo envío repetido (la respuesta se perdió) se reconoce por todo lo
   -- que dice: el archivo si lo lleva, la OC, la factura, los dos montos y
   -- quién lo anotó. «Al cambio» no lleva archivo, y sin los montos otro
@@ -437,119 +429,16 @@ begin
     end if;
     raise exception 'Lo que toma la factura ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
   end if;
-  select * into v_oc from public.ordenes_compra_materiales where id = p_compra;
-  if not found or v_oc.con_factura then
-    raise exception 'Esa OC con boleta no existe.' using errcode = 'check_violation';
+$b$;
+  v_def text;
+begin
+  -- Sin los `\r` de un pegado desde Windows: el texto se compara línea por línea.
+  v_def := replace(pg_get_functiondef('public.tomar_pago_de_la_boleta(uuid,uuid,uuid,numeric,numeric,text)'::regprocedure), E'\r', '');
+  if position(v_nuevo in v_def) > 0 then
+    return;  -- ya estaba
   end if;
-  v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
-  select * into v_adq from public.adquisiciones where id = p_factura;
-  if not found or v_adq.estado <> 'REGISTRADA' or v_adq.tipo = 'OTRO' then
-    raise exception 'Elige una factura registrada.' using errcode = 'check_violation';
+  if (char_length(v_def) - char_length(replace(v_def, v_viejo, ''))) / char_length(v_viejo) <> 1 then
+    raise exception 'tomar_pago_de_la_boleta cambió: el bloque que reconoce el id no está como lo conoce el repositorio. Revisarla a mano antes de seguir.';
   end if;
-  v_s_oc := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
-  v_s_f := case when v_adq.moneda = 'USD' then 'US$ ' else 'S/ ' end;
-  if p_monto_boleta is null or p_monto_factura is null or p_monto_boleta <= 0 or p_monto_factura <= 0
-     or p_monto_boleta > 999999999 or p_monto_factura > 999999999
-     or p_monto_boleta <> round(p_monto_boleta, 2) or p_monto_factura <> round(p_monto_factura, 2) then
-    raise exception 'Escribe los dos montos, en dos decimales.' using errcode = 'check_violation';
-  end if;
-  select * into v_pd from public.pago_directo_de_la_compra(p_compra);
-  v_suya := exists (select 1 from public.facturas_de_la_compra(p_compra) f where f.adquisicion_id = p_factura);
-  if v_suya then
-    if v_adq.moneda = v_oc.moneda then
-      raise exception 'La factura % va en la misma moneda que la %: toma lo pagado por la boleta sola.', v_adq.numero_documento, v_nombre
-        using errcode = 'check_violation';
-    end if;
-    if p_monto_boleta > coalesce(v_pd.sin_tomar, 0) then
-      raise exception 'Quedan % de lo pagado por la boleta sin pasar a ninguna factura: no toma más.',
-        v_s_oc || to_char(coalesce(v_pd.sin_tomar, 0), 'FM999G999G990D00') using errcode = 'check_violation';
-    end if;
-  else
-    if not coalesce(public.mismo_proveedor(v_adq.proveedor, v_oc.proveedor), false) then
-      raise exception 'La factura % es de otro proveedor.', v_adq.numero_documento using errcode = 'check_violation';
-    end if;
-    if coalesce(v_pd.de_mas, 0) <= 0 then
-      raise exception 'La % no tiene nada pagado de más que descontar.', v_nombre using errcode = 'check_violation';
-    end if;
-    if p_monto_boleta > v_pd.de_mas then
-      raise exception 'Lo pagado de más de la % es %: no se descuenta más.', v_nombre,
-        v_s_oc || to_char(v_pd.de_mas, 'FM999G999G990D00') using errcode = 'check_violation';
-    end if;
-    if p_ruta is null then
-      raise exception 'Adjunta la nota de crédito o el documento donde el proveedor descontó lo pagado de más.' using errcode = 'check_violation';
-    end if;
-  end if;
-  -- El documento del descuento (o el que acompañe a la toma al cambio): subido por quien registra, en la carpeta de la factura.
-  if p_ruta is not null then
-    if exists (select 1 from public.pagos_adquisicion where archivo_ruta = p_ruta) then
-      raise exception 'Ese archivo ya es el de otro pago: adjunta el documento del descuento.' using errcode = 'check_violation';
-    end if;
-    v_obj := public.archivo_subido_por_mi('pagos-facturas', p_ruta, p_factura,
-                                          array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
-  end if;
-  v_saldo := v_adq.total - coalesce((select sum(x.monto) from public.pagos_adquisicion x
-                                      where x.adquisicion_id = p_factura and x.anulado_en is null), 0);
-  if p_monto_factura > v_saldo then
-    raise exception 'La factura % debe %: no toma más.', v_adq.numero_documento,
-      v_s_f || to_char(greatest(v_saldo, 0), 'FM999G999G990D00') using errcode = 'check_violation';
-  end if;
-  if v_adq.moneda = v_oc.moneda then
-    if p_monto_factura <> p_monto_boleta then
-      raise exception 'En la misma moneda, lo que toma la factura es lo mismo que sale de la boleta.' using errcode = 'check_violation';
-    end if;
-  else
-    v_cambio := case when v_oc.moneda = 'PEN' then p_monto_boleta / p_monto_factura else p_monto_factura / p_monto_boleta end;
-    if v_cambio not between 2 and 6 then
-      raise exception 'Con esos montos el dólar sale a S/ %: revisa los dos montos.', round(v_cambio, 3) using errcode = 'check_violation';
-    end if;
-  end if;
-
-  -- Del último pago hacia atrás, de lo que ninguna factura tomó.
-  v_resto := p_monto_boleta;
-  v_resto_f := p_monto_factura;
-  for v_p in select l.pago_id, greatest(l.para_repartir - l.tomado_solo, 0) as libre
-               from public.libre_de_los_pagos_de_compra(p_compra) l
-              order by l.orden desc loop
-    exit when v_resto <= 0;
-    continue when v_p.libre <= 0;
-    v_parte := least(v_p.libre, v_resto);
-    v_resto := v_resto - v_parte;
-    v_monto := case when v_resto <= 0 then v_resto_f else round(p_monto_factura * v_parte / p_monto_boleta, 2) end;
-    if v_monto <= 0 then
-      raise exception 'Con esos montos no se puede repartir lo que toma la factura entre los pagos de la boleta: revisa los dos montos.'
-        using errcode = 'check_violation';
-    end if;
-    v_resto_f := v_resto_f - v_monto;
-    select * into v_pago from public.pagos_orden_compra where id = v_p.pago_id;
-    v_id := case when v_primera then p_id else gen_random_uuid() end;
-    v_ref := left(case when v_suya then 'Tomado al cambio del pago por la boleta de la '
-                       else 'Descontado de lo pagado de más por la boleta de la ' end
-                  || v_nombre || ' del ' || to_char(v_pago.fecha_pago, 'DD/MM/YYYY')
-                  || coalesce(' · op. ' || btrim(v_pago.operacion), ''), 108);
-    -- Otra toma del mismo pago en la misma factura: el sufijo es el de esta fila, que no se repite.
-    if exists (select 1 from public.pagos_adquisicion x
-                where x.adquisicion_id = p_factura and x.anulado_en is null and x.referencia = v_ref) then
-      v_ref := v_ref || ' · ' || left(v_id::text, 8);
-    end if;
-    perform set_config('metalwork.aplica_pago_directo', v_pago.id::text, true);
-    insert into public.pagos_adquisicion (id, adquisicion_id, fecha, monto, referencia, registrado_por,
-                                          pago_orden_compra_id, monto_de_la_boleta, archivo_ruta, archivo_mime, archivo_tamano)
-    values (v_id, p_factura, v_pago.fecha_pago, v_monto, v_ref,
-            public.usuario_actual(), v_pago.id, v_parte,
-            case when v_primera then p_ruta end,
-            case when v_primera and p_ruta is not null then v_obj.metadata->>'mimetype' end,
-            case when v_primera and p_ruta is not null then (v_obj.metadata->>'size')::integer end);
-    v_primera := false;
-  end loop;
-  perform set_config('metalwork.aplica_pago_directo', '', true);
-  if v_resto > 0 then
-    raise exception 'Quedan % de lo pagado por la boleta sin pasar a ninguna factura: no toma más.',
-      v_s_oc || to_char(p_monto_boleta - v_resto, 'FM999G999G990D00') using errcode = 'check_violation';
-  end if;
-
-  perform set_config('metalwork.conciliacion_por', 'Tesorería pasó lo pagado por la boleta a la factura ' || v_adq.numero_documento, true);
-  perform public.conciliar_pago_directo(v_cierre);
-  perform set_config('metalwork.conciliacion_por', '', true);
-  return p_id;
-end;
-$$;
+  execute replace(v_def, v_viejo, v_nuevo);
+end $$;

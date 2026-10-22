@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -149,12 +149,18 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
   ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean; esAdministracion: boolean; conCodigo: boolean
 }) {
   const [id, setId] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
+  const formulario = useRef<HTMLFormElement>(null)
+  // Al entrar, el formulario se vacía junto con el id nuevo: lleno, un toque
+  // tardío tras el verde registraba el mismo gasto otra vez (duodécima pasada).
+  const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => {
+    formulario.current?.reset()
+    setId(crypto.randomUUID())
+  })
   return <Tarjeta>
     <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
       {puedeRegistrar && <Pliegue titulo="Registrar gasto de mi área" enCaja>
-        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
+        <form ref={formulario} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
           {conCodigo && <p className="sm:col-span-2 text-sm text-texto-suave">Un servicio que ya tiene su orden de servicio, o un subcontrato con su recibo por honorarios registrado, ya suma al costo del código: no lo registres aquí, que se contaría dos veces.</p>}
           <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>

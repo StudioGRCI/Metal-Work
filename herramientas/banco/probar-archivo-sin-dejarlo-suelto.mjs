@@ -920,7 +920,14 @@ async function quitarElOpcional(viewport) {
   // Un campo obligatorio no lo lleva: para cambiarlo se elige otro.
   const rrhh = await entrar('rrhh.local@metalwork.test', viewport)
   await ir(rrhh.pagina, '/rrhh')
-  await rrhh.pagina.getByRole('button', { name: /Importar del Excel/ }).first().click()
+  // En la base recién hecha no hay planillas, y sin una no hay a qué importar: RR. HH. crea la de un mes viejo.
+  const importar = rrhh.pagina.getByRole('button', { name: /Importar del Excel/ }).first()
+  if ((await importar.count()) === 0) {
+    await rrhh.pagina.locator('#pl-periodo').fill('2025-01-01')
+    await rrhh.pagina.locator('form', { has: rrhh.pagina.locator('#pl-periodo') }).getByRole('button', { name: 'Crear planilla', exact: true }).click()
+    await importar.waitFor({ timeout: 30000 })
+  }
+  await importar.click()
   const excel = rrhh.pagina.getByRole('dialog').first().locator('input[type="file"]').first()
   await excel.waitFor({ state: 'attached', timeout: 20000 })
   await excel.setInputFiles({ name: `QA-OBLIGATORIO-${sello}.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK\u0003\u0004') })
@@ -1251,11 +1258,11 @@ async function loLeidoSeVaConElArchivo(viewport) {
     `[Contabilidad ${tam}] si lo frenó una regla de la base, el aviso dice su motivo y no agrega un «Después» que lo contradiga: «${porRegla}»`)
   const numeroPermiso = `F995-${sello}${tam}`
   const sinPermiso = await borradorConParcialQueFalla(numeroPermiso, '42501', 'permission denied for table adquisiciones_ordenes_compra')
-  comprobar(sinPermiso === `El comprobante ${numeroPermiso} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: no tienes permisos para realizar esta operación. Complétalo en su fila de la lista, en «PDF pendiente». Después, avisa al administrador para marcarla como parcial.`,
+  comprobar(sinPermiso === `El comprobante ${numeroPermiso} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: no tienes permisos para realizar esta operación. Complétalo en su fila de la lista, en «PDF pendiente». Después, avisa al administrador para marcar la ${oc.numero} como parcial.`,
     `[Contabilidad ${tam}] si le faltó el permiso, no lo manda a «Corregir», que tampoco pasaría: avisar al administrador, una vez y al final: «${sinPermiso}»`)
   const numeroOc = `F997-${sello}${tam}`
   const sinOc = await borradorConParcialQueFalla(numeroOc, '40001', 'could not serialize access due to concurrent update')
-  comprobar(sinOc === `El comprobante ${numeroOc} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: otra persona guardaba algo relacionado a la vez y esto no se guardó. Complétalo en su fila de la lista, en «PDF pendiente». Después, márcala como parcial con «Corregir».`,
+  comprobar(sinOc === `El comprobante ${numeroOc} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: otra persona guardaba algo relacionado a la vez. Complétalo en su fila de la lista, en «PDF pendiente». Después, marca la ${oc.numero} como parcial con «Corregir».`,
     `[Contabilidad ${tam}] el borrador al que le faltó marcar su OC como parcial dice su número, la OC y qué hacer después: «${sinOc}»`)
   await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).scrollIntoViewIfNeeded().catch(() => {})
   await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-borrador-sin-oc-${tam}.png`) })
@@ -1292,8 +1299,9 @@ async function loLeidoSeVaConElArchivo(viewport) {
   comprobar(rodada && Math.abs(rodada.hasta - rodada.desde) > 48 && trasElListo?.cursor && Math.abs(trasElListo.y - rodada.hasta) <= 2,
     `[Contabilidad ${tam}] si rodó la página mientras esperaba, el «listo» recibe el cursor y la página no salta (${JSON.stringify({ rodada, trasElListo })})`)
   // El aviso de F996, que sigue en borrador, no es de este: se queda.
-  comprobar(completadoSinOc && dijoSinOc === `Comprobante ${numeroOc} completado y registrado. Ahora márcala como parcial con «Corregir».`
-    && anunciaSinOc === 'Ahora márcala como parcial con «Corregir».'
+  // El «Ahora» nombra la OC: sin el aviso de encima, «márcala» no decía cuál (duodécima pasada).
+  comprobar(completadoSinOc && dijoSinOc === `Comprobante ${numeroOc} completado y registrado. Ahora marca la ${oc.numero} como parcial con «Corregir».`
+    && anunciaSinOc === `Ahora marca la ${oc.numero} como parcial con «Corregir».`
     && (await r.locator('form [role=alert]').filter({ hasText: `${numeroOc} quedó en borrador` }).count()) === 0,
     `[Contabilidad ${tam}] completado desde su fila (${completadoSinOc ? 'REGISTRADA' : 'no se completó'}), el «listo» recuerda marcar la OC como parcial con «Corregir», y la región viva dice solo eso: «${dijoSinOc}» / «${anunciaSinOc}»`)
   if (llegoSinOc) await listoSinOc.scrollIntoViewIfNeeded().catch(() => {})

@@ -12,6 +12,16 @@ import type { Json } from '@/types/database'
 const uuid = z.guid()
 const pdfMaximo = 15 * 1024 * 1024
 
+/**
+ * Quita el PDF que ninguna fila nombra. Dice que sí solo si Storage lo quitó:
+ * un borrado que la política no deja ver afecta cero archivos sin error, y la
+ * pantalla decía «el PDF subido se retiró» sin haberlo hecho (duodécima pasada).
+ */
+async function quitarSuelto(db: Awaited<ReturnType<typeof createClient>>, cubeta: 'gastos-ot' | 'control-ot', ruta: string) {
+  const { data, error } = await db.storage.from(cubeta).remove([ruta])
+  return !error && (data?.length ?? 0) > 0
+}
+
 async function leerPdf(datos: FormData) {
   const archivo = datos.get('pdf')
   if (!(archivo instanceof File) || archivo.size < 5 || archivo.size > pdfMaximo || archivo.type !== 'application/pdf') return null
@@ -49,7 +59,8 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   // Ninguna fila nombra todavía la ruta de este gasto: lo que ocupa la ruta lo
   // dejó un intento anterior del mismo formulario (la subida llegó y la
   // respuesta no), `subirARutaNueva` ya lo quitó, y se sube otra vez. Antes
-  // cada reintento chocaba con ese archivo para siempre.
+  // cada reintento chocaba con ese archivo para siempre. Quitarlo pide que su
+  // dueño lo vea mientras ninguna fila lo nombra (migración 20261022190000).
   if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf'))
   if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {
@@ -59,18 +70,17 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
       moneda: v.moneda, comprobante_ruta: ruta, comprobante_nombre: pdf.archivo.name.slice(0, 200),
     }).select('id').maybeSingle()
     if (error || !data) {
-      const { error: limpieza } = await db.storage.from('gastos-ot').remove([ruta])
-      return { ok: false, error: limpieza
-        ? `No se registró el gasto y no se pudo retirar el PDF huérfano: ${mensajeDeError(error ?? { message: NO_TOCO_NADA })}`
-        : mensajeDeError(error ?? { message: NO_TOCO_NADA }) }
+      const retirado = await quitarSuelto(db, 'gastos-ot', ruta)
+      return { ok: false, error: retirado
+        ? mensajeDeError(error ?? { message: NO_TOCO_NADA })
+        : `No se registró el gasto y no se pudo retirar el PDF huérfano: ${mensajeDeError(error ?? { message: NO_TOCO_NADA })}` }
     }
     revalidatePath(`/ordenes/${v.orden_id}`)
     return { ok: true, mensaje: `Gasto ${data.id} enviado a Administración para revisión.` }
   } catch {
-    const { error: limpieza } = await db.storage.from('gastos-ot').remove([ruta])
-    return { ok: false, error: limpieza
-      ? 'No se pudo registrar el gasto y el PDF subido requiere revisión de Administración.'
-      : 'No se pudo registrar el gasto; el PDF subido se retiró.' }
+    return { ok: false, error: (await quitarSuelto(db, 'gastos-ot', ruta))
+      ? 'No se pudo registrar el gasto; el PDF subido se retiró.'
+      : 'No se pudo registrar el gasto y el PDF subido requiere revisión de Administración.' }
   }
 }
 
@@ -189,15 +199,14 @@ export async function adjuntarControlFirmado(_previo: unknown, datos: FormData):
       escaneo_ruta: ruta, escaneo_nombre: pdf.archivo.name.slice(0, 200),
     }).eq('id', control.id).is('escaneo_ruta', null).select('id').maybeSingle()
     if (error || !data) {
-      await db.storage.from('control-ot').remove([ruta])
+      await quitarSuelto(db, 'control-ot', ruta)
       return { ok: false, error: mensajeDeError(error ?? { message: NO_TOCO_NADA }) }
     }
     revalidatePath(`/ordenes/${ordenId.data}`)
     return { ok: true, mensaje: `Escaneo firmado agregado a la ficha ${data.id}.` }
   } catch {
-    const { error: limpieza } = await db.storage.from('control-ot').remove([ruta])
-    return { ok: false, error: limpieza
-      ? 'No se pudo asociar el escaneo y el PDF subido requiere revisión de Administración.'
-      : 'No se pudo asociar el escaneo; el PDF subido se retiró.' }
+    return { ok: false, error: (await quitarSuelto(db, 'control-ot', ruta))
+      ? 'No se pudo asociar el escaneo; el PDF subido se retiró.'
+      : 'No se pudo asociar el escaneo y el PDF subido requiere revisión de Administración.' }
   }
 }

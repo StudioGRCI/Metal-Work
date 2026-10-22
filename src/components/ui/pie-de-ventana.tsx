@@ -3,6 +3,7 @@
 import { useRef, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { useCursorAlRechazo } from '@/lib/envio'
 
 /**
@@ -12,6 +13,11 @@ import { useCursorAlRechazo } from '@/lib/envio'
  * teléfono, enfocar solo el aviso dejaba el botón debajo del borde de la hoja
  * (a 390, «Registrar el pago» mostraba 4 de sus 44 px). Nació en la caja diaria;
  * la undécima pasada lo pidió en Cuentas por pagar, la OS y la guía.
+ *
+ * Si la base dice que el envío ya entró la primera vez, no es un rechazo: el
+ * aviso va sin rojo y la ventana solo se cierra. Volver a enviar con el mismo
+ * id no registra nada, y en rojo y con el botón activo parecía que faltaba
+ * algo: se cancelaba y se pagaba otra vez desde la tarjeta (duodécima pasada).
  */
 export function PieDeVentana({
   error,
@@ -22,6 +28,8 @@ export function PieDeVentana({
   disabled,
   idError,
   enLugarDelError,
+  nota,
+  cargando,
   children,
 }: {
   error: string | null
@@ -35,12 +43,17 @@ export function PieDeVentana({
   idError?: string
   /** Lo que se dice en lugar del aviso, y recibe el cursor, cuando la ventana se corrigió con lo que dijo la base. */
   enLugarDelError?: ReactNode
+  /** Una línea a la izquierda de los botones («Todavía no cambiaste nada.»). */
+  nota?: ReactNode
+  /** El botón que envía, ocupado también por algo que no es el envío (un PDF que se lee). */
+  cargando?: boolean
   /** Botones que van entre «Cancelar» y el que envía. */
   children?: ReactNode
 }) {
   const aviso = useRef<HTMLParagraphElement>(null)
   const corregida = useRef<HTMLDivElement>(null)
   const pie = useRef<HTMLDivElement>(null)
+  const yaEntro = yaEntroLaPrimeraVez(error)
   useCursorAlRechazo(enviando, error, () => {
     pie.current?.scrollIntoView({ block: 'nearest' })
     return enLugarDelError ? corregida.current : aviso.current
@@ -53,18 +66,26 @@ export function PieDeVentana({
         </div>
       ) : (
         error && (
-          <p ref={aviso} id={idError} role="alert" tabIndex={-1} className="text-sm text-peligro">
+          <p
+            ref={aviso}
+            id={idError}
+            role="alert"
+            tabIndex={-1}
+            data-ya-entro={yaEntro || undefined}
+            className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
+          >
             {error}
           </p>
         )
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {nota && !yaEntro && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
         <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
+          {yaEntro ? 'Cerrar' : 'Cancelar'}
         </Boton>
-        {children}
-        {texto && (
-          <Boton type="submit" variante={variante} cargando={enviando} disabled={disabled}>
+        {!yaEntro && children}
+        {texto && !yaEntro && (
+          <Boton type="submit" variante={variante} cargando={enviando || cargando} disabled={disabled}>
             {texto}
           </Boton>
         )}

@@ -1,5 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_PLANILLA_DIARIA, MAXIMO_MB_PLANILLA, TIPOS_ARCHIVO_PLANILLA } from '@/lib/dominio/planilla-diaria'
+import { SIN_RESPUESTA } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -35,6 +36,6 @@ export async function subirArchivoPlanilla(
     bucket: BUCKET_PLANILLA_DIARIA,
     ruta,
     anotar: () => anotar(ruta),
-    sinRespuesta: 'No llegó la respuesta. Recarga la pantalla y mira si quedó registrado antes de volver a intentar.',
+    sinRespuesta: SIN_RESPUESTA,
   })
 }

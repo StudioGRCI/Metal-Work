@@ -22,6 +22,16 @@ export const NO_TOCO_NADA =
   'No se pudo guardar: vuelve a cargar la pantalla y comprueba que el registro sigue a la vista.'
 
 /**
+ * El rechazo que en realidad dice que el envío ya entró: la respuesta de la
+ * primera vez se perdió, se volvió a pulsar y la base contesta «Este pago ya
+ * quedó registrado la primera vez que lo enviaste…». Lo que se quería ya está,
+ * y la pantalla de detrás quedó vieja: seguía ofreciendo pagar el saldo de
+ * antes, y un segundo pago entraba de verdad (duodécima pasada).
+ */
+export const yaEntroLaPrimeraVez = (mensaje: string | null | undefined) =>
+  Boolean(mensaje && /la primera vez que l[oa]s? enviaste/.test(mensaje))
+
+/**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.
  * Los triggers del esquema ya lanzan mensajes redactados en español, así que se
  * dejan pasar tal cual; aquí solo se reescribe lo que emite el propio motor.
