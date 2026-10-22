@@ -60,11 +60,19 @@ function lecturaDelFormulario(formulario: FormData) {
 
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
-/** «la OC OC-5620-MW» o «las OC …», si se sabe el número de cada una; si no, null. */
+/** «la OC-0001-MW» o «las OC-0001-MW y OC-0002-MW», si se sabe el número de cada una; si no, null. */
 function lasOc(ids: string[], numeroDeOc: Map<string, string>): string | null {
-  const numeros = ids.map((o) => numeroDeOc.get(o))
+  const numeros = ids.map((o) => numeroDeOc.get(o) ?? '')
   if (numeros.length === 0 || numeros.some((n) => !n)) return null
-  return `${numeros.length === 1 ? 'la OC' : 'las OC'} ${numeros.join(', ')}`
+  // El número ya dice «OC-…»; una referencia suelta lo lleva delante.
+  const conOc = numeros.map((n) => (/^OC\b/i.test(n) ? n : `OC ${n}`))
+  return conOc.length === 1 ? `la ${conOc[0]}` : `las ${conOc.slice(0, -1).join(', ')} y ${conOc.at(-1)}`
+}
+
+/** El motivo de la base después de dos puntos: con su punto, y en minúscula si empieza con una palabra (no con «PDF» u «OC»). */
+function trasDosPuntos(motivo: string) {
+  const t = /[.!?»)]$/.test(motivo.trim()) ? motivo.trim() : `${motivo.trim()}.`
+  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t
 }
 
 /** Lo que queda en borrador se ve en la lista sin recargar: el aviso manda ahí. */
@@ -73,20 +81,30 @@ function enBorrador(error: string): ResultadoAccion {
   return { ok: false, error }
 }
 
+const EN_SU_FILA = 'Complétalo en su fila de la lista, en «PDF pendiente»'
+
 /**
  * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
  * chocaría con su propio número: se completa en su fila, que la lista muestra
- * primero, salvo que falte el permiso, que desde la lista tampoco alcanza.
+ * primero, salvo que falte el permiso, que desde la lista tampoco alcanza. El
+ * aviso dice el número: con dos borradores seguidos, se sabe de cuál habla.
  */
-function borradorSinPdf(motivo: string) {
-  const sinPdf = 'El comprobante quedó en borrador sin su PDF'
-  const enSuFila = 'Complétalo en su fila de la lista, en «PDF pendiente»'
+function borradorSinPdf(numero: string, motivo: string) {
+  const sinPdf = `El comprobante ${numero} quedó en borrador sin su PDF`
   if (motivo.startsWith('El archivo no se pudo guardar.')) {
-    return `${sinPdf}, que no se pudo guardar. ${enSuFila}; si vuelve a fallar, avisa al administrador.`
+    return `${sinPdf}, que no se pudo guardar. ${EN_SU_FILA}; si vuelve a fallar, avisa al administrador.`
   }
-  const enMinuscula = motivo[0].toLowerCase() + motivo.slice(1)
-  if (/\bpermisos?\b/i.test(motivo)) return `${sinPdf}: ${enMinuscula} Avisa al administrador.`
-  return `${sinPdf}: ${enMinuscula} ${enSuFila}.`
+  if (/\bpermisos?\b/i.test(motivo)) return `${sinPdf}: ${trasDosPuntos(motivo)} Avisa al administrador.`
+  return `${sinPdf}: ${trasDosPuntos(motivo)} ${EN_SU_FILA}.`
+}
+
+/**
+ * El borrador al que además le faltó una OC, o marcarla como parcial: el PDF
+ * se completa en su fila y lo de la OC, ya registrado, con «Corregir». El aviso
+ * termina en «Después, …»: al completarlo, la pantalla lo recuerda.
+ */
+function borradorSinOc(numero: string, falta: string, motivo: string, despues: string) {
+  return `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo)} ${EN_SU_FILA}. Después, ${despues} con «Corregir».`
 }
 
 /**
@@ -182,7 +200,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (resto.length > 0) {
     const { data: enlazadas, error: errorEnlace } = await supabase.from('adquisiciones_ordenes_compra')
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
-    if (errorEnlace) return enBorrador(`El comprobante quedó en borrador sin ${lasOc(resto, numeroDeOc) ?? 'todas sus OC'}: ${mensajeDeError(errorEnlace)}`)
+    if (errorEnlace) {
+      const cuales = lasOc(resto, numeroDeOc)
+      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, mensajeDeError(errorEnlace), `agrégale ${cuales ?? 'las OC que faltan'}`))
+    }
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
   // Las que cubre en parte, mientras sigue en borrador: registrada, solo se cambia con una corrección.
@@ -190,7 +211,10 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
     const { data: parciales, error: errorParcial } = await supabase.from('adquisiciones_ordenes_compra')
       .update({ parcial: true }).eq('adquisicion_id', id).in('orden_compra_id', enParte.data).select('id')
     if (errorParcial) {
-      return enBorrador(`El comprobante quedó en borrador sin marcar como parcial ${lasOc(enParte.data, numeroDeOc) ?? 'sus OC'}: ${mensajeDeError(errorParcial)}`)
+      const cuales = lasOc(enParte.data, numeroDeOc)
+      const unaSola = enParte.data.length === 1
+      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar como parcial ${cuales ?? (unaSola ? 'su OC' : 'sus OC')}`,
+        mensajeDeError(errorParcial), `${unaSola ? 'márcala' : 'márcalas'} como parcial`))
     }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }
@@ -198,11 +222,11 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
       .upload(ruta, bytes, { contentType: 'application/pdf', upsert: false })
-    if (errorArchivo) return enBorrador(borradorSinPdf(mensajeDeArchivo(errorArchivo)))
+    if (errorArchivo) return enBorrador(borradorSinPdf(v.numero_documento, mensajeDeArchivo(errorArchivo)))
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id).select('id').maybeSingle()
-  if (errorRegistro) return enBorrador(`Comprobante en borrador: ${mensajeDeError(errorRegistro)}`)
+  if (errorRegistro) return enBorrador(`El comprobante ${v.numero_documento} quedó en borrador: ${trasDosPuntos(mensajeDeError(errorRegistro))}`)
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')

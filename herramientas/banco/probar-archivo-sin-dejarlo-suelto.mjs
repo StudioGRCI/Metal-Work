@@ -19,7 +19,10 @@
  *      envía: su campo dice que está vacío y el cursor queda ahí; sin PDF ni
  *      factura de Logística, el campo dice que falta, marcado. Lo que el
  *      servidor dice del PDF va en su campo y se va al quitarlo; el borrador
- *      que quedó sin su PDF se dice abajo.
+ *      que quedó sin su PDF se dice abajo, con su número. Si además no se
+ *      pudo marcar su OC como parcial, el aviso nombra la OC y lo que queda
+ *      por hacer con «Corregir», y al completarlo desde su fila el «listo» lo
+ *      recuerda.
  *      Lo que la persona cambió después de la lectura (la moneda) se queda
  *      aunque otra fuente vuelva a marcar lo suyo; lo que tocó antes de elegir
  *      nada, no le gana a la fuente que lo pisó. Si el PDF y la factura de
@@ -41,7 +44,9 @@
  *      - un pedido sin el tamaño del archivo: la acción lo dice en castellano.
  *      - y si después se elige otro archivo en la misma ventana (el contrato
  *        de un subcontrato): si el primero quedó, no se da por adjunto y se
- *        dice cuál quedó; si no quedó, se quita y entra el elegido.
+ *        dice cuál quedó; si no quedó, se quita y entra el elegido. Si
+ *        Storage rechazó el primero o su subida se cortó, y la foto siguiente
+ *        no llega, se dice que no quedó, sin nombrar el que nunca llegó.
  *      El recibo por honorarios vacío dice que está vacío.
  *   3. Administración, «Nueva orden de trabajo», cuando se pierde la respuesta
  *      al registrarla: la segunda vez la acción reconoce su propio PDF, abre la
@@ -61,9 +66,20 @@
  *      que no se confirmó) y queda una sola versión. (En el monitor; arma un
  *      plano de banco en una orden abierta.)
  *
- * Arma lo suyo con el sello QA-SUELTO-… en la base del banco y lo retira al
- * terminar. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
- * (mw_demo), CAPTURAS.
+ * Tesorería: la captura en JPG que quedó sin respuesta y después una PNG deja
+ * la cuenta con la PNG y sin la JPG suelta; tras el rechazo, el cursor va al
+ * aviso. (En el monitor.)
+ *
+ * Arma lo suyo en la base del banco con el sello de la corrida: archivos
+ * QA-SUELTO-…, comprobantes de «QA proveedor …» y cuentas «QA CAJA …». Al
+ * terminar quita los comprobantes (con su PDF y el enlace a su OC), los
+ * adjuntos y documentos QA-SUELTO-… y sus disparadores de prueba, y desactiva
+ * las cuentas, que no se borran. La orden, la cotización y el plano de banco
+ * se quedan. Al empezar quita los comprobantes y los disparadores que dejó una
+ * corrida que murió, de cualquier sello, y desactiva sus cuentas (sus adjuntos
+ * se quedan): dos corridas a la vez sobre la misma base se pisan.
+ * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
+ * CAPTURAS.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -377,6 +393,47 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   comprobar(dijoN.includes(`Desde esta ventana ya se subió ${nombreJ} y no se sabe si quedó`) && quedoN.n === 1 && quedoN.nombres === nombreJ && pdfSuelto === 0,
     `[Administración ${tam}] N1: con el contrato ya adjunto con la foto, el PDF que no llegó no dice «No quedó registrado»: «${dijoN}» (${quedoN.nombres}, ${pdfSuelto} PDF suelto)`)
 
+  // N2: Storage rechaza el PDF (413) o su subida se corta, y después, con una
+  // foto, la acción no llega dos veces: no queda nada. Se dice «No quedó
+  // registrado», sin nombrar el PDF, que nunca llegó a Storage.
+  for (const [clave, primera] of [['413', 'rechazada'], ['corte', 'cortada']]) {
+    await ir(p, `/subcontratos/${sc.id}`)
+    const n2 = { subidas: 0, acciones: 0 }
+    await p.route('**/*', async (r) => {
+      const q = r.request()
+      if (new URL(q.url()).pathname.startsWith('/storage/v1/object/subcontratos/') && q.method() === 'POST' && ++n2.subidas === 1) {
+        if (clave === 'corte') return r.abort('failed')
+        return r.fulfill({ status: 413, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify({ statusCode: '413', error: 'Payload too large', message: 'The object exceeded the maximum allowed size' }) })
+      }
+      if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(sc.id)) {
+        n2.acciones++
+        return r.abort('failed')
+      }
+      return r.continue()
+    })
+    await p.locator('[data-adjuntar-contrato]').click()
+    const w = p.getByRole('dialog').first()
+    await w.waitFor({ timeout: 20000 })
+    const alertaW = w.locator('[role=alert]')
+    const nombrePdf = `QA-OTRO-N2-${clave}-${sello}.pdf`
+    const nombreFoto = `QA-OTRO-N2-${clave}-${sello}.png`
+    await w.locator('input[name="contrato"]').setInputFiles({ name: nombrePdf, mimeType: 'application/pdf', buffer: PDF_MINIMO(700) })
+    await w.getByRole('button', { name: 'Adjuntar' }).click()
+    await esperar(async () => /No se pudo cargar el archivo/.test(await alertaW.innerText().catch(() => '')), 30000)
+    const dijoPdf = limpio(await alertaW.innerText().catch(() => ''))
+    await w.locator('input[name="contrato"]').setInputFiles({ name: nombreFoto, mimeType: 'image/png', buffer: PNG_MINIMO })
+    await w.getByRole('button', { name: 'Adjuntar' }).click()
+    await esperar(async () => n2.acciones >= 2 && /No quedó|ya se subió/.test(await alertaW.innerText().catch(() => '')), 40000)
+    const dijoFoto = limpio(await alertaW.innerText().catch(() => ''))
+    await p.keyboard.press('Escape')
+    await p.unrouteAll({ behavior: 'ignoreErrors' })
+    const filas = Number((await uno('select count(*) from public.subcontrato_contratos where subcontrato_id = $1 and archivo_nombre in ($2, $3)',
+      [sc.id, nombrePdf, nombreFoto])).count)
+    comprobar(dijoFoto.startsWith('No quedó registrado') && !dijoFoto.includes(nombrePdf) && filas === 0,
+      `[Administración ${tam}] N2: con el PDF ${primera} y la foto sin respuesta, no queda nada y se dice que no quedó, sin nombrar el PDF: «${dijoPdf}» → «${dijoFoto}» (${filas} filas)`)
+  }
+
   // El recibo por honorarios vacío dice que está vacío, no «Adjunta el recibo».
   await ir(p, `/subcontratos/${sc.id}`)
   await p.locator('[data-subir-recibo]').click()
@@ -445,6 +502,9 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     await boton.click()
     await esperar(async () => /No se confirmó/.test(await avisos()), 30000)
     const primera = await avisos()
+    // Tras el rechazo, el cursor va al aviso (en el teléfono, el botón queda debajo).
+    const enElAviso = () => p.evaluate(() => document.activeElement?.getAttribute('role') === 'alert')
+    const cursorEnElAviso = await esperar(enElAviso, 3000)
     const conJpg = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
     await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
     await boton.click()
@@ -465,6 +525,7 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     comprobar(/No se confirmó/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
       && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
       `[Tesorería ${tam}] ${caso}: la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»${segunda ? ` / «${segunda}»` : ''}; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
+    if (caso === 'directo') comprobar(cursorEnElAviso, `[Tesorería ${tam}] tras el rechazo, el cursor va al aviso (${cursorEnElAviso ? 'sí' : 'no'})`)
   }
   await contexto.close()
 }
@@ -1054,7 +1115,7 @@ async function loLeidoSeVaConElArchivo(viewport) {
     await quitarElRechazoDePrueba()
   }
   const campoBorrador = await dice(pdfR)
-  comprobar(borrador === 'El comprobante quedó en borrador sin su PDF, que no se pudo guardar. Complétalo en su fila de la lista, en «PDF pendiente»; si vuelve a fallar, avisa al administrador.'
+  comprobar(borrador === `El comprobante F998-${sello}${tam} quedó en borrador sin su PDF, que no se pudo guardar. Complétalo en su fila de la lista, en «PDF pendiente»; si vuelve a fallar, avisa al administrador.`
     && !campoBorrador.includes('borrador'),
     `[Contabilidad ${tam}] el borrador sin su PDF se dice abajo y no en el campo: «${borrador}» / campo «${campoBorrador}»`)
   const fila = r.getByText(`F998-${sello}${tam}`, { exact: true })
@@ -1067,8 +1128,8 @@ async function loLeidoSeVaConElArchivo(viewport) {
 
   // Lo escrito ya está en el borrador: el formulario vuelve vacío, para que no
   // se registre otra vez con su mismo número, y el aviso sigue abajo, con el
-  // cursor en él. Completado desde su fila, el aviso se va solo y arriba queda
-  // el «listo», que se va al empezar el siguiente.
+  // cursor en él. Completado desde su fila, el aviso se va solo y en su lugar
+  // queda el «listo», que se va al empezar el siguiente.
   const avisoBorrador = r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' })
   const vacio = { proveedor: await valor(r, '#adq-proveedor'), numero: await valor(r, '#adq-numero'), total: await valor(r, '#adq-total') }
   const pdfVacio = await dice(pdfR)
@@ -1085,20 +1146,118 @@ async function loLeidoSeVaConElArchivo(viewport) {
     await completar.getByRole('button', { name: 'Completar comprobante' }).click()
     completado = await esperar(async () => (await uno('select estado from public.adquisiciones where id = $1', [borradorId]))?.estado === 'REGISTRADA', 30000)
   }
-  const listo = r.getByRole('status').filter({ hasText: `Comprobante F998-${sello}${tam} completado y registrado.` })
+  const listo = r.locator('form p[role=status]').filter({ hasText: `Comprobante F998-${sello}${tam} completado y registrado.` })
   const seFue = await esperar(async () => (await avisoBorrador.count()) === 0 && (await listo.count()) > 0, 20000)
-  comprobar(completado && seFue && (await valor(r, '#adq-numero')) === '',
-    `[Contabilidad ${tam}] se completa desde su fila (${completado ? 'REGISTRADA' : 'no se completó'}) y el aviso del borrador se va solo, con el «listo» arriba (${seFue ? 'sí' : `aviso ${await avisoBorrador.count()}, listo ${await listo.count()}`})`)
+  const dijoListo = seFue ? limpio(await listo.innerText()) : ''
+  const listoALaVista = seFue && (await listo.evaluate((e) => !e.classList.contains('sr-only') && e.getBoundingClientRect().width > 50))
+  comprobar(completado && seFue && listoALaVista && dijoListo === `Comprobante F998-${sello}${tam} completado y registrado.` && (await valor(r, '#adq-numero')) === '',
+    `[Contabilidad ${tam}] se completa desde su fila (${completado ? 'REGISTRADA' : 'no se completó'}) y el aviso del borrador se va solo; en su lugar, a la vista, el «listo» y nada más (${seFue ? `«${dijoListo}»${listoALaVista ? '' : ', fuera de la vista'}` : `aviso ${await avisoBorrador.count()}, listo ${await listo.count()}`})`)
   await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
-  comprobar(await esperar(async () => (await listo.count()) === 0, 5000), `[Contabilidad ${tam}] y el «listo» se va al empezar el siguiente`)
+  comprobar(seFue && await esperar(async () => (await listo.count()) === 0, 5000), `[Contabilidad ${tam}] y el «listo» se va al empezar el siguiente${seFue ? '' : ' (no llegó a estar)'}`)
   await r.locator('#adq-proveedor').fill('')
+
+  // Si además no se pudo marcar la OC como parcial (o enlazar una de sus OC),
+  // el aviso dice el número, la OC y lo que queda por hacer con «Corregir»:
+  // el PDF no llegó a subir. Completado desde su fila, el «listo» lo recuerda.
+  // Para que la base diga que no, un disparador de banco que rechaza marcar
+  // como parcial la OC de los comprobantes de esta prueba, y se quita enseguida.
+  const numeroOc = `F997-${sello}${tam}`
+  await quitarElParcialDePrueba()
+  await base.query(`create function public.qa_parcial_dice_que_no() returns trigger language plpgsql security definer set search_path = public as $$
+                      begin
+                        if new.parcial and not old.parcial and exists (select 1 from public.adquisiciones a
+                                    where a.id = new.adquisicion_id and a.proveedor like 'QA proveedor %') then
+                          raise exception 'No se pudo marcar la OC como parcial';
+                        end if;
+                        return new;
+                      end $$`)
+  await base.query(`create trigger qa_parcial_dice_que_no before update on public.adquisiciones_ordenes_compra
+                      for each row execute function public.qa_parcial_dice_que_no()`)
+  let sinOc = ''
+  try {
+    await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
+    await casillaR.check()
+    await r.locator(`input[name="parciales"][value="${oc.orden_compra_id}"]`).check()
+    await pdfR.setInputFiles({ name: `QA-SIN-OC-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
+    await esperar(async () => (await r.getByText('Leyendo la factura…').count()) === 0, 20000)
+    await r.locator('#adq-numero').fill(numeroOc)
+    await r.locator('#adq-emision').fill(doc.fecha)
+    await r.locator('#adq-vencimiento').fill(doc.fecha)
+    await r.locator('#adq-total').fill('100.00')
+    await r.getByRole('button', { name: 'Registrar comprobante' }).click()
+    await esperar(async () => (await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).count()) > 0, 30000)
+    sinOc = limpio(await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).first().innerText().catch(() => ''))
+  } finally {
+    await quitarElParcialDePrueba()
+  }
+  comprobar(sinOc === `El comprobante ${numeroOc} quedó en borrador, sin su PDF y sin marcar como parcial la ${oc.numero}: no se pudo marcar la OC como parcial. Complétalo en su fila de la lista, en «PDF pendiente». Después, márcala como parcial con «Corregir».`,
+    `[Contabilidad ${tam}] el borrador al que le faltó marcar su OC como parcial dice su número, la OC y qué hacer después: «${sinOc}»`)
+  await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).scrollIntoViewIfNeeded().catch(() => {})
+  await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-borrador-sin-oc-${tam}.png`) })
+  const sinOcId = (await uno('select id from public.adquisiciones where proveedor = $1 and numero_documento = $2', [`QA proveedor ${sello}`, numeroOc]))?.id
+  const completarSinOc = r.locator('form').filter({ has: r.locator(`input[name="id"][value="${sinOcId}"]`) }).filter({ visible: true }).first()
+  let completadoSinOc = false
+  if (sinOcId && (await esperar(async () => (await completarSinOc.count()) > 0, 10000))) {
+    await completarSinOc.scrollIntoViewIfNeeded()
+    await completarSinOc.locator('input[name="pdf"]').setInputFiles({ name: `QA-PENDIENTE-OC-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
+    await esperar(async () => !(await completarSinOc.getByRole('button', { name: 'Completar comprobante' }).isDisabled()), 20000)
+    await completarSinOc.getByRole('button', { name: 'Completar comprobante' }).click()
+    completadoSinOc = await esperar(async () => (await uno('select estado from public.adquisiciones where id = $1', [sinOcId]))?.estado === 'REGISTRADA', 30000)
+  }
+  const listoSinOc = r.locator('form p[role=status]').filter({ hasText: `Comprobante ${numeroOc} completado y registrado.` })
+  const llegoSinOc = await esperar(async () => (await listoSinOc.count()) > 0, 20000)
+  const dijoSinOc = llegoSinOc ? limpio(await listoSinOc.innerText()) : ''
+  comprobar(completadoSinOc && dijoSinOc === `Comprobante ${numeroOc} completado y registrado. Ahora márcala como parcial con «Corregir».`
+    && (await r.locator('form [role=alert]').filter({ hasText: 'quedó en borrador' }).count()) === 0,
+    `[Contabilidad ${tam}] completado desde su fila (${completadoSinOc ? 'REGISTRADA' : 'no se completó'}), el «listo» recuerda marcar la OC como parcial con «Corregir»: «${dijoSinOc}»`)
+  if (llegoSinOc) await listoSinOc.scrollIntoViewIfNeeded().catch(() => {})
+  await r.screenshot({ path: join(CAPTURAS, `suelto-adquisicion-completado-sin-oc-${tam}.png`) })
   await cr.close()
+  // La OC vuelve a esperar su factura: la vuelta del teléfono la usa.
+  await quitarComprobantesDePrueba(`QA proveedor ${sello}`)
 }
 
 /** El disparador de banco que hace fallar el PDF del borrador, fuera. */
 async function quitarElRechazoDePrueba() {
   await base.query('drop trigger if exists qa_storage_dice_que_no on storage.objects')
   await base.query('drop function if exists public.qa_storage_dice_que_no()')
+}
+
+/** Los adjuntos de orden y los documentos de compra de la prueba, con su archivo. */
+async function quitarArchivosDePrueba(adjuntos, documentos) {
+  await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
+                      and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [adjuntos])
+  await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [adjuntos])
+  await base.query(`delete from storage.objects where bucket_id = 'documentos-compras'
+                      and name in (select ruta_storage from public.documentos_compra_material where nombre_archivo like $1)`, [documentos])
+  await base.query('delete from public.documentos_compra_material where nombre_archivo like $1', [documentos])
+}
+
+/** El disparador de banco que no deja marcar la OC como parcial, fuera. */
+async function quitarElParcialDePrueba() {
+  await base.query('drop trigger if exists qa_parcial_dice_que_no on public.adquisiciones_ordenes_compra')
+  await base.query('drop function if exists public.qa_parcial_dice_que_no()')
+}
+
+/**
+ * Los comprobantes de la prueba, con su PDF y el enlace a su OC. Ese enlace no
+ * se borra nunca en la aplicación (lo guarda `fn_adquisicion_oc_guardia`): aquí
+ * sí, sin disparadores, para que la OC vuelva a esperar su factura.
+ */
+async function quitarComprobantesDePrueba(proveedor) {
+  await base.query('begin')
+  try {
+    await base.query('set local session_replication_role = replica')
+    await base.query(`delete from storage.objects where bucket_id = 'comprobantes-financieros'
+                        and name in (select ruta_storage from public.adquisiciones where proveedor like $1)`, [proveedor])
+    await base.query(`delete from public.adquisiciones_ordenes_compra
+                       where adquisicion_id in (select id from public.adquisiciones where proveedor like $1)`, [proveedor])
+    await base.query('delete from public.adquisiciones where proveedor like $1', [proveedor])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
 }
 
 /** Una OC que espera su factura, como la ve Contabilidad. */
@@ -1447,12 +1606,12 @@ async function planoSinRespuesta(viewport) {
   await contexto.close()
 }
 
-// Lo que dejó una corrida anterior que murió por una señal: el disparador de
-// prueba, sus comprobantes y sus cuentas de la caja, que no se borran: se desactivan.
+// Lo que dejó una corrida anterior que murió por una señal: los disparadores
+// de prueba, sus comprobantes y sus cuentas de la caja, que no se borran: se
+// desactivan. Sus adjuntos no: el PDF de una orden no se quita sin otro.
 await quitarElRechazoDePrueba()
-await base.query(`delete from storage.objects where bucket_id = 'comprobantes-financieros'
-                    and name in (select ruta_storage from public.adquisiciones where proveedor like 'QA proveedor %')`)
-await base.query(`delete from public.adquisiciones where proveedor like 'QA proveedor %'`)
+await quitarElParcialDePrueba()
+await quitarComprobantesDePrueba('QA proveedor %')
 await base.query(`update public.cajas set activa = false where nombre like 'QA CAJA %' and activa`)
 
 try {
@@ -1474,17 +1633,11 @@ try {
 } finally {
   // Lo que armó esta prueba no se queda en la orden de las demás.
   await quitarElRechazoDePrueba()
-  await base.query(`delete from storage.objects where bucket_id = 'comprobantes-financieros'
-                      and name in (select ruta_storage from public.adquisiciones where proveedor = $1)`, [`QA proveedor ${sello}`])
-  await base.query('delete from public.adquisiciones where proveedor = $1', [`QA proveedor ${sello}`])
+  await quitarElParcialDePrueba()
+  await quitarComprobantesDePrueba(`QA proveedor ${sello}`)
   // Una cuenta de Tesorería no se borra: la de la prueba se desactiva, con su captura.
   await base.query('update public.cajas set activa = false where nombre like $1', [`QA CAJA ${sello}-%`])
-  await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
-                      and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [`QA-SUELTO-${sello}-%`])
-  await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [`QA-SUELTO-${sello}-%`])
-  await base.query(`delete from storage.objects where bucket_id = 'documentos-compras'
-                      and name in (select ruta_storage from public.documentos_compra_material where nombre_archivo like $1)`, [`QA-SUELTO-DOC-%-${sello}-%`])
-  await base.query('delete from public.documentos_compra_material where nombre_archivo like $1', [`QA-SUELTO-DOC-%-${sello}-%`])
+  await quitarArchivosDePrueba(`QA-SUELTO-${sello}-%`, `QA-SUELTO-DOC-%-${sello}-%`)
   await navegador.close()
   await base.end()
 }

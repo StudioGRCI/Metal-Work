@@ -88,15 +88,18 @@ export function FormularioAdquisicion({ borradores, ...props }: Props & { borrad
   // donde estaba, hasta que la persona empiece el siguiente o lo complete en
   // su fila: dura lo que el borrador en la lista (`borradores`, los de esta
   // persona). La lista lo trae un momento después del aviso: se va cuando ya
-  // estuvo y dejó de estar.
+  // estuvo y dejó de estar, y en su lugar queda el «completado», con lo que
+  // falte hacer con «Corregir» si al borrador le faltó una OC.
   const [vuelta, setVuelta] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
   const [borrador, setBorrador] = useState<{ texto: string; clave: string; numero: string; enLaLista: boolean } | null>(null)
+  const [completado, setCompletado] = useState<{ texto: string; falta: string | null } | null>(null)
   const sigue = borrador !== null && borradores.some((b) => claveDeBorrador(b.proveedor, b.numero) === borrador.clave)
   if (borrador && sigue && !borrador.enLaLista) setBorrador({ ...borrador, enLaLista: true })
   if (borrador?.enLaLista && !sigue) {
     setBorrador(null)
-    setAviso(`Comprobante ${borrador.numero} completado y registrado.`)
+    const falta = / Después, (.+ con «Corregir»\.)$/.exec(borrador.texto)?.[1] ?? null
+    setCompletado({ texto: `Comprobante ${borrador.numero} completado y registrado.`, falta: falta && `Ahora ${falta}` })
   }
   return (
     <>
@@ -109,19 +112,23 @@ export function FormularioAdquisicion({ borradores, ...props }: Props & { borrad
         key={vuelta}
         {...props}
         borrador={borrador?.texto ?? null}
+        completado={completado}
         alRegistrar={(mensaje) => {
           setAviso(mensaje)
           setBorrador(null)
+          setCompletado(null)
           setVuelta((v) => v + 1)
         }}
         alQuedarEnBorrador={(texto, proveedor, numero) => {
           setAviso(null)
+          setCompletado(null)
           setBorrador({ texto, clave: claveDeBorrador(proveedor, numero), numero: numero.trim(), enLaLista: false })
           setVuelta((v) => v + 1)
         }}
         alEscribir={() => {
           setAviso(null)
           setBorrador(null)
+          setCompletado(null)
         }}
       />
     </>
@@ -139,11 +146,13 @@ function Formulario({
   compras,
   documentos,
   borrador,
+  completado,
   alRegistrar,
   alQuedarEnBorrador,
   alEscribir,
 }: Props & {
   borrador: string | null
+  completado: { texto: string; falta: string | null } | null
   alRegistrar: (mensaje: string) => void
   alQuedarEnBorrador: (mensaje: string, proveedor: string, numero: string) => void
   alEscribir: () => void
@@ -733,6 +742,17 @@ function Formulario({
             {avisoAbajo}
           </p>
         )}
+        {/* El borrador completado se dice donde estaba su aviso. La región está
+            montada desde antes, vacía y fuera de la vista: así el lector de
+            pantalla la anuncia una vez. */}
+        <p role="status" className={completado && !avisoAbajo ? 'text-sm' : 'sr-only'}>
+          {completado && !avisoAbajo && (
+            <>
+              <span className="text-exito">{completado.texto}</span>
+              {completado.falta && <span className="text-aviso"> {completado.falta}</span>}
+            </>
+          )}
+        </p>
       </div>
     </form>
   )

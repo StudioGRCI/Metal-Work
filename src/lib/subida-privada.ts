@@ -49,12 +49,15 @@ export async function anotarSinDejarloSuelto<T = never>({
   anotar,
   sinRespuesta,
   siNoSeRetira,
+  alQuitarlo,
 }: {
   bucket: string
   ruta: string
   anotar: () => Promise<ResultadoAccion<T>>
   sinRespuesta: string
   siNoSeRetira?: string
+  /** Se llama cuando el archivo se quitó: quien sube recuerda que la ruta quedó vacía. */
+  alQuitarlo?: () => void
 }): Promise<ResultadoAccion<T>> {
   const supabase = createClient()
   // Un archivo que la política no deja quitar vuelve sin error y sin nada
@@ -63,7 +66,9 @@ export async function anotarSinDejarloSuelto<T = never>({
     try {
       const { data, error } = await supabase.storage.from(bucket).remove([ruta])
       if (error) return 'sin respuesta'
-      return (data?.length ?? 0) > 0 ? 'quitado' : 'se queda'
+      if ((data?.length ?? 0) === 0) return 'se queda'
+      alQuitarlo?.()
+      return 'quitado'
     } catch {
       return 'sin respuesta'
     }
@@ -104,15 +109,22 @@ const intentados = new Map<string, { huella: string; nombre: string }>()
 // El último archivo que Storage dio por subido en cada ruta. Una vez que una
 // fila nombra la ruta, ahí no entra otro: si la fila nombra algo, es ese.
 const confirmados = new Map<string, { huella: string; nombre: string }>()
+// Las rutas que esta pestaña sabe vacías: quitó lo que había (el borrado lo
+// devolvió) o Storage rechazó la subida a una ruta que ya estaba vacía, y no
+// intentó otra desde entonces. Un borrado que vuelve vacío no distingue «una
+// fila lo nombra» de «no hay nada»: esto sí.
+const vacias = new Set<string>()
 // La última ruta de cada documento, que es la ruta sin su extensión: el mismo
 // documento con otro tipo de archivo (un contrato en PDF y después en foto) va
 // a otra ruta, y el de antes quedaba suelto en la suya. La memoria de cada ruta
 // sigue aparte: si se vuelve a la primera, lo que hay ahí es lo que se recuerda.
 const rutaDelDocumento = new Map<string, string>()
 // Las rutas de otro tipo de cada documento que una fila nombraba cuando se
-// intentó quitarlas. Si después la acción cambia la ruta del documento (la
-// caja reemplaza su captura), se vuelven a quitar tras el ok, aunque llegue en
-// otro envío que el del cambio de tipo.
+// intentó quitarlas: el borrado volvió vacío y Storage las había dado por
+// subidas (`confirmados`), así que no es que no hubiera nada. Si después la
+// acción cambia la ruta del documento (la caja reemplaza su captura), se
+// vuelven a quitar tras el ok, aunque llegue en otro envío que el del cambio de
+// tipo.
 const porQuitarTrasOk = new Map<string, Set<string>>()
 const huellaDe = (archivo: File) => `${archivo.name}|${archivo.size}|${archivo.lastModified}`
 
@@ -139,20 +151,36 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
   // anota un nombre con otro archivo adentro.
   const sinSaber = (nombre: string) => intentados.set(clave, { huella: '', nombre })
   const otraRuta = rutaDelDocumento.get(documento)
+  // Antes de subir: si la ruta estaba vacía, lo que haya después es este archivo o nada.
+  const estabaVacia = vacias.has(clave) || !antes
+  const siLaRechazo = (rechazo: { statusCode?: string } | null) => {
+    // Un rechazo de Storage (413, 403…) no deja nada: la ruta sigue como estaba.
+    if (rechazo?.statusCode && rechazo.statusCode !== '409' && estabaVacia) vacias.add(clave)
+  }
   try {
     // Otro tipo de archivo, otra ruta: lo de antes quedó en la suya. Si ninguna
     // fila lo nombra, la política deja quitarlo; si una lo nombra, no se quita, y
-    // la acción dirá que ese envío ya quedó con otro archivo.
-    if (otraRuta && otraRuta !== ruta) {
+    // la acción dirá que ese envío ya quedó con otro archivo. La que se sabe
+    // vacía no se toca.
+    const otraClave = `${bucket}/${otraRuta}`
+    if (otraRuta && otraRuta !== ruta && !vacias.has(otraClave)) {
       const quitado = await supabase.storage.from(bucket).remove([otraRuta])
       if (quitado.error) {
-        return { ok: false, error: otroArchivoEnLaRuta(intentados.get(`${bucket}/${otraRuta}`)?.nombre ?? este.nombre, false) }
+        return { ok: false, error: otroArchivoEnLaRuta(intentados.get(otraClave)?.nombre ?? este.nombre, false) }
       }
-      if ((quitado.data?.length ?? 0) === 0) porQuitarTrasOk.set(documento, new Set([...(porQuitarTrasOk.get(documento) ?? []), otraRuta]))
+      if ((quitado.data?.length ?? 0) > 0) {
+        confirmados.delete(otraClave)
+        vacias.add(otraClave)
+        porQuitarTrasOk.get(documento)?.delete(otraRuta)
+      } else if (confirmados.has(otraClave)) {
+        porQuitarTrasOk.set(documento, new Set([...(porQuitarTrasOk.get(documento) ?? []), otraRuta]))
+      }
     }
     rutaDelDocumento.set(documento, ruta)
-    sinSaber(antes?.nombre ?? este.nombre)
+    vacias.delete(clave)
+    sinSaber(estabaVacia ? este.nombre : (antes?.nombre ?? este.nombre))
     let { error } = await subir()
+    siLaRechazo(error)
     // La misma ruta permite reintentar una carga cuyo resultado no llegó.
     // El servidor comprueba el objeto; no se sobrescribe un archivo existente.
     if (error && error.statusCode === '409' && antes && antes.huella !== este.huella) {
@@ -163,8 +191,10 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
       const quitado = await supabase.storage.from(bucket).remove([ruta])
       if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
       if ((quitado.data?.length ?? 0) > 0) {
+        confirmados.delete(clave)
         sinSaber(este.nombre)
         ;({ error } = await subir())
+        if (error?.statusCode && error.statusCode !== '409') vacias.add(clave)
       } else {
         const quedo = confirmados.get(clave)
         if (quedo?.huella !== este.huella) {
@@ -187,13 +217,17 @@ export async function subirArchivoPrivado({ bucket, ruta, archivo, contentType, 
     anotar: registrar,
     sinRespuesta,
     siNoSeRetira: 'El archivo no se pudo retirar; vuelve a cargar la pantalla antes de reintentar.',
+    alQuitarlo: () => {
+      confirmados.delete(clave)
+      vacias.add(clave)
+    },
   })
   const deOtroTipo = [...(porQuitarTrasOk.get(documento) ?? [])].filter((r) => r !== ruta)
   // «No quedó» habla de este archivo. Si una fila nombraba la ruta de otro tipo
   // del mismo documento, el documento pudo quedar con aquel: se dice cuál, sin
   // afirmar que quedó.
   if (!resultado.ok && resultado.error === NO_QUEDO_SIN_RESPUESTA && deOtroTipo.length > 0) {
-    return { ok: false, error: otroArchivoEnLaRuta(intentados.get(`${bucket}/${deOtroTipo[0]}`)?.nombre ?? este.nombre, false) }
+    return { ok: false, error: otroArchivoEnLaRuta(intentados.get(`${bucket}/${deOtroTipo.at(-1)}`)?.nombre ?? este.nombre, false) }
   }
   // La caja cambia la ruta de su captura al guardarla: la de otro tipo que su
   // fila nombraba quedó sin nadie que la nombre, y ahora la política deja

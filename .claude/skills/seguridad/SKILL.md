@@ -166,7 +166,14 @@ En la misma migración que la crea, sin excepción:
   cuando ya nadie la nombra, aunque el `ok` llegue en otro envío
   (`porQuitarTrasOk`). Y «No quedó registrado» habla solo del archivo de este
   envío: si una fila nombraba la ruta de otro tipo del mismo documento, se
-  dice cuál se subió y que no se sabe si quedó. La ruta fija
+  dice cuál se subió y que no se sabe si quedó. Pero `remove` vuelve vacío
+  igual cuando una fila nombra el archivo que cuando no hay nada: la ruta
+  cuenta solo si Storage la había dado por subida (`confirmados`), y la
+  pestaña recuerda las que sabe vacías (`vacias`: las quitó ella, o Storage
+  rechazó la subida a una ruta que estaba vacía). Sin eso, tras un PDF que
+  Storage rechazó (413) o cuya subida se cortó, la foto sin respuesta decía
+  «ya se subió el PDF» de un archivo que nunca llegó (novena pasada del PR
+  #148). La ruta fija
   vale **por envío**, no por ventana: el id que nace en un componente que la
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo

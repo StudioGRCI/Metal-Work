@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeftRight, Ban, ImageIcon, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
@@ -23,7 +23,7 @@ import {
   rutaDeCapturaDeSaldo,
   SALDO,
 } from '@/lib/dominio/caja'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -41,10 +41,14 @@ function Pie({ error, enviando, alCancelar, texto, variante }: {
   texto: string
   variante?: 'primario' | 'peligro'
 }) {
+  // Tras un rechazo, el cursor va al aviso. Sin esto caía a la página, y en el
+  // teléfono un aviso largo deja el botón debajo del borde de la ventana.
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
   return (
     <>
       {error && (
-        <p role="alert" className="text-sm text-peligro">
+        <p ref={aviso} role="alert" tabIndex={-1} className="text-sm text-peligro">
           {error}
         </p>
       )}
