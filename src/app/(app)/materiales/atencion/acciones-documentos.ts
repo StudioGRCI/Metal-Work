@@ -55,18 +55,27 @@ export async function registrarDocumentoCompra(
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
+  const adjuntado = numeroFactura
+    ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`
+    : 'Documento adjuntado a la compra y disponible para Tesorería.'
+  // El mismo envío repetido (no le llegó la respuesta) recibe la misma respuesta
+  // que la primera vez; con otro número, otra fecha u otra persona ya no es el
+  // mismo, y la pantalla no puede decir que quedó lo que no se guardó.
+  type Anotado = { orden_compra_id: string; subido_por: string; tipo: string; nombre_archivo: string; numero_documento: string | null; fecha_emision: string | null }
+  const esElMismo = (d: Anotado) =>
+    d.orden_compra_id === datos.data.orden_compra_id && d.subido_por === perfil.id && d.tipo === datos.data.tipo
+    && d.nombre_archivo === datos.data.nombre_archivo && d.numero_documento === numeroFactura && d.fecha_emision === fechaFactura
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo')
+    .select('orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision')
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
-    if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id
-      || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo) {
-      return { ok: false, error: 'Ese identificador ya pertenece a otro documento. Recarga la compra antes de volver a intentar.' }
+    if (!esElMismo(existente)) {
+      return { ok: false, error: 'Ese documento ya quedó adjuntado con otros datos. Recarga la compra para verlo antes de volver a intentar.' }
     }
-    return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
+    return { ok: true, mensaje: adjuntado }
   }
   const { data: archivo, error: errorSubida } = await supabase.storage
     .from('documentos-compras')
@@ -93,12 +102,8 @@ export async function registrarDocumentoCompra(
   if (error) {
     if (error.code === '23505') {
       const repetido = await supabase.from('documentos_compra_material')
-        .select('orden_compra_id, subido_por, tipo, nombre_archivo').eq('id', datos.data.id).maybeSingle()
-      if (!repetido.error && repetido.data?.orden_compra_id === datos.data.orden_compra_id
-        && repetido.data.subido_por === perfil.id && repetido.data.tipo === datos.data.tipo
-        && repetido.data.nombre_archivo === datos.data.nombre_archivo) {
-        return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
-      }
+        .select('orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision').eq('id', datos.data.id).maybeSingle()
+      if (!repetido.error && repetido.data && esElMismo(repetido.data)) return { ok: true, mensaje: adjuntado }
     }
     const { error: errorLimpieza } = await supabase.storage.from('documentos-compras').remove([ruta])
     if (errorLimpieza) {
@@ -112,10 +117,5 @@ export async function registrarDocumentoCompra(
   revalidatePath('/compras')
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
-  return {
-    ok: true,
-    mensaje: numeroFactura
-      ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`
-      : 'Documento adjuntado a la compra y disponible para Tesorería.',
-  }
+  return { ok: true, mensaje: adjuntado }
 }

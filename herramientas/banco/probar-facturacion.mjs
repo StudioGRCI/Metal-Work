@@ -420,8 +420,10 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   await v.locator('input[name="archivo"]').setInputFiles(PDF_VOUCHER)
   await elegirCuenta(v, cajaDolares)
   // La señal se corta justo cuando vuelve la respuesta: el servidor anota el
-  // cobro, pero el navegador no se entera. El voucher no se toca, porque la
-  // fila pudo entrar y quedaría nombrando un archivo que no existe.
+  // cobro, pero el navegador no se entera. La pantalla pregunta otra vez con el
+  // mismo cobro, la base reconoce el suyo sin duplicarlo y el voucher se queda
+  // (ver `anotarSinDejarloSuelto`). Hasta el 2026-10-22 decía «No llegó la
+  // respuesta» y había que recargar para saber si había entrado.
   let cortada = false
   await pagina.route('**/*', async (r) => {
     if (!cortada && r.request().method() === 'POST' && r.request().headers()['next-action']) {
@@ -434,7 +436,10 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   await v.getByRole('button', { name: 'Registrar el cobro' }).click()
   const e1 = await esperarVentana(pagina)
   await pagina.unroute('**/*')
-  comprobar(cortada && e1.includes('No llegó la respuesta'), `sin respuesta, pide mirar antes de reintentar${e1 ? ` («${e1}»)` : ''}`)
+  comprobar(cortada && e1 === '', `sin respuesta, la segunda vuelta lo da por registrado${e1 ? ` (dijo: «${e1}»)` : ''}`)
+  const [{ n: cobros }] = await consulta(
+    `select count(*)::int n from cobros_factura_venta c join facturas_venta f on f.id = c.factura_id where f.numero = $1`, [FACTURA])
+  comprobar(cobros === 1, `y la base lo guarda una sola vez (${cobros})`)
   const [cobro] = await consulta(
     `select exists (select 1 from storage.objects o where o.bucket_id = 'cobros-venta' and o.name = c.archivo_ruta) as archivo
        from cobros_factura_venta c join facturas_venta f on f.id = c.factura_id where f.numero = $1`, [FACTURA])

@@ -11,6 +11,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
+import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
 import { quitarAdjunto } from './acciones-adjuntos'
 
@@ -124,7 +125,8 @@ export function ArchivosDeOrden({
     try {
       const r = await subirAdjunto(ordenId, archivo, 'ORDEN')
       if (!r.ok) {
-        setAvisoSubida(r.error)
+        // En la caja del campo se dice cómo volver a intentar, como los demás avisos.
+        setAvisoSubida(r.error === NO_QUEDO_SIN_RESPUESTA ? 'No quedó, no llegó la respuesta: toca para elegirlo otra vez' : r.error)
         return
       }
       setElegido(null)

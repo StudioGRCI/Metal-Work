@@ -314,6 +314,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           <Campo etiqueta="La cotización" htmlFor="cot-archivo" requerido>
             <ElegirArchivo
               ref={campoArchivo}
@@ -556,6 +558,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               Subir y mandar a Gerencia
             </Boton>
           </div>
+          </fieldset>
           </div>
           <aside aria-label="Vista previa de la cotización" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
             <div className="border-b border-borde px-4 py-3">

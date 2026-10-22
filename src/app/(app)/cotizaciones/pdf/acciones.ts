@@ -210,13 +210,15 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
   if (!corregida) {
     // La misma corrección otra vez: la primera respuesta se perdió y la pantalla
     // preguntó de nuevo con la versión que tenía. Si la cotización ya nombra
-    // esta ruta —un uuid de esta corrección— en la versión siguiente, quedó.
+    // esta ruta —un uuid de esta corrección— en la versión siguiente, quedó. La
+    // corrección solo la sube quien registró la cotización (lo exige la base):
+    // si quien pregunta es otro, no es su envío.
     const { data: ya } = await supabase
       .from('cotizaciones_pdf')
-      .select('numero, version, ruta_storage')
+      .select('numero, version, ruta_storage, registrado_por')
       .eq('id', v.id)
       .maybeSingle()
-    if (!ya || ya.ruta_storage !== v.ruta_storage || ya.version !== v.version + 1) {
+    if (!ya || ya.ruta_storage !== v.ruta_storage || ya.version !== v.version + 1 || ya.registrado_por !== perfil.id) {
       return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
     }
     corregida = ya
@@ -309,7 +311,7 @@ const esquemaAprobarConOt = z.object({
   fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega'),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
-  tamano_pdf: z.coerce.number().int().min(0).optional(),
+  tamano_pdf: z.coerce.number().int().min(1, 'El PDF de la OT está vacío: elige otro.').optional(),
 })
 
 /**
@@ -348,7 +350,7 @@ export async function aprobarCotizacionConOt(
     p_fecha_entrega: v.fecha_entrega,
     p_ruta_pdf: v.ruta_pdf,
     p_nombre_pdf: v.nombre_pdf,
-    p_tamano_pdf: v.tamano_pdf ?? 0,
+    p_tamano_pdf: v.tamano_pdf ?? null,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
   })

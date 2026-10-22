@@ -10,7 +10,9 @@
  *      Lo leído se va con el archivo: el número y la fecha de la factura
  *      quitada no se quedan para la siguiente (Logística), ni el total, el
  *      número y la emisión en el registro de Contabilidad; lo que la persona
- *      escribió a mano, sí, y si no calza con lo leído se avisa.
+ *      escribió a mano, sí, y si no calza con lo leído se avisa. La OC que
+ *      marcó la lectura se desmarca con su archivo y lo que puso de ella
+ *      vuelve a lo que había; la que marca la persona, se queda.
  *   2. Administración, el PDF de una orden, cuando se pierde la conexión al
  *      anotarlo (`anotarSinDejarloSuelto`):
  *      - el pedido no llegó: se pregunta otra vez y queda una sola fila;
@@ -245,6 +247,53 @@ async function loLeidoSeVaConElArchivo(viewport) {
   await c.pagina.locator('#adq-total').scrollIntoViewIfNeeded()
   await c.pagina.screenshot({ path: join(CAPTURAS, `suelto-leido-adquisiciones-${tam}.png`) })
   await c.contexto.close()
+
+  // Contabilidad: la OC que marcó la lectura se desmarca con su archivo, y el
+  // proveedor, la condición y la moneda que puso vuelven a lo que había; la
+  // factura siguiente marca la suya; la que marca la persona se queda.
+  const oc = await ocQueEsperaFactura()
+  if (!oc) return comprobar(false, `[Contabilidad ${tam}] hay una OC que espera su factura`)
+  const { pagina: q, contexto: cq } = await entrar('contabilidad.local@metalwork.test', viewport)
+  await ir(q, '/adquisiciones')
+  const pdfOc = q.locator('#adq-pdf')
+  await pdfOc.waitFor({ state: 'attached', timeout: 20000 })
+  const casilla = q.locator(`input[name="ordenes_compra"][value="${oc.orden_compra_id}"]`)
+  const estado = async () =>
+    [(await casilla.isChecked()) ? 'marcada' : 'sin marcar', await valor(q, '#adq-proveedor'), await valor(q, '#adq-condicion'), await valor(q, '#adq-moneda')].join(' · ')
+  const otraCondicion = oc.condicion_pago === 'CONTADO' ? 'CREDITO' : 'CONTADO'
+  const otraMoneda = oc.moneda === 'USD' ? 'PEN' : 'USD'
+  await q.locator('#adq-condicion').selectOption(otraCondicion)
+  await q.locator('#adq-moneda').selectOption(otraMoneda)
+  const conOc = (n) => pdfConTexto(['FACTURA ELECTRONICA', `F00${n}-00000${n}${n}${n}`, 'FECHA DE EMISION: 14/10/2026', 'IMPORTE TOTAL: S/ 1180.00', `ORDEN DE COMPRA: ${oc.numero}`])
+  const marcada = `marcada · ${oc.proveedor} · ${oc.condicion_pago} · ${oc.moneda}`
+  await pdfOc.setInputFiles({ name: `QA-LEIDA-OC-C-${sello}.pdf`, mimeType: 'application/pdf', buffer: conOc(3) })
+  comprobar(await esperar(async () => (await estado()) === marcada, 20000),
+    `[Contabilidad ${tam}] la factura que nombra la ${oc.numero} la marca y trae su proveedor, condición y moneda: ${await estado()}`)
+  await pdfOc.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
+  comprobar(await esperar(async () => (await estado()) === `sin marcar ·  · ${otraCondicion} · ${otraMoneda}`, 5000),
+    `[Contabilidad ${tam}] al quitarla, la OC se desmarca y el proveedor, la condición y la moneda vuelven a lo que había: ${await estado()}`)
+  await pdfOc.setInputFiles({ name: `QA-LEIDA-OC-D-${sello}.pdf`, mimeType: 'application/pdf', buffer: conOc(4) })
+  comprobar(await esperar(async () => (await estado()) === marcada, 20000), `[Contabilidad ${tam}] la factura siguiente vuelve a marcar la suya: ${await estado()}`)
+  await casilla.uncheck()
+  await casilla.check()
+  await pdfOc.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
+  await q.waitForTimeout(800)
+  comprobar((await estado()) === marcada, `[Contabilidad ${tam}] la OC que volvió a marcar la persona se queda al quitar el archivo: ${await estado()}`)
+  await cq.close()
+}
+
+/** Una OC que espera su factura, como la ve Contabilidad. */
+async function ocQueEsperaFactura() {
+  await base.query('begin')
+  try {
+    const { id } = await uno(`select id from auth.users where email = 'contabilidad.local@metalwork.test'`)
+    await base.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: id, role: 'authenticated' })])
+    await base.query('set local role authenticated')
+    return await uno(`select orden_compra_id, numero, proveedor, condicion_pago, moneda from public.compras_sin_factura()
+                       where numero ~ '[0-9]' order by numero limit 1`)
+  } finally {
+    await base.query('rollback')
+  }
 }
 
 // ------------------------------------------------- 2. la conexión que se pierde al anotar
@@ -310,7 +359,8 @@ async function conexionQueSePierde(viewport) {
     } else {
       comprobar(filas === 0 && enStorage === 0, `[Administración ${tam}] ${caso}: no queda fila ni archivo suelto (filas ${filas}, archivo ${enStorage})`)
       const texto = await dice(campo)
-      comprobar(texto.includes('No quedó registrado: no llegó la respuesta. Vuelve a intentar.'), `[Administración ${tam}] ${caso}: dice que no quedó: «${texto}»`)
+      comprobar(texto.includes('No quedó, no llegó la respuesta:') && texto.includes('para elegirlo otra vez'),
+        `[Administración ${tam}] ${caso}: dice que no quedó y cómo volver a intentar: «${texto}»`)
     }
     await p.screenshot({ path: join(CAPTURAS, `suelto-${caso.replace(/\W+/g, '-')}-${tam}.png`) })
   }

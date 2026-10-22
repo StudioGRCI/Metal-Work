@@ -53,6 +53,14 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [numeroEscrito, setNumeroEscrito] = useState('')
   const numeroFinal = comoQuedaElNumero(numeroEscrito)
   const [pendiente, iniciar] = useTransition()
+  // Mientras se envía, los campos están trabados y no reciben el cursor: el que
+  // rechazó la base se enfoca cuando vuelven a estar libres.
+  const enfocarAlVolver = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (pendiente) return
+    enfocarAlVolver.current?.focus()
+    enfocarAlVolver.current = null
+  }, [pendiente])
   const router = useRouter()
   const enCurso = useRef(false)
   const [clienteId, setClienteId] = useState('')
@@ -190,7 +198,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         if (!r.ok) {
           if (/número de la (OT|orden)|^Ya hay una orden de trabajo/.test(r.error)) {
             setErrorNumero(r.error)
-            campoNumero.current?.focus()
+            enfocarAlVolver.current = campoNumero.current
           } else {
             setError(r.error)
           }
@@ -210,258 +218,261 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
   return (
     <form onSubmit={enviar} className="max-w-4xl space-y-4">
-      <Tarjeta>
-        <TarjetaCabecera titulo="Cliente y unidad" />
-        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
-          <Campo
-            etiqueta="Cliente"
-            htmlFor="cliente_id"
-            requerido
-            // El desplegable corta un nombre largo en el monitor y lo que
-            // distingue a dos clientes —el número, la sigla— queda al final.
-            ayudaEnIcono={false}
-            ayuda={clienteElegido ? `${clienteElegido.razon_social} · ${clienteElegido.tipo_documento ?? 'N.º'} ${clienteElegido.numero_documento}` : undefined}
-          >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <SeleccionBuscable
-                id="cliente_id"
-                name="cliente_id"
-                requerido
-                permiteVaciar={false}
-                className="flex-1"
-                valor={clienteId}
-                onChange={(v) => {
-                  setClienteId(v)
-                  setUnidadId('')
-                }}
-                marcador="Elige el cliente"
-                marcadorBusqueda="Razón social o RUC"
-                opciones={clientes.map((c) => ({
-                  valor: c.id,
-                  etiqueta: c.razon_social,
-                  detalle: c.numero_documento,
-                }))}
-              />
-              <NuevoCliente onCreado={clienteCreado} />
-            </div>
-          </Campo>
-
-          <Campo
-            etiqueta="Unidad"
-            htmlFor="unidad_id"
-            requerido={esGarantia}
-            ayuda={
-              clienteId && unidades.length === 0
-                ? 'Este cliente no tiene unidades registradas'
-                : esGarantia
-                  ? 'La garantía va con la unidad que vuelve, y la unidad con su código interno.'
-                  : 'Vehículo sobre el que se ejecuta el trabajo'
-            }
-          >
-            <div className="flex items-center gap-2">
-              <SeleccionBuscable
-                id="unidad_id"
-                name="unidad_id"
-                deshabilitado={!clienteId}
-                className="flex-1"
-                valor={unidadId}
-                onChange={setUnidadId}
-                marcador="Sin unidad asignada"
-                marcadorBusqueda="Placa o marca"
-                opciones={unidades.map((u) => ({
-                  valor: u.id,
-                  etiqueta: nombreDeUnidad(u),
-                  detalle: u.marca,
-                }))}
-              />
-              {clienteId && (
-                <NuevaUnidad
-                  key={clienteId}
-                  clienteId={clienteId}
-                  onCreada={unidadCreada}
-                  compacta
+      {/* Mientras se registra, nada se cambia: la orden sale con lo que se envió. */}
+      <fieldset disabled={pendiente} className="min-w-0 space-y-4">
+        <Tarjeta>
+          <TarjetaCabecera titulo="Cliente y unidad" />
+          <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              etiqueta="Cliente"
+              htmlFor="cliente_id"
+              requerido
+              // El desplegable corta un nombre largo en el monitor y lo que
+              // distingue a dos clientes —el número, la sigla— queda al final.
+              ayudaEnIcono={false}
+              ayuda={clienteElegido ? `${clienteElegido.razon_social} · ${clienteElegido.tipo_documento ?? 'N.º'} ${clienteElegido.numero_documento}` : undefined}
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <SeleccionBuscable
+                  id="cliente_id"
+                  name="cliente_id"
+                  requerido
+                  permiteVaciar={false}
+                  className="flex-1"
+                  valor={clienteId}
+                  onChange={(v) => {
+                    setClienteId(v)
+                    setUnidadId('')
+                  }}
+                  marcador="Elige el cliente"
+                  marcadorBusqueda="Razón social o RUC"
+                  opciones={clientes.map((c) => ({
+                    valor: c.id,
+                    etiqueta: c.razon_social,
+                    detalle: c.numero_documento,
+                  }))}
                 />
-              )}
-            </div>
-          </Campo>
-        </TarjetaCuerpo>
-      </Tarjeta>
+                <NuevoCliente onCreado={clienteCreado} />
+              </div>
+            </Campo>
 
-      <Tarjeta>
-        <TarjetaCabecera titulo="Trabajo a realizar" />
-        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
-          <Campo etiqueta="Taller" htmlFor="sede_id" requerido>
-            <Seleccion id="sede_id" name="sede_id" required defaultValue={catalogos.sedes[0]?.id ?? ''}>
-              {catalogos.sedes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-            </Seleccion>
-          </Campo>
+            <Campo
+              etiqueta="Unidad"
+              htmlFor="unidad_id"
+              requerido={esGarantia}
+              ayuda={
+                clienteId && unidades.length === 0
+                  ? 'Este cliente no tiene unidades registradas'
+                  : esGarantia
+                    ? 'La garantía va con la unidad que vuelve, y la unidad con su código interno.'
+                    : 'Vehículo sobre el que se ejecuta el trabajo'
+              }
+            >
+              <div className="flex items-center gap-2">
+                <SeleccionBuscable
+                  id="unidad_id"
+                  name="unidad_id"
+                  deshabilitado={!clienteId}
+                  className="flex-1"
+                  valor={unidadId}
+                  onChange={setUnidadId}
+                  marcador="Sin unidad asignada"
+                  marcadorBusqueda="Placa o marca"
+                  opciones={unidades.map((u) => ({
+                    valor: u.id,
+                    etiqueta: nombreDeUnidad(u),
+                    detalle: u.marca,
+                  }))}
+                />
+                {clienteId && (
+                  <NuevaUnidad
+                    key={clienteId}
+                    clienteId={clienteId}
+                    onCreada={unidadCreada}
+                    compacta
+                  />
+                )}
+              </div>
+            </Campo>
+          </TarjetaCuerpo>
+        </Tarjeta>
 
-          <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
-            <div className="flex items-center gap-2">
-              <SeleccionBuscable
-                id="tipo_carroceria_id"
-                name="tipo_carroceria_id"
-                className="flex-1"
-                valor={carroceriaId}
-                onChange={setCarroceriaId}
-                marcador="Sin especificar"
-                marcadorBusqueda="Tolva, cisterna, furgón…"
-                opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
+        <Tarjeta>
+          <TarjetaCabecera titulo="Trabajo a realizar" />
+          <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Taller" htmlFor="sede_id" requerido>
+              <Seleccion id="sede_id" name="sede_id" required defaultValue={catalogos.sedes[0]?.id ?? ''}>
+                {catalogos.sedes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </Seleccion>
+            </Campo>
+
+            <Campo etiqueta="Tipo de carrocería" htmlFor="tipo_carroceria_id">
+              <div className="flex items-center gap-2">
+                <SeleccionBuscable
+                  id="tipo_carroceria_id"
+                  name="tipo_carroceria_id"
+                  className="flex-1"
+                  valor={carroceriaId}
+                  onChange={setCarroceriaId}
+                  marcador="Sin especificar"
+                  marcadorBusqueda="Tolva, cisterna, furgón…"
+                  opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
+                />
+                <NuevaCarroceria onCreada={carroceriaCreada} />
+              </div>
+            </Campo>
+
+            <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
+              <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
+                {TIPOS_TRABAJO.map((o) => (
+                  <option key={o.valor} value={o.valor}>
+                    {o.etiqueta}
+                  </option>
+                ))}
+              </Seleccion>
+            </Campo>
+
+            <Campo etiqueta="Prioridad" htmlFor="prioridad" requerido>
+              <Seleccion id="prioridad" name="prioridad" defaultValue="NORMAL">
+                {PRIORIDADES.map((o) => (
+                  <option key={o.valor} value={o.valor}>
+                    {o.etiqueta}
+                  </option>
+                ))}
+              </Seleccion>
+            </Campo>
+
+            <Campo
+              etiqueta="Descripción del trabajo"
+              htmlFor="descripcion"
+              requerido
+              className="sm:col-span-2"
+            >
+              <AreaTexto
+                id="descripcion"
+                name="descripcion"
+                required
+                minLength={5}
+                rows={2}
+                placeholder="Ej.: Fabricación de tolva de volquete de 18 m3 en acero A36 con compuerta trasera"
               />
-              <NuevaCarroceria onCreada={carroceriaCreada} />
-            </div>
-          </Campo>
+            </Campo>
 
-          <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
-            <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
-              {TIPOS_TRABAJO.map((o) => (
-                <option key={o.valor} value={o.valor}>
-                  {o.etiqueta}
-                </option>
-              ))}
-            </Seleccion>
-          </Campo>
+            <Campo
+              etiqueta="Especificaciones técnicas"
+              htmlFor="especificaciones_tecnicas"
+              className="sm:col-span-2"
+              ayuda="Medidas, espesores, calidad del acero, accesorios y todo lo acordado con el cliente"
+            >
+              <AreaTexto id="especificaciones_tecnicas" name="especificaciones_tecnicas" rows={4} />
+            </Campo>
+          </TarjetaCuerpo>
+        </Tarjeta>
 
-          <Campo etiqueta="Prioridad" htmlFor="prioridad" requerido>
-            <Seleccion id="prioridad" name="prioridad" defaultValue="NORMAL">
-              {PRIORIDADES.map((o) => (
-                <option key={o.valor} value={o.valor}>
-                  {o.etiqueta}
-                </option>
-              ))}
-            </Seleccion>
-          </Campo>
+        <Tarjeta>
+          <TarjetaCabecera titulo="Programación y responsables" />
+          <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Campo etiqueta="Inicio programado" htmlFor="fecha_inicio_programada">
+              <Entrada id="fecha_inicio_programada" name="fecha_inicio_programada" type="date" />
+            </Campo>
 
-          <Campo
-            etiqueta="Descripción del trabajo"
-            htmlFor="descripcion"
-            requerido
-            className="sm:col-span-2"
-          >
-            <AreaTexto
-              id="descripcion"
-              name="descripcion"
-              required
-              minLength={5}
-              rows={2}
-              placeholder="Ej.: Fabricación de tolva de volquete de 18 m3 en acero A36 con compuerta trasera"
-            />
-          </Campo>
+            <Campo etiqueta="Fin programado" htmlFor="fecha_fin_programada">
+              <Entrada id="fecha_fin_programada" name="fecha_fin_programada" type="date" />
+            </Campo>
 
-          <Campo
-            etiqueta="Especificaciones técnicas"
-            htmlFor="especificaciones_tecnicas"
-            className="sm:col-span-2"
-            ayuda="Medidas, espesores, calidad del acero, accesorios y todo lo acordado con el cliente"
-          >
-            <AreaTexto id="especificaciones_tecnicas" name="especificaciones_tecnicas" rows={4} />
-          </Campo>
-        </TarjetaCuerpo>
-      </Tarjeta>
+            <Campo
+              etiqueta="Entrega comprometida"
+              htmlFor="fecha_entrega_comprometida"
+              ayuda="Fecha prometida al cliente; es la que mide el atraso"
+            >
+              <Entrada
+                id="fecha_entrega_comprometida"
+                name="fecha_entrega_comprometida"
+                type="date"
+              />
+            </Campo>
 
-      <Tarjeta>
-        <TarjetaCabecera titulo="Programación y responsables" />
-        <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Campo etiqueta="Inicio programado" htmlFor="fecha_inicio_programada">
-            <Entrada id="fecha_inicio_programada" name="fecha_inicio_programada" type="date" />
-          </Campo>
+            <Campo etiqueta="Responsable" htmlFor="responsable_id">
+              <SeleccionBuscable
+                id="responsable_id"
+                name="responsable_id"
+                valor={responsableId}
+                onChange={setResponsableId}
+                marcador="Sin asignar"
+                marcadorBusqueda="Puesto"
+                opciones={[...etiquetasDePuesto(catalogos.responsables)].map(([valor, etiqueta]) => ({
+                  valor,
+                  etiqueta,
+                }))}
+              />
+            </Campo>
 
-          <Campo etiqueta="Fin programado" htmlFor="fecha_fin_programada">
-            <Entrada id="fecha_fin_programada" name="fecha_fin_programada" type="date" />
-          </Campo>
+            <Campo etiqueta="Observaciones" htmlFor="observaciones" className="sm:col-span-2 lg:col-span-3">
+              <AreaTexto id="observaciones" name="observaciones" rows={2} />
+            </Campo>
+          </TarjetaCuerpo>
+        </Tarjeta>
 
-          <Campo
-            etiqueta="Entrega comprometida"
-            htmlFor="fecha_entrega_comprometida"
-            ayuda="Fecha prometida al cliente; es la que mide el atraso"
-          >
-            <Entrada
-              id="fecha_entrega_comprometida"
-              name="fecha_entrega_comprometida"
-              type="date"
-            />
-          </Campo>
-
-          <Campo etiqueta="Responsable" htmlFor="responsable_id">
-            <SeleccionBuscable
-              id="responsable_id"
-              name="responsable_id"
-              valor={responsableId}
-              onChange={setResponsableId}
-              marcador="Sin asignar"
-              marcadorBusqueda="Puesto"
-              opciones={[...etiquetasDePuesto(catalogos.responsables)].map(([valor, etiqueta]) => ({
-                valor,
-                etiqueta,
-              }))}
-            />
-          </Campo>
-
-          <Campo etiqueta="Observaciones" htmlFor="observaciones" className="sm:col-span-2 lg:col-span-3">
-            <AreaTexto id="observaciones" name="observaciones" rows={2} />
-          </Campo>
-        </TarjetaCuerpo>
-      </Tarjeta>
-
-      <Tarjeta>
-        <TarjetaCabecera
-          titulo="La orden en papel"
-          ayuda="Su número y su PDF: la orden de trabajo firmada, la misma que se imprime. Sin los dos la orden no se registra."
-        />
-        <TarjetaCuerpo className="space-y-4">
-          {/* El número lo trae el papel, como en la OT de una cotización
-              (migración 20261021110000): la orden en la mano y la de la
-              pantalla son la misma. */}
-          <Campo
-            etiqueta="N.º de la OT"
-            htmlFor="numero"
-            ayuda={
-              numeroFinal
-                ? `Se registrará como la OT ${numeroFinal}: revisa que sea la de su PDF`
-                : 'El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año'
-            }
-            error={errorNumero ?? undefined}
-            requerido
-          >
-            <Entrada
-              ref={campoNumero}
-              id="numero"
-              name="numero"
-              autoComplete="off"
-              // Texto y no `numeric`: el teclado de cifras del iPhone no trae el guion del año.
-              inputMode="text"
-              required
-              maxLength={11}
-              pattern={'\\d{1,6}(-\\d{4})?'}
-              title="El número de la OT, como 2922 o 2922-2026"
-              placeholder="2922"
-              className="sm:max-w-48"
-              onChange={(e) => {
-                setErrorNumero(null)
-                setNumeroEscrito(e.target.value)
-              }}
-            />
-          </Campo>
-          <Campo etiqueta="PDF de la orden" htmlFor="pdf_orden" requerido>
-            {/* Sin `name`: el archivo va a Storage, no dentro del formulario a la acción. */}
-            <ElegirArchivo
-              ref={campoPdf}
-              id="pdf_orden"
-              required
-              accept={ACEPTA_PDF}
-              texto="Elegir el PDF de la orden"
-              hastaMb={MAXIMO_ADJUNTO_MB}
-              archivo={archivo}
-              aviso={avisoPdf}
-              onChange={(e) => void elegirArchivo(e.target.files?.[0])}
-            />
-          </Campo>
-        </TarjetaCuerpo>
-      </Tarjeta>
+        <Tarjeta>
+          <TarjetaCabecera
+            titulo="La orden en papel"
+            ayuda="Su número y su PDF: la orden de trabajo firmada, la misma que se imprime. Sin los dos la orden no se registra."
+          />
+          <TarjetaCuerpo className="space-y-4">
+            {/* El número lo trae el papel, como en la OT de una cotización
+                (migración 20261021110000): la orden en la mano y la de la
+                pantalla son la misma. */}
+            <Campo
+              etiqueta="N.º de la OT"
+              htmlFor="numero"
+              ayuda={
+                numeroFinal
+                  ? `Se registrará como la OT ${numeroFinal}: revisa que sea la de su PDF`
+                  : 'El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año'
+              }
+              error={errorNumero ?? undefined}
+              requerido
+            >
+              <Entrada
+                ref={campoNumero}
+                id="numero"
+                name="numero"
+                autoComplete="off"
+                // Texto y no `numeric`: el teclado de cifras del iPhone no trae el guion del año.
+                inputMode="text"
+                required
+                maxLength={11}
+                pattern={'\\d{1,6}(-\\d{4})?'}
+                title="El número de la OT, como 2922 o 2922-2026"
+                placeholder="2922"
+                className="sm:max-w-48"
+                onChange={(e) => {
+                  setErrorNumero(null)
+                  setNumeroEscrito(e.target.value)
+                }}
+              />
+            </Campo>
+            <Campo etiqueta="PDF de la orden" htmlFor="pdf_orden" requerido>
+              {/* Sin `name`: el archivo va a Storage, no dentro del formulario a la acción. */}
+              <ElegirArchivo
+                ref={campoPdf}
+                id="pdf_orden"
+                required
+                accept={ACEPTA_PDF}
+                texto="Elegir el PDF de la orden"
+                hastaMb={MAXIMO_ADJUNTO_MB}
+                archivo={archivo}
+                aviso={avisoPdf}
+                onChange={(e) => void elegirArchivo(e.target.files?.[0])}
+              />
+            </Campo>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      </fieldset>
 
       {error && (
         <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">

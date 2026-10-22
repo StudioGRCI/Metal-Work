@@ -28,11 +28,15 @@ export function CampoContrato({ id, disabled }: { id: string; disabled?: boolean
   )
 }
 
-/** El archivo del campo «contrato», o null si no eligieron ninguno. Se saca del FormData: a la acción no viaja. */
+/**
+ * El archivo del campo «contrato», o null si no eligieron ninguno. Se saca del
+ * FormData: a la acción no viaja. Uno elegido cuenta aunque pese 0 bytes, para
+ * que `problemaDeContrato` lo diga en vez de registrar sin él.
+ */
 export function sacarContrato(datos: FormData): File | null {
   const archivo = datos.get('contrato')
   datos.delete('contrato')
-  return archivo instanceof File && archivo.size > 0 ? archivo : null
+  return archivo instanceof File && archivo.name !== '' ? archivo : null
 }
 
 /**
