@@ -1228,6 +1228,64 @@ export type Database = {
           }
         ]
       }
+      compras_pagadas_fuera_confirmadas: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          ya_pagada: boolean
+          pago_id: string | null
+          nota: string
+          confirmada_por: string
+          confirmada_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          ya_pagada: boolean
+          pago_id?: string | null
+          nota: string
+          confirmada_por: string
+          confirmada_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          ya_pagada?: boolean
+          pago_id?: string | null
+          nota?: string
+          confirmada_por?: string
+          confirmada_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_confirmada_por_fkey"
+            columns: ["confirmada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compras_pagadas_fuera_confirmadas_pago_id_fkey"
+            columns: ["pago_id"]
+            isOneToOne: false
+            referencedRelation: "pagos_orden_compra"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       conceptos_gasto_general: {
         Row: {
           codigo: string
