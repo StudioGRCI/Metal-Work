@@ -235,7 +235,8 @@ export default async function PaginaRRHH() {
                         {gestiona && abierta && <Distribuir personaId={x.id} ordenes={opciones} />}
                         {gestiona && abierta && (
                           <div className="flex justify-end border-t border-borde pt-3">
-                            <QuitarPersona personaId={x.id} nombre={x.nombre} />
+                            <QuitarPersona personaId={x.id} nombre={x.nombre}
+                              reparto={x.partes.map((d) => `OT ${numeroOt.get(d.orden_id) ?? '—'}: ${porcentaje(d.porcentaje, 2)}`)} />
                           </div>
                         )}
                       </div>

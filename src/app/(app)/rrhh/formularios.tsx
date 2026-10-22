@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import Link from 'next/link'
 import { UserMinus } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -119,7 +120,7 @@ export function RepartirPartesIguales({ planillaId, personas, ordenes }: {
  * —se eligió a quien no iba, o entró con el nombre mal escrito—. Se va con su
  * reparto entre las OT. Quien dejó de trabajar se da de baja en Personal.
  */
-export function QuitarPersona({ personaId, nombre }: { personaId: string; nombre: string }) {
+export function QuitarPersona({ personaId, nombre, reparto }: { personaId: string; nombre: string; reparto: string[] }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(quitarPersona, () => setAbierta(false))
   return <>
@@ -127,8 +128,14 @@ export function QuitarPersona({ personaId, nombre }: { personaId: string; nombre
       <UserMinus aria-hidden className="size-4" />Quitar de la planilla
     </Boton>
     <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Quitar a ${nombre}`}
-      descripcion="Sale de esta planilla con su reparto entre las OT. Es para corregir una carga equivocada: si dejó de trabajar, dale de baja en Personal.">
+      descripcion="Sale de esta planilla con su reparto entre las OT. Es para corregir una carga equivocada.">
       <form onSubmit={alEnviar} className="space-y-4">
+        <p className="text-sm text-texto">
+          {reparto.length ? <>Reparto que se va: {reparto.join(' · ')}.</> : 'Todavía no tiene reparto entre las OT.'}
+        </p>
+        <p className="text-sm text-texto-suave">
+          Si dejó de trabajar, no la quites: dale de baja en <Link href="/rrhh/personal" className="font-medium text-acento underline underline-offset-2">Personal</Link>.
+        </p>
         <input type="hidden" name="persona_id" value={personaId} />
         {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2">

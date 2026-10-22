@@ -24,6 +24,7 @@ as $$
 declare
   v_planilla uuid;
   v_estado   text;
+  v_n        int;
 begin
   perform public.exigir_permiso_del_puesto('rrhh.gestionar_planillas');
   select planilla_id into v_planilla from public.planilla_personas where id = p_persona;
@@ -36,6 +37,12 @@ begin
   end if;
   delete from public.planilla_distribuciones where persona_id = p_persona;
   delete from public.planilla_personas where id = p_persona;
+  -- Otra pestaña pudo quitarla mientras esta esperaba la planilla: no se dice
+  -- «quitada» si no se quitó nada.
+  get diagnostics v_n = row_count;
+  if v_n = 0 then
+    raise exception 'Esa persona ya no está en la planilla. Recarga la página.';
+  end if;
   return p_persona;
 end;
 $$;
