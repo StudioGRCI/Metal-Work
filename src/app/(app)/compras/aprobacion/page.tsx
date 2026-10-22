@@ -172,7 +172,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
               {se.map((c) => {
                 const situacion = situacionCompra({ aprobacion: c.aprobacion, recojo: c.recojo, entregado_almacen_en: null })
                 return (
-                  <TR key={c.id}>
+                  <TR key={c.id} data-anulable={c.numero}>
                     <TD>
                       <p className="font-medium text-texto">
                         {c.numero} · {c.proveedor}

@@ -128,7 +128,7 @@ function FilaCompra({
     .join(' · ')
   const comprobante = comprobantePedido(c.con_factura)
   return (
-    <TR>
+    <TR data-compra={c.numero}>
       <TD>
         <div className="flex flex-wrap items-center gap-2">
           <span className="tabular font-semibold text-texto">{c.numero}</span>
