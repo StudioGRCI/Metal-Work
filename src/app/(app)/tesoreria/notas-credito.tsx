@@ -32,6 +32,12 @@ import {
 
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
+/** El proveedor como frase: «S.A.C.» ya trae su punto y no lleva otro. */
+function conPunto(proveedor: string) {
+  const texto = proveedor.trim()
+  return texto.endsWith('.') ? texto : `${texto}.`
+}
+
 /** La nota, como la ve cada ventana. */
 export type NotaParaUsar = { id: string; numero: string; proveedor: string; moneda: CodigoMoneda; fecha: string; aFavor: number }
 export type FacturaDeLaNota = { id: string; numero: string; fecha: string | null; saldo: number }
@@ -58,7 +64,9 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
   const campo = (n: string) => `${n}-descontar-${nota.id}`
   return (
     <>
-      <Boton type="button" tamano="sm" variante="primario" onClick={abrir} disabled={facturas.length === 0} data-descontar-nota={nota.numero}>
+      <Boton type="button" tamano="sm" variante="primario" onClick={abrir} disabled={facturas.length === 0} data-descontar-nota={nota.numero}
+        aria-label={`Descontar la nota ${nota.numero} de otra factura`}
+      >
         <ArrowLeftRight aria-hidden className="size-4" />
         Descontar de otra factura
       </Boton>
@@ -66,7 +74,7 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Descontar la nota ${nota.numero}`}
-        descripcion={`${nota.proveedor}. Le quedan ${moneda(nota.aFavor, nota.moneda)} a favor. La factura que elijas debe eso menos; la caja no se mueve porque no sale dinero.`}
+        descripcion={`${conPunto(nota.proveedor)} Le quedan ${moneda(nota.aFavor, nota.moneda)} a favor. La factura que elijas debe eso menos; la caja no se mueve porque no sale dinero.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -164,7 +172,9 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
   const campo = (n: string) => `${n}-reembolso-${nota.id}`
   return (
     <>
-      <Boton type="button" tamano="sm" variante="contorno" onClick={abrir} data-devolvio-nota={nota.numero}>
+      <Boton type="button" tamano="sm" variante="contorno" onClick={abrir} data-devolvio-nota={nota.numero}
+        aria-label={`El proveedor devolvió lo de la nota ${nota.numero}`}
+      >
         <HandCoins aria-hidden className="size-4" />
         El proveedor lo devolvió
       </Boton>
@@ -172,7 +182,7 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
         abierta={id !== null}
         alCerrar={() => setId(null)}
         titulo={`Devolución de la nota ${nota.numero}`}
-        descripcion={`${nota.proveedor}. Lo que el proveedor te devolvió de lo que la nota tiene a favor: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(nota.aFavor, nota.moneda)}.`}
+        descripcion={`${conPunto(nota.proveedor)} Lo que el proveedor te devolvió de lo que la nota tiene a favor: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(nota.aFavor, nota.moneda)}.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

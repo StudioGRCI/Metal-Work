@@ -151,11 +151,33 @@ revoke all on function public.llegado_de_la_linea_de_compra(uuid, numeric) from 
 -- Lo que de una línea de OC sigue en el almacén: lo neto que entró menos lo que ya
 -- se entregó a sus insumos. Es el tope de lo que se devuelve de ella: el saldo del
 -- material entero dejaba devolver «de un ingreso» stock de otro origen cuando lo
--- de la OC ya había salido al taller (auditor de funcionamiento, 22/10).
+-- de la OC ya había salido al taller (auditor de funcionamiento, 22/10). Lo que se
+-- entregó antes de que entrara la OC no salió de ella, sino de otro stock: no se
+-- descuenta, y lo de la OC sigue en el almacén para devolverse (auditor de
+-- realización, 22/10). Lo que el insumo tenía en stock se da por entregado primero.
 create or replace function public.en_mano_de_la_linea_de_compra(p_detalle uuid)
 returns numeric language sql stable set search_path to 'public' as $$
-  select greatest(k.neto - coalesce((select sum(x.entregado) from public.llegado_de_la_linea_de_compra(p_detalle, k.neto) x), 0), 0)
-    from public.cuenta_de_la_linea_de_compra(p_detalle) k
+  with k as (
+    select k.neto,
+           (select min(m.registrado_en) from public.movimientos_materiales m
+             where m.orden_compra_detalle_id = p_detalle and m.tipo = 'INGRESO') as llego
+      from public.cuenta_de_la_linea_de_compra(p_detalle) k
+  ), s as (
+    select greatest(l.cantidad - coalesce(l.cantidad_en_stock, 0), 0)::numeric as falta,
+           coalesce(l.cantidad_en_stock, 0)::numeric as en_stock,
+           coalesce(sum(n.neta) filter (where m.registrado_en < k.llego), 0) as antes,
+           coalesce(sum(n.neta) filter (where m.registrado_en >= k.llego), 0) as despues
+      from k
+      join public.requerimiento_lineas l on l.orden_compra_detalle_id = p_detalle
+      join public.requerimientos r on r.id = l.requerimiento_id and r.estado <> 'ANULADO'
+      left join public.movimientos_materiales m on m.requerimiento_linea_id = l.id and m.tipo = 'SALIDA'
+      left join lateral (
+        select greatest(m.cantidad::numeric - coalesce((select sum(d.cantidad::numeric) from public.movimientos_materiales d
+                                                          where d.devolucion_de = m.id and d.tipo = 'INGRESO'), 0), 0) as neta) n on true
+     group by l.id, l.cantidad, l.cantidad_en_stock
+  )
+  select greatest(k.neto - coalesce((select sum(least(s.falta, greatest(s.despues - greatest(s.en_stock - s.antes, 0), 0))) from s), 0), 0)
+    from k
 $$;
 revoke all on function public.en_mano_de_la_linea_de_compra(uuid) from public, anon, authenticated;
 
@@ -535,18 +557,14 @@ AS $function$
       from public.orden_compra_material_detalles d
      where d.id in (select l.detalle from lineas l where l.detalle is not null)
   ),
-  con_compra as (
-    select l.*,
-           greatest(l.cantidad - l.en_stock, 0) as por_comprar,
-           coalesce(sum(greatest(l.cantidad - l.en_stock, 0)) over (
-             partition by l.detalle order by l.creado_en, l.numero, l.item, l.id
-             rows between unbounded preceding and 1 preceding), 0) as antes
-      from lineas l
-  ),
+  -- Lo que le llegó a cada una, con `llegado_de_la_linea_de_compra`, como el
+  -- avance del RQ: lo ya entregado a un insumo cuenta primero (auditor de
+  -- funcionamiento, 22/10: con una reposición pendiente esto separaba de más).
   con_llegado as (
     select c.*, coalesce(rc.material_id, c.material_id) as material_comprado,
-           least(c.por_comprar, greatest(coalesce(rc.cantidad, 0) - c.antes, 0)) as llegado
-      from con_compra c
+           coalesce((select x.llegado from public.llegado_de_la_linea_de_compra(c.detalle, coalesce(rc.cantidad, 0)) x
+                      where x.linea_id = c.id), 0) as llegado
+      from lineas c
       left join recibido rc on rc.detalle = c.detalle
      where c.estado in ('SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN')
   ),
@@ -614,169 +632,24 @@ AS $function$
    where p_materiales is null or s.material_id = any(p_materiales)
 $function$;
 
-CREATE OR REPLACE FUNCTION public.corregir_requerimiento(p_correccion uuid, p_id uuid, p_motivo text, p_justificante text, p_nombre text, p_cambios jsonb)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
+-- `corregir_requerimiento` no se copia entera: la 20261022180000 (otro hilo) la
+-- cambia antes que esta, y copiarla de su versión anterior le borraría eso. Se
+-- cambia solo la línea que cuenta el material repetido, como hace esa migración.
+do $$
 declare
-  v_rq       public.requerimientos%rowtype;
-  v_hoy      date := (now() at time zone 'America/Lima')::date;
-  v_antes    jsonb;
-  v_despues  jsonb;
-  v_x        jsonb;
-  v_linea    public.requerimiento_lineas%rowtype;
-  v_material public.materiales%rowtype;
-  v_cant     numeric;
-  v_mat      uuid;
-  v_codigo   text;
-  v_just     text;
-  v_fecha    date;
-  v_oc       text;
-  v_cargado  text;
+  v_def   text;
+  v_viejo text := E'group by l.material_id having count(*) > 1) then';
+  v_nuevo text := E'group by l.material_id having count(*) filter (where l.recompra_de is null) > 1) then';
 begin
-  select * into v_rq from public.requerimientos where id = p_id for update;
-  if not found then raise exception 'El requerimiento no existe.'; end if;
-  perform public.rq_exigir(v_rq.tipo, 'CORREGIR');
-  if exists (select 1 from public.correcciones where id = p_correccion and documento_id = p_id) then
-    return p_id;  -- un reintento de la misma corrección
+  v_def := replace(pg_get_functiondef('public.corregir_requerimiento(uuid,uuid,text,text,text,jsonb)'::regprocedure), E'\r', '');
+  if position(v_nuevo in v_def) > 0 then
+    return;  -- ya estaba
   end if;
-  if v_rq.estado in ('ENTREGADO', 'ANULADO') then
-    raise exception 'El requerimiento % ya está %: queda como evidencia.', v_rq.numero,
-      case v_rq.estado when 'ENTREGADO' then 'entregado' else 'anulado' end using errcode = 'check_violation';
+  if (char_length(v_def) - char_length(replace(v_def, v_viejo, ''))) / char_length(v_viejo) <> 1 then
+    raise exception 'corregir_requerimiento cambió: la cuenta del material repetido no está como la conoce el repositorio. Revisarla a mano antes de seguir.';
   end if;
-  if p_cambios is null or jsonb_typeof(p_cambios) <> 'object' then
-    raise exception 'Vuelve a cargar la pantalla.' using errcode = 'check_violation';
-  end if;
-
-  v_antes := jsonb_build_object('codigo_interno', v_rq.codigo_interno, 'justificacion', v_rq.justificacion,
-                                'fecha_requerida', v_rq.fecha_requerida, 'lineas',
-    (select coalesce(jsonb_agg(jsonb_build_object('item', l.item, 'descripcion', l.descripcion, 'cantidad', l.cantidad,
-                                                  'material_id', l.material_id) order by l.item), '[]'::jsonb)
-       from public.requerimiento_lineas l where l.requerimiento_id = p_id));
-
-  v_codigo := coalesce(btrim(p_cambios->>'codigo_interno'), v_rq.codigo_interno);
-  v_just := coalesce(btrim(p_cambios->>'justificacion'), v_rq.justificacion);
-  begin
-    v_fecha := case when p_cambios ? 'fecha_requerida' then nullif(p_cambios->>'fecha_requerida', '')::date else v_rq.fecha_requerida end;
-  exception when others then
-    raise exception 'Revisa la fecha en que se necesita.' using errcode = 'check_violation';
-  end;
-  if char_length(v_codigo) not between 2 and 60 then
-    raise exception 'Escribe el código interno de la unidad (de 2 a 60 caracteres). Si no es para una unidad, escribe PLANTA u OFICINA.'
-      using errcode = 'check_violation';
-  end if;
-  -- Lo que salió del kardex con el RQ y no volvió quedó cargado al código de su
-  -- salida: pasar el RQ a otro código dejaba el costo de lo que salió en uno y
-  -- lo que falta en otro. Juntar espacios o pasar a mayúsculas sí se puede: es
-  -- el mismo código. Lo que volvió entero ya no está cargado a nadie (como al
-  -- anular), y un RQ de PLANTA cuya salida fue a una unidad sí puede pasar al
-  -- código de esa unidad: es donde quedó el costo.
-  if public.normalizar_codigo_interno(v_codigo) is distinct from public.normalizar_codigo_interno(v_rq.codigo_interno) then
-    select min(m.codigo_interno) into v_cargado
-      from public.movimientos_materiales m
-      join public.requerimiento_lineas l on l.id = m.requerimiento_linea_id
-     where l.requerimiento_id = p_id and m.tipo = 'SALIDA' and m.codigo_interno is not null
-       and public.normalizar_codigo_interno(m.codigo_interno) is distinct from public.normalizar_codigo_interno(v_codigo)
-       and m.cantidad > coalesce((select sum(d.cantidad) from public.movimientos_materiales d
-                                   where d.devolucion_de = m.id and d.tipo = 'INGRESO'), 0);
-    if v_cargado is not null then
-      raise exception 'Del requerimiento % ya salió material del kardex para %: el código interno ya no cambia. Si lo que falta es para otra unidad, registra otro requerimiento.',
-        v_rq.numero, v_cargado using errcode = 'check_violation';
-    end if;
-  end if;
-  if char_length(v_just) not between 10 and 1000 then
-    raise exception 'La justificación va de 10 a 1000 caracteres.' using errcode = 'check_violation';
-  end if;
-  if v_fecha is distinct from v_rq.fecha_requerida and v_fecha < v_hoy then
-    raise exception 'La fecha en que se necesita no puede ser anterior a hoy.' using errcode = 'check_violation';
-  end if;
-
-  perform set_config('metalwork.corrigiendo', 'requerimiento', true);
-  update public.requerimientos set codigo_interno = v_codigo, justificacion = v_just, fecha_requerida = v_fecha
-   where id = p_id
-     and row(codigo_interno, justificacion, fecha_requerida) is distinct from row(v_codigo, v_just, v_fecha);
-
-  for v_x in select value from jsonb_array_elements(coalesce(p_cambios->'lineas', '[]'::jsonb)) loop
-    begin
-      select * into v_linea from public.requerimiento_lineas
-       where requerimiento_id = p_id and item = (v_x->>'item')::int for update;
-      v_cant := nullif(v_x->>'cantidad', '')::numeric;
-      v_mat := nullif(v_x->>'material_id', '')::uuid;
-    exception when others then
-      raise exception 'Revisa los insumos que corriges.' using errcode = 'check_violation';
-    end;
-    if v_linea.id is null then
-      raise exception 'Ese insumo no es de este requerimiento. Recarga la pantalla.' using errcode = 'check_violation';
-    end if;
-    if v_linea.orden_compra_id is not null then
-      select coalesce(c.numero, c.referencia) into v_oc from public.ordenes_compra_materiales c
-       where c.id = v_linea.orden_compra_id and c.aprobacion not in ('RECHAZADA', 'ANULADA');
-      if v_oc is not null then
-        raise exception 'El insumo % ya va en la %: corrige la orden de compra.', v_linea.item, v_oc using errcode = 'check_violation';
-      end if;
-    end if;
-    if exists (select 1 from public.movimientos_materiales m where m.requerimiento_linea_id = v_linea.id) then
-      raise exception 'Del insumo % ya salió material del almacén: lo que salió queda en el kardex.', v_linea.item
-        using errcode = 'check_violation';
-    end if;
-    if v_cant is not null and (v_cant <= 0 or v_cant > 999999999 or v_cant <> round(v_cant, 3)) then
-      raise exception 'La cantidad del insumo % debe ser mayor que cero, con hasta tres decimales.', v_linea.item
-        using errcode = 'check_violation';
-    end if;
-    -- Un RQ listo en almacén tiene separado todo lo pedido: lo de más no lo
-    -- separó nadie. Se pide en otro RQ, y lo listo se entrega sin esperar.
-    if v_cant is not null and v_cant > v_linea.cantidad and v_rq.estado = 'LISTO_EN_ALMACEN' then
-      raise exception 'El requerimiento % ya está listo en almacén con lo pedido del insumo %: la cantidad solo puede bajar. Para pedir más, registra otro requerimiento.',
-        v_rq.numero, v_linea.item using errcode = 'check_violation';
-    end if;
-    if v_mat is not null and v_mat is distinct from v_linea.material_id then
-      if v_rq.estado <> 'POR_ATENDER' then
-        raise exception 'Almacén ya revisó el stock del requerimiento %: el material del insumo % ya no cambia. Corrige la cantidad, o anúlalo y registra otro.',
-          v_rq.numero, v_linea.item using errcode = 'check_violation';
-      end if;
-      select * into v_material from public.materiales where id = v_mat and activo;
-      if not found then
-        raise exception 'El material del insumo % ya no está en el catálogo de Almacén. Elige otro.', v_linea.item using errcode = 'check_violation';
-      end if;
-      update public.requerimiento_lineas
-         set material_id = v_material.id, descripcion = left(btrim(v_material.descripcion), 300),
-             categoria_id = v_material.categoria_id,
-             unidad_medida_id = case when v_material.unidad_pendiente then unidad_medida_id else v_material.unidad_medida_id end
-       where id = v_linea.id;
-    end if;
-    if v_cant is not null and v_cant <> v_linea.cantidad then
-      -- Lo que Almacén anotó que tenía no puede pasar de lo pedido.
-      update public.requerimiento_lineas
-         set cantidad = v_cant,
-             cantidad_en_stock = case when cantidad_en_stock is null then null else least(cantidad_en_stock, v_cant) end
-       where id = v_linea.id;
-    end if;
-    v_linea := null;
-    v_oc := null;
-  end loop;
-  perform set_config('metalwork.corrigiendo', '', true);
-
-  if exists (select 1 from public.requerimiento_lineas l where l.requerimiento_id = p_id and l.material_id is not null
-              group by l.material_id having count(*) filter (where l.recompra_de is null) > 1) then
-    raise exception 'Un material quedaría dos veces en el requerimiento %: suma las cantidades en un solo insumo.', v_rq.numero
-      using errcode = 'check_violation';
-  end if;
-
-  select * into v_rq from public.requerimientos where id = p_id;
-  v_despues := jsonb_build_object('codigo_interno', v_rq.codigo_interno, 'justificacion', v_rq.justificacion,
-                                  'fecha_requerida', v_rq.fecha_requerida, 'lineas',
-    (select coalesce(jsonb_agg(jsonb_build_object('item', l.item, 'descripcion', l.descripcion, 'cantidad', l.cantidad,
-                                                  'material_id', l.material_id) order by l.item), '[]'::jsonb)
-       from public.requerimiento_lineas l where l.requerimiento_id = p_id));
-  perform public.registrar_correccion(p_correccion, 'REQUERIMIENTO', p_id, v_rq.numero, p_motivo, p_justificante, p_nombre,
-                                      v_antes, v_despues);
-  -- A Almacén y a quien compra les llega que cambió, con el motivo.
-  perform public.fn_rq_avisar(v_rq, 'Requerimiento corregido: ' || v_rq.numero, left(btrim(p_motivo), 200),
-                              case when v_rq.estado = 'POR_ATENDER' then 'ALMACEN' else 'LOGISTICA' end);
-  return p_id;
-end $function$;
+  execute replace(v_def, v_viejo, v_nuevo);
+end $$;
 
 -- 4. Avisos ----------------------------------------------------------------------------------------
 -- Una cantidad como la escribe la gente: 2, 2.5, 0.125 (sin ceros de más).
@@ -953,8 +826,17 @@ begin
   if p_id is null then
     raise exception 'Vuelve a abrir la ventana.' using errcode = 'check_violation';
   end if;
+  -- El mismo envío repetido (la respuesta no llegó) devuelve lo que ya entró; con otros datos no da «listo».
   if exists (select 1 from public.movimientos_materiales where id = p_id) then
-    return p_id;
+    if exists (select 1 from public.movimientos_materiales m
+                where m.id = p_id and m.tipo = 'DEVOLUCION_PROVEEDOR' and m.devuelve_ingreso = p_ingreso
+                  and m.cantidad::numeric = p_cantidad and m.documento_referencia = btrim(p_documento)
+                  and m.registrado_por = public.usuario_actual()
+                  and (m.se_repone = p_se_repone or m.reposicion_cancelada_en is not null)) then
+      return p_id;
+    end if;
+    raise exception 'Esa devolución ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.'
+      using errcode = 'check_violation';
   end if;
   if p_cantidad is null or p_cantidad <= 0 or p_cantidad <> round(p_cantidad, 3) or p_cantidad > 999999999 then
     raise exception 'Escribe cuánto vuelve al proveedor: más de cero, con hasta tres decimales.' using errcode = 'check_violation';
@@ -1046,7 +928,14 @@ begin
     raise exception 'Vuelve a abrir la ventana.' using errcode = 'check_violation';
   end if;
   if exists (select 1 from public.movimientos_materiales where id = p_id) then
-    return p_id;
+    if exists (select 1 from public.movimientos_materiales m
+                where m.id = p_id and m.tipo = 'INGRESO' and m.repone_devolucion = p_devolucion
+                  and m.cantidad::numeric = p_cantidad and m.documento_referencia = btrim(p_documento)
+                  and m.registrado_por = public.usuario_actual()) then
+      return p_id;
+    end if;
+    raise exception 'Esa reposición ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.'
+      using errcode = 'check_violation';
   end if;
   if p_cantidad is null or p_cantidad <= 0 or p_cantidad <> round(p_cantidad, 3) then
     raise exception 'Escribe cuánto llegó de la reposición: más de cero, con hasta tres decimales.' using errcode = 'check_violation';

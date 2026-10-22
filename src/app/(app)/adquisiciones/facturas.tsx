@@ -297,6 +297,9 @@ function EsperanNotaCredito({
   devolucionesDe: Map<string, DevolucionParaLaNota[]>
   hoy: string
 }) {
+  // Primero las que ya se pueden registrar: tienen la factura de su OC.
+  const listas = devoluciones.filter((d) => d.facturas.length > 0)
+  const sinFactura = devoluciones.filter((d) => d.facturas.length === 0)
   return (
     <Tarjeta id="notas-credito" className="mb-5 scroll-mt-20">
       <TarjetaCabecera
@@ -305,8 +308,9 @@ function EsperanNotaCredito({
         ayuda="Lo que Almacén devolvió al proveedor y no se repone. Cuando llegue la nota de crédito, regístrala contra la factura de esa OC: la factura baja sola y, si ya estaba pagada, lo que sobra queda a favor para Tesorería."
       />
       <TarjetaCuerpo>
+        {listas.length === 0 && <p className="text-sm text-texto-suave">Ninguna tiene todavía su factura registrada: van abajo.</p>}
         <ul className="divide-y divide-borde" aria-label="Devoluciones que esperan nota de crédito">
-          {devoluciones.map((d) => {
+          {listas.map((d) => {
             const m = codigo(d.moneda)
             return (
               <li key={d.devolucion_id} data-espera-nota={d.compra} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
@@ -320,10 +324,7 @@ function EsperanNotaCredito({
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  {d.facturas.length === 0 ? (
-                    <p className="text-xs text-aviso">Primero registra la factura de la {d.compra}.</p>
-                  ) : (
-                    d.facturas.map((ref) => {
+                  {d.facturas.map((ref) => {
                       const f = facturaDe.get(ref.id)
                       return f ? (
                         <RegistrarNotaCredito
@@ -339,13 +340,28 @@ function EsperanNotaCredito({
                           Factura {ref.numero}: búscala en «Todas».
                         </p>
                       )
-                    })
-                  )}
+                    })}
                 </div>
               </li>
             )
           })}
         </ul>
+        {sinFactura.length > 0 && (
+          // Las que todavía no tienen factura no se pueden atender aquí: plegadas, para que no empujen la lista de facturas.
+          <details className="mt-3 border-t border-borde pt-3 text-sm">
+            <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto sm:min-h-0">
+              {sinFactura.length === 1 ? 'Una espera' : `${sinFactura.length} esperan`} que se registre la factura de su OC
+            </summary>
+            <ul className="mt-2 space-y-1.5 text-xs text-texto-suave" aria-label="Devoluciones cuya OC no tiene factura registrada">
+              {sinFactura.map((d) => (
+                <li key={d.devolucion_id} data-espera-nota={d.compra}>
+                  {d.compra} · {d.proveedor} · {d.material}: <span className="tabular">{Number(d.cantidad)}</span> {d.unidad} ·{' '}
+                  <span className="tabular">{moneda(Number(d.importe), codigo(d.moneda))}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
@@ -705,7 +721,7 @@ function DatosDeFactura({
             <li key={n.id} data-nota-credito={n.numero} className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={n.anulada ? 'text-texto-suave line-through' : 'text-texto'}>
                 {n.url ? (
-                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular ${enlace}`}>
+                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
                     Nota {n.numero}
                   </a>
                 ) : (

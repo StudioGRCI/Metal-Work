@@ -171,6 +171,11 @@ select public.devolver_al_proveedor(current_setting('prueba.dev1')::uuid, curren
 -- El mismo envío otra vez no devuelve dos veces.
 select public.devolver_al_proveedor(current_setting('prueba.dev1')::uuid, current_setting('prueba.ing')::uuid, 3, 'GR-426-1',
   'Llegaron con el disco partido', true);
+-- Otro envío con el mismo id, con otra cantidad o sin reposición, no da «listo» con lo del primero.
+select test.debe_fallar(format($q$select public.devolver_al_proveedor('%s', '%s', 2, 'GR-426-1', 'Llegaron con el disco partido', true)$q$,
+  current_setting('prueba.dev1'), current_setting('prueba.ing')), 'otro envío con el mismo id y otra cantidad se rechaza');
+select test.debe_fallar(format($q$select public.devolver_al_proveedor('%s', '%s', 3, 'GR-426-1', 'Llegaron con el disco partido', false)$q$,
+  current_setting('prueba.dev1'), current_setting('prueba.ing')), 'otro envío con el mismo id y sin reposición se rechaza');
 do $$
 begin
   perform test.afirmar((select count(*) from public.movimientos_materiales where devuelve_ingreso = current_setting('prueba.ing')::uuid) = 1,
@@ -244,6 +249,9 @@ set local role authenticated;
 select test.debe_fallar(format($q$select public.recibir_reposicion('%s', '%s', 4, 'GR-PROV-426')$q$,
   gen_random_uuid(), current_setting('prueba.dev1')), 'no se repone más de lo devuelto');
 select public.recibir_reposicion(current_setting('prueba.rep1')::uuid, current_setting('prueba.dev1')::uuid, 2, 'GR-PROV-426');
+select public.recibir_reposicion(current_setting('prueba.rep1')::uuid, current_setting('prueba.dev1')::uuid, 2, 'GR-PROV-426');
+select test.debe_fallar(format($q$select public.recibir_reposicion('%s', '%s', 1, 'GR-PROV-426')$q$,
+  current_setting('prueba.rep1'), current_setting('prueba.dev1')), 'otra reposición con el mismo id se rechaza');
 do $$
 begin
   perform test.afirmar(pg_temp.saldo() = 9 and pg_temp.pendiente() = 1, 'entran 2 de la reposición: 9 en el kardex y falta 1');

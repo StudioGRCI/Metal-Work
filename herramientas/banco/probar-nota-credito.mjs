@@ -248,7 +248,11 @@ try {
   const tarjeta = tes.locator(`[data-nota-a-favor="FC01-${SUFIJO}1"]`)
   comprobar((await tarjeta.count()) === 1 && limpio(await tarjeta.textContent()).includes('A favor S/ 30.00'), 'Tesorería ve la nota con S/ 30.00 a favor')
   comprobar((await tes.locator('a[href="#notas-credito"]', { hasText: /notas? de crédito a favor/ }).count()) === 1, 'el encabezado avisa de la nota a favor')
-  await tarjeta.getByRole('button', { name: 'Descontar de otra factura' }).click()
+  const aFavorEnF2 = tes.locator(`[data-a-favor-de-la-factura="${F2}"]`)
+  comprobar((await aFavorEnF2.count()) === 1 && limpio(await aFavorEnF2.textContent()).includes(`S/ 30.00 a favor en la nota FC01-${SUFIJO}1`),
+    `la factura ${F2} dice que el proveedor tiene S/ 30.00 a favor`)
+  comprobar((await tes.locator(`[data-a-favor-de-la-factura="${F1}"]`).count()) === 0, 'la factura de la propia nota no la ofrece')
+  await tarjeta.getByRole('button', { name: `Descontar la nota FC01-${SUFIJO}1 de otra factura` }).click()
   v = tes.getByRole('dialog')
   await v.waitFor()
   comprobar((await v.locator('select[name="factura"]').inputValue()) === f2 && (await v.locator('input[name="monto"]').inputValue()) === '30.00',
@@ -262,7 +266,7 @@ try {
   await tes.waitForFunction((t) => document.querySelector(`[data-nota-a-favor="${t}"]`)?.textContent?.includes('A favor S/ 10.00'), `FC01-${SUFIJO}1`, { timeout: 15000 }).catch(() => {})
   comprobar(limpio(await tarjeta.textContent()).includes('A favor S/ 10.00'), 'a la nota le quedan 10')
 
-  await tarjeta.getByRole('button', { name: 'El proveedor lo devolvió' }).click()
+  await tarjeta.getByRole('button', { name: `El proveedor devolvió lo de la nota FC01-${SUFIJO}1` }).click()
   v = tes.getByRole('dialog')
   await v.waitFor()
   comprobar((await v.locator('input[name="monto"]').inputValue()) === '10.00', 'la ventana propone los 10 que quedan')

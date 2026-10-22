@@ -122,6 +122,12 @@ export default async function PaginaPorPagar() {
   const primeraEnEspera = porPagar.find((c) => c.enEspera)
   const enEspera = porPagar.length - exigibles.length
   const conSaldo = notas.filter((n) => n.aFavor > 0).length
+  // De qué notas a favor puede descontarse cada factura: se dice en ella, para no pagarla entera sin saberlo.
+  const aFavorDe = new Map<string, NotaQueDescuenta[]>()
+  for (const n of notas) {
+    if (n.aFavor <= 0) continue
+    for (const f of n.facturas) aFavorDe.set(f.id, [...(aFavorDe.get(f.id) ?? []), { id: n.id, numero: n.numero, aFavor: n.aFavor }])
+  }
   const avisos = [
     conSaldo > 0
       ? { texto: conSaldo === 1 ? 'una nota de crédito a favor' : `${conSaldo} notas de crédito a favor`, href: '#notas-credito', tono: 'text-aviso' }
@@ -192,6 +198,7 @@ export default async function PaginaPorPagar() {
                 cajas={cajas}
                 esperaBoleta={esperanBoleta.get(c.id ?? '')}
                 nombresOc={nombresOc}
+                aFavor={aFavorDe.get(c.id ?? '') ?? []}
               />
             ))
           )}
@@ -712,6 +719,9 @@ function saldoDeLaBoleta(b: CompraConBoleta) {
   return b.cancelada ? 0 : Math.max(Number(b.total ?? 0) - Number(b.pagado ?? 0), 0)
 }
 
+/** Una nota del proveedor con algo a favor que se puede descontar de una factura. */
+type NotaQueDescuenta = { id: string; numero: string; aFavor: number }
+
 /** Por qué no sale ninguna cuenta del proveedor, si quien mira puede verlas. */
 function sinCuentas(verCuentas: boolean, conProveedor: boolean) {
   if (!verCuentas) return null
@@ -742,6 +752,7 @@ function Factura({
   cajas,
   esperaBoleta,
   nombresOc,
+  aFavor = [],
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
@@ -756,6 +767,8 @@ function Factura({
   /** La OC con boleta cuyo pago espera esta factura en otra moneda, si la hay. */
   esperaBoleta: CompraConBoleta | undefined
   nombresOc: Map<string, string>
+  /** Las notas del proveedor con algo a favor que se pueden descontar de esta factura. */
+  aFavor?: NotaQueDescuenta[]
 }) {
   const m = codigoMoneda(c.moneda)
   const saldo = Number(c.saldo)
@@ -794,6 +807,29 @@ function Factura({
   const faltaDeAnulados = saldo > 0 && registradoDespues < tomabaDeAnulados ? Math.min(redondear(tomabaDeAnulados - registradoDespues), saldo) : 0
   const mismoVoucher = tomasAnuladas.length > 1 ? 'esos mismos vouchers' : 'ese mismo voucher'
   const espera = saldo > 0 && esperaBoleta?.id ? esperaBoleta : null
+  const totalAFavor = redondear(aFavor.reduce((t, n) => t + n.aFavor, 0))
+  // En la tarjeta enlaza a cada nota; dentro de la ventana de pago solo lo dice, porque el enlace quedaría detrás.
+  const lineaAFavor = (enlazar: boolean) =>
+    saldo > 0 && aFavor.length > 0 ? (
+      <p className="text-xs text-aviso" data-a-favor-de-la-factura={c.numero_documento ?? ''}>
+        El proveedor tiene {moneda(totalAFavor, m)} a favor en{' '}
+        {aFavor.map((n, i) => (
+          <span key={n.id}>
+            {i > 0 && (i === aFavor.length - 1 ? ' y ' : ', ')}
+            {enlazar ? (
+              <a href={`#nota-credito-${n.id}`} className="tabular inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
+                la nota {n.numero}
+              </a>
+            ) : (
+              <span className="tabular font-medium">la nota {n.numero}</span>
+            )}
+          </span>
+        ))}
+        {enlazar
+          ? ': descuéntalo de esta factura antes de pagarla, o paga solo lo que corresponda.'
+          : ': si el proveedor lo toma a cuenta de esta factura, descuéntalo antes en «Notas de crédito a favor» y paga solo lo que falte.'}
+      </p>
+    ) : null
   return (
     // El id es el ancla con que Adquisiciones salta a esta factura.
     <article id={`factura-${c.id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
@@ -886,6 +922,7 @@ function Factura({
               )}
             </p>
           )}
+        {lineaAFavor(true)}
         {c.enEspera ? (
           // La OC con boleta se dio por pagada fuera: la base no deja pagarla hasta que Contabilidad lo diga (migración 20261022175000).
           <p className="text-xs text-aviso">
@@ -921,7 +958,10 @@ function Factura({
               codigoMoneda={m}
               cuentas={cuentasCaja}
               paraPagar={
-                <ParaPagar documentos={documentos} cuentas={c.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, ordenes.length > 0)} />
+                <>
+                  {lineaAFavor(false)}
+                  <ParaPagar documentos={documentos} cuentas={c.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, ordenes.length > 0)} />
+                </>
               }
             />
           )
@@ -1403,12 +1443,18 @@ function NotasAFavor({
           const m = codigoMoneda(n.moneda)
           const nota = { id: n.id, numero: n.numero, proveedor: n.proveedor, moneda: m, fecha: n.fecha, aFavor: n.aFavor }
           return (
-            <article key={n.id} data-nota-a-favor={n.numero} className="rounded-[var(--radius-base)] border border-borde p-3">
+            <article
+              key={n.id}
+              id={`nota-credito-${n.id}`}
+              data-nota-a-favor={n.numero}
+              aria-labelledby={`titulo-nota-${n.id}`}
+              className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento"
+            >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-texto">
+                  <p id={`titulo-nota-${n.id}`} className="text-sm font-semibold text-texto">
                     {n.url ? (
-                      <a href={n.url} target="_blank" rel="noreferrer" className="tabular text-acento hover:underline">
+                      <a href={n.url} target="_blank" rel="noreferrer" className="tabular inline-flex min-h-11 items-center text-acento hover:underline sm:min-h-0">
                         Nota {n.numero}
                       </a>
                     ) : (
@@ -1436,12 +1482,13 @@ function NotasAFavor({
                       u.que === 'DESCUENTO'
                         ? `descuento de la factura ${u.factura}`
                         : `devolución del proveedor${u.operacion ? `, op. ${u.operacion}` : ''}`
+                    const conArticulo = `${u.que === 'DESCUENTO' ? 'el' : 'la'} ${que}`
                     return (
                       <li key={u.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-texto-suave">
                           {fecha(u.fecha)} · <span className="tabular text-texto">{moneda(u.monto, m)}</span> · {que}
                         </span>
-                        {pasa && (u.que === 'DESCUENTO' || paga) && <DeshacerUsoDeLaNota uso={u} etiqueta={`el ${que}`} />}
+                        {pasa && (u.que === 'DESCUENTO' || paga) && <DeshacerUsoDeLaNota uso={u} etiqueta={conArticulo} />}
                       </li>
                     )
                   })}

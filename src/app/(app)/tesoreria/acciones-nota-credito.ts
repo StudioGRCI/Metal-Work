@@ -57,8 +57,9 @@ export async function quitarDescuentoNotaCredito(_previo: unknown, formulario: F
   const analisis = z.object({ id: z.guid(), motivo: MOTIVO }).safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const supabase = await createClient()
-  const { error } = await supabase.rpc('quitar_descuento_nota_credito', { p_pago: analisis.data.id, p_motivo: analisis.data.motivo })
+  const { data, error } = await supabase.rpc('quitar_descuento_nota_credito', { p_pago: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El descuento no se quitó. Recarga la pantalla.' }
   repintar()
   return { ok: true, mensaje: 'Descuento quitado: la factura vuelve a deberlo y la nota lo vuelve a tener a favor.' }
 }

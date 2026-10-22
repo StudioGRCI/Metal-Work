@@ -6,6 +6,10 @@
 --   G. Al segundo, el más nuevo, ya se le entregaron sus 4. Almacén devuelve 3 sin
 --      reposición: le faltan al primero, que sigue abierto; él se parte y Logística
 --      compra esos 3. El segundo no cambia.
+--   H. Lo mismo, pero con reposición y 5 de otro ingreso: «Stock en almacén» le separa
+--      al primero lo que le llegó (3), no 6, y deja libres los 5 (auditor, 22/10).
+--   J. Los dos RQ se entregaron de otro stock antes de que llegara la OC: lo de la
+--      OC sigue en el almacén y se devuelve (auditor de realización, 22/10).
 --   I. Todo lo de la OC ya salió al taller con sus RQ y en el almacén hay 5 de otro
 --      ingreso: no se devuelve «de la OC» lo que ya no está, ni se ofrece.
 \set ON_ERROR_STOP on
@@ -159,6 +163,62 @@ begin
     'a quien ya recibió todo no se le avisa que le falta');
 end $$;
 rollback to savepoint antes_de_g;
+
+-- ============================================ H. Con reposición: lo separado y lo llegado dicen lo mismo
+savepoint antes_de_h;
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
+                                           registrado_por, codigo_unidad, codigo_interno, requerimiento_linea_id)
+values (gen_random_uuid(), 'SALIDA', current_setting('prueba.m1')::uuid, 4, 'SALIDA_GENERAL', 'Vale H',
+        'Operario de prueba H', current_setting('prueba.almacenero')::uuid, 'CHK428_A', 'CHK428_A', current_setting('prueba.linea_b')::uuid);
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por)
+values (gen_random_uuid(), 'INGRESO', current_setting('prueba.m1')::uuid, 5, 'INGRESO_GENERAL', 'Saldo de otra obra H',
+        current_setting('prueba.almacenero')::uuid);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.rq_entregar_con_faltante(current_setting('prueba.rq_b')::uuid, 'Lo recogió el operario H', null);
+select public.devolver_al_proveedor(current_setting('prueba.dev1')::uuid, current_setting('prueba.ing')::uuid, 3, 'GR-H-1',
+  'Tres discos con fisuras', true);
+do $$
+begin
+  perform test.afirmar(pg_temp.saldo() = 8 and pg_temp.llegado('rq_a') = 3, 'quedan 8 en el almacén y al primero le llegaron 3');
+  perform test.afirmar((select libre from public.stock_libre_en_almacen(array[current_setting('prueba.m1')::uuid])) = 5,
+    'de los 8, al primero se le separan sus 3 y quedan libres los 5 del otro ingreso');
+end $$;
+reset role;
+rollback to savepoint antes_de_h;
+
+-- ============================================ J. Se entregó de otro stock antes de que llegara la OC
+savepoint antes_de_j;
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, registrado_en)
+values (gen_random_uuid(), 'INGRESO', current_setting('prueba.m1')::uuid, 10, 'INGRESO_GENERAL', 'Saldo de otra obra J',
+        current_setting('prueba.almacenero')::uuid, now() - interval '2 hours');
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
+                                           registrado_por, codigo_unidad, codigo_interno, requerimiento_linea_id, registrado_en)
+select gen_random_uuid(), 'SALIDA', current_setting('prueba.m1')::uuid, l.cantidad, 'SALIDA_GENERAL', 'Vale J',
+       'Operario de prueba J', current_setting('prueba.almacenero')::uuid, 'CHK428_A', 'CHK428_A', l.id, now() - interval '1 hour'
+  from public.requerimiento_lineas l
+ where l.requerimiento_id in (current_setting('prueba.rq_a')::uuid, current_setting('prueba.rq_b')::uuid);
+do $$
+begin
+  perform test.afirmar((select count(*) from public.movimientos_materiales where documento_referencia = 'Vale J' and registrado_en < now()) = 2,
+    'las dos entregas quedaron antes de que llegara la OC');
+end $$;
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+begin
+  perform test.afirmar(pg_temp.saldo() = 10, 'en el almacén siguen los 10 de la OC');
+  perform test.afirmar(exists (select 1 from public.ingresos_para_devolver() where ingreso_id = current_setting('prueba.ing')::uuid),
+    'el ingreso de la OC se ofrece para devolver');
+end $$;
+select public.devolver_al_proveedor(current_setting('prueba.dev1')::uuid, current_setting('prueba.ing')::uuid, 3, 'GR-J-1',
+  'Tres discos con fisuras', false);
+do $$
+begin
+  perform test.afirmar(pg_temp.saldo() = 7, 'se devuelven 3 de los 10 de la OC');
+end $$;
+reset role;
+rollback to savepoint antes_de_j;
 
 -- ============================================ I. Lo de la OC ya salió al taller
 insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,

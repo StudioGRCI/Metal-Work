@@ -19,6 +19,9 @@ import { useAvisoDeLoAnotado } from './pago-de-boleta'
 
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
+/** «S.A.C.» ya termina en punto: no lleva otro. */
+const conPunto = (texto: string) => (texto.endsWith('.') ? texto : `${texto}.`)
+
 /** Lo que Almacén devolvió sin reposición de una OC de esta factura y espera su nota. */
 export type DevolucionParaLaNota = { id: string; texto: string; importe: number }
 
@@ -106,7 +109,7 @@ export function RegistrarNotaCredito({
         abierta={notaId !== null}
         alCerrar={() => setNotaId(null)}
         titulo={`Nota de crédito de la factura ${factura.numero}`}
-        descripcion={`${factura.proveedor}. La factura baja sola por el total de la nota; si ya estaba pagada, lo que sobra queda a favor y Tesorería lo descuenta de otra factura o registra que el proveedor lo devolvió.`}
+        descripcion={`${conPunto(factura.proveedor)} La factura baja sola por el total de la nota; si ya estaba pagada, lo que sobra queda a favor y Tesorería lo descuenta de otra factura o registra que el proveedor lo devolvió.`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
@@ -132,7 +135,7 @@ export function RegistrarNotaCredito({
             <Campo
               etiqueta="Qué devolución cubre"
               htmlFor={campo('devolucion')}
-              ayuda="Lo que Almacén devolvió de una OC de esta factura y el proveedor no repone. Si la nota cubre algo que se repone, elige esa devolución: deja de esperarse la reposición y lo que falta vuelve a Logística."
+              ayuda="Lo que Almacén devolvió de una OC de esta factura y el proveedor no repone. Si la nota cubre algo que el proveedor iba a reponer, primero Almacén o Logística marcan «No lo repone» en esa devolución: entonces sale aquí, y lo que falta vuelve a Logística."
             >
               <Seleccion id={campo('devolucion')} name="devolucion" value={devolucion} onChange={(e) => setDevolucion(e.target.value)}>
                 <option value="">Ninguna en particular</option>

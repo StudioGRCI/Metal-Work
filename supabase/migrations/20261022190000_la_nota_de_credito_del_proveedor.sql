@@ -227,7 +227,7 @@ end $$;
 -- 5. Lo que ya cuenta el saldo de una factura deja pasar la nota --------------------------------------
 -- Copias de su última versión (las tres primeras y las de la caja, de la
 -- 20261020210000; la de la espera, de la 20261022175000; `codigo_interno_lineas`,
--- de la 20261020120000). Cambia solo lo que nombra la nota: su abono lo anota el
+-- de la 20261022150000). Cambia solo lo que nombra la nota: su abono lo anota el
 -- sistema, no espera ni choca con el pago de la boleta, y no se anula como un pago;
 -- la caja reconoce el nuevo origen; y el costeo suma el descuento de la nota.
 CREATE OR REPLACE FUNCTION public.fn_validar_pago_adquisicion()
@@ -810,7 +810,10 @@ $function$;
 -- toca la parte de la OC que va a ese código (la de su RQ, o la OC entera si es
 -- directa), en la proporción de la nota sobre el total de la factura. Así la
 -- base es la misma que la del material (sin IGV si la OC va sin IGV), y la suma
--- de lo que baja en los códigos es lo que la nota baja de esas OC.
+-- de lo que baja en los códigos es lo que la nota baja de esas OC. Si la factura
+-- cubre solo parte de sus OC (una OC en varias facturas), la proporción va sobre
+-- el total de las OC, que es mayor: la nota baja solo su parte. Lo que baja va en
+-- la moneda de la OC, porque sale de sus precios, como el material del código.
 create or replace function public.codigo_interno_lineas_nota_credito(p_codigo text)
 returns table (codigo text, fuente text, fecha date, concepto text, detalle text, cantidad numeric, unidad text,
                horas numeric, precio_unitario numeric, moneda text, monto numeric, sin_precio integer,
@@ -818,7 +821,12 @@ returns table (codigo text, fuente text, fecha date, concepto text, detalle text
 language sql stable set search_path to 'public' as $$
   with nota as (
     select n.id, n.numero, n.fecha_emision, n.monto, a.numero_documento, a.moneda, a.total,
-           public.compras_de_la_factura(a) as compras
+           public.compras_de_la_factura(a) as compras,
+           -- Con las OC en otra moneda no se comparan: va sobre el total de la factura.
+           greatest(a.total, coalesce((select case when bool_and(c.moneda = a.moneda) then sum(public.total_orden_compra(c.id)) end
+                                         from public.ordenes_compra_materiales c
+                                        where c.id = any (public.compras_de_la_factura(a))
+                                          and c.aprobacion not in ('RECHAZADA', 'ANULADA')), 0)) as base
       from public.notas_credito_compra n
       join public.adquisiciones a on a.id = n.adquisicion_id
      where n.tipo = 'DESCUENTO' and n.anulado_en is null and a.estado = 'REGISTRADA' and a.total > 0
@@ -835,7 +843,7 @@ language sql stable set search_path to 'public' as $$
                     1.0 / count(*) over (partition by p.detalle_id))::numeric as parte
       from porcion p
   ), linea as (
-    select x.id, x.numero, x.fecha_emision, x.monto, x.numero_documento, x.moneda, x.total,
+    select x.id, x.numero, x.fecha_emision, x.monto, x.numero_documento, x.base, c.moneda,
            coalesce(c.numero, c.referencia) as compra,
            coalesce(r.codigo, public.normalizar_codigo_interno(c.codigo_interno)) as codigo,
            sum(d.cantidad * d.precio_unitario * coalesce(r.parte, 1))::numeric as importe
@@ -844,15 +852,16 @@ language sql stable set search_path to 'public' as $$
       join public.ordenes_compra_materiales c on c.id = o.id and c.aprobacion not in ('RECHAZADA', 'ANULADA')
       join public.orden_compra_material_detalles d on d.orden_compra_id = c.id and d.precio_unitario is not null
       left join reparto r on r.detalle_id = d.id
-     group by x.id, x.numero, x.fecha_emision, x.monto, x.numero_documento, x.moneda, x.total, c.id, c.numero, c.referencia,
+     group by x.id, x.numero, x.fecha_emision, x.monto, x.numero_documento, x.base, c.moneda, c.id, c.numero, c.referencia,
               coalesce(r.codigo, public.normalizar_codigo_interno(c.codigo_interno))
   )
   select l.codigo, 'MATERIALES'::text, l.fecha_emision,
          ('Nota de crédito ' || l.numero || ' (descuento)')::text,
-         ('Baja ' || trim(trailing '.' from to_char(round(l.monto / l.total * 100, 2), 'FM990.99')) || ' % de la factura '
-          || l.numero_documento || ' en lo de la ' || l.compra || ' que va a este código')::text,
+         ('Contra la factura ' || l.numero_documento || ': baja '
+          || trim(trailing '.' from to_char(round(l.monto / l.base * 100, 2), 'FM990.99')) || ' % de lo de la '
+          || l.compra || ' que va a este código')::text,
          1::numeric, null::text, null::numeric,
-         -round(l.importe * l.monto / l.total, 2), l.moneda::text, -round(l.importe * l.monto / l.total, 2),
+         -round(l.importe * l.monto / l.base, 2), l.moneda::text, -round(l.importe * l.monto / l.base, 2),
          0, l.compra::text, l.id
     from linea l
    where l.codigo is not null and l.importe > 0
@@ -953,6 +962,10 @@ begin
   end if;
   select coalesce(sum(monto), 0) into v_notas from public.notas_credito_compra where adquisicion_id = p_factura and anulado_en is null;
   if v_notas + p_monto > v_adq.total then
+    if v_notas = 0 then
+      raise exception 'La nota no puede pasar del total de la factura % (%).', v_adq.numero_documento,
+        public.texto_monto(v_adq.moneda, v_adq.total) using errcode = 'check_violation';
+    end if;
     raise exception 'Con esta, las notas de crédito de la factura % pasarían de su total (%): ya tiene % en notas.',
       v_adq.numero_documento, public.texto_monto(v_adq.moneda, v_adq.total), public.texto_monto(v_adq.moneda, v_notas)
       using errcode = 'check_violation';
@@ -1060,7 +1073,8 @@ end;
 $$;
 
 -- 9. Tesorería usa lo que quedó a favor ---------------------------------------------------------------
--- Las facturas del mismo proveedor, en la misma moneda, que todavía deben.
+-- Las otras facturas del mismo proveedor, en la misma moneda, que todavía deben. La suya no: la nota ya la
+-- baja, y `descontar_nota_credito` la rechaza.
 create or replace function public.facturas_para_la_nota(p_nota uuid)
 returns table (factura_id uuid, numero text, fecha date, total numeric, saldo numeric)
 language plpgsql stable security definer set search_path to 'public' as $$
@@ -1078,7 +1092,7 @@ begin
     cross join lateral (
       select (a.total - coalesce(sum(p.monto), 0))::numeric(14, 2) as saldo
         from public.pagos_adquisicion p where p.adquisicion_id = a.id and p.anulado_en is null) s
-   where n.id = p_nota and n.anulado_en is null and s.saldo > 0
+   where n.id = p_nota and n.anulado_en is null and s.saldo > 0 and a.id <> n.adquisicion_id
    order by a.fecha_emision, a.numero_documento
    limit 50;
 end;
@@ -1104,6 +1118,10 @@ begin
   end if;
   if v_adq.tipo in ('RECIBO_HONORARIOS', 'OTRO') then
     raise exception 'La nota se descuenta de una factura, y el % no lo es.', v_adq.numero_documento using errcode = 'check_violation';
+  end if;
+  if v_adq.id = v_n.adquisicion_id then
+    raise exception 'La nota % ya baja su propia factura %: lo que queda a favor se descuenta de otra.', v_n.numero, v_adq.numero_documento
+      using errcode = 'check_violation';
   end if;
   if not public.mismo_emisor(v_adq.ruc_proveedor, v_adq.proveedor, v_n.ruc_proveedor, v_n.proveedor) then
     raise exception 'La factura % es de %, y la nota de %.', v_adq.numero_documento, v_adq.proveedor, v_n.proveedor
