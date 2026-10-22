@@ -7,6 +7,7 @@ import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo
 import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import {
@@ -609,11 +610,11 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           ayudaEnIcono={false}
           ayuda={
             tipo === 'BANCO'
-              ? `${pideCaptura && anterior ? 'La foto del conteo no sirve para un banco: adjunta la' : 'La'} pantalla del aplicativo con el saldo de ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
-              : `Si la tienes: el conteo de la caja chica ese día. Foto o PDF, hasta ${MAXIMO_MB_CAPTURA_SALDO} MB.`
+              ? `${pideCaptura && anterior ? 'La foto del conteo no sirve para un banco: adjunta la' : 'La'} pantalla del aplicativo con el saldo de ese día.`
+              : 'Si la tienes: el conteo de la caja chica ese día.'
           }
         >
-          <Entrada id={`${p}-captura`} name="captura" type="file" accept={ACEPTA_CAPTURA_SALDO} required={pideCaptura} />
+          <ElegirArchivo id={`${p}-captura`} name="captura" accept={ACEPTA_CAPTURA_SALDO} hastaMb={MAXIMO_MB_CAPTURA_SALDO} required={pideCaptura} />
         </Campo>
       )}
       <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />

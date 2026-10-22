@@ -1,4 +1,4 @@
-import type { ResultadoAccion } from '@/lib/acciones'
+import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
 import { createClient } from '@/lib/supabase/client'
 
@@ -30,7 +30,7 @@ export async function subirArchivoFinanzas(
   const ruta = `${carpeta}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
   const { error } = await supabase.storage.from(bucket).upload(ruta, archivo, { contentType: archivo.type, upsert: false })
-  if (error) return { ok: false, error: 'No se pudo subir el archivo. Revisa la señal y vuelve a intentar.' }
+  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
 
   try {
     const resultado = await anotar(ruta)

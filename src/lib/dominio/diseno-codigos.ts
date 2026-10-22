@@ -60,13 +60,6 @@ export function enlaceSeguimientoCodigo(codigo: string, vista?: VistaDiseno) {
   return `/seguimiento/codigo?${query}`
 }
 
-/** El tamaño de un PDF para leerlo de un vistazo: «2.4 MB», «350 KB». */
-export function tamanoArchivo(bytes: number | null): string {
-  if (!bytes) return ''
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`
-}
-
 /** Días de una fecha a otra, las dos `YYYY-MM-DD`: negativo si la segunda es antes. */
 export function diasEntre(desde: string, hasta: string): number {
   return Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000)

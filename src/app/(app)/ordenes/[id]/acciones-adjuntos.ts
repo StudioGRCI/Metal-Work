@@ -15,6 +15,8 @@ import { createClient } from '@/lib/supabase/server'
  * órdenes, y quien las abre desde el taller.
  */
 const PUEDEN_SUBIR = ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller']
+// Diseño carga el cronograma y guarda su Excel, no el PDF de la orden (migración 20261022113000).
+const PUEDEN_SUBIR_CRONOGRAMA = [...PUEDEN_SUBIR, 'diseno.planos']
 
 const esquemaAdjunto = z.object({
   orden_id: z.guid(),
@@ -27,13 +29,13 @@ const esquemaAdjunto = z.object({
 
 export async function registrarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, PUEDEN_SUBIR)) {
-    return { ok: false, error: 'No tienes permiso para subir archivos a la orden.' }
-  }
-
   const analisis = esquemaAdjunto.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'No se pudo leer el archivo.' }
   const v = analisis.data
+
+  if (!puede(perfil, v.tipo === 'CRONOGRAMA' ? PUEDEN_SUBIR_CRONOGRAMA : PUEDEN_SUBIR)) {
+    return { ok: false, error: 'No tienes permiso para subir archivos a la orden.' }
+  }
 
   // La base lo exige con un check; acá se dice antes para que el mensaje sea claro.
   if (!v.ruta_storage.startsWith(`ot/${v.orden_id}/`)) {

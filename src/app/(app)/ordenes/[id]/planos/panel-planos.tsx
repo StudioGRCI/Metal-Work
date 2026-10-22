@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FileText, Upload } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { useEnvio } from '@/lib/envio'
@@ -170,8 +171,8 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
           <Campo etiqueta="Observación para la revisión" htmlFor="version-nota" ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
             <AreaTexto id="version-nota" name="nota_envio" maxLength={1000} disabled={enviando} />
           </Campo>
-          <Campo etiqueta="Plano en PDF" htmlFor="version-archivo" ayuda="Hasta 20 MB. Para otro archivo, selecciónalo de nuevo.">
-            <Entrada id="version-archivo" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} onChange={() => { setSolicitudes({}); setAviso(null) }} />
+          <Campo etiqueta="Plano en PDF" htmlFor="version-archivo">
+            <ElegirArchivo id="version-archivo" name="archivo" accept="application/pdf,.pdf" hastaMb={20} required disabled={enviando} onChange={() => { setSolicitudes({}); setAviso(null) }} />
           </Campo>
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           {aviso && <p role="status" className="text-sm text-exito">{aviso}</p>}

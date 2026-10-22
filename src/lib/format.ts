@@ -256,3 +256,9 @@ export function hoyLima(): string {
   }).format(new Date())
 }
 
+/** El tamaño de un archivo para leerlo de un vistazo: «2.4 MB», «350 KB». */
+export function tamanoArchivo(bytes: number | null): string {
+  if (!bytes) return ''
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}

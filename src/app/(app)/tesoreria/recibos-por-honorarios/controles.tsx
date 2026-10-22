@@ -7,6 +7,7 @@ import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
@@ -128,8 +129,8 @@ function FormularioPago({
         </Campo>
         <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={recibo.moneda} tipo="pago" dia={dia} prefijo={prefijo} />
       </div>
-      <Campo etiqueta="Voucher" htmlFor={`${prefijo}-archivo`} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_SUBCONTRATOS} MB.`}>
-        <Entrada id={`${prefijo}-archivo`} name="archivo" type="file" accept={ACEPTA} required />
+      <Campo etiqueta="Voucher" htmlFor={`${prefijo}-archivo`} requerido>
+        <ElegirArchivo id={`${prefijo}-archivo`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_SUBCONTRATOS} required />
       </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">

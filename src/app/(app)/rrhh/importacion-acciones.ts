@@ -27,6 +27,8 @@ export type LecturaPlanilla = {
   importadas: string[]
 }
 
+const DEMASIADOS_DATOS = 'El Excel trae demasiados datos. Usa solamente el libro de la planilla del mes.'
+
 /**
  * Lee el libro entero: todas las hojas RESUMEN del mes y año de la planilla
  * y la hoja PAGOS, que dice la empresa de cada persona. Nada se guarda aquí:
@@ -57,7 +59,7 @@ export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Prom
     unzipSync(bytes, { filter: (entrada) => {
       descomprimido += entrada.originalSize
       entradas++
-      if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error('El Excel trae demasiados datos. Usa solamente el libro de la planilla del mes.')
+      if (descomprimido > 60 * 1024 * 1024 || entradas > 3000) throw new Error(DEMASIADOS_DATOS)
       return false
     } })
     const hojas = await readXlsxFile(Buffer.from(bytes))
@@ -99,7 +101,10 @@ export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Prom
 
     return { ok: true, datos: { empresas, errores, hojas: delMes.map((h) => h.sheet.trim()), omitidas, conPagos: Boolean(pagos), yaEn, importadas } }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'No se pudo leer el Excel de la planilla.' }
+    // Lo propio se dice tal cual; lo de la librería sale en inglés («invalid zip
+    // data») y a RR. HH. no le dice qué hacer.
+    const propio = error instanceof Error && error.message === DEMASIADOS_DATOS
+    return { ok: false, error: propio ? DEMASIADOS_DATOS : 'No se pudo leer el Excel: ábrelo y guárdalo de nuevo como libro de Excel (.xlsx).' }
   }
 }
 

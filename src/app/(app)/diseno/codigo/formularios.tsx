@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
@@ -190,7 +191,7 @@ export function CargarPlano({
         />
       </Campo>
       <Campo etiqueta="PDF del plano" htmlFor="plano-pdf" requerido className="sm:col-span-2 lg:col-span-2">
-        <Entrada id="plano-pdf" name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
+        <ElegirArchivo id="plano-pdf" name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_PLANO} required disabled={enviando} />
       </Campo>
       <Campo etiqueta="Observación" htmlFor="plano-observacion" className="sm:col-span-2 lg:col-span-2">
         <Entrada id="plano-observacion" name="observacion" maxLength={1000} autoComplete="off" placeholder="Opcional: lo que el área tiene que saber" disabled={enviando} />
@@ -296,7 +297,7 @@ export function SubirRevision({ plano, numero, solicitudId }: { plano: string; n
             <AreaTexto id={`cambios-${plano}`} name="cambios" rows={3} minLength={5} maxLength={1000} required disabled={enviando} />
           </Campo>
           <Campo etiqueta="PDF corregido" htmlFor={`revision-pdf-${plano}`} requerido>
-            <Entrada id={`revision-pdf-${plano}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
+            <ElegirArchivo id={`revision-pdf-${plano}`} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_PLANO} required disabled={enviando} />
           </Campo>
           <Alerta error={error} />
           <div className="flex justify-end gap-2">

@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
@@ -165,8 +166,8 @@ function FormularioRecibo({
           </div>
         </dl>
       </div>
-      <Campo etiqueta="Recibo por honorarios" htmlFor={`${prefijo}-archivo`} requerido ayuda={`El PDF que emite SUNAT, o una foto, hasta ${MAXIMO_MB_SUBCONTRATOS} MB.`}>
-        <Entrada id={`${prefijo}-archivo`} name="archivo" type="file" accept={ACEPTA} required />
+      <Campo etiqueta="Recibo por honorarios" htmlFor={`${prefijo}-archivo`} requerido ayuda="El PDF que emite SUNAT, o una foto.">
+        <ElegirArchivo id={`${prefijo}-archivo`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_SUBCONTRATOS} required />
       </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">

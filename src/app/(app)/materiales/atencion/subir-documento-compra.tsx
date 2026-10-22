@@ -11,7 +11,8 @@ import {
   useDetectorDeFactura,
 } from '@/app/(app)/compras/ordenes/detector-oc'
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
 import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -26,6 +27,8 @@ const TIPOS = [
   ['OTRO', 'Otro documento'],
 ] as const
 
+const ACEPTA_PDF = 'application/pdf,.pdf'
+
 export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden }: {
   ordenCompraId: string
   solicitudId: string
@@ -36,7 +39,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
 }) {
   const [id, setId] = useState(solicitudId)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
-  const detector = useDetectorDeFactura()
+  const detector = useDetectorDeFactura(ACEPTA_PDF, 20)
   const factura = useDatosDeFactura()
   const [mensaje, setMensaje] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
@@ -69,8 +72,10 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         {TIPOS.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
       </Seleccion>
     </Campo>
-    <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Hasta 20 MB. Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
-      <Entrada id={`archivo-compra-${ordenCompraId}`} name="archivo" type="file" accept="application/pdf,.pdf" required disabled={enviando}
+    <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
+      {/* Se lee sea cual sea el tipo, por si después se elige «Factura»; el «Leyendo…» solo se dice para la factura. */}
+      <ElegirArchivo id={`archivo-compra-${ordenCompraId}`} name="archivo" accept={ACEPTA_PDF} hastaMb={20} required disabled={enviando}
+        aviso={detector.aviso} estado={tipo === 'FACTURA' ? detector.leyendo : null}
         onChange={(e) => void detector.leer(e.target.files?.[0]).then(factura.completar)} />
     </Campo>
     <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
@@ -82,7 +87,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
           <CamposDeLaFactura id={`factura-compra-${ordenCompraId}`} datos={factura} requerido disabled={enviando} />
         </div>
         <div className="sm:col-span-3">
-          <AvisoFacturaDeLaOrden lectura={detector.lectura} leyendo={detector.leyendo} total={orden?.total ?? null}
+          <AvisoFacturaDeLaOrden lectura={detector.lectura} total={orden?.total ?? null}
             moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
         </div>
       </>

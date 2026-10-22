@@ -4,7 +4,8 @@ import { FilePenLine, FileText } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada } from '@/components/ui/campos'
+import { Campo } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
@@ -20,9 +21,9 @@ export function CampoContrato({ id }: { id: string }) {
     <Campo
       etiqueta="Contrato (opcional)"
       htmlFor={id}
-      ayuda={`El contrato firmado, en PDF o foto, hasta ${MAXIMO_MB_CONTRATO} MB. Si todavía no lo tienes, adjúntalo después.`}
+      ayuda="El contrato firmado. Si todavía no lo tienes, adjúntalo después."
     >
-      <Entrada id={id} name="contrato" type="file" accept={ACEPTA_CONTRATO} />
+      <ElegirArchivo id={id} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} />
     </Campo>
   )
 }
@@ -181,8 +182,8 @@ function FormularioContrato({
   const campo = `contrato-${id.slice(0, 8)}`
   return (
     <form onSubmit={alEnviar} className="space-y-4">
-      <Campo etiqueta="Contrato" htmlFor={campo} requerido ayuda={`PDF o foto, hasta ${MAXIMO_MB_CONTRATO} MB.`}>
-        <Entrada id={campo} name="contrato" type="file" accept={ACEPTA_CONTRATO} required />
+      <Campo etiqueta="Contrato" htmlFor={campo} requerido>
+        <ElegirArchivo id={campo} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} required />
       </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">

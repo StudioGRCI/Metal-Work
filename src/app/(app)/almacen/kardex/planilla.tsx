@@ -5,18 +5,23 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { Campo, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo, avisoDeArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
 import { cantidad } from '@/lib/format'
-import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { leerPlanillaAlmacen, registrarFilaPlanilla, type FilaPlanilla } from './acciones'
 
-const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
+const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+/** El tope con que el servidor abre el libro (`abrirLibro`). */
+const MAXIMO_MB_EXCEL = 8
+const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
+const MAXIMO_MB_FOTO = 10
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
 /** Lo que eligió Almacén para una fila sin material: uno del catálogo o darlo de alta. */
 const NUEVO = 'NUEVO'
@@ -34,29 +39,57 @@ const NUEVO = 'NUEVO'
  */
 export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerrar: () => void }) {
   const router = useRouter()
+  const [archivo, setArchivo] = useState<File | null>(null)
+  // Por qué la planilla elegida no se pudo leer, sea del navegador o del servidor: va en su campo.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaPlanilla[] | null>(null)
-  const [fotos, setFotos] = useState<Record<string, File>>({})
+  // La foto elegida en cada salida, sirva o no: su campo la muestra con el motivo.
+  const [elegidas, setElegidas] = useState<Record<string, File>>({})
   const [elecciones, setElecciones] = useState<Record<string, string>>({})
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
+  // Cuántas veces se apretó «Registrar»: después de la primera, lo que queda es «lo que falta».
+  const [intentos, setIntentos] = useState(0)
   const enCurso = useRef(false)
+  // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
+  // no es de esta ventana, y al abrirla de nuevo no aparece.
+  const vuelta = useRef(0)
 
+  // Las que se registran: de las elegidas, solo las que sirven.
+  const fotos = Object.fromEntries(Object.entries(elegidas).filter(([, foto]) => !avisoDeArchivo(foto, ACEPTA_FOTO, MAXIMO_MB_FOTO)))
   const listas = (filas ?? []).filter((f) => f.estado === 'LISTA' || (f.estado === 'ELEGIR' && elecciones[f.id]))
   const porRegistrar = listas.filter((f) => f.hoja === 'Ingresos' || fotos[f.id])
   const sinFoto = listas.filter((f) => f.hoja === 'Salidas' && !fotos[f.id])
   const sinElegir = (filas ?? []).filter((f) => f.estado === 'ELEGIR' && !elecciones[f.id])
+  // Lo que falta: lo que se puede registrar y todavía no entró. Tras una vuelta
+  // con fallas —la foto que no subió—, se vuelve a registrar solo eso.
+  const faltan = porRegistrar.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
-  const terminado = !registrando && Object.keys(resultados).length > 0
+  const empezado = intentos > 0
+  // Terminado es que no quede nada por registrar, no que algo ya haya entrado:
+  // si no, la salida cuya foto no subió se quedaba sin botón para volver a intentarlo.
+  const terminado = !registrando && empezado && faltan.length === 0
+  // Lo que queda sin entrar, para no cerrar en verde con una salida sin foto encima.
+  const queda = fallidas
+    ? `${fallidas} no: revisa el mensaje de cada uno`
+    : faltan.length
+      ? faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`
+      : [
+          sinFoto.length && (sinFoto.length === 1 ? 'falta la foto de 1 salida' : `falta la foto de ${sinFoto.length} salidas`),
+          sinElegir.length && (sinElegir.length === 1 ? 'falta elegir el material de 1 ingreso' : `falta elegir el material de ${sinElegir.length} ingresos`),
+        ].filter(Boolean).join(' y ')
 
   function reiniciar() {
+    vuelta.current++
+    setArchivo(null)
+    setAvisoArchivo(null)
     setFilas(null)
-    setFotos({})
+    setElegidas({})
     setElecciones({})
     setResultados({})
-    setError(null)
+    setIntentos(0)
   }
 
   function cerrar() {
@@ -66,45 +99,46 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
     reiniciar()
   }
 
-  async function leer(archivo: File | undefined) {
-    if (!archivo || enCurso.current) return
-    reiniciar()
-    if (!/\.xlsx$/i.test(archivo.name)) {
-      setError('Tiene que ser la planilla en Excel (.xlsx). Si la guardaste como .xls, guárdala como «Libro de Excel».')
-      return
-    }
+  async function leer(elegido: File | undefined) {
+    if (!elegido || enCurso.current) return
     enCurso.current = true
-    setLeyendo(true)
+    let esta = vuelta.current
     try {
+      // El que no es un .xlsx de verdad no va al servidor: su campo dice por qué.
+      const noSirve = /\.xls$/i.test(elegido.name)
+        ? 'Es un .xls: guárdalo como «Libro de Excel» (.xlsx) y elígelo otra vez'
+        : await revisarArchivo(elegido, ACEPTA_EXCEL, MAXIMO_MB_EXCEL)
+      // reiniciar() vacía también el campo: el elegido se pone después, y gana.
+      reiniciar()
+      esta = vuelta.current
+      setArchivo(elegido)
+      setAvisoArchivo(noSirve)
+      if (noSirve) return
+      setLeyendo(true)
       const datos = new FormData()
-      datos.set('archivo', archivo)
+      datos.set('archivo', elegido)
       const r = await leerPlanillaAlmacen(null, datos)
-      if (!r.ok) setError(r.error)
+      if (esta !== vuelta.current) return
+      if (!r.ok) setAvisoArchivo(r.error)
       else setFilas(r.datos?.filas ?? [])
     } catch {
-      setError('No se pudo leer la planilla. Revisa la conexión y vuelve a intentar.')
+      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer la planilla: revisa la conexión y elígela otra vez')
     } finally {
       setLeyendo(false)
       enCurso.current = false
     }
   }
 
-  function elegirFoto(fila: FilaPlanilla, archivo: File | undefined) {
-    setFotos((previas) => {
-      const nuevas = { ...previas }
-      if (archivo && TIPOS_FOTO.includes(archivo.type) && archivo.size <= 10485760) nuevas[fila.id] = archivo
-      else delete nuevas[fila.id]
-      return nuevas
-    })
-    if (archivo && (!TIPOS_FOTO.includes(archivo.type) || archivo.size > 10485760)) {
-      setResultados((r) => ({ ...r, [fila.id]: { estado: 'error', mensaje: 'La foto tiene que ser JPG, PNG o WebP de hasta 10 MB.' } }))
-    } else {
-      setResultados((r) => { const n = { ...r }; delete n[fila.id]; return n })
-    }
+  // Se guarda la elegida aunque no sirva: su campo la sigue mostrando, y volver
+  // a elegir la misma avisa otra vez. Para registrar cuenta solo la que sirve.
+  function elegirFoto(fila: FilaPlanilla, foto: File | undefined) {
+    if (!foto) return
+    setElegidas((previas) => ({ ...previas, [fila.id]: foto }))
+    setResultados((r) => { const n = { ...r }; delete n[fila.id]; return n })
   }
 
   async function registrar() {
-    if (enCurso.current || porRegistrar.length === 0) return
+    if (enCurso.current || faltan.length === 0) return
     enCurso.current = true
     setRegistrando(true)
     try {
@@ -113,7 +147,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       const usuario = sesion.user?.id
       // Primero todos los ingresos y después las salidas: así el saldo alcanza
       // aunque la salida esté anotada antes que el ingreso del mismo día.
-      const orden = [...porRegistrar.filter((f) => f.hoja === 'Ingresos'), ...porRegistrar.filter((f) => f.hoja === 'Salidas')]
+      const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
       for (const f of orden) {
         setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
         const datos = new FormData()
@@ -154,12 +188,13 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             })
           }
         } catch {
-          resultado = { ok: false, error: 'No se confirmó: vuelve a cargar la planilla; lo registrado no se duplica.' }
+          resultado = { ok: false, error: 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.' }
         }
         setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
       }
     } finally {
       setRegistrando(false)
+      setIntentos((n) => n + 1)
       enCurso.current = false
     }
   }
@@ -177,12 +212,11 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       <div className="space-y-4">
         {!filas && (
           <Campo etiqueta="Planilla de Excel" htmlFor="planilla-archivo" ayuda="La que descargaste con «Descargar planilla», ya llena.">
-            <Entrada id="planilla-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={leyendo} onChange={(e) => leer(e.target.files?.[0])} />
+            <ElegirArchivo id="planilla-archivo" accept={ACEPTA_EXCEL} hastaMb={MAXIMO_MB_EXCEL}
+              archivo={archivo} aviso={avisoArchivo} estado={leyendo ? 'Leyendo la planilla…' : null}
+              disabled={leyendo} onChange={(e) => void leer(e.target.files?.[0])} />
           </Campo>
         )}
-        {leyendo && <p role="status" className="text-sm text-texto-suave">Leyendo la planilla y revisando cada fila…</p>}
-        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
 
         {filas && resumen && (
           <>
@@ -191,7 +225,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               {resumen.cargadas > 0 && <Insignia tono="neutro">{resumen.cargadas} ya estaban en el kardex</Insignia>}
               {resumen.elegir > 0 && <Insignia tono="aviso">{resumen.elegir} por elegir el material</Insignia>}
               {resumen.errores > 0 && <Insignia tono="peligro">{resumen.errores} no se cargan</Insignia>}
-              {!registrando && !terminado && (
+              {!registrando && !empezado && (
                 <Boton type="button" variante="fantasma" tamano="sm" onClick={reiniciar} className="ml-auto">Elegir otra planilla</Boton>
               )}
             </div>
@@ -199,6 +233,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             <ul className="max-h-[55vh] divide-y divide-borde overflow-y-auto rounded-[var(--radius-base)] border border-borde">
               {filas.map((f) => {
                 const r = resultados[f.id]
+                // Si lo que no entró fue la foto, se dice en su campo y no debajo de la fila.
+                const avisoFoto = r?.estado === 'error' && r.mensaje.startsWith(NO_SE_CARGO_EL_ARCHIVO) ? r.mensaje : null
                 return (
                   <li key={`${f.hoja}-${f.fila}`} className="grid gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <div className="min-w-0">
@@ -242,7 +278,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                           </Seleccion>
                         </div>
                       )}
-                      {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                      {r?.estado === 'error' && !avisoFoto && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
                     </div>
                     <div className="flex items-center gap-2 sm:justify-end">
                       {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
@@ -250,11 +286,10 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       {r?.estado === 'enviando' && <Insignia tono="info">Registrando…</Insignia>}
                       {r?.estado === 'ok' && <Insignia tono="exito"><CheckCircle2 aria-hidden className="size-3" />Registrada</Insignia>}
                       {f.estado === 'LISTA' && f.hoja === 'Salidas' && r?.estado !== 'ok' && (
-                        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte px-3 text-xs font-medium text-texto hover:bg-superficie-2 sm:min-h-9">
-                          {fotos[f.id] ? `Foto: ${fotos[f.id].name.slice(0, 18)}` : 'Adjuntar foto'}
-                          <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={registrando}
-                            aria-label={`Foto de la salida de la fila ${f.fila}`} onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
-                        </label>
+                        <ElegirArchivo accept={ACEPTA_FOTO} texto="Elegir la foto de la salida" hastaMb={MAXIMO_MB_FOTO}
+                          archivo={elegidas[f.id] ?? null} aviso={avisoFoto} disabled={registrando} className="w-full sm:w-64"
+                          aria-label={`Elegir la foto de la salida de la fila ${f.fila}`}
+                          onChange={(e) => elegirFoto(f, e.target.files?.[0])} />
                       )}
                     </div>
                   </li>
@@ -262,24 +297,29 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               })}
             </ul>
 
-            {!terminado && sinElegir.length > 0 && (
+            {sinElegir.length > 0 && (
               <p className="text-sm text-aviso">{sinElegir.length === 1 ? 'Un ingreso espera' : `${sinElegir.length} ingresos esperan`} que elijas el material; {sinElegir.length === 1 ? 'no se registrará' : 'no se registrarán'} hasta entonces.</p>
             )}
-            {!terminado && sinFoto.length > 0 && (
+            {sinFoto.length > 0 && (
               <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
             )}
-            {terminado && (
-              <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                {hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
+            {empezado && !registrando && (
+              <p role="status" className={queda ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+                {hechas === 0 ? 'No se registró ninguno' : hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
+                {queda ? `; ${queda}.` : '.'}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
               {!terminado && (
-                <Boton onClick={registrar} cargando={registrando} disabled={porRegistrar.length === 0}>
-                  {porRegistrar.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${porRegistrar.length} movimientos`}
+                <Boton onClick={registrar} cargando={registrando} disabled={faltan.length === 0}>
+                  {empezado
+                    ? `Registrar lo que falta (${faltan.length})`
+                    : faltan.length === 1 ? 'Registrar 1 movimiento' : `Registrar ${faltan.length} movimientos`}
                 </Boton>
               )}
-              {terminado && <Boton onClick={cerrar}>Cerrar</Boton>}
+              {empezado && !registrando && (
+                <Boton variante={terminado && !queda ? 'primario' : 'contorno'} onClick={cerrar}>Cerrar</Boton>
+              )}
             </div>
           </>
         )}

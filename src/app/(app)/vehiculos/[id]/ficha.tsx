@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { FichaDeVehiculo, PuntoDeFicha } from '@/lib/datos/vehiculos'
 import {
@@ -239,8 +240,8 @@ export function AdjuntarEscaneo({ registro }: { registro: string }) {
     <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
       <input type="hidden" name="registro" value={registro} />
       <input type="hidden" name="archivo" value={archivoId} />
-      <Campo etiqueta="Escaneo firmado en PDF" htmlFor="fv-escaneo" requerido ayuda={`La ficha impresa, firmada por el conductor y por Metal Work. Hasta ${MAXIMO_MB_FICHA} MB.`}>
-        <Entrada id="fv-escaneo" name="pdf" type="file" accept="application/pdf,.pdf" required disabled={enviando} />
+      <Campo etiqueta="Escaneo firmado en PDF" htmlFor="fv-escaneo" requerido ayuda="La ficha impresa, firmada por el conductor y por Metal Work.">
+        <ElegirArchivo id="fv-escaneo" name="pdf" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_FICHA} required disabled={enviando} />
       </Campo>
       <Boton type="submit" cargando={enviando}>
         <FileUp aria-hidden className="size-4" />

@@ -269,8 +269,12 @@ const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextCon
   comprobar(sinCodigo && (await v.isVisible()), 'sin código interno el navegador no envía')
   await v.locator('input[name="codigo_interno"]').fill(X2)
   await v.getByRole('button', { name: 'Aprobar con código y OT' }).click()
-  const sinPdf = limpio(await v.locator('[role="alert"]').first().textContent({ timeout: 5000 }).catch(() => ''))
-  comprobar(sinPdf.includes('Elige el PDF de la orden de trabajo'), `sin el PDF no envía («${sinPdf}»)`)
+  // Lo dice su campo, en rojo y con el foco ahí (el mismo campo de documentos que en todo el sistema).
+  const campoPdf = v.locator('input[type="file"]')
+  await pagina.waitForTimeout(300)
+  const sinPdf = limpio(await campoPdf.locator('xpath=..').innerText())
+  comprobar(sinPdf.includes('Falta el PDF de la OT') && (await campoPdf.getAttribute('aria-invalid')) === 'true'
+    && (await campoPdf.evaluate((e) => e === document.activeElement)), `sin el PDF no envía: su campo dice que falta y el foco queda ahí («${sinPdf}»)`)
 
   // Con el PDF, pero con el número de una OT que ya existe: se rechaza y el PDF no queda suelto.
   await v.locator('input[type="file"]').setInputFiles(ARCHIVO_N2)

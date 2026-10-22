@@ -2,18 +2,22 @@
 
 import { CheckCircle2, ClipboardList, FileSpreadsheet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
+import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
-import { TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { cantidad, hoyLima } from '@/lib/format'
+import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
 
 type Resultado = { estado: 'ok' } | { estado: 'error'; mensaje: string }
+const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+/** El tope con que el servidor abre el libro (`abrirLibro`). */
+const MAXIMO_MB_EXCEL = 8
 
 /**
  * El conteo inicial: el inventario físico con el que el almacén arranca. Se
@@ -25,13 +29,29 @@ export function ConteoInicial() {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
   const [fecha, setFecha] = useState(() => hoyLima())
+  const [archivo, setArchivo] = useState<File | null>(null)
+  // Por qué el formato elegido no se pudo leer, sea del navegador o del servidor: va en su campo.
+  const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaConteo[] | null>(null)
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
   const [fechaLeida, setFechaLeida] = useState('')
+  // Lo que la fecha tiene mal se dice en la fecha, antes de leer el Excel; si
+  // el servidor la rechaza igual (pasó la medianoche), también va ahí.
+  const [avisoFechaServidor, setAvisoFechaServidor] = useState<string | null>(null)
+  const hoy = hoyLima()
+  const desde = sumarDias(hoy, -DIAS_DEL_CONTEO)
+  const avisoFecha = motivoDeFechaDeConteo(fecha, hoy, desde) ?? avisoFechaServidor
+  // El rechazo apaga el campo del Excel, que tenía el foco: va a la fecha, que es lo que hay que cambiar.
+  const campoFecha = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (avisoFechaServidor) campoFecha.current?.focus()
+  }, [avisoFechaServidor])
   const enCurso = useRef(false)
+  // Sube con cada reinicio: lo que llega de una lectura de antes de cerrar ya
+  // no es de esta ventana, y al abrirla de nuevo no aparece.
+  const vuelta = useRef(0)
 
   const listas = (filas ?? []).filter((f) => f.estado === 'LISTA')
   const pendientes = listas.filter((f) => resultados[f.id]?.estado !== 'ok')
@@ -40,9 +60,12 @@ export function ConteoInicial() {
   const terminado = !registrando && Object.keys(resultados).length > 0
 
   function reiniciar() {
+    vuelta.current++
+    setArchivo(null)
+    setAvisoArchivo(null)
+    setAvisoFechaServidor(null)
     setFilas(null)
     setResultados({})
-    setError(null)
   }
 
   function cerrar() {
@@ -52,27 +75,37 @@ export function ConteoInicial() {
     reiniciar()
   }
 
-  async function leer(archivo: File | undefined) {
-    if (!archivo || enCurso.current) return
-    reiniciar()
-    if (!/\.xlsx$/i.test(archivo.name)) {
-      setError('Tiene que ser el formato en Excel (.xlsx). Si lo guardaste como .xls, guárdalo como «Libro de Excel».')
-      return
-    }
+  async function leer(elegido: File | undefined) {
+    if (!elegido || enCurso.current) return
     enCurso.current = true
-    setLeyendo(true)
+    let esta = vuelta.current
     try {
+      // El que no es un .xlsx de verdad no va al servidor: su campo dice por qué.
+      const noSirve = /\.xls$/i.test(elegido.name)
+        ? 'Es un .xls: guárdalo como «Libro de Excel» (.xlsx) y elígelo otra vez'
+        : await revisarArchivo(elegido, ACEPTA_EXCEL, MAXIMO_MB_EXCEL)
+      // reiniciar() vacía también el campo: el elegido se pone después, y gana.
+      reiniciar()
+      esta = vuelta.current
+      setArchivo(elegido)
+      setAvisoArchivo(noSirve)
+      if (noSirve) return
+      setLeyendo(true)
       const datos = new FormData()
-      datos.set('archivo', archivo)
+      datos.set('archivo', elegido)
       datos.set('fecha', fecha)
       const r = await leerConteoInicial(null, datos)
-      if (!r.ok) setError(r.error)
+      if (esta !== vuelta.current) return
+      if (!r.ok && /fecha del conteo|conteo es de hace|fecha en que se hizo/i.test(r.error)) {
+        setArchivo(null)
+        setAvisoFechaServidor(r.error)
+      } else if (!r.ok) setAvisoArchivo(r.error)
       else {
         setFilas(r.datos?.filas ?? [])
         setFechaLeida(fecha)
       }
     } catch {
-      setError('No se pudo leer el conteo. Revisa la conexión y vuelve a intentar.')
+      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer el conteo: revisa la conexión y elígelo otra vez')
     } finally {
       setLeyendo(false)
       enCurso.current = false
@@ -136,18 +169,24 @@ export function ConteoInicial() {
                 <FileSpreadsheet aria-hidden className="size-4" />Descargar formato de conteo
               </a>
               <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
-                <Campo etiqueta="Fecha del conteo" htmlFor="conteo-inicial-fecha" requerido>
-                  <Entrada id="conteo-inicial-fecha" type="date" value={fecha} max={hoyLima()} onChange={(e) => setFecha(e.target.value)} disabled={leyendo} />
+                <Campo etiqueta="Fecha del conteo" htmlFor="conteo-inicial-fecha" requerido error={avisoFecha ?? undefined}>
+                  <Entrada ref={campoFecha} id="conteo-inicial-fecha" type="date" value={fecha} min={desde} max={hoy} disabled={leyendo}
+                    onChange={(e) => {
+                      setFecha(e.target.value)
+                      setAvisoFechaServidor(null)
+                      // El que se rechazó con la otra fecha se elige de nuevo con esta.
+                      setArchivo(null)
+                      setAvisoArchivo(null)
+                    }} />
                 </Campo>
                 <Campo etiqueta="Formato de conteo, ya lleno" htmlFor="conteo-inicial-archivo">
-                  <Entrada id="conteo-inicial-archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    disabled={leyendo || !fecha} onChange={(e) => leer(e.target.files?.[0])} />
+                  <ElegirArchivo id="conteo-inicial-archivo" accept={ACEPTA_EXCEL} hastaMb={MAXIMO_MB_EXCEL}
+                    archivo={archivo} aviso={avisoArchivo} estado={leyendo ? 'Leyendo el conteo…' : null}
+                    disabled={leyendo || Boolean(avisoFecha)} onChange={(e) => void leer(e.target.files?.[0])} />
                 </Campo>
               </div>
             </>
           )}
-          {leyendo && <p role="status" className="text-sm text-texto-suave">Leyendo el conteo y revisando cada material…</p>}
-          {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
 
           {filas && resumen && (
             <>
