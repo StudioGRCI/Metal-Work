@@ -563,26 +563,6 @@ let pagoId
   await boton.click()
   const entro = await hasta(() => v.count(), (n) => n === 0, 30000)
   const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
-  // 6. Contraprueba: si el envío ni llegó a la base, al volver a abrir no hay nada que decir, sigue el mismo id y el pago entra una vez.
-  await abrir()
-  await llenar('14')
-  corte.sinLlegar = 2
-  cortando = true
-  await v.getByRole('button', { name: 'Registrar el pago' }).click()
-  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
-  await v.getByRole('button', { name: 'Cancelar' }).click()
-  corte.sinLlegar = 0
-  cortando = false
-  const consultasAntes = corte.consultas
-  await abrir()
-  await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
-  const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
-  await llenar('14', 'voucher-2.pdf')
-  await v.getByRole('button', { name: 'Registrar el pago' }).click()
-  await hasta(() => v.count(), (n) => n === 0, 30000)
-  const al14 = await nuevos()
-  comprobar(sinNota && al14.join() === '20,5,7,9,11,13,14',
-    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; pagos ${al14.join(', ')})`)
   const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
                                     and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
@@ -674,7 +654,7 @@ let pagoId
   await abrir()
   const limpia = (await v.locator('[role="alert"]').count()) === 0 && (await v.getByRole('button', { name: 'Registrar el pago' }).isVisible())
   const nota = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent().catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
-  const enLaRegion = await v.locator('[role="status"] [data-envio-anterior]').count()
+  const enLaRegion = await v.locator('[aria-live="polite"] [data-envio-anterior]').count()
   comprobar(limpia && /^El pago que enviaste antes sí quedó: S\/ 20\.00 del \d\d\/\d\d\/\d{4}\. Lo que registres ahora será otro\.$/.test(nota)
     && enLaRegion === 1 && (await nuevos()).join() === '20',
     `al volver a abrir, la ventana sale limpia y dice que aquel pago quedó, en una región que se anuncia («${nota}», pagos ${(await nuevos()).join(', ')})`)

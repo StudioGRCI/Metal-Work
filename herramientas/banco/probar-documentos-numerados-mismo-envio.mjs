@@ -7,10 +7,11 @@
  *      entró. Al volver a abrir, la ventana pregunta a la base y dice, sin
  *      rojo, que aquel quedó y con qué número; lo que se registra ahí es otro.
  *   b. Lo mismo, pero se envía otro importe antes de que la base conteste esa
- *      pregunta: la ventana dice sin rojo que el primero ya quedó, con su
- *      número, traba los campos, solo ofrece «Cerrar» y se lleva el cursor; la
- *      respuesta tardía de la pregunta no se pinta encima. Al cerrar, la lista
- *      muestra el primero, con el importe de la primera vez.
+ *      pregunta (Next despacha las acciones de una en una: el envío sale detrás
+ *      de ella, con el id de antes): la ventana dice sin rojo que el primero ya
+ *      quedó, con su número, traba los campos, solo ofrece «Cerrar» y se lleva
+ *      el cursor; la respuesta de la pregunta no se pinta encima. Al cerrar, la
+ *      lista muestra el primero, con el importe de la primera vez.
  *   c. Cerrada esa ventana, la siguiente registra otro documento.
  *
  *   1. Logística, «Nueva orden de servicio».
@@ -204,7 +205,8 @@ function laVentana(pagina) {
     const v = document.querySelector(selector)
     const aviso = v?.querySelector('[role="alert"]')
     const campos = [...(v?.querySelectorAll('input:not([type=hidden]), select, textarea') ?? [])]
-    const botones = [...(v?.querySelectorAll('button') ?? [])].filter((b) => !b.disabled && b.offsetParent !== null)
+    // La «i» de la ayuda de un campo no se traba (`PieDeVentana`): leerla no cambia nada.
+    const botones = [...(v?.querySelectorAll('button:not([data-ayuda])') ?? [])].filter((b) => !b.disabled && b.offsetParent !== null)
     return {
       neutro: aviso?.hasAttribute('data-ya-entro') ?? false,
       cursor: Boolean(aviso) && document.activeElement === aviso,
@@ -276,7 +278,7 @@ async function mismoEnvio(d) {
   await abrir()
   const dice = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
   const limpia = (await v.locator('[role="alert"]').count()) === 0
-  const anunciada = await v.locator('[role="status"] [data-envio-anterior]').count()
+  const anunciada = await v.locator('[aria-live="polite"] [data-envio-anterior]').count()
   comprobar(limpia && anunciada === 1 && dice.startsWith(`${d.nota} que enviaste antes sí quedó: ${entro?.numero}.`) && dice.endsWith('Lo que registres ahora será otra.'.replace('otra', d.otra)),
     `[${d.nombre}] vuelto a abrir, limpio, dice que aquel quedó con su número: «${dice}»`)
   await pagina.screenshot({ path: join(CAPTURAS, `mismo-envio-${d.clave}-ya-entro.png`) })
@@ -303,11 +305,13 @@ async function mismoEnvio(d) {
   await abrir()
   await d.llenar(v, pagina, B, d.valores[1])
   await enviar()
-  const yaQuedo = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
-  const estado = await hasta(() => laVentana(pagina), (e) => e.cursor && e.abiertos.length === 0, 5000)
+  // Next despacha las acciones de una en una: el envío sale cuando la pregunta contesta. Ya con el formulario
+  // enviado (con el id de antes), se suelta la pregunta.
   corte.retener = null
   corte.soltar()
   await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  const yaQuedo = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
+  const estado = await hasta(() => laVentana(pagina), (e) => e.cursor && e.abiertos.length === 0, 5000)
   const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
   const [primero, ...demas] = await d.contar(B)
   comprobar(yaQuedo.startsWith(d.yaQuedo(primero?.numero)) && yaQuedo.endsWith('Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.'),

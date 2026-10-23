@@ -693,7 +693,8 @@ async function documentoQueYaQuedo(viewport) {
   const segunda = await dicho(v)
   const estado = {
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
-    trabado: (await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()) && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
+    // Trabada tras «ya quedó», la ventana cambia «Adjuntar» por «Cerrar».
+    trabado: (await v.getByRole('button', { name: 'Adjuntar' }).count()) === 0 && (await v.getByRole('button', { name: 'Cerrar', exact: true }).count()) === 1 && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
     dice: segunda.includes('Este documento ya quedó adjuntado la primera vez que lo enviaste. Si cambiaste algo después, no se guardó'),
   }
   await p.unrouteAll({ behavior: 'ignoreErrors' })
@@ -1079,7 +1080,7 @@ async function loLeidoSeVaConElArchivo(viewport) {
 
   // Contabilidad: lo que llenó el PDF quitado se vacía; lo escrito a mano, no.
   const c = await entrar('contabilidad.local@metalwork.test', viewport)
-  await ir(c.pagina, '/adquisiciones')
+  await ir(c.pagina, '/adquisiciones?vista=facturas')
   const pdf = c.pagina.locator('#adq-pdf')
   await pdf.waitFor({ state: 'attached', timeout: 20000 })
   const datos = async () => [await valor(c.pagina, '#adq-total'), await valor(c.pagina, '#adq-numero'), await valor(c.pagina, '#adq-emision')].join(' · ')
@@ -1101,7 +1102,7 @@ async function loLeidoSeVaConElArchivo(viewport) {
   const oc = await ocQueEsperaFactura()
   if (!oc) return comprobar(false, `[Contabilidad ${tam}] hay una OC que espera su factura`)
   const { pagina: q, contexto: cq } = await entrar('contabilidad.local@metalwork.test', viewport)
-  await ir(q, '/adquisiciones')
+  await ir(q, '/adquisiciones?vista=facturas')
   const pdfOc = q.locator('#adq-pdf')
   await pdfOc.waitFor({ state: 'attached', timeout: 20000 })
   const casilla = q.locator(`input[name="ordenes_compra"][value="${oc.orden_compra_id}"]`)
@@ -1131,15 +1132,11 @@ async function loLeidoSeVaConElArchivo(viewport) {
   // Varias fuentes: la factura de Logística de esa OC sigue elegida al quitar el
   // PDF, y su PDF no se puede leer (un escaneo). La OC y el proveedor se quedan,
   // y vuelven su número y su fecha. Sin ninguna fuente, la moneda vuelve a la de antes.
-  const doc = await uno(`select d.id, d.numero_documento as numero, to_char(d.fecha_emision, 'YYYY-MM-DD') as fecha
-                           from public.documentos_compra_material d
-                          where d.orden_compra_id = $1 and d.tipo = 'FACTURA' and d.numero_documento is not null and d.fecha_emision is not null
-                            and not exists (select 1 from public.adquisiciones a where a.documento_compra_id = d.id)
-                          order by d.creado_en desc limit 1`, [oc.orden_compra_id])
+  const doc = (await facturaDeLogisticaSinRegistrar(oc.orden_compra_id)) ?? (await sembrarFacturaDeLogistica(oc.orden_compra_id, tam))
   if (!doc) return comprobar(false, `[Contabilidad ${tam}] la ${oc.numero} tiene una factura de Logística sin registrar`)
   const { pagina: r, contexto: cr } = await entrar('contabilidad.local@metalwork.test', viewport)
   await r.route((u) => u.pathname.includes(`${doc.id}.pdf`), (ruta) => ruta.fulfill({ status: 404, body: 'no' }))
-  await ir(r, '/adquisiciones')
+  await ir(r, '/adquisiciones?vista=facturas')
   const pdfR = r.locator('#adq-pdf')
   await pdfR.waitFor({ state: 'attached', timeout: 20000 })
   const casillaR = r.locator(`input[name="ordenes_compra"][value="${oc.orden_compra_id}"]`)
@@ -1425,14 +1422,33 @@ async function quitarElRechazoDePrueba() {
   await base.query('drop function if exists public.qa_storage_dice_que_no()')
 }
 
-/** Los adjuntos de orden y los documentos de compra de la prueba, con su archivo. */
+/**
+ * Los adjuntos de orden y los documentos de compra de la prueba, con su
+ * archivo, en una sola transacción y las filas antes que los archivos: si una
+ * fila no se deja borrar, los archivos se quedan con ella.
+ *
+ * La orden de la prueba no tenía PDF (`conexionQueSePierde` elige una sin
+ * cotización), así que quitarle los de prueba la deja sin ninguno, y
+ * `fn_el_pdf_de_la_orden_se_queda` lo ataja: en la aplicación, con razón. Aquí
+ * la orden vuelve a como estaba, así que ese borrado va sin disparadores; las
+ * claves foráneas vuelven antes de seguir.
+ */
 async function quitarArchivosDePrueba(adjuntos, documentos) {
-  await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot'
-                      and name in (select ruta_storage from public.ot_adjuntos where nombre_archivo like $1)`, [adjuntos])
-  await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [adjuntos])
-  await base.query(`delete from storage.objects where bucket_id = 'documentos-compras'
-                      and name in (select ruta_storage from public.documentos_compra_material where nombre_archivo like $1)`, [documentos])
-  await base.query('delete from public.documentos_compra_material where nombre_archivo like $1', [documentos])
+  await base.query('begin')
+  try {
+    const sueltosOt = (await base.query('select ruta_storage from public.ot_adjuntos where nombre_archivo like $1', [adjuntos])).rows.map((f) => f.ruta_storage)
+    const sueltosOc = (await base.query('select ruta_storage from public.documentos_compra_material where nombre_archivo like $1', [documentos])).rows.map((f) => f.ruta_storage)
+    await base.query('set local session_replication_role = replica')
+    await base.query('delete from public.ot_adjuntos where nombre_archivo like $1', [adjuntos])
+    await base.query('set local session_replication_role = origin')
+    await base.query('delete from public.documentos_compra_material where nombre_archivo like $1', [documentos])
+    await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot' and name = any($1::text[])`, [sueltosOt])
+    await base.query(`delete from storage.objects where bucket_id = 'documentos-compras' and name = any($1::text[])`, [sueltosOc])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
 }
 
 /** El disparador de banco que no deja marcar la OC como parcial, fuera. */
@@ -1465,18 +1481,67 @@ async function quitarComprobantesDePrueba(proveedor) {
   }
 }
 
-/** Una OC que espera su factura, como la ve Contabilidad. */
+/**
+ * Una OC que espera su factura, como la ve Contabilidad: primero la que ya
+ * trae la factura de Logística sin registrar, que la prueba de varias fuentes
+ * necesita; si ninguna la trae, esa prueba la siembra.
+ */
 async function ocQueEsperaFactura() {
   await base.query('begin')
   try {
     const { id } = await uno(`select id from auth.users where email = 'contabilidad.local@metalwork.test'`)
     await base.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: id, role: 'authenticated' })])
     await base.query('set local role authenticated')
-    return await uno(`select orden_compra_id, numero, proveedor, condicion_pago, moneda from public.compras_sin_factura()
-                       where numero ~ '[0-9]' order by numero limit 1`)
+    return await uno(`select c.orden_compra_id, c.numero, c.proveedor, c.condicion_pago, c.moneda from public.compras_sin_factura() c
+                       where c.numero ~ '[0-9]'
+                       order by exists (select 1 from public.documentos_compra_material d
+                                         where d.orden_compra_id = c.orden_compra_id and d.tipo = 'FACTURA' and d.anulado_en is null
+                                           and d.numero_documento is not null and d.fecha_emision is not null
+                                           and not exists (select 1 from public.adquisiciones a where a.documento_compra_id = d.id)) desc,
+                                c.numero
+                       limit 1`)
   } finally {
     await base.query('rollback')
   }
+}
+
+/** La factura de Logística de esa OC que Contabilidad todavía no registró. */
+async function facturaDeLogisticaSinRegistrar(ordenCompraId) {
+  return uno(`select d.id, d.numero_documento as numero, to_char(d.fecha_emision, 'YYYY-MM-DD') as fecha
+                from public.documentos_compra_material d
+               where d.orden_compra_id = $1 and d.tipo = 'FACTURA' and d.anulado_en is null
+                 and d.numero_documento is not null and d.fecha_emision is not null
+                 and not exists (select 1 from public.adquisiciones a where a.documento_compra_id = d.id)
+               order by d.creado_en desc limit 1`, [ordenCompraId])
+}
+
+/**
+ * Si la OC no la trae, Logística se la anexa: el objeto en Storage y la fila,
+ * como los deja la ventana, con los disparadores de la base. El PDF no hace
+ * falta en el disco: la prueba lo contesta con un 404 (un escaneo que no se lee).
+ * Lleva el nombre de la prueba, así que la limpieza del final se lo lleva.
+ */
+async function sembrarFacturaDeLogistica(ordenCompraId, tam) {
+  await base.query('begin')
+  try {
+    const { id: logistica } = await uno(`select id from auth.users where email = 'logistica.local@metalwork.test'`)
+    await base.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`,
+      [JSON.stringify({ sub: logistica, role: 'authenticated' }), logistica])
+    const { id } = await uno('select gen_random_uuid() as id')
+    const ruta = `compra/${ordenCompraId}/${id}.pdf`
+    await base.query(`insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+                      values ('documentos-compras', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 900))`,
+      [ruta, logistica])
+    await base.query(`insert into public.documentos_compra_material
+                        (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+                      values ($1, $2, 'FACTURA', $3, $4, 'application/pdf', 900, $5, $6, current_date - 2)`,
+      [id, ordenCompraId, `QA-SUELTO-DOC-FAC-${sello}-${tam}.pdf`, ruta, logistica, `F098-${sello}${tam === '390' ? 1 : 2}`])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+  return facturaDeLogisticaSinRegistrar(ordenCompraId)
 }
 
 // ------------------------------------------------- 2. la conexión que se pierde al anotar

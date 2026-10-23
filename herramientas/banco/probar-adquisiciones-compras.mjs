@@ -480,6 +480,9 @@ const rechaza = async (pagina, ruta) => {
 
 comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
 await navegador.close()
+// La OC programada, fuera de la lista del conductor: no le deja pendientes a la prueba siguiente.
+await como('logistica')
+await consulta(`select public.quitar_recojo_de_la_lista(id) from ordenes_compra_materiales where id = $1 and recojo = 'POR_RECOGER'`, [oc[2]])
 await base.end()
 console.log(fallas.length === 0 ? `\nTODO EN VERDE (${SUFIJO})` : `\n${fallas.length} FALLAS`)
 process.exit(fallas.length === 0 ? 0 : 1)
