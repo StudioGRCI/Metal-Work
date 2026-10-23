@@ -406,7 +406,8 @@ function ParteConBoletaFila({
   const m = codigoMoneda(x.moneda)
   const saldo = Number(x.saldo ?? 0)
   const pagado = Number(x.pagado ?? 0)
-  const nombre = x.numero ?? `OC ${x.referencia}`
+  // La OC sin número va con la referencia del proveedor aparte: «OC OC-0001» pasaba por un número de OC.
+  const nombre = nombreDeOc(x)
   const boleta = x.boleta ?? 'sin número'
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(x.orden_compra_id), descarga: true }] : []),
@@ -424,7 +425,7 @@ function ParteConBoletaFila({
             {saldo <= 0 ? <Insignia tono="exito">Pagada</Insignia> : pagado > 0 ? <Insignia tono="aviso">Pagada en parte</Insignia> : null}
           </p>
           <p className="text-xs text-texto-suave">
-            Una parte de la <span className="tabular whitespace-nowrap">{nombre}</span>
+            Una parte de la <span className={x.numero ? 'tabular whitespace-nowrap' : undefined}>{nombre}</span>
             {x.con_factura ? ', el resto con factura' : ''} · del {fecha(x.fecha_boleta)} · {condicion}
             {x.codigo_interno && ` · ${x.codigo_interno}`}
             {saldo > 0 ? (
