@@ -732,6 +732,7 @@ let pagoId
   comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1,
     `el desplegable ofrece la factura F009-${SUFIJO} que anexó Logística`)
   await pagina.locator('#adq-proveedor').fill(PROVEEDOR.toLowerCase())
+  await pagina.locator('#adq-ruc').fill(ruc.n)
   await pagina.locator('#adq-numero').fill(`F009-000${SUFIJO}`)
   await pagina.locator('#adq-total').fill('100')
   await pagina.locator('#adq-emision').fill(hoy)

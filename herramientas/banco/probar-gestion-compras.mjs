@@ -19,9 +19,10 @@
  *
  *   7. Logística saca la segunda de la lista: la deja como la encontró.
  *
- * Necesita al menos tres OC aprobadas que Logística todavía no programa, y
- * ninguna por recoger en la lista del conductor; las que ya lleva encima no
- * estorban (`probar-adquisiciones-compras.mjs` siembra las OC).
+ * Necesita al menos tres OC aprobadas que Logística todavía no programa
+ * (`probar-adquisiciones-compras.mjs` siembra las OC). Si la lista del
+ * conductor trae alguna por recoger, Logística la saca primero (paso 0); las
+ * que el conductor ya lleva encima no estorban.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
  * cuenta si no son las `*.local@metalwork.test` que siembra `preparar.sh`.
  */
@@ -84,6 +85,29 @@ let ocA = ''
 let ocB = ''
 let ocC = ''
 let esperanAntes = 0
+
+// ------------------------------------------------ 0. La lista del conductor, vacía
+// `probar-adquisiciones-compras.mjs` deja programada la OC que siembra con la
+// cotización: Logística la saca con clic, para que esta vuelta empiece en «1.º».
+{
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+  const sacar = () => seccion(pagina, 'titulo-lista').getByRole('button', { name: 'Sacar de la lista' })
+  const sacadas = []
+  for (let n = await sacar().count(); n > 0 && sacadas.length < 10; n = await sacar().count()) {
+    const primera = seccion(pagina, 'titulo-lista').filter({ has: pagina.getByRole('button', { name: 'Sacar de la lista' }) }).first()
+    sacadas.push((await texto(primera)).match(/^\d+\.º · (.+?) · /)?.[1] ?? '?')
+    await primera.getByRole('button', { name: 'Sacar de la lista' }).click()
+    await pagina.getByRole('button', { name: 'Sí, sacarla' }).click()
+    await pagina.waitForFunction(
+      (antes) => [...document.querySelectorAll('section[aria-labelledby="titulo-lista"] button')].filter((b) => b.textContent?.includes('Sacar de la lista')).length < antes,
+      n,
+      { timeout: 20000 },
+    )
+  }
+  comprobar((await sacar().count()) === 0, `la lista del conductor queda vacía (sacadas: ${sacadas.join(', ') || 'ninguna'})`)
+  await contexto.close()
+}
 
 // ------------------------------------------------ 1. Sin programar, el conductor no sale
 {
