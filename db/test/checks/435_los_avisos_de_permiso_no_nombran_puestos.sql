@@ -12,8 +12,8 @@
 -- Lo que otros checks ya montan se prueba allí, con el texto nuevo: anular el
 -- reporte diario (342), el código interno de la OS (348), comprar un
 -- requerimiento del otro tipo (349 y 383), los pasos de la ficha (100), la
--- hoja del área (220), la revisión de los reportes del taller (323) y el alta de
--- una cuenta con su DNI (403_lo_que_dks_decidio_el_20_de_octubre).
+-- hoja del área (220), la revisión de los reportes del taller (323), y el alta de
+-- una cuenta con su DNI y el costo por hora propio (403_lo_que_dks_decidio_el_20_de_octubre).
 -- Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -21,7 +21,7 @@ begin;
 -- ============================================ 0. El catálogo
 -- Ninguna función de la base dice ya un aviso viejo: una migración que copie una
 -- versión anterior de alguna lo devolvería sin que nada avise. Y cada una de las
--- 39 dice el suyo.
+-- 40 dice el suyo.
 do $$
 declare v_quedan text;
 begin
@@ -75,7 +75,8 @@ begin
            $t$'Solo Supervisión del área puede modificar esta tarea.'$t$,
            $t$'Solo Supervisión del área puede crear o modificar esta tarea.'$t$,
            $t$'El reporte de la tarea corresponde al supervisor.'$t$,
-           $t$'La resuelve %, quien la anotó o el jefe de producción.'$t$
+           $t$'La resuelve %, quien la anotó o el jefe de producción.'$t$,
+           $t$'Solo un administrador puede cambiar el rol, el área, la sede, el costo por hora, el alcance o el estado de un usuario'$t$
          ]) v where position(v in p.prosrc) > 0);
   perform test.afirmar(v_quedan is null,
     'ninguna función nombra puestos en un aviso de permiso' || coalesce(': quedan ' || v_quedan, ''));
@@ -126,14 +127,15 @@ begin
            ('public.fn_ot_etapa_responsabilidades()', $t$'No tienes permiso para definir las horas previstas de la etapa.'$t$),
            ('public.fn_ot_etapa_responsabilidades()', $t$'No tienes permiso para ordenar las etapas de producción.'$t$),
            ('public.fn_ot_etapa_responsabilidades()', $t$'No tienes permiso para registrar el avance de las etapas.'$t$),
-           ('public.validar_editor_tarea_ot()', $t$'No tienes permiso para modificar esta tarea.'$t$),
+           ('public.validar_editor_tarea_ot()', $t$'No tienes permiso para modificar ni quitar esta tarea.'$t$),
            ('public.validar_editor_tarea_ot()', $t$'No tienes permiso para crear ni modificar esta tarea.'$t$),
            ('public.validar_reporte_taller()', $t$'No tienes permiso para registrar ni corregir el reporte de la tarea.'$t$),
-           ('public.resolver_observacion_ot(uuid,text)', $t$'No tienes permiso para resolver esta observación.'$t$)
+           ('public.resolver_observacion_ot(uuid,text)', $t$'No tienes permiso para resolver esta observación.'$t$),
+           ('public.fn_usuario_proteger_rol()', $t$'No tienes permiso para cambiar estos datos de la cuenta.'$t$)
          ) as x(f, nuevo)
    where position(nuevo in (select p.prosrc from pg_proc p where p.oid = f::regprocedure)) = 0;
   perform test.afirmar(v_quedan is null,
-    'las 39 funciones dicen su aviso nuevo, los 48' || coalesce(': falta en ' || v_quedan, ''));
+    'las 40 funciones dicen su aviso nuevo, los 49' || coalesce(': falta en ' || v_quedan, ''));
 end $$;
 
 -- ============================================ 1. Las cuentas, cada una con su puesto

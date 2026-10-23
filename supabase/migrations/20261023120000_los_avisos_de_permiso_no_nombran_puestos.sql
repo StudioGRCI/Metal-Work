@@ -3,7 +3,7 @@
 -- DKS objetó los avisos que, al negar algo, dicen qué puestos sí pueden
 -- («Adquisiciones la ven Contabilidad, Tesorería y Logística»): no eran ciertos
 -- y cambian cada vez que cambia un permiso, sin que nadie se acuerde de este
--- texto. La 20261022220000 arregló siete. Aquí van los demás: 48 avisos en 39
+-- texto. La 20261022220000 arregló siete. Aquí van los demás: 49 avisos en 40
 -- funciones pasan a la forma «No tienes permiso para <lo que se quiso hacer>.»,
 -- que sigue siendo cierta aunque mañana el permiso lo tenga otro puesto.
 --
@@ -24,6 +24,9 @@
 --     también puede, «Solo Administración puede crear pasos de verificación»
 --     donde también puede el jefe de maestranza, «Las cuentas de la planilla las
 --     ve Tesorería» cuando también las ve Recursos Humanos.
+--   * «Solo un administrador puede cambiar el rol, el área, la sede, el costo por
+--     hora…» de una cuenta: el costo por hora tampoco lo cambia el administrador
+--     desde el 20 de octubre, y al administrador se le decía otra cosa.
 --
 -- Lo que no se toca, y por qué:
 --   * Los avisos donde la regla es el puesto mismo, escrito en el código:
@@ -125,7 +128,7 @@ begin
       (18, 'asistencia_buscar_por_dni(text)',
        $v$'La búsqueda por DNI es de la portería y de Recursos Humanos.'$v$,
        $v$'No tienes permiso para buscar por DNI.'$v$),
-      -- La rama del administrador, aquí y en exigir_permiso_del_puesto, que la heredan las 35
+      -- La rama del administrador, aquí y en exigir_permiso_del_puesto, que la heredan las 34
       -- funciones que la llaman (rrhh_*, planilla diaria, reporte diario, marcar_asistencia).
       -- La rama de los demás («No tiene el permiso % …») no nombra puestos y no cambia.
       (19, 'anular_asistencia(uuid,text)',
@@ -208,9 +211,12 @@ begin
       (44, 'fn_ot_etapa_responsabilidades()',
        $v$'Solo Producción registra el avance de las etapas'$v$,
        $v$'No tienes permiso para registrar el avance de las etapas.'$v$),
+      -- En el flujo de hoy la regla de la tarea es el supervisor del área
+      -- (puede_editar_tarea_ot), como en el Grupo G; pasa al estilo nuevo a propósito
+      -- porque el texto sigue siendo cierto. La primera rama salta también al quitarla.
       (45, 'validar_editor_tarea_ot()',
        $v$'Solo Supervisión del área puede modificar esta tarea.'$v$,
-       $v$'No tienes permiso para modificar esta tarea.'$v$),
+       $v$'No tienes permiso para modificar ni quitar esta tarea.'$v$),
       (46, 'validar_editor_tarea_ot()',
        $v$'Solo Supervisión del área puede crear o modificar esta tarea.'$v$,
        $v$'No tienes permiso para crear ni modificar esta tarea.'$v$),
@@ -222,7 +228,13 @@ begin
       -- Se va también el parámetro: sin su %, sobraría y la función no compilaría.
       (48, 'resolver_observacion_ot(uuid,text)',
        $v$'La resuelve %, quien la anotó o el jefe de producción.', v_ob.area$v$,
-       $v$'No tienes permiso para resolver esta observación.'$v$)
+       $v$'No tienes permiso para resolver esta observación.'$v$),
+      -- Los datos de la cuenta: pasa también quien tiene usuarios.gestionar, y el costo
+      -- por hora ya no lo cambia el administrador (20 de octubre). La pista de lo que
+      -- uno sí edita de su cuenta se queda como está.
+      (49, 'fn_usuario_proteger_rol()',
+       $v$'Solo un administrador puede cambiar el rol, el área, la sede, el costo por hora, el alcance o el estado de un usuario'$v$,
+       $v$'No tienes permiso para cambiar estos datos de la cuenta.'$v$)
     ) as c(orden, funcion, viejo, nuevo)
     union all
     select null::integer, null, null, null  -- cierra la última función

@@ -249,7 +249,7 @@ select test.como_usuario(:'operario_id');
 set local role authenticated;
 select test.debe_fallar($$
   update public.usuarios set costo_hora = 999 where id = current_setting('prueba.operario')::uuid
-$$, 'nadie se cambia su propio costo por hora', 'Solo un administrador');
+$$, 'nadie se cambia su propio costo por hora', 'No tienes permiso para cambiar estos datos de la cuenta.');
 select test.afirmar((select count(*) from public.usuario_datos_reservados) = 0,
   'el operario no lee ni su propio costo por hora');
 reset role;
