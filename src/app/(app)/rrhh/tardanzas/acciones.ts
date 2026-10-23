@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function guardarReglaTardanza(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: 'La regla de tardanza la ajusta Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'rrhh.personal')) return { ok: false, error: 'No tienes permiso para ajustar la regla de tardanza.' }
 
   const analisis = z
     .object({

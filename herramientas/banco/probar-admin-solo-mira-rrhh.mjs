@@ -12,6 +12,7 @@
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * BANCO_ADMIN (correo del administrador en el banco), CAPTURAS.
  */
+import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -117,7 +118,9 @@ const deRrhh = new Map()
 // Aunque llamara a la base por su cuenta, el administrador no guarda el costo.
 {
   const [admin] = (await base.query('select id from public.usuarios where lower(correo) = lower($1)', [CUENTAS.admin])).rows
-  const [persona] = (await base.query('select id from public.trabajadores where activo order by creado_en limit 1')).rows
+  // El permiso se mira antes que la persona: si el banco todavía no tiene ninguna
+  // (la siembran otras sondas), basta un id cualquiera.
+  const persona = (await base.query('select id from public.trabajadores where activo order by creado_en limit 1')).rows[0] ?? { id: randomUUID() }
   let mensaje = ''
   await base.query('begin')
   try {

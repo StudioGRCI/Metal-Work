@@ -292,7 +292,7 @@ export async function validarReporteDiario(_previo: unknown, formulario: FormDat
   const analisis = z.object({ id: z.guid(), lado: LADO }).safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const { id, lado } = analisis.data
-  if (!daElVisto(perfil, lado)) return { ok: false, error: `El visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} lo da esa área.` }
+  if (!daElVisto(perfil, lado)) return { ok: false, error: `No tienes permiso para dar el visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'}.` }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('validar_reporte_diario', { p_id: id, p_lado: lado })
