@@ -1,13 +1,14 @@
 'use client'
 
 import { ArrowLeftRight, Ban, ImageIcon, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -52,24 +53,36 @@ function useVentana() {
 // ---------------------------------------------------------------- ingreso o egreso
 
 /**
- * El id del movimiento vive aquí, fuera del formulario que se rehace cada vez
- * que se abre (`useIdDelEnvio`): tras «No llegó la respuesta», cancelar y volver
- * a abrir lleva el mismo, y la base dice que ya quedó en vez de registrarlo dos
- * veces. Con un movimiento más a la vista, aquel entró y el siguiente lleva
- * otro. Antes el id nacía con el formulario y el mismo egreso entraba dos veces
- * (decimoquinta pasada).
+ * Un solo id pendiente para los movimientos de la caja, sea cual sea el botón:
+ * el de la cabecera y el de cada cuenta abren la misma ventana, y tras «No llegó
+ * la respuesta», cancelar en uno y volver a abrir en el otro llevaba otro id, y
+ * el mismo egreso entraba dos veces (decimosexta pasada).
  */
-export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, movimientos, compacto = false }: {
+const EnvioDelMovimiento = createContext<ReturnType<typeof useIdDelEnvio> | null>(null)
+
+export function EnviosDeLaCaja({ children }: { children: ReactNode }) {
+  const movimiento = useIdDelEnvio('movimiento_caja')
+  return <EnvioDelMovimiento.Provider value={movimiento}>{children}</EnvioDelMovimiento.Provider>
+}
+
+/**
+ * El id del movimiento vive fuera del formulario que se rehace cada vez que se
+ * abre (`useIdDelEnvio`, compartido por `EnviosDeLaCaja`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y la base dice que ya
+ * quedó en vez de registrarlo dos veces; si aquel entró, la ventana lo dice y el
+ * siguiente lleva otro. Antes el id nacía con el formulario y el mismo egreso
+ * entraba dos veces (decimoquinta pasada).
+ */
+export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto = false }: {
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
   codigos: CodigoParaElegir[] | null
-  /** Cuántos movimientos se ven de ese día. */
-  movimientos: number
   compacto?: boolean
 }) {
   const v = useVentana()
-  const envio = useIdDelEnvio(movimientos)
+  const propio = useIdDelEnvio('movimiento_caja')
+  const envio = useContext(EnvioDelMovimiento) ?? propio
   const cuenta = cuentas.find((c) => c.id === cuentaId)
   return (
     <>
@@ -102,6 +115,7 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, movimient
         descripcion={`Del ${fecha(dia)}. Solo lo que no pasa por el sistema: los pagos y cobros de Tesorería —facturas, órdenes de servicio, recibos, planilla diaria— entran solos. Escríbelo como sale en el estado de cuenta; si es de una unidad, con su código interno.`}
         ancho="md"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && <FormularioMovimiento key={v.vez} envio={envio} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />}
       </Ventana>
     </>
@@ -185,9 +199,9 @@ function FormularioMovimiento({ envio, cuentas, cuentaId, dia, codigos, alTermin
 // ---------------------------------------------------------------- entre cuentas
 
 /** Como el movimiento: el id vive aquí y se conserva hasta saber cómo terminó. */
-export function Transferir({ cuentas, dia, movimientos }: { cuentas: CuentaElegible[]; dia: string; movimientos: number }) {
+export function Transferir({ cuentas, dia }: { cuentas: CuentaElegible[]; dia: string }) {
   const v = useVentana()
-  const envio = useIdDelEnvio(movimientos)
+  const envio = useIdDelEnvio('transferencia_caja')
   if (cuentas.length < 2) return null
   return (
     <>
@@ -211,6 +225,7 @@ export function Transferir({ cuentas, dia, movimientos }: { cuentas: CuentaElegi
         descripcion={`Del ${fecha(dia)}: sale de una cuenta y entra a la otra el mismo día, como la reposición de la caja chica o la compra de dólares.`}
         ancho="md"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && <FormularioTransferencia key={v.vez} envio={envio} cuentas={cuentas} dia={dia} alTerminar={v.cerrar} />}
       </Ventana>
     </>

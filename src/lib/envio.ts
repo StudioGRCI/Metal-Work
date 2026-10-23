@@ -1,7 +1,9 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
+import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
+import type { ClaveDelEnvio } from '@/lib/dominio/envios'
 import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
@@ -215,33 +217,63 @@ export function useEnvio<T = never>(
 }
 
 /**
- * El id de un envío que vive fuera de su ventana (el pago de la tarjeta), con el
- * estado de la pantalla con que salió: el saldo, lo facturado, lo que queda a
- * favor. Se conserva hasta saber cómo terminó: tras «No llegó la respuesta»,
+ * El id de un envío que vive fuera de su ventana (el pago de la tarjeta, la OS,
+ * el RQ). Se conserva hasta saber cómo terminó: tras «No llegó la respuesta»,
  * cancelar y volver a abrir lleva el mismo, y lo repetido dice que ya quedó en
- * vez de entrar dos veces (decimocuarta pasada). Pero si al volver a abrir la
- * pantalla ya cambió —el saldo bajó—, aquel envío entró y este es otro: con el
- * mismo id, pagar lo que faltaba decía «ya quedó» y no se registraba
- * (decimoquinta pasada). Si la pantalla todavía no se puso al día, sale el
- * mismo id: lo peor es un «ya quedó» que se cierra, nunca un pago doble.
+ * vez de entrar dos veces (decimocuarta pasada).
+ *
+ * Al volver a abrir se pregunta a la base si aquel envío entró
+ * (`consultarEnvio`). Si entró, lo que se escriba ahora es otro documento u otro
+ * pago: con el mismo id, la OS, el RQ o el subcontrato siguiente decía «ya
+ * quedó» y no se guardaba, aunque la lista ya mostrara el primero (decimosexta
+ * pasada). Entonces la ventana dice cuál quedó (`anterior`) y lleva un id nuevo.
+ * Mientras la base no contesta, o si no entró, sigue el mismo: lo peor es un «ya
+ * quedó» que se cierra, nunca un documento doble. Antes se adivinaba por el
+ * estado de la pantalla —el saldo había bajado—, y tras ponerse al día el mismo
+ * pago entraba dos veces sin que nada lo dijera (decimosexta pasada).
+ *
+ * Sin `clave` no se pregunta: es el id de algo que sale con el documento (su
+ * factura, su contrato), y se renueva con él (`alEntrar`).
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
- * `otro()` con el ok y con `alYaEntrar`.
+ * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
+ * (`EnvioAnterior`).
  */
-export function useIdDelEnvio(estado?: string | number) {
+export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void) {
   const [id, setId] = useState<string | null>(null)
-  const enviado = useRef<{ id: string; estado: string | number | undefined } | null>(null)
+  const [anterior, setAnterior] = useState<string | null>(null)
+  // El id que salió sin que se sepa cómo terminó.
+  const pendiente = useRef<string | null>(null)
+  // Cambia con cada apertura y cada envío: la respuesta de una consulta vieja no pisa lo que vino después.
+  const turno = useRef(0)
   return {
     id,
+    anterior,
     abrir() {
-      const previo = enviado.current
-      setId(previo && previo.estado === estado ? previo.id : crypto.randomUUID())
+      const previo = pendiente.current
+      const este = ++turno.current
+      setAnterior(null)
+      setId(previo ?? crypto.randomUUID())
+      if (!previo || !clave) return
+      consultarEnvio(clave, previo).then(
+        (entro) => {
+          if (!entro || turno.current !== este) return
+          pendiente.current = null
+          setId(crypto.randomUUID())
+          setAnterior(entro)
+          alEntrar?.()
+        },
+        // Sin respuesta tampoco se sabe: sigue el mismo id.
+        () => {},
+      )
     },
     salio() {
-      if (id) enviado.current = { id, estado }
+      turno.current++
+      if (id) pendiente.current = id
     },
     otro() {
-      enviado.current = null
+      turno.current++
+      pendiente.current = null
       setId(crypto.randomUUID())
     },
   }

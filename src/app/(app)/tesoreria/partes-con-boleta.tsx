@@ -9,6 +9,7 @@ import { ImportePropuesto } from '@/components/finanzas/importe-propuesto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -27,8 +28,9 @@ const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
  * 20261022200000): el día, lo pagado (hasta lo que le queda), el número de
  * operación, la cuenta de la caja y el voucher, que sube primero a
  * `pagos-compras/{oc}/…`. Como los demás pagos de Tesorería, el id vive fuera
- * de la ventana (`useIdDelEnvio`): un reintento no registra otro, y con el saldo
- * ya al día el siguiente lleva otro. El aviso y los botones van en
+ * de la ventana (`useIdDelEnvio`): un reintento no registra otro, y si aquel
+ * entró, la ventana lo dice al volver a abrirse y el siguiente lleva otro. El
+ * aviso y los botones van en
  * `PieDeVentana`, y el importe propone el saldo sin pisar lo escrito.
  */
 export function PagarParte({
@@ -55,7 +57,7 @@ export function PagarParte({
   /** El PDF de la OC, la boleta y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio(saldo)
+  const pago = useIdDelEnvio('pago_parte_boleta')
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const avisar = useAvisoDeLaCaja()
@@ -103,9 +105,10 @@ export function PagarParte({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Pago de la boleta ${boleta}`}
-        descripcion={`${proveedor.trim().replace(/\.$/, '')} · ${numero}. Le quedan ${moneda(saldo, codigoMoneda)}.`}
+        descripcion={`${proveedor.trim()} · ${numero}. Le quedan ${moneda(saldo, codigoMoneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={pago.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           {paraPagar}

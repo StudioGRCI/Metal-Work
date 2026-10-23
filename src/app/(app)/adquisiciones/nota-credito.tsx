@@ -7,6 +7,7 @@ import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -45,7 +46,8 @@ function useAvisar() {
  * devolvió, ligada a esa devolución, o por un descuento. El PDF sube primero a
  * `notas-credito/{factura}/…`. La factura baja sola; lo que no cabe en ella
  * queda a favor y le llega a Tesorería. El id vive fuera de la ventana
- * (`useIdDelEnvio`): un reintento del mismo envío no registra otra.
+ * (`useIdDelEnvio`): un reintento del mismo envío no registra otra, y si aquella
+ * entró, la ventana lo dice al volver a abrirse y la siguiente lleva otro.
  */
 export function RegistrarNotaCredito({
   factura,
@@ -62,8 +64,7 @@ export function RegistrarNotaCredito({
   principal?: boolean
 }) {
   const m = factura.moneda === 'USD' ? 'USD' : 'PEN'
-  // La devolución que entra con su nota deja la lista de las que esperan una.
-  const nota = useIdDelEnvio(devoluciones.map((d) => d.id).join(','))
+  const nota = useIdDelEnvio('nota_credito')
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState<'DEVOLUCION' | 'DESCUENTO'>('DEVOLUCION')
   const [devolucion, setDevolucion] = useState('')
@@ -122,6 +123,7 @@ export function RegistrarNotaCredito({
         descripcion={`${conPunto(factura.proveedor)} La factura baja sola por el total de la nota; si ya estaba pagada, lo que sobra queda a favor y Tesorería lo descuenta de otra factura o registra que el proveedor lo devolvió.`}
         ancho="md"
       >
+        <EnvioAnterior texto={nota.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={nota.id ?? ''} />
           <input type="hidden" name="factura" value={factura.id} />

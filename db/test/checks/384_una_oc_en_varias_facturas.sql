@@ -247,4 +247,41 @@ select test.afirmar((select numero_documento = 'F001-45' and fecha_emision = cur
                     and exists (select 1 from public.documentos_compra_material where id = current_setting('prueba.d5')::uuid),
   'la factura queda con su número como lo guarda la base y su fecha; la boleta, sin exigirlos');
 
+-- ============================================ 8. La misma factura no se anexa dos veces a la misma OC
+-- (migración 20261023110000). Dos ventanas anexaron la F018-228173 a la OC-5593 con el
+-- mismo PDF bajo dos nombres, y las dos quedaron vigentes.
+select set_config('prueba.d' || n, gen_random_uuid()::text, true) from generate_series(6, 10) n;
+-- Como `anexar`, pero a la OC que se diga.
+create or replace function pg_temp.anexar_a(p_d text, p_oc text, p_numero text) returns void language plpgsql as $$
+declare v_ruta text := 'compra/' || current_setting('prueba.' || p_oc) || '/' || current_setting('prueba.' || p_d) || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('documentos-compras', v_ruta, current_setting('prueba.comprador'), '{"mimetype": "application/pdf", "size": 2048}')
+  on conflict do nothing;
+  insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
+                                                 numero_documento, fecha_emision)
+  values (current_setting('prueba.' || p_d)::uuid, current_setting('prueba.' || p_oc)::uuid, 'FACTURA', p_d || '.pdf', v_ruta,
+          'application/pdf', 2048, p_numero, current_setting('prueba.hoy')::date);
+end $$;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(not public.es_admin(), 'Logística anexa sin entrar por es_admin()');
+select test.debe_fallar($q$select pg_temp.anexar_a('d6', 'ocE', 'F001-0045')$q$,
+  'la F001-45 ya anexada a la OC E no se anexa otra vez, aunque se escriba de otra forma',
+  'La factura F001-45 ya está anexada a la ' || (select numero from public.ordenes_compra_materiales
+                                                 where id = current_setting('prueba.ocE')::uuid));
+select pg_temp.anexar_a('d7', 'ocD', 'F001-45');
+select pg_temp.anexar_a('d8', 'ocE', 'F001-46');
+select public.anular_documento_compra(current_setting('prueba.d4')::uuid, 'El PDF que se anexó era el de otra compra');
+select pg_temp.anexar_a('d9', 'ocE', 'F001-45');
+reset role;
+select test.afirmar(exists (select 1 from public.documentos_compra_material where id = current_setting('prueba.d7')::uuid),
+  'la misma factura en otra OC del mismo proveedor sí entra: una factura cubre varias OC');
+select test.afirmar(exists (select 1 from public.documentos_compra_material where id = current_setting('prueba.d8')::uuid),
+  'otra factura en la misma OC sí entra: una OC en varias facturas');
+select test.afirmar((select count(*) from public.documentos_compra_material
+                      where orden_compra_id = current_setting('prueba.ocE')::uuid and tipo = 'FACTURA' and anulado_en is null
+                        and numero_documento = 'F001-45') = 1,
+  'anulado el anexo con su motivo, la factura se vuelve a anexar y queda una sola vigente');
+
 rollback;

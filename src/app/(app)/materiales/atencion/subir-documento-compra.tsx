@@ -34,15 +34,18 @@ const TIPOS = [
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
-export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden, alAdjuntar, alCerrar, verAdquisiciones = false }: {
+export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, orden, alSalir, alAdjuntar, alCerrar, verAdquisiciones = false }: {
   ordenCompraId: string
   /**
    * El id del documento, que también es su ruta: el reintento de un envío sin
    * respuesta usa el mismo. Después de adjuntar, el siguiente lleva otro; si
    * la ventana se cierra y se vuelve a abrir, `alAdjuntar` le avisa a quien lo
-   * guarda para que no vuelva con el del documento que ya entró.
+   * guarda para que no vuelva con el del documento que ya entró. Si quien lo
+   * guarda lo cambia (la base dijo que aquel entró), el formulario toma el nuevo.
    */
   solicitudId: string
+  /** Al enviar: quien guarda el id lo conserva hasta saber cómo terminó (`useIdDelEnvio`). */
+  alSalir?: () => void
   alAdjuntar?: () => void
   /**
    * Dentro de una ventana: tras «ya quedó» el formulario se traba y solo queda
@@ -57,6 +60,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   verAdquisiciones?: boolean
 }) {
   const [id, setId] = useState(solicitudId)
+  const [dado, setDado] = useState(solicitudId)
+  if (solicitudId !== dado) {
+    setDado(solicitudId)
+    setId(solicitudId)
+  }
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
   // La OC que llega en partes: esta boleta es solo de una parte y el resto llega con factura.
   const [parte, setParte] = useState(false)
@@ -99,6 +107,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     }
     datos.delete('archivo')
     datos.set('nombre_archivo', archivo.name.trim().slice(0, 200))
+    alSalir?.()
     const r = await subirArchivoPrivado({
       bucket: 'documentos-compras', ruta: `compra/${ordenCompraId}/${id}.pdf`,
       archivo, contentType: 'application/pdf', registrar: () => registrarDocumentoCompra(null, datos),

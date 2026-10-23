@@ -138,7 +138,7 @@ export function Ventana({
       document.removeEventListener('keydown', escapeSuelto)
       document.body.style.overflow = rodadoPrevio
       // Una ventana que nace abierta no tiene botón al que volver.
-      if (veniaDe && veniaDe !== document.body) veniaDe.focus()
+      if (veniaDe && veniaDe !== document.body) devolverElCursor(veniaDe)
       // Lo que esperaba a que se cerrara: la pantalla de detrás, al día.
       cerroVentana(marca)
     }
@@ -224,6 +224,31 @@ export function Ventana({
     </div>,
     document.body,
   )
+}
+
+/**
+ * El cursor vuelve al botón que abrió la ventana. Ese botón puede irse justo
+ * después, cuando la pantalla se pone al día al cerrarla: la OC que se sacó de
+ * la lista, la factura que quedó completa. El cursor caía entonces al <body> y
+ * el teclado y el lector de pantalla volvían al principio de todo (decimosexta
+ * pasada). Si el botón desaparece con el cursor encima, el cursor va al
+ * contenido de la página.
+ */
+function devolverElCursor(boton: HTMLElement) {
+  const alContenido = () => {
+    if (document.activeElement && document.activeElement !== document.body) return
+    document.querySelector<HTMLElement>('main[tabindex]')?.focus({ preventScroll: true })
+  }
+  if (!boton.isConnected) return alContenido()
+  boton.focus()
+  const vigia = new MutationObserver(() => {
+    if (boton.isConnected) return
+    vigia.disconnect()
+    alContenido()
+  })
+  vigia.observe(document.body, { childList: true, subtree: true })
+  // La pantalla al día llega en segundos; después, quien mueve el cursor es la persona.
+  setTimeout(() => vigia.disconnect(), 15000)
 }
 
 /**

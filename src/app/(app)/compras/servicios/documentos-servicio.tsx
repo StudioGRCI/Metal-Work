@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -65,15 +66,11 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * en dos OS—, el contrato del trabajo u otro documento. El archivo sube primero a
  * `documentos-servicio/{orden de servicio}/…` y, si la anotación no entra, se
  * retira. El id vive fuera de la ventana (`useIdDelEnvio`): un reintento no
- * anota otro, y con un documento más en la OS el siguiente lleva otro.
+ * anota otro, y si aquel entró, la ventana lo dice al volver a abrirse y el
+ * siguiente lleva otro.
  */
-export function AdjuntarDocumentoServicio({ ordenServicioId, numero, documentos }: {
-  ordenServicioId: string
-  numero: string
-  /** Cuántos documentos tiene ya la OS. */
-  documentos: number
-}) {
-  const documento = useIdDelEnvio(documentos)
+export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
+  const documento = useIdDelEnvio('documento_servicio')
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
 
@@ -122,6 +119,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero, documentos 
         titulo={`Documento de la ${numero}`}
         ancho="md"
       >
+        <EnvioAnterior texto={documento.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={documento.id ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />

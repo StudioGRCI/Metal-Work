@@ -10,7 +10,7 @@ import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
+import { yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
@@ -36,7 +36,8 @@ type Area = { id: string; codigo: string; nombre: string }
 /**
  * El aviso del formulario sin ventana. Si la base dice que el envío ya entró la
  * primera vez, no es un rechazo: va sin rojo, como en `PieDeVentana`, y el
- * formulario ya se vació para el próximo (decimoquinta pasada).
+ * formulario ya se vació para el próximo (decimoquinta pasada). No pide
+ * recargar: la lista ya se puso al día, y dice que lo de esta vez no se guardó.
  */
 function Alerta({ error, mensaje, aviso }: { error: string | null; mensaje?: string | null; aviso?: RefObject<HTMLParagraphElement | null> }) {
   if (error) {
@@ -49,7 +50,7 @@ function Alerta({ error, mensaje, aviso }: { error: string | null; mensaje?: str
         data-ya-entro={yaEntro || undefined}
         className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
       >
-        {error}
+        {yaEntro ? yaEntroSinVentana(error) : error}
       </p>
     )
   }

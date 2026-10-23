@@ -8,10 +8,11 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { CampoContrato, sacarContrato } from '@/components/estructura/contrato-adjunto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
 import type { Subcontratista } from '@/lib/datos/subcontratos'
 import { problemaDeContrato } from '@/lib/dominio/contratos'
@@ -64,9 +65,10 @@ export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas
   // Los ids del subcontrato y de su contrato viven aquí, fuera del formulario que
   // se rehace al abrir: tras «No llegó la respuesta», cancelar y volver a abrir
   // lleva los mismos, y la base no registra otro SC numerado con lo mismo
-  // (decimoquinta pasada). Se renuevan con el ok o cuando la base dice que ya quedó.
-  const subcontrato = useIdDelEnvio()
+  // (decimoquinta pasada). Se renuevan con el ok, cuando la base dice que ya quedó
+  // o cuando, al volver a abrir, la base dice que aquel subcontrato entró.
   const contrato = useIdDelEnvio()
+  const subcontrato = useIdDelEnvio('subcontrato', () => contrato.otro())
   return (
     <>
       <Boton
@@ -89,6 +91,7 @@ export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas
         descripcion="Un trabajo que se le encarga a una persona de fuera y que cobra con recibos por honorarios. El número SC-… lo pone el sistema."
         ancho="lg"
       >
+        <EnvioAnterior texto={subcontrato.anterior} />
         {subcontrato.id && contrato.id && (
           <FormularioSubcontrato
             key={vez}
@@ -144,6 +147,11 @@ function FormularioSubcontrato({
     if (problema) return { ok: false, error: problema }
     alSalir()
     const r = await registrarSubcontrato(previo, datos)
+    // Con «ya quedó» el subcontrato es el de la primera vez y el contrato no sube:
+    // se dice dónde adjuntarlo (decimosexta pasada).
+    if (!r.ok && contrato && yaEntroLaPrimeraVez(r.error)) {
+      return { ok: false, error: `${yaEntroEnLaVentana(r.error)} El contrato que elegiste no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».` }
+    }
     if (!r.ok || !contrato) return r.ok ? { ...r, datos: { id, contratoPendiente: false } } : r
     const c = await subirContrato({
       bucket: BUCKET_SUBCONTRATOS,

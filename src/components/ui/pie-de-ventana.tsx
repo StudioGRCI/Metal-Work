@@ -61,7 +61,8 @@ export function PieDeVentana({
   // que React vuelve a encender después: los campos con `disabled={enviando}`
   // estaban apagados al llegar el aviso, se saltaban y quedaban editables, y un
   // campo que la pantalla al día vuelve a montar salía activo (decimoquinta
-  // pasada). Al soltarse se enciende solo lo que se apagó aquí.
+  // pasada). Al soltarse se enciende solo lo que se apagó aquí. La ayuda de un
+  // campo («Qué es…») no se traba: leerla no cambia nada.
   useEffect(() => {
     const formulario = pie.current?.closest('form')
     if (!yaEntro || !formulario) return
@@ -69,7 +70,7 @@ export function PieDeVentana({
     const trabar = () => {
       for (const c of formulario.elements) {
         if (!(c instanceof HTMLInputElement || c instanceof HTMLSelectElement || c instanceof HTMLTextAreaElement || c instanceof HTMLButtonElement)) continue
-        if (c.disabled || pie.current?.contains(c)) continue
+        if (c.disabled || pie.current?.contains(c) || c.hasAttribute('data-ayuda')) continue
         c.disabled = true
         trabados.add(c)
       }

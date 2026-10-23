@@ -12,6 +12,7 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
@@ -121,8 +122,9 @@ export function TableroMateriales({
   const [avisoCompra,setAvisoCompra]=useState<string|null>(null)
   // El id de la orden vive aquí y no en el formulario, que se rehace al abrir:
   // tras «No llegó la respuesta», cancelar y volver a abrir lleva el mismo, y la
-  // base no emite otra OC numerada con lo mismo (decimoquinta pasada).
-  const ordenNueva = useIdDelEnvio()
+  // base no emite otra OC numerada con lo mismo (decimoquinta pasada). Si al
+  // volver a abrir la base dice que aquella entró, la ventana lo dice y lleva otro.
+  const ordenNueva = useIdDelEnvio('orden_compra')
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
@@ -150,6 +152,7 @@ export function TableroMateriales({
       </div>
       {avisoCompra && <p role="status" className="rounded-md bg-exito-suave px-3 py-2 text-sm text-exito">{avisoCompra}</p>}
       <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
+        <EnvioAnterior texto={ordenNueva.anterior} />
         {ordenNueva.id&&<FormularioCompra id={ordenNueva.id} alSalir={ordenNueva.salio} alYaEntrar={ordenNueva.otro} alCancelar={()=>setCompraAbierta(false)} lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);ordenNueva.otro();setAvisoCompra(mensaje??null)}} />}
       </Ventana>
       {lineas.length > 0 && (

@@ -6,12 +6,13 @@ import { useState } from 'react'
 import { SubirDocumentoCompra } from '@/app/(app)/materiales/atencion/subir-documento-compra'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir } from './acciones'
 
@@ -63,9 +64,10 @@ export function AccionesCompra({
   }
   // El documento lleva un identificador fijo: un reintento no lo duplica. La
   // ventana desmonta el formulario al cerrarse, así que se guarda aquí, y cambia
-  // solo cuando uno entró: si no, el segundo documento de la OC volvía con el
-  // id y la ruta del primero.
-  const [idDocumento, setIdDocumento] = useState(() => crypto.randomUUID())
+  // cuando uno entró: si no, el segundo documento de la OC volvía con el id y la
+  // ruta del primero. Al volver a abrir tras «No llegó la respuesta», la base
+  // dice si aquel entró (`useIdDelEnvio`).
+  const documento = useIdDelEnvio('documento_compra')
   const envio = useAccion(mandarARecojo)
 
   return (
@@ -87,7 +89,15 @@ export function AccionesCompra({
         </Boton>
       )}
       {adjuntar && (
-        <Boton type="button" variante="contorno" tamano="sm" onClick={() => setDocumentos(true)}>
+        <Boton
+          type="button"
+          variante="contorno"
+          tamano="sm"
+          onClick={() => {
+            documento.abrir()
+            setDocumentos(true)
+          }}
+        >
           <FileUp aria-hidden className="size-4" />
           Adjuntar
         </Boton>
@@ -119,15 +129,19 @@ export function AccionesCompra({
         }
         ancho="lg"
       >
-        <SubirDocumentoCompra
-          ordenCompraId={id}
-          solicitudId={idDocumento}
-          alAdjuntar={() => setIdDocumento(crypto.randomUUID())}
-          alCerrar={() => setDocumentos(false)}
-          tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
-          orden={{ numero, total, moneda }}
-          verAdquisiciones={verAdquisiciones}
-        />
+        <EnvioAnterior texto={documento.anterior} />
+        {documento.id && (
+          <SubirDocumentoCompra
+            ordenCompraId={id}
+            solicitudId={documento.id}
+            alSalir={documento.salio}
+            alAdjuntar={documento.otro}
+            alCerrar={() => setDocumentos(false)}
+            tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
+            orden={{ numero, total, moneda }}
+            verAdquisiciones={verAdquisiciones}
+          />
+        )}
       </Ventana>
       <Ventana
         abierta={corrigiendo}

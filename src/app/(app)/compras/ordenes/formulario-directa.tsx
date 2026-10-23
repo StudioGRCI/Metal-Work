@@ -8,9 +8,11 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
@@ -152,6 +154,7 @@ export function NuevaCompraDirecta({
         descripcion="Sin requerimiento: para el almacén. El número OC-…-MW lo pone el sistema y Gerencia la aprueba antes de que el conductor la recoja."
         ancho="xl"
       >
+        <EnvioAnterior texto={ids.anterior} />
         {ids.listos && (
           <FormularioCompraDirecta
             key={vez}
@@ -195,8 +198,7 @@ export function GenerarCompraDeInsumos({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  // Los insumos marcados son el estado: con otros, es otra orden.
-  const ids = useIdsDeLaCompra(insumos.map((i) => i.id).join(','))
+  const ids = useIdsDeLaCompra()
   const rqs = new Set(insumos.map((i) => i.requerimiento_id)).size
   return (
     <>
@@ -225,6 +227,7 @@ export function GenerarCompraDeInsumos({
         descripcion="Una línea por material, con lo que falta de él en cada requerimiento. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y cada requerimiento queda listo."
         ancho="xl"
       >
+        <EnvioAnterior texto={ids.anterior} />
         {ids.listos && (
           <FormularioCompraDirecta
             key={vez}
@@ -250,16 +253,18 @@ export function GenerarCompraDeInsumos({
  * Los ids de la orden y de su comprobante viven en el botón que abre la
  * ventana, no en el formulario que se rehace al abrirla: tras «No llegó la
  * respuesta», cancelar y volver a abrir lleva los mismos, y la base no emite
- * otra OC numerada con lo mismo (decimoquinta pasada). Se renuevan con el ok o
- * cuando la base dice que ya quedó.
+ * otra OC numerada con lo mismo (decimoquinta pasada). Se renuevan con el ok,
+ * cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
+ * que aquella orden entró (`anterior`).
  */
-function useIdsDeLaCompra(estado?: string) {
-  const orden = useIdDelEnvio(estado)
-  const factura = useIdDelEnvio(estado)
+function useIdsDeLaCompra() {
+  const factura = useIdDelEnvio()
+  const orden = useIdDelEnvio('orden_compra', () => factura.otro())
   return {
     listos: Boolean(orden.id && factura.id),
     orden: orden.id ?? '',
     factura: factura.id ?? '',
+    anterior: orden.anterior,
     abrir() {
       orden.abrir()
       factura.abrir()
@@ -374,6 +379,14 @@ function FormularioCompraDirecta({
       )
       ids.salio()
       const emitida = deInsumos ? await emitirCompraDeInsumos(null, datos) : await emitirCompraDirecta(null, datos)
+      // La orden ya había entrado y su archivo no: sin respuesta de la primera
+      // vez, el comprobante nunca se envió. Se dice dónde adjuntarlo, como en la OS.
+      if (!emitida.ok && adjuntando && yaEntroLaPrimeraVez(emitida.error)) {
+        return {
+          ok: false,
+          error: `${yaEntroEnLaVentana(emitida.error)} ${nombre} que elegiste no se adjuntó: adjúntal${o} desde la fila de la orden, con «Adjuntar».`,
+        }
+      }
       if (!emitida.ok || !adjuntando) return emitida
 
       const documento = new FormData()

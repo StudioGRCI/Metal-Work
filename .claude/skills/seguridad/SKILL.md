@@ -242,6 +242,16 @@ En la misma migración que la crea, sin excepción:
   refresco, o la ventana nueva sale trabada mientras la señal tarda. Ojo donde la función devuelve el id existente sin comparar el
   envío (la caja diaria): conservar el id ahí haría que lo distinto se diera
   por guardado. Primero la función compara; después se conserva el id.
+  **Al volver a abrir, se pregunta a la base** (`useIdDelEnvio(clave)` con
+  `consultarEnvio`, en `src/app/(app)/acciones-envio.ts`): si aquel envío
+  entró, la ventana lo dice con su número (`EnvioAnterior`) y lleva otro id.
+  Sin preguntar, la OS, el RQ o el SC siguiente decía «ya quedó» y no se
+  guardaba aunque la lista ya mostrara el primero; y adivinarlo por la
+  pantalla (el saldo había bajado) dejaba entrar el mismo pago dos veces en
+  cuanto la tarjeta se ponía al día (decimosexta). Una ventana nueva que pide
+  documento o dinero lleva su clave en `src/lib/dominio/envios.ts` y su caso en
+  `consultarEnvio`; el id que sale con el documento (su factura, su contrato)
+  se renueva con él (`alEntrar`).
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de
   pegarse). Un aviso nuevo de «mismo envío» lleva

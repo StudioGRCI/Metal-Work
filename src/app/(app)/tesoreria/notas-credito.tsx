@@ -8,6 +8,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -142,10 +143,11 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
  * operación, la cuenta de la caja a la que entró —la caja diaria se mueve
  * sola— y la constancia, que sube primero a `notas-credito/{nota}/…`. El id vive
  * fuera de la ventana (`useIdDelEnvio`): un reintento del mismo envío no
- * registra otra.
+ * registra otra, y si aquella entró, la ventana lo dice al volver a abrirse y
+ * la siguiente lleva otro.
  */
 export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy: string; cuentas: CuentaParaPagar[] }) {
-  const reembolso = useIdDelEnvio(nota.aFavor)
+  const reembolso = useIdDelEnvio('reembolso_nota_credito')
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
@@ -202,6 +204,7 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
         descripcion={`${conPunto(nota.proveedor)} Lo que el proveedor te devolvió de lo que la nota tiene a favor: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(nota.aFavor, nota.moneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={reembolso.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
           <input type="hidden" name="id" value={reembolso.id ?? ''} />

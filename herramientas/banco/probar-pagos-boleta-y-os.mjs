@@ -563,6 +563,26 @@ let pagoId
   await boton.click()
   const entro = await hasta(() => v.count(), (n) => n === 0, 30000)
   const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  // 6. Contraprueba: si el envío ni llegó a la base, al volver a abrir no hay nada que decir, sigue el mismo id y el pago entra una vez.
+  await abrir()
+  await llenar('14')
+  corte.sinLlegar = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  corte.sinLlegar = 0
+  cortando = false
+  const consultasAntes = corte.consultas
+  await abrir()
+  await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
+  await llenar('14', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const al14 = await nuevos()
+  comprobar(sinNota && al14.join() === '20,5,7,9,11,13,14',
+    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; pagos ${al14.join(', ')})`)
   const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
                                     and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
@@ -576,10 +596,12 @@ let pagoId
 // La decimocuarta pasada pagó a cuenta, perdió las dos respuestas, canceló y
 // volvió a abrir: la tarjeta seguía en el saldo de antes, la ventana traía otro
 // id y el mismo pago entró dos veces. Ahora la tarjeta se pone al día al
-// cerrar, y el id se conserva hasta saber cómo terminó: el pago repetido dice
-// que ya quedó. Y el «ya quedó» que llega con la ventana ya cerrada (se canceló
-// mientras se enviaba) no se queda guardado: la ventana siguiente abre limpia,
-// con su botón y otro id.
+// cerrar, y el id se conserva hasta saber cómo terminó. Al volver a abrir, la
+// ventana pregunta a la base si aquel pago entró: si entró, lo dice con su
+// importe y el siguiente lleva otro id (decimosexta pasada); si ni llegó, sigue
+// el mismo y entra una vez. Y el «ya quedó» que llega con la ventana ya cerrada
+// (se canceló mientras se enviaba) no se queda guardado: la ventana siguiente
+// abre limpia, con su botón y otro id.
 {
   const { pagina, contexto } = await entrar('tesoreria')
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
@@ -605,10 +627,22 @@ let pagoId
     await v.waitFor()
   }
   // El servidor contesta, pero al navegador no le llega: `quedan` respuestas cortadas; `demora` ms antes de entregar la siguiente.
-  const corte = { quedan: 0, demora: 0, entregadas: 0 }
+  // `pedidas` cuenta los envíos que salieron, y `refrescos` las puestas al día terminadas: se espera a lo que
+  // pasó, no un tiempo fijo (la decimosexta pasada pidió quitar las esperas fijas).
+  // `sinLlegar` corta antes de que el envío llegue al servidor; `consultas` cuenta las preguntas de la ventana al abrirse.
+  const corte = { quedan: 0, sinLlegar: 0, demora: 0, entregadas: 0, pedidas: 0, refrescos: 0, refrescosAlEntregar: 0, consultas: 0 }
+  pagina.on('requestfinished', (q) => {
+    if (q.method() === 'GET' && q.headers()['rsc'] && !q.headers()['next-router-prefetch']) corte.refrescos++
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes('"pago_compra"')) corte.consultas++
+  })
   await pagina.route('**/*', async (r) => {
     const q = r.request()
     if (q.method() !== 'POST' || !q.headers()['next-action'] || !(q.postData() ?? '').includes(oc[0])) return r.continue()
+    corte.pedidas++
+    if (corte.sinLlegar > 0) {
+      corte.sinLlegar--
+      return r.abort('failed')
+    }
     const respuesta = await r.fetch().catch(() => null)
     if (corte.quedan > 0) {
       corte.quedan--
@@ -616,8 +650,13 @@ let pagoId
     }
     if (corte.demora) await new Promise((listo) => setTimeout(listo, corte.demora))
     corte.entregadas++
+    corte.refrescosAlEntregar = corte.refrescos
     return respuesta ? r.fulfill({ response: respuesta }) : r.abort('failed')
   })
+  // La respuesta tardía ya llegó y la pantalla se puso al día con ella.
+  const trasLaTardia = async () => {
+    await hasta(() => corte.refrescos - corte.refrescosAlEntregar, (n) => n > 0, 30000)
+  }
 
   // 1. S/ 20 a cuenta, sin respuesta; «Cancelar» y la tarjeta se pone al día.
   await llenar('20')
@@ -631,22 +670,20 @@ let pagoId
   comprobar(/No llegó la respuesta/.test(sinRespuesta) && tarjetaDespues !== tarjetaAntes && (await nuevos()).join() === '20',
     `sin respuesta y «Cancelar»: la tarjeta se pone al día con el pago que sí entró («${tarjetaAntes.slice(0, 60)}» → «${tarjetaDespues.slice(0, 60)}»)`)
 
-  // 2. Abre otra vez: limpia, con el mismo id. El mismo pago no entra otra vez.
+  // 2. Abre otra vez: limpia, y la ventana dice que aquel pago sí quedó, con su importe.
   await abrir()
   const limpia = (await v.locator('[role="alert"]').count()) === 0 && (await v.getByRole('button', { name: 'Registrar el pago' }).isVisible())
-  await llenar('20', 'voucher-2.pdf')
-  await v.getByRole('button', { name: 'Registrar el pago' }).click()
-  const repetido = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
-  comprobar(limpia && repetido.startsWith('Este pago ya quedó registrado la primera vez que lo enviaste') && (await nuevos()).join() === '20',
-    `al volver a abrir, la ventana sale limpia y el mismo pago dice que ya quedó en vez de entrar dos veces («${repetido}», pagos ${(await nuevos()).join(', ')})`)
+  const nota = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent().catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+  const enLaRegion = await v.locator('[role="status"] [data-envio-anterior]').count()
+  comprobar(limpia && /^El pago que enviaste antes sí quedó: S\/ 20\.00 del \d\d\/\d\d\/\d{4}\. Lo que registres ahora será otro\.$/.test(nota)
+    && enLaRegion === 1 && (await nuevos()).join() === '20',
+    `al volver a abrir, la ventana sale limpia y dice que aquel pago quedó, en una región que se anuncia («${nota}», pagos ${(await nuevos()).join(', ')})`)
 
-  // 3. Cerrada, la siguiente lleva otro id: S/ 5 entran.
-  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
-  await abrir()
+  // 3. En esa misma ventana, el pago siguiente lleva otro id: S/ 5 entran.
   await llenar('5', 'voucher-2.pdf')
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   await hasta(() => v.count(), (n) => n === 0, 30000)
-  comprobar((await nuevos()).join() === '20,5', `después del «ya quedó», el pago siguiente entra con otro id (pagos ${(await nuevos()).join(', ')})`)
+  comprobar((await nuevos()).join() === '20,5', `el pago siguiente entra con otro id, sin decir «ya quedó» (pagos ${(await nuevos()).join(', ')})`)
 
   // 4. S/ 7 sin respuesta; con otro importe se envía otra vez y se cancela antes
   // de que llegue el «ya quedó» (la respuesta tarda 3 s).
@@ -658,12 +695,13 @@ let pagoId
   corte.demora = 3000
   await llenar('8', 'voucher-2.pdf')
   const entregadas = corte.entregadas
+  const pedidas = corte.pedidas
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
-  await pagina.waitForTimeout(500)
+  await hasta(() => corte.pedidas, (n) => n > pedidas, 30000)
   await v.getByRole('button', { name: 'Cancelar' }).click()
   // Se vuelve a abrir cuando la respuesta ya llegó, con la ventana cerrada.
   await hasta(() => corte.entregadas, (n) => n > entregadas, 30000)
-  await pagina.waitForTimeout(1000)
+  await trasLaTardia()
   corte.demora = 0
   cortando = false
   await abrir()
@@ -690,16 +728,16 @@ let pagoId
   corte.demora = 4000
   await llenar('12', 'voucher-2.pdf')
   const antesDel12 = corte.entregadas
+  const pedidasDel12 = corte.pedidas
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
-  await pagina.waitForTimeout(500)
+  await hasta(() => corte.pedidas, (n) => n > pedidasDel12, 30000)
   await v.getByRole('button', { name: 'Cancelar' }).click()
   await abrir()
   await llenar('13', 'voucher-2.pdf')
   await hasta(() => corte.entregadas, (n) => n > antesDel12, 30000)
   corte.demora = 0
   cortando = false
-  await pagina.waitForLoadState('networkidle')
-  await pagina.waitForTimeout(1500)
+  await trasLaTardia()
   const conLaNueva = {
     sinAviso: (await v.locator('[role="alert"]').count()) === 0,
     monto: await v.locator('input[name="monto"]').inputValue(),
@@ -711,6 +749,26 @@ let pagoId
   const al13 = await nuevos()
   comprobar(conLaNueva.sinAviso && conLaNueva.monto === '13' && conLaNueva.habilitado && al13.join() === '20,5,7,9,11,13',
     `el «ya quedó» que llega con otra ventana abierta no la traba ni le borra lo escrito, y su pago entra con otro id (${JSON.stringify(conLaNueva)}; pagos ${al13.join(', ')}${dijo ? `; dijo «${dijo}»` : ''})`)
+  // 6. Contraprueba: si el envío ni llegó a la base, al volver a abrir no hay nada que decir, sigue el mismo id y el pago entra una vez.
+  await abrir()
+  await llenar('14')
+  corte.sinLlegar = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  corte.sinLlegar = 0
+  cortando = false
+  const consultasAntes = corte.consultas
+  await abrir()
+  await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
+  await llenar('14', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const al14 = await nuevos()
+  comprobar(sinNota && al14.join() === '20,5,7,9,11,13,14',
+    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; pagos ${al14.join(', ')})`)
   const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
                                     and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])

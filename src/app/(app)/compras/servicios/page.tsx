@@ -188,7 +188,7 @@ function FilaServicio({
               anular
             />
           )}
-          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} documentos={s.documentos.length} />}
+          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
           {corrigeDetraccion && vigente && (
             <CorregirServicio
               id={s.id}

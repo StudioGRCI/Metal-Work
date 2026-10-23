@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
@@ -36,9 +37,10 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
   const [vez, setVez] = useState(0)
   // El id vive aquí, fuera del formulario que se rehace al abrir: tras «No llegó
   // la respuesta», cancelar y volver a abrir lleva el mismo, y la base no emite
-  // otro RQ numerado con lo mismo (decimoquinta pasada). Se renueva con el ok o
-  // cuando la base dice que ya quedó.
-  const envio = useIdDelEnvio()
+  // otro RQ numerado con lo mismo (decimoquinta pasada). Se renueva con el ok,
+  // cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
+  // que aquel RQ entró.
+  const envio = useIdDelEnvio('requerimiento')
   const [aviso, setAviso] = useState<string | null>(null)
   return (
     <>
@@ -68,6 +70,7 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
         }.`}
         ancho="xl"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && (
           <FormularioRequerimiento
             key={vez}

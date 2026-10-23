@@ -4,11 +4,13 @@
  * cada puesto, nunca ADMIN. En cada documento:
  *
  *   a. La respuesta no llega; «Cancelar» pone la lista al día con lo que sí
- *      entró, y volver a abrir y escribir lo mismo deja un solo documento.
- *   b. La respuesta no llega; al volver a abrir se escribe otro importe. La
- *      ventana dice sin rojo que el primero ya quedó, traba los campos, solo
- *      ofrece «Cerrar» y se lleva el cursor; al cerrar, la lista muestra el
- *      primero, con el importe de la primera vez.
+ *      entró. Al volver a abrir, la ventana pregunta a la base y dice, sin
+ *      rojo, que aquel quedó y con qué número; lo que se registra ahí es otro.
+ *   b. Lo mismo, pero se envía otro importe antes de que la base conteste esa
+ *      pregunta: la ventana dice sin rojo que el primero ya quedó, con su
+ *      número, traba los campos, solo ofrece «Cerrar» y se lleva el cursor; la
+ *      respuesta tardía de la pregunta no se pinta encima. Al cerrar, la lista
+ *      muestra el primero, con el importe de la primera vez.
  *   c. Cerrada esa ventana, la siguiente registra otro documento.
  *
  *   1. Logística, «Nueva orden de servicio».
@@ -17,7 +19,9 @@
  *   4. Administración, «Nuevo subcontrato» (al guardarse, abre el subcontrato).
  *   5. Tesorería, caja diaria, sin cerrar la ventana: el mismo egreso enviado
  *      otra vez deja un movimiento; cambiado el importe, dice que ya quedó; al
- *      cerrar se ve el primero, y la siguiente apertura registra otro.
+ *      cerrar se ve el primero, y la siguiente apertura registra otro. Y sin
+ *      respuesta desde el botón de una cuenta, «Cancelar» y abrir el de la caja:
+ *      las dos ventanas comparten el envío, y la segunda dice que aquel quedó.
  *   6. Logística, «Sacar de la lista» sin respuesta: el aviso sale dentro de la
  *      ventana de confirmar, con el cursor, y no detrás.
  *   7. Diseño, el plano y su revisión: sin respuesta y con otro PDF, el plano
@@ -172,9 +176,18 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
  * siquiera llegan al servidor.
  */
 async function cortarRespuestas(pagina) {
-  const corte = { marca: null, quedan: 0, sinEnviar: false }
+  // `retener`: la clave de `consultarEnvio` cuya pregunta se detiene hasta `soltar()`; `consultas`, las que terminaron.
+  const corte = { marca: null, quedan: 0, sinEnviar: false, retener: null, soltar: () => {}, consultas: 0 }
+  const esConsulta = (q, clave) => new RegExp(`^\\["${clave}","[0-9a-f-]{36}"\\]$`).test((q.postData() ?? '').trim())
+  pagina.on('requestfinished', (q) => {
+    if (q.method() === 'POST' && q.headers()['next-action'] && /^\["[a-z_]+","[0-9a-f-]{36}"\]$/.test((q.postData() ?? '').trim())) corte.consultas++
+  })
   await pagina.route('**/*', async (r) => {
     const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && corte.retener && esConsulta(q, corte.retener)) {
+      await new Promise((listo) => (corte.soltar = listo))
+      return r.continue()
+    }
     if (q.method() !== 'POST' || !q.headers()['next-action'] || !corte.marca || !(q.postData() ?? '').includes(corte.marca) || corte.quedan <= 0) {
       return r.continue()
     }
@@ -247,7 +260,9 @@ async function mismoEnvio(d) {
   }
   const enLaLista = (numero) => hasta(() => d.fila(pagina, numero).count(), (n) => n > 0, 20000)
 
-  // a. Sin respuesta, «Cancelar», y lo mismo otra vez.
+  const nota = () => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => '')
+
+  // a. Sin respuesta, «Cancelar», y al volver a abrir la ventana dice que aquel quedó.
   const A = `${SUFIJO}a`
   await ir()
   await abrir()
@@ -259,16 +274,23 @@ async function mismoEnvio(d) {
   comprobar(corto.startsWith('No llegó la respuesta') && Boolean(entro), `[${d.nombre}] sin respuesta lo dice, y el primero sí entró (${entro?.numero ?? 'nada'}): «${corto}»`)
   comprobar((await enLaLista(entro?.numero)) > 0, `[${d.nombre}] al cancelar, la lista lo muestra`)
   await abrir()
+  const dice = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
   const limpia = (await v.locator('[role="alert"]').count()) === 0
-  await d.llenar(v, pagina, A, d.valores[0])
+  const anunciada = await v.locator('[role="status"] [data-envio-anterior]').count()
+  comprobar(limpia && anunciada === 1 && dice.startsWith(`${d.nota} que enviaste antes sí quedó: ${entro?.numero}.`) && dice.endsWith('Lo que registres ahora será otra.'.replace('otra', d.otra)),
+    `[${d.nombre}] vuelto a abrir, limpio, dice que aquel quedó con su número: «${dice}»`)
+  await pagina.screenshot({ path: join(CAPTURAS, `mismo-envio-${d.clave}-ya-entro.png`) })
+  const A2 = `${SUFIJO}a2`
+  await d.llenar(v, pagina, A2, d.valores[1])
   await enviar()
   const error = await esperarVentana(pagina)
+  const [otroA] = await hasta(() => d.contar(A2), (r) => r.length > 0)
   const quedaron = await d.contar(A)
-  comprobar(limpia && !error && quedaron.length === 1,
-    `[${d.nombre}] vuelto a abrir, limpio, lo mismo otra vez no emite otro: ${quedaron.map((f) => f.numero).join(', ')}${error ? ` (dijo «${error}»)` : ''}`)
-  if (d.alGuardar) comprobar(await d.alGuardar(pagina, entro), `[${d.nombre}] y la pantalla lo da por guardado`)
+  comprobar(!error && quedaron.length === 1 && Boolean(otroA) && otroA.numero !== entro?.numero,
+    `[${d.nombre}] y lo que se registra ahí es otro (${entro?.numero} y ${otroA?.numero ?? 'nada'})${error ? ` (dijo «${error}»)` : ''}`)
+  if (d.alGuardar) comprobar(await d.alGuardar(pagina, otroA), `[${d.nombre}] y la pantalla lo da por guardado`)
 
-  // b. Sin respuesta, y al volver a abrir otro importe.
+  // b. Sin respuesta, y al volver a abrir otro importe antes de que la base conteste la pregunta.
   const B = `${SUFIJO}b`
   await ir()
   await abrir()
@@ -276,19 +298,26 @@ async function mismoEnvio(d) {
   await sinRespuesta(B)
   await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
   await v.waitFor({ state: 'hidden' })
+  corte.retener = d.consulta
+  const consultasAntes = corte.consultas
   await abrir()
   await d.llenar(v, pagina, B, d.valores[1])
   await enviar()
   const yaQuedo = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
   const estado = await hasta(() => laVentana(pagina), (e) => e.cursor && e.abiertos.length === 0, 5000)
-  comprobar(yaQuedo.startsWith(d.yaQuedo) && yaQuedo.endsWith('Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.'),
-    `[${d.nombre}] con otro importe dice que el primero ya quedó: «${yaQuedo}»`)
+  corte.retener = null
+  corte.soltar()
+  await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
+  const [primero, ...demas] = await d.contar(B)
+  comprobar(yaQuedo.startsWith(d.yaQuedo(primero?.numero)) && yaQuedo.endsWith('Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.'),
+    `[${d.nombre}] con otro importe dice que el primero ya quedó, con su número: «${yaQuedo}»`)
   comprobar(estado.neutro && estado.cursor && estado.envia === 0 && estado.botones.join() === 'Cerrar' && estado.campos > 0 && estado.abiertos.length === 0,
     `[${d.nombre}] sin rojo, con el cursor, los campos trabados y solo «Cerrar» (${JSON.stringify(estado)})`)
+  comprobar(sinNota, `[${d.nombre}] la respuesta tardía de la pregunta no se pinta encima del «ya quedó»`)
   await pagina.screenshot({ path: join(CAPTURAS, `mismo-envio-${d.clave}-ya-quedo.png`) })
   await v.locator('form').getByRole('button', { name: 'Cerrar', exact: true }).click()
   await v.waitFor({ state: 'hidden' })
-  const [primero, ...demas] = await d.contar(B)
   comprobar(Boolean(primero) && demas.length === 0 && Number(primero.valor) === Number(d.valores[0]),
     `[${d.nombre}] queda uno, con el importe de la primera vez (${primero?.numero}: ${primero?.valor})`)
   comprobar((await enLaLista(primero?.numero)) > 0, `[${d.nombre}] al cerrar, la lista lo muestra`)
@@ -315,7 +344,10 @@ await mismoEnvio({
   nuevo: (p) => p.getByRole('button', { name: 'Nueva orden de servicio' }),
   enviar: 'Emitir orden de servicio',
   valores: ['800', '950'],
-  yaQuedo: 'Esta orden de servicio ya quedó registrada la primera vez que la enviaste.',
+  yaQuedo: (n) => `Esta orden de servicio ya quedó registrada como ${n} la primera vez que la enviaste.`,
+  nota: 'La orden de servicio',
+  otra: 'otra',
+  consulta: 'orden_servicio',
   async llenar(v, p, marca, monto) {
     await elegir(p, v.locator('#os-proveedor'), PROVEEDOR)
     await v.locator('#os-descripcion').fill(`Torneado de prueba ${marca}`)
@@ -337,7 +369,10 @@ await mismoEnvio({
   nuevo: (p) => p.getByRole('button', { name: /Nueva OC directa/ }).first(),
   enviar: 'Emitir orden de compra',
   valores: ['100', '120'],
-  yaQuedo: 'Esta orden de compra ya quedó registrada la primera vez que la enviaste.',
+  yaQuedo: (n) => `Esta orden de compra ya quedó registrada como ${n} la primera vez que la enviaste.`,
+  nota: 'La orden de compra',
+  otra: 'otra',
+  consulta: 'orden_compra',
   async llenar(v, p, marca, precio) {
     await elegir(p, v.locator('#ocd-proveedor'), PROVEEDOR)
     await v.locator('#ocd-motivo').fill(`Reposición de prueba ${marca}`)
@@ -363,7 +398,10 @@ await mismoEnvio({
   nuevo: (p) => p.getByRole('button', { name: 'Nuevo requerimiento', exact: true }),
   enviar: 'Registrar y mandar a Almacén',
   valores: ['3', '5'],
-  yaQuedo: 'Este requerimiento ya quedó registrado la primera vez que lo enviaste.',
+  yaQuedo: (n) => `Este requerimiento ya quedó registrado como ${n} la primera vez que lo enviaste.`,
+  nota: 'El requerimiento',
+  otra: 'otro',
+  consulta: 'requerimiento',
   async llenar(v, p, marca, cantidad) {
     await v.locator('#rq-area').selectOption({ label: 'Maestranza' })
     await escribirCodigo(v.locator('#rq-codigo'), CODIGO)
@@ -391,7 +429,10 @@ await mismoEnvio({
   nuevo: (p) => p.locator('[data-nuevo-subcontrato]'),
   enviar: 'Registrar subcontrato',
   valores: ['3500', '3600'],
-  yaQuedo: 'Este subcontrato ya quedó registrado la primera vez que lo enviaste.',
+  yaQuedo: (n) => `Este subcontrato ya quedó registrado como ${n} la primera vez que lo enviaste.`,
+  nota: 'El subcontrato',
+  otra: 'otro',
+  consulta: 'subcontrato',
   async llenar(v, p, marca, monto) {
     await v.getByRole('combobox', { name: 'Subcontratista' }).click()
     await p.keyboard.type(SUFIJO)
@@ -484,6 +525,30 @@ if (corre('caja')) {
   const errorC = await esperarVentana(pagina)
   const c = await movimientos(C)
   comprobar(limpia && !errorC && c.length === 1, `[Caja] la ventana siguiente sale limpia y registra otro (${c.length})${errorC ? ` (dijo «${errorC}»)` : ''}`)
+
+  // d. Sin respuesta desde el botón de la cuenta, «Cancelar» y abrir el de la caja:
+  // las dos ventanas comparten el envío, y la segunda dice que aquel quedó.
+  const D = `${SUFIJO}d`
+  await abrir()
+  await llenar(D, '40')
+  await sinRespuesta(D)
+  await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await v.waitFor({ state: 'hidden' })
+  await pagina.locator('[data-registrar-movimiento="caja"]').click()
+  await v.waitFor()
+  const dice = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+  comprobar(/^El egreso que enviaste antes sí quedó: (S\/|US\$) 40\.00 del \d\d\/\d\d\/\d{4}\. Lo que registres ahora será otro\.$/.test(dice),
+    `[Caja] desde el otro botón, la ventana dice que aquel egreso quedó: «${dice}»`)
+  const D2 = `${SUFIJO}d2`
+  const valorCaja = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).first().getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valorCaja ?? '')
+  await llenar(D2, '30')
+  await registrar()
+  const errorD = await esperarVentana(pagina)
+  const d = await movimientos(D)
+  const d2 = await movimientos(D2)
+  comprobar(!errorD && d.length === 1 && d2.length === 1,
+    `[Caja] y lo que se registra ahí es otro movimiento (${d.length} y ${d2.length})${errorD ? ` (dijo «${errorD}»)` : ''}`)
   await contexto.close()
 }
 
