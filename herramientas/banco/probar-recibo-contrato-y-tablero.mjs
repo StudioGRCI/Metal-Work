@@ -14,8 +14,9 @@
  *      d. otro se pierde, «Cancelar» y la página se carga entera —lo que hace
  *         Next si la puesta al día no llega—: al volver a abrir dice que aquel
  *         quedó (antes la memoria se iba y entraba dos veces);
- *      e. a 1440, lo pendiente sigue si vuelve a entrar la misma cuenta y se
- *         olvida si entra otra en la misma pestaña.
+ *      e. a 1440, lo pendiente va por cuenta: sigue si vuelve a entrar la
+ *         misma, otra no lo ve y, si la primera vuelve, dice que quedó; con
+ *         otra cuenta en otra pestaña, esta no reusa el id.
  *   2. Administración, el contrato del subcontrato: la respuesta se pierde y
  *      se elige otro archivo; el «ya se subió» va sin rojo y solo con «Cerrar».
  *   3. Logística, el tablero de una OT:
@@ -27,11 +28,15 @@
  *      d. la respuesta del documento se pierde y el reintento va al mismo id y
  *         a la misma ruta: una fila y ningún archivo suelto;
  *      e. otro se pierde y se reenvía con otro tipo: el «ya quedó» no pide
- *         recargar, dice que lo de esta vez no se guardó y queda el primero;
- *      f. el siguiente documento entra con otro id y el cursor queda en su tipo.
+ *         recargar, dice que lo de esta vez no se guardó y que el primero está
+ *         en la compra, y queda el primero;
+ *      f. el siguiente documento entra con otro id, el cursor queda en su tipo y
+ *         «Documento adjuntado» sale en la región de estado que ya estaba.
  *   4. Tesorería, la planilla: el pago de una persona se pierde y el reintento
  *      dice que ya quedó; al cerrar, el botón «Registrar pago» se rehace y el
- *      cursor va a él (antes caía al contenido de la página).
+ *      cursor va a él (antes caía al contenido de la página). Se paga a la
+ *      otra y se anula el primer pago: el cursor va al contenido, no al
+ *      «Anular pago» de la otra fila.
  *
  * El subcontrato lo registra Administración con las funciones de la base, con
  * un sello nuevo. Para el tablero se siembran dos líneas por comprar de un
@@ -312,34 +317,61 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const deE = await recibos(E)
   comprobar(deD.length === 1 && deE.length === 1, `[Administración ${tam}] ${D} está una vez y ${E} entra aparte (${deD.length} y ${deE.length})`)
 
-  // 1e. Lo pendiente sigue si vuelve a entrar la misma cuenta, y se olvida si
-  // entra otra en la pestaña: su ventana preguntaría por un envío ajeno.
+  // 1e. Lo pendiente va por cuenta: sigue si vuelve a entrar la misma, otra no
+  // lo ve, y si la primera vuelve después de otra, la ventana dice que quedó
+  // (antes se borraba al entrar otra, y el recibo podía entrar dos veces al
+  // volver). Y si en otra pestaña entra otra cuenta, esta, pintada con la
+  // primera, no reusa el id: la base contesta con la cuenta de verdad.
   if (tam === 1440) {
+    const pendientes = () => pagina.evaluate(() => Object.entries(sessionStorage).filter(([k]) => k.startsWith('metal-work:envio-pendiente:')))
+    const deLa = (puesto, lista) => lista.filter(([k]) => k.startsWith(`metal-work:envio-pendiente:${ids[CUENTAS[puesto]]}:`))
+    const llave = `metal-work:envio-pendiente:${ids[CUENTAS.administracion]}:recibo_honorarios:${subcontrato}`
+    const dejarPendiente = async (numero, monto) => {
+      await abrirRecibo()
+      await llenarRecibo(numero, monto)
+      armar(numero)
+      cortando = true
+      await v.getByRole('button', { name: 'Registrar recibo' }).click()
+      await hasta(alerta, (t) => /respuesta/.test(t ?? ''), 30000)
+      cortando = false
+      await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+      await v.waitFor({ state: 'hidden' })
+      return (await pendientes()).find(([k]) => k === llave)?.[1] ?? null
+    }
     const F = `E144-${SELLO}6`
-    const llave = `metal-work:envio-pendiente:recibo_honorarios:${subcontrato}`
-    const pendientes = () => pagina.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('metal-work:envio-pendiente:')))
-    await abrirRecibo()
-    await llenarRecibo(F, '1600')
-    armar(F)
-    cortando = true
-    await v.getByRole('button', { name: 'Registrar recibo' }).click()
-    await hasta(alerta, (t) => /respuesta/.test(t ?? ''), 30000)
-    cortando = false
-    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
-    await v.waitFor({ state: 'hidden' })
+    const idF = await dejarPendiente(F, '1600')
     const deF = await recibos(F)
     await salirYEntrar(pagina, 'administracion')
     const laMisma = await pendientes()
     await salirYEntrar(pagina, 'logistica')
-    const otra = await pendientes()
+    const deLogistica = deLa('logistica', await pendientes())
     await salirYEntrar(pagina, 'administracion')
     await ir()
     await abrirRecibo()
-    const sinNota = limpio(await hasta(nota, (t) => Boolean(t), 3000))
-    comprobar(deF.length === 1 && laMisma.includes(llave), `[Administración 1440] ${F} entró y, si vuelve a entrar la misma cuenta, sigue pendiente (${JSON.stringify(laMisma)})`)
-    comprobar(otra.length === 0 && sinNota === '', `[Administración 1440] si entra otra cuenta en la pestaña se olvida, y la ventana ya no pregunta por él (${JSON.stringify(otra)}; «${sinNota}»)`)
+    const alVolver = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+    comprobar(Boolean(idF) && deF.length === 1 && laMisma.some(([k, val]) => k === llave && val === idF),
+      `[Administración 1440] ${F} entró y, si vuelve a entrar la misma cuenta, sigue pendiente con su cuenta en la llave (${JSON.stringify(laMisma.map(([k]) => k))})`)
+    comprobar(deLogistica.length === 0 && alVolver === `El recibo que enviaste antes sí quedó: ${F}. Lo que registres ahora será otro.`,
+      `[Administración 1440] otra cuenta en la pestaña no lo ve, y al volver la primera la ventana dice que quedó: «${alVolver}» (${deLogistica.length} de Logística)`)
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
+
+    // La pestaña vieja: en otra del mismo navegador se cierra la sesión y entra Logística.
+    const G = `E144-${SELLO}7`
+    const idG = await dejarPendiente(G, '1700')
+    const otraPestana = await contexto.newPage()
+    await otraPestana.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await salirYEntrar(otraPestana, 'logistica')
+    await otraPestana.close()
+    await abrirRecibo()
+    const idEnLaVentana = () => v.locator('input[type=hidden][name=id]').inputValue({ timeout: 500 }).catch(() => '')
+    const idAhora = await hasta(idEnLaVentana, (x) => Boolean(x) && x !== idG, 15000)
+    const notaAjena = limpio(await nota())
+    comprobar(Boolean(idG) && Boolean(idAhora) && idAhora !== idG && notaAjena === '',
+      `[Administración 1440] con Logística en otra pestaña, esta no reusa el id pendiente ni cuenta nada de él (${idG === idAhora ? 'el mismo id' : 'otro id'}; «${notaAjena}»)`)
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await v.waitFor({ state: 'hidden' })
+    await salirYEntrar(pagina, 'administracion')
   }
 
   // 2. El contrato: la respuesta se pierde y se elige otro archivo.
@@ -376,18 +408,27 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   // en marcha, y un proveedor propio. El pedido de material por OT es el
   // circuito de antes del RQ por insumo y ninguna cuenta del banco lo hace
   // entera (pide `requerimientos.crear` y `ordenes.ver` a la vez): la siembra va
-  // directa, y lo que se prueba lo hace Logística en pantalla.
+  // directa, y lo que se prueba lo hace Logística en pantalla. La OT no tiene
+  // pedido de Maestranza, o el que tiene es solo de esta suite: las líneas se
+  // colgaban del pedido de otro (decimonovena pasada).
   const ot = await uno(`select o.id as orden_id, o.numero as numero_ot from ordenes_trabajo o
-                         order by exists (select 1 from v_atencion_materiales a where a.orden_id = o.id) desc,
-                                  o.estado = 'EN_PROCESO' desc, o.numero limit 1`)
-  comprobar(Boolean(ot), 'el banco tiene una OT')
+                         where o.estado = 'EN_PROCESO'
+                           and not exists (select 1 from requerimientos_materiales r where r.orden_id = o.id and r.area_destino = 'MTZ'
+                                            and not exists (select 1 from requerimiento_material_detalles d
+                                                              join ot_materiales om on om.id = d.ot_material_id join materiales m on m.id = om.material_id
+                                                             where d.requerimiento_id = r.id and m.codigo like 'QA-TAB-%'))
+                           and not exists (select 1 from requerimientos_materiales r join requerimiento_material_detalles d on d.requerimiento_id = r.id
+                                             join ot_materiales om on om.id = d.ot_material_id join materiales m on m.id = om.material_id
+                                            where r.orden_id = o.id and r.area_destino = 'MTZ' and m.codigo not like 'QA-TAB-%')
+                         order by o.numero limit 1`)
+  comprobar(Boolean(ot), 'el banco tiene una OT en marcha sin pedido de Maestranza ajeno donde sembrar')
   if (ot) {
     const insumo = `Plancha del tablero QA ${SELLO}`
     const proveedor = `ACEROS DEL TABLERO QA ${SELLO}`
     const referencia = `QA-TAB-${SELLO}`
     await base.query('begin')
-    // Un pedido por OT y área (si la OT ya tiene el de Maestranza, las líneas van
-    // en ese) y una línea por OT e insumo: dos insumos. La OC compra el primero y
+    // Un pedido por OT y área (si la OT ya tiene el de Maestranza, es de una
+    // vuelta anterior y las líneas van en ese) y una línea por OT e insumo: dos insumos. La OC compra el primero y
     // el segundo deja el botón «Nueva orden de compra» encendido. Las líneas
     // nacen propuestas; Diseño las aprueba y Almacén las manda a compra, cada uno
     // con su cuenta y las funciones de la base.
@@ -465,7 +506,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await v.waitFor()
     const dice = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
     const segundo = await operacion()
-    comprobar(guardado.some(([k, val]) => k === `metal-work:envio-pendiente:orden_compra_del_tablero:${ot.orden_id}` && val === primero),
+    comprobar(guardado.some(([k, val]) => k === `metal-work:envio-pendiente:${ids[CUENTAS.logistica]}:orden_compra_del_tablero:${ot.orden_id}` && val === primero),
       `[Logística 1440] el id que salió queda en la pestaña, por la OT (${JSON.stringify(guardado.map(([k]) => k))})`)
     comprobar(emitida.length === 1 && dice === `La orden de compra que enviaste antes sí quedó: ${emitida[0].numero}. Lo que registres ahora será otra.`
       && segundo !== primero && (await v.locator('[role="alert"]').count()) === 0,
@@ -491,6 +532,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const tipo = pagina.locator(`select#tipo-doc-compra-${oc.orden_compra_id}`)
       await tipo.waitFor({ timeout: 60000 })
       const form = pagina.locator('form', { has: tipo })
+      // El aviso de «adjuntado» va fuera del formulario, que se rehace al adjuntar.
+      const tarjeta = form.locator('xpath=..')
       const estado = async () => ({
         id: await form.locator('input[type=hidden][name=id]').inputValue(),
         tipo: await tipo.inputValue(),
@@ -516,7 +559,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       cortando = true
       const adjuntar = form.getByRole('button', { name: 'Adjuntar' })
       await adjuntar.click()
-      const aviso = () => form.locator('[role="alert"], [role="status"]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+      const aviso = () => tarjeta.locator('[role="alert"], [role="status"]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
       const cortoDoc = await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
       cortando = false
       const idTrasElCorte = await form.locator('input[type=hidden][name=id]').inputValue()
@@ -534,8 +577,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         `[Logística 1440] el reintento entra una vez, con ese id y su ruta, y sin archivos sueltos («${dijo}»; ${filas.length} fila(s), ${sueltos.length} suelto(s))`)
 
       // 3e. Otro se pierde y se reenvía con otro tipo: sin ventana, el «ya quedó»
-      // no pide recargar —la lista ya se puso al día—, dice que lo de esta vez no
-      // se guardó, y queda el primero.
+      // no pide recargar, dice que lo de esta vez no se guardó y que el primero
+      // está en la compra —el tablero no tiene lista de documentos—, y queda el primero.
       const nombre3 = `QA-NOTA-TABLERO-3-${SELLO}.pdf`
       await tipo.selectOption('OTRO')
       await form.locator('input[name=archivo]').setInputFiles({ name: nombre3, mimeType: 'application/pdf', buffer: PDF(550) })
@@ -548,14 +591,18 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await adjuntar.click()
       const yaQuedo = await hasta(aviso, (t) => /primera vez/.test(t ?? ''), 30000)
       const deNombre3 = await consulta(`select tipo from documentos_compra_material where orden_compra_id = $1 and nombre_archivo = $2`, [oc.orden_compra_id, nombre3])
-      comprobar(!/recarga la pantalla/i.test(yaQuedo) && /Lo que enviaste esta vez no se guardó: la lista ya muestra lo que quedó/.test(yaQuedo)
+      comprobar(!/recarga la pantalla|la lista/i.test(yaQuedo) && /Lo que enviaste esta vez no se guardó: el de la primera vez ya está adjunto a la compra/.test(yaQuedo)
         && deNombre3.length === 1 && deNombre3[0].tipo === 'OTRO',
         `[Logística 1440] con otro tipo, el «ya quedó» del tablero no pide recargar y queda el primero: «${yaQuedo}» (${deNombre3.map((d) => d.tipo).join(', ')})`)
 
-      // 3f. El siguiente, adjuntado: el cursor va al tipo del formulario nuevo, no a la página.
+      // 3f. El siguiente, adjuntado: el cursor va al tipo del formulario nuevo, no
+      // a la página, y «Documento adjuntado» sale en la región de estado que ya
+      // estaba —la que nace con su texto no la lee el lector de pantalla—.
       const nombre2 = `QA-NOTA-TABLERO-2-${SELLO}.pdf`
       await tipo.selectOption('OTRO')
       await form.locator('input[name=archivo]').setInputFiles({ name: nombre2, mimeType: 'application/pdf', buffer: PDF(600) })
+      const estadoVivo = tarjeta.locator(':scope > [role="status"]')
+      await estadoVivo.evaluate((e) => { e.deAntes = true })
       await adjuntar.click()
       const deNombre2 = () => consulta(`select id from documentos_compra_material where orden_compra_id = $1 and nombre_archivo = $2`, [oc.orden_compra_id, nombre2])
       await hasta(deNombre2, (f) => f.length > 0, 30000)
@@ -563,6 +610,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const segundoDoc = await deNombre2()
       comprobar(segundoDoc.length === 1 && segundoDoc[0].id !== antes.id && enfocado === `tipo-doc-compra-${oc.orden_compra_id}`,
         `[Logística 1440] el siguiente entra con otro id y el cursor queda en «Tipo de documento» (${enfocado})`)
+      const anuncio = await hasta(() => estadoVivo.evaluate((e) => ({ deAntes: e.deAntes === true, texto: e.textContent ?? '', enElForm: Boolean(e.closest('form')) })),
+        (a) => a.texto.includes('Documento adjuntado'), 10000)
+      comprobar(anuncio?.deAntes && anuncio.texto.includes('Documento adjuntado') && !anuncio.enElForm,
+        `[Logística 1440] «Documento adjuntado» sale en la región de estado que ya estaba, fuera del formulario que se rehace (${JSON.stringify(anuncio)})`)
       await pagina.screenshot({ path: join(CAPTURAS, 'tablero-ot.png'), fullPage: true })
     }
     await pagina.unrouteAll({ behavior: 'ignoreErrors' })
@@ -605,7 +656,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const alerta = () => v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => '')
   await pagina.goto(`${BASE}/planilla-diaria/${planilla}`, { waitUntil: 'networkidle' })
   const boton = pagina.locator('[data-registrar-pago]')
-  // Una marca que no es atributo: el cursor busca el botón nuevo por sus `data-…`.
+  // Una marca que no es atributo: el cursor busca el botón nuevo por su `data-cursor-vuelve`.
   await boton.evaluate((b) => { b.deAntes = true })
   await boton.click()
   await v.waitFor()
@@ -635,6 +686,32 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const dondeQueda = await hasta(cursor, (c) => c === 'el botón nuevo', 15000)
   comprobar(dondeQueda === 'el botón nuevo', `[Tesorería 1440] al cerrar, el botón «Registrar pago» se rehace y el cursor va a él (${dondeQueda})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'planilla-cursor.png') })
+
+  // 4b. Se paga a la otra persona y se anula el primer pago: su «Anular pago» se
+  // va y el cursor va al contenido de la página, no al «Anular pago» de la otra
+  // fila, que lleva la misma marca. Solo vuelve por marca el botón que lo pide
+  // (`data-cursor-vuelve`) (decimonovena pasada).
+  await pagina.locator('[data-registrar-pago]').click()
+  await v.waitFor()
+  await elegirCuenta(v, caja)
+  await v.locator('input[name="operacion"]').fill(`${operacion}-2`)
+  await v.locator('input[name="archivo"]').setInputFiles({ name: 'comprobante-2.pdf', mimeType: 'application/pdf', buffer: PDF(320) })
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await v.waitFor({ state: 'hidden', timeout: 30000 })
+  const anulares = pagina.locator('[data-anular="pago"]')
+  const dosPagos = await hasta(() => anulares.count(), (n) => n === 2, 30000)
+  await anulares.first().click()
+  await v.waitFor()
+  await v.locator('textarea[name="motivo"]').fill('Prueba QA del cursor al anular un pago.')
+  await v.getByRole('button', { name: 'Anular', exact: true }).click()
+  await v.waitFor({ state: 'hidden', timeout: 30000 })
+  const trasAnular = await hasta(() => pagina.evaluate(() => {
+    const e = document.activeElement
+    return e?.getAttribute('data-anular') === 'pago' ? (e.isConnected ? 'el «Anular pago» de la otra fila' : 'un botón que ya no está') : (e?.tagName ?? '—')
+  }), (c) => c === 'MAIN', 15000)
+  const vigentes = await consulta(`select count(*)::int as n from planilla_diaria_pagos where planilla_id = $1 and anulado_en is null`, [planilla])
+  comprobar(dosPagos === 2 && vigentes[0].n === 1 && trasAnular === 'MAIN',
+    `[Tesorería 1440] al anular uno de dos pagos, el cursor va al contenido y no al «Anular pago» de la otra persona (${trasAnular}; ${vigentes[0].n} vigente)`)
   await pagina.unrouteAll({ behavior: 'ignoreErrors' })
   await contexto.close()
 }

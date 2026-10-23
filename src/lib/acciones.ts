@@ -44,9 +44,11 @@ export const yaEntroEnLaVentana = (mensaje: string) =>
  * Ese aviso en un formulario sin ventana (cargar un plano). La pantalla ya se
  * puso al día sola; pedir que se recargue, sin decir que lo de esta vez no se
  * guardó, dejaba pensar que el segundo PDF había entrado (decimosexta pasada).
+ * `donde` dice dónde se ve lo que quedó: el tablero de la OT no tiene lista de
+ * documentos, y mandar a mirarla no llevaba a ninguna parte (decimonovena pasada).
  */
-export const yaEntroSinVentana = (mensaje: string) =>
-  mensaje.replace(/[:.] recarga la pantalla[^.]*\.$/i, '. Lo que enviaste esta vez no se guardó: la lista ya muestra lo que quedó.')
+export const yaEntroSinVentana = (mensaje: string, donde = 'la lista ya muestra lo que quedó') =>
+  mensaje.replace(/[:.] recarga la pantalla[^.]*\.$/i, `. Lo que enviaste esta vez no se guardó: ${donde}.`)
 
 /**
  * El envío pudo entrar y no se sabe: no llegó la respuesta, o después de eso se

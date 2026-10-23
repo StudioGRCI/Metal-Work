@@ -5,7 +5,6 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
-import { entroLaCuenta } from '@/lib/envio'
 import { createClient } from '@/lib/supabase/client'
 
 /**
@@ -45,7 +44,7 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
     setCargando(true)
 
     const supabase = createClient()
-    const { data, error: fallo } = await supabase.auth.signInWithPassword({
+    const { error: fallo } = await supabase.auth.signInWithPassword({
       email: correo.trim(),
       password: clave,
     })
@@ -62,7 +61,6 @@ export function FormularioIngreso({ redirigir }: { redirigir: string }) {
       setCargando(false)
       return
     }
-    entroLaCuenta(data.user.id)
 
     // Navegación completa a propósito, no `router.replace()`.
     //

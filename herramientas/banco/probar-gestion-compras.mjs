@@ -113,21 +113,25 @@ const dejadas = await consulta(
   `select c.id, c.numero, p.peso_kg from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
     where p.posicion is not null and c.recojo = 'POR_RECOGER' order by p.posicion`,
 )
-for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
-await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
-let devueltas = false
-/** Las de antes vuelven al final de la lista en el orden en que estaban: «Poner en la lista» con su peso. */
-async function devolverLasDeAntes() {
-  if (devueltas) return
-  devueltas = true
-  await como('logistica')
-  for (const d of dejadas) {
-    await consulta(
-      `select public.programar_recojo(c.id, $2) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
-        where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is null`,
-      [d.id, d.peso_kg],
-    )
-  }
+let devolviendo = null
+/**
+ * Las de antes vuelven al final de la lista en el orden en que estaban: «Poner
+ * en la lista» con su peso. Una sola vez, y quien llegue después espera a esa:
+ * una señal a mitad de la devolución cortaba el bucle con `process.exit` y
+ * volvía una de cuatro (decimonovena pasada).
+ */
+function devolverLasDeAntes() {
+  devolviendo ??= (async () => {
+    await como('logistica')
+    for (const d of dejadas) {
+      await consulta(
+        `select public.programar_recojo(c.id, $2) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+          where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is null`,
+        [d.id, d.peso_kg],
+      )
+    }
+  })()
+  return devolviendo
 }
 /**
  * Las suyas fuera de la lista: la siguiente vuelta las tomaría por ajenas y las
@@ -143,7 +147,9 @@ async function sacarLasSuyas() {
 }
 // Si la prueba se cae a medio camino, o la cortan (Ctrl+C, `timeout`), la lista
 // no se queda sin las de antes ni con las suyas: `uncaughtException` no ve las
-// señales, y con `timeout` las de otros no volvían (decimoctava pasada).
+// señales, y con `timeout` las de otros no volvían (decimoctava pasada). Se
+// arma antes de sacar las de antes: una señal en ese bucle las dejaba fuera
+// (decimonovena pasada).
 let cayendo = false
 async function caer(motivo) {
   if (cayendo) return
@@ -160,6 +166,8 @@ async function caer(motivo) {
 process.on('uncaughtException', caer)
 process.on('unhandledRejection', caer)
 for (const senal of ['SIGINT', 'SIGTERM']) process.on(senal, () => caer(`Cortada con ${senal}.`))
+for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
+await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
 console.log(`Sembradas ${ocA}, ${ocB} y ${ocC}${dejadas.length ? `; salieron de la lista ${dejadas.map((d) => d.numero).join(', ')}` : ''}`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })

@@ -80,6 +80,7 @@ export function RegistrarPago({
           setAbierta(true)
         }}
         data-registrar-pago
+        data-cursor-vuelve="registrar-pago"
       >
         <Wallet aria-hidden className="size-4" />
         Registrar pago

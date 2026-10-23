@@ -235,15 +235,17 @@ export function Ventana({
  * contenido de la página.
  *
  * A veces el botón no se va: se rehace igual, con otra llave (el pago de la
- * planilla, cuando cambia la gente por pagar). Si lleva una marca `data-…` y en
- * la página hay uno solo con ella, el cursor va a ese (decimoctava pasada).
+ * planilla, cuando cambia la gente por pagar). Ese lo pide con
+ * `data-cursor-vuelve`, y si en la página queda uno solo con la misma marca, el
+ * cursor va a ese (decimoctava pasada). Solo el que lo pide: con cualquier
+ * `data-…`, el «Anular pago» de una fila que se iba mandaba el cursor al de la
+ * otra persona, que tiene la misma marca (decimonovena pasada).
  */
 function devolverElCursor(boton: HTMLElement) {
-  const marca = [...boton.attributes].filter((a) => a.name.startsWith('data-'))
-    .map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('')
+  const marca = boton.dataset.cursorVuelve
   const alContenido = () => {
     if (document.activeElement && document.activeElement !== document.body) return
-    const iguales = marca ? document.querySelectorAll<HTMLElement>(marca) : []
+    const iguales = marca ? document.querySelectorAll<HTMLElement>(`[data-cursor-vuelve="${CSS.escape(marca)}"]`) : []
     if (iguales.length === 1) return iguales[0].focus()
     document.querySelector<HTMLElement>('main[tabindex]')?.focus({ preventScroll: true })
   }

@@ -148,6 +148,16 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo; el
   de un archivo («Falta el PDF»), en el `aviso` de su `ElegirArchivo`. Llevar
   el cursor a un campo que no dice nada deja a la persona sin el porqué.
+  Tras un envío bien hecho que rehace el formulario sin ventana (el documento
+  del tablero de la OT), el cursor va al primer campo del siguiente cuando
+  deja de estar trabado, no dentro del `alTerminar`: el botón que lo tenía
+  desaparece y caía a la página. Si lo que se rehace es el botón que abrió la
+  ventana (otra llave, como el pago de la planilla), ponle
+  `data-cursor-vuelve="<nombre>"` y `Ventana` lleva el cursor al único que
+  quede con esa marca. Solo al que se rehace igual: un «Anular pago» por fila
+  con esa marca mandaba el cursor al de otra persona (decimonovena). Un aviso
+  de «listo» de un formulario que se rehace (`key`) va fuera de él y siempre
+  puesto (`role="status"` vacío): el que nace ya con su texto no se anuncia.
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,

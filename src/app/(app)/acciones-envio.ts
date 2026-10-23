@@ -35,10 +35,20 @@ function sinArchivo(cuantos: number | null, texto: string) {
  * o no se puede saber, `null` (`useIdDelEnvio`). Se lee con la cuenta de quien
  * pregunta y su RLS: lo que no puede ver no se le cuenta, y la ventana sigue con
  * el mismo id, que la base reconoce como el mismo envío.
+ *
+ * `cuenta` es la de la pantalla que guardó lo pendiente. Si quien pregunta es
+ * otra —en otra pestaña se cerró la sesión y entró otra persona, y esta pantalla
+ * no se puso al día—, no se consulta: se devuelve la cuenta de verdad, y la
+ * ventana deja ese id, que no es de esta persona.
  */
-export async function consultarEnvio(clave: ClaveDelEnvio, id: string): Promise<string | null> {
+export async function consultarEnvio(
+  clave: ClaveDelEnvio,
+  id: string,
+  cuenta: string | null,
+): Promise<string | null | { cuenta: string }> {
   const perfil = await obtenerSesion()
   if (!perfil?.activo) return null
+  if (cuenta && cuenta !== perfil.id) return { cuenta: perfil.id }
   const analisis = Consulta.safeParse({ clave, id })
   if (!analisis.success) return null
   const supabase = await createClient()

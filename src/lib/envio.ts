@@ -248,8 +248,10 @@ export function useEnvio<T = never>(
  * Next recarga la página entera. La memoria se borraba, la ventana no
  * preguntaba y el mismo pago o el mismo RQ entraba dos veces (decimoctava
  * pasada). `donde` separa las filas: sin él, el pendiente de una OC lo tomaba la
- * ventana de otra. Si en la pestaña entra otra cuenta, se olvida
- * (`entroLaCuenta`).
+ * ventana de otra. Y va por cuenta (`entroLaCuenta`): si en la pestaña entra
+ * otra persona, no ve lo de la primera, y si la primera vuelve, lo suyo sigue
+ * pendiente. Borrarlo al cambiar de cuenta dejaba que el pago de la primera
+ * entrara dos veces al volver (decimonovena pasada).
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
  * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
@@ -258,28 +260,43 @@ export function useEnvio<T = never>(
 export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void, donde = '') {
   const [id, setId] = useState<string | null>(null)
   const [anterior, setAnterior] = useState<string | null>(null)
-  // El id que salió sin que se sepa cómo terminó.
-  const pendiente = useRef<string | null>(null)
+  // El id que salió sin que se sepa cómo terminó, y de qué cuenta.
+  const pendiente = useRef<{ cuenta: string | null; id: string } | null>(null)
   // Cambia con cada apertura y cada envío: la respuesta de una consulta vieja no pisa lo que vino después.
   const turno = useRef(0)
-  const llave = clave ? `${PENDIENTE}${clave}:${donde}` : donde ? `${PENDIENTE}${donde}` : null
+  function llave() {
+    if (!cuentaDeLaPestana || (!clave && !donde)) return null
+    return `${PENDIENTE}${cuentaDeLaPestana}:${clave ? `${clave}:${donde}` : donde}`
+  }
   function anotar(valor: string | null) {
-    pendiente.current = valor
-    if (llave) guardarEnLaPestana(llave, valor)
+    pendiente.current = valor ? { cuenta: cuentaDeLaPestana, id: valor } : null
+    const enLaPestana = llave()
+    if (enLaPestana) guardarEnLaPestana(enLaPestana, valor)
   }
   return {
     id,
     anterior,
     abrir() {
       // Tras una recarga la memoria está vacía, y lo pendiente sigue en la pestaña.
-      const previo = pendiente.current ?? (llave ? leerDeLaPestana(llave) : null)
-      pendiente.current = previo
+      const cuenta = cuentaDeLaPestana
+      const enLaPestana = llave()
+      const enMemoria = pendiente.current?.cuenta === cuenta ? pendiente.current.id : null
+      const previo = enMemoria ?? (enLaPestana ? leerDeLaPestana(enLaPestana) : null)
+      pendiente.current = previo ? { cuenta, id: previo } : null
       const este = ++turno.current
       setId(previo ?? crypto.randomUUID())
       if (!previo || !clave) return
-      consultarEnvio(clave, previo).then(
+      consultarEnvio(clave, previo, cuenta).then(
         (entro) => {
           if (!entro || turno.current !== este) return
+          if (typeof entro !== 'string') {
+            // La pantalla es de otra cuenta que la que pregunta: en otra pestaña
+            // se cerró la sesión y entró otra persona. Lo pendiente no es suyo.
+            cuentaDeLaPestana = entro.cuenta
+            pendiente.current = null
+            setId(crypto.randomUUID())
+            return
+          }
           anotar(null)
           setId(crypto.randomUUID())
           setAnterior(entro)
@@ -324,24 +341,17 @@ function guardarEnLaPestana(llave: string, valor: string | null) {
   } catch {}
 }
 
-const CUENTA = 'metal-work:envio-cuenta'
+let cuentaDeLaPestana: string | null = null
 
 /**
- * Al entrar. Si en la pestaña quedó lo pendiente de otra cuenta —la sesión venció
- * o se cerró y entró otra persona—, se olvida: su ventana preguntaría por un
- * envío que no es suyo, que no puede ver, y reusaría ese id. Si vuelve a entrar
- * la misma cuenta, lo suyo sigue pendiente.
+ * La cuenta con la que se pintó la pantalla (`CuentaDeLaPestana`, en el layout).
+ * Lo pendiente se guarda con ella: si en la pestaña entra otra persona, su
+ * ventana no pregunta por un envío que no es suyo ni reusa ese id, y si vuelve la
+ * primera, lo suyo sigue pendiente. Se toma del servidor y no del ingreso: se
+ * entra también por el enlace de recuperación, y en otra pestaña.
  */
 export function entroLaCuenta(usuario: string) {
-  try {
-    if (sessionStorage.getItem(CUENTA) !== usuario) {
-      for (let i = sessionStorage.length - 1; i >= 0; i--) {
-        const llave = sessionStorage.key(i)
-        if (llave?.startsWith(PENDIENTE)) sessionStorage.removeItem(llave)
-      }
-    }
-    sessionStorage.setItem(CUENTA, usuario)
-  } catch {}
+  cuentaDeLaPestana = usuario
 }
 
 /**

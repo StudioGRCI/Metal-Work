@@ -251,7 +251,18 @@ En la misma migración que la crea, sin excepción:
   cuanto la tarjeta se ponía al día (decimosexta). Una ventana nueva que pide
   documento o dinero lleva su clave en `src/lib/dominio/envios.ts` y su caso en
   `consultarEnvio`; el id que sale con el documento (su factura, su contrato)
-  se renueva con él (`alEntrar`).
+  se renueva con él (`alEntrar`). **Lo pendiente vive también en la pestaña**
+  (`sessionStorage`): si la puesta al día al cerrar no llega, Next carga la
+  página entera, la memoria se va y el mismo pago entraba dos veces
+  (decimoctava). Por eso cada llamada lleva su `donde` —la fila de la ventana:
+  la OC que se paga, el recibo, la OT del tablero—, o el pendiente de una fila
+  lo tomaba la ventana de otra; y el id acompañante lleva el suyo, para que su
+  archivo vuelva a la misma ruta. La llave lleva la cuenta con que se pintó la
+  pantalla (`CuentaDeLaPestana`, en el layout): otra cuenta no ve lo de la
+  primera y, si la primera vuelve, lo suyo sigue pendiente —borrarlo al cambiar
+  de cuenta dejaba entrar dos veces su pago (decimonovena)—. `consultarEnvio`
+  recibe esa cuenta y, si quien pregunta es otra (otra pestaña cambió la
+  sesión), no consulta y la ventana deja ese id.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de
   pegarse). Un aviso nuevo de «mismo envío» lleva

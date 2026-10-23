@@ -151,7 +151,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     tipoRef.current?.focus()
   }, [vez, enviando])
   const quieto = enviando || trabado
-  return <form key={vez} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-2 sm:items-end">
+  return <div className="min-w-0 rounded-xl border border-borde bg-superficie p-4">
+  <form key={vez} onSubmit={alEnviar} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
@@ -225,7 +226,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     {error && (
       <p ref={aviso} role="alert" tabIndex={-1} data-ya-entro={yaEntro || undefined}
         className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-xs text-texto sm:col-span-2' : 'text-xs text-peligro sm:col-span-2'}>
-        {trabado ? yaEntroEnLaVentana(error) : yaEntro ? yaEntroSinVentana(error) : error}
+        {trabado ? yaEntroEnLaVentana(error) : yaEntro ? yaEntroSinVentana(error, 'el de la primera vez ya está adjunto a la compra') : error}
       </p>
     )}
     {/* Al final, debajo de lo que depende del tipo: en el teléfono se ve la casilla de la parte antes de adjuntar. */}
@@ -240,8 +241,13 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         </Boton>
       )}
     </div>
+  </form>
+  {/* Fuera del formulario, que se rehace al adjuntar, y siempre puesto: el aviso
+      que nacía ya con su texto, dentro, no lo leía el lector de pantalla
+      (decimonovena pasada). */}
+  <div role="status">
     {mensaje && (
-      <p role="status" className={`text-xs sm:col-span-2 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
+      <p className={`mt-4 text-xs ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}
         {revisar && verAdquisiciones && (
           <>
@@ -253,5 +259,6 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         )}
       </p>
     )}
-  </form>
+  </div>
+  </div>
 }

@@ -2,6 +2,7 @@ import { BarraInferior } from '@/components/estructura/barra-inferior'
 import { ContextoOrden } from '@/components/estructura/contexto-orden'
 import { BarraLateral } from '@/components/estructura/barra-lateral'
 import { BarraSuperior } from '@/components/estructura/barra-superior'
+import { CuentaDeLaPestana } from '@/components/estructura/cuenta-de-la-pestana'
 import { PerfilMenu } from '@/components/estructura/perfil-menu'
 import { AvisoInstalar } from '@/components/estructura/instalar-app'
 import { RefrescoAlVolver } from '@/components/estructura/refresco-al-volver'
@@ -21,6 +22,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
 
   return (
     <ContextoOrden><div className="flex min-h-dvh flex-col">
+      <CuentaDeLaPestana usuario={perfil.id} />
       <BarraSuperior />
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />
