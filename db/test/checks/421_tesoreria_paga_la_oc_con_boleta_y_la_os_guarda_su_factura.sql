@@ -841,7 +841,7 @@ end $$;
 
 -- La misma factura, si la OC 1 fuera de antes de la serie (sin número) y su
 -- referencia larga: la línea del pago la nombra «OC sin número (ref. del
--- proveedor …)» (migración 20261022200000), y como no cabe todo en sus 108
+-- proveedor …)» (migración 20261022220000), y como no cabe todo en sus 108
 -- letras, queda la operación entera y se va la fecha, que se ve al lado del
 -- pago. Nada cortado a medias. Se prueba y se deshace.
 do $$

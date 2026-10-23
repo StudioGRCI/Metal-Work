@@ -1,4 +1,4 @@
--- La OC sin número en lo que escribe la base (migración 20261022200000): la OC
+-- La OC sin número en lo que escribe la base (migración 20261022220000): la OC
 -- de antes de la serie OC-…-MW se nombra «OC sin número (ref. del proveedor …)»
 -- en los avisos, los mensajes y los nombres que la base devuelve armados, y no
 -- con su referencia como si fuera su número. La OC con número sigue con su
@@ -12,18 +12,18 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['REQUERIMIENTOS:REQ', 'COMPRADOR:LOG', 'ALMACENERO:ALM', 'GERENTE:GER', 'VENDEDOR:VEN'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.429@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.431@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 429', lower(replace(v, ':', '.')) || '.429@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 431', lower(replace(v, ':', '.')) || '.431@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
   -- Otra persona de Logística: el aviso «Programa el recojo» no le llega a quien emitió la OC.
   v_id := gen_random_uuid();
-  insert into auth.users (id, email) values (v_id, 'comprador2.log.429@prueba.local');
+  insert into auth.users (id, email) values (v_id, 'comprador2.log.431@prueba.local');
   insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-  select v_id, 'COMPRADOR', 'Check 429 (2)', 'comprador2.log.429@prueba.local', r.id,
+  select v_id, 'COMPRADOR', 'Check 431 (2)', 'comprador2.log.431@prueba.local', r.id,
          (select id from public.areas where codigo = 'LOG')
     from public.roles r where r.codigo = 'COMPRADOR';
   perform set_config('prueba.comprador2', v_id::text, true);
@@ -32,12 +32,12 @@ begin
   perform set_config('prueba.cat', (select id::text from public.categorias_material
                                      where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1), true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK429-PLA', 'Plancha LAF 2 mm 4x8 (429)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid)
+  values ('CHK431-PLA', 'Plancha LAF 2 mm 4x8 (431)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid)
   returning id::text into v;
   perform set_config('prueba.mat', v, true);
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  select '2060000429' || d, 'Proveedor de prueba 429', 'Av. Argentina 429, Lima', '999 429 429' from generate_series(0, 9) d
-   where public.ruc_es_valido('2060000429' || d) limit 1
+  select '2060000431' || d, 'Proveedor de prueba 431', 'Av. Argentina 431, Lima', '999 431 431' from generate_series(0, 9) d
+   where public.ruc_es_valido('2060000431' || d) limit 1
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
   foreach v in array array['rq', 'oc1', 'oc2'] loop
@@ -54,6 +54,20 @@ end $$;
 create or replace function pg_temp.id(p_clave text) returns uuid language sql as $$
   select current_setting('prueba.' || p_clave)::uuid;
 $$;
+-- Logística anexa a la OC la boleta de una parte, como `registrarDocumentoCompra`.
+create or replace function pg_temp.anexar_parte(p_oc text, p_numero text, p_monto numeric)
+returns void language plpgsql as $$
+declare
+  v_doc  uuid := gen_random_uuid();
+  v_ruta text := 'compra/' || pg_temp.id(p_oc) || '/' || v_doc || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+  values ('documentos-compras', v_ruta, auth.uid(), auth.uid()::text, '{"mimetype": "application/pdf", "size": 2048}');
+  insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
+                                                 subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
+  values (v_doc, pg_temp.id(p_oc), 'COMPROBANTE', 'boleta-' || p_numero || '.pdf', v_ruta, 'application/pdf', 2048,
+          public.usuario_actual(), p_numero, (now() at time zone 'America/Lima')::date, p_monto, true);
+end $$;
 
 -- ============================================ 0. El nombre
 do $$
@@ -118,7 +132,7 @@ reset role;
 -- La segunda pasa a ser de antes de la serie: sin número, y su referencia es la
 -- cotización del proveedor, con la misma forma que un número de OC.
 alter table public.ordenes_compra_materiales disable trigger user;
-update public.ordenes_compra_materiales set numero = null, referencia = 'OC-0429' where id = pg_temp.id('oc2');
+update public.ordenes_compra_materiales set numero = null, referencia = 'OC-0431' where id = pg_temp.id('oc2');
 alter table public.ordenes_compra_materiales enable trigger user;
 select set_config('prueba.num1', (select numero from public.ordenes_compra_materiales where id = pg_temp.id('oc1')), true);
 
@@ -130,7 +144,7 @@ reset role;
 -- Al aprobarse, Logística recibe «Programa el recojo» de cada una.
 select test.afirmar(exists (select 1 from public.notificaciones
                              where usuario_id = pg_temp.id('comprador2') and origen_id = pg_temp.id('oc2')
-                               and titulo = 'Programa el recojo: OC sin número (ref. del proveedor OC-0429)')
+                               and titulo = 'Programa el recojo: OC sin número (ref. del proveedor OC-0431)')
                     and exists (select 1 from public.notificaciones
                                  where usuario_id = pg_temp.id('comprador2') and origen_id = pg_temp.id('oc1')
                                    and titulo = 'Programa el recojo: ' || current_setting('prueba.num1')),
@@ -138,7 +152,7 @@ select test.afirmar(exists (select 1 from public.notificaciones
 -- Ningún aviso de la de antes de la serie deja la referencia suelta, como si fuera su número.
 select test.afirmar(not exists (select 1 from public.notificaciones
                                  where origen_id = pg_temp.id('oc2')
-                                   and replace(titulo || ' ' || coalesce(cuerpo, ''), 'ref. del proveedor OC-0429', '') like '%OC-0429%'),
+                                   and replace(titulo || ' ' || coalesce(cuerpo, ''), 'ref. del proveedor OC-0431', '') like '%OC-0431%'),
   'ningún aviso de la OC sin número nombra su referencia como número');
 -- Logística quiere volver a comprar el insumo que ya va en ella: el mensaje la nombra bien.
 select pg_temp.como('comprador');
@@ -151,33 +165,37 @@ select test.debe_fallar(format($q$ select public.emitir_compra_de_requerimientos
                                current_setting('prueba.proveedor')),
   'el insumo que ya va en la OC sin número no va en otra, y el mensaje no hace pasar su referencia por número',
   'Ya va en otra compra: el 2 del ' || (select numero from public.requerimientos where id = pg_temp.id('rq'))
-    || ', en la OC sin número (ref. del proveedor OC-0429). Desmárcalo');
+    || ', en la OC sin número (ref. del proveedor OC-0431). Desmárcalo');
+-- Y si le anexa una boleta de una parte que se come todo el total (la OC que llega en partes).
+select test.debe_fallar($$ select pg_temp.anexar_parte('oc2', 'B001-4310', 361.50) $$,
+  'la boleta de una parte que se come el total no entra, y el mensaje nombra bien la OC sin número',
+  'Con esa boleta las de una parte de la OC sin número (ref. del proveedor OC-0431) sumarían');
 reset role;
 
 -- ============================================ 3. La lista de las que se pueden anular, y la anulada
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar((select numero from public.compras_que_se_pueden_anular() where id = pg_temp.id('oc2'))
-                      = 'OC sin número (ref. del proveedor OC-0429)'
+                      = 'OC sin número (ref. del proveedor OC-0431)'
                     and (select numero from public.compras_que_se_pueden_anular() where id = pg_temp.id('oc1'))
                       = current_setting('prueba.num1'),
   'en la lista de las que se pueden anular, la de antes de la serie sale «OC sin número (ref. …)» y la otra con su número');
 select public.anular_orden_compra(pg_temp.id('oc2'), 'El proveedor ya no tiene la plancha');
 -- En Aprobación, entre las decididas, la pantalla recibe el número tal cual (vacío
 -- en la de antes de la serie) y la referencia aparte, y la nombra ella.
-select test.afirmar((select numero is null and referencia = 'OC-0429' from public.documentos_por_aprobar() where id = pg_temp.id('oc2'))
+select test.afirmar((select numero is null and referencia = 'OC-0431' from public.documentos_por_aprobar() where id = pg_temp.id('oc2'))
                     and (select numero from public.documentos_por_aprobar() where id = pg_temp.id('oc1')) = current_setting('prueba.num1'),
   'Aprobación recibe la OC sin número sin la referencia en el lugar del número, y la otra con su número');
 select test.debe_fallar($$ select public.aprobar_compra(pg_temp.id('oc2')) $$,
   'la anulada no se aprueba, y el mensaje no hace pasar la referencia por número',
-  'La OC sin número (ref. del proveedor OC-0429) no está esperando aprobación');
+  'La OC sin número (ref. del proveedor OC-0431) no está esperando aprobación');
 reset role;
 -- El disparador que la congela es la última puerta: la tabla no tiene política de
 -- UPDATE, así que solo llegan a él las funciones de la base. Se le escribe como
 -- ellas, sin rol.
 select test.debe_fallar($$ update public.ordenes_compra_materiales set motivo = 'Otro motivo' where id = pg_temp.id('oc2') $$,
   'la anulada queda congelada y el mensaje la nombra bien',
-  'La OC sin número (ref. del proveedor OC-0429) está anulada');
+  'La OC sin número (ref. del proveedor OC-0431) está anulada');
 
 -- ============================================ 4. Quien no ve Adquisiciones
 select pg_temp.como('vendedor');

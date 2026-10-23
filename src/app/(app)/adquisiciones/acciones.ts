@@ -248,7 +248,7 @@ async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createCli
   const filas = data ?? []
   if (filas.length === 0) return null
   // El texto que guardó la base es el de cuando se tomó: el de antes de la
-  // migración 20261022200000 dice «OC <referencia>», que pasa por un número de
+  // migración 20261022220000 dice «OC <referencia>», que pasa por un número de
   // OC. Se nombra con `nombreDeOc`. Si no se pueden leer, sin su número.
   const ids = filas.flatMap((f) => (f.compra_id ? [f.compra_id] : []))
   const { data: ordenes, error: errorOrdenes } = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)

@@ -13,6 +13,8 @@
 --     la pantalla pinta tal cual: «Esperan nota de crédito», «Esperan
 --     reposición», la lista de las OC que se pueden anular, y la factura que
 --     espera lo pagado por la boleta.
+-- La OC que llega en partes (20261022200000) trajo lo mismo en sus mensajes, sus
+-- avisos y la línea del pago de la boleta de una parte; va aquí también.
 --
 -- Ahora todo eso dice el número, o «OC sin número (ref. del proveedor OC-0001)»,
 -- con `nombre_de_oc`, igual que `nombreDeOc` en la aplicación. Donde la frase
@@ -403,7 +405,27 @@ begin
        $v$'No tienes permiso para ver Adquisiciones.'$v$),
       (102, 'documentos_por_aprobar()',
        $v$select 'OC'::text, c.id, coalesce(c.numero, c.referencia), c.referencia,$v$,
-       $v$select 'OC'::text, c.id, c.numero, c.referencia,$v$)
+       $v$select 'OC'::text, c.id, c.numero, c.referencia,$v$),
+      -- La OC que llega en partes (20261022200000 y 210000): sus mensajes, sus avisos
+      -- y la línea del pago de la boleta de una parte.
+      (103, 'fn_parte_con_boleta_valida()',
+       $v$v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);$v$,
+       $v$v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);$v$),
+      (104, 'fn_pago_compra_sin_partes()',
+       $v$(select coalesce(c.numero, 'OC ' || c.referencia) from public.ordenes_compra_materiales c where c.id = new.orden_compra_id)$v$,
+       $v$(select public.nombre_de_oc(c.numero, c.referencia) from public.ordenes_compra_materiales c where c.id = new.orden_compra_id)$v$),
+      (105, 'fn_compra_con_partes_no_cambia()',
+       $v$v_nombre text := coalesce(new.numero, 'OC ' || new.referencia);$v$,
+       $v$v_nombre text := public.nombre_de_oc(new.numero, new.referencia);$v$),
+      (106, 'fn_compra_con_partes_total()',
+       $v$select coalesce(c.numero, 'OC ' || c.referencia) as nombre, c.moneda into v_oc$v$,
+       $v$select public.nombre_de_oc(c.numero, c.referencia) as nombre, c.moneda into v_oc$v$),
+      (107, 'registrar_pago_parte_con_boleta(uuid,uuid,date,numeric,text,text,uuid,numeric)',
+       $v$v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);$v$,
+       $v$v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);$v$),
+      (108, 'fn_adquisicion_no_es_boleta_de_una_parte()',
+       $v$select d.numero_documento, coalesce(c.numero, 'OC ' || c.referencia) as compra into v_doc$v$,
+       $v$select d.numero_documento, public.nombre_de_oc(c.numero, c.referencia) as compra into v_doc$v$)
     ) as c(orden, funcion, viejo, nuevo)
     union all
     select null::integer, null, null, null  -- cierra la última función

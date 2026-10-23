@@ -8,7 +8,7 @@
  *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
  *      sale «OC sin número» con su referencia aparte. En Aprobación, la lista de
  *      las que puede anular la nombra igual, porque el nombre lo arma la base
- *      (migración 20261022200000), y en el teléfono no ensancha la página.
+ *      (migración 20261022220000), y en el teléfono no ensancha la página.
  *   2. Contabilidad la ve igual en el formulario (también el aviso de otro
  *      RUC), registra su factura, y la tabla la nombra igual. En «Corregir»,
  *      la lista también; el detector, al leer un PDF que menciona la otra OC
@@ -257,7 +257,7 @@ writeFileSync(
   const fila = limpio(await pagina.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
   comprobar(fila.includes('OC sin número') && fila.includes(`Ref. del proveedor: ${REFERENCIA}`), 'la OC sin número sale «OC sin número», con su referencia aparte')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-gerencia.png'), fullPage: true, caret: 'initial' })
-  // En Aprobación, las que puede anular: el nombre lo arma la base (migración 20261022200000).
+  // En Aprobación, las que puede anular: el nombre lo arma la base (migración 20261022220000).
   await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
   const anulables = await pagina.locator('tr[data-anulable]').evaluateAll((filas) => filas.map((f) => f.getAttribute('data-anulable')))
   const filaAnulable = limpio(await pagina.locator(`tr[data-anulable="${NOMBRE}"]`).first().textContent().catch(() => ''))
