@@ -161,17 +161,20 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
   corre en la transición, no se pinta, y el segundo «Documento adjuntado»
   idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
-- **La ventana de una pantalla que ya no es de la sesión lo dice y se traba**
-  (vigésima y vigesimoprimera): si en otra pestaña entró otra cuenta,
-  `PieDeVentana` pone el aviso en ámbar en el pie, con el puesto de las dos
-  cuentas, traba los campos y cambia el botón que envía por «Recargar la
-  pantalla»; el cursor va al aviso. Sin nada pendiente también: la pestaña lo
-  sabe por el aviso de la otra (`entroLaCuenta`) o, si no llega, al abrir la
-  ventana que pregunta. Antes el aviso iba arriba, dejaba escribir y enviar, el
-  rojo salía con «Recargar» fuera de la vista y a 1440 empujaba el pie fuera de
-  la ventana. Si la primera cuenta vuelve a entrar, se destraba con lo escrito.
-  Recargar con una cuenta sin permiso lleva a `/sin-permiso`, que dice con qué
-  cuenta está la sesión y ofrece «Salir y entrar con otra cuenta».
+- **Una pantalla que ya no es de la sesión queda entera debajo de una traba**
+  (vigésima a vigesimosegunda): si en otra pestaña entró otra cuenta,
+  `CuentaDeLaPestana` abre un `<dialog>` modal por encima de todo —también de
+  la `Ventana` abierta—, con el puesto de las dos cuentas (y el nombre si son
+  del mismo puesto), el cursor en el aviso y solo «Recargar la pantalla». Dice
+  primero lo que conserva lo escrito (volver a entrar con la primera en la otra
+  pestaña) y que recargar lo pierde. Escape no la cierra. Lo de detrás no se
+  toca ni se pierde: si la primera cuenta vuelve, se destraba con lo escrito,
+  el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Antes la
+  traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
+  botones de la pantalla y la ventana de una pregunta. Mientras dure, la
+  pantalla no se refresca sola (`RefrescoAlVolver`). Recargar con una cuenta
+  sin permiso lleva a `/sin-permiso`, que dice con qué cuenta está la sesión y
+  ofrece «Salir y entrar con otra cuenta».
 - **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
   la misma clase van en una frase con su plural; lo que salió de esta pestaña a
   nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.

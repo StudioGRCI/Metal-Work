@@ -4,6 +4,7 @@ import { Camera, Images, RotateCcw, X } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import { comprimirFoto } from '@/lib/comprimir-foto'
+import { laPestanaEsDeOtraCuenta } from '@/lib/envio'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
@@ -47,13 +48,21 @@ export function hayFallidas(fotos: FotoLista[]) {
   return fotos.some((f) => f.error)
 }
 
+// Las que se retiraron mientras subían o se achicaban.
+const retiradas = new WeakSet<FotoLista>()
+
 /**
  * Al cerrar sin registrar, las fotos ya subidas quedan sueltas en Storage: se
  * retiran (la política deja a su dueño quitar las que ningún registro nombra)
  * y se sueltan sus miniaturas. Sin esperar: si falla, la foto queda suelta y
  * nadie más la ve.
+ *
+ * La que todavía sube se anota (`retiradas`): cuando termina, se quita sola.
+ * Antes llegaba a Storage después de cerrar y quedaba suelta (vigesimosegunda
+ * pasada).
  */
 export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
+  for (const f of fotos) if (f.subiendo) retiradas.add(f)
   const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
   if (rutas.length > 0) void createClient().storage.from(bucket).remove(rutas)
   soltarMiniaturas(fotos)
@@ -136,6 +145,11 @@ export function SelectorFotos({
     const ruta = `${prefijoRuta}/${crypto.randomUUID()}.${extension}`
 
     const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, foto.archivo, foto.archivo.type)
+    // Se cerró sin registrar mientras subía: nada la va a nombrar.
+    if (retiradas.has(foto)) {
+      if (!error) void supabase.storage.from(bucket).remove([ruta])
+      return
+    }
 
     alCambiar((f) =>
       f.map((item) =>
@@ -152,7 +166,9 @@ export function SelectorFotos({
   }
 
   async function agregar(lista: FileList | null) {
-    if (!lista) return
+    // Cada foto sube al elegirla, con la sesión que haya: si es de otra cuenta,
+    // no se sube y la pantalla se traba (vigesimosegunda pasada).
+    if (!lista || laPestanaEsDeOtraCuenta()) return
 
     const disponibles = Math.max(0, (maximo ?? Number.POSITIVE_INFINITY) - fotos.length)
     for (const archivo of Array.from(lista).slice(0, disponibles)) {
@@ -174,6 +190,8 @@ export function SelectorFotos({
       alCambiar((f) => [...f, foto])
       if (!comprimir) {
         await subir(foto)
+        // Se cerró mientras subía: las que siguen ya no tienen ventana.
+        if (retiradas.has(foto)) break
         continue
       }
 
@@ -184,6 +202,7 @@ export function SelectorFotos({
       } catch {
         achicada = null
       }
+      if (retiradas.has(foto)) break
       const falla = !achicada
         ? 'No se pudo abrir esta foto: tómala de nuevo o elige otra.'
         : achicada.size > maximoMb * 1024 * 1024
@@ -198,11 +217,13 @@ export function SelectorFotos({
       const lista: FotoLista = { ...foto, archivo: achicada }
       alCambiar((f) => f.map((item) => (item === foto ? lista : item)))
       await subir(lista)
+      if (retiradas.has(lista)) break
     }
   }
 
   /** Volver a intentar con el mismo archivo: solo tiene sentido si falló la subida, no el tipo o el peso. */
   function reintentar(foto: FotoLista) {
+    if (laPestanaEsDeOtraCuenta()) return
     const otraVez: FotoLista = { ...foto, subiendo: true, error: undefined }
     alCambiar((f) => f.map((item) => (item === foto ? otraVez : item)))
     void subir(otraVez)

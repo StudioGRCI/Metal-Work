@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -217,6 +217,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {

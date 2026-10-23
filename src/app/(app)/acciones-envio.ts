@@ -2,7 +2,7 @@
 
 import { z } from 'zod'
 
-import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
+import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type Falta, type LoQueEntro } from '@/lib/dominio/envios'
 import { cantidad, fecha, moneda, type CodigoMoneda } from '@/lib/format'
 import { obtenerSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -11,11 +11,11 @@ type Cliente = Awaited<ReturnType<typeof createClient>>
 
 /**
  * Lo que la base sabe de los envíos que la pestaña tiene pendientes: con qué
- * cuenta está la sesión, y de cada id que quedó, lo que quedó y, si no lo
- * registró esa cuenta, el puesto de la que sí. El id que no está no entró, o
- * no se puede ver.
+ * cuenta está la sesión (con su puesto y su nombre, para nombrarla en la traba
+ * de la pestaña), y de cada id que quedó, lo que quedó y, si no lo registró esa
+ * cuenta, el puesto de la que sí. El id que no está no entró, o no se puede ver.
  */
-export type LoQueQuedo = { cuenta: string; puesto: string; entraron: Record<string, LoQueEntro> }
+export type LoQueQuedo = { cuenta: string; puesto: string; nombre: string; entraron: Record<string, LoQueEntro> }
 
 // Sin ids también se pregunta: la respuesta dice con qué cuenta está la sesión.
 const Consulta = z.object({ clave: z.enum(CLAVES_DEL_ENVIO), ids: z.array(z.guid()).max(MAXIMO_PENDIENTES) })
@@ -28,7 +28,7 @@ function importe(monto: number, codigo: string | null | undefined, dia: string |
 }
 
 /** «La orden de compra … : OS-…. Lo que registres ahora será otra.», contado por `contarLoQueEntro`. */
-function dicho(sujeto: string, plural: string, otra: 'otro' | 'otra', detalle: string | null, falta = ''): LoQueEntro {
+function dicho(sujeto: string, plural: string, otra: 'otro' | 'otra', detalle: string | null, falta: Falta | null = null): LoQueEntro {
   return { sujeto, plural, detalle, falta, cierre: `Lo que registres ahora será ${otra}.`, autor: null }
 }
 
@@ -37,9 +37,21 @@ function dicho(sujeto: string, plural: string, otra: 'otro' | 'otra', detalle: s
  * no se envió si del documento no llegó la respuesta: si no tiene ninguno, se
  * dice dónde adjuntarlo. Solo a quien lo registró: es quien lo había elegido.
  */
-async function sinArchivo(registro: PromiseLike<{ count: number | null }>, texto: string) {
+async function sinArchivo(registro: PromiseLike<{ count: number | null }>, falta: Falta) {
   const { count } = await registro
-  return count === 0 ? ` ${texto}` : ''
+  return count === 0 ? falta : null
+}
+
+const SIN_FACTURA: Falta = { que: 'factura o comprobante', donde: 'desde la fila de la orden', dondeVarios: 'desde la fila de cada orden' }
+const SIN_CONTRATO_DE_LA_OS: Falta = {
+  que: 'contrato',
+  donde: 'desde la fila de la orden, con «Adjuntar documento»',
+  dondeVarios: 'desde la fila de cada orden, con «Adjuntar documento»',
+}
+const SIN_CONTRATO_DEL_SUBCONTRATO: Falta = {
+  que: 'contrato',
+  donde: 'desde el subcontrato, con «Adjuntar contrato»',
+  dondeVarios: 'desde cada subcontrato, con «Adjuntar contrato»',
 }
 
 /** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene (`obtenerSesion`). */
@@ -76,7 +88,12 @@ export async function consultarEnvio(clave: ClaveDelEnvio, ids: string[]): Promi
       return [id, lo] as const
     }),
   )
-  return { cuenta: perfil.id, puesto: perfil.puesto, entraron: Object.fromEntries(hallados.filter((h) => h !== null)) }
+  return {
+    cuenta: perfil.id,
+    puesto: perfil.puesto,
+    nombre: `${perfil.nombres} ${perfil.apellidos}`.trim(),
+    entraron: Object.fromEntries(hallados.filter((h) => h !== null)),
+  }
 }
 
 /** Lo que quedó con ese id y quién lo registró (`por`); `null` si no está. */
@@ -98,9 +115,9 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         data.creado_por === yo
           ? await sinArchivo(
               supabase.from('documentos_compra_material').select('id', { count: 'exact', head: true }).eq('orden_compra_id', id),
-              'Si le elegiste factura o comprobante, no se adjuntó: adjúntalo desde la fila de la orden.',
+              SIN_FACTURA,
             )
-          : ''
+          : null
       return { por: data.creado_por, lo: dicho('La orden de compra', 'Las órdenes de compra', 'otra', data.numero, falta) }
     }
     case 'orden_servicio': {
@@ -110,9 +127,9 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         data.creado_por === yo
           ? await sinArchivo(
               supabase.from('documentos_orden_servicio').select('id', { count: 'exact', head: true }).eq('orden_servicio_id', id),
-              'Si le elegiste contrato, no se adjuntó: adjúntalo desde la fila de la orden, con «Adjuntar documento».',
+              SIN_CONTRATO_DE_LA_OS,
             )
-          : ''
+          : null
       return { por: data.creado_por, lo: dicho('La orden de servicio', 'Las órdenes de servicio', 'otra', data.numero, falta) }
     }
     case 'subcontrato': {
@@ -122,9 +139,9 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         data.creado_por === yo
           ? await sinArchivo(
               supabase.from('subcontrato_contratos').select('id', { count: 'exact', head: true }).eq('subcontrato_id', id),
-              'Si le elegiste contrato, no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».',
+              SIN_CONTRATO_DEL_SUBCONTRATO,
             )
-          : ''
+          : null
       return { por: data.creado_por, lo: dicho('El subcontrato', 'Los subcontratos', 'otro', data.numero, falta) }
     }
     case 'contrato_subcontrato': {

@@ -17,7 +17,7 @@ export default async function PaginaSinPermiso() {
       <h1 className="mt-4 text-lg font-semibold text-texto">No tienes acceso a esta sección</h1>
       {/* Con qué cuenta está la sesión, y la salida para entrar con otra: se
           llega aquí también al recargar una pestaña que era de otra cuenta
-          (`useOtraCuentaEnLaPestana`), y «solicítalo al administrador» era el
+          (`CuentaDeLaPestana`), y «solicítalo al administrador» era el
           consejo equivocado para quien solo tenía que volver a entrar con la
           suya (vigesimoprimera pasada). */}
       <p className="mt-2 text-sm text-texto-suave">

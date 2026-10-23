@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { startTransition, useEffect, useRef } from 'react'
 
+import { laPestanaEsDeOtraCuenta } from '@/lib/envio'
+
 /**
  * Lo que hace que la pantalla se sienta viva sin websockets: cuando la persona
  * vuelve a la pestaña —o a la ventana, en el monitor de oficina— después de un
@@ -14,11 +16,16 @@ import { startTransition, useEffect, useRef } from 'react'
  * supervisor escribe reportes largos con guante y un repintado a mitad de
  * frase mueve lo que está escribiendo. Sin fila que perder, refrescar es
  * gratis; con ella, se espera.
+ *
+ * Tampoco mientras la pestaña es de otra cuenta (`laPestanaEsDeOtraCuenta`): el
+ * repintado traería la pantalla de la cuenta que entró en la otra pestaña y se
+ * llevaba la traba y lo escrito sin que nadie recargara.
  */
 const RATO_FUERA_MS = 30_000
 const CADA_MS = 60_000
 
 function alguienEscribe() {
+  if (laPestanaEsDeOtraCuenta()) return true
   if (document.querySelector('[role="dialog"]')) return true
   const activo = document.activeElement
   if (!activo) return false

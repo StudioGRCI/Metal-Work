@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
-import { useCursorAlRechazo, useOtraCuentaEnLaPestana } from '@/lib/envio'
+import { useCursorAlRechazo } from '@/lib/envio'
 
 /**
  * El pie de una ventana con formulario: el aviso del rechazo, «Cancelar» y el
@@ -21,13 +21,6 @@ import { useCursorAlRechazo, useOtraCuentaEnLaPestana } from '@/lib/envio'
  * Los campos quedan trabados: lo cambiado seguía editable junto al aviso, el
  * archivo invitaba a cambiarlo y la cámara del vehículo subía otra foto
  * (decimocuarta pasada). Como el reporte diario, que lo hace con su `fieldset`.
- *
- * Igual si en otra pestaña entró otra cuenta (`useOtraCuentaEnLaPestana`): el
- * aviso va en el pie, en el tono de aviso, y en lugar del botón que envía,
- * «Recargar la pantalla». Antes iba arriba, dejaba escribir y enviar, y el envío
- * salía en rojo con «Recargar» fuera de la vista; a 1440 el aviso empujaba el
- * pie fuera de la ventana (vigesimoprimera pasada). Si la primera cuenta vuelve
- * a entrar en la otra pestaña, se destraba con lo escrito.
  */
 export function PieDeVentana({
   error,
@@ -61,12 +54,9 @@ export function PieDeVentana({
   children?: ReactNode
 }) {
   const aviso = useRef<HTMLParagraphElement>(null)
-  const avisoCuenta = useRef<HTMLParagraphElement>(null)
   const corregida = useRef<HTMLDivElement>(null)
   const pie = useRef<HTMLDivElement>(null)
   const yaEntro = yaEntroLaPrimeraVez(error)
-  const otraCuenta = useOtraCuentaEnLaPestana()
-  const trabada = yaEntro || otraCuenta !== null
   // Se traba lo que haya en el formulario mientras dure el aviso, también lo
   // que React vuelve a encender después: los campos con `disabled={enviando}`
   // estaban apagados al llegar el aviso, se saltaban y quedaban editables, y un
@@ -74,22 +64,11 @@ export function PieDeVentana({
   // pasada). Al soltarse se enciende solo lo que se apagó aquí. La ayuda de un
   // campo («Qué es…») no se traba: leerla no cambia nada.
   useEffect(() => {
-    if (!trabada) return
-    // Lo de otra cuenta llega sin que se haya tocado nada, a veces con el
-    // cursor en un campo que se traba y lo soltaba a la página: va al aviso,
-    // con el pie a la vista. En el cuadro siguiente, para que gane al cursor
-    // que la ventana pone en su primer campo al abrirse ya trabada.
-    const alAviso =
-      otraCuenta === null
-        ? 0
-        : requestAnimationFrame(() => {
-            pie.current?.scrollIntoView({ block: 'nearest' })
-            avisoCuenta.current?.focus()
-          })
     const formulario = pie.current?.closest('form')
+    if (!yaEntro || !formulario) return
     const trabados = new Set<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>()
     const trabar = () => {
-      for (const c of formulario?.elements ?? []) {
+      for (const c of formulario.elements) {
         if (!(c instanceof HTMLInputElement || c instanceof HTMLSelectElement || c instanceof HTMLTextAreaElement || c instanceof HTMLButtonElement)) continue
         if (c.disabled || pie.current?.contains(c) || c.hasAttribute('data-ayuda')) continue
         c.disabled = true
@@ -98,30 +77,19 @@ export function PieDeVentana({
     }
     trabar()
     const vigia = new MutationObserver(trabar)
-    if (formulario) vigia.observe(formulario, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] })
+    vigia.observe(formulario, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] })
     return () => {
-      cancelAnimationFrame(alAviso)
       vigia.disconnect()
       for (const c of trabados) c.disabled = false
     }
-  }, [trabada, otraCuenta])
+  }, [yaEntro])
   useCursorAlRechazo(enviando, error, () => {
     pie.current?.scrollIntoView({ block: 'nearest' })
     return enLugarDelError ? corregida.current : aviso.current
   })
   return (
     <div ref={pie} className="space-y-4">
-      {otraCuenta !== null ? (
-        <p
-          ref={avisoCuenta}
-          role="alert"
-          tabIndex={-1}
-          data-otra-cuenta
-          className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto"
-        >
-          {otraCuenta}
-        </p>
-      ) : enLugarDelError ? (
+      {enLugarDelError ? (
         <div ref={corregida} tabIndex={-1}>
           {enLugarDelError}
         </div>
@@ -140,17 +108,12 @@ export function PieDeVentana({
         )
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {nota && !trabada && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
+        {nota && !yaEntro && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
         <Boton type="button" variante="contorno" onClick={alCancelar}>
           {yaEntro ? 'Cerrar' : 'Cancelar'}
         </Boton>
-        {!trabada && children}
-        {otraCuenta !== null && (
-          <Boton type="button" onClick={() => window.location.reload()}>
-            Recargar la pantalla
-          </Boton>
-        )}
-        {texto && !trabada && (
+        {!yaEntro && children}
+        {texto && !yaEntro && (
           <Boton type="submit" variante={variante} cargando={enviando || cargando} disabled={disabled}>
             {texto}
           </Boton>

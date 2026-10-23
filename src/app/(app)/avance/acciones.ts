@@ -39,7 +39,7 @@ function nulo(valor?: string | null) {
 export async function registrarAvance(
   _previo: unknown,
   datos: FormData,
-): Promise<ResultadoAccion> {
+): Promise<ResultadoAccion<{ fotosSueltas: boolean }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.registrar')) {
     return { ok: false, error: 'No tienes permiso para registrar el avance del taller.' }
@@ -97,7 +97,7 @@ export async function registrarAvance(
     try {
       fotos = esquemaFotos.parse(JSON.parse(v.fotos))
     } catch {
-      return { ok: true, mensaje: 'Avance registrado, pero las fotos no se pudieron adjuntar.' }
+      return { ok: true, mensaje: 'Avance registrado, pero las fotos no se pudieron adjuntar.', datos: { fotosSueltas: true } }
     }
 
     if (fotos.length > 0) {
@@ -119,6 +119,8 @@ export async function registrarAvance(
         return {
           ok: true,
           mensaje: `Avance registrado, pero las fotos no se adjuntaron: ${mensajeDeError(errorFotos)}`,
+          // Ningún registro las nombra: la ventana las quita de Storage.
+          datos: { fotosSueltas: true },
         }
       }
     }
