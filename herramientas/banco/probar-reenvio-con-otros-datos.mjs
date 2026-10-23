@@ -168,7 +168,8 @@ function laVentana(pagina) {
     const v = document.querySelector(selector)
     const aviso = v?.querySelector('[role="alert"]')
     const campos = [...(v?.querySelectorAll('input:not([type=hidden]), select, textarea') ?? [])]
-    const botones = [...(v?.querySelectorAll('button') ?? [])].filter((b) => !b.disabled && b.offsetParent !== null)
+    // La «i» de la ayuda de un campo (`data-ayuda`) no envía ni cierra: no cuenta.
+    const botones = [...(v?.querySelectorAll('button:not([data-ayuda])') ?? [])].filter((b) => !b.disabled && b.offsetParent !== null)
     return {
       neutro: aviso?.hasAttribute('data-ya-entro') ?? false,
       cursor: Boolean(aviso) && document.activeElement === aviso,
