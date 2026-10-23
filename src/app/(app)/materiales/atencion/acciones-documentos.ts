@@ -21,11 +21,12 @@ const FORMATO = z.object({
   factura_numero: z.string().trim().max(40).optional(),
   factura_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
   // La boleta de una parte de la OC que llega en partes (migración 20261022200000):
-  // su número, su fecha y su monto; el resto llega con factura.
+  // su número, su fecha, su monto y si trae IGV (20261022210000); el resto llega con factura.
   parte: z.literal('si').optional(),
   parte_numero: z.string().trim().max(40).optional(),
   parte_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
   parte_monto: z.string().trim().max(20).optional(),
+  parte_igv: z.union([z.literal(''), z.literal('si'), z.literal('no')]).optional(),
 })
 
 /** El número de una boleta, nota de venta o recibo: serie y número como B001-45, o como viene si es otro formato. */
@@ -59,6 +60,7 @@ export async function registrarDocumentoCompra(
     parte_numero: campo(formulario, 'parte_numero'),
     parte_fecha: campo(formulario, 'parte_fecha'),
     parte_monto: campo(formulario, 'parte_monto'),
+    parte_igv: campo(formulario, 'parte_igv'),
   })
   if (!datos.success) {
     return {
@@ -83,20 +85,23 @@ export async function registrarDocumentoCompra(
   if (esParte && !fechaParte) return { ok: false, error: 'Escribe la fecha de la boleta.' }
   if (fechaParte && fechaParte > hoyLima()) return { ok: false, error: 'La fecha de la boleta no puede ser posterior a hoy.' }
   if (esParte && !(montoParte && montoParte > 0)) return { ok: false, error: 'Escribe el monto de la boleta, mayor que cero y con hasta dos decimales.' }
+  const traeIgv = esParte ? (datos.data.parte_igv === 'si' ? true : datos.data.parte_igv === 'no' ? false : null) : null
+  if (esParte && traeIgv === null) return { ok: false, error: 'Elige si la boleta trae IGV: lo dice el comprobante.' }
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, monto_de_la_parte')
+    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, monto_de_la_parte, parte_trae_igv')
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
     if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id
       || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo
-      // El reintento de la boleta de una parte trae el mismo número y el mismo monto.
-      || (esParte && (existente.numero_documento !== numeroParte || Number(existente.monto_de_la_parte) !== montoParte))) {
+      // El reintento de la boleta de una parte trae el mismo número, el mismo monto y el mismo IGV.
+      || (esParte && (existente.numero_documento !== numeroParte || Number(existente.monto_de_la_parte) !== montoParte
+        || existente.parte_trae_igv !== traeIgv))) {
       return { ok: false, error: 'Ese identificador ya pertenece a otro documento. Recarga la compra antes de volver a intentar.' }
     }
     return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
@@ -145,6 +150,7 @@ export async function registrarDocumentoCompra(
     numero_documento: numeroFactura ?? numeroParte,
     fecha_emision: fechaFactura ?? fechaParte,
     monto_de_la_parte: montoParte,
+    parte_trae_igv: traeIgv,
   }).select('id, orden:ordenes_compra_materiales(moneda)').maybeSingle()
   if (error) {
     if (error.code === '23505') {

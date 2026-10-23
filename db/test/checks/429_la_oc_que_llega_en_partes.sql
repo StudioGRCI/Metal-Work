@@ -84,9 +84,9 @@ begin
   insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
   values ('documentos-compras', v_ruta, auth.uid(), auth.uid()::text, '{"mimetype": "application/pdf", "size": 2048}');
   insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
-                                                 subido_por, numero_documento, fecha_emision, monto_de_la_parte)
+                                                 subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
   values (pg_temp.id(p_doc), pg_temp.id(p_oc), p_tipo, 'boleta-' || coalesce(p_numero, 'x') || '.pdf', v_ruta, 'application/pdf', 2048,
-          public.usuario_actual(), p_numero, p_fecha, p_monto);
+          public.usuario_actual(), p_numero, p_fecha, p_monto, case when p_monto is not null then true end);
 end $$;
 create or replace function pg_temp.pagar_parte(p_pago text, p_doc text, p_monto numeric, p_ruta text)
 returns uuid language sql as $$
