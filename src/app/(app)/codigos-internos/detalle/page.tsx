@@ -1107,7 +1107,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales salidos del almacén"
-          ayuda="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero. La merma que Diseño evaluó en la OT se suma sobre lo que tiene precio."
+          ayuda="Cada salida para este código a su precio: el que quedó en la salida, o el de la última compra del material hasta ese día, o el de la valorización del almacén. Lo que no tiene ninguno sale «Sin precio» y no se suma como cero. La merma que Diseño evaluó en la OT se suma sobre lo que tiene precio. También suma el IGV de las boletas de una parte y resta el descuento de las notas de crédito, que no salieron del almacén: van sin cantidad."
         />
         <Tabla>
           <TablaCabecera>
@@ -1134,7 +1134,8 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </p>
                     </TD>
                     <TD className="tabular text-right align-top whitespace-nowrap">
-                      {l.fuente === 'MERMA' ? '—' : `${cantidad(l.cantidad)} ${l.unidad ?? ''}`.trim()}
+                      {/* La merma, el IGV de una parte y la nota de crédito no son salidas: no tienen cantidad ni unidad. */}
+                      {l.fuente === 'MERMA' || l.unidad === null ? '—' : `${cantidad(l.cantidad)} ${l.unidad}`}
                     </TD>
                     <TD className="tabular hidden text-right align-top sm:table-cell">
                       {l.precio_unitario === null ? '—' : moneda(l.precio_unitario, l.moneda ?? 'PEN')}

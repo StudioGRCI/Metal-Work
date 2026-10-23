@@ -39,7 +39,7 @@ export type Formatos = {
   dinero: (monto: number, moneda: 'PEN' | 'USD') => string
   cantidad: (n: number) => string
   fecha: (iso: string) => string
-  /** El número de una OC por su id (OC-5583-MW); null si no se conoce. */
+  /** Cómo se nombra una OC por su id (OC-5583-MW, o `nombreDeOc` si no tiene número); null si no se conoce. */
   oc: (id: string) => string | null
   /** El nombre de un material del catálogo por su id; null si no se conoce. */
   material: (id: string) => string | null

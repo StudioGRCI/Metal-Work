@@ -199,7 +199,7 @@ En la misma migración que la crea, sin excepción:
   lleva mucho (el reporte diario con sus trabajos, su gente y sus fotos; el
   ingreso y la salida del vehículo) deja la huella de su envío en
   `huellas_de_envio` (`anotar_envio` al registrar, `mismo_envio` al
-  reconocerlo; `20261022194000`, check 430). Las fotos también son archivos:
+  reconocerlo; `20261022194000`, check 432). Las fotos también son archivos:
   `p_fotos jsonb` va en la huella. El detector del check `417` busca funciones
   que reciben una ruta o fotos y devuelven el id existente sin comparar el
   envío, también leyendo la fila (`if v.registrado_por = v_yo then return`) o
@@ -212,7 +212,7 @@ En la misma migración que la crea, sin excepción:
   `DELETE … RETURNING`, y Postgres le aplica también la política de leer. En
   `gastos-ot` y `control-ot` la de leer pedía una fila que lo nombrara, y el
   borrado afectaba cero archivos sin error (duodécima pasada; migración
-  `20261022193000`, check 429). «Ninguna fila lo nombra» se pregunta con una
+  `20261022193000`, check 431). «Ninguna fila lo nombra» se pregunta con una
   función `security definer` (`archivo_plano_vinculado`,
   `comprobante_de_gasto_anotado`): un `not exists` bajo RLS cuenta como
   inexistente la fila que el dueño ya no ve, y le dejaría ver y quitar su

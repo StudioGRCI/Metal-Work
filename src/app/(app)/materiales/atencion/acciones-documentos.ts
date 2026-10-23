@@ -20,7 +20,21 @@ const FORMATO = z.object({
   // Contabilidad la registra con ellos.
   factura_numero: z.string().trim().max(40).optional(),
   factura_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
+  // La boleta de una parte de la OC que llega en partes (migración 20261022200000):
+  // su número, su fecha, su monto y si trae IGV (20261022210000); el resto llega con factura.
+  parte: z.literal('si').optional(),
+  parte_numero: z.string().trim().max(40).optional(),
+  parte_fecha: z.union([z.literal(''), z.iso.date()]).optional(),
+  parte_monto: z.string().trim().max(20).optional(),
+  parte_igv: z.union([z.literal(''), z.literal('si'), z.literal('no')]).optional(),
 })
+
+/** El número de una boleta, nota de venta o recibo: serie y número como B001-45, o como viene si es otro formato. */
+function numeroDeComprobante(texto: string): string | null {
+  const limpio = texto.replace(/\s/g, '').toUpperCase()
+  if (!/^[A-Z0-9][A-Z0-9-]{2,39}$/.test(limpio)) return null
+  return normalizarNumeroFactura(limpio) ?? limpio
+}
 
 const campo = (formulario: FormData, nombre: string) => {
   const v = formulario.get(nombre)
@@ -42,11 +56,18 @@ export async function registrarDocumentoCompra(
     nombre_archivo: formulario.get('nombre_archivo'),
     factura_numero: campo(formulario, 'factura_numero'),
     factura_fecha: campo(formulario, 'factura_fecha'),
+    parte: campo(formulario, 'parte'),
+    parte_numero: campo(formulario, 'parte_numero'),
+    parte_fecha: campo(formulario, 'parte_fecha'),
+    parte_monto: campo(formulario, 'parte_monto'),
+    parte_igv: campo(formulario, 'parte_igv'),
   })
   if (!datos.success) {
     return {
       ok: false,
-      error: datos.error.issues[0]?.path[0] === 'factura_fecha' ? 'Revisa la fecha de la factura.' : 'Selecciona el tipo de documento y un PDF.',
+      error: datos.error.issues[0]?.path[0] === 'factura_fecha' ? 'Revisa la fecha de la factura.'
+        : datos.error.issues[0]?.path[0] === 'parte_fecha' ? 'Revisa la fecha de la boleta.'
+        : 'Selecciona el tipo de documento y un PDF.',
     }
   }
   const esFactura = datos.data.tipo === 'FACTURA'
@@ -55,12 +76,29 @@ export async function registrarDocumentoCompra(
   if (esFactura && !numeroFactura) return { ok: false, error: 'Escribe el número de la factura con su serie y su número, como F001-123.' }
   if (esFactura && !fechaFactura) return { ok: false, error: 'Escribe la fecha de la factura.' }
   if (fechaFactura && fechaFactura > hoyLima()) return { ok: false, error: 'La fecha de la factura no puede ser posterior a hoy.' }
+  const esParte = datos.data.tipo === 'COMPROBANTE' && datos.data.parte === 'si'
+  const numeroParte = esParte ? numeroDeComprobante(datos.data.parte_numero ?? '') : null
+  const fechaParte = esParte ? datos.data.parte_fecha || null : null
+  const textoMonto = esParte ? (datos.data.parte_monto ?? '').replace(',', '.') : ''
+  const montoParte = esParte && /^\d{1,9}(\.\d{1,2})?$/.test(textoMonto) ? Number(textoMonto) : null
+  if (esParte && !numeroParte) return { ok: false, error: 'Escribe el número de la boleta con su serie y su número, como B001-45.' }
+  if (esParte && !fechaParte) return { ok: false, error: 'Escribe la fecha de la boleta.' }
+  if (fechaParte && fechaParte > hoyLima()) return { ok: false, error: 'La fecha de la boleta no puede ser posterior a hoy.' }
+  if (esParte && !(montoParte && montoParte > 0)) return { ok: false, error: 'Escribe el monto de la boleta, mayor que cero y con hasta dos decimales.' }
+  const traeIgv = esParte ? (datos.data.parte_igv === 'si' ? true : datos.data.parte_igv === 'no' ? false : null) : null
+  if (esParte && traeIgv === null) return { ok: false, error: 'Elige si la boleta trae IGV: lo dice el comprobante.' }
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
   // Lo que se responde al anexarlo. La OC con boleta que Tesorería ya pagó
   // directo cambia el paso siguiente, y eso lo dice la base en el momento.
-  const respuesta = async (): Promise<ResultadoAccion<{ revisar: boolean; avisaTesoreria: boolean }>> => {
+  const respuesta = async (monedaOrden: string | null | undefined): Promise<ResultadoAccion<{ revisar: boolean; avisaTesoreria: boolean }>> => {
+    if (numeroParte && montoParte) {
+      return {
+        ok: true,
+        mensaje: `Boleta ${numeroParte} adjuntada por ${moneda(montoParte, monedaOrden === 'USD' ? 'USD' : 'PEN')}: Tesorería la paga en «Boletas de una parte» y lo demás de la OC se paga por su factura.`,
+      }
+    }
     if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
     // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
     // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se
@@ -100,15 +138,23 @@ export async function registrarDocumentoCompra(
     }
   }
   // El mismo envío repetido (no le llegó la respuesta) recibe la misma respuesta
-  // que la primera vez; con otro número, otra fecha u otra persona ya no es el
-  // mismo, y la pantalla no puede decir que quedó lo que no se guardó.
-  type Anotado = { orden_compra_id: string; subido_por: string; tipo: string; nombre_archivo: string; numero_documento: string | null; fecha_emision: string | null }
+  // que la primera vez; con otro número, otra fecha, otro monto de la parte u
+  // otra persona ya no es el mismo, y la pantalla no puede decir que quedó lo
+  // que no se guardó.
+  type Anotado = {
+    orden_compra_id: string; subido_por: string; tipo: string; nombre_archivo: string; numero_documento: string | null
+    fecha_emision: string | null; monto_de_la_parte: number | null; parte_trae_igv: boolean | null
+  }
   const esElMismo = (d: Anotado) =>
     d.orden_compra_id === datos.data.orden_compra_id && d.subido_por === perfil.id && d.tipo === datos.data.tipo
-    && d.nombre_archivo === datos.data.nombre_archivo && d.numero_documento === numeroFactura && d.fecha_emision === fechaFactura
+    && d.nombre_archivo === datos.data.nombre_archivo && d.numero_documento === (numeroFactura ?? numeroParte)
+    && d.fecha_emision === (fechaFactura ?? fechaParte)
+    && (d.monto_de_la_parte === null ? montoParte === null : Number(d.monto_de_la_parte) === montoParte)
+    && d.parte_trae_igv === traeIgv
+  const ANOTADO = 'orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv, orden:ordenes_compra_materiales(moneda)'
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision')
+    .select(ANOTADO)
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
@@ -116,7 +162,7 @@ export async function registrarDocumentoCompra(
     if (!esElMismo(existente)) {
       return { ok: false, error: 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
     }
-    return respuesta()
+    return respuesta(existente.orden?.moneda)
   }
   const { data: archivo, error: errorSubida } = await supabase.storage
     .from('documentos-compras')
@@ -159,14 +205,21 @@ export async function registrarDocumentoCompra(
     mime_type: 'application/pdf',
     tamano_bytes: archivo.size,
     subido_por: perfil.id,
-    numero_documento: numeroFactura,
-    fecha_emision: fechaFactura,
-  }).select('id').maybeSingle()
+    numero_documento: numeroFactura ?? numeroParte,
+    fecha_emision: fechaFactura ?? fechaParte,
+    monto_de_la_parte: montoParte,
+    parte_trae_igv: traeIgv,
+  }).select('id, orden:ordenes_compra_materiales(moneda)').maybeSingle()
   if (error) {
     if (error.code === '23505') {
       const repetido = await supabase.from('documentos_compra_material')
-        .select('orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision').eq('id', datos.data.id).maybeSingle()
-      if (!repetido.error && repetido.data && esElMismo(repetido.data)) return respuesta()
+        .select(ANOTADO).eq('id', datos.data.id).maybeSingle()
+      // El PDF de esa ruta es el del documento que entró: no se retira.
+      if (!repetido.error && repetido.data) {
+        return esElMismo(repetido.data)
+          ? respuesta(repetido.data.orden?.moneda)
+          : { ok: false, error: 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
+      }
     }
     const { error: errorLimpieza } = await supabase.storage.from('documentos-compras').remove([ruta])
     if (errorLimpieza) {
@@ -181,7 +234,7 @@ export async function registrarDocumentoCompra(
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
-  return respuesta()
+  return respuesta(guardado.orden?.moneda)
 }
 
 const ANULACION = z.object({

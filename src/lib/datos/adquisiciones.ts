@@ -3,6 +3,7 @@ import 'server-only'
 import { z } from 'zod'
 
 import { enlaces } from '@/lib/datos/facturacion'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_NOTAS_CREDITO, BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { lecturaDeFila, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { rucEsValido } from '@/lib/dominio/proveedores'
@@ -169,7 +170,7 @@ async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient
 export type FacturaDeLogistica = {
   id: string
   orden_compra_id: string
-  /** El número de la OC, o su referencia si todavía no lo tiene. */
+  /** Cómo se nombra la OC (`nombreDeOc`): las de antes de la serie no tienen número. */
   oc: string
   proveedor: string
   nombre_archivo: string
@@ -229,7 +230,7 @@ export async function facturasDeLogistica(): Promise<FacturaDeLogistica[]> {
   return documentos.map((d) => ({
     id: d.id,
     orden_compra_id: d.orden_compra_id,
-    oc: d.oc?.numero ?? d.oc?.referencia ?? 'OC',
+    oc: d.oc ? nombreDeOc(d.oc) : 'OC',
     proveedor: d.oc?.proveedor ?? '',
     nombre_archivo: d.nombre_archivo,
     numero: d.numero_documento,
@@ -276,7 +277,10 @@ export type RqDeCompra = { id: string; numero: string; codigo_interno: string }
 /** Una OC en la tabla de Adquisiciones: su número, su total, su código y los RQ que atiende. */
 export type OcEnTabla = {
   id: string
-  numero: string
+  /** Null en las OC de antes de la serie OC-…-MW: se nombran con `nombreDeOc`. */
+  numero: string | null
+  /** La cotización o la proforma del proveedor; no es el número de la OC. */
+  referencia: string
   moneda: string
   total: number
   sin_precio: boolean
@@ -445,7 +449,8 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
     const propio = codigoDe.get(o.id)
     return {
       id: o.id,
-      numero: o.numero ?? o.referencia,
+      numero: o.numero,
+      referencia: o.referencia,
       moneda: o.moneda,
       total: o.total,
       sin_precio: o.sin_precio,
@@ -804,4 +809,54 @@ export async function comprasConBoletaPorPagar(verCuentas: boolean): Promise<Com
       cuentasProveedor: (f.proveedor_id && cuentas.get(f.proveedor_id)) || [],
     }
   })
+}
+
+type ParteConBoletaFila = Funciones<'partes_con_boleta_por_pagar'>['Returns'][number]
+type PagoDeLaParteFila = Pick<
+  Tablas<'pagos_parte_con_boleta'>,
+  'id' | 'documento_compra_id' | 'fecha_pago' | 'moneda' | 'monto' | 'operacion' | 'archivo_ruta' | 'anulado_en' | 'motivo_anulacion'
+>
+export type ParteConBoleta = ParteConBoletaFila & {
+  /** El PDF de la boleta que anexó Logística. */
+  url: string | null
+  /** Cada pago con su voucher; los anulados también, tachados como evidencia. */
+  pagosDeLaParte: (PagoDeLaParteFila & { url: string | null })[]
+  cuentasProveedor: CuentaDelProveedor[]
+}
+
+/**
+ * Las boletas de una parte de la OC que llega en partes (migración
+ * 20261022200000): las que deben y las últimas pagadas, cada una con su PDF, sus
+ * pagos con su voucher y las cuentas del proveedor. Lo demás de la OC se paga por
+ * su factura, en «Facturas por pagar».
+ */
+export async function partesConBoletaPorPagar(verCuentas: boolean): Promise<ParteConBoleta[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('partes_con_boleta_por_pagar')
+  if (error) throw new Error(`No se pudieron leer las boletas de una parte: ${error.message}`)
+  const filas = data ?? []
+  const ids = filas.flatMap((f) => (f.documento_id ? [f.documento_id] : []))
+  const [pagos, cuentas] = await Promise.all([
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('pagos_parte_con_boleta')
+        .select('id, documento_compra_id, fecha_pago, moneda, monto, operacion, archivo_ruta, anulado_en, motivo_anulacion')
+        .in('documento_compra_id', tanda)
+        .order('fecha_pago')
+        .order('creado_en')
+      if (r.error) throw new Error(`No se pudieron leer los pagos de las boletas de una parte: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    cuentasDeProveedores(filas.flatMap((f) => (f.proveedor_id ? [f.proveedor_id] : [])), verCuentas),
+  ])
+  const [vouchers, pdfs] = await Promise.all([
+    enlaces(BUCKET_PAGOS_COMPRAS, pagos.map((p) => p.archivo_ruta)),
+    enlaces('documentos-compras', filas.map((f) => f.ruta)),
+  ])
+  return filas.map((f) => ({
+    ...f,
+    url: (f.ruta && pdfs.get(f.ruta)) || null,
+    pagosDeLaParte: pagos.filter((p) => p.documento_compra_id === f.documento_id).map((p) => ({ ...p, url: vouchers.get(p.archivo_ruta) ?? null })),
+    cuentasProveedor: (f.proveedor_id && cuentas.get(f.proveedor_id)) || [],
+  }))
 }

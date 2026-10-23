@@ -2327,6 +2327,8 @@ export type Database = {
           anulado_en: string | null
           anulado_por: string | null
           motivo_anulacion: string | null
+          monto_de_la_parte: number | null
+          parte_trae_igv: boolean | null
         }
         Insert: {
           id?: string
@@ -2344,6 +2346,8 @@ export type Database = {
           anulado_en?: string | null
           anulado_por?: string | null
           motivo_anulacion?: string | null
+          monto_de_la_parte?: number | null
+          parte_trae_igv?: boolean | null
         }
         Update: {
           id?: string
@@ -2361,6 +2365,8 @@ export type Database = {
           anulado_en?: string | null
           anulado_por?: string | null
           motivo_anulacion?: string | null
+          monto_de_la_parte?: number | null
+          parte_trae_igv?: boolean | null
         }
         Relationships: [
           {
@@ -7014,6 +7020,92 @@ export type Database = {
           }
         ]
       }
+      pagos_parte_con_boleta: {
+        Row: {
+          id: string
+          documento_compra_id: string
+          orden_compra_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          operacion: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          documento_compra_id: string
+          orden_compra_id: string
+          fecha_pago: string
+          moneda: string
+          monto: number
+          operacion?: string | null
+          archivo_ruta: string
+          archivo_mime: string
+          archivo_tamano: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          documento_compra_id?: string
+          orden_compra_id?: string
+          fecha_pago?: string
+          moneda?: string
+          monto?: number
+          operacion?: string | null
+          archivo_ruta?: string
+          archivo_mime?: string
+          archivo_tamano?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagos_parte_con_boleta_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_parte_con_boleta_documento_compra_id_fkey"
+            columns: ["documento_compra_id"]
+            isOneToOne: false
+            referencedRelation: "documentos_compra_material"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_parte_con_boleta_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_parte_con_boleta_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       pagos_recibo_honorarios: {
         Row: {
           id: string
@@ -11464,6 +11556,13 @@ export type Database = {
         }
         Returns: string
       }
+      anular_pago_parte_con_boleta: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       anular_pago_planilla_diaria: {
         Args: {
           p_id: string | null
@@ -12228,6 +12327,27 @@ export type Database = {
         }[]
       }
       codigo_interno_lineas_gastos_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_igv_de_parte: {
         Args: {
           p_codigo: string | null
         }
@@ -14479,6 +14599,44 @@ export type Database = {
           sin_completar: boolean | null
         }[]
       }
+      partes_con_boleta_de_la_compra: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: {
+          n: number | null
+          monto: number | null
+          pagado: number | null
+        }[]
+      }
+      partes_con_boleta_por_pagar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          documento_id: string | null
+          orden_compra_id: string | null
+          numero: string | null
+          referencia: string | null
+          proveedor_id: string | null
+          proveedor: string | null
+          proveedor_documento: string | null
+          codigo_interno: string | null
+          moneda: string | null
+          total_oc: number | null
+          con_factura: boolean | null
+          condicion_pago: string | null
+          dias_credito: number | null
+          boleta: string | null
+          fecha_boleta: string | null
+          ruta: string | null
+          nombre_archivo: string | null
+          monto: number | null
+          pagado: number | null
+          saldo: number | null
+          vence: string | null
+          ultimo_pago: string | null
+          pagos: Json | null
+        }[]
+      }
       pasar_compra_a_tesoreria: {
         Args: {
           p_compra: string | null
@@ -15078,6 +15236,19 @@ export type Database = {
           p_fecha: string | null
           p_monto: number | null
           p_referencia: string | null
+          p_ruta: string | null
+          p_caja: string | null
+          p_monto_cuenta: number | null
+        }
+        Returns: string
+      }
+      registrar_pago_parte_con_boleta: {
+        Args: {
+          p_id: string | null
+          p_documento: string | null
+          p_fecha_pago: string | null
+          p_monto: number | null
+          p_operacion: string | null
           p_ruta: string | null
           p_caja: string | null
           p_monto_cuenta: number | null

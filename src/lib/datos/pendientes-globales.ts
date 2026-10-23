@@ -767,6 +767,18 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       texto: n => plural(n, 'OC con boleta por pagar', 'OC con boleta por pagar'),
       contar: async () => (await conBoleta()).porPagar,
     })
+    // Las boletas de una parte de la OC que llega en partes (migración
+    // 20261022200000): la OC con boleta que llegó en partes ya no sale arriba, y
+    // sin esta cuenta solo las avisaba la notificación, una vez.
+    tareas.push({
+      clave: 'partes_con_boleta_por_pagar', ruta: '/tesoreria/por-pagar#partes-con-boleta', tono: 'aviso',
+      texto: n => plural(n, 'boleta de una parte por pagar', 'boletas de una parte por pagar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('partes_con_boleta_por_pagar')
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).filter((x) => Number(x.saldo ?? 0) > 0).length
+      },
+    })
   }
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({
     clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',
@@ -863,9 +875,9 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde
   // el 2026-10-15), y Tesorería, Gerencia y Contabilidad tampoco lo ven.
   const enMenu = new Set(
-    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])),
+    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split(/[?#]/)[0])),
   )
-  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split('?')[0]))
+  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 
@@ -874,12 +886,12 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
-      sinComprobar.add(t.ruta.split('?')[0])
+      sinComprobar.add(t.ruta.split(/[?#]/)[0])
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
-    const base = t.ruta.split('?')[0]
+    const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
   })
 

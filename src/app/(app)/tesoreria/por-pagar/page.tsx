@@ -14,14 +14,17 @@ import {
   comprasConBoletaPorPagar,
   cuentasPorPagar,
   PAGADAS_A_LA_VISTA,
+  partesConBoletaPorPagar,
   type CompraConBoleta,
   type CuentaPorPagar,
+  type ParteConBoleta,
 } from '@/lib/datos/adquisiciones'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { notasAFavor, type NotaAFavor } from '@/lib/datos/notas-credito'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
@@ -38,6 +41,7 @@ import {
   type FacturaParaDescontar,
 } from '../formularios-boleta'
 import { DescontarNota, DeshacerUsoDeLaNota, DevolvioLaNota } from '../notas-credito'
+import { AnularPagoParte, PagarParte } from '../partes-con-boleta'
 import { codigoMoneda, Vencimiento } from '../vencimiento'
 
 export const metadata = { title: 'Cuentas por pagar' }
@@ -64,9 +68,11 @@ export default async function PaginaPorPagar() {
   const verCuentas = puede(perfil, 'proveedores.ver_cuentas')
   const verOc = puede(perfil, 'compras.ver')
   const db = await createClient()
-  const [cuentas, boletas, pendientes, planillas, cuentasCaja, notas] = await Promise.all([
+  const [cuentas, boletas, partes, pendientes, planillas, cuentasCaja, notas] = await Promise.all([
     cuentasPorPagar(verCuentas),
     comprasConBoletaPorPagar(verCuentas),
+    // Las boletas de una parte de la OC que llega en partes (migración 20261022200000).
+    partesConBoletaPorPagar(verCuentas),
     db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
@@ -79,16 +85,17 @@ export default async function PaginaPorPagar() {
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
   // Y, para quien lleva la caja, de qué cuenta salió cada pago.
   const verCaja = puede(perfil, 'tesoreria.caja')
-  const [correcciones, cajas, cajasBoleta, cajasDevolucion, ventanas] = await Promise.all([
+  const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas] = await Promise.all([
     correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
     verCaja ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('PAGO_ORDEN_COMPRA', boletas.flatMap((b) => b.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('DEVOLUCION_ORDEN_COMPRA', boletas.flatMap((b) => b.devoluciones.map((d) => d.id))) : undefined,
+    verCaja ? cajaDeLosPagos('PAGO_PARTE_BOLETA', partes.flatMap((x) => x.pagosDeLaParte.map((p) => p.id))) : undefined,
     pasa ? paraLasVentanasDeLaBoleta(db, boletas) : { descontables: new Map<string, FacturaParaDescontar[]>(), cambios: new Map<string, number | null>() },
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
-  const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeLaOc(b)] as const] : [])))
+  const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeOc(b)] as const] : [])))
   // Las que esperan a Contabilidad van al final: no se pagan hasta que lo diga.
   const porPagar = [...cuentas.filter((c) => Number(c.saldo) > 0 && !c.enEspera), ...cuentas.filter((c) => Number(c.saldo) > 0 && c.enEspera)]
   const pagadas = cuentas.filter((c) => Number(c.saldo) <= 0)
@@ -104,15 +111,19 @@ export default async function PaginaPorPagar() {
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
   const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
   const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
+  const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
+  const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
   const exigibles = porPagar.filter((c) => !c.enEspera)
   const vencidas =
     exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
-    pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length
+    pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length +
+    partesPorPagar.filter((x) => x.vence && x.vence < hoy).length
   const resumen = resumenPorMoneda(
     [
       ...exigibles.map((c) => ({ moneda: c.moneda, monto: Number(c.saldo) })),
       ...pagables.map((b) => ({ moneda: b.moneda, monto: saldoDeLaBoleta(b) })),
+      ...partesPorPagar.map((x) => ({ moneda: x.moneda, monto: Number(x.saldo ?? 0) })),
     ],
     ['documento', 'documentos'],
   )
@@ -169,7 +180,7 @@ export default async function PaginaPorPagar() {
             </>
           )
         }
-        ayuda="Las facturas de compra que registró Contabilidad, al contado o a crédito, y las OC con boleta, que se pagan directo. Van de la que vence antes a la que vence después; cada pago va con su voucher. Al pagar se ven la OC, su factura o boleta y las cuentas del proveedor."
+        ayuda="Las facturas de compra que registró Contabilidad, al contado o a crédito, y las OC con boleta, que se pagan directo, como las boletas de una parte de la OC que llega en partes. Van de la que vence antes a la que vence después; cada pago va con su voucher. Al pagar se ven la OC, su factura o boleta y las cuentas del proveedor."
       />
 
       <Tarjeta>
@@ -243,6 +254,31 @@ export default async function PaginaPorPagar() {
         </TarjetaCuerpo>
       </Tarjeta>
 
+      {/* La OC que llega en partes: sin ninguna, la tarjeta no ocupa la pantalla. El id es el ancla del aviso a Tesorería. */}
+      {partes.length > 0 && (
+        <Tarjeta id="partes-con-boleta" className="mt-5 scroll-mt-20">
+          <TarjetaCabecera
+            titulo="Boletas de una parte"
+            descripcion={partesPorPagar.length === 0 ? 'Ninguna por pagar.' : partesPorPagar.length === 1 ? 'Una por pagar.' : `${partesPorPagar.length} por pagar.`}
+            ayuda="Cuando una OC llega en partes, unas con boleta y otras con factura, Logística anexa cada boleta con su monto. Aquí se paga cada boleta, hasta lo que dice; lo demás de la OC se paga por su factura, en «Facturas por pagar», y esa factura no toma lo pagado aquí."
+          />
+          <TarjetaCuerpo className="space-y-3">
+            {partesPorPagar.map((x) => (
+              <ParteConBoletaFila key={x.documento_id} parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />
+            ))}
+            {partesPagadas.length > 0 && (
+              <SeccionDesplegable titulo={`Boletas de una parte pagadas (${partesPagadas.length})`}>
+                <div className="space-y-3">
+                  {partesPagadas.map((x) => (
+                    <ParteConBoletaFila key={x.documento_id} parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />
+                  ))}
+                </div>
+              </SeccionDesplegable>
+            )}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
       {/* Para consultar: sin nada que mostrar no ocupan la pantalla. */}
       {pendientesCredito.length > 0 && (
         <Tarjeta className="mt-5">
@@ -255,7 +291,7 @@ export default async function PaginaPorPagar() {
               >
                 <span>
                   <span className="text-texto">
-                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {c.numero ?? c.referencia}
+                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {nombreDeOc(c)}
                   </span>
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
@@ -344,15 +380,142 @@ export default async function PaginaPorPagar() {
   )
 }
 
+/**
+ * La boleta de una parte de una OC que llegó en partes: su proveedor y su OC, lo
+ * que dice la boleta, lo pagado y lo que falta, el PDF de la OC y de la boleta,
+ * las cuentas del proveedor y cada pago con su voucher (los anulados, tachados).
+ */
+function ParteConBoletaFila({
+  parte: x,
+  paga,
+  verOc,
+  verCuentas,
+  hoy,
+  cuentasCaja,
+  cajas,
+}: {
+  parte: ParteConBoleta
+  paga: boolean
+  verOc: boolean
+  verCuentas: boolean
+  hoy: string
+  cuentasCaja: CuentaParaPagar[]
+  cajas: Map<string, CajaDelPago> | undefined
+}) {
+  if (!x.documento_id || !x.orden_compra_id) return null
+  const m = codigoMoneda(x.moneda)
+  const saldo = Number(x.saldo ?? 0)
+  const pagado = Number(x.pagado ?? 0)
+  const nombre = x.numero ?? `OC ${x.referencia}`
+  const boleta = x.boleta ?? 'sin número'
+  const documentos: DocumentoParaPagar[] = [
+    ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(x.orden_compra_id), descarga: true }] : []),
+    { clave: x.documento_id, etiqueta: `Boleta ${boleta}`, url: x.url },
+  ]
+  const condicion = x.condicion_pago === 'CREDITO' ? `crédito a ${x.dias_credito ?? 0} días` : 'contado'
+  return (
+    <article id={`parte-${x.documento_id}`} className="scroll-mt-20 rounded-[var(--radius-base)] border border-borde p-3 target:border-acento">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0 sm:flex-1">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-texto">
+              {x.proveedor} · <span className="tabular whitespace-nowrap">Boleta {boleta}</span>
+            </span>
+            {saldo <= 0 ? <Insignia tono="exito">Pagada</Insignia> : pagado > 0 ? <Insignia tono="aviso">Pagada en parte</Insignia> : null}
+          </p>
+          <p className="text-xs text-texto-suave">
+            Una parte de la <span className="tabular whitespace-nowrap">{nombre}</span>
+            {x.con_factura ? ', el resto con factura' : ''} · del {fecha(x.fecha_boleta)} · {condicion}
+            {x.codigo_interno && ` · ${x.codigo_interno}`}
+            {saldo > 0 ? (
+              <>
+                {' '}
+                · <Vencimiento dia={x.vence} saldo={saldo} />
+              </>
+            ) : (
+              ` · Pagada el ${fecha(x.ultimo_pago)}`
+            )}
+          </p>
+        </div>
+        <div className="sm:text-right">
+          <p className="tabular text-sm font-semibold text-texto">
+            {saldo > 0 && 'Saldo '}
+            <span className="whitespace-nowrap">{moneda(saldo > 0 ? saldo : (x.monto ?? 0), m)}</span>
+          </p>
+          <p className="tabular text-xs text-texto-suave">
+            {/* Pagada, el monto de la boleta ya está arriba: no se repite. */}
+            {saldo > 0 && (
+              <>
+                Boleta <span className="whitespace-nowrap">{moneda(x.monto ?? 0, m)}</span>
+                {' · '}
+              </>
+            )}
+            {pagado > 0 && saldo > 0 && (
+              <>
+                {'pagado '}
+                <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                {' · '}
+              </>
+            )}
+            {'OC '}
+            <span className="whitespace-nowrap">{moneda(x.total_oc ?? 0, m)}</span>
+          </p>
+        </div>
+      </div>
+      <div className="mt-2 space-y-2">
+        <ParaPagar documentos={documentos} cuentas={saldo > 0 ? x.cuentasProveedor : []} monedaDocumento={m} sinCuentas={saldo > 0 ? sinCuentas(verCuentas, true) : null} />
+        {paga && saldo > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <PagarParte
+              documentoId={x.documento_id}
+              ordenCompraId={x.orden_compra_id}
+              boleta={boleta}
+              numero={nombre}
+              proveedor={x.proveedor ?? ''}
+              hoy={hoy}
+              saldo={saldo}
+              codigoMoneda={m}
+              cuentas={cuentasCaja}
+              paraPagar={<ParaPagar documentos={documentos} cuentas={x.cuentasProveedor} monedaDocumento={m} sinCuentas={sinCuentas(verCuentas, true)} />}
+            />
+          </div>
+        )}
+      </div>
+      {x.pagosDeLaParte.length > 0 && (
+        <ol className="mt-2 space-y-1.5 border-t border-borde pt-2">
+          {x.pagosDeLaParte.map((p) => (
+            <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between" data-pago-parte={p.id}>
+              <span className="text-texto-suave">
+                <span className={p.anulado_en ? 'line-through' : undefined}>
+                  Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, m)}</span>
+                  {p.operacion && ` · op. ${p.operacion}`}
+                </span>
+                <CajaDeLaLinea cajas={cajas} id={p.id} tipo="pago" monedaDocumento={m} />
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                {p.anulado_en && <span className="text-peligro">Anulado: {p.motivo_anulacion}</span>}
+                {p.url && (
+                  <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0">
+                    <FileText aria-hidden className="size-3.5" />
+                    Voucher
+                  </a>
+                )}
+                {paga && !p.anulado_en && <AnularPagoParte pagoId={p.id} etiqueta={`el pago del ${fecha(p.fecha_pago)} por ${moneda(p.monto, m)}`} />}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </article>
+  )
+}
+
 /** Cómo se nombra cada documento de la OC con boleta en la tarjeta y en la ventana del pago. */
 function etiquetaDelComprobante(d: CompraConBoleta['comprobantes'][number]) {
   if (!d.numero) return d.nombre
   if (d.tipo === 'BORRADOR') return `Comprobante ${d.numero} (en borrador${d.sinPdf ? ', sin PDF todavía' : ''})`
   return `${d.tipo === 'FACTURA' ? 'Factura' : 'Boleta'} ${d.numero}`
 }
-
-/** «OC-0001-MW», o «OC 12» si todavía no tiene número. */
-const nombreDeLaOc = (b: CompraConBoleta) => b.numero ?? `OC ${b.referencia}`
 
 /** La otra moneda: la de la factura que no es la de la OC. */
 const laOtra = (m: CodigoMoneda): CodigoMoneda => (m === 'USD' ? 'PEN' : 'USD')
@@ -779,7 +942,7 @@ function Factura({
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
-    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: `PDF de la ${o.numero ?? `OC ${o.referencia}`}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
+    ...(verOc ? ordenes.map((o) => ({ clave: o.id, etiqueta: `PDF de la ${nombreDeOc(o)}`, url: pdfDeLaOc(o.id), descarga: true })) : []),
   ]
   // Lo que Tesorería le pasó a mano de cada OC con boleta se deshace junto: el botón va en la última línea de esa OC.
   const aManoVigentes = c.pagos.filter((p) => p.monto_de_la_boleta !== null && !p.anulado_en && p.ordenCompraDeLaBoleta)
@@ -854,12 +1017,12 @@ function Factura({
           </p>
           {ordenes.length > 0 && (
             <p className="text-xs text-texto-suave">
-              {ordenes.length === 1 ? 'OC ' : `${ordenes.length} OC: `}
+              {ordenes.length > 1 && `${ordenes.length} OC: `}
               {/* El PDF de cada OC va abajo, con la factura y las cuentas del proveedor. */}
               {ordenes.map((o, i) => (
                 <span key={o.id}>
                   {i > 0 && ' · '}
-                  <span className="tabular whitespace-nowrap text-texto">{o.numero ?? o.referencia}</span>
+                  <span className={`tabular text-texto ${o.numero ? 'whitespace-nowrap' : ''}`}>{nombreDeOc(o)}</span>
                   {o.numero_ot && ` (OT ${o.numero_ot})`}
                 </span>
               ))}
@@ -931,7 +1094,7 @@ function Factura({
           </p>
         ) : espera ? (
           <p className="text-xs text-aviso">
-            Espera lo pagado por la boleta de la <span className="whitespace-nowrap">{nombreDeLaOc(espera)}</span>:{' '}
+            Espera lo pagado por la boleta de la <span className={espera.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(espera)}</span>:{' '}
             <span className="whitespace-nowrap">{moneda(Number(espera.sin_tomar ?? 0), codigoMoneda(espera.moneda))}</span> sin pasar a esta factura.{' '}
             {pasa ? (
               <>
@@ -1087,7 +1250,7 @@ function CompraConBoletaFila({
   // `pagado` ya es lo neto: los pagos vigentes menos lo que el proveedor devolvió.
   const neto = Number(b.pagado ?? 0)
   const devuelto = Number(b.devuelto ?? 0)
-  const nombre = nombreDeLaOc(b)
+  const nombre = nombreDeOc(b)
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(b.id), descarga: true }] : []),
     ...b.comprobantes.map((d) => ({ clave: d.id, etiqueta: etiquetaDelComprobante(d), url: d.url })),
@@ -1173,7 +1336,7 @@ function CompraConBoletaFila({
         <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-texto">
-              {b.proveedor} · <span className="tabular whitespace-nowrap">{nombre}</span>
+              {b.proveedor} · <span className={`tabular ${b.numero ? 'whitespace-nowrap' : ''}`}>{nombre}</span>
             </span>
             {insignia && <Insignia tono={insignia.tono}>{insignia.texto}</Insignia>}
             {b.sin_precio && <Insignia tono="aviso">Líneas sin precio</Insignia>}

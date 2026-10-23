@@ -123,6 +123,7 @@ export function AccionesCompra({
           ordenCompraId={id}
           solicitudId={idDocumento}
           alAdjuntar={() => setIdDocumento(crypto.randomUUID())}
+          alCerrar={() => setDocumentos(false)}
           tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
           orden={{ numero, total, moneda }}
           verAdquisiciones={verAdquisiciones}

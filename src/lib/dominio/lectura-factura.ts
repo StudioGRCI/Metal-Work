@@ -225,8 +225,12 @@ export function lecturaUtil(l: LecturaFactura | null): l is LecturaFactura {
   return Boolean(l && (l.total !== null || l.numero || l.ordenes.length > 0))
 }
 
-/** Una OC tal como la ve el detector: la marcada en la factura o la que espera la suya. */
-export type OcParaDetector = { numero: string | null; referencia: string }
+/**
+ * Una OC tal como la ve el detector: la marcada en la factura o la que espera la
+ * suya. `nombre`, si quien llama ya la nombró (`nombreDeOc`) y su `numero` es la
+ * clave con que el detector la busca y no su número de la casa.
+ */
+export type OcParaDetector = { numero: string | null; referencia: string; nombre?: string }
 
 export type AvisoDelDetector =
   | { tipo: 'TOTAL'; leido: number; registrado: number; moneda: 'PEN' | 'USD' }
@@ -237,7 +241,9 @@ export type AvisoDelDetector =
   | { tipo: 'OC_NO_MARCADA'; oc: string; espera: boolean | null }
   | { tipo: 'OC_NO_MENCIONADA'; oc: string }
 
-const etiquetaOc = (o: OcParaDetector) => o.numero ?? o.referencia
+// Igual que `nombreDeOc` (dominio/adquisiciones), sin importarlo: las pruebas
+// de este archivo corren en Node, que no resuelve el alias `@/`.
+const etiquetaOc = (o: OcParaDetector) => o.nombre ?? o.numero ?? `OC sin número (ref. del proveedor ${o.referencia})`
 
 /**
  * Lo que no calza entre la factura leída y lo que se registra: el total, la
