@@ -5,14 +5,18 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
+import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { anularDecisionHorasExtras, anularUsoSaldo, decidirHorasExtras, guardarReglaHorasExtras, usarSaldoHoras } from './acciones'
 
 /**
  * Pagar o reservar las horas extras de una persona en un día, de un toque. El
  * id llega del servidor: un segundo toque manda el mismo y no decide dos veces.
+ * Si el primero entró y se tocó el otro botón, la base dice que ya quedó y la
+ * pantalla se pone al día sola: no es un rechazo, va sin rojo.
  */
 export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabajadorId: string; fecha: string }) {
   const { ejecutar, enviando, error } = useAccion(decidirHorasExtras)
@@ -47,7 +51,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
         </Boton>
       </div>
       {error && (
-        <p role="alert" className="text-right text-xs text-peligro">
+        <p role="alert" className={yaEntroLaPrimeraVez(error) ? 'text-right text-xs text-texto' : 'text-right text-xs text-peligro'}>
           {error}
         </p>
       )}
@@ -55,13 +59,31 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
   )
 }
 
-/** Usar horas del saldo de una persona en un descanso. Un permiso se justifica en «Permisos», que también descuenta de aquí. */
-export function UsarSaldo({ id, trabajadorId, nombre, saldo, hoy }: { id: string; trabajadorId: string; nombre: string; saldo: number; hoy: string }) {
+/**
+ * Usar horas del saldo de una persona en un descanso. Un permiso se justifica en
+ * «Permisos», que también descuenta de aquí. El id vive aquí y no llega con la
+ * página (`useIdDelEnvio`): tras «No llegó la respuesta», cerrar pone la
+ * pantalla al día, y con el id de la página la ventana siguiente llevaba otro y
+ * el mismo uso entraba dos veces. Con otro saldo a la vista, aquel entró y este
+ * es otro.
+ */
+export function UsarSaldo({ trabajadorId, nombre, saldo, hoy }: { trabajadorId: string; nombre: string; saldo: number; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(usarSaldoHoras, () => setAbierta(false))
+  const [vez, setVez] = useState(0)
+  const envio = useIdDelEnvio(saldo)
   return (
     <>
-      <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)} data-usar-saldo={trabajadorId}>
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          envio.abrir()
+          setVez((v) => v + 1)
+          setAbierta(true)
+        }}
+        data-usar-saldo={trabajadorId}
+      >
         <CalendarMinus aria-hidden className="size-4" />
         Usar horas
       </Boton>
@@ -72,53 +94,73 @@ export function UsarSaldo({ id, trabajadorId, nombre, saldo, hoy }: { id: string
         descripcion={`Tiene ${saldo.toLocaleString('es-PE', { maximumFractionDigits: 2 })} h reservadas. Lo que uses se descuenta de su saldo. Si es para un permiso, regístralo y justifícalo en «Permisos».`}
         ancho="md"
       >
-        <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={id} />
-          <input type="hidden" name="trabajador_id" value={trabajadorId} />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Día" htmlFor={`saldo-fecha-${id}`} requerido>
-              <Entrada id={`saldo-fecha-${id}`} name="fecha" type="date" required defaultValue={hoy} />
-            </Campo>
-            <Campo etiqueta="Horas" htmlFor={`saldo-horas-${id}`} requerido>
-              <Entrada
-                id={`saldo-horas-${id}`}
-                name="horas"
-                type="number"
-                inputMode="decimal"
-                min={0.25}
-                max={Math.min(8, saldo)}
-                step={0.25}
-                required
-                className="tabular"
-              />
-            </Campo>
-          </div>
-          <Campo etiqueta="Para qué las usa" htmlFor={`saldo-motivo-${id}`} requerido>
-            <AreaTexto
-              id={`saldo-motivo-${id}`}
-              name="motivo"
-              required
-              minLength={10}
-              maxLength={300}
-              placeholder="Por ejemplo: descanso el sábado por las horas del lunes."
-            />
-          </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Usar del saldo
-            </Boton>
-          </div>
-        </form>
+        {envio.id && (
+          <FormularioUsarSaldo key={vez} envio={envio} trabajadorId={trabajadorId} saldo={saldo} hoy={hoy} alTerminar={() => setAbierta(false)} />
+        )}
       </Ventana>
     </>
+  )
+}
+
+function FormularioUsarSaldo({
+  envio,
+  trabajadorId,
+  saldo,
+  hoy,
+  alTerminar,
+}: {
+  envio: ReturnType<typeof useIdDelEnvio>
+  trabajadorId: string
+  saldo: number
+  hoy: string
+  alTerminar: () => void
+}) {
+  const id = envio.id ?? ''
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return usarSaldoHoras(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
+  return (
+    <form onSubmit={alEnviar} className="space-y-4">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="trabajador_id" value={trabajadorId} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Campo etiqueta="Día" htmlFor={`saldo-fecha-${id}`} requerido>
+          <Entrada id={`saldo-fecha-${id}`} name="fecha" type="date" required defaultValue={hoy} />
+        </Campo>
+        <Campo etiqueta="Horas" htmlFor={`saldo-horas-${id}`} requerido>
+          <Entrada
+            id={`saldo-horas-${id}`}
+            name="horas"
+            type="number"
+            inputMode="decimal"
+            min={0.25}
+            max={Math.min(8, saldo)}
+            step={0.25}
+            required
+            className="tabular"
+          />
+        </Campo>
+      </div>
+      <Campo etiqueta="Para qué las usa" htmlFor={`saldo-motivo-${id}`} requerido>
+        <AreaTexto
+          id={`saldo-motivo-${id}`}
+          name="motivo"
+          required
+          minLength={10}
+          maxLength={300}
+          placeholder="Por ejemplo: descanso el sábado por las horas del lunes."
+        />
+      </Campo>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Usar del saldo" />
+    </form>
   )
 }
 

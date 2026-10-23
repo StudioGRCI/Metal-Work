@@ -10,11 +10,13 @@ select '20100000041', 'PRUEBAS RRHH S.A.C.' where not exists (select 1 from publ
 insert into public.sedes (codigo, nombre) values ('T41', 'Taller de pruebas RRHH') on conflict (codigo) do nothing;
 
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh341@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes limit 1)) as rrhh_id \gset
+select test.crear_usuario('Raúl', 'Humanos', 'rrhh2.341@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes limit 1)) as rrhh2_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia341@demo.pe', 'GERENTE', (select id from public.sedes limit 1)) as gerente_id \gset
 select test.crear_usuario('Pedro', 'Portón', 'porteria341@demo.pe', 'PORTERO', (select id from public.sedes limit 1)) as portero_id \gset
 select test.crear_usuario('Olga', 'Obrera', 'operario341@demo.pe', 'OPERARIO', (select id from public.sedes limit 1), true, 14) as operario_id \gset
 
 select set_config('prueba.rrhh', :'rrhh_id', true);
+select set_config('prueba.rrhh2', :'rrhh2_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.portero', :'portero_id', true);
 select set_config('prueba.operario', :'operario_id', true);
@@ -55,6 +57,17 @@ begin
   v_id := public.rrhh_registrar_tareo(current_setting('prueba.h1')::uuid, current_setting('prueba.t1')::uuid, v_hoy,
             'PLA_SR_O4_1_26/28', 6.5, 'Soldadura de la tolva');
   perform test.afirmar((select count(*) from public.tareos where trabajador_id = current_setting('prueba.t1')::uuid) = 1, 'el reintento no duplica');
+  -- Con algo cambiado ya no es el mismo envío: la primera carga quedó y lo
+  -- nuevo no se da por guardado (20261023200000).
+  perform test.debe_fallar(format('select public.rrhh_registrar_tareo(%L, %L, %L, ''PLA_SR_O4_1_26/28'', 7, ''Soldadura de la tolva'')',
+      current_setting('prueba.h1'), current_setting('prueba.t1'), v_hoy),
+    'otras horas con el mismo id dicen que la primera carga ya quedó', 'Esta carga de horas ya quedó registrada la primera vez que la enviaste');
+  perform test.debe_fallar(format('select public.rrhh_registrar_tareo(%L, %L, %L, ''PLANTA'', 6.5, ''Soldadura de la tolva'')',
+      current_setting('prueba.h1'), current_setting('prueba.t1'), v_hoy),
+    'otro código con el mismo id tampoco', 'ya quedó registrada la primera vez');
+  perform test.debe_fallar(format('select public.rrhh_registrar_tareo(%L, %L, %L, ''PLA_SR_O4_1_26/28'', 6.5, null)',
+      current_setting('prueba.h1'), current_setting('prueba.t1'), v_hoy),
+    'sin la labor tampoco', 'ya quedó registrada la primera vez');
   select * into v_t from public.tareos where id = current_setting('prueba.h1')::uuid;
   perform test.afirmar(v_t.codigo_interno = 'PLA_SR_O4_1_26/28', 'el código interno se guarda en mayúsculas y sin espacios');
   perform test.afirmar(v_t.costo_hora = 10 and v_t.costo = 65, 'la hora vale el costo mensual entre 240 y el costo son horas por hora');
@@ -94,6 +107,21 @@ begin
             'AMONESTACION_ESCRITA', 'EPP', 'Trabajaba en la tolva sin careta de soldar', 'pla_sr_o4_1_26/28', null);
   perform test.afirmar((select count(*) from public.observaciones_personal where trabajador_id = current_setting('prueba.t1')::uuid) = 1,
     'la observación no se duplica');
+  perform test.debe_fallar(
+    format('select public.rrhh_registrar_observacion(%L, %L, %L, ''AMONESTACION_VERBAL'', ''EPP'', ''Trabajaba en la tolva sin careta de soldar'', ''PLA_SR_O4_1_26/28'', null)',
+      current_setting('prueba.o1'), current_setting('prueba.t1'), v_hoy),
+    'otro tipo con el mismo id dice que la primera ya quedó', 'Esta observación ya quedó registrada la primera vez que la enviaste');
+  perform test.debe_fallar(
+    format('select public.rrhh_registrar_observacion(%L, %L, %L, ''AMONESTACION_ESCRITA'', ''EPP'', ''Trabajaba en la tolva sin careta ni guantes'', ''PLA_SR_O4_1_26/28'', null)',
+      current_setting('prueba.o1'), current_setting('prueba.t1'), v_hoy),
+    'otro detalle con el mismo id tampoco', 'ya quedó registrada la primera vez');
+  perform test.debe_fallar(
+    format('select public.rrhh_registrar_observacion(%L, %L, %L, ''AMONESTACION_ESCRITA'', ''EPP'', ''Trabajaba en la tolva sin careta de soldar'', null, null)',
+      current_setting('prueba.o1'), current_setting('prueba.t1'), v_hoy),
+    'sin el código tampoco', 'ya quedó registrada la primera vez');
+  perform test.afirmar((select tipo = 'AMONESTACION_ESCRITA' and detalle = 'Trabajaba en la tolva sin careta de soldar'
+                          from public.observaciones_personal where id = current_setting('prueba.o1')::uuid),
+    'la observación sigue como la primera vez');
   perform test.afirmar((select codigo_interno from public.observaciones_personal where id = current_setting('prueba.o1')::uuid) = 'PLA_SR_O4_1_26/28',
     'el código de la observación se normaliza');
   perform test.debe_fallar(
@@ -154,6 +182,22 @@ begin
   perform test.debe_fallar(
     format('select public.rrhh_guardar_costo_trabajador(%L, 9999)', current_setting('prueba.t1')),
     'un operario no cambia el costo');
+  reset role;
+end $$;
+
+-- ------------------------- el mismo id desde otra cuenta de RR. HH. no es su envío
+do $$
+declare v_hoy date := (now() at time zone 'America/Lima')::date;
+begin
+  perform test.como_usuario(current_setting('prueba.rrhh2')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format('select public.rrhh_registrar_tareo(%L, %L, %L, ''PLA_SR_O4_1_26/28'', 6.5, ''Soldadura de la tolva'')',
+      current_setting('prueba.h1'), current_setting('prueba.t1'), v_hoy),
+    'la carga de horas de otra persona no se da por suya', 'Esta carga de horas ya existe con otros datos');
+  perform test.debe_fallar(
+    format('select public.rrhh_registrar_observacion(%L, %L, %L, ''AMONESTACION_ESCRITA'', ''EPP'', ''Trabajaba en la tolva sin careta de soldar'', ''PLA_SR_O4_1_26/28'', null)',
+      current_setting('prueba.o1'), current_setting('prueba.t1'), v_hoy),
+    'ni la observación', 'Esta observación ya existe con otros datos');
   reset role;
 end $$;
 

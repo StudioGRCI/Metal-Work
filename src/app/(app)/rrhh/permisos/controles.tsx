@@ -5,9 +5,10 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { anularPermiso, justificarPermiso, registrarPermiso } from './acciones'
 
@@ -18,17 +19,24 @@ function horasEnTexto(horas: number): string {
   return horas.toLocaleString('es-PE', { maximumFractionDigits: 2 })
 }
 
-/** El botón «Registrar permiso» y su ventana. */
+/**
+ * El botón «Registrar permiso» y su ventana. El id vive aquí, fuera del
+ * formulario que se rehace al abrir (`useIdDelEnvio`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y la base dice si ya
+ * quedó en vez de registrar dos veces o dar por guardado lo cambiado.
+ */
 export function RegistrarPermiso({ personal, hoy }: { personal: Persona[]; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  const envio = useIdDelEnvio()
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
           setAviso(null)
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -49,25 +57,50 @@ export function RegistrarPermiso({ personal, hoy }: { personal: Persona[]; hoy: 
         descripcion="Quién lo pidió, qué día y cuántas horas. Después se justifica con sus horas extras reservadas."
         ancho="md"
       >
-        <FormularioPermiso
-          key={vez}
-          personal={personal}
-          hoy={hoy}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
-        />
+        {envio.id && (
+          <FormularioPermiso
+            key={vez}
+            envio={envio}
+            personal={personal}
+            hoy={hoy}
+            alCancelar={() => setAbierta(false)}
+            alTerminar={(mensaje) => {
+              setAbierta(false)
+              setAviso(mensaje)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
-function FormularioPermiso({ personal, hoy, alTerminar }: { personal: Persona[]; hoy: string; alTerminar: (mensaje: string) => void }) {
-  // Decidido aquí: un reintento manda el mismo id y la base no duplica.
-  const [id] = useState(() => crypto.randomUUID())
+function FormularioPermiso({
+  envio,
+  personal,
+  hoy,
+  alCancelar,
+  alTerminar,
+}: {
+  envio: ReturnType<typeof useIdDelEnvio>
+  personal: Persona[]
+  hoy: string
+  alCancelar: () => void
+  alTerminar: (mensaje: string) => void
+}) {
+  const id = envio.id ?? ''
   const [persona, setPersona] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(registrarPermiso, (r) => alTerminar(r.mensaje ?? 'Permiso registrado.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarPermiso(previo, datos)
+    },
+    (r) => {
+      envio.otro()
+      alTerminar(r.mensaje ?? 'Permiso registrado.')
+    },
+    { alYaEntrar: envio.otro },
+  )
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
@@ -112,16 +145,7 @@ function FormularioPermiso({ personal, hoy, alTerminar }: { personal: Persona[];
           placeholder="Por ejemplo: cita médica en EsSalud, sale a las 10 y vuelve a la 1."
         />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando}>
-          Registrar
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar" />
     </form>
   )
 }
@@ -143,6 +167,8 @@ export function JustificarPermiso({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // Con menos por justificar, aquel envío entró y este es otro (`useIdDelEnvio`).
+  const envio = useIdDelEnvio(porJustificar)
   const tope = Math.min(porJustificar, saldo)
   return (
     <>
@@ -151,6 +177,7 @@ export function JustificarPermiso({
         variante="secundario"
         tamano="sm"
         onClick={() => {
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -166,15 +193,35 @@ export function JustificarPermiso({
         descripcion={`Le faltan ${horasEnTexto(porJustificar)} h y tiene ${horasEnTexto(saldo)} h extras reservadas. Lo que justifiques sale de su saldo.`}
         ancho="sm"
       >
-        <FormularioJustificar key={vez} permisoId={permisoId} tope={tope} alTerminar={() => setAbierta(false)} />
+        {envio.id && <FormularioJustificar key={vez} envio={envio} permisoId={permisoId} tope={tope} alTerminar={() => setAbierta(false)} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioJustificar({ permisoId, tope, alTerminar }: { permisoId: string; tope: number; alTerminar: () => void }) {
-  const [id] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(justificarPermiso, alTerminar)
+function FormularioJustificar({
+  envio,
+  permisoId,
+  tope,
+  alTerminar,
+}: {
+  envio: ReturnType<typeof useIdDelEnvio>
+  permisoId: string
+  tope: number
+  alTerminar: () => void
+}) {
+  const id = envio.id ?? ''
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return justificarPermiso(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
@@ -193,19 +240,7 @@ function FormularioJustificar({ permisoId, tope, alTerminar }: { permisoId: stri
           className="tabular"
         />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando}>
-          Justificar con horas extras
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Justificar con horas extras" />
     </form>
   )
 }

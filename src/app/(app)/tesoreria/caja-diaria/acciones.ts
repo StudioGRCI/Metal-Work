@@ -41,6 +41,10 @@ async function permitido() {
  * Da de alta o corrige una cuenta. Mismo permiso que `guardar_caja`. La captura
  * del saldo ya viajó a Storage desde el navegador: aquí llega su ruta, y la base
  * comprueba que esté subida por quien guarda (migración 20261020174500).
+ *
+ * La ventana de alta conserva el id hasta saber cómo terminó y manda `alta`: así
+ * la base reconoce el alta repetida y, con algo cambiado, dice que la primera ya
+ * quedó en vez de corregirla en silencio (20261023200000).
  */
 export async function guardarCuenta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await permitido())) return { ok: false, error: NO_LLEVA }
@@ -75,7 +79,7 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
   if (d.apertura_ruta && !d.apertura_ruta.startsWith(`${d.id}/`)) return { ok: false, error: 'Vuelve a adjuntar la captura del saldo.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('guardar_caja', {
+  const cuenta = {
     p_id: d.id,
     p_nombre: d.nombre,
     p_tipo: d.tipo,
@@ -86,7 +90,11 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
     p_activa: d.activa,
     // Siempre, aunque vaya vacía: así se llama a la versión con captura y no a la de antes.
     p_apertura_ruta: d.apertura_ruta || null,
-  })
+  }
+  let { data, error } = await supabase.rpc('guardar_caja', { ...cuenta, p_alta: formulario.get('alta') === 'si' })
+  // Mientras la base no tenga la 20261023200000, la de diez no existe: se guarda
+  // como antes, con la de nueve (los tipos juntan las dos y piden `p_alta`).
+  if (error?.code === 'PGRST202') ({ data, error } = await supabase.rpc('guardar_caja', cuenta as typeof cuenta & { p_alta: boolean }))
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La cuenta no quedó guardada. Recarga la pantalla.' }
 

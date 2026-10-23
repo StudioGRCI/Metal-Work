@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
 
@@ -26,10 +27,17 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
   const [abierta, setAbierta] = useState(false)
   const [id, setId] = useState(() => crypto.randomUUID())
 
-  const { alEnviar, enviando, error, resultado } = useEnvio(registrarGastoGeneral, () => {
-    setId(crypto.randomUUID())
-    setAbierta(false)
-  })
+  // El id vive fuera de la ventana y vuelve con ella hasta saber cómo terminó:
+  // con el mismo, la base reconoce el reenvío. Si dice que el primero ya quedó,
+  // el siguiente gasto es otro; antes el id quedaba pegado hasta recargar.
+  const { alEnviar, enviando, error, resultado } = useEnvio(
+    registrarGastoGeneral,
+    () => {
+      setId(crypto.randomUUID())
+      setAbierta(false)
+    },
+    { alYaEntrar: () => setId(crypto.randomUUID()) },
+  )
 
   return (
     <>
@@ -81,8 +89,7 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
             </Campo>
           </div>
 
-          {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
-          <Boton type="submit" cargando={enviando}>Registrar gasto</Boton>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar gasto" />
         </form>
       </Ventana>
     </>

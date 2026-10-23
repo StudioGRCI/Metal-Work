@@ -13,6 +13,7 @@ insert into public.empresa (ruc, razon_social)
 select '20100000043', 'PRUEBAS PLANILLA S.A.C.' where not exists (select 1 from public.empresa);
 
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh343@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes limit 1)) as rrhh_id \gset
+select test.crear_usuario('Raúl', 'Humanos', 'rrhh2.343@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes limit 1)) as rrhh2_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia343@demo.pe', 'GERENTE', (select id from public.sedes limit 1)) as gerente_id \gset
 select test.crear_usuario('Teo', 'Tesoro', 'tesoreria343@demo.pe', 'TESORERIA', (select id from public.sedes limit 1)) as tesoreria_id \gset
 select test.crear_usuario('Mario', 'Maestranza', 'sup.mtz343@demo.pe', 'SUPERVISOR', (select id from public.sedes limit 1)) as sup1_id \gset
@@ -25,6 +26,7 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 update public.usuarios set area_id = (select id from public.areas where codigo = 'ACB') where id = :'sup2_id';
 
 select set_config('prueba.rrhh', :'rrhh_id', true);
+select set_config('prueba.rrhh2', :'rrhh2_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.tesoreria', :'tesoreria_id', true);
 select set_config('prueba.caja', test.crear_caja()::text, true);  -- desde la 20261019100000 todo pago pide su cuenta
@@ -265,6 +267,17 @@ begin
   v := public.rrhh_decidir_horas_extras(current_setting('prueba.pagar')::uuid, current_setting('prueba.juan')::uuid,
          current_setting('prueba.d1')::date, 'PAGAR');
   perform test.afirmar((select count(*) from public.horas_extras_decisiones) = 1, 'el reintento no duplica la decisión');
+  -- Con la respuesta perdida, la persona cambió de idea antes de reenviar: la
+  -- primera decisión quedó y la nueva no se da por guardada (20261023200000).
+  perform test.debe_fallar(format('select public.rrhh_decidir_horas_extras(%L, %L, %L, ''RESERVAR'')',
+      current_setting('prueba.pagar'), current_setting('prueba.juan'), current_setting('prueba.d1')),
+    'reservar con el id de la decisión de pagar dice que la primera ya quedó', 'Esta decisión ya quedó registrada la primera vez que la enviaste');
+  perform test.debe_fallar(format('select public.rrhh_decidir_horas_extras(%L, %L, %L, ''PAGAR'')',
+      current_setting('prueba.pagar'), current_setting('prueba.juan'), current_setting('prueba.d2')),
+    'otro día con el mismo id tampoco se da por registrado', 'ya quedó registrada la primera vez');
+  perform test.afirmar((select decision = 'PAGAR' and fecha = current_setting('prueba.d1')::date
+                          from public.horas_extras_decisiones where id = current_setting('prueba.pagar')::uuid),
+    'la decisión sigue como la primera vez');
   perform test.debe_fallar(format('select public.rrhh_decidir_horas_extras(%L, %L, %L, ''RESERVAR'')',
       gen_random_uuid(), current_setting('prueba.juan'), current_setting('prueba.d1')),
     'lo decidido no se decide otra vez', 'no tiene horas extras por decidir');
@@ -281,6 +294,17 @@ begin
   v := public.rrhh_usar_saldo_horas(current_setting('prueba.uso')::uuid, current_setting('prueba.juan')::uuid,
          (now() at time zone 'America/Lima')::date, 1, 'Permiso por trámite personal');
   perform test.afirmar((select saldo from public.saldo_horas_por_persona(current_setting('prueba.juan')::uuid)) = 0.5, 'le queda 0,5 h');
+  v := public.rrhh_usar_saldo_horas(current_setting('prueba.uso')::uuid, current_setting('prueba.juan')::uuid,
+         (now() at time zone 'America/Lima')::date, 1, '  Permiso por trámite personal ');
+  perform test.afirmar(v = current_setting('prueba.uso')::uuid
+                       and (select count(*) from public.horas_compensadas where trabajador_id = current_setting('prueba.juan')::uuid) = 1,
+    'el mismo uso del saldo repetido devuelve el mismo');
+  perform test.debe_fallar(format('select public.rrhh_usar_saldo_horas(%L, %L, %L, 0.5, ''Permiso por trámite personal'')',
+      current_setting('prueba.uso'), current_setting('prueba.juan'), (now() at time zone 'America/Lima')::date),
+    'otras horas con el mismo id dicen que el primero ya quedó', 'Este uso de las horas reservadas ya quedó registrado la primera vez que lo enviaste');
+  perform test.debe_fallar(format('select public.rrhh_usar_saldo_horas(%L, %L, %L, 1, ''Permiso por una cita médica'')',
+      current_setting('prueba.uso'), current_setting('prueba.juan'), (now() at time zone 'America/Lima')::date),
+    'otro motivo con el mismo id tampoco', 'ya quedó registrado la primera vez');
   perform test.debe_fallar(format('select public.rrhh_anular_decision_horas_extras(%L, ''Se reservó por error'')', current_setting('prueba.reservar')),
     'no se anula una reserva ya usada', 'ya se usaron');
   v := public.rrhh_anular_uso_saldo(current_setting('prueba.uso')::uuid, 'Al final no tomó el permiso');
@@ -323,6 +347,14 @@ begin
   v := public.enviar_planilla_diaria(current_setting('prueba.pd1')::uuid);
   select * into v_pd from public.planillas_diarias where id = current_setting('prueba.pd1')::uuid;
   perform test.afirmar((select count(*) from public.planillas_diarias) = 1, 'el reintento no duplica la planilla');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.rrhh2')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format('select public.enviar_planilla_diaria(%L)', current_setting('prueba.pd1')),
+    'la planilla de otra persona de RR. HH. no se da por suya', 'Esta planilla ya existe');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
+  set local role authenticated;
   perform test.afirmar(v_pd.numero = 'PD-0001-' || extract(year from now() at time zone 'America/Lima'), 'la planilla lleva su número: ' || v_pd.numero);
   select * into v_pp from public.planilla_diaria_personas where planilla_id = v_pd.id;
   -- 16 h ordinarias a S/ 10 = 160; 3 extras: 10 × (2 × 1,25 + 1 × 1,35) = 38,50.

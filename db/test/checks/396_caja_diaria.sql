@@ -8,7 +8,7 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['tesoreria:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD'] loop
+  foreach v in array array['tesoreria:TESORERIA', 'tesoreria2:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, split_part(v, ':', 1) || '.396@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
@@ -16,7 +16,7 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 2);
     perform set_config('prueba.' || split_part(v, ':', 1), v_id::text, true);
   end loop;
-  foreach v in array array['bcp_pen', 'bcp_usd', 'chica', 'otra', 'm1', 'm2', 'm3', 'm4', 't1', 't2', 't3', 'c1', 'c2', 'c3'] loop
+  foreach v in array array['bcp_pen', 'bcp_usd', 'chica', 'otra', 'm1', 'm2', 'm3', 'm4', 't1', 't2', 't3', 'c1', 'c2', 'c3', 'alta'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   -- Los días en Lima: la base rechaza el futuro con la fecha de Lima.
@@ -227,6 +227,39 @@ begin
   reset role;
 end $$;
 
+-- ============================================ 1b. El alta repetida no corrige
+-- La ventana de alta conserva el id hasta saber cómo terminó y lo dice con
+-- `p_alta` (20261023200000): con otro nombre, la cuenta que ya quedó no cambia.
+do $$
+begin
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  perform public.guardar_caja(pg_temp.id('alta'), 'Caja de obra 396', 'EFECTIVO', null, 'PEN', 300, pg_temp.dia('d3'), true, null, true);
+  perform test.afirmar(public.guardar_caja(pg_temp.id('alta'), ' Caja  de obra 396', 'EFECTIVO', null, 'PEN', 300, pg_temp.dia('d3'), true, null, true)
+                       = pg_temp.id('alta'), 'la misma alta repetida devuelve la misma cuenta');
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja de taller 396'', ''EFECTIVO'', null, ''PEN'', 300, %L, true, null, true)',
+      pg_temp.id('alta'), pg_temp.dia('d3')),
+    'otro nombre en el alta con el mismo id dice que la primera ya quedó', 'Esta cuenta ya quedó registrada la primera vez que la enviaste');
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja de obra 396'', ''EFECTIVO'', null, ''PEN'', 350, %L, true, null, true)',
+      pg_temp.id('alta'), pg_temp.dia('d3')),
+    'otro saldo inicial tampoco', 'ya quedó registrada la primera vez');
+  perform test.afirmar((select nombre = 'Caja de obra 396' and saldo_inicial = 300 from public.cajas where id = pg_temp.id('alta')),
+                       'la cuenta sigue como la primera vez');
+  -- Corregir sigue siendo corregir, también con la llamada de nueve de una pantalla vieja.
+  perform public.guardar_caja(pg_temp.id('alta'), 'Caja de taller 396', 'EFECTIVO', null, 'PEN', 300, pg_temp.dia('d3'), true, null);
+  perform public.guardar_caja(pg_temp.id('alta'), 'Caja de obra 396', 'EFECTIVO', null, 'PEN', 300, pg_temp.dia('d3'), true, null, false);
+  perform test.afirmar((select nombre from public.cajas where id = pg_temp.id('alta')) = 'Caja de obra 396',
+                       'la corrección cambia el nombre, por las dos llamadas');
+  reset role;
+
+  perform pg_temp.como('tesoreria2');
+  set local role authenticated;
+  perform test.debe_fallar(format('select public.guardar_caja(%L, ''Caja de obra 396'', ''EFECTIVO'', null, ''PEN'', 300, %L, true, null, true)',
+      pg_temp.id('alta'), pg_temp.dia('d3')),
+    'el alta de otra persona de Tesorería no se da por suya', 'Esta cuenta ya existe con otros datos');
+  reset role;
+end $$;
+
 -- ============================================ 6. El cierre contra el estado de cuenta
 do $$
 declare r record;
@@ -241,6 +274,18 @@ begin
       pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'una observación corta pide los 10 caracteres', '10 caracteres');
   perform public.cerrar_dia_caja(pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 13900,
                                  'Comisión del banco que falta registrar');
+  -- La respuesta se perdió y se vuelve a enviar con el mismo id: el mismo
+  -- cierre devuelve el mismo, aunque el día ya esté cerrado; con otro saldo, el
+  -- primero quedó y el nuevo no se da por guardado (20261023200000).
+  perform test.afirmar(public.cerrar_dia_caja(pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 13900,
+                                              ' Comisión  del banco que falta registrar ') = pg_temp.id('c1'),
+                       'el mismo cierre repetido devuelve el mismo');
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13950, ''Comisión del banco que falta registrar'')',
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')),
+    'otro saldo con el mismo id dice que el primero ya quedó', 'Este cierre del día ya quedó registrado la primera vez que lo enviaste');
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, ''Otra cosa que no cuadra en el banco'')',
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')),
+    'otras observaciones con el mismo id tampoco', 'ya quedó registrado la primera vez');
   select * into r from public.cierres_caja where id = pg_temp.id('c1');
   perform test.afirmar(r.saldo_inicial = 10000 and r.ingresos = 5000 and r.egresos = 1000.15 and r.saldo_final = 13999.85
                        and r.saldo_banco = 13900 and r.diferencia = -99.85 and r.cerrado_por = pg_temp.id('tesoreria'),
@@ -259,6 +304,14 @@ begin
                        'cuadra sin observaciones');
   -- Un día sin movimientos también se cierra, con su comprobación.
   perform public.cerrar_dia_caja(pg_temp.id('c3'), pg_temp.id('chica'), pg_temp.dia('d3'), 500, null);
+  reset role;
+  perform pg_temp.como('tesoreria2');
+  set local role authenticated;
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 500, null)', pg_temp.id('c3'), pg_temp.id('chica'), pg_temp.dia('d3')),
+    'el cierre de otra persona de Tesorería no se da por suyo', 'Este cierre del día ya existe con otros datos');
+  reset role;
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
   select * into r from public.caja_del_dia(pg_temp.dia('hoy')) where caja_id = pg_temp.id('bcp_pen');
   perform test.afirmar(r.ultimo_cierre = pg_temp.dia('d2') and r.primer_dia_sin_cerrar is null, 'BCP soles queda al día');
   reset role;

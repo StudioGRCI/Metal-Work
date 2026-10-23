@@ -18,6 +18,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha as formatearFecha } from '@/lib/format'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { SIN_RESPUESTA, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import type {
   AreaMaterial,
@@ -547,7 +548,7 @@ function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendient
       <Campo etiqueta="Guía o documento" htmlFor={`rec-doc-${compra.id}`} requerido>
         <Entrada id={`rec-doc-${compra.id}`} name="documento_referencia" required maxLength={100} placeholder="Guía de remisión" />
       </Campo>
-      {error && <p role="alert" className="text-xs text-peligro sm:col-span-2">{error}</p>}
+      {error && <p role="alert" className={`text-xs sm:col-span-2 ${yaEntroLaPrimeraVez(error) ? 'text-texto' : 'text-peligro'}`}>{error}</p>}
       <div className="sm:col-span-2"><Boton type="submit" variante="secundario" tamano="sm" cargando={enviando} className="w-full"><ArrowDownToLine aria-hidden className="size-4" />Registrar llegada a almacén</Boton></div>
     </form>
   )
@@ -593,7 +594,7 @@ function FormularioDespacho({
       <Campo etiqueta="Nombre de quien recibe físicamente" htmlFor={`sal-nombre-${linea.detalle_id}`} requerido><Entrada id={`sal-nombre-${linea.detalle_id}`} name="recibido_por_nombre" required minLength={3} maxLength={160}/></Campo>
       <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Que se vea el material entregado." requerido><ElegirArchivo id={`sal-foto-${linea.detalle_id}`} name="foto" accept="image/jpeg,image/png,image/webp" hastaMb={10} capture="environment" required/></Campo>
       <div className="flex items-end"><Boton type="submit" tamano="sm" cargando={enviando} disabled={candidatos.length === 0} className="w-full"><ArrowUpFromLine aria-hidden className="size-4" />Despachar</Boton></div>
-      {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
+      {error && <p role="alert" className={`text-xs sm:col-span-3 ${yaEntroLaPrimeraVez(error) ? 'text-texto' : 'text-peligro'}`}>{error}</p>}
     </form>
   )
 }

@@ -6,11 +6,12 @@ import { useRef, useState } from 'react'
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
 import { HORAS_DEL_MES } from '@/lib/dominio/rrhh'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 
 import { anularTareo, registrarTareo } from './acciones'
@@ -20,19 +21,23 @@ export type PersonaTareo = { id: string; nombre: string; cargo: string | null; c
 /**
  * «Cargar horas»: RR. HH. pasa el parte de los supervisores persona por persona.
  * La ventana se queda abierta después de cada carga, con el mismo día y el
- * mismo código, porque un parte trae a varios en la misma unidad.
+ * mismo código, porque un parte trae a varios en la misma unidad. El id de cada
+ * carga vive aquí (`useIdDelEnvio`): tras «No llegó la respuesta», cancelar y
+ * volver a abrir lleva el mismo, y la base dice si ya quedó.
  */
 export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo[]; codigos: CodigoParaElegir[] | null; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [ultimo, setUltimo] = useState({ fecha: hoy, codigo: '' })
   const [aviso, setAviso] = useState<string | null>(null)
+  const envio = useIdDelEnvio()
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
           setAviso(null)
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -47,51 +52,67 @@ export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo
         descripcion={`Las horas que la persona trabajó ese día en esa unidad. Cada hora vale su costo mensual entre ${HORAS_DEL_MES}.`}
         ancho="lg"
       >
-        <FormularioHoras
-          key={vez}
-          personal={personal}
-          codigos={codigos}
-          hoy={hoy}
-          fecha={ultimo.fecha}
-          codigo={ultimo.codigo}
-          aviso={aviso}
-          alTerminar={(mensaje, fecha, codigo) => {
-            setUltimo({ fecha, codigo })
-            setAviso(mensaje)
-            setVez((v) => v + 1)
-          }}
-        />
+        {envio.id && (
+          <FormularioHoras
+            key={vez}
+            envio={envio}
+            personal={personal}
+            codigos={codigos}
+            hoy={hoy}
+            fecha={ultimo.fecha}
+            codigo={ultimo.codigo}
+            aviso={aviso}
+            alCancelar={() => setAbierta(false)}
+            alTerminar={(mensaje, fecha, codigo) => {
+              setUltimo({ fecha, codigo })
+              setAviso(mensaje)
+              setVez((v) => v + 1)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioHoras({
+  envio,
   personal,
   codigos,
   hoy,
   fecha,
   codigo,
   aviso,
+  alCancelar,
   alTerminar,
 }: {
+  envio: ReturnType<typeof useIdDelEnvio>
   personal: PersonaTareo[]
   codigos: CodigoParaElegir[] | null
   hoy: string
   fecha: string
   codigo: string
   aviso: string | null
+  alCancelar: () => void
   alTerminar: (mensaje: string, fecha: string, codigo: string) => void
 }) {
-  // Decidido aquí: un reintento manda el mismo id y la base no duplica.
-  const [id] = useState(() => crypto.randomUUID())
+  const id = envio.id ?? ''
   const [persona, setPersona] = useState('')
   const [horas, setHoras] = useState('')
   const [codigoEscrito, setCodigoEscrito] = useState(codigo)
   // El día y el código que se mandaron, para dejarlos puestos en la carga siguiente.
   const enviado = useRef({ fecha, codigo })
-  const { alEnviar, enviando, error } = useEnvio(registrarTareo, (r) =>
-    alTerminar(r.mensaje ?? 'Horas cargadas.', enviado.current.fecha, enviado.current.codigo),
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarTareo(previo, datos)
+    },
+    (r) => {
+      // La carga siguiente, en la misma ventana, es otro envío.
+      envio.otro()
+      alTerminar(r.mensaje ?? 'Horas cargadas.', enviado.current.fecha, enviado.current.codigo)
+    },
+    { alYaEntrar: envio.otro },
   )
   const elegida = personal.find((p) => p.id === persona)
   const costoHora = elegida?.costo_mensual ? elegida.costo_mensual / HORAS_DEL_MES : null
@@ -180,16 +201,7 @@ function FormularioHoras({
           .
         </p>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando}>
-          Cargar horas
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Cargar horas" />
     </form>
   )
 }
