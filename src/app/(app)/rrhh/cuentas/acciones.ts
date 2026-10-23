@@ -19,7 +19,7 @@ function dato(formulario: FormData, nombre: string) {
  */
 export async function guardarDatosDeCuenta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!cambiaDatosReservados(perfil)) return { ok: false, error: 'El DNI y el costo por hora los cambia Recursos Humanos.' }
+  if (!cambiaDatosReservados(perfil)) return { ok: false, error: 'No tienes permiso para cambiar el DNI ni el costo por hora de una cuenta.' }
 
   const analisis = z
     .object({

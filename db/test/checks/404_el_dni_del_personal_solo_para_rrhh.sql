@@ -42,9 +42,9 @@ select test.debe_fallar($$ select * from public.trabajadores $$,
 select test.afirmar((select dni is null from public.rrhh_tardanzas_del_mes(current_date) where trabajador_id = :'tomas_id'),
   'las tardanzas del mes le llegan sin el DNI');
 select test.debe_fallar($$ select * from public.rrhh_dni_de_trabajadores() $$,
-  'Gerencia no pide los DNI por la función de RR. HH.', 'Recursos Humanos');
+  'Gerencia no pide los DNI por la función de RR. HH.', 'No tienes permiso para ver el DNI del personal');
 select test.debe_fallar($$ select public.asistencia_buscar_por_dni('40440440') $$,
-  'Gerencia no busca por DNI', 'portería');
+  'Gerencia no busca por DNI', 'No tienes permiso para buscar por DNI');
 select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Gerencia consulta la auditoría');
 select test.afirmar((select count(*) from public.audit_log where tabla = 'trabajadores') = 0,
   'pero no la copia de la ficha, que lleva el DNI');

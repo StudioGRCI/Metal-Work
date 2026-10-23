@@ -437,3 +437,15 @@ en un check con `set local role authenticated`.
   pantalla tenga que componer pasa por `redondearCantidad`
   (`src/lib/dominio/almacen.ts`). Las pruebas con unidades enteras no lo ven: el
   `probar-*.mjs` de una cantidad lleva un material en metros.
+
+- **En una sonda, después del clic que cierra una ventana se espera lo que cambia,
+  no a la red.** La ventana se cierra con el resultado de la acción, unos 230 ms
+  después del clic, y la pantalla repintada llega entre 0,4 y 1 s más tarde.
+  `waitForLoadState('networkidle')` no espera nada: la página ya llegó a ese
+  estado al abrirse y la llamada vuelve en el acto. `probar-anular-oc` leyó así
+  la fila de la OC antes de que se fuera y falló en todas sus corridas, también
+  en `main`, hasta el 2026-10-23. Se espera el localizador del estado esperado
+  —`waitFor({ state: 'detached' })` de la fila que se va, o la que aparece con
+  `hasText`— con su `timeout`, y la comprobación va después: si a los 15 s no
+  cambió, falla, que es lo correcto. Hay unos 58 `networkidle` más en las sondas
+  que pueden esconder la misma carrera.

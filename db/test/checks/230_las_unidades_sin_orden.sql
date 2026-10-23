@@ -179,7 +179,7 @@ reset role;
 
 -- HALLAZGO: quien revisa los reportes tiene que poder aprobar y corregir el de
 -- cualquier área. Ese permiso, `produccion.aprobar_reportes`, hoy solo lo tiene
--- Administración («Administración revisa los reportes de Supervisión», dice la
+-- Administración (así lo decía entonces el aviso de la
 -- acción `revisarReporte`), y la política de UPDATE de `flota_avances` lo
 -- acepta; pero la de SELECT pide `produccion.ver`, que Administración no tiene.
 -- La fila le queda oculta y el UPDATE afecta cero filas sin error: la pantalla

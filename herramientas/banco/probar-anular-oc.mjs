@@ -164,11 +164,12 @@ try {
     `la OC quedó anulada por Gerencia con su motivo y su línea guardada (${JSON.stringify(fila)})`)
   const [{ n: avisos }] = await consulta(`select count(*)::int as n from notificaciones where origen_id = $1 and titulo like 'Compra anulada:%'`, [oc[0].id])
   comprobar(avisos === 1, `a Logística le llegó un solo aviso de la anulación (${avisos})`)
-  // La lista se repinta con el refresco que sigue al cierre de la ventana: con
-  // carga tarda, y contar en el acto leía la página de antes.
-  const t0 = Date.now()
+  // La ventana se cierra con el resultado de la acción; la pantalla repintada
+  // llega después. `waitForLoadState('networkidle')` no la esperaba: la página
+  // ya había llegado a ese estado al abrirse y vuelve en el acto.
   await anulable(gerencia.pagina, oc[0].numero).waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
-  comprobar((await anulable(gerencia.pagina, oc[0].numero).count()) === 0, `la anulada sale de la lista de las que se pueden anular (${Date.now() - t0} ms)`)
+  comprobar((await anulable(gerencia.pagina, oc[0].numero).count()) === 0, 'la anulada sale de la lista de las que se pueden anular')
+  await gerencia.pagina.locator('tr', { hasText: oc[0].numero }).filter({ hasText: 'Anulada' }).first().waitFor({ timeout: 20000 }).catch(() => {})
   const decidida = limpio(await gerencia.pagina.locator('tr', { hasText: oc[0].numero }).last().innerText().catch(() => ''))
   comprobar(decidida.includes('Anulada') && decidida.includes(MOTIVO), `y aparece entre las decididas como anulada: «${decidida.slice(0, 160)}»`)
   comprobar(gerencia.errores.length === 0, `sin errores de consola para Gerencia (${gerencia.errores.join(' | ')})`)

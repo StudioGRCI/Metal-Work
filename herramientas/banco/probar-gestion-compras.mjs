@@ -17,6 +17,9 @@
  *   6. Contabilidad anula la guía con motivo desde Adquisiciones: al conductor
  *      le vuelve a decir que falta, y la anulada queda contada.
  *
+ *   7. Logística saca la segunda de la lista con «Sacar de la lista»: vuelve
+ *      a «Por programar».
+ *
  * Siembra sus tres OC aprobadas (Logística las emite y Gerencia las aprueba,
  * con las funciones de la base) y las sigue por su número. Necesita la lista
  * del conductor sin pendientes: las que ya estaban en ella las saca Logística
@@ -26,7 +29,8 @@
  * ya recogidas no se tocan: no llevan lugar y la prueba solo mira las que lo
  * llevan.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE y los
- * correos de cada cuenta si no son `*@local.test`.
+ * correos de cada cuenta si no son las `*.local@metalwork.test` que siembra
+ * `preparar.sh`.
  */
 import { mkdirSync } from 'node:fs'
 
@@ -37,12 +41,8 @@ const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
-const CUENTAS = {
-  logistica: process.env.LOGISTICA ?? 'comprador@local.test',
-  contabilidad: process.env.CONTABILIDAD ?? 'contabilidad@local.test',
-  conductor: process.env.CONDUCTOR ?? 'conductor@local.test',
-  gerencia: process.env.GERENCIA ?? 'gerencia@local.test',
-}
+const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
+const CUENTAS = Object.fromEntries(['logistica', 'contabilidad', 'conductor', 'gerencia'].map((p) => [p, cuenta(p)]))
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -308,10 +308,16 @@ let hrefGuia = ''
   const tarjetas = pagina.locator('main section').first().locator('> div')
   // Solo las que llevan lugar: las que van en recojo o ya recogidas van antes, sin lugar.
   const textos = (await tarjetas.allInnerTexts()).map((x) => x.replace(/\s+/g, ' ')).filter((x) => /^\d+\.º · /.test(x))
-  comprobar(textos[0]?.startsWith(`1.º · ${ocA}`) && textos[1]?.startsWith(`2.º · ${ocB}`), `en el teléfono, su lista en el orden de Logística: ${textos.map((x) => x.slice(0, 18)).join(' | ')}`)
-  comprobar(/Pesa 350[,.]5 kg/.test(textos[0] ?? '') && /Pesa 120 kg/.test(textos[1] ?? ''), 'cada una con su peso')
-  comprobar(textos[0]?.includes('Guía de remisión T001-00000123 (PDF)'), 'la primera con su guía')
-  comprobar(textos[1]?.includes('Contabilidad todavía no carga la guía de remisión'), 'la segunda dice que falta la guía')
+  // Lo que el conductor ya lleva encima va primero, y otra sonda pudo dejarle
+  // una recogida: las dos de esta se buscan por su número, y el orden lo dice
+  // su lugar en la lista.
+  const iA = textos.findIndex((x) => x.startsWith(`1.º · ${ocA}`))
+  const iB = textos.findIndex((x) => x.startsWith(`2.º · ${ocB}`))
+  const [a, b] = [textos[iA] ?? '', textos[iB] ?? '']
+  comprobar(iA >= 0 && iB === iA + 1, `en el teléfono, su lista en el orden de Logística: ${textos.map((x) => x.slice(0, 18)).join(' | ')}`)
+  comprobar(/Pesa 350[,.]5 kg/.test(a) && /Pesa 120 kg/.test(b), 'cada una con su peso')
+  comprobar(a.includes('Guía de remisión T001-00000123 (PDF)'), 'la primera con su guía')
+  comprobar(b.includes('Contabilidad todavía no carga la guía de remisión'), 'la segunda dice que falta la guía')
   const quedan = esperanAntes - 2
   const aviso = quedan === 1 ? '1 compra aprobada espera que Logística la programe' : `${quedan} compras aprobadas esperan que Logística`
   comprobar((await texto(pagina.locator('main'))).includes(aviso), `las que no programó siguen solo como aviso: «${aviso}»`)
@@ -351,11 +357,29 @@ let hrefGuia = ''
   await contexto.close()
 }
 
+// ------------------------------------------------ 7. Logística saca la segunda de la lista
+// La deja como la encontró: con una OC en la lista del conductor, la próxima
+// vuelta no empieza en «1.º».
+{
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+  await tarjeta(pagina, 'titulo-lista', ocB).getByRole('button', { name: 'Sacar de la lista' }).click()
+  await pagina.getByRole('button', { name: 'Sí, sacarla' }).click()
+  await tarjeta(pagina, 'titulo-por-programar', ocB).waitFor({ timeout: 20000 }).catch(() => {})
+  comprobar((await tarjeta(pagina, 'titulo-lista', ocB).count()) === 0 && (await tarjeta(pagina, 'titulo-por-programar', ocB).count()) === 1, `${ocB} sale de la lista y vuelve a Por programar`)
+  await contexto.close()
+}
+
 await navegador.close()
-// La suya, fuera de la lista: la siguiente prueba la encuentra sin pendientes.
-// La primera ya salió a recogerla y no se saca; no lleva lugar.
+// La suya, fuera de la lista también si el paso 7 no llegó a sacarla: la
+// siguiente prueba la encuentra sin pendientes. La primera ya salió a
+// recogerla y no se saca; no lleva lugar.
 await como('logistica')
-await consulta(`select public.quitar_recojo_de_la_lista(id) from ordenes_compra_materiales where id = $1 and recojo = 'POR_RECOGER'`, [idDe[ocB]])
+await consulta(
+  `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+    where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
+  [idDe[ocB]],
+)
 await devolverLasDeAntes()
 const [{ n: enLaLista }] = await consulta(
   `select count(*)::int as n from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id

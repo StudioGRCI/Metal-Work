@@ -611,6 +611,7 @@ export async function repartoATodosLosActivos(): Promise<RepartoATodos[]> {
 /** Una orden de compra del código, con lo que hace falta para decir en qué va. */
 export type CompraDelCodigo = {
   id: string
+  /** El nombre que arma la base: el número, u «OC sin número (ref. del proveedor …)». No sirve para buscarla. */
   numero: string | null
   fecha: string
   proveedor: string

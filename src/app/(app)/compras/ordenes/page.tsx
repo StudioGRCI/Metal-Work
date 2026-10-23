@@ -11,6 +11,7 @@ import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { devolucionesPorReponer } from '@/lib/datos/kardex'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
+import { ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
@@ -156,12 +157,15 @@ function FilaCompra({
   // La rechazada y la anulada no se atienden ni se pagan: no esperan comprobante.
   const sinCurso = c.aprobacion === 'RECHAZADA' || c.aprobacion === 'ANULADA'
   return (
-    <TR data-compra={c.numero}>
+    // La OC sin número se encuentra por su referencia: es lo que cita el proveedor.
+    <TR data-compra={c.numero ?? c.referencia}>
       <TD>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="tabular font-semibold text-texto">{c.numero}</span>
+          <span className={c.numero ? 'tabular font-semibold text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
           {origen && <Insignia tono={origen.tono}>{origen.etiqueta}</Insignia>}
         </div>
+        {/* Lo único que distingue dos OC sin número del mismo proveedor: va primero, como en Gestión. */}
+        {c.numero === null && <p className="text-xs text-texto-suave">Ref. del proveedor: {c.referencia}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-[11px] text-texto-suave">sin IGV</span>
@@ -178,7 +182,7 @@ function FilaCompra({
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-[11px] text-texto-suave">
           {[
-            c.referencia && c.referencia !== c.numero ? `Ref. ${c.referencia}` : null,
+            c.numero !== null && c.referencia && c.referencia !== c.numero ? `Ref. ${c.referencia}` : null,
             condicionDePago(c.condicion_pago, c.dias_credito),
             `${c.lineas} ${c.lineas === 1 ? 'línea' : 'líneas'}`,
             fecha(c.creado_en),
@@ -231,7 +235,7 @@ function FilaCompra({
               href={`/compras/${c.id}/pdf`}
               download
               className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
-              aria-label={`Descargar el PDF de la orden ${c.numero}`}
+              aria-label={`Descargar el PDF de la ${c.nombre}`}
             >
               <FileDown aria-hidden className="size-4" />
               PDF
@@ -240,7 +244,7 @@ function FilaCompra({
           {emite && c.aprobacion !== 'ANULADA' && (
             <AccionesCompra
               id={c.id}
-              numero={c.numero}
+              oc={ocParaDetector(c)}
               recojo={puedeIrARecojo(c)}
               adjuntar={c.aprobacion !== 'RECHAZADA'}
               conFactura={c.con_factura}

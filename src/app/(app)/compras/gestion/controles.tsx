@@ -91,7 +91,7 @@ export function ProgramarRecojo({
 }
 
 /** Subir o bajar un lugar sin abrir nada: el mismo programar, con el peso que ya tiene. */
-export function MoverEnLista({ id, peso, lugar, cuantas, numero }: { id: string; peso: number; lugar: number; cuantas: number; numero: string }) {
+export function MoverEnLista({ id, peso, lugar, cuantas, nombre }: { id: string; peso: number; lugar: number; cuantas: number; nombre: string }) {
   const accion = useAccion(programarRecojo)
   function mover(destino: number) {
     const datos = new FormData()
@@ -106,7 +106,7 @@ export function MoverEnLista({ id, peso, lugar, cuantas, numero }: { id: string;
         type="button"
         variante="contorno"
         tamano="icono"
-        aria-label={`Subir ${numero} un lugar`}
+        aria-label={`Subir ${nombre} un lugar`}
         disabled={lugar <= 1 || accion.enviando}
         onClick={() => mover(lugar - 1)}
       >
@@ -116,7 +116,7 @@ export function MoverEnLista({ id, peso, lugar, cuantas, numero }: { id: string;
         type="button"
         variante="contorno"
         tamano="icono"
-        aria-label={`Bajar ${numero} un lugar`}
+        aria-label={`Bajar ${nombre} un lugar`}
         disabled={lugar >= cuantas || accion.enviando}
         onClick={() => mover(lugar + 1)}
       >
@@ -132,7 +132,7 @@ export function MoverEnLista({ id, peso, lugar, cuantas, numero }: { id: string;
 }
 
 /** Sacarla de la lista del conductor: pide confirmar, porque a él le llega el aviso. */
-export function QuitarDeLaLista({ id, numero }: { id: string; numero: string }) {
+export function QuitarDeLaLista({ id, nombre }: { id: string; nombre: string }) {
   const [abierta, setAbierta] = useState(false)
   const accion = useAccion(quitarDeLaLista, () => setAbierta(false))
   return (
@@ -149,7 +149,7 @@ export function QuitarDeLaLista({ id, numero }: { id: string; numero: string }) 
       <ConfirmarAccion
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo={`¿Sacar ${numero} de la lista del conductor?`}
+        titulo={`¿Sacar ${nombre} de la lista del conductor?`}
         detalle="Al conductor le llega el aviso de que no salga a recogerla. Se queda con su peso; la puedes volver a poner cuando quieras."
         etiquetaConfirmar="Sí, sacarla"
         trabajando={accion.enviando}

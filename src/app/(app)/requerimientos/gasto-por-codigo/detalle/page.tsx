@@ -8,6 +8,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { comprasDelCodigo } from '@/lib/datos/codigos-internos'
 import { listarGastoPorCodigo, materialesDelCodigo } from '@/lib/datos/gasto-por-codigo'
+import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { enlaceGastoCodigo, faltaElPrecio, normalizarCodigo, parecidos } from '@/lib/dominio/codigos-internos'
 import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { cantidad, fecha, moneda } from '@/lib/format'
@@ -200,17 +201,19 @@ async function Compras({ codigo, abrePdf }: { codigo: string; abrePdf: boolean }
           ) : (
             compras.map((oc) => {
               const situacion = situacionCompra({ ...oc, validacion: validacionDeCompra(oc.validaciones) })
-              const numero = oc.numero ?? 'OC sin número'
+              // La base la da nombrada entera: el número, o «OC sin número» con la referencia debajo.
+              const { numero, referencia } = partesDeNombreDeOc(oc.numero ?? 'OC sin número')
               return (
                 <TR key={oc.id} data-compra={oc.id}>
                   <TD className="align-top">
                     {abrePdf ? (
                       <a href={`/compras/${oc.id}/pdf`} className="font-medium text-acento hover:underline" target="_blank" rel="noopener">
-                        {numero}
+                        {numero ?? 'OC sin número'}
                       </a>
                     ) : (
-                      <p className="font-medium text-texto">{numero}</p>
+                      <p className="font-medium text-texto">{numero ?? 'OC sin número'}</p>
                     )}
+                    {referencia && <p className="text-xs text-texto-suave">Ref. del proveedor: {referencia}</p>}
                     <p className="text-xs text-texto-suave">
                       {fecha(oc.fecha)}
                       {oc.requerimientos && ` · ${oc.requerimientos}`}
@@ -222,7 +225,7 @@ async function Compras({ codigo, abrePdf }: { codigo: string; abrePdf: boolean }
                     <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
                   </TD>
                   <TD className="tabular text-right align-top">
-                    {moneda(oc.monto, oc.moneda)}
+                    <span className="whitespace-nowrap">{moneda(oc.monto, oc.moneda)}</span>
                     {oc.sin_precio > 0 && (
                       <p className="text-xs text-aviso">
                         {oc.sin_precio} de {oc.lineas} {oc.lineas === 1 ? 'línea' : 'líneas'} sin precio

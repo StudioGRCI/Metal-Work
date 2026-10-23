@@ -117,7 +117,7 @@ const esquemaRevisar = z.object({
 export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'cotizaciones.revisar')) {
-    return { ok: false, error: 'La cotización la aprueba o la rechaza Gerencia.' }
+    return { ok: false, error: 'No tienes permiso para aprobar ni rechazar la cotización.' }
   }
 
   const analisis = esquemaRevisar.safeParse(Object.fromEntries(datos))

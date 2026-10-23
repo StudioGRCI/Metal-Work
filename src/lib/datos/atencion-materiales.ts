@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas, Vistas } from '@/types/database'
@@ -23,6 +24,10 @@ export type CompraMaterialPendiente = Vistas<'v_orden_compra_material_pendiente'
   aprobacion: string
   /** El número OC-…-MW que pone el sistema; las compras de antes no lo tienen. */
   numero: string | null
+  /** De antes de la serie: sin número, se nombra por la referencia del proveedor. */
+  sin_numero: boolean
+  /** «OC-0005-MW» u «OC sin número (ref. del proveedor …)», para las frases. */
+  nombre: string
   /** POR_RECOGER, EN_RECOJO, RECOGIDO o DEJADO: ver `RECOJO_COMPRA`. Null: no va con el conductor. */
   recojo: string | null
   /** Lo que hizo Almacén con lo que dejó el conductor: ver `situacionCompra`. */
@@ -176,6 +181,12 @@ export async function cargarAtencionMateriales(permisos: {
       moneda: entregaPorCompra.get(compra.orden_compra_id ?? '')?.moneda ?? 'PEN',
       aprobacion: entregaPorCompra.get(compra.orden_compra_id ?? '')?.aprobacion ?? 'NO_REQUERIDA',
       numero: entregaPorCompra.get(compra.orden_compra_id ?? '')?.numero ?? null,
+      // Si la fila de la OC no se pudo leer no se sabe si tiene número: se queda
+      // con la referencia, como antes, en vez de llamarla «sin número».
+      sin_numero: entregaPorCompra.has(compra.orden_compra_id ?? '') && !entregaPorCompra.get(compra.orden_compra_id ?? '')?.numero,
+      nombre: entregaPorCompra.has(compra.orden_compra_id ?? '')
+        ? nombreDeOc({ numero: entregaPorCompra.get(compra.orden_compra_id ?? '')?.numero ?? null, referencia: compra.referencia })
+        : (compra.referencia ?? 'OC'),
       recojo: entregaPorCompra.get(compra.orden_compra_id ?? '')?.recojo ?? null,
       validacion: validacionDeCompra(estadosPorCompra.get(compra.orden_compra_id ?? '') ?? []),
       precio_unitario: precioPorLinea.get(compra.id ?? '') ?? null,

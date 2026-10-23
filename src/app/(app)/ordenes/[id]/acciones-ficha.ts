@@ -34,7 +34,7 @@ type Guarda =
 async function exigirTaller(): Promise<Guarda> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'La ficha de taller la completa Administración.' }
+    return { ok: false, error: 'No tienes permiso para completar la ficha de taller.' }
   }
   return { ok: true, perfil }
 }
@@ -54,7 +54,7 @@ async function exigirEscribirOrden(): Promise<Guarda> {
   if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los datos de la ficha los completa Administración.',
+      error: 'No tienes permiso para completar los datos de la ficha.',
     }
   }
   return { ok: true, perfil }
@@ -70,7 +70,7 @@ async function exigirArmarFicha(): Promise<Guarda> {
   if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los accesorios y repuestos los completa Administración.',
+      error: 'No tienes permiso para completar los accesorios y repuestos.',
     }
   }
   return { ok: true, perfil }
@@ -321,7 +321,7 @@ export async function agregarVerificacion(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'Solo Administración puede crear pasos.' }
+    return { ok: false, error: 'No tienes permiso para crear pasos de verificación.' }
   }
   const analisis = z.object({
     orden_id: z.guid(),
@@ -400,7 +400,7 @@ export async function anotarVerificacion(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'Solo Administración puede anotar observaciones en los pasos.' }
+    return { ok: false, error: 'No tienes permiso para anotar observaciones en los pasos.' }
   }
 
   const analisis = z

@@ -193,9 +193,10 @@ reset role;
 -- ============================================ 6. Cada uno compra lo suyo, y solo lo que falta
 select pg_temp.como('comprador');
 set local role authenticated;
-select test.debe_fallar(pg_temp.comprar('oc1', 'rqa', 'null'), 'Logística no compra el de Administración', 'administradora');
+select test.debe_fallar(pg_temp.comprar('oc1', 'rqa', 'null'), 'Logística no compra el de Administración',
+  'No tienes permiso para hacer la orden de compra de un requerimiento de Administración');
 select test.debe_fallar(format($q$select public.rq_marcar_en_atencion('%s', null)$q$, current_setting('prueba.rqa')),
-  'ni lo marca en compra', 'administradora');
+  'ni lo marca en compra', 'No tienes permiso para hacer la orden de compra de un requerimiento de Administración');
 select test.debe_fallar(pg_temp.comprar('oc1', 'rqo', 'array[1]::smallint[]'), 'lo que Almacén tiene completo no se compra', 'Almacén ya tiene completo');
 select public.emitir_compra_del_requerimiento(current_setting('prueba.oc1')::uuid, current_setting('prueba.rqo')::uuid, null,
   current_setting('prueba.prov')::uuid, null,
@@ -210,9 +211,10 @@ select test.afirmar((pg_temp.rq('rqo')).estado = 'EN_ATENCION', 'el de operació
 
 select pg_temp.como('administracion');
 set local role authenticated;
-select test.debe_fallar(pg_temp.comprar('oc2', 'rqo3', 'null'), 'la administradora no compra el de operación', 'Logística');
+select test.debe_fallar(pg_temp.comprar('oc2', 'rqo3', 'null'), 'la administradora no compra el de operación',
+  'No tienes permiso para hacer la orden de compra de un requerimiento de operación');
 select test.debe_fallar(format($q$select public.rq_marcar_en_atencion('%s', null)$q$, current_setting('prueba.rqo3')),
-  'ni lo marca en compra', 'Logística');
+  'ni lo marca en compra', 'No tienes permiso para hacer la orden de compra de un requerimiento de operación');
 select public.emitir_compra_del_requerimiento(current_setting('prueba.oc2')::uuid, current_setting('prueba.rqa')::uuid, null,
   current_setting('prueba.prov')::uuid, null,
   jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.m1'), 'cantidad', 5, 'precio', 2)),

@@ -33,7 +33,7 @@ do $$ begin
   perform count(*) from public.v_kardex_almacen;
   perform test.afirmar(not public.tiene_permiso('almacen.recibir') and not public.tiene_permiso('almacen.despachar'),
     'y no registra ingresos ni salidas');
-  perform test.debe_fallar('select * from public.servicios_por_pagar()', 'Contabilidad no lleva los pagos de servicio', 'Tesorería');
+  perform test.debe_fallar('select * from public.servicios_por_pagar()', 'Contabilidad no lleva los pagos de servicio', 'No tienes permiso para ver los pagos de servicio');
   reset role;
 end $$;
 
@@ -56,7 +56,7 @@ declare r record;
 begin
   perform test.como_usuario(current_setting('prueba.compras')::uuid);
   set local role authenticated;
-  perform test.debe_fallar('select * from public.servicios_por_pagar()', 'Logística no lleva los pagos', 'Tesorería');
+  perform test.debe_fallar('select * from public.servicios_por_pagar()', 'Logística no lleva los pagos', 'No tienes permiso para ver los pagos de servicio');
   perform test.afirmar(public.servicios_pendientes_de_pago() is null, 'ni ve el pendiente de Tesorería');
   reset role;
 

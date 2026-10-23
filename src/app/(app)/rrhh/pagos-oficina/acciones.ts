@@ -12,7 +12,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'Los pagos de la oficina los registra Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para registrar ni anular los pagos de la oficina.'
 const FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 function refrescar() {

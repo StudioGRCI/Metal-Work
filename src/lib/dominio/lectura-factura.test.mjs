@@ -196,4 +196,10 @@ test('al adjuntar la factura a su OC se avisa si el total o la OC no son los de 
   ])
   // A medio escribir no se avisa.
   assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180.4, moneda: 'PEN', anotada: 'F00' }, dinero), [])
+  // La OC sin número se busca por su referencia y se nombra entera: no «esta es la OC-0591».
+  const sinNumero = { numero: 'OC-0591', nombre: 'OC sin número (ref. del proveedor OC-0591)' }
+  assert.deepEqual(avisosDeLaOrden({ lectura, total: 1180.4, moneda: 'PEN', ...sinNumero }, dinero), [
+    'La factura menciona la OC 5583, y esta es la OC sin número (ref. del proveedor OC-0591): revisa que sea su factura.',
+  ])
+  assert.deepEqual(avisosDeLaOrden({ lectura: { ...lectura, ordenes: ['591'] }, total: 1180.4, moneda: 'PEN', ...sinNumero }, dinero), [])
 })

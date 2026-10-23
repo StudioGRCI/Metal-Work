@@ -217,7 +217,7 @@ export function TableroMateriales({
         const detenida=compraDetenida(compra.aprobacion)
         const aprobacion=APROBACION_COMPRA[compra.aprobacion]
         const situacion=situacionCompra(compra)
-        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.numero ?? compra.referencia} · ${compra.proveedor}`} descripcion={`${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:detalleDelRecojo(compra)}`} acciones={<Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>}/><TarjetaCuerpo>
+        return <Tarjeta key={compra.orden_compra_id}><TarjetaCabecera titulo={`${compra.sin_numero ? 'OC sin número' : compra.nombre} · ${compra.proveedor}`} descripcion={`${compra.sin_numero ? `Ref. del proveedor: ${compra.referencia} · ` : ''}${lineasCompra.length} ${lineasCompra.length === 1 ? 'insumo' : 'insumos'} · ${detenida?aprobacion?.descripcion:detalleDelRecojo(compra)}`} acciones={<Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>}/><TarjetaCuerpo>
           <div className="space-y-3 border-t border-borde pt-3">
                   {puedeCrearCompra && detenida && (
                     <p className="text-xs text-texto-suave">Mientras no se apruebe no se descarga, no se envía al proveedor ni se entrega a Almacén. La decide quien aprueba las compras en <Link href="/compras/aprobacion" className="font-medium text-acento underline">Aprobación de compras</Link>.</p>
@@ -229,7 +229,7 @@ export function TableroMateriales({
                         key={`condicion-${compra.orden_compra_id}`} compra={compra} />)}
                       {[compra].map((compra) => compra.orden_compra_id && <RecojoCompra
                         key={compra.orden_compra_id} compra={compra} />)}
-                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.numero ?? c.referencia}</Link>)}
+                      {[compra].map(c=><Link key={'pdf-'+c.orden_compra_id} href={`/compras/${c.orden_compra_id}/pdf`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento underline">Descargar compra {c.nombre}</Link>)}
                       {lineasCompra.filter((compra) => compra.precio_unitario === null).map((compra) => (
                         <PrecioCompra key={compra.id} compra={compra} />
                       ))}
@@ -282,7 +282,7 @@ function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
-    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</span>
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
     <Campo etiqueta={`Precio unitario (${compra.moneda})`} htmlFor={`precio-${compra.id}`} ayuda="Sin IGV. Si el proveedor lo da con IGV, divídelo entre 1.18.">
       <Entrada id={`precio-${compra.id}`} name="precio" type="number" inputMode="decimal" min={0} step="0.01" required className="tabular w-32" />
     </Campo>
@@ -308,7 +308,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
   // En qué va ya lo dice la cabecera de la tarjeta.
   if (!puedeIrARecojo(compra)) return null
   return <div className="flex flex-wrap items-center gap-2">
-    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</span>
+    <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
     <Boton type="button" tamano="sm" variante="secundario" cargando={envio.enviando} onClick={() => {
       const datos = new FormData()
       datos.set('id', compra.orden_compra_id ?? '')
@@ -541,7 +541,7 @@ function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendient
       <input type="hidden" name="operacion_id" value={clave ?? ''} />
       <input type="hidden" name="compra_detalle_id" value={compra.id ?? ''} />
       <div className="sm:col-span-2">
-        <p className="text-xs font-medium text-texto">{compra.proveedor} · {compra.numero ?? compra.referencia}</p>
+        <p className="text-xs font-medium text-texto">{compra.proveedor} · {compra.nombre}</p>
         <p className="mt-0.5 text-[11px] text-texto-suave">Pendiente {cantidad(restante)} · estimado {formatearFecha(compra.fecha_estimada)}</p>
       </div>
       <Campo etiqueta="Cantidad que llegó" htmlFor={`rec-cant-${compra.id}`} requerido>

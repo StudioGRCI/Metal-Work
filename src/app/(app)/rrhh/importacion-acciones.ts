@@ -36,7 +36,7 @@ const DEMASIADOS_DATOS = 'El Excel trae demasiados datos. Usa solamente el libro
  */
 export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Promise<ResultadoAccion<LecturaPlanilla>> {
   if (!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'), 'rrhh.gestionar_planillas')) {
-    return { ok: false, error: 'Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.' }
+    return { ok: false, error: 'No tienes permiso para cambiar las planillas: el administrador las ve, pero no las cambia.' }
   }
   const archivo = datos.get('archivo')
   const planillaId = z.guid().safeParse(datos.get('planilla_id'))
@@ -110,7 +110,7 @@ export async function leerExcelPlanilla(_previo: unknown, datos: FormData): Prom
 
 export async function confirmarImportacion(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   if (!editaComoRrhh(await exigirPermiso('rrhh.gestionar_planillas'), 'rrhh.gestionar_planillas')) {
-    return { ok: false, error: 'Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.' }
+    return { ok: false, error: 'No tienes permiso para cambiar las planillas: el administrador las ve, pero no las cambia.' }
   }
   const cab = z.object({ planilla_id: z.guid(), importacion_id: z.guid(), lineas: z.string().max(1500000) })
     .safeParse(Object.fromEntries(datos))

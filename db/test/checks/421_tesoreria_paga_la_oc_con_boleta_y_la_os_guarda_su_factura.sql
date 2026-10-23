@@ -271,12 +271,12 @@ reset role;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.compras_con_boleta_por_pagar() $$,
-  'Contabilidad no la pide: no paga', 'Tesorería');
+  'Contabilidad no la pide: no paga', 'No tienes permiso para ver las OC con boleta por pagar');
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.compras_con_boleta_por_pagar() $$,
-  'Logística tampoco', 'Tesorería');
+  'Logística tampoco', 'No tienes permiso para ver las OC con boleta por pagar');
 -- Logística no sube vouchers al bucket de los pagos.
 select test.debe_fallar($$ select pg_temp.subir('pagos-compras', 'oc1') $$,
   'Logística no sube al bucket de los vouchers', 'row-level security');
@@ -1727,7 +1727,7 @@ select test.afirmar(pg_temp.avisos('tesoreria', 'Compra pagada de más: ') = 1
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('d12'), 'No era de esta OC, era de otra') $$,
-  'Tesorería no anula lo que anexa Logística', 'corresponde a Logística');
+  'Tesorería no anula lo que anexa Logística', 'No tienes permiso para anular documentos de compra');
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -3098,7 +3098,7 @@ set local role authenticated;
 select test.debe_fallar($$ select pg_temp.subir('documentos-servicio', 'os1') $$,
   'Almacén no sube documentos de la OS', 'row-level security');
 select test.debe_fallar($$ select public.adjuntar_documento_servicio(gen_random_uuid(), pg_temp.id('os1'), 'OTRO', null, 'x.pdf', 'x') $$,
-  'ni los anota', 'Logística y Tesorería');
+  'ni los anota', 'No tienes permiso para adjuntar documentos a la orden de servicio');
 select test.afirmar((select count(*) from public.documentos_orden_servicio) = 0
     and (select count(*) from storage.objects where bucket_id = 'documentos-servicio') = 0,
   'ni los ve');

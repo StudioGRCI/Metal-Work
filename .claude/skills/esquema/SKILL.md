@@ -321,3 +321,17 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   contra el texto que el repositorio conoce (antes o después del cambio) y
   detenerse con un mensaje si no es ninguno (`20261022160000`). `prosrc` se
   guarda tal cual, y `create or replace` conserva los permisos.
+- **Una función que nombra una OC no da `coalesce(numero, referencia)`.** La OC de
+  antes de la serie OC-…-MW no tiene número de la casa, y su referencia es la
+  cotización del proveedor, con la forma de un número de OC («OC-0621»). Diez
+  funciones la daban en el lugar del número y la pantalla no podía saberlo: el
+  conductor y Supervisión no leen la tabla de compras para averiguarlo, y el
+  kardex guardaba «OC-0621» como documento para siempre (migraciones
+  `20261022220000` y `20261023130000`). Una función que devuelve la OC da el
+  número tal cual (vacío en la de antes de la serie) **y** la referencia aparte,
+  y la pantalla la nombra con `nombreDeOc`; si no puede sumar la columna (sin
+  soltar la función no se cambia su `returns table`), da el nombre armado con
+  `public.nombre_de_oc(numero, referencia)` y lo dice en `comment on function`,
+  porque el nombre de la columna ya no lo dice. La guarda de la `20261023130000`
+  y el check 434 miran todas las funciones de la base: una copiada de una
+  versión vieja se detiene ahí.

@@ -13,7 +13,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'La ficha del personal la lleva Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para cambiar la ficha del personal.'
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/
 const FECHA = /^\d{4}-\d{2}-\d{2}$/
 

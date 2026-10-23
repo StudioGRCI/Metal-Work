@@ -58,7 +58,7 @@ const esquemaRevision = z.object({
 export async function revisarReporte(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!apruebaSinOrden(perfil)) {
-    return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
+    return { ok: false, error: 'No tienes permiso para revisar estos reportes.' }
   }
 
   const analisis = esquemaRevision.safeParse(Object.fromEntries(datos))
@@ -69,7 +69,7 @@ export async function revisarReporte(_previo: unknown, datos: FormData): Promise
   const v = analisis.data
   // Gerencia aprueba solo los trabajos sin orden; las hojas de las OT, no.
   if (v.clase !== 'flota' && !puede(perfil, 'produccion.aprobar_reportes')) {
-    return { ok: false, error: 'Los reportes de las órdenes los revisa Administración.' }
+    return { ok: false, error: 'No tienes permiso para revisar los reportes de las órdenes.' }
   }
   const observacion = v.observacion ?? ''
   if (v.decision === 'OBSERVADO' && observacion.length < 3) {
@@ -106,7 +106,7 @@ const esquemaDia = z.object({ fecha: z.string().regex(ES_FECHA, 'Falta el día')
 export async function aprobarElDia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.aprobar_reportes')) {
-    return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
+    return { ok: false, error: 'No tienes permiso para aprobar los reportes del día.' }
   }
 
   const analisis = esquemaDia.safeParse(Object.fromEntries(datos))

@@ -789,7 +789,7 @@ const DEVOLVER = z.object({
  */
 export async function devolverAlProveedor(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Lo devuelve al proveedor quien recibe en Almacén.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para devolver al proveedor.' }
   const v = DEVOLVER.safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa lo que se devuelve.' }
   const supabase = await createClient()
@@ -849,7 +849,7 @@ const YA_NO = z.object({
 export async function dejarDeEsperarReposicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'almacen.recibir') && !puede(perfil, 'compras.crear')) {
-    return { ok: false, error: 'Lo dice Almacén o Logística.' }
+    return { ok: false, error: 'No tienes permiso para dejar de esperar la reposición.' }
   }
   const v = YA_NO.safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa el motivo.' }

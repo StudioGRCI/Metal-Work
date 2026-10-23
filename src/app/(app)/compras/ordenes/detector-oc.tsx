@@ -155,21 +155,24 @@ export function AvisoFacturaDeLaOrden({
   moneda,
   numero,
   anotada,
+  nombre,
   parcialPosible,
 }: {
   lectura: LecturaFactura | null
   /** El total de la orden, con IGV si va con factura. */
   total: number | null
   moneda: string
-  /** El número de la orden, si ya lo tiene. */
+  /** El número de la orden, si ya lo tiene; en la OC sin número, su referencia. */
   numero?: string | null
+  /** Cómo se nombra en el aviso: «OC sin número (ref. del proveedor …)». */
+  nombre?: string | null
   /** El número de la factura que se escribió: si no es el leído, se avisa. */
   anotada?: string | null
   /** La OC puede ir en varias facturas: si el total no calza, se dice que puede ser una parte. */
   parcialPosible?: boolean
 }) {
   if (!lectura) return null
-  const avisos = avisosDeLaOrden({ lectura, total, moneda, numero, anotada }, (monto, m) => dinero(monto, m))
+  const avisos = avisosDeLaOrden({ lectura, total, moneda, numero, nombre, anotada }, (monto, m) => dinero(monto, m))
   if (avisos.length === 0) {
     if (lectura.total === null) return null
     const leido = dinero(lectura.total, lectura.moneda ?? (moneda === 'USD' ? 'USD' : 'PEN'))

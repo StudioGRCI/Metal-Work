@@ -2,6 +2,7 @@ import 'server-only'
 
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -24,7 +25,10 @@ export type LineaRequerimiento = {
   recompra: boolean
   /** La unidad del material es provisional: Almacén la confirma con la de este insumo al revisarlo. */
   material_unidad_pendiente: boolean
-  /** La OC que Logística generó para este insumo (OC-5583-MW); vacía mientras no se compra. */
+  /**
+   * La OC que Logística generó para este insumo, nombrada: «OC-5583-MW» u «OC sin
+   * número (ref. del proveedor …)» en la de antes de la serie. Vacía mientras no se compra.
+   */
   orden_compra: string | null
   /** Gerencia rechazó o anuló esa OC: el insumo vuelve a estar libre para otra. */
   compra_rechazada: boolean
@@ -134,8 +138,8 @@ export async function cargarRequerimientos(
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
-  // también el número de la OC, que Supervisión y Requerimientos no leen de la
-  // tabla de compras.
+  // también el nombre de la OC (migración 20261023130000), porque Supervisión no
+  // lee la tabla de compras.
   const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
   // Lo que ya salió del almacén para cada insumo y lo que llegó de su compra:
   // Supervisión no lee el kardex, así que también lo da la base (migración 20261020191000).
@@ -199,7 +203,7 @@ export async function cargarRequerimientos(
             material_nuevo: l.material_nuevo,
             recompra: l.recompra_de != null,
             material_unidad_pendiente: l.material?.unidad_pendiente ?? false,
-            orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? (l.orden_compra.numero ?? l.orden_compra.referencia ?? null) : null),
+            orden_compra: deLinea?.orden_compra ?? (l.orden_compra ? nombreDeOc(l.orden_compra) : null),
             compra_rechazada: deLinea ? deLinea.rechazada : ['RECHAZADA', 'ANULADA'].includes(l.orden_compra?.aprobacion ?? ''),
             compra_anulada: deLinea ? Boolean(deLinea.anulada) : l.orden_compra?.aprobacion === 'ANULADA',
             etapa: deLinea?.etapa ?? null,
