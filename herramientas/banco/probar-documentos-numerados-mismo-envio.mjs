@@ -49,6 +49,8 @@ import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba } from './caja-de-prueba.mjs'
 import { escribirCodigo } from './campo-codigo.mjs'
+import { esperarReactAlNavegar } from './con-react.mjs'
+import { esConsultaDelEnvio } from './consulta-del-envio.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -157,7 +159,7 @@ const VENTANA = '[role="dialog"]:not([data-nextjs-dialog])'
 
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|Failed to fetch|TypeError/.test(m.text())) return
     if (ruido?.test(m.text())) return
@@ -181,15 +183,16 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
  * siquiera llegan al servidor.
  */
 async function cortarRespuestas(pagina) {
-  // `retener`: la clave de `consultarEnvio` cuya pregunta se detiene hasta `soltar()`; `consultas`, las que terminaron.
-  const corte = { marca: null, quedan: 0, sinEnviar: false, retener: null, soltar: () => {}, consultas: 0 }
-  const esConsulta = (q, clave) => new RegExp(`^\\["${clave}","[0-9a-f-]{36}"\\]$`).test((q.postData() ?? '').trim())
+  // `retener`: la clave de `consultarEnvio` cuya pregunta se detiene hasta `soltar()`; `retenidas`, las que se
+  // detuvieron; `consultas`, las que terminaron.
+  const corte = { marca: null, quedan: 0, sinEnviar: false, retener: null, soltar: () => {}, retenidas: 0, consultas: 0 }
   pagina.on('requestfinished', (q) => {
-    if (q.method() === 'POST' && q.headers()['next-action'] && /^\["[a-z_]+","[0-9a-f-]{36}"\]$/.test((q.postData() ?? '').trim())) corte.consultas++
+    if (q.method() === 'POST' && q.headers()['next-action'] && esConsultaDelEnvio(q.postData())) corte.consultas++
   })
   await pagina.route('**/*', async (r) => {
     const q = r.request()
-    if (q.method() === 'POST' && q.headers()['next-action'] && corte.retener && esConsulta(q, corte.retener)) {
+    if (q.method() === 'POST' && q.headers()['next-action'] && corte.retener && esConsultaDelEnvio(q.postData(), corte.retener)) {
+      corte.retenidas++
       await new Promise((listo) => (corte.soltar = listo))
       return r.continue()
     }
@@ -306,6 +309,7 @@ async function mismoEnvio(d) {
   await v.waitFor({ state: 'hidden' })
   corte.retener = d.consulta
   const consultasAntes = corte.consultas
+  const retenidasAntes = corte.retenidas
   await abrir()
   await d.llenar(v, pagina, B, d.valores[1])
   await enviar()
@@ -314,6 +318,7 @@ async function mismoEnvio(d) {
   corte.retener = null
   corte.soltar()
   await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  comprobar(corte.retenidas > retenidasAntes, `[${d.nombre}] la pregunta de la ventana se detuvo hasta después de enviar`)
   const yaQuedo = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
   const estado = await hasta(() => laVentana(pagina), (e) => e.cursor && e.abiertos.length === 0, 5000)
   const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
@@ -355,9 +360,12 @@ async function mismoEnvio(d) {
   const [entroD] = await hasta(() => d.contar(D), (r) => r.length > 0)
   corte.retener = d.consulta
   const consultasD = corte.consultas
+  const retenidasD = corte.retenidas
   await abrir()
+  await hasta(() => corte.retenidas, (n) => n > retenidasD, 10000)
   await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
   await v.waitFor({ state: 'hidden' })
+  comprobar(corte.retenidas > retenidasD, `[${d.nombre}] la pregunta se detuvo hasta cerrar la ventana`)
   corte.retener = null
   corte.soltar()
   await hasta(() => corte.consultas, (n) => n > consultasD, 15000)

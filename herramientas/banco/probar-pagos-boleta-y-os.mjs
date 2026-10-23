@@ -84,6 +84,7 @@ import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -307,7 +308,7 @@ let cortando = false
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|status of 504/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)

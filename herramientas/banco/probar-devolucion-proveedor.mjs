@@ -28,6 +28,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { esConsultaDelEnvio } from './consulta-del-envio.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -287,7 +289,7 @@ const pendienteDeLaOc = async () =>
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
     }
-    if (corte.retener && e.request.method === 'POST' && h['next-action'] && /^\["movimiento_almacen","[0-9a-f-]{36}"\]$/.test(cuerpo(e.request).trim())) {
+    if (corte.retener && e.request.method === 'POST' && h['next-action'] && esConsultaDelEnvio(cuerpo(e.request), 'movimiento_almacen')) {
       corte.retenida = e.requestId
       corte.soltar = () => cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
       return
@@ -361,7 +363,8 @@ const pendienteDeLaOc = async () =>
   await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
   d = pagina.getByRole('dialog')
   await d.waitFor()
-  await hasta(() => corte.retenida, (r) => Boolean(r), 15000)
+  const retenida = await hasta(() => corte.retenida, (r) => Boolean(r), 15000)
+  comprobar(Boolean(retenida), '[Almacén 390] la pregunta de la ventana se detiene hasta escribir el motivo')
   const motivo = 'Llegó con la rosca dañada (banco, nota)'
   await d.locator('#dev-motivo').fill(motivo)
   corte.retener = false

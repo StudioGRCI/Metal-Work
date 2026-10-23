@@ -87,6 +87,9 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { esperarReactAlNavegar } from './con-react.mjs'
+import { esConsultaDelEnvio } from './consulta-del-envio.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -131,7 +134,7 @@ const nombreDe = (v) => (v.width < 500 ? '390' : '1440')
 async function entrar(correo, viewport) {
   const movil = viewport.width < 500
   const contexto = await navegador.newContext({ viewport, isMobile: movil, hasTouch: movil, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
@@ -146,6 +149,31 @@ async function entrar(correo, viewport) {
   await quieta(pagina)
   return { pagina, contexto }
 }
+
+/**
+ * Abre «Adjuntar contrato» como lo haría una persona. Si la pestaña guarda el
+ * envío de un paso anterior que no se sabe cómo terminó, la ventana pregunta a
+ * la base si entró, y se espera esa respuesta antes de elegir el archivo: la
+ * nota sale antes de que nadie alcance a elegir uno. Sin esperarla, la prueba
+ * enviaba con el id del paso anterior, que el envío pendiente conserva desde
+ * que vive en la pestaña.
+ */
+async function abrirContrato(p) {
+  const pendiente = await p.evaluate(() => Object.keys(sessionStorage).some((k) => k.includes(':contrato_subcontrato:')))
+  const pregunta = pendiente
+    ? p.waitForResponse((r) => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action'])
+        && esConsultaDelEnvio(r.request().postData(), 'contrato_subcontrato'), { timeout: 20000 }).catch(() => null)
+    : null
+  await p.locator('[data-adjuntar-contrato]').click()
+  const ventana = p.getByRole('dialog').first()
+  await ventana.waitFor({ timeout: 20000 })
+  if (pregunta) {
+    await pregunta
+    await p.evaluate(() => new Promise((listo) => requestAnimationFrame(() => requestAnimationFrame(listo))))
+  }
+  return ventana
+}
+
 async function ir(pagina, ruta) {
   await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'load' })
   await quieta(pagina)
@@ -244,9 +272,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const v = p.getByRole('dialog').first()
-  await v.waitFor({ timeout: 20000 })
+  const v = await abrirContrato(p)
   const nombreA = `QA-OTRO-A-${sello}.pdf`
   await v.locator('input[name="contrato"]').setInputFiles({ name: nombreA, mimeType: 'application/pdf', buffer: PDF_MINIMO(300) })
   await v.getByRole('button', { name: 'Adjuntar' }).click()
@@ -284,9 +310,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const w = p.getByRole('dialog').first()
-  await w.waitFor({ timeout: 20000 })
+  const w = await abrirContrato(p)
   const nombreC = `QA-OTRO-C-${sello}.pdf`
   const nombreD = `QA-OTRO-D-${sello}.pdf`
   const pdfD = PDF_MINIMO(900)
@@ -323,9 +347,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const f = p.getByRole('dialog').first()
-  await f.waitFor({ timeout: 20000 })
+  const f = await abrirContrato(p)
   const nombreE = `QA-OTRO-E-${sello}.pdf`
   const nombreF = `QA-OTRO-F-${sello}.png`
   await f.locator('input[name="contrato"]').setInputFiles({ name: nombreE, mimeType: 'application/pdf', buffer: PDF_MINIMO(300) })
@@ -357,9 +379,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const g = p.getByRole('dialog').first()
-  await g.waitFor({ timeout: 20000 })
+  const g = await abrirContrato(p)
   const nombreG = `QA-OTRO-G-${sello}.pdf`
   const pdfG = PDF_MINIMO(300)
   const alertaG = g.locator('[role=alert]')
@@ -406,9 +426,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const n = p.getByRole('dialog').first()
-  await n.waitFor({ timeout: 20000 })
+  const n = await abrirContrato(p)
   const nombreJ = `QA-OTRO-J-${sello}.png`
   const alertaN = n.locator('[role=alert]')
   await n.locator('input[name="contrato"]').setInputFiles({ name: nombreJ, mimeType: 'image/png', buffer: PNG_MINIMO })
@@ -446,9 +464,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
       }
       return r.continue()
     })
-    await p.locator('[data-adjuntar-contrato]').click()
-    const w = p.getByRole('dialog').first()
-    await w.waitFor({ timeout: 20000 })
+    const w = await abrirContrato(p)
     const alertaW = w.locator('[role=alert]')
     const nombrePdf = `QA-OTRO-N2-${clave}-${sello}.pdf`
     const nombreFoto = `QA-OTRO-N2-${clave}-${sello}.png`
@@ -483,9 +499,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
     }
     return r.continue()
   })
-  await p.locator('[data-adjuntar-contrato]').click()
-  const x = p.getByRole('dialog').first()
-  await x.waitFor({ timeout: 20000 })
+  const x = await abrirContrato(p)
   const alertaX = x.locator('[role=alert]')
   const nombrePdf3 = `QA-OTRO-N3-${sello}.pdf`
   const nombreFoto3 = `QA-OTRO-N3-${sello}.png`
@@ -609,6 +623,23 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
   await contexto.close()
 }
 
+// La última OC de la lista donde Logística puede adjuntar. La fila se fija
+// por el enlace a su PDF, que lleva el id: al refrescar, la lista puede cambiar
+// de orden, y desde #159 la OC sin número no tiene un nombre que la distinga.
+async function laOcDondeAdjuntar(p) {
+  const conPdf = 'a[href^="/compras/"][href$="/pdf"]'
+  const pdf = p.locator('tbody tr')
+    .filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) })
+    .filter({ has: p.locator(conPdf) })
+    .last().locator(conPdf).first()
+  const enlace = await pdf.getAttribute('href', { timeout: 5000 }).catch(() => null)
+  if (!enlace) return null
+  return {
+    numero: (await pdf.getAttribute('aria-label')).replace('Descargar el PDF de la ', ''),
+    laOc: p.locator('tbody tr').filter({ has: p.locator(`a[href="${enlace}"]`) }),
+  }
+}
+
 // ------------------------------------------------- 1d. el segundo documento de la misma OC
 // Logística adjunta un documento a una OC, cierra la ventana, la vuelve a abrir
 // y adjunta otro. Antes el segundo volvía con el id (y la ruta) del primero.
@@ -616,16 +647,14 @@ async function segundoDocumentoDeLaMismaOc(viewport) {
   const tam = nombreDe(viewport)
   const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
   await ir(p, '/compras/ordenes')
-  const fila = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) }).last()
-  if ((await fila.count()) === 0) {
+  const oc = await laOcDondeAdjuntar(p)
+  if (!oc) {
     await contexto.close()
     return comprobar(false, `[Logística ${tam}] hay una OC donde adjuntar documentos`)
   }
+  const { numero, laOc } = oc
   const nombres = [`QA-SUELTO-DOC-A-${sello}-${tam}.pdf`, `QA-SUELTO-DOC-B-${sello}-${tam}.pdf`]
   const dijo = []
-  // La fila se fija por el número de la OC: al refrescar, la lista puede cambiar de orden.
-  const numero = (await fila.locator('a[aria-label^="Descargar el PDF de la orden "]').first().getAttribute('aria-label').catch(() => ''))?.replace('Descargar el PDF de la orden ', '')
-  const laOc = numero ? p.locator('tbody tr').filter({ has: p.locator(`a[aria-label="Descargar el PDF de la orden ${numero}"]`) }) : fila
   for (const [i, nombre] of nombres.entries()) {
     await laOc.getByRole('button', { name: 'Adjuntar', exact: true }).click()
     const v = p.getByRole('dialog').first()
@@ -657,13 +686,12 @@ async function documentoQueYaQuedo(viewport) {
   const tam = nombreDe(viewport)
   const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
   await ir(p, '/compras/ordenes')
-  const fila = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) }).last()
-  const numero = (await fila.locator('a[aria-label^="Descargar el PDF de la orden "]').first().getAttribute('aria-label').catch(() => ''))?.replace('Descargar el PDF de la orden ', '')
-  if (!numero) {
+  const oc = await laOcDondeAdjuntar(p)
+  if (!oc) {
     await contexto.close()
     return comprobar(false, `[Logística ${tam}] hay una OC donde adjuntar documentos`)
   }
-  const laOc = p.locator('tbody tr').filter({ has: p.locator(`a[aria-label="Descargar el PDF de la orden ${numero}"]`) })
+  const { numero, laOc } = oc
   const desde = (await base.query('select now() as t')).rows[0].t
   const nombreA = `QA-SUELTO-DOC-YQ-A-${sello}-${tam}.pdf`
   const nombreC = `QA-SUELTO-DOC-YQ-C-${sello}-${tam}.pdf`
@@ -740,13 +768,12 @@ async function laSubidaQueLlegaSinRespuesta(viewport) {
   const tam = nombreDe(viewport)
   const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
   await ir(p, '/compras/ordenes')
-  const fila = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) }).last()
-  const numero = (await fila.locator('a[aria-label^="Descargar el PDF de la orden "]').first().getAttribute('aria-label').catch(() => ''))?.replace('Descargar el PDF de la orden ', '')
-  if (!numero) {
+  const oc = await laOcDondeAdjuntar(p)
+  if (!oc) {
     await contexto.close()
     return comprobar(false, `[Logística ${tam}] hay una OC donde adjuntar documentos`)
   }
-  const laOc = p.locator('tbody tr').filter({ has: p.locator(`a[aria-label="Descargar el PDF de la orden ${numero}"]`) })
+  const { numero, laOc } = oc
   const carpeta = join(CAPTURAS, 'archivos')
   mkdirSync(carpeta, { recursive: true })
   const enDisco = (nombre, relleno) => {
