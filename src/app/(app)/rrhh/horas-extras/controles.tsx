@@ -1,11 +1,14 @@
 'use client'
 
 import { Ban, Banknote, CalendarMinus, PiggyBank } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { AvisoYaQuedo } from '@/components/ui/aviso-ya-quedo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Ventana } from '@/components/ui/ventana'
 import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
@@ -15,11 +18,15 @@ import { anularDecisionHorasExtras, anularUsoSaldo, decidirHorasExtras, guardarR
 /**
  * Pagar o reservar las horas extras de una persona en un día, de un toque. El
  * id llega del servidor: un segundo toque manda el mismo y no decide dos veces.
- * Si el primero entró y se tocó el otro botón, la base dice que ya quedó y la
- * pantalla se pone al día sola: no es un rechazo, va sin rojo.
+ * Si el primero entró y se tocó el otro botón, la base dice que ya quedó: no
+ * es un rechazo, va sin rojo y en lugar de los botones (`AvisoYaQuedo`). La
+ * pantalla se pone al día cuando se pide: sola, la fila se iba con el aviso a
+ * medio leer y quien tocó «Reservar» creía haber reservado.
  */
 export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabajadorId: string; fecha: string }) {
-  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras)
+  const router = useRouter()
+  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras, () => router.refresh(), { refrescar: false })
+  const yaEntro = yaEntroLaPrimeraVez(error)
   const [elegida, setElegida] = useState<'PAGAR' | 'RESERVAR' | null>(null)
   function decidir(decision: 'PAGAR' | 'RESERVAR') {
     setElegida(decision)
@@ -30,6 +37,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
     datos.set('decision', decision)
     ejecutar(datos)
   }
+  if (error && yaEntro) return <AvisoYaQuedo error={error} alVer={() => router.refresh()} className="text-right" />
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap justify-end gap-2">
@@ -51,7 +59,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
         </Boton>
       </div>
       {error && (
-        <p role="alert" className={yaEntroLaPrimeraVez(error) ? 'text-right text-xs text-texto' : 'text-right text-xs text-peligro'}>
+        <p role="alert" className="text-right text-xs text-peligro">
           {error}
         </p>
       )}
@@ -70,7 +78,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
 export function UsarSaldo({ trabajadorId, nombre, saldo, hoy }: { trabajadorId: string; nombre: string; saldo: number; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useIdDelEnvio(undefined, undefined, `usar-saldo:${trabajadorId}`)
+  const envio = useIdDelEnvio('uso_saldo', undefined, `usar:${trabajadorId}`)
   return (
     <>
       <Boton
@@ -94,6 +102,7 @@ export function UsarSaldo({ trabajadorId, nombre, saldo, hoy }: { trabajadorId: 
         descripcion={`Tiene ${saldo.toLocaleString('es-PE', { maximumFractionDigits: 2 })} h reservadas. Lo que uses se descuenta de su saldo. Si es para un permiso, regístralo y justifícalo en «Permisos».`}
         ancho="md"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && (
           <FormularioUsarSaldo key={vez} envio={envio} trabajadorId={trabajadorId} saldo={saldo} hoy={hoy} alTerminar={() => setAbierta(false)} />
         )}

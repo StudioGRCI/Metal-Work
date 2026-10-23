@@ -3,9 +3,10 @@
  * dice que el primero ya quedó, en RR. HH., la caja y el gasto del mes. Con la
  * cuenta de cada puesto, nunca ADMIN. En cada ventana:
  *
- *   a. La respuesta no llega; «Cancelar» y volver a abrir lleva el mismo id, y
- *      lo mismo otra vez deja un solo registro (donde el id no cambia con la
- *      pantalla).
+ *   a. La respuesta no llega y se cancela. Las ventanas que preguntan a la base
+ *      al volver a abrir (`pregunta`: RR. HH. y la cuenta nueva) dicen que el
+ *      de antes sí quedó, y lo que se registre ahora es otro. Las demás llevan
+ *      el mismo id, y lo mismo otra vez deja un solo registro.
  *   b. La respuesta no llega; se cambia un dato y se vuelve a pulsar. La ventana
  *      dice sin rojo que el primero ya quedó, traba los campos, solo ofrece
  *      «Cerrar» y se lleva el cursor. Queda uno, con lo de la primera vez:
@@ -15,11 +16,14 @@
  *   1. RR. HH., «Registrar observación».
  *   2. RR. HH., «Registrar permiso».
  *   3. RR. HH., «Cargar horas» (la ventana sigue abierta tras cada carga).
- *   4. RR. HH., «Usar horas» del saldo (el id cambia con el saldo: solo b y c).
+ *   4. RR. HH., «Usar horas» del saldo.
  *   5. Tesorería, «Agregar cuenta» (el alta repetida no corrige la cuenta).
  *   6. Tesorería, «Cerrar el día» (cerrado, no hay c).
  *   7. Administración, «Registrar gasto» del mes.
  *   8. Almacén, «Registrar salida» del kardex, con su foto.
+ *   9. RR. HH., «Pagar» sin respuesta y después «Reservar» en las horas extras,
+ *      sin ventana: el aviso se queda, sin rojo y en lugar de los botones, hasta
+ *      «Ver cómo quedó», y queda lo pagado.
  *
  * El corte deja pasar el envío al servidor y no le entrega la respuesta al
  * navegador, como una señal que se cae a medio camino.
@@ -27,7 +31,7 @@
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE, SOLO (las
  * partes que corren, p. ej. `obs,cierre`; de obs, permiso, horas, saldo, cuenta,
- * cierre, gasto y salida), CELULAR (con cualquier valor, a 390 × 844) y el
+ * cierre, gasto, salida y decidir), CELULAR (con cualquier valor, a 390 × 844) y el
  * correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -249,12 +253,22 @@ async function pasos(d, pagina) {
     await pagina.waitForLoadState('networkidle')
     await abrir()
     const limpia = (await v.locator('[role="alert"]').count()) === 0
-    await d.llenar(v, pagina, A, d.valores[0])
-    const { filas, error } = await enviarYEsperar(A, 1)
-    await new Promise((r) => setTimeout(r, 1000))
-    const quedaron = await d.contar(A)
-    comprobar(limpia && !error && filas.length === 1 && quedaron.length === 1,
-      `[${d.nombre}] vuelto a abrir, limpio, lo mismo otra vez no registra otro (${quedaron.length})${error ? ` (dijo «${error}»)` : ''}`)
+    if (d.pregunta) {
+      const nota = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+      // Con otra marca: es otro registro (la cuenta, además, no repite el nombre).
+      await d.llenar(v, pagina, `${A}2`, d.valores[0])
+      const { filas, error } = await enviarYEsperar(`${A}2`, 1)
+      const primeros = await d.contar(A)
+      comprobar(limpia && nota.startsWith(d.anterior) && /será otr[oa]\.$/.test(nota) && !error && filas.length === 1 && primeros.length === 1,
+        `[${d.nombre}] vuelto a abrir, dice que el de antes sí quedó, y lo de ahora es otro (${filas.length}): «${nota}»${error ? ` (dijo «${error}»)` : ''}`)
+    } else {
+      await d.llenar(v, pagina, A, d.valores[0])
+      const { filas, error } = await enviarYEsperar(A, 1)
+      await new Promise((r) => setTimeout(r, 1000))
+      const quedaron = await d.contar(A)
+      comprobar(limpia && !error && filas.length === 1 && quedaron.length === 1,
+        `[${d.nombre}] vuelto a abrir, limpio, lo mismo otra vez no registra otro (${quedaron.length})${error ? ` (dijo «${error}»)` : ''}`)
+    }
   }
 
   // b. Sin respuesta, se cambia un dato y se vuelve a pulsar.
@@ -296,6 +310,8 @@ async function pasos(d, pagina) {
 // ---------------------------------------------------------------- 1. Observación
 await reenvio({
   nombre: 'Observación',
+  pregunta: true,
+  anterior: 'La observación que enviaste antes sí quedó',
   clave: 'obs',
   puesto: 'rrhh',
   ruta: '/rrhh/observaciones',
@@ -319,6 +335,8 @@ await reenvio({
 const DIA_PERMISO = diaAtras(10 + (Number(SUFIJO) % 300))
 await reenvio({
   nombre: 'Permiso',
+  pregunta: true,
+  anterior: 'El permiso que enviaste antes sí quedó',
   clave: 'permiso',
   puesto: 'rrhh',
   ruta: '/rrhh/permisos',
@@ -340,6 +358,8 @@ await reenvio({
 // ---------------------------------------------------------------- 3. Carga de horas
 await reenvio({
   nombre: 'Carga de horas',
+  pregunta: true,
+  anterior: 'La carga de horas que enviaste antes sí quedó',
   clave: 'horas',
   puesto: 'rrhh',
   ruta: '/rrhh/costeo',
@@ -363,6 +383,9 @@ await reenvio({
 // ---------------------------------------------------------------- 4. Usar horas del saldo
 await reenvio({
   nombre: 'Usar horas',
+  pregunta: true,
+  anterior: 'El uso de las horas reservadas que enviaste antes sí quedó',
+  reabrir: true,
   clave: 'saldo',
   puesto: 'rrhh',
   ruta: '/rrhh/horas-extras',
@@ -381,6 +404,8 @@ await reenvio({
 // ---------------------------------------------------------------- 5. Cuenta nueva
 await reenvio({
   nombre: 'Cuenta nueva',
+  pregunta: true,
+  anterior: 'La cuenta que enviaste antes sí quedó',
   clave: 'cuenta',
   puesto: 'tesoreria',
   ruta: '/tesoreria/caja-diaria',
@@ -473,6 +498,57 @@ await reenvio({
   cambiar: (v, p, cantidad) => v.locator('#sal-cantidad').fill(cantidad),
   contar: (marca) => consulta(`select cantidad::float as valor from movimientos_materiales where tipo = 'SALIDA' and documento_referencia = $1`, [`Vale de la prueba ${marca}`]),
 })
+
+// ---------------------------------------------------------------- 9. Pagar o reservar, sin ventana
+if (corre('decidir')) {
+  // Otra persona con 10 h en un reporte con los dos vistos: 2 h por decidir.
+  const NOMBRE = `Decide ${SUFIJO}`
+  const [{ id: quien }] = await consulta(
+    `insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
+     values ('Prueba', $1, $2, 'Soldador', (select id from areas where codigo = 'MTZ'), $3) returning id`,
+    [NOMBRE, `6${SUFIJO.padStart(7, '0')}`.slice(0, 8), ids[CUENTAS.rrhh]],
+  )
+  const [{ id: reporte }] = await consulta(
+    `insert into reportes_diarios (fecha, codigo_interno, asunto, descripcion, registrado_por, visto_gerencia_por, visto_gerencia_en, visto_rrhh_por, visto_rrhh_en)
+     values ($1, 'PLANTA', 'Prueba del reenvío', 'Horas extras de la prueba del reenvío', $2, $2, now(), $2, now()) returning id`,
+    [diaAtras(2), ids[CUENTAS.rrhh]],
+  )
+  await consulta(`insert into reporte_diario_personal (reporte_id, trabajador_id, nombre, cargo, fecha, horas) values ($1, $2, $3, 'Soldador', $4, 10)`,
+    [reporte, quien, `Prueba ${NOMBRE}`, diaAtras(2)])
+
+  const { pagina, contexto } = await entrar('rrhh')
+  const corte = await cortarRespuestas(pagina)
+  await pagina.goto(`${BASE}/rrhh/horas-extras`, { waitUntil: 'networkidle' })
+  const fila = pagina.locator('[data-extras]', { hasText: NOMBRE })
+  await fila.scrollIntoViewIfNeeded()
+  corte.marca = quien
+  corte.quedan = 1
+  cortando = true
+  await fila.locator('[data-decidir="PAGAR"]').click()
+  const corto = limpio(await hasta(() => fila.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''), (t) => /respuesta/.test(t ?? ''), 30000))
+  cortando = false
+  await fila.locator('[data-decidir="RESERVAR"]').click()
+  const aviso = fila.locator('[data-ya-entro]')
+  await aviso.waitFor({ timeout: 20000 })
+  // La pantalla ya no se pone al día sola: el aviso sigue ahí unos segundos después.
+  await new Promise((r) => setTimeout(r, 4000))
+  const dicho = limpio(await aviso.textContent())
+  const estado = await pagina.evaluate(() => ({
+    cursor: document.activeElement?.hasAttribute('data-ya-entro') ?? false,
+    botones: document.querySelectorAll('[data-extras] [data-decidir]').length,
+  }))
+  const sinBotones = (await fila.locator('[data-decidir]').count()) === 0
+  comprobar(corto.startsWith('No llegó la respuesta') && dicho.startsWith('Esta decisión ya quedó registrada la primera vez')
+    && dicho.includes('Lo que enviaste esta vez no se guardó') && estado.cursor && sinBotones,
+    `[Pagar o reservar] el «ya quedó» se queda sin rojo, con el cursor y sin los botones: «${dicho}»`)
+  await pagina.screenshot({ path: join(CAPTURAS, `reenvio-decidir-ya-quedo${process.env.CELULAR ? '-celular' : ''}.png`) })
+  await fila.getByRole('button', { name: 'Ver cómo quedó' }).click()
+  const sigue = await hasta(() => fila.count(), (n) => n === 0, 15000)
+  const decisiones = await consulta(`select decision from horas_extras_decisiones where trabajador_id = $1 and anulado_en is null`, [quien])
+  comprobar(sigue === 0 && decisiones.length === 1 && decisiones[0].decision === 'PAGAR',
+    `[Pagar o reservar] al pedirlo la pantalla se pone al día, y queda lo pagado (${decisiones.map((x) => x.decision).join()})`)
+  await contexto.close()
+}
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)
 await navegador.close()

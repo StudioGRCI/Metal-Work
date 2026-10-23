@@ -3,12 +3,14 @@
 import { ArrowDownToLine, ArrowUpFromLine, Plus, ShoppingCart, Truck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Ventana } from '@/components/ui/ventana'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 import { registrarIngresoGeneral } from './acciones'
 
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
+import { AvisoYaQuedo } from '@/components/ui/aviso-ya-quedo'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
@@ -537,11 +539,30 @@ function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,p
  </>
 }
 
+/**
+ * Tras «ya quedó… la primera vez», el formulario se traba y la pantalla se pone
+ * al día cuando se pide (`AvisoYaQuedo`): sola, traía otra clave con lo
+ * cambiado todavía escrito, y pulsar otra vez registraba una segunda llegada o
+ * un segundo despacho (20261023200000). Al pedirlo, el formulario vuelve vacío.
+ */
+function useYaQuedoEnElTablero<T>(accion: Parameters<typeof useEnvio<T>>[0]) {
+  const router = useRouter()
+  const envio = useEnvio<T>(accion, () => router.refresh(), { refrescar: false })
+  const yaEntro = yaEntroLaPrimeraVez(envio.error)
+  const ver = (form: HTMLFormElement | null | undefined) => {
+    form?.reset()
+    envio.limpiar()
+    router.refresh()
+  }
+  return { ...envio, yaEntro, ver }
+}
+
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion)
+  const { alEnviar, enviando, error, yaEntro, ver } = useYaQuedoEnElTablero(registrarRecepcion)
   const restante = Number(compra.cantidad_pendiente ?? 0)
   return (
     <form onSubmit={alEnviar} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-2">
+      <fieldset disabled={yaEntro} className="contents">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />
       <input type="hidden" name="compra_detalle_id" value={compra.id ?? ''} />
       <div className="sm:col-span-2">
@@ -554,8 +575,10 @@ function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendient
       <Campo etiqueta="Guía o documento" htmlFor={`rec-doc-${compra.id}`} requerido>
         <Entrada id={`rec-doc-${compra.id}`} name="documento_referencia" required maxLength={100} placeholder="Guía de remisión" />
       </Campo>
-      {error && <p role="alert" className={`text-xs sm:col-span-2 ${yaEntroLaPrimeraVez(error) ? 'text-texto' : 'text-peligro'}`}>{error}</p>}
-      <div className="sm:col-span-2"><Boton type="submit" variante="secundario" tamano="sm" cargando={enviando} className="w-full"><ArrowDownToLine aria-hidden className="size-4" />Registrar llegada a almacén</Boton></div>
+      </fieldset>
+      {error && yaEntro && <AvisoYaQuedo error={error} alVer={() => ver(document.getElementById(`rec-cant-${compra.id}`)?.closest('form'))} className="sm:col-span-2" />}
+      {error && !yaEntro && <p role="alert" className="text-xs text-peligro sm:col-span-2">{error}</p>}
+      {!yaEntro && <div className="sm:col-span-2"><Boton type="submit" variante="secundario" tamano="sm" cargando={enviando} className="w-full"><ArrowDownToLine aria-hidden className="size-4" />Registrar llegada a almacén</Boton></div>}
     </form>
   )
 }
@@ -571,7 +594,7 @@ function FormularioDespacho({
   disponible: number
   clave: string | undefined
 }) {
-  const { alEnviar, enviando, error } = useEnvio(async (_previo,datos)=>{
+  const { alEnviar, enviando, error, yaEntro, ver } = useYaQuedoEnElTablero(async (_previo: unknown,datos: FormData)=>{
     const archivo=datos.get('foto')
     if(!(archivo instanceof File)||archivo.size===0||archivo.size>10485760||!['image/jpeg','image/png','image/webp'].includes(archivo.type)) return {ok:false,error:'Selecciona una foto JPG, PNG o WebP de hasta 10 MB.'}
     const db=createClient();const {data,error}=await db.auth.getUser()
@@ -584,6 +607,7 @@ function FormularioDespacho({
   })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
+      <fieldset disabled={yaEntro} className="contents">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />
       <input type="hidden" name="requerimiento_detalle_id" value={linea.detalle_id ?? ''} />
       <Campo etiqueta="Cantidad a entregar" htmlFor={`sal-cant-${linea.detalle_id}`} requerido>
@@ -599,8 +623,10 @@ function FormularioDespacho({
       </Campo>
       <Campo etiqueta="Nombre de quien recibe físicamente" htmlFor={`sal-nombre-${linea.detalle_id}`} requerido><Entrada id={`sal-nombre-${linea.detalle_id}`} name="recibido_por_nombre" required minLength={3} maxLength={160}/></Campo>
       <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Que se vea el material entregado." requerido><ElegirArchivo id={`sal-foto-${linea.detalle_id}`} name="foto" accept="image/jpeg,image/png,image/webp" hastaMb={10} capture="environment" required/></Campo>
-      <div className="flex items-end"><Boton type="submit" tamano="sm" cargando={enviando} disabled={candidatos.length === 0} className="w-full"><ArrowUpFromLine aria-hidden className="size-4" />Despachar</Boton></div>
-      {error && <p role="alert" className={`text-xs sm:col-span-3 ${yaEntroLaPrimeraVez(error) ? 'text-texto' : 'text-peligro'}`}>{error}</p>}
+      {!yaEntro && <div className="flex items-end"><Boton type="submit" tamano="sm" cargando={enviando} disabled={candidatos.length === 0} className="w-full"><ArrowUpFromLine aria-hidden className="size-4" />Despachar</Boton></div>}
+      </fieldset>
+      {error && yaEntro && <AvisoYaQuedo error={error} alVer={() => ver(document.getElementById(`sal-cant-${linea.detalle_id}`)?.closest('form'))} className="sm:col-span-3" />}
+      {error && !yaEntro && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
     </form>
   )
 }

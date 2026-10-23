@@ -8,6 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Ventana } from '@/components/ui/ventana'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
@@ -38,7 +39,7 @@ export function RegistrarObservacion({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio(undefined, undefined, 'registrar-observacion')
+  const envio = useIdDelEnvio('observacion_personal')
   return (
     <>
       <Boton
@@ -65,6 +66,7 @@ export function RegistrarObservacion({
         descripcion="Lo que pasó, a quién y por qué. Queda en su historial: no se borra, se anula con su motivo."
         ancho="lg"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && (
           <FormularioObservacion
             key={vez}

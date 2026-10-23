@@ -11,7 +11,7 @@ import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import {
   ACEPTA_CAPTURA_SALDO,
   BUCKET_APERTURA_CAJA,
@@ -430,7 +430,8 @@ function FormularioCierre({ envio, cuenta, dia, saldoFinal, alTerminar }: {
           onChange={(e) => setBanco(e.target.value)}
         />
       </Campo>
-      {diferencia !== null && (
+      {/* Con «ya quedó», lo escrito no se guardó: no se pide explicar su diferencia. */}
+      {diferencia !== null && !yaEntroLaPrimeraVez(error) && (
         <p role="status" className={diferencia === 0 ? 'text-sm text-exito' : 'text-sm text-aviso'}>
           {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
         </p>
@@ -499,8 +500,9 @@ const respaldoDe = (tipo: string) => (tipo === 'BANCO' ? 'la captura del saldo' 
  */
 export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: CuentaEditable; hoy: string; primera?: boolean }) {
   const v = useVentana()
-  const alta = useIdDelEnvio(undefined, undefined, 'cuenta-nueva')
   const captura = useIdDelEnvio(undefined, undefined, 'captura-de-la-cuenta-nueva')
+  // Si la base dice que el alta anterior entró, su captura se fue con ella.
+  const alta = useIdDelEnvio('cuenta_caja', (cuentas) => captura.otro(cuentas))
   const abrir = () => {
     if (!cuenta) {
       alta.abrir()
@@ -536,6 +538,7 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
         }
         ancho="md"
       >
+        {!cuenta && <EnvioAnterior texto={alta.anterior} />}
         {(cuenta || (alta.id && captura.id)) && (
           <FormularioCuenta
             key={v.vez}

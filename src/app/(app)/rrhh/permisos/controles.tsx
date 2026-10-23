@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
@@ -29,7 +30,7 @@ export function RegistrarPermiso({ personal, hoy }: { personal: Persona[]; hoy: 
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio(undefined, undefined, 'registrar-permiso')
+  const envio = useIdDelEnvio('permiso_personal')
   return (
     <>
       <Boton
@@ -57,6 +58,7 @@ export function RegistrarPermiso({ personal, hoy }: { personal: Persona[]; hoy: 
         descripcion="Quién lo pidió, qué día y cuántas horas. Después se justifica con sus horas extras reservadas."
         ancho="md"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && (
           <FormularioPermiso
             key={vez}
@@ -168,7 +170,7 @@ export function JustificarPermiso({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   // El id sigue hasta saber cómo terminó, también tras recargar (`useIdDelEnvio`).
-  const envio = useIdDelEnvio(undefined, undefined, `justificar-permiso:${permisoId}`)
+  const envio = useIdDelEnvio('uso_saldo', undefined, `justificar:${permisoId}`)
   const tope = Math.min(porJustificar, saldo)
   return (
     <>
@@ -193,6 +195,7 @@ export function JustificarPermiso({
         descripcion={`Le faltan ${horasEnTexto(porJustificar)} h y tiene ${horasEnTexto(saldo)} h extras reservadas. Lo que justifiques sale de su saldo.`}
         ancho="sm"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && <FormularioJustificar key={vez} envio={envio} permisoId={permisoId} tope={tope} alTerminar={() => setAbierta(false)} />}
       </Ventana>
     </>

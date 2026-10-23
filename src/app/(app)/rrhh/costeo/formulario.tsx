@@ -8,8 +8,10 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Ventana } from '@/components/ui/ventana'
 import { CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { HORAS_DEL_MES } from '@/lib/dominio/rrhh'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
@@ -30,7 +32,7 @@ export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo
   const [vez, setVez] = useState(0)
   const [ultimo, setUltimo] = useState({ fecha: hoy, codigo: '' })
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio(undefined, undefined, 'cargar-horas')
+  const envio = useIdDelEnvio('tareo')
   return (
     <>
       <Boton
@@ -52,6 +54,7 @@ export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo
         descripcion={`Las horas que la persona trabajó ese día en esa unidad. Cada hora vale su costo mensual entre ${HORAS_DEL_MES}.`}
         ancho="lg"
       >
+        <EnvioAnterior texto={envio.anterior} />
         {envio.id && (
           <FormularioHoras
             key={vez}
@@ -189,7 +192,8 @@ function FormularioHoras({
       <Campo etiqueta="Labor" htmlFor={`tareo-labor-${id}`} ayuda="Qué hizo, como lo anota el supervisor.">
         <Entrada id={`tareo-labor-${id}`} name="labor" maxLength={200} placeholder="Soldadura de tolva, pintado de puertas…" autoComplete="off" />
       </Campo>
-      {costoHora !== null && (
+      {/* Con «ya quedó», lo escrito no se guardó: su costo no se dice. */}
+      {costoHora !== null && !yaEntroLaPrimeraVez(error) && (
         <p className="text-xs text-texto-suave">
           La hora de {elegida?.nombre} vale <span className="tabular">{moneda(costoHora)}</span>
           {n > 0 && (
