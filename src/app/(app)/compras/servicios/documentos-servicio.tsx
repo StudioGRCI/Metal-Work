@@ -13,7 +13,7 @@ import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { DocumentoDeServicio } from '@/lib/datos/logistica'
 import { COMPROBANTES_DE_SERVICIO, etiquetaDocumentoServicio, TIPO_DOCUMENTO_SERVICIO } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { adjuntarDocumentoServicio, anularDocumentoServicio } from './acciones'
 
@@ -64,13 +64,16 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * número, que la base cruza para que el mismo comprobante del proveedor no entre
  * en dos OS—, el contrato del trabajo u otro documento. El archivo sube primero a
  * `documentos-servicio/{orden de servicio}/…` y, si la anotación no entra, se
- * retira. El id se decide al abrir la ventana: un reintento no anota otro.
+ * retira. El id vive fuera de la ventana (`useIdDelEnvio`): un reintento no
+ * anota otro, y con un documento más en la OS el siguiente lleva otro.
  */
-export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
-  const [documentoId, setDocumentoId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+export function AdjuntarDocumentoServicio({ ordenServicioId, numero, documentos }: {
+  ordenServicioId: string
+  numero: string
+  /** Cuántos documentos tiene ya la OS. */
+  documentos: number
+}) {
+  const documento = useIdDelEnvio(documentos)
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
 
@@ -78,7 +81,8 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el archivo.' }
-    if (!documentoId) return { ok: false, error: 'Vuelve a abrir el formulario.' }
+    if (!documento.id) return { ok: false, error: 'Vuelve a abrir el formulario.' }
+    documento.salio()
     datos.set('nombre', archivo.name)
     return subirArchivoFinanzas(BUCKET_DOCUMENTOS_SERVICIO, ordenServicioId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
@@ -89,9 +93,9 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
     adjuntar,
     () => {
       setAbierta(false)
-      setDocumentoId(null)
+      documento.otro()
     },
-    { alYaEntrar: () => setDocumentoId(crypto.randomUUID()) },
+    { alYaEntrar: documento.otro },
   )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)
@@ -104,7 +108,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         tamano="sm"
         onClick={() => {
           setTipo('FACTURA')
-          setDocumentoId((actual) => actual ?? crypto.randomUUID())
+          documento.abrir()
           setAbierta(true)
         }}
         data-adjuntar-documento-servicio={numero}
@@ -119,7 +123,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={documentoId ?? ''} />
+          <input type="hidden" name="id" value={documento.id ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Qué documento es" htmlFor={campo('tipo')} requerido>

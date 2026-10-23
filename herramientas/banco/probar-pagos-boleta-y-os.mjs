@@ -504,7 +504,7 @@ let pagoId
   const [{ n: egresos }] = pagos.length === 1
     ? await consulta(`select count(*)::int as n from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagos[0].id])
     : [{ n: -1 }]
-  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste. Lo que cambiaste después no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste. Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.')
     && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
     `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
   comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)

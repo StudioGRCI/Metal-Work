@@ -4,8 +4,9 @@ import { useEffect, useId, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
+import { useCursorAlRechazo } from '@/lib/envio'
 import { cn } from '@/lib/utils'
-import { abrioVentana, cerroVentana } from '@/lib/ventanas-abiertas'
+import { abrioVentana, cerroVentana, esLaUltimaVentana } from '@/lib/ventanas-abiertas'
 
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
@@ -87,6 +88,12 @@ export function Ventana({
   // ella: se abría la ventana, el teclado del teléfono no subía, y un Enter
   // distraído la cerraba en vez de escribir.
   const contenido = useRef<HTMLDivElement>(null)
+  // Para el Escape que llega con el cursor fuera de la ventana: el efecto no
+  // vuelve a correr con cada render, y `alCerrar` cambia.
+  const cerrar = useRef(alCerrar)
+  useEffect(() => {
+    cerrar.current = alCerrar
+  })
   const idTitulo = useId()
   const idDescripcion = useId()
   // En el servidor no hay documento al que colgar el portal, así que la
@@ -116,7 +123,19 @@ export function Ventana({
     const primero = primerCampo(contenido.current) ?? primerCampo(caja.current)
     ;(primero ?? caja.current)?.focus()
 
+    // Escape cierra también cuando el cursor cayó a la página: un botón que se
+    // apaga mientras envía lo suelta en el <body>, fuera de la ventana, y Escape
+    // ya no cerraba (decimoquinta pasada). Solo la de encima y solo si el cursor
+    // no está en otra parte que escuche su tecla.
+    const escapeSuelto = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || !esLaUltimaVentana(marca)) return
+      if (document.activeElement && document.activeElement !== document.body) return
+      cerrar.current()
+    }
+    document.addEventListener('keydown', escapeSuelto)
+
     return () => {
+      document.removeEventListener('keydown', escapeSuelto)
       document.body.style.overflow = rodadoPrevio
       // Una ventana que nace abierta no tiene botón al que volver.
       if (veniaDe && veniaDe !== document.body) veniaDe.focus()
@@ -224,6 +243,7 @@ export function ConfirmarAccion({
   detalle,
   etiquetaConfirmar = 'Sí, quitar',
   trabajando = false,
+  error,
 }: {
   abierta: boolean
   alCerrar: () => void
@@ -233,10 +253,24 @@ export function ConfirmarAccion({
   detalle: string
   etiquetaConfirmar?: string
   trabajando?: boolean
+  /**
+   * Por qué no se hizo. Va dentro y se lleva el cursor: la pantalla lo pintaba
+   * detrás, y el aviso se va con la ventana al cerrarla, así que «El conductor
+   * ya salió» no se veía en ninguna parte (decimoquinta pasada). La ventana se
+   * cierra sola con el ok, no al confirmar.
+   */
+  error?: string | null
 }) {
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(trabajando, error ?? null, () => aviso.current)
   return (
     <Ventana abierta={abierta} alCerrar={alCerrar} titulo={titulo} ancho="sm" cerrarAlTocarFuera>
       <p className="text-sm text-texto-suave">{detalle}</p>
+      {error && (
+        <p ref={aviso} role="alert" tabIndex={-1} className="mt-3 text-sm text-peligro">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button

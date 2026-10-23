@@ -57,17 +57,28 @@ export function PieDeVentana({
   const corregida = useRef<HTMLDivElement>(null)
   const pie = useRef<HTMLDivElement>(null)
   const yaEntro = yaEntroLaPrimeraVez(error)
+  // Se traba lo que haya en el formulario mientras dure el aviso, también lo
+  // que React vuelve a encender después: los campos con `disabled={enviando}`
+  // estaban apagados al llegar el aviso, se saltaban y quedaban editables, y un
+  // campo que la pantalla al día vuelve a montar salía activo (decimoquinta
+  // pasada). Al soltarse se enciende solo lo que se apagó aquí.
   useEffect(() => {
     const formulario = pie.current?.closest('form')
     if (!yaEntro || !formulario) return
-    const trabados = [...formulario.elements].filter(
-      (c): c is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement =>
-        (c instanceof HTMLInputElement || c instanceof HTMLSelectElement || c instanceof HTMLTextAreaElement || c instanceof HTMLButtonElement) &&
-        !c.disabled &&
-        !pie.current?.contains(c),
-    )
-    for (const c of trabados) c.disabled = true
+    const trabados = new Set<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>()
+    const trabar = () => {
+      for (const c of formulario.elements) {
+        if (!(c instanceof HTMLInputElement || c instanceof HTMLSelectElement || c instanceof HTMLTextAreaElement || c instanceof HTMLButtonElement)) continue
+        if (c.disabled || pie.current?.contains(c)) continue
+        c.disabled = true
+        trabados.add(c)
+      }
+    }
+    trabar()
+    const vigia = new MutationObserver(trabar)
+    vigia.observe(formulario, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] })
     return () => {
+      vigia.disconnect()
       for (const c of trabados) c.disabled = false
     }
   }, [yaEntro])

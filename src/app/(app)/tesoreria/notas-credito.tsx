@@ -14,7 +14,7 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { BUCKET_NOTAS_CREDITO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
 import {
@@ -140,14 +140,12 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
 /**
  * El proveedor devolvió el dinero de la nota: el día que entró, cuánto, la
  * operación, la cuenta de la caja a la que entró —la caja diaria se mueve
- * sola— y la constancia, que sube primero a `notas-credito/{nota}/…`. El id se
- * decide al abrir la ventana: un reintento del mismo envío no registra otra.
+ * sola— y la constancia, que sube primero a `notas-credito/{nota}/…`. El id vive
+ * fuera de la ventana (`useIdDelEnvio`): un reintento del mismo envío no
+ * registra otra.
  */
 export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy: string; cuentas: CuentaParaPagar[] }) {
-  const [id, setId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const reembolso = useIdDelEnvio(nota.aFavor)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
@@ -164,7 +162,8 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
-    if (!id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    if (!reembolso.id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    reembolso.salio()
     return subirArchivoFinanzas(BUCKET_NOTAS_CREDITO, nota.id, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarReembolsoNotaCredito(null, datos)
@@ -174,17 +173,17 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
     registrar,
     (r) => {
       setAbierta(false)
-      setId(null)
+      reembolso.otro()
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setId(crypto.randomUUID()) },
+    { alYaEntrar: reembolso.otro },
   )
   function abrir() {
     avisar(null)
     limpiar()
     setDia(hoy)
     setMonto(nota.aFavor.toFixed(2))
-    setId((actual) => actual ?? crypto.randomUUID())
+    reembolso.abrir()
     setAbierta(true)
   }
   const campo = (n: string) => `${n}-reembolso-${nota.id}`
@@ -205,7 +204,7 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
       >
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
-          <input type="hidden" name="id" value={id ?? ''} />
+          <input type="hidden" name="id" value={reembolso.id ?? ''} />
           <input type="hidden" name="nota" value={nota.id} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día en que entró" htmlFor={campo('fecha')} requerido>

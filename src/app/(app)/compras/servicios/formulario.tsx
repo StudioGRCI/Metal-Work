@@ -7,6 +7,7 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -17,7 +18,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { TipoDetraccion } from '@/lib/dominio/detraccion'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { adjuntarDocumentoServicio, emitirOrdenServicio } from './acciones'
@@ -47,6 +48,13 @@ export function NuevaOrdenServicio({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // Los ids de la orden y de su contrato viven aquí, fuera del formulario que
+  // se rehace al abrir: tras «No llegó la respuesta», cancelar y volver a abrir
+  // lleva los mismos, y la base no emite otra OS numerada con lo mismo. Antes
+  // nacían con el formulario y salían OS-415 y OS-416 iguales (decimoquinta
+  // pasada). Se renuevan con el ok o cuando la base dice que ya quedó.
+  const orden = useIdDelEnvio()
+  const contrato = useIdDelEnvio()
   const [aviso, setAviso] = useState<string | null>(null)
   // La OS entró pero su contrato no: se dice por qué y dónde adjuntarlo.
   const [faltaContrato, setFaltaContrato] = useState<string | null>(null)
@@ -57,6 +65,8 @@ export function NuevaOrdenServicio({
         onClick={() => {
           setAviso(null)
           setFaltaContrato(null)
+          orden.abrir()
+          contrato.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -81,26 +91,46 @@ export function NuevaOrdenServicio({
         descripcion="Un trabajo que hace un tercero. El número OS-…-MW lo pone el sistema y Gerencia la aprueba antes de que el proveedor empiece."
         ancho="lg"
       >
-        <FormularioServicio
-          key={vez}
-          proveedores={proveedores}
-          ordenes={ordenes}
-          areas={areas}
-          tipos={tipos}
-          codigos={codigos}
-          puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(mensaje, sinContrato) => {
-            setAbierta(false)
-            setAviso(mensaje)
-            setFaltaContrato(sinContrato)
-          }}
-        />
+        {orden.id && contrato.id && (
+          <FormularioServicio
+            key={vez}
+            id={orden.id}
+            contratoId={contrato.id}
+            alSalir={() => {
+              orden.salio()
+              contrato.salio()
+            }}
+            alYaEntrar={() => {
+              orden.otro()
+              contrato.otro()
+            }}
+            alCancelar={() => setAbierta(false)}
+            proveedores={proveedores}
+            ordenes={ordenes}
+            areas={areas}
+            tipos={tipos}
+            codigos={codigos}
+            puedeRegistrarProveedor={puedeRegistrarProveedor}
+            alTerminar={(mensaje, sinContrato) => {
+              setAbierta(false)
+              orden.otro()
+              contrato.otro()
+              setAviso(mensaje)
+              setFaltaContrato(sinContrato)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioServicio({
+  id,
+  contratoId,
+  alSalir,
+  alYaEntrar,
+  alCancelar,
   proveedores,
   ordenes,
   areas,
@@ -109,6 +139,12 @@ function FormularioServicio({
   puedeRegistrarProveedor,
   alTerminar,
 }: {
+  id: string
+  contratoId: string
+  /** Al enviar: los ids salieron con este envío. */
+  alSalir: () => void
+  alYaEntrar: () => void
+  alCancelar: () => void
   proveedores: ProveedorParaCompra[]
   ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
@@ -117,9 +153,6 @@ function FormularioServicio({
   puedeRegistrarProveedor: boolean
   alTerminar: (mensaje: string, faltaContrato: string | null) => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no duplica la orden ni el contrato.
-  const [id] = useState(() => crypto.randomUUID())
-  const [contratoId] = useState(() => crypto.randomUUID())
   const [proveedorId, setProveedorId] = useState('')
   const [ordenId, setOrdenId] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
@@ -140,6 +173,7 @@ function FormularioServicio({
     if (contrato && !TIPOS_COMPROBANTE_PAGO[contrato.type]) return { ok: false, error: 'El contrato va en PDF o en foto (JPG, PNG o WEBP).' }
     if (contrato && contrato.size > MAXIMO_MB_FINANZAS * 1024 * 1024) return { ok: false, error: `El contrato pesa más de ${MAXIMO_MB_FINANZAS} MB.` }
 
+    alSalir()
     const emitida = await emitirOrdenServicio(previo, datos)
     if (!emitida.ok || !contrato) return emitida
     const documento = new FormData()
@@ -163,8 +197,10 @@ function FormularioServicio({
         } Adjúntalo desde la fila de la orden, con «Adjuntar documento».`
     return { ok: true, mensaje: emitida.mensaje, datos: { faltaContrato } }
   }
-  const { alEnviar, enviando, error } = useEnvio(emitir, (r) =>
-    alTerminar(r.mensaje ?? 'Orden de servicio emitida.', r.datos?.faltaContrato ?? null),
+  const { alEnviar, enviando, error } = useEnvio(
+    emitir,
+    (r) => alTerminar(r.mensaje ?? 'Orden de servicio emitida.', r.datos?.faltaContrato ?? null),
+    { alYaEntrar },
   )
 
   return (
@@ -287,16 +323,7 @@ function FormularioServicio({
       >
         <ElegirArchivo id="os-contrato" name="contrato" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando} disabled={!proveedorId}>
-          Emitir orden de servicio
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Emitir orden de servicio" disabled={!proveedorId} />
     </form>
   )
 }

@@ -273,7 +273,7 @@ try {
     })
     const aviso = () => v.locator('[role="alert"]').allTextContents().then((t) => t.join(' ').trim()).catch(() => '')
     await v.getByRole('button', { name: 'Corregir', exact: true }).click()
-    const primera = await hasta(aviso, (t) => /Vuelve a intentar desde esta ventana/.test(t))
+    const primera = await hasta(aviso, (t) => /Vuelve a intentar ahora/.test(t))
     await pagina.unrouteAll({ behavior: 'ignoreErrors' })
     await v.locator('[id^="rq-corr-cant-"]').first().fill('7')
     await v.locator('[id^="correccion-motivo-"]').fill('El plano final pide plancha de 3 mm y siete piezas')
@@ -291,7 +291,7 @@ try {
     comprobar(Object.values(yaEntro).every(Boolean), `ya entró: el aviso sin rojo, con el cursor, y solo «Cerrar» (${JSON.stringify(yaEntro)})`)
     await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
     const linea = await uno('select material_id, cantidad::float as cantidad from public.requerimiento_lineas where requerimiento_id = $1 and item = 1', [rqId])
-    comprobar(/Vuelve a intentar desde esta ventana/.test(primera) && !alerta && linea.material_id === mat[1] && linea.cantidad === 6,
+    comprobar(/Vuelve a intentar ahora/.test(primera) && !alerta && linea.material_id === mat[1] && linea.cantidad === 6,
       `Requerimientos corrige material y cantidad, y el reenvío con otra cantidad no pasa por el mismo: «${primera}» → «${segunda}» (cantidad ${linea.cantidad})`)
     const corr = await uno(`select count(*)::int as n, max(justificante_nombre) as nombre, max(motivo) as motivo from public.correcciones where documento_id = $1`, [rqId])
     comprobar(corr.n === 1 && corr.nombre === 'justificante-correccion.pdf' && corr.motivo === 'El plano final pide plancha de 3 mm y seis piezas',

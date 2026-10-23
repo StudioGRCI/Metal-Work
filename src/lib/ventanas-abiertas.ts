@@ -29,6 +29,9 @@ export function cerroVentana(marca: object) {
 
 export const hayVentanaAbierta = () => abiertas.size > 0
 
+/** La última que se abrió: la que está encima. */
+export const esLaUltimaVentana = (marca: object) => [...abiertas].at(-1) === marca
+
 /**
  * Cuántas veces se cerró la última ventana. Si cambió desde un envío, su
  * ventana ya no está aunque haya otra abierta: se canceló mientras se enviaba

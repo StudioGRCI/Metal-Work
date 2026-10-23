@@ -22,7 +22,7 @@ import {
   topeDeLaDevolucion,
   type BoletaParaDevolver,
 } from '@/lib/dominio/pago-de-boleta'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
 import { anularDevolucionCompra, registrarDevolucionCompra, soltarPagoDeLaBoleta, tomarPagoDeLaBoleta } from './acciones'
@@ -77,8 +77,8 @@ const leerMonto = (texto: string) => {
  * `pagos-compras/{oc}/…`. Mientras se escribe el monto dice cómo queda la OC.
  * Sin factura, si queda algo pagado sin llegar al total, pregunta si con eso
  * la OC queda pagada: el proveedor cobró de más o entregó menos, aunque el
- * material ya esté en el almacén. El id se decide al abrir la ventana: un
- * reintento no registra otra.
+ * material ya esté en el almacén. El id vive fuera de la ventana
+ * (`useIdDelEnvio`): un reintento no registra otra.
  */
 export function RegistrarDevolucion({
   ordenCompraId,
@@ -103,10 +103,7 @@ export function RegistrarDevolucion({
   /** Con algo pagado de más es lo que la tarjeta le pide a Tesorería: va como botón principal. */
   principal: boolean
 }) {
-  const [devolucionId, setDevolucionId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const devolucion = useIdDelEnvio(boleta.neto)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
@@ -129,7 +126,8 @@ export function RegistrarDevolucion({
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
-    if (!devolucionId) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    if (!devolucion.id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    devolucion.salio()
     const r = await subirArchivoFinanzas(BUCKET_PAGOS_COMPRAS, ordenCompraId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarDevolucionCompra(null, datos)
@@ -145,10 +143,10 @@ export function RegistrarDevolucion({
     registrar,
     (r) => {
       setAbierta(false)
-      setDevolucionId(null)
+      devolucion.otro()
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setDevolucionId(crypto.randomUUID()) },
+    { alYaEntrar: devolucion.otro },
   )
 
   function abrir() {
@@ -157,7 +155,7 @@ export function RegistrarDevolucion({
     setDia(hoy)
     setMonto(sugerido)
     setDeja('')
-    setDevolucionId((actual) => actual ?? crypto.randomUUID())
+    devolucion.abrir()
     setAbierta(true)
   }
   // Cerrada sin registrar después de corregirse, la tarjeta de atrás todavía dice lo de antes: se repinta ahora,
@@ -202,7 +200,7 @@ export function RegistrarDevolucion({
           <p className="text-sm text-texto-suave">
             Regístrala aquí el día que entra, no en Caja diaria: la caja la toma sola. Si ya la anotaste a mano, anula antes ese movimiento.
           </p>
-          <input type="hidden" name="id" value={devolucionId ?? ''} />
+          <input type="hidden" name="id" value={devolucion.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día en que entró" htmlFor={campo('fecha')} requerido>
@@ -391,10 +389,7 @@ export function TomarAlCambio({
   cambio: number | null
   diaDelCambio: string | null
 }) {
-  const [tomaId, setTomaId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const toma = useIdDelEnvio(sinTomar)
   const [abierta, setAbierta] = useState(false)
   const sugeridoFactura = (() => {
     if (!cambio) return ''
@@ -409,19 +404,22 @@ export function TomarAlCambio({
     avisar(null)
     setDeLaBoleta(sinTomar.toFixed(2))
     setEnLaFactura(sugeridoFactura)
-    setTomaId((actual) => actual ?? crypto.randomUUID())
+    toma.abrir()
     setAbierta(true)
   }
   useAbrirDesdeOtraVentana('al-cambio', ordenCompraId, abrir)
 
   const { alEnviar, enviando, error } = useEnvio(
-    tomarPagoDeLaBoleta,
+    (previo: unknown, datos: FormData) => {
+      toma.salio()
+      return tomarPagoDeLaBoleta(previo, datos)
+    },
     (r) => {
       setAbierta(false)
-      setTomaId(null)
+      toma.otro()
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setTomaId(crypto.randomUUID()) },
+    { alYaEntrar: toma.otro },
   )
   const campo = (nombre: string) => `${nombre}-al-cambio-${ordenCompraId}`
   const boleta = leerMonto(deLaBoleta)
@@ -447,7 +445,7 @@ export function TomarAlCambio({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           <input type="hidden" name="factura_id" value={factura.id} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -527,10 +525,7 @@ export function DescontarDeOtraFactura({
   monedaOc: CodigoMoneda
   facturas: FacturaParaDescontar[]
 }) {
-  const [tomaId, setTomaId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const toma = useIdDelEnvio(deMas)
   const [abierta, setAbierta] = useState(false)
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
@@ -544,6 +539,7 @@ export function DescontarDeOtraFactura({
     if (!(archivo instanceof File) || archivo.size === 0) {
       return { ok: false, error: 'Adjunta la nota de crédito o el documento donde el proveedor descontó lo pagado de más.' }
     }
+    toma.salio()
     return subirArchivoFinanzas(BUCKET_PAGOS_FACTURAS, facturaId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return tomarPagoDeLaBoleta(null, datos)
@@ -553,10 +549,10 @@ export function DescontarDeOtraFactura({
     descontar,
     (r) => {
       setAbierta(false)
-      setTomaId(null)
+      toma.otro()
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setTomaId(crypto.randomUUID()) },
+    { alYaEntrar: toma.otro },
   )
   const factura = facturas.find((f) => f.id === elegida)
   const otraMoneda = !!factura && factura.moneda !== monedaOc
@@ -571,7 +567,7 @@ export function DescontarDeOtraFactura({
         onClick={() => {
           avisar(null)
           setDeLaBoleta(deMas.toFixed(2))
-          setTomaId((actual) => actual ?? crypto.randomUUID())
+          toma.abrir()
           setAbierta(true)
         }}
         data-descontar-de-otra={numero}
@@ -587,7 +583,7 @@ export function DescontarDeOtraFactura({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           {facturas.length === 0 ? (
             <p role="status" className="text-sm text-aviso">

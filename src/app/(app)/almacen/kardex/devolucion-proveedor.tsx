@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -32,18 +32,38 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
   // El envío vive fuera de la ventana: el id se conserva hasta saber cómo
   // terminó. Con un ok o un «ya quedó» se empieza otra; tras «No llegó la
   // respuesta» sigue el mismo, y la devolución repetida no entra dos veces.
+  // Pero si al volver a abrir lo que se puede devolver ya no es lo de cuando
+  // salió, aquel envío entró: se empieza otra, como en `useIdDelEnvio`.
+  const estado = ingresos.map((i) => `${i.ingreso_id}:${i.se_puede}`).join(',')
+  const salioCon = useRef<string | null>(null)
   const envio = useEnvio(
-    devolverAlProveedor,
+    (previo: unknown, datos: FormData) => {
+      salioCon.current = estado
+      return devolverAlProveedor(previo, datos)
+    },
     () => {
+      salioCon.current = null
       empezarOtra()
       setAbierta(false)
     },
-    { alYaEntrar: empezarOtra },
+    {
+      alYaEntrar: () => {
+        salioCon.current = null
+        empezarOtra()
+      },
+    },
   )
+  function abrir() {
+    if (salioCon.current !== null && salioCon.current !== estado) {
+      salioCon.current = null
+      empezarOtra()
+    }
+    setAbierta(true)
+  }
   const ingreso = ingresos.find((i) => i.ingreso_id === elegido)
   return (
     <>
-      <Boton variante="secundario" onClick={() => setAbierta(true)}>
+      <Boton variante="secundario" onClick={abrir}>
         Devolver al proveedor
       </Boton>
       <Ventana

@@ -11,7 +11,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { BUCKET_FACTURAS_VENTA, MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 
 import { anularFactura, registrarFactura } from './acciones'
@@ -27,8 +27,8 @@ function sacarArchivo(datos: FormData): File | null {
 /**
  * Contabilidad registra la factura que emitió en SUNAT. El PDF sube primero a
  * Storage, en la carpeta de la factura, y si la factura no entra se retira.
- * El id de la factura se decide al abrir la ventana: un reintento con la
- * ventana abierta no registra otra. Si con ella lo facturado pasa del total de
+ * El id de la factura vive fuera de la ventana (`useIdDelEnvio`): un reintento
+ * no registra otra, y con lo facturado ya al día la siguiente lleva otro. Si con ella lo facturado pasa del total de
  * la cotización, avisa sin impedirlo (pedido de Gerencia del 2026-10-14).
  */
 export function RegistrarFactura({
@@ -50,10 +50,7 @@ export function RegistrarFactura({
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
 }) {
-  const [facturaId, setFacturaId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const factura = useIdDelEnvio(facturado)
   const [abierta, setAbierta] = useState(false)
   const [total, setTotal] = useState('')
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)
@@ -63,15 +60,16 @@ export function RegistrarFactura({
   function abrir() {
     setTotal('')
     setMonedaFactura(monedaCotizacion)
-    setFacturaId((actual) => actual ?? crypto.randomUUID())
+    factura.abrir()
     setAbierta(true)
   }
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = sacarArchivo(datos)
     if (!archivo) return { ok: false, error: 'Adjunta el PDF de la factura.' }
-    if (!facturaId) return { ok: false, error: 'Vuelve a abrir el formulario de la factura.' }
-    return subirArchivoFinanzas(BUCKET_FACTURAS_VENTA, facturaId, archivo, { 'application/pdf': 'pdf' }, (ruta) => {
+    if (!factura.id) return { ok: false, error: 'Vuelve a abrir el formulario de la factura.' }
+    factura.salio()
+    return subirArchivoFinanzas(BUCKET_FACTURAS_VENTA, factura.id, archivo, { 'application/pdf': 'pdf' }, (ruta) => {
       datos.set('ruta', ruta)
       datos.set('nombre_archivo', archivo.name)
       return registrarFactura(null, datos)
@@ -81,9 +79,9 @@ export function RegistrarFactura({
     registrar,
     () => {
       setAbierta(false)
-      setFacturaId(null)
+      factura.otro()
     },
-    { alYaEntrar: () => setFacturaId(crypto.randomUUID()) },
+    { alYaEntrar: factura.otro },
   )
   const campo = (nombre: string) => `${nombre}-${cotizacionId}`
 
@@ -101,7 +99,7 @@ export function RegistrarFactura({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={facturaId ?? ''} />
+          <input type="hidden" name="id" value={factura.id ?? ''} />
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Número de factura" htmlFor={campo('numero')} requerido ayuda="La serie, un guion y el número: E001-626.">

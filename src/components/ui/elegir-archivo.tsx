@@ -103,12 +103,32 @@ export async function revisarArchivo(archivo: File, accept: string, hastaMb?: nu
 function ConPuntero({ texto }: { texto: string }) {
   const i = texto.indexOf('toca para')
   if (i < 0) return texto
-  return (
+  const invitacion = (
     <>
-      {texto.slice(0, i)}
       <span className="pointer-fine:hidden">toca</span>
       <span className="hidden pointer-fine:inline">haz clic</span>
       {texto.slice(i + 'toca'.length)}
+    </>
+  )
+  // «· toca para cambiarlo» no se dice con el campo apagado: tras «ya quedó» la
+  // ventana lo traba sin pasar por aquí, y la caja invitaba a cambiar un archivo
+  // que ya no se puede tocar (decimoquinta pasada).
+  const separador = texto.lastIndexOf(' · ', i)
+  if (separador >= 0 && /^toca para cambiarlo/.test(texto.slice(i))) {
+    return (
+      <>
+        {texto.slice(0, separador)}
+        <span className="group-has-[input:disabled]/archivo:hidden">
+          {texto.slice(separador, i)}
+          {invitacion}
+        </span>
+      </>
+    )
+  }
+  return (
+    <>
+      {texto.slice(0, i)}
+      {invitacion}
     </>
   )
 }
@@ -308,7 +328,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   return (
     <div
       className={cn(
-        'relative flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] border px-3 py-2',
+        'group/archivo relative flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] border px-3 py-2',
         archivo
           ? mal
             ? 'border-solid border-peligro bg-peligro-suave/40'

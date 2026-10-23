@@ -35,9 +35,19 @@ export const yaEntroLaPrimeraVez = (mensaje: string | null | undefined) =>
  * Ese aviso, dicho dentro de una ventana. La base pide recargar, pero la
  * pantalla se pone al día sola al cerrarla; y lo que se cambió en la ventana
  * seguía a la vista sin que nada dijera que no se guardó (decimocuarta pasada).
+ * Con un «si»: quien reenvió lo mismo no cambió nada (decimoquinta pasada).
  */
 export const yaEntroEnLaVentana = (mensaje: string) =>
-  mensaje.replace(/[:.] recarga la pantalla para ver cómo quedó\.$/i, '. Lo que cambiaste después no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+  mensaje.replace(/[:.] recarga la pantalla[^.]*\.$/i, '. Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+
+/**
+ * El envío pudo entrar y no se sabe: no llegó la respuesta, o después de eso se
+ * eligió otro archivo y el primero sigue en su ruta sin saberse si quedó
+ * (`otroArchivoEnLaRuta`). La pantalla de detrás se pone al día al cerrar la
+ * ventana; con el segundo no lo hacía (decimoquinta pasada).
+ */
+export const pudoHaberEntrado = (mensaje: string) =>
+  mensaje.startsWith('No llegó la respuesta') || /^Antes ya se subió .* y no se sabe si quedó/.test(mensaje)
 
 /**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.

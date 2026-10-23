@@ -108,8 +108,8 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
               acciones={
                 abiertas.length > 0 ? (
                   <>
-                    <Transferir cuentas={abiertas} dia={dia} />
-                    <RegistrarMovimiento cuentas={abiertas} dia={dia} codigos={caja.codigos} />
+                    <Transferir cuentas={abiertas} dia={dia} movimientos={caja.movimientos.length} />
+                    <RegistrarMovimiento cuentas={abiertas} dia={dia} codigos={caja.codigos} movimientos={caja.movimientos.length} />
                   </>
                 ) : undefined
               }
@@ -354,7 +354,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
         acciones={
           abierta || puedeCerrar ? (
             <>
-              {abierta && <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} compacto />}
+              {abierta && <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} movimientos={movimientos.length} compacto />}
               {puedeCerrar && <CerrarDia cuenta={yo} dia={dia} saldoFinal={c.saldo_final ?? 0} />}
             </>
           ) : undefined

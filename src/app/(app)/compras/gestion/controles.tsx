@@ -153,6 +153,7 @@ export function QuitarDeLaLista({ id, numero }: { id: string; numero: string }) 
         detalle="Al conductor le llega el aviso de que no salga a recogerla. Se queda con su peso; la puedes volver a poner cuando quieras."
         etiquetaConfirmar="Sí, sacarla"
         trabajando={accion.enviando}
+        error={accion.error}
         alConfirmar={() => {
           const datos = new FormData()
           datos.set('id', id)

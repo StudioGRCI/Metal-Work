@@ -257,7 +257,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const contratos = await uno(`select count(*)::int as n, string_agg(archivo_nombre, ', ') as nombres from public.subcontrato_contratos
                                 where subcontrato_id = $1 and archivo_nombre like $2`, [sc.id, `QA-OTRO-%-${sello}.pdf`])
   comprobar(/con el mismo archivo/.test(primera), `[Administración ${tam}] sin respuesta, pide conservar el archivo: «${primera}»`)
-  comprobar(segunda.includes(`Desde esta ventana ya se subió ${nombreA} y quedó registrado`) && acciones === antes,
+  comprobar(segunda.includes(`Antes ya se subió ${nombreA} y quedó registrado`) && acciones === antes,
     `[Administración ${tam}] con otro archivo elegido no lo da por adjunto, dice cuál quedó y no llama a la base: «${segunda}» (${acciones - antes} llamadas)`)
   comprobar(contratos.n === 1 && contratos.nombres === nombreA, `[Administración ${tam}] en la base queda solo el primero (${contratos.nombres})`)
   await p.keyboard.press('Escape')
@@ -379,7 +379,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
                              where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3, $4)`,
                             [sc.id, nombreG, `QA-OTRO-H-${sello}.png`, `QA-OTRO-I-${sello}.pdf`])
   const fotoSuelta = quedoG.ruta ? Number((await uno('select count(*) from storage.objects where name = $1', [quedoG.ruta.replace(/\.pdf$/, '.png')])).count) : -1
-  comprobar(/ya quedó adjuntado con otro archivo/.test(conLaFoto) && conOtroPdf.includes(`Desde esta ventana ya se subió ${nombreG} y quedó registrado`) && vueltas.acciones === antesDelOtro,
+  comprobar(/ya quedó adjuntado con otro archivo/.test(conLaFoto) && conOtroPdf.includes(`Antes ya se subió ${nombreG} y quedó registrado`) && vueltas.acciones === antesDelOtro,
     `[Administración ${tam}] V6c: tras la foto, otro PDF no se da por adjunto y dice cuál quedó, sin llamar a la base: «${conLaFoto}» → «${conOtroPdf}» (${vueltas.acciones - antesDelOtro} llamadas)`)
   comprobar(quedoG.n === 1 && quedoG.nombres === nombreG && quedoG.tam === pdfG.length && fotoSuelta === 0,
     `[Administración ${tam}] V6c: el contrato es el primer PDF, con sus bytes, y la foto no quedó suelta (${quedoG.nombres}, ${quedoG.tam} bytes, ${fotoSuelta} fotos sueltas)`)
@@ -420,7 +420,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
                               from public.subcontrato_contratos c where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3)`,
                             [sc.id, nombreJ, `QA-OTRO-K-${sello}.pdf`])
   const pdfSuelto = quedoN.ruta ? Number((await uno('select count(*) from storage.objects where name = $1', [quedoN.ruta.replace(/\.png$/, '.pdf')])).count) : -1
-  comprobar(dijoN.includes(`Desde esta ventana ya se subió ${nombreJ} y no se sabe si quedó`) && quedoN.n === 1 && quedoN.nombres === nombreJ && pdfSuelto === 0,
+  comprobar(dijoN.includes(`Antes ya se subió ${nombreJ} y no se sabe si quedó`) && quedoN.n === 1 && quedoN.nombres === nombreJ && pdfSuelto === 0,
     `[Administración ${tam}] N1: con el contrato ya adjunto con la foto, el PDF que no llegó no dice «No quedó registrado»: «${dijoN}» (${quedoN.nombres}, ${pdfSuelto} PDF suelto)`)
 
   // N2: Storage rechaza el PDF (413) o su subida se corta, y después, con una
@@ -565,7 +565,7 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     const avisos = async () => limpio(await v.locator('[role=alert]').allInnerTexts().then((t) => t.join(' ')).catch(() => ''))
     await v.locator('input[name="captura"]').setInputFiles({ name: `QA-CAJA-${sello}.jpg`, mimeType: 'image/jpeg', buffer: Buffer.concat([JPEG_MINIMO, Buffer.alloc(200)]) })
     await boton.click()
-    await esperar(async () => /Vuelve a intentar desde esta ventana/.test(await avisos()), 30000)
+    await esperar(async () => /Vuelve a intentar ahora/.test(await avisos()), 30000)
     const primera = await avisos()
     // Tras el rechazo, el cursor va al aviso (en el teléfono, el botón queda debajo).
     const enElAviso = () => p.evaluate(() => document.activeElement?.getAttribute('role') === 'alert')
@@ -594,7 +594,7 @@ async function laCapturaDeOtroTipoEnLaCaja(viewport) {
     await esperar(async () => (await objetosDe()).length === 1, 25000)
     const cuenta = await uno('select apertura_ruta as ruta from public.cajas where id = $1', [cuentaId])
     const objetos = await objetosDe()
-    comprobar(/Vuelve a intentar desde esta ventana/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
+    comprobar(/Vuelve a intentar ahora/.test(primera) && (caso === 'directo' || /Revisa la señal/.test(segunda)) && conJpg?.ruta?.endsWith('.jpg') && cerro
       && cuenta?.ruta?.endsWith('.png') && objetos.length === 1 && objetos[0] === cuenta.ruta,
       `[Tesorería ${tam}] ${caso}: la captura en JPG quedó sin respuesta y después se envía una PNG: la cuenta queda con la PNG y la JPG no queda suelta («${primera}»${segunda ? ` / «${segunda}»` : ''}; antes ${conJpg?.ruta?.split('.').pop() ?? 'sin cuenta'}, después ${cuenta?.ruta?.split('.').pop() ?? 'sin cuenta'}; en Storage ${objetos.map((o) => o.split('.').pop()).join(', ') || 'nada'})`)
     if (caso === 'directo') {
@@ -694,7 +694,7 @@ async function documentoQueYaQuedo(viewport) {
   const estado = {
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
     trabado: (await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()) && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
-    dice: segunda.includes('Este documento ya quedó adjuntado la primera vez que lo enviaste. Lo que cambiaste después no se guardó'),
+    dice: segunda.includes('Este documento ya quedó adjuntado la primera vez que lo enviaste. Si cambiaste algo después, no se guardó'),
   }
   await p.unrouteAll({ behavior: 'ignoreErrors' })
   await v.getByRole('button', { name: 'Cerrar' }).first().click()

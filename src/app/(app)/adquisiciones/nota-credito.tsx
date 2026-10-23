@@ -12,7 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { BUCKET_NOTAS_CREDITO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 
 import { anularNotaCredito, registrarNotaCredito } from './acciones-nota-credito'
@@ -44,8 +44,8 @@ function useAvisar() {
  * (decisiones de DKS del 22/10, migración 20261022190000): por lo que Almacén
  * devolvió, ligada a esa devolución, o por un descuento. El PDF sube primero a
  * `notas-credito/{factura}/…`. La factura baja sola; lo que no cabe en ella
- * queda a favor y le llega a Tesorería. El id se decide al abrir la ventana: un
- * reintento del mismo envío no registra otra.
+ * queda a favor y le llega a Tesorería. El id vive fuera de la ventana
+ * (`useIdDelEnvio`): un reintento del mismo envío no registra otra.
  */
 export function RegistrarNotaCredito({
   factura,
@@ -62,10 +62,8 @@ export function RegistrarNotaCredito({
   principal?: boolean
 }) {
   const m = factura.moneda === 'USD' ? 'USD' : 'PEN'
-  const [notaId, setNotaId] = useState<string | null>(null)
-  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
-  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
-  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  // La devolución que entra con su nota deja la lista de las que esperan una.
+  const nota = useIdDelEnvio(devoluciones.map((d) => d.id).join(','))
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState<'DEVOLUCION' | 'DESCUENTO'>('DEVOLUCION')
   const [devolucion, setDevolucion] = useState('')
@@ -75,7 +73,8 @@ export function RegistrarNotaCredito({
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la nota de crédito.' }
-    if (!notaId) return { ok: false, error: 'Vuelve a abrir el formulario de la nota.' }
+    if (!nota.id) return { ok: false, error: 'Vuelve a abrir el formulario de la nota.' }
+    nota.salio()
     return subirArchivoFinanzas(BUCKET_NOTAS_CREDITO, factura.id, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarNotaCredito(null, datos)
@@ -85,10 +84,10 @@ export function RegistrarNotaCredito({
     registrar,
     (r) => {
       setAbierta(false)
-      setNotaId(null)
+      nota.otro()
       if (r.mensaje) avisar(r.mensaje)
     },
-    { alYaEntrar: () => setNotaId(crypto.randomUUID()) },
+    { alYaEntrar: nota.otro },
   )
 
   function abrir() {
@@ -96,7 +95,7 @@ export function RegistrarNotaCredito({
     const inicial = devolucionInicial ?? (devoluciones.length === 1 ? devoluciones[0].id : '')
     setTipo(devolucionInicial || devoluciones.length > 0 ? 'DEVOLUCION' : 'DESCUENTO')
     setDevolucion(inicial)
-    setNotaId((actual) => actual ?? crypto.randomUUID())
+    nota.abrir()
     setAbierta(true)
   }
   const campo = (nombre: string) => `${nombre}-nota-${factura.id}${devolucionInicial ? `-${devolucionInicial}` : ''}`
@@ -124,7 +123,7 @@ export function RegistrarNotaCredito({
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={notaId ?? ''} />
+          <input type="hidden" name="id" value={nota.id ?? ''} />
           <input type="hidden" name="factura" value={factura.id} />
           <Campo etiqueta="Es por" htmlFor={campo('tipo')} requerido>
             <Seleccion

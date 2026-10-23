@@ -8,6 +8,7 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
@@ -16,7 +17,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, esOtroArchivoEnLaRuta, subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -121,8 +122,9 @@ export function NuevaCompraDirecta({
   puedeRegistrarProveedor: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  // Cada apertura es una orden nueva; el formulario se monta de cero.
+  // Cada apertura monta el formulario de cero; los ids, no (`useIdsDeLaCompra`).
   const [vez, setVez] = useState(0)
+  const ids = useIdsDeLaCompra()
   const [aviso, setAviso] = useState<Emitida | null>(null)
   return (
     <>
@@ -130,6 +132,7 @@ export function NuevaCompraDirecta({
         type="button"
         onClick={() => {
           setAviso(null)
+          ids.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -149,17 +152,22 @@ export function NuevaCompraDirecta({
         descripcion="Sin requerimiento: para el almacén. El número OC-…-MW lo pone el sistema y Gerencia la aprueba antes de que el conductor la recoja."
         ancho="xl"
       >
-        <FormularioCompraDirecta
-          key={vez}
-          proveedores={proveedores}
-          materiales={materiales}
-          codigos={codigos}
-          puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(emitida) => {
-            setAbierta(false)
-            setAviso(emitida)
-          }}
-        />
+        {ids.listos && (
+          <FormularioCompraDirecta
+            key={vez}
+            ids={ids}
+            alCancelar={() => setAbierta(false)}
+            proveedores={proveedores}
+            materiales={materiales}
+            codigos={codigos}
+            puedeRegistrarProveedor={puedeRegistrarProveedor}
+            alTerminar={(emitida) => {
+              setAbierta(false)
+              ids.otros()
+              setAviso(emitida)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
@@ -187,6 +195,8 @@ export function GenerarCompraDeInsumos({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // Los insumos marcados son el estado: con otros, es otra orden.
+  const ids = useIdsDeLaCompra(insumos.map((i) => i.id).join(','))
   const rqs = new Set(insumos.map((i) => i.requerimiento_id)).size
   return (
     <>
@@ -194,6 +204,7 @@ export function GenerarCompraDeInsumos({
         type="button"
         disabled={insumos.length === 0}
         onClick={() => {
+          ids.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -214,23 +225,59 @@ export function GenerarCompraDeInsumos({
         descripcion="Una línea por material, con lo que falta de él en cada requerimiento. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y cada requerimiento queda listo."
         ancho="xl"
       >
-        <FormularioCompraDirecta
-          key={vez}
-          insumos={insumos}
-          proveedores={proveedores}
-          materiales={materiales}
-          puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(emitida) => {
-            setAbierta(false)
-            alEmitir(emitida)
-          }}
-        />
+        {ids.listos && (
+          <FormularioCompraDirecta
+            key={vez}
+            ids={ids}
+            alCancelar={() => setAbierta(false)}
+            insumos={insumos}
+            proveedores={proveedores}
+            materiales={materiales}
+            puedeRegistrarProveedor={puedeRegistrarProveedor}
+            alTerminar={(emitida) => {
+              setAbierta(false)
+              ids.otros()
+              alEmitir(emitida)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
+/**
+ * Los ids de la orden y de su comprobante viven en el botón que abre la
+ * ventana, no en el formulario que se rehace al abrirla: tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva los mismos, y la base no emite
+ * otra OC numerada con lo mismo (decimoquinta pasada). Se renuevan con el ok o
+ * cuando la base dice que ya quedó.
+ */
+function useIdsDeLaCompra(estado?: string) {
+  const orden = useIdDelEnvio(estado)
+  const factura = useIdDelEnvio(estado)
+  return {
+    listos: Boolean(orden.id && factura.id),
+    orden: orden.id ?? '',
+    factura: factura.id ?? '',
+    abrir() {
+      orden.abrir()
+      factura.abrir()
+    },
+    salio() {
+      orden.salio()
+      factura.salio()
+    },
+    otros() {
+      orden.otro()
+      factura.otro()
+    },
+  }
+}
+
 function FormularioCompraDirecta({
+  ids,
+  alCancelar,
   insumos,
   proveedores,
   materiales,
@@ -238,6 +285,8 @@ function FormularioCompraDirecta({
   puedeRegistrarProveedor,
   alTerminar,
 }: {
+  ids: ReturnType<typeof useIdsDeLaCompra>
+  alCancelar: () => void
   /** Los insumos de RQ que compra la orden; sin ellos, es la directa. */
   insumos?: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
@@ -247,10 +296,9 @@ function FormularioCompraDirecta({
   puedeRegistrarProveedor: boolean
   alTerminar: (emitida: Emitida) => void
 }) {
-  // Los dos identificadores se deciden aquí: un reintento manda los mismos y la
-  // base devuelve la misma orden y el mismo documento, sin duplicar.
-  const [id] = useState(() => crypto.randomUUID())
-  const [idFactura] = useState(() => crypto.randomUUID())
+  // Un reintento manda los mismos y la base devuelve la misma orden y el mismo
+  // documento, sin duplicar.
+  const { orden: id, factura: idFactura } = ids
   // La orden salió pero su comprobante no quedó, o no se sabe: el aviso no va en verde.
   const aRevisar = useRef(false)
   const [proveedorId, setProveedorId] = useState('')
@@ -324,6 +372,7 @@ function FormularioCompraDirecta({
           })),
         ),
       )
+      ids.salio()
       const emitida = deInsumos ? await emitirCompraDeInsumos(null, datos) : await emitirCompraDirecta(null, datos)
       if (!emitida.ok || !adjuntando) return emitida
 
@@ -360,13 +409,13 @@ function FormularioCompraDirecta({
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },
     (r) => alTerminar({ texto: r.mensaje ?? 'Orden emitida.', aRevisar: aRevisar.current }),
+    { alYaEntrar: ids.otros },
   )
 
   const listas = lineas.every((l) => l.material_id && Number(l.cantidad) > 0 && l.precio !== '')
-  // Al volver de un rechazo, el cursor va al archivo si es por él, o al aviso.
+  // Al volver de un rechazo por el archivo, el cursor va a él; si no, al aviso (`PieDeVentana`).
   const campoFactura = useRef<HTMLInputElement>(null)
-  const avisoError = useRef<HTMLParagraphElement>(null)
-  useCursorAlRechazo(enviando, error, () => (/ está vací|debe ser un PDF/.test(error ?? '') ? campoFactura.current : avisoError.current))
+  useCursorAlRechazo(enviando, error, () => (/ está vací|debe ser un PDF/.test(error ?? '') ? campoFactura.current : null))
 
   return (
     <form onSubmit={alEnviar} className="space-y-6">
@@ -593,16 +642,7 @@ function FormularioCompraDirecta({
           />
         )}
 
-        {error && (
-          <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end">
-          <Boton type="submit" cargando={enviando} disabled={!proveedorId || !listas}>
-            Emitir orden de compra
-          </Boton>
-        </div>
+        <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Emitir orden de compra" disabled={!proveedorId || !listas} />
       </form>
   )
 }

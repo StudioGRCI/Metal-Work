@@ -14,9 +14,10 @@ export const NO_QUEDO_SIN_RESPUESTA = 'No quedó registrado: no llegó la respue
  * la base dice que ya quedó. Empieza como `SIN_RESPUESTA`: era una tercera
  * frase para lo mismo (decimotercera pasada).
  */
-export const NO_SE_CONFIRMO = 'No llegó la respuesta. Vuelve a intentar desde esta ventana con el mismo archivo: si ya había quedado, no se duplica.'
+export const NO_SE_CONFIRMO = 'No llegó la respuesta. Vuelve a intentar ahora, con el mismo archivo: si ya había quedado, no se duplica.'
 
-const YA_SE_SUBIO = 'Desde esta ventana ya se subió '
+// Sin «desde esta ventana»: el plano de Diseño se carga sin ventana (decimoquinta pasada).
+const YA_SE_SUBIO = 'Antes ya se subió '
 
 /**
  * Después de una respuesta perdida se eligió otro archivo, y en Storage sigue

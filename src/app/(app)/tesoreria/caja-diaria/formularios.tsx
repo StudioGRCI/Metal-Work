@@ -24,7 +24,7 @@ import {
   rutaDeCapturaDeSaldo,
   SALDO,
 } from '@/lib/dominio/caja'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -51,14 +51,25 @@ function useVentana() {
 
 // ---------------------------------------------------------------- ingreso o egreso
 
-export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto = false }: {
+/**
+ * El id del movimiento vive aquí, fuera del formulario que se rehace cada vez
+ * que se abre (`useIdDelEnvio`): tras «No llegó la respuesta», cancelar y volver
+ * a abrir lleva el mismo, y la base dice que ya quedó en vez de registrarlo dos
+ * veces. Con un movimiento más a la vista, aquel entró y el siguiente lleva
+ * otro. Antes el id nacía con el formulario y el mismo egreso entraba dos veces
+ * (decimoquinta pasada).
+ */
+export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, movimientos, compacto = false }: {
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
   codigos: CodigoParaElegir[] | null
+  /** Cuántos movimientos se ven de ese día. */
+  movimientos: number
   compacto?: boolean
 }) {
   const v = useVentana()
+  const envio = useIdDelEnvio(movimientos)
   const cuenta = cuentas.find((c) => c.id === cuentaId)
   return (
     <>
@@ -66,7 +77,10 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
         type="button"
         tamano="sm"
         variante={compacto ? 'contorno' : 'primario'}
-        onClick={v.abrir}
+        onClick={() => {
+          envio.abrir()
+          v.abrir()
+        }}
         aria-label={cuenta ? `Registrar en ${cuenta.nombre}` : undefined}
         data-registrar-movimiento={cuenta?.nombre ?? 'caja'}
       >
@@ -88,24 +102,34 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
         descripcion={`Del ${fecha(dia)}. Solo lo que no pasa por el sistema: los pagos y cobros de Tesorería —facturas, órdenes de servicio, recibos, planilla diaria— entran solos. Escríbelo como sale en el estado de cuenta; si es de una unidad, con su código interno.`}
         ancho="md"
       >
-        <FormularioMovimiento key={v.vez} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />
+        {envio.id && <FormularioMovimiento key={v.vez} envio={envio} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
+function FormularioMovimiento({ envio, cuentas, cuentaId, dia, codigos, alTerminar }: {
+  envio: ReturnType<typeof useIdDelEnvio>
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
   codigos: CodigoParaElegir[] | null
   alTerminar: () => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no registra otro.
-  const [id] = useState(() => crypto.randomUUID())
+  const id = envio.id ?? ''
   const [caja, setCaja] = useState(cuentaId ?? cuentas[0]?.id ?? '')
   const [codigo, setCodigo] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(registrarMovimiento, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarMovimiento(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   const p = `mov-${id.slice(0, 8)}`
   const m = monedaDeCuenta(cuentas.find((c) => c.id === caja)?.moneda)
 
@@ -160,12 +184,23 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
 
 // ---------------------------------------------------------------- entre cuentas
 
-export function Transferir({ cuentas, dia }: { cuentas: CuentaElegible[]; dia: string }) {
+/** Como el movimiento: el id vive aquí y se conserva hasta saber cómo terminó. */
+export function Transferir({ cuentas, dia, movimientos }: { cuentas: CuentaElegible[]; dia: string; movimientos: number }) {
   const v = useVentana()
+  const envio = useIdDelEnvio(movimientos)
   if (cuentas.length < 2) return null
   return (
     <>
-      <Boton type="button" tamano="sm" variante="contorno" onClick={v.abrir} data-transferir>
+      <Boton
+        type="button"
+        tamano="sm"
+        variante="contorno"
+        onClick={() => {
+          envio.abrir()
+          v.abrir()
+        }}
+        data-transferir
+      >
         <ArrowLeftRight aria-hidden className="size-4" />
         Transferir<span className="hidden sm:inline"> entre cuentas</span>
       </Boton>
@@ -176,17 +211,32 @@ export function Transferir({ cuentas, dia }: { cuentas: CuentaElegible[]; dia: s
         descripcion={`Del ${fecha(dia)}: sale de una cuenta y entra a la otra el mismo día, como la reposición de la caja chica o la compra de dólares.`}
         ancho="md"
       >
-        <FormularioTransferencia key={v.vez} cuentas={cuentas} dia={dia} alTerminar={v.cerrar} />
+        {envio.id && <FormularioTransferencia key={v.vez} envio={envio} cuentas={cuentas} dia={dia} alTerminar={v.cerrar} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: CuentaElegible[]; dia: string; alTerminar: () => void }) {
-  const [id] = useState(() => crypto.randomUUID())
+function FormularioTransferencia({ envio, cuentas, dia, alTerminar }: {
+  envio: ReturnType<typeof useIdDelEnvio>
+  cuentas: CuentaElegible[]
+  dia: string
+  alTerminar: () => void
+}) {
+  const id = envio.id ?? ''
   const [origen, setOrigen] = useState(cuentas[0]?.id ?? '')
   const [destino, setDestino] = useState(cuentas[1]?.id ?? '')
-  const { alEnviar, enviando, error } = useEnvio(registrarTransferencia, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarTransferencia(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   const p = `tr-${id.slice(0, 8)}`
   const sale = cuentas.find((c) => c.id === origen)
   const entra = cuentas.find((c) => c.id === destino)

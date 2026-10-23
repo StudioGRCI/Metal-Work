@@ -1,7 +1,7 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
-import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
@@ -68,10 +68,13 @@ export function useAccion<T = never>(
   const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
 
   /**
-   * Lo que sigue a un envío que no salió bien. El aviso de una ventana se va con
-   * ella: si el envío vive fuera (el pago de la tarjeta), volvía a abrirse con el
-   * aviso viejo y, si era un «ya quedó», sin el botón que envía, hasta recargar.
-   * Pasaba también cerrándola mientras se enviaba: la respuesta llegaba después.
+   * Lo que sigue a un envío que no salió bien. El aviso que se leyó en su ventana
+   * se va con ella: si el envío vive fuera (el pago de la tarjeta), volvía a
+   * abrirse con el aviso viejo y, si era un «ya quedó», sin el botón que envía,
+   * hasta recargar. El que llegó con la ventana ya cerrada nadie lo leyó: se
+   * queda a la vista donde la pantalla lo pinte, salvo que sea un «ya quedó» o que
+   * haya otra ventana abierta, que no es la suya. Soltarlo siempre callaba el
+   * rechazo de «Sacar de la lista» y de quitar un repuesto (decimoquinta pasada).
    * Cuando el envío pudo entrar —ya entró, o no llegó la respuesta—, la pantalla
    * de detrás se pone al día al cerrar, para que no ofrezca otra vez lo que ya
    * entró: con «No llegó la respuesta», cancelar y volver a abrir, la tarjeta
@@ -84,7 +87,7 @@ export function useAccion<T = never>(
     const desdeVentana = ventana !== null
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
     // La subida con su archivo no lanza: devuelve «No llegó la respuesta…» (`anotarSinDejarloSuelto`).
-    const pudoEntrar = lanzo || salida.error.startsWith('No llegó la respuesta')
+    const pudoEntrar = lanzo || pudoHaberEntrado(salida.error)
     const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
@@ -103,8 +106,8 @@ export function useAccion<T = never>(
     // La ventana del envío ya se cerró: la que esté abierta ahora es otra. El
     // aviso se suelta fuera de la transición: dentro esperaba al refresco, y
     // con la señal lenta la ventana que se volvía a abrir salía trabada con el
-    // «ya quedó» del envío anterior.
-    soltar()
+    // «ya quedó» del envío anterior. Sin otra ventana, el rechazo se queda.
+    if (yaEntro || hayVentanaAbierta()) soltar()
     if (ponerAlDia) iniciar(() => router.refresh())
   }
 
@@ -209,6 +212,39 @@ export function useEnvio<T = never>(
   }
 
   return { alEnviar, ...resto }
+}
+
+/**
+ * El id de un envío que vive fuera de su ventana (el pago de la tarjeta), con el
+ * estado de la pantalla con que salió: el saldo, lo facturado, lo que queda a
+ * favor. Se conserva hasta saber cómo terminó: tras «No llegó la respuesta»,
+ * cancelar y volver a abrir lleva el mismo, y lo repetido dice que ya quedó en
+ * vez de entrar dos veces (decimocuarta pasada). Pero si al volver a abrir la
+ * pantalla ya cambió —el saldo bajó—, aquel envío entró y este es otro: con el
+ * mismo id, pagar lo que faltaba decía «ya quedó» y no se registraba
+ * (decimoquinta pasada). Si la pantalla todavía no se puso al día, sale el
+ * mismo id: lo peor es un «ya quedó» que se cierra, nunca un pago doble.
+ *
+ * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
+ * `otro()` con el ok y con `alYaEntrar`.
+ */
+export function useIdDelEnvio(estado?: string | number) {
+  const [id, setId] = useState<string | null>(null)
+  const enviado = useRef<{ id: string; estado: string | number | undefined } | null>(null)
+  return {
+    id,
+    abrir() {
+      const previo = enviado.current
+      setId(previo && previo.estado === estado ? previo.id : crypto.randomUUID())
+    },
+    salio() {
+      if (id) enviado.current = { id, estado }
+    },
+    otro() {
+      enviado.current = null
+      setId(crypto.randomUUID())
+    },
+  }
 }
 
 /**
