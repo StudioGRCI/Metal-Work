@@ -379,11 +379,15 @@ leer sale con «—» y lo dice; nunca como si fuera cero.
   `20261022200000`) los ven los mismos: `tesoreria.registrar_pagos`,
   `tesoreria.ver_documentos`, `compras.crear` y `adquisiciones.ver`. La tabla
   no va a la auditoría genérica: cada pago queda con quién lo registró y quién
-  lo anuló, y su egreso, en la caja. Desde la migración `20261022210000`
-  (decisión de DKS del 22/10) el IGV que trae la boleta de una parte de una OC
-  con factura suma al costo de sus códigos, entre los materiales y repartido
-  como la OC: lo ve quien ve el costeo del código (`costos.ver`) y el gasto por
-  código (`codigos_internos.gasto`), por la misma `codigo_interno_lineas`.
+  lo anuló, y su egreso, en la caja. Desde la migración `20261022210000` el
+  IGV que trae la boleta de una parte de una OC con factura suma al costo de
+  sus códigos, entre los materiales (DKS, 22/10: «Sí, sumarlo»). Logística dice
+  al anexarla si trae IGV: la nota de venta, el recibo o la boleta del Nuevo
+  RUS no suman. Se reparte por el valor de cada código en la OC, porque la
+  boleta no dice qué líneas trae. La línea la ve quien abre el costeo del
+  código (`codigos_internos.ver`) y el gasto por código
+  (`codigos_internos.gasto`); el total del código, también con `costos.ver`.
+  No cuenta como salida del almacén.
 - El PDF de cotización queda en `cotizaciones_pdf`; sus observaciones y
   versiones conservan su historial. Las liberaciones a Tesorería anteriores al
   2026-10-15 quedan como historial: desde la migración `20261015124000`

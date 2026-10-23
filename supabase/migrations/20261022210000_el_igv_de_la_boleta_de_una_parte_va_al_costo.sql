@@ -19,9 +19,36 @@
 -- MATERIALES, igual que el descuento de la nota de crédito (20261022190000):
 -- entra al total del código y se ve en su tabla de materiales con su motivo.
 --
+-- No todo comprobante de una parte trae IGV: la nota de venta, el recibo o la
+-- boleta de un proveedor del Nuevo RUS no lo llevan, y sumarle un 18 % que nunca
+-- se pagó inflaría el costo. Por eso Logística dice al anexarlo si trae IGV
+-- (`parte_trae_igv`), y solo el que lo trae suma. Ese dato queda congelado como
+-- el monto: si estaba mal, se anula el comprobante y se anexa de nuevo.
+--
 -- La boleta de una parte de una OC con boleta no suma nada: ahí los precios ya
 -- son lo que se paga, con su IGV dentro. La boleta anulada deja de sumar.
+--
+-- El reparto entre los códigos, por el valor de cada uno en la OC, no lo decidió
+-- DKS: es el único posible, porque la boleta no dice qué líneas de la OC trae.
 -- =============================================================================
+
+-- 0. Si el comprobante de la parte trae IGV ------------------------------------
+-- Las que ya estaban se anexaron como «boleta» de una parte: se toman como con
+-- IGV, que es lo que trae una boleta. Si alguna no lo traía, se anula y se anexa
+-- de nuevo diciendo que no.
+alter table public.documentos_compra_material add column if not exists parte_trae_igv boolean;
+update public.documentos_compra_material set parte_trae_igv = true
+ where monto_de_la_parte is not null and parte_trae_igv is null;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ck_documento_compra_parte_igv'
+                   and conrelid = 'public.documentos_compra_material'::regclass) then
+    alter table public.documentos_compra_material add constraint ck_documento_compra_parte_igv check (
+      (monto_de_la_parte is null) = (parte_trae_igv is null));
+  end if;
+end $$;
+comment on column public.documentos_compra_material.parte_trae_igv is
+  'Solo en la boleta de una parte (20261022210000): si el comprobante trae IGV. El que lo trae suma su IGV al costo de los códigos de la OC con factura; la nota de venta, el recibo o la boleta del Nuevo RUS, no. No se corrige: se anula y se anexa de nuevo.';
 
 -- 1. Las líneas: el IGV de cada boleta de una parte, por código -----------------
 create or replace function public.codigo_interno_lineas_igv_de_parte(p_codigo text)
@@ -35,7 +62,7 @@ language sql stable set search_path to 'public' as $$
            b.monto_de_la_parte - round(b.monto_de_la_parte / 1.18, 2) as igv
       from public.documentos_compra_material b
       join public.ordenes_compra_materiales c on c.id = b.orden_compra_id
-     where b.monto_de_la_parte is not null and b.anulado_en is null
+     where b.monto_de_la_parte is not null and b.parte_trae_igv and b.anulado_en is null
        and c.con_factura and c.aprobacion not in ('RECHAZADA', 'ANULADA')
   ), porcion as (
     select rl.orden_compra_detalle_id as detalle_id, public.normalizar_codigo_interno(rq.codigo_interno) as codigo,
@@ -115,3 +142,24 @@ select pg_temp.parchar('public.codigo_interno_lineas(text, boolean)'::regprocedu
   || E'  -- El IGV de la boleta de una parte de una OC con factura (20261022210000).\n'
   || E'  select * from public.codigo_interno_lineas_igv_de_parte(v_codigo)\n'
 ], array[1]);
+
+-- 3. Si trae IGV no se corrige, como el monto ------------------------------------
+select pg_temp.parchar('public.fn_parte_con_boleta_valida()'::regprocedure, array[
+  E'    if new.monto_de_la_parte is distinct from old.monto_de_la_parte then\n',
+  E'    if new.monto_de_la_parte is distinct from old.monto_de_la_parte or new.parte_trae_igv is distinct from old.parte_trae_igv then\n',
+  E'      raise exception ''El monto de la boleta de una parte no se corrige: anula la boleta con su motivo y anéxala de nuevo.''\n',
+  E'      raise exception ''El monto de la boleta de una parte, y si trae IGV, no se corrigen: anula la boleta con su motivo y anéxala de nuevo.''\n'
+], array[1, 1]);
+
+-- 4. «Salidas del almacén» cuenta solo salidas --------------------------------------
+-- El IGV de una parte y el descuento de la nota de crédito van como MATERIALES
+-- para sumar al costo, pero no salieron del almacén: el resumen de Gerencia y el
+-- gasto de Requerimientos los contaban como salidas («11 salidas» en un código
+-- sin ninguna). Ahora cuentan solo las líneas que son un movimiento del kardex.
+select pg_temp.parchar(p.oid::regprocedure, array[
+  E'count(*) filter (where k.fuente in (''MATERIALES'', ''MATERIALES_SIN_PRECIO''))::integer as salidas',
+  E'count(*) filter (where k.fuente in (''MATERIALES'', ''MATERIALES_SIN_PRECIO'')\n'
+  || E'                             and exists (select 1 from public.movimientos_materiales m where m.id = k.referencia_id))::integer as salidas'
+], array[1])
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.proname in ('codigos_internos_resumen', 'codigos_internos_gasto');

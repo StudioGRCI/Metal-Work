@@ -138,6 +138,14 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
               <Entrada id={`parte-monto-${ordenCompraId}`} name="parte_monto" inputMode="decimal" required disabled={enviando}
                 autoComplete="off" placeholder="0.00" className="tabular" />
             </Campo>
+            <Campo etiqueta="¿Trae IGV?" htmlFor={`parte-igv-${ordenCompraId}`} requerido
+              ayuda="Lo dice el comprobante. El IGV de una boleta no se recupera y va al costo del código; la nota de venta, el recibo o la boleta del Nuevo RUS no lo traen.">
+              <Seleccion id={`parte-igv-${ordenCompraId}`} name="parte_igv" required disabled={enviando} defaultValue="">
+                <option value="" disabled>Elige…</option>
+                <option value="si">Sí, trae IGV</option>
+                <option value="no">No trae IGV</option>
+              </Seleccion>
+            </Campo>
           </>
         )}
       </div>

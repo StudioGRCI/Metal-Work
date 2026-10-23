@@ -158,7 +158,7 @@ console.log(`Sembrado ${SUFIJO}: ${nombre(oc.A)} con factura y ${nombre(oc.B)} c
 
 const objeto = async (bucket, ruta) => (await consulta(`select count(*)::int as n from storage.objects where bucket_id = $1 and name = $2`, [bucket, ruta]))[0].n
 const partes = async (orden) =>
-  consulta(`select id, numero_documento, monto_de_la_parte::float as monto, fecha_emision::text as fecha, ruta_storage, subido_por
+  consulta(`select id, numero_documento, monto_de_la_parte::float as monto, parte_trae_igv as igv, fecha_emision::text as fecha, ruta_storage, subido_por
               from documentos_compra_material where orden_compra_id = $1 and monto_de_la_parte is not null`, [orden])
 const pagosDe = async (documento) =>
   consulta(`select id, monto::float as monto, anulado_en from pagos_parte_con_boleta where documento_compra_id = $1 order by creado_en`, [documento])
@@ -217,6 +217,7 @@ async function anexarParte(pagina, orden, numero, monto, toques = 1) {
   await v.locator('input[name="parte_numero"]').fill(numero)
   await v.locator('input[name="parte_fecha"]').fill(hoy)
   await v.locator('input[name="parte_monto"]').fill(monto)
+  await v.locator('select[name="parte_igv"]').selectOption('si')
   await v.locator('input[name="archivo"]').setInputFiles({ name: `boleta-${numero}.pdf`, mimeType: 'application/pdf', buffer: PDF })
   const boton = v.getByRole('button', { name: 'Adjuntar', exact: true })
   if (toques === 3) await tresToques(boton)
@@ -240,8 +241,8 @@ let parteA
     `Logística anexa la boleta de una parte: «${r.mensaje || r.error}»`)
   const filas = await hasta(() => partes(oc.A), (f) => f.length > 0)
   parteA = filas[0]
-  comprobar(filas.length === 1 && parteA.numero_documento === BA && parteA.monto === 118 && parteA.fecha === hoy && parteA.subido_por === ids[CUENTAS.logistica],
-    `tres toques dejan una boleta, con su número en mayúsculas, su monto y su fecha (${filas.length})`)
+  comprobar(filas.length === 1 && parteA.numero_documento === BA && parteA.monto === 118 && parteA.fecha === hoy && parteA.igv === true && parteA.subido_por === ids[CUENTAS.logistica],
+    `tres toques dejan una boleta, con su número en mayúsculas, su monto, su fecha y que trae IGV (${filas.length})`)
   comprobar((await objeto('documentos-compras', parteA?.ruta_storage)) === 1, 'su PDF está en storage.objects')
   await pagina.screenshot({ path: `${CAPTURAS}/partes-1-logistica.png`, fullPage: true })
   const otra = await anexarParte(pagina, oc.A, `B081-${SUFIJO}7`, '300')

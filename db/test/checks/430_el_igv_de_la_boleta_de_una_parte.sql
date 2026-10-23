@@ -3,9 +3,14 @@
 -- `set local role authenticated`. Termina en rollback.
 --
 -- Un RQ del código PLA_SR_O4_1_26/30 con dos insumos; Logística compra cada uno en su OC:
---   · OC1, con factura (3 planchas a S/ 100, sin IGV en sus precios): una parte llega con la
---     boleta B001-4301 por S/ 118, que trae S/ 18 de IGV que no se recupera. Gerencia ve esos
---     S/ 18 en el costeo del código y en su total; anulada la boleta, dejan de sumar.
+--   · OC1, con factura (3 planchas a S/ 100, sin IGV en sus precios). Otro RQ, del código
+--     PLA_SR_O4_1_26/31, pide 1 plancha más que cubre la misma línea: de los S/ 300 de la OC,
+--     3 de 4 planchas (S/ 225, 75 %) son del /30 y 1 de 4 (S/ 75, 25 %) del /31.
+--     Una parte llega con la boleta B001-4301 por S/ 118, que trae S/ 18 de IGV que no se
+--     recupera (118 − 118 / 1.18 = 118 − 100). Gerencia ve en el /30 S/ 13.50 (18 × 75 %) y en
+--     el /31 S/ 4.50 (18 × 25 %), y el total de cada código sube eso y nada más. Anulada la
+--     boleta, dejan de sumar.
+--   · Una nota de venta de la OC1 por S/ 59, que no trae IGV: no suma nada.
 --   · OC2, con boleta: su boleta de una parte no suma nada, sus precios ya son lo que se paga.
 \set ON_ERROR_STOP on
 begin;
@@ -40,11 +45,12 @@ begin
    where public.ruc_es_valido('2060000430' || d) limit 1
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
-  foreach v in array array['rq', 'oc1', 'oc2', 'b1', 'b2'] loop
+  foreach v in array array['rq', 'rq2', 'oc1', 'oc2', 'b1', 'b2', 'b3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
   perform set_config('prueba.codigo', public.normalizar_codigo_interno('PLA_SR_O4_1_26/30'), true);
+  perform set_config('prueba.codigo2', public.normalizar_codigo_interno('PLA_SR_O4_1_26/31'), true);
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -57,24 +63,28 @@ create or replace function pg_temp.id(p_clave text) returns uuid language sql as
   select current_setting('prueba.' || p_clave)::uuid;
 $$;
 -- Logística anexa a la OC la boleta de una parte, como `registrarDocumentoCompra`.
-create or replace function pg_temp.anexar(p_doc text, p_oc text, p_numero text, p_monto numeric)
+create or replace function pg_temp.anexar(p_doc text, p_oc text, p_numero text, p_monto numeric, p_igv boolean)
 returns void language plpgsql as $$
 declare v_ruta text := 'compra/' || pg_temp.id(p_oc) || '/' || pg_temp.id(p_doc) || '.pdf';
 begin
   insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
   values ('documentos-compras', v_ruta, auth.uid(), auth.uid()::text, '{"mimetype": "application/pdf", "size": 2048}');
   insert into public.documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
-                                                 subido_por, numero_documento, fecha_emision, monto_de_la_parte)
+                                                 subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
   values (pg_temp.id(p_doc), pg_temp.id(p_oc), 'COMPROBANTE', 'boleta-' || p_numero || '.pdf', v_ruta, 'application/pdf', 2048,
-          public.usuario_actual(), p_numero, current_setting('prueba.hoy')::date, p_monto);
+          public.usuario_actual(), p_numero, current_setting('prueba.hoy')::date, p_monto, p_igv);
 end $$;
--- Lo que Gerencia ve en el costeo del código: la línea del IGV de una boleta, y el total.
-create or replace function pg_temp.igv(p_boleta text) returns numeric language sql as $$
-  select sum(c.monto) from public.codigo_interno_costeo(current_setting('prueba.codigo')) c
+-- Lo que Gerencia ve en el costeo de un código: la línea del IGV de una boleta, su detalle y el total.
+create or replace function pg_temp.igv(p_boleta text, p_codigo text default 'codigo') returns numeric language sql as $$
+  select sum(c.monto) from public.codigo_interno_costeo(current_setting('prueba.' || p_codigo)) c
    where c.fuente = 'MATERIALES' and c.concepto = 'IGV de la boleta ' || p_boleta || ' (una parte)';
 $$;
-create or replace function pg_temp.costo() returns numeric language sql as $$
-  select coalesce((select c.costo_pen from public.codigos_internos_costo(current_setting('prueba.codigo')) c), 0);
+create or replace function pg_temp.detalle(p_boleta text, p_codigo text) returns text language sql as $$
+  select c.detalle from public.codigo_interno_costeo(current_setting('prueba.' || p_codigo)) c
+   where c.concepto = 'IGV de la boleta ' || p_boleta || ' (una parte)';
+$$;
+create or replace function pg_temp.costo(p_codigo text default 'codigo') returns numeric language sql as $$
+  select coalesce((select c.costo_pen from public.codigos_internos_costo(current_setting('prueba.' || p_codigo)) c), 0);
 $$;
 
 -- ============================================ 0. Puertas
@@ -108,28 +118,69 @@ select pg_temp.como('gerente');
 set local role authenticated;
 select public.aprobar_compra(pg_temp.id('oc' || n)) from generate_series(1, 2) n
  where (select aprobacion from public.ordenes_compra_materiales where id = pg_temp.id('oc' || n)) = 'POR_APROBAR';
+reset role;
+-- El RQ del /31 pide una plancha más que cubre la misma línea de la OC1: lo que hace Logística
+-- al juntar insumos de dos RQ en una OC (20261016700000). Aquí se liga directo el insumo 1 del
+-- RQ del /30 y el del /31, que el armado de la OC no es lo que se prueba.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rq2'), pg_temp.id('area_mtz'),
+  'PLA_SR_O4_1_26/31', 'Armado de la plataforma 31', null,
+  jsonb_build_array(jsonb_build_object('descripcion', 'Insumo del 31', 'cantidad', 1,
+    'unidad_medida_id', current_setting('prueba.und'), 'categoria_id', current_setting('prueba.cat'))));
+reset role;
+update public.requerimiento_lineas set orden_compra_detalle_id =
+       (select d.id from public.orden_compra_material_detalles d where d.orden_compra_id = pg_temp.id('oc1'))
+ where requerimiento_id = pg_temp.id('rq2')
+    or (requerimiento_id = pg_temp.id('rq') and descripcion = 'Insumo 1');
+select test.afirmar((select count(*) from public.requerimiento_lineas where orden_compra_detalle_id =
+                       (select d.id from public.orden_compra_material_detalles d where d.orden_compra_id = pg_temp.id('oc1'))) = 2,
+  'la línea de la OC1 la cubren los dos RQ');
+select pg_temp.como('gerente');
+set local role authenticated;
 select set_config('prueba.antes', pg_temp.costo()::text, true);
+select set_config('prueba.antes2', pg_temp.costo('codigo2')::text, true);
 reset role;
 
 -- ============================================ 2. Las boletas de una parte
 select pg_temp.como('comprador');
 set local role authenticated;
-select pg_temp.anexar('b1', 'oc1', 'B001-4301', 118);
-select pg_temp.anexar('b2', 'oc2', 'B001-4302', 100);
+select test.debe_fallar($$ select pg_temp.anexar('b3', 'oc1', 'NV01-4303', 59, null) $$,
+  'la boleta de una parte dice si trae IGV', 'ck_documento_compra_parte_igv');
+select pg_temp.anexar('b1', 'oc1', 'B001-4301', 118, true);
+select pg_temp.anexar('b3', 'oc1', 'NV01-4303', 59, false);
+select pg_temp.anexar('b2', 'oc2', 'B001-4302', 100, true);
+select test.debe_fallar($$ update public.documentos_compra_material set parte_trae_igv = false where id = pg_temp.id('b1') $$,
+  'Logística no corrige si trae IGV', 'permission denied');
 reset role;
+-- Ni por encima de los permisos: la base lo rechaza al dueño de la tabla.
+select test.debe_fallar($$ update public.documentos_compra_material set parte_trae_igv = false where id = pg_temp.id('b1') $$,
+  'si trae IGV no se corrige ni por encima de los permisos: se anula y se anexa de nuevo', 'no se corrigen');
 
 -- ============================================ 3. Gerencia ve el IGV en el costo del código
 select pg_temp.como('gerente');
 set local role authenticated;
-select test.afirmar(pg_temp.igv('B001-4301') = 18,
-  'la boleta de una parte de la OC con factura suma al código los S/ 18 de IGV que trae dentro');
-select test.afirmar((select c.detalle from public.codigo_interno_costeo(current_setting('prueba.codigo')) c
-                      where c.concepto = 'IGV de la boleta B001-4301 (una parte)') = 'Pagó IGV que no se recupera: todo va a este código',
-  'y dice por qué: es IGV que no se recupera, y todo es de este código');
+select test.afirmar(pg_temp.igv('B001-4301') = 13.50 and pg_temp.igv('B001-4301', 'codigo2') = 4.50,
+  'los S/ 18 de IGV de la boleta se reparten como la OC: S/ 13.50 al /30 (75 %) y S/ 4.50 al /31 (25 %)');
+select test.afirmar(pg_temp.detalle('B001-4301', 'codigo') = 'Pagó IGV que no se recupera: 75 % va a este código, lo de la OC que es suyo'
+                    and pg_temp.detalle('B001-4301', 'codigo2') = 'Pagó IGV que no se recupera: 25 % va a este código, lo de la OC que es suyo',
+  'y cada línea dice por qué y cuánto le toca');
+select test.afirmar(pg_temp.igv('NV01-4303') is null and pg_temp.igv('NV01-4303', 'codigo2') is null,
+  'la nota de venta que no trae IGV no suma nada');
 select test.afirmar(pg_temp.igv('B001-4302') is null,
   'la boleta de una parte de la OC con boleta no suma nada: sus precios ya llevan el IGV');
-select test.afirmar(pg_temp.costo() = current_setting('prueba.antes')::numeric + 18,
-  'el costo del código sube exactamente esos S/ 18');
+select test.afirmar(pg_temp.costo() = current_setting('prueba.antes')::numeric + 13.50
+                    and pg_temp.costo('codigo2') = current_setting('prueba.antes2')::numeric + 4.50,
+  'el costo de cada código sube exactamente su parte');
+select test.afirmar((select salidas from public.codigos_internos_resumen() where codigo = current_setting('prueba.codigo2')) = 0,
+  'el IGV suma al costo pero no es una salida del almacén: el /31 sigue con cero salidas');
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select test.afirmar((select sum(g.monto) from public.codigo_interno_gasto(current_setting('prueba.codigo2')) g
+                      where g.concepto = 'IGV de la boleta B001-4301 (una parte)') = 4.50
+                    and (select salidas from public.codigos_internos_gasto() where codigo = current_setting('prueba.codigo2')) = 0,
+  'Requerimientos ve los S/ 4.50 en el gasto del /31, sin contarlos como salida');
 reset role;
 
 -- ============================================ 4. Anulada la boleta, deja de sumar
@@ -139,8 +190,9 @@ select public.anular_documento_compra(pg_temp.id('b1'), 'La boleta era de otra O
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
-select test.afirmar(pg_temp.igv('B001-4301') is null and pg_temp.costo() = current_setting('prueba.antes')::numeric,
-  'anulada la boleta de una parte, su IGV sale del costo del código');
+select test.afirmar(pg_temp.igv('B001-4301') is null and pg_temp.costo() = current_setting('prueba.antes')::numeric
+                    and pg_temp.costo('codigo2') = current_setting('prueba.antes2')::numeric,
+  'anulada la boleta de una parte, su IGV sale del costo de los dos códigos');
 reset role;
 
 rollback;

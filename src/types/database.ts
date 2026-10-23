@@ -2325,6 +2325,7 @@ export type Database = {
           anulado_por: string | null
           motivo_anulacion: string | null
           monto_de_la_parte: number | null
+          parte_trae_igv: boolean | null
         }
         Insert: {
           id?: string
@@ -2343,6 +2344,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           monto_de_la_parte?: number | null
+          parte_trae_igv?: boolean | null
         }
         Update: {
           id?: string
@@ -2361,6 +2363,7 @@ export type Database = {
           anulado_por?: string | null
           motivo_anulacion?: string | null
           monto_de_la_parte?: number | null
+          parte_trae_igv?: boolean | null
         }
         Relationships: [
           {
@@ -12292,6 +12295,27 @@ export type Database = {
         }[]
       }
       codigo_interno_lineas_gastos_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_igv_de_parte: {
         Args: {
           p_codigo: string | null
         }
