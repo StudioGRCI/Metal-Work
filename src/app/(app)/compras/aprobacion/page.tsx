@@ -114,9 +114,7 @@ export default async function PaginaAprobacionCompras() {
                     return (
                       <TR key={`${c.tipo}-${c.id}`}>
                         <TD>
-                          <p className="font-medium text-texto">
-                            {c.numero} · {c.proveedor}
-                          </p>
+                          <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
                           <p className="text-[11px] text-texto-suave">{destino(c)}</p>
                           {c.motivo_rechazo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo_rechazo}</p>}
                         </TD>
@@ -174,9 +172,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
                 return (
                   <TR key={c.id} data-anulable={c.numero}>
                     <TD>
-                      <p className="font-medium text-texto">
-                        {c.numero} · {c.proveedor}
-                      </p>
+                      <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
                       <p className="text-[11px] text-texto-suave">
                         {[c.codigos.join(', '), c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, c.con_factura ? 'Con factura' : 'Con boleta', c.aprobado_en && `aprobada ${fecha(c.aprobado_en)}`]
                           .filter(Boolean)
@@ -205,9 +201,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
           <ul className="mt-3 space-y-2">
             {no.map((c) => (
               <li key={c.id}>
-                <span className="font-medium text-texto">
-                  {c.numero} · {c.proveedor}
-                </span>
+                <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
                 <p className="text-xs text-texto-suave">{c.impide}</p>
               </li>
             ))}
@@ -215,6 +209,26 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
         </details>
       )}
     </section>
+  )
+}
+
+/**
+ * La orden y su proveedor. La OC de antes de la serie no tiene número: sale «OC
+ * sin número» y su referencia, la cotización del proveedor, aparte y sin partirse,
+ * como en Facturas. `numero` null es esa.
+ */
+function NombreDeLaOrden({ numero, referencia, proveedor }: { numero: string | null; referencia: string | null; proveedor: string }) {
+  return (
+    <>
+      <p className="font-medium text-texto">
+        {numero ?? 'OC sin número'} · {proveedor}
+      </p>
+      {numero === null && referencia && (
+        <p className="text-[11px] text-texto-suave">
+          Ref. del proveedor: <span className="tabular whitespace-nowrap">{referencia}</span>
+        </p>
+      )}
+    </>
   )
 }
 
@@ -234,10 +248,10 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo={`${c.numero} · ${c.proveedor}`}
+        titulo={`${c.sin_numero ? 'OC sin número' : c.numero} · ${c.proveedor}`}
         descripcion={[
           c.proveedor_documento && (c.proveedor_documento.length === 11 ? `RUC ${c.proveedor_documento}` : c.proveedor_documento),
-          c.referencia && c.referencia !== c.numero && `Ref. ${c.referencia}`,
+          c.sin_numero ? `Ref. del proveedor: ${c.referencia}` : c.referencia && c.referencia !== c.numero && `Ref. ${c.referencia}`,
           c.emitida_por && `Emitida por ${c.emitida_por}`,
           c.pedida_en && fechaHora(c.pedida_en),
         ]
@@ -322,7 +336,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
         )}
 
         {aprueba ? (
-          <DecisionCompra id={c.id} numero={c.numero} tipo={c.tipo} />
+          <DecisionCompra id={c.id} numero={c.nombre} tipo={c.tipo} />
         ) : (
           <p className="text-xs text-texto-suave">La decide quien aprueba las compras; te avisa el sistema cuando lo haga.</p>
         )}

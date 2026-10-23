@@ -96,7 +96,7 @@ export function DecisionCompra({ id, numero, tipo }: { id: string; numero: strin
       <Ventana
         abierta={rechazando}
         alCerrar={() => setRechazando(false)}
-        titulo={`Rechazar la orden ${numero}`}
+        titulo={`Rechazar la ${numero}`}
         descripcion={
           tipo === 'OS'
             ? 'Logística recibe el motivo. Una orden de servicio rechazada no se reabre: se emite otra.'
@@ -142,14 +142,14 @@ export function AnularCompra({ id, numero }: { id: string; numero: string }) {
   const anulacion = useEnvio(anularCompra, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Anular la compra ${numero}`}>
+      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Anular la ${numero}`}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo={`Anular la compra ${numero}`}
+        titulo={`Anular la ${numero}`}
         descripcion="Si venía de un requerimiento, sus insumos vuelven a quedar por comprar. Sale de la lista del conductor y Logística recibe el motivo. La OC no se borra: queda anulada como evidencia y su PDF sale con la marca ANULADA."
         ancho="md"
       >

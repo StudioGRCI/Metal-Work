@@ -90,6 +90,16 @@ export function nombreDeOc(o: { numero: string | null; referencia?: string | nul
   return referencia ? `OC sin número (ref. del proveedor ${referencia})` : 'OC sin número'
 }
 
+/**
+ * La OC como la busca el detector de facturas: por su número, y la de antes de
+ * la serie por su referencia, que es lo que cita la factura del proveedor. Sin
+ * esto, la factura de una OC sin número decía «menciona la OC 8602 y no está
+ * entre sus OC» siendo la suya. Lleva su nombre para el aviso.
+ */
+export function ocParaDetector(o: { numero: string | null; referencia: string }) {
+  return { numero: o.numero ?? o.referencia, referencia: o.referencia, nombre: nombreDeOc(o) }
+}
+
 /** Lo que necesitan los filtros de cada fila. */
 export type FilaParaFiltrar = {
   tipo: 'OC' | 'OS'

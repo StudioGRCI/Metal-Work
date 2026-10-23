@@ -158,7 +158,7 @@ async function facturasEnEspera(supabase: Awaited<ReturnType<typeof createClient
         ? [
             [
               f.adquisicion_id,
-              { ordenCompraId: f.orden_compra_id, compra: f.compra ?? 'su OC', total: Number(f.total ?? 0), moneda: f.moneda ?? 'PEN', desde: f.desde ?? null },
+              { ordenCompraId: f.orden_compra_id, compra: f.compra ?? 'OC', total: Number(f.total ?? 0), moneda: f.moneda ?? 'PEN', desde: f.desde ?? null },
             ] as const,
           ]
         : [],

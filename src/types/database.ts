@@ -14277,6 +14277,13 @@ export type Database = {
         }
         Returns: string
       }
+      nombre_de_oc: {
+        Args: {
+          p_numero: string | null
+          p_referencia: string | null
+        }
+        Returns: string
+      }
       nombre_unidad_almacen: {
         Args: {
           p_u: string | null
