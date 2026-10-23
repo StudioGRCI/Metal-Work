@@ -507,7 +507,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     <span className="block text-[11px] text-texto-suave md:hidden">{f.documento}</span>
                   </TD>
                   <TD className="hidden max-w-60 md:table-cell">
-                    <span className="line-clamp-2 text-sm">{f.documento ?? '—'}</span>
+                    {/* El nombre de una OC sin número es largo: entero al pasar el puntero. */}
+                    <span className="line-clamp-2 text-sm" title={f.documento ?? undefined}>{f.documento ?? '—'}</span>
                     {(f.recibido_por_nombre || f.registrado_por_nombre) && (
                       <span className="block text-[11px] text-texto-suave">
                         {f.recibido_por_nombre ? `Recibió ${f.recibido_por_nombre}` : null}

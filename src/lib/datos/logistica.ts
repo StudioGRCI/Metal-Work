@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
@@ -8,8 +9,11 @@ import { createClient } from '@/lib/supabase/server'
 /** Una orden de compra en el listado de Logística: número, para qué y en qué va. */
 export type OrdenCompraListada = {
   id: string
-  numero: string
+  /** El número de la casa; vacío en la OC de antes de la serie, que se nombra por su referencia. */
+  numero: string | null
   referencia: string
+  /** «OC-0005-MW» u «OC sin número (ref. del proveedor …)», para los títulos y las frases. */
+  nombre: string
   origen: string
   proveedor: string
   proveedor_documento: string | null
@@ -116,8 +120,9 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   }
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
-    numero: c.numero ?? '',
+    numero: c.numero?.trim() || null,
     referencia: c.referencia ?? '',
+    nombre: nombreDeOc({ numero: c.numero?.trim() || null, referencia: c.referencia }),
     origen: c.origen ?? 'REQUERIMIENTO',
     proveedor: c.proveedor ?? '',
     proveedor_documento: c.proveedor_documento,
@@ -155,8 +160,11 @@ export type GuiaRemision = { id: string; numero: string; fecha: string; nombre_a
 
 export type CompraParaRecojo = {
   id: string
-  numero: string
+  /** El número de la casa; vacío en la OC de antes de la serie, que se nombra por su referencia. */
+  numero: string | null
   referencia: string
+  /** «OC-0005-MW» u «OC sin número (ref. del proveedor …)», para los títulos y las frases. */
+  nombre: string
   origen: string
   proveedor: string
   proveedor_documento: string | null
@@ -204,8 +212,9 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const insumos = await insumosPorCompra(supabase, (data ?? []).flatMap((c) => (c.id && !c.codigo_interno ? [c.id] : [])))
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
-    numero: c.numero ?? '',
+    numero: c.numero?.trim() || null,
     referencia: c.referencia ?? '',
+    nombre: nombreDeOc({ numero: c.numero?.trim() || null, referencia: c.referencia }),
     origen: c.origen ?? 'REQUERIMIENTO',
     proveedor: c.proveedor ?? '',
     proveedor_documento: c.proveedor_documento,

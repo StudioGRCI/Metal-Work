@@ -20,7 +20,7 @@ import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir
  */
 export function AccionesCompra({
   id,
-  numero,
+  oc,
   recojo,
   adjuntar,
   conFactura,
@@ -33,7 +33,8 @@ export function AccionesCompra({
   verAdquisiciones,
 }: {
   id: string
-  numero: string
+  /** Como la busca el detector (el número, o la referencia en la OC sin número) y como se nombra. */
+  oc: { numero: string; nombre: string }
   /** Quien adjunta entra a Adquisiciones: el aviso de un anexo por revisar enlaza a la OC. */
   verAdquisiciones: boolean
   /** El total con IGV (si va con factura) y la moneda: el detector compara la factura con ellos. */
@@ -89,7 +90,7 @@ export function AccionesCompra({
         </Boton>
       )}
       {adjuntar && (
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${numero}`}>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${oc.nombre}`}>
           <Pencil aria-hidden className="size-4" />
           Corregir
         </Boton>
@@ -107,7 +108,7 @@ export function AccionesCompra({
       <Ventana
         abierta={documentos}
         alCerrar={() => setDocumentos(false)}
-        titulo={`Adjuntar a la compra ${numero}`}
+        titulo={`Adjuntar a la compra ${oc.nombre}`}
         descripcion={
           conFactura
             ? 'La factura, o cualquier PDF de la compra. Queda en la compra y Tesorería lo ve para pagar.'
@@ -119,14 +120,14 @@ export function AccionesCompra({
           ordenCompraId={id}
           solicitudId={idDocumento}
           tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
-          orden={{ numero, total, moneda }}
+          orden={{ numero: oc.numero, nombre: oc.nombre, total, moneda }}
           verAdquisiciones={verAdquisiciones}
         />
       </Ventana>
       <Ventana
         abierta={corrigiendo}
         alCerrar={() => setCorrigiendo(false)}
-        titulo={`Corregir la compra ${numero}`}
+        titulo={`Corregir la compra ${oc.nombre}`}
         descripcion="Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante."
         ancho="lg"
       >

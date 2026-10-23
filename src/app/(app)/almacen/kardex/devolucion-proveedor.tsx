@@ -13,6 +13,18 @@ import { cantidad, fechaHora } from '@/lib/format'
 import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from './acciones'
 
 /**
+ * La guía con que entró, si la hubo. Con la guía en blanco, Almacén deja como
+ * documento la OC misma —su número, o su nombre desde la migración
+ * 20261023110000; antes, la referencia suelta de la OC sin número—, y repetirla
+ * al lado de la compra no dice nada.
+ */
+function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
+  const documento = i.documento?.trim()
+  if (!documento || documento === i.compra || i.compra?.endsWith(`${documento})`)) return null
+  return documento
+}
+
+/**
  * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
  * 22/10, migración 20261022185000). Sale del kardex como un egreso; si el
  * proveedor lo repone, la OC lo vuelve a esperar, y si no, lo que falte vuelve
@@ -55,7 +67,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 {/* El material primero: la OC sin número se nombra largo y en el teléfono lo tapaba. */}
                 {ingresos.map((i) => (
                   <option key={i.ingreso_id} value={i.ingreso_id ?? ''}>
-                    {`${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.compra} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
+                    {[`${i.material}`, `${cantidad(i.se_puede)} ${i.unidad ?? ''}`, i.compra, guiaDelIngreso(i), fechaHora(i.fecha)].filter(Boolean).join(' · ')}
                   </option>
                 ))}
               </Seleccion>
@@ -63,7 +75,8 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
             {ingreso && (
               <p className="-mt-2 text-xs text-texto-suave">
                 {ingreso.material}, de la {ingreso.compra} · Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)}{' '}
-                {ingreso.unidad ?? ''} con {ingreso.documento} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
+                {ingreso.unidad ?? ''}
+                {guiaDelIngreso(ingreso) && ` con ${guiaDelIngreso(ingreso)}`} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
