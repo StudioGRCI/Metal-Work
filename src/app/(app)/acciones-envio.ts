@@ -9,8 +9,10 @@ import { createClient } from '@/lib/supabase/server'
 
 const Consulta = z.object({ clave: z.enum(CLAVES_DEL_ENVIO), id: z.guid() })
 
+// La nota es texto corrido: sin el espacio duro, «S/» quedaba al final de una
+// línea y el monto al comienzo de la otra.
 function importe(monto: number, codigo: string | null | undefined, dia: string | null) {
-  const texto = moneda(monto, (codigo ?? 'PEN') as CodigoMoneda)
+  const texto = moneda(monto, (codigo ?? 'PEN') as CodigoMoneda).replace(' ', '\u00a0')
   return dia ? `${texto} del ${fecha(dia)}` : texto
 }
 

@@ -52,7 +52,7 @@ export function RegistrarFactura({
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
 }) {
-  const factura = useIdDelEnvio('factura_venta')
+  const factura = useIdDelEnvio('factura_venta', undefined, cotizacionId)
   const [abierta, setAbierta] = useState(false)
   const [total, setTotal] = useState('')
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)

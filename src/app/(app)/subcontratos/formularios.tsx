@@ -67,7 +67,7 @@ export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas
   // lleva los mismos, y la base no registra otro SC numerado con lo mismo
   // (decimoquinta pasada). Se renuevan con el ok, cuando la base dice que ya quedó
   // o cuando, al volver a abrir, la base dice que aquel subcontrato entró.
-  const contrato = useIdDelEnvio()
+  const contrato = useIdDelEnvio(undefined, undefined, 'contrato-del-subcontrato')
   const subcontrato = useIdDelEnvio('subcontrato', () => contrato.otro())
   return (
     <>

@@ -129,16 +129,37 @@ async function devolverLasDeAntes() {
     )
   }
 }
-// Si la prueba se cae a medio camino, la lista no se queda sin las de antes.
-process.on('uncaughtException', async (e) => {
-  console.error(e)
+/**
+ * Las suyas fuera de la lista: la siguiente vuelta las tomaría por ajenas y las
+ * devolvería para siempre. La que ya salió a recogerla no lleva lugar.
+ */
+async function sacarLasSuyas() {
+  await como('logistica')
+  await consulta(
+    `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+      where c.id = any($1) and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
+    [sembradas],
+  )
+}
+// Si la prueba se cae a medio camino, o la cortan (Ctrl+C, `timeout`), la lista
+// no se queda sin las de antes ni con las suyas: `uncaughtException` no ve las
+// señales, y con `timeout` las de otros no volvían (decimoctava pasada).
+let cayendo = false
+async function caer(motivo) {
+  if (cayendo) return
+  cayendo = true
+  console.error(motivo)
   try {
+    await sacarLasSuyas()
     await devolverLasDeAntes()
   } catch (otro) {
     console.error(`No volvieron a la lista ${dejadas.map((d) => d.numero).join(', ')}: ${otro.message}`)
   }
   process.exit(1)
-})
+}
+process.on('uncaughtException', caer)
+process.on('unhandledRejection', caer)
+for (const senal of ['SIGINT', 'SIGTERM']) process.on(senal, () => caer(`Cortada con ${senal}.`))
 console.log(`Sembradas ${ocA}, ${ocB} y ${ocC}${dejadas.length ? `; salieron de la lista ${dejadas.map((d) => d.numero).join(', ')}` : ''}`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -371,15 +392,9 @@ let hrefGuia = ''
 }
 
 await navegador.close()
-// La suya, fuera de la lista también si el paso 7 no llegó a sacarla: la
-// siguiente prueba la encuentra sin pendientes. La primera ya salió a
-// recogerla y no se saca; no lleva lugar.
-await como('logistica')
-await consulta(
-  `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
-    where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
-  [idDe[ocB]],
-)
+// Las suyas, fuera de la lista también si el paso 7 no llegó a sacar la
+// segunda: la siguiente prueba la encuentra sin pendientes.
+await sacarLasSuyas()
 await devolverLasDeAntes()
 const [{ n: enLaLista }] = await consulta(
   `select count(*)::int as n from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id

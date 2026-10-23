@@ -105,6 +105,7 @@ function GrupoDeInsumos({
         descripcion={grupo.descripcion}
         acciones={
           <GenerarCompraDeInsumos
+            grupo={grupo.tipo}
             insumos={elegidos}
             proveedores={proveedores}
             materiales={materiales}

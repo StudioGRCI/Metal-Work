@@ -237,31 +237,50 @@ export function useEnvio<T = never>(
  * veces (decimoséptima pasada).
  *
  * Sin `clave` no se pregunta: es el id de algo que sale con el documento (su
- * factura, su contrato), y se renueva con él (`alEntrar`).
+ * factura, su contrato), y se renueva con él (`alEntrar`). Con `donde`, se
+ * guarda en la pestaña como el del documento: tras una recarga, su archivo
+ * vuelve a la misma ruta y no queda uno suelto.
+ *
+ * El id pendiente se guarda también en la pestaña (`sessionStorage`), por
+ * `clave` y por `donde` —la fila de la ventana: la OC que se paga, el recibo—,
+ * porque al cerrar tras «No llegó la respuesta» la pantalla se pone al día, y si
+ * ese refresco no llega (sin señal, el servidor que reinicia, un despliegue),
+ * Next recarga la página entera. La memoria se borraba, la ventana no
+ * preguntaba y el mismo pago o el mismo RQ entraba dos veces (decimoctava
+ * pasada). `donde` separa las filas: sin él, el pendiente de una OC lo tomaba la
+ * ventana de otra. Si en la pestaña entra otra cuenta, se olvida
+ * (`entroLaCuenta`).
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
  * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
  * (`EnvioAnterior`).
  */
-export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void) {
+export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void, donde = '') {
   const [id, setId] = useState<string | null>(null)
   const [anterior, setAnterior] = useState<string | null>(null)
   // El id que salió sin que se sepa cómo terminó.
   const pendiente = useRef<string | null>(null)
   // Cambia con cada apertura y cada envío: la respuesta de una consulta vieja no pisa lo que vino después.
   const turno = useRef(0)
+  const llave = clave ? `${PENDIENTE}${clave}:${donde}` : donde ? `${PENDIENTE}${donde}` : null
+  function anotar(valor: string | null) {
+    pendiente.current = valor
+    if (llave) guardarEnLaPestana(llave, valor)
+  }
   return {
     id,
     anterior,
     abrir() {
-      const previo = pendiente.current
+      // Tras una recarga la memoria está vacía, y lo pendiente sigue en la pestaña.
+      const previo = pendiente.current ?? (llave ? leerDeLaPestana(llave) : null)
+      pendiente.current = previo
       const este = ++turno.current
       setId(previo ?? crypto.randomUUID())
       if (!previo || !clave) return
       consultarEnvio(clave, previo).then(
         (entro) => {
           if (!entro || turno.current !== este) return
-          pendiente.current = null
+          anotar(null)
           setId(crypto.randomUUID())
           setAnterior(entro)
           alEntrar?.()
@@ -273,15 +292,56 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void) {
     salio() {
       turno.current++
       setAnterior(null)
-      if (id) pendiente.current = id
+      if (id) anotar(id)
     },
     otro() {
       turno.current++
       setAnterior(null)
-      pendiente.current = null
+      anotar(null)
       setId(crypto.randomUUID())
     },
   }
+}
+
+const PENDIENTE = 'metal-work:envio-pendiente:'
+const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// La pestaña puede no dejar guardar (navegación privada, almacenamiento lleno):
+// entonces vale solo la memoria, como antes.
+function leerDeLaPestana(llave: string): string | null {
+  try {
+    const valor = sessionStorage.getItem(llave)
+    return valor && ES_UUID.test(valor) ? valor : null
+  } catch {
+    return null
+  }
+}
+
+function guardarEnLaPestana(llave: string, valor: string | null) {
+  try {
+    if (valor) sessionStorage.setItem(llave, valor)
+    else sessionStorage.removeItem(llave)
+  } catch {}
+}
+
+const CUENTA = 'metal-work:envio-cuenta'
+
+/**
+ * Al entrar. Si en la pestaña quedó lo pendiente de otra cuenta —la sesión venció
+ * o se cerró y entró otra persona—, se olvida: su ventana preguntaría por un
+ * envío que no es suyo, que no puede ver, y reusaría ese id. Si vuelve a entrar
+ * la misma cuenta, lo suyo sigue pendiente.
+ */
+export function entroLaCuenta(usuario: string) {
+  try {
+    if (sessionStorage.getItem(CUENTA) !== usuario) {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const llave = sessionStorage.key(i)
+        if (llave?.startsWith(PENDIENTE)) sessionStorage.removeItem(llave)
+      }
+    }
+    sessionStorage.setItem(CUENTA, usuario)
+  } catch {}
 }
 
 /**

@@ -70,7 +70,7 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * siguiente lleva otro.
  */
 export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
-  const documento = useIdDelEnvio('documento_servicio')
+  const documento = useIdDelEnvio('documento_servicio', undefined, ordenServicioId)
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
 

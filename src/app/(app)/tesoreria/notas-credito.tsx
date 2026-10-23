@@ -147,7 +147,7 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
  * la siguiente lleva otro.
  */
 export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy: string; cuentas: CuentaParaPagar[] }) {
-  const reembolso = useIdDelEnvio('reembolso_nota_credito')
+  const reembolso = useIdDelEnvio('reembolso_nota_credito', undefined, nota.id)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')

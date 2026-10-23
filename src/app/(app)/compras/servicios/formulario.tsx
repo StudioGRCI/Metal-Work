@@ -55,7 +55,7 @@ export function NuevaOrdenServicio({
   // nacían con el formulario y salían dos OS numeradas iguales (decimoquinta
   // pasada). Se renuevan con el ok, cuando la base dice que ya quedó o cuando,
   // al volver a abrir, la base dice que aquella OS entró.
-  const contrato = useIdDelEnvio()
+  const contrato = useIdDelEnvio(undefined, undefined, 'contrato-de-la-os')
   const orden = useIdDelEnvio('orden_servicio', () => contrato.otro())
   const [aviso, setAviso] = useState<string | null>(null)
   // La OS entró pero su contrato no: se dice por qué y dónde adjuntarlo.

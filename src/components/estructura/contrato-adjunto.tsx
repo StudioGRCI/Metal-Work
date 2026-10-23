@@ -118,7 +118,7 @@ export function AdjuntarContrato({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const contrato = useIdDelEnvio('contrato_subcontrato')
+  const contrato = useIdDelEnvio('contrato_subcontrato', undefined, carpeta)
   return (
     <>
       <Boton

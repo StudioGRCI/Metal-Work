@@ -46,7 +46,7 @@ function sacarArchivo(datos: FormData): File | null {
 export function SubirRecibo({ subcontratoId, hoy, moneda }: { subcontratoId: string; hoy: string; moneda: 'PEN' | 'USD' }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const recibo = useIdDelEnvio('recibo_honorarios')
+  const recibo = useIdDelEnvio('recibo_honorarios', undefined, subcontratoId)
   return (
     <>
       <Boton

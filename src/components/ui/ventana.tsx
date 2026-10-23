@@ -233,10 +233,18 @@ export function Ventana({
  * el teclado y el lector de pantalla volvían al principio de todo (decimosexta
  * pasada). Si el botón desaparece con el cursor encima, el cursor va al
  * contenido de la página.
+ *
+ * A veces el botón no se va: se rehace igual, con otra llave (el pago de la
+ * planilla, cuando cambia la gente por pagar). Si lleva una marca `data-…` y en
+ * la página hay uno solo con ella, el cursor va a ese (decimoctava pasada).
  */
 function devolverElCursor(boton: HTMLElement) {
+  const marca = [...boton.attributes].filter((a) => a.name.startsWith('data-'))
+    .map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('')
   const alContenido = () => {
     if (document.activeElement && document.activeElement !== document.body) return
+    const iguales = marca ? document.querySelectorAll<HTMLElement>(marca) : []
+    if (iguales.length === 1) return iguales[0].focus()
     document.querySelector<HTMLElement>('main[tabindex]')?.focus({ preventScroll: true })
   }
   if (!boton.isConnected) return alContenido()

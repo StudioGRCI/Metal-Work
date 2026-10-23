@@ -52,7 +52,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
     const aquella = enviado.current
     setElegido((e) => (e === aquella.elegido ? '' : e))
     setRepone((r) => (r === aquella.repone ? '' : r))
-  })
+  }, 'devolucion')
   const empezarOtra = () => {
     devolucion.otro()
     setElegido('')
@@ -197,7 +197,7 @@ function Devolucion({
   // El id de la reposición vive en la fila y no en el formulario, que se rehace
   // al abrir: tras «No llegó la respuesta», cancelar y volver a abrir lleva el
   // mismo, y la base no la recibe dos veces (decimosexta pasada).
-  const reposicion = useIdDelEnvio('movimiento_almacen')
+  const reposicion = useIdDelEnvio('movimiento_almacen', undefined, `reposicion:${d.devolucion_id}`)
   // En metros, 5.3 − 2.1 da 3.1999999999999997 en el navegador, y la base no lo acepta.
   const falta = redondearCantidad(Number(d.devuelto) - Number(d.repuesto))
   const unidad = d.unidad ?? ''

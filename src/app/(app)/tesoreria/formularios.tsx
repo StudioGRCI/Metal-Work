@@ -71,7 +71,7 @@ export function CobrarFactura({
   codigoMoneda: CodigoMoneda
   cuentas: CuentaParaPagar[]
 }) {
-  const cobro = useIdDelEnvio('cobro_factura')
+  const cobro = useIdDelEnvio('cobro_factura', undefined, facturaId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -234,7 +234,7 @@ export function PagarServicio({
   /** Los documentos de la OS y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio('pago_servicio')
+  const pago = useIdDelEnvio('pago_servicio', undefined, ordenServicioId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -394,7 +394,7 @@ export function PagarFactura({
   /** La factura, sus OC y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio('pago_factura')
+  const pago = useIdDelEnvio('pago_factura', undefined, adquisicionId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -549,7 +549,7 @@ export function PagarCompra({
   /** La que el proveedor devolvió entera no se debe: pagarla es la excepción y el botón va de contorno. */
   principal?: boolean
 }) {
-  const pago = useIdDelEnvio('pago_compra')
+  const pago = useIdDelEnvio('pago_compra', undefined, ordenCompraId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)

@@ -2,7 +2,7 @@
 
 import { FileUp } from 'lucide-react'
 import Link from 'next/link'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   AvisoFacturaDeLaOrden,
@@ -14,7 +14,7 @@ import {
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
-import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 import { registrarDocumentoCompra } from './acciones-documentos'
@@ -92,6 +92,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   // empieza otro (`alYaEntrar`); en la lista, sin ventana, en el acto.
   const [entroCon, setEntroCon] = useState<string | null>(null)
   const aviso = useRef<HTMLParagraphElement>(null)
+  // En el tablero, sin ventana, el formulario se rehace al adjuntar y el botón
+  // que tenía el cursor desaparece: el cursor caía a la página. Va al tipo del
+  // siguiente (decimoctava pasada), cuando deja de estar trabado por el envío.
+  const tipoRef = useRef<HTMLSelectElement>(null)
+  const enfocarTipo = useRef(false)
   function empezarOtro() {
     setId(crypto.randomUUID())
     setVez((v) => v + 1)
@@ -131,6 +136,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setRevisar(r.datos?.revisar ?? false)
     setAvisaTesoreria(r.datos?.avisaTesoreria ?? false)
+    if (!alCerrar) enfocarTipo.current = true
     empezarOtro()
   }, { alYaEntrar: empezarOtro })
   const yaEntro = yaEntroLaPrimeraVez(error)
@@ -139,12 +145,17 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   // la ventana y Escape ya no la cerraba (decimoquinta pasada). Tras el envío
   // va al aviso, como en `PieDeVentana`.
   useCursorAlRechazo(enviando, error, () => aviso.current)
+  useEffect(() => {
+    if (!enfocarTipo.current || enviando) return
+    enfocarTipo.current = false
+    tipoRef.current?.focus()
+  }, [vez, enviando])
   const quieto = enviando || trabado
   return <form key={vez} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-2 sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
-      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={quieto} value={tipo} onChange={(e) => {
+      <Seleccion ref={tipoRef} id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={quieto} value={tipo} onChange={(e) => {
         setTipo(e.target.value)
         // En la OC con factura, la boleta que llega es la de una parte: la casilla sale marcada.
         if (e.target.value === 'COMPROBANTE' && tipoInicial === 'FACTURA') setParte(true)
@@ -214,7 +225,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     {error && (
       <p ref={aviso} role="alert" tabIndex={-1} data-ya-entro={yaEntro || undefined}
         className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-xs text-texto sm:col-span-2' : 'text-xs text-peligro sm:col-span-2'}>
-        {trabado ? yaEntroEnLaVentana(error) : error}
+        {trabado ? yaEntroEnLaVentana(error) : yaEntro ? yaEntroSinVentana(error) : error}
       </p>
     )}
     {/* Al final, debajo de lo que depende del tipo: en el teléfono se ve la casilla de la parte antes de adjuntar. */}

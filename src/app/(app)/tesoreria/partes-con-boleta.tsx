@@ -57,7 +57,7 @@ export function PagarParte({
   /** El PDF de la OC, la boleta y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio('pago_parte_boleta')
+  const pago = useIdDelEnvio('pago_parte_boleta', undefined, documentoId)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const avisar = useAvisoDeLaCaja()

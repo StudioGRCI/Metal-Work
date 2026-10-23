@@ -10,6 +10,7 @@ import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
+import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
@@ -68,8 +69,12 @@ export function AccionesCompra({
   // cuando uno entró: si no, el segundo documento de la OC volvía con el id y la
   // ruta del primero. Al volver a abrir tras «No llegó la respuesta», la base
   // dice si aquel entró (`useIdDelEnvio`).
-  const documento = useIdDelEnvio('documento_compra')
+  const documento = useIdDelEnvio('documento_compra', undefined, id)
   const envio = useAccion(mandarARecojo)
+  // En la OC sin número, el título dice eso y la referencia va en la línea de
+  // abajo: con todo en el título, en el teléfono ocupaba tres líneas.
+  const { numero: titulo, referencia } = partesDeNombreDeOc(oc.nombre)
+  const deLaReferencia = referencia ? `Ref. del proveedor: ${referencia} · ` : ''
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -122,11 +127,11 @@ export function AccionesCompra({
       <Ventana
         abierta={documentos}
         alCerrar={() => setDocumentos(false)}
-        titulo={`Adjuntar a la compra ${oc.nombre}`}
+        titulo={`Adjuntar a la compra ${titulo ?? 'OC sin número'}`}
         descripcion={
-          conFactura
+          deLaReferencia + (conFactura
             ? 'La factura, o cualquier PDF de la compra. Queda en la compra y Tesorería lo ve para pagar.'
-            : 'Es sin factura: adjunta la boleta, nota de venta o recibo. Queda en la compra y Tesorería lo ve para pagar.'
+            : 'Es sin factura: adjunta la boleta, nota de venta o recibo. Queda en la compra y Tesorería lo ve para pagar.')
         }
         ancho="lg"
       >
@@ -147,8 +152,8 @@ export function AccionesCompra({
       <Ventana
         abierta={corrigiendo}
         alCerrar={() => setCorrigiendo(false)}
-        titulo={`Corregir la compra ${oc.nombre}`}
-        descripcion="Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante."
+        titulo={`Corregir la compra ${titulo ?? 'OC sin número'}`}
+        descripcion={`${deLaReferencia}Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante.`}
         ancho="lg"
       >
         {corrigiendo && (

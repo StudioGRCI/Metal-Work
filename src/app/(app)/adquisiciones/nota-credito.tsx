@@ -64,7 +64,7 @@ export function RegistrarNotaCredito({
   principal?: boolean
 }) {
   const m = factura.moneda === 'USD' ? 'USD' : 'PEN'
-  const nota = useIdDelEnvio('nota_credito')
+  const nota = useIdDelEnvio('nota_credito', undefined, factura.id)
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState<'DEVOLUCION' | 'DESCUENTO'>('DEVOLUCION')
   const [devolucion, setDevolucion] = useState('')

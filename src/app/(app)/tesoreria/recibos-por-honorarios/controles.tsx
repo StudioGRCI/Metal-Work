@@ -51,7 +51,7 @@ type ReciboAPagar = {
 export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; hoy: string; cuentas: CuentaParaPagar[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const pago = useIdDelEnvio('pago_recibo')
+  const pago = useIdDelEnvio('pago_recibo', undefined, recibo.id)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque el recibo pagado sale de la lista con su botón.
   const avisar = useAvisoDeLaCaja()
   return (

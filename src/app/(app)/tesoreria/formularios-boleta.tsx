@@ -105,7 +105,7 @@ export function RegistrarDevolucion({
   /** Con algo pagado de más es lo que la tarjeta le pide a Tesorería: va como botón principal. */
   principal: boolean
 }) {
-  const devolucion = useIdDelEnvio('devolucion_compra')
+  const devolucion = useIdDelEnvio('devolucion_compra', undefined, ordenCompraId)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
@@ -392,7 +392,7 @@ export function TomarAlCambio({
   cambio: number | null
   diaDelCambio: string | null
 }) {
-  const toma = useIdDelEnvio('toma_de_la_boleta')
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `cambio:${ordenCompraId}:${factura.id}`)
   const [abierta, setAbierta] = useState(false)
   const sugeridoFactura = (() => {
     if (!cambio) return ''
@@ -529,7 +529,7 @@ export function DescontarDeOtraFactura({
   monedaOc: CodigoMoneda
   facturas: FacturaParaDescontar[]
 }) {
-  const toma = useIdDelEnvio('toma_de_la_boleta')
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `descuento:${ordenCompraId}`)
   const [abierta, setAbierta] = useState(false)
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))

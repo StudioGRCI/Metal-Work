@@ -126,7 +126,7 @@ export function NuevaCompraDirecta({
   const [abierta, setAbierta] = useState(false)
   // Cada apertura monta el formulario de cero; los ids, no (`useIdsDeLaCompra`).
   const [vez, setVez] = useState(0)
-  const ids = useIdsDeLaCompra()
+  const ids = useIdsDeLaCompra('directa')
   const [aviso, setAviso] = useState<Emitida | null>(null)
   return (
     <>
@@ -183,12 +183,15 @@ export function NuevaCompraDirecta({
  * insumo sigue con su RQ y su código interno; el motivo lo pone la base.
  */
 export function GenerarCompraDeInsumos({
+  grupo,
   insumos,
   proveedores,
   materiales,
   puedeRegistrarProveedor,
   alEmitir,
 }: {
+  /** El grupo de «Por comprar»: el envío pendiente de uno no lo toma la ventana de otro. */
+  grupo: string
   insumos: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
@@ -198,7 +201,7 @@ export function GenerarCompraDeInsumos({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const ids = useIdsDeLaCompra()
+  const ids = useIdsDeLaCompra(`insumos:${grupo}`)
   const rqs = new Set(insumos.map((i) => i.requerimiento_id)).size
   return (
     <>
@@ -257,9 +260,9 @@ export function GenerarCompraDeInsumos({
  * cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
  * que aquella orden entró (`anterior`).
  */
-function useIdsDeLaCompra() {
-  const factura = useIdDelEnvio()
-  const orden = useIdDelEnvio('orden_compra', () => factura.otro())
+function useIdsDeLaCompra(donde: string) {
+  const factura = useIdDelEnvio(undefined, undefined, `factura-de-la-orden:${donde}`)
+  const orden = useIdDelEnvio('orden_compra', () => factura.otro(), donde)
   return {
     listos: Boolean(orden.id && factura.id),
     orden: orden.id ?? '',

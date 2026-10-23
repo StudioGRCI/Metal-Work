@@ -74,6 +74,7 @@ function estadoOperativo(linea: LineaAtencionMaterial): string {
 }
 
 export function TableroMateriales({
+  ordenId,
   lineas,
   existencias,
   compras,
@@ -94,6 +95,8 @@ export function TableroMateriales({
   puedeVerAdquisiciones = false,
   codigos = null,
 }: {
+  /** La OT del tablero: lo pendiente de su orden de compra nueva no lo toma el tablero de otra. */
+  ordenId: string
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
   compras: CompraMaterialPendiente[]
@@ -124,7 +127,7 @@ export function TableroMateriales({
   // tras «No llegó la respuesta», cancelar y volver a abrir lleva el mismo, y la
   // base no emite otra OC numerada con lo mismo (decimoquinta pasada). Si al
   // volver a abrir la base dice que aquella entró, la ventana lo dice y lleva otro.
-  const ordenNueva = useIdDelEnvio('orden_compra_del_tablero')
+  const ordenNueva = useIdDelEnvio('orden_compra_del_tablero', undefined, ordenId)
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
