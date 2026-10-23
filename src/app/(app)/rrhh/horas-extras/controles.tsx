@@ -37,7 +37,7 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
     datos.set('decision', decision)
     ejecutar(datos)
   }
-  if (error && yaEntro) return <AvisoYaQuedo error={error} alVer={() => router.refresh()} className="text-right" />
+  if (error && yaEntro) return <AvisoYaQuedo error={error} alVer={() => router.refresh()} className="flex flex-col items-end text-left" />
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap justify-end gap-2">
