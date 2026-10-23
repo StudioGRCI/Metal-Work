@@ -33,9 +33,12 @@
 --     programar las fechas de las etapas y corregir el vehículo y el responsable
 --     de la OT (piden el rol de Administración), el conteo físico (el área de
 --     Almacén), proponer materiales a Diseño (las áreas de Maestranza,
---     Producción y Acabados) y marcar la etapa de un código (Diseño o el
---     supervisor del área, que se saca del dato). Son ciertos mientras la
---     función no cambie; pasarlos a un permiso es decisión de gestión.
+--     Producción y Acabados), marcar la etapa de un código (Diseño o el
+--     supervisor del área, que se saca del dato), el visto bueno de cada paso
+--     de la ficha (el supervisor de Producción o de Maestranza) y los trámites
+--     de placas y las comisiones de venta (gastos del área de Administración).
+--     Son ciertos mientras la función no cambie; pasarlos a un permiso es
+--     decisión de gestión.
 --   * «Solo el puesto que aprueba las compras puede …» (aprobar, rechazar y
 --     anular compras y órdenes de servicio): no nombra un puesto, sale de la
 --     regla de aprobación que se configura, y no se desactualiza.

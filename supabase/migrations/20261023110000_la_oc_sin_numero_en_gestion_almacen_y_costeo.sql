@@ -116,15 +116,17 @@ begin
   end loop;
 
   -- Ninguna función de la base da ya la referencia en el lugar del número: ni
-  -- coalesce(x.numero, x.referencia) ni coalesce(…, x.numero, x.referencia). Las
-  -- llamadas a nombre_de_oc se quitan antes de buscar. La línea `as compra` de la
-  -- nota de crédito se perdona solo mientras nadie use `l.compra`.
+  -- coalesce(numero, referencia), con alias o sin él, en una línea o en dos, ni
+  -- coalesce(…, x.numero, x.referencia). Las llamadas a nombre_de_oc se quitan
+  -- antes de buscar. La línea `as compra` de la nota de crédito se perdona solo
+  -- mientras nadie use `l.compra`.
   select string_agg(p.oid::regprocedure::text, ', ' order by 1) into v_quedan
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
-     and regexp_replace(p.prosrc, 'nombre_de_oc\(\s*[a-z_]+\.numero,\s*[a-z_]+\.referencia\)', '', 'g')
-         ~ '[a-z_]+\.numero, *[a-z_]+\.referencia\)'
+     and regexp_replace(p.prosrc, 'nombre_de_oc\(\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*\)', '', 'g')
+         ~ ('coalesce\(\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*[,)]'
+            '|,\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*\)')
      and not (p.proname = 'codigo_interno_lineas_nota_credito' and p.prosrc !~ 'l\.compra\M');
   if v_quedan is not null then
     raise exception 'Todavía dan la referencia del proveedor como número de OC: %. Revisarlas a mano.', v_quedan;

@@ -353,13 +353,14 @@ reset role;
 
 -- ============================================ 9. Ninguna función da ya la referencia en el lugar del número
 -- La misma guarda con que termina la migración: quitadas las llamadas a
--- nombre_de_oc, ninguna función da coalesce(x.numero, x.referencia) ni
--- coalesce(…, x.numero, x.referencia). La línea `as compra` de la nota de crédito
+-- nombre_de_oc, ninguna función da coalesce(numero, referencia), con alias o sin
+-- él, ni coalesce(…, x.numero, x.referencia). La línea `as compra` de la nota de crédito
 -- se perdona solo mientras nadie use `l.compra`.
 select test.afirmar((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                       where n.nspname = 'public'
-                        and regexp_replace(p.prosrc, 'nombre_de_oc\(\s*[a-z_]+\.numero,\s*[a-z_]+\.referencia\)', '', 'g')
-                            ~ '[a-z_]+\.numero, *[a-z_]+\.referencia\)'
+                        and regexp_replace(p.prosrc, 'nombre_de_oc\(\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*\)', '', 'g')
+                            ~ ('coalesce\(\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*[,)]'
+                               '|,\s*([a-z_]+\.)?\mnumero\s*,\s*([a-z_]+\.)?\mreferencia\s*\)')
                         and not (p.proname = 'codigo_interno_lineas_nota_credito' and p.prosrc !~ 'l\.compra\M')) = 0,
   'ninguna función de la base da la referencia del proveedor como número de OC');
 select test.afirmar((select p.prosrc !~ 'l\.compra\M' and p.prosrc ~ 'l\.nombre_oc::text, l\.id'
