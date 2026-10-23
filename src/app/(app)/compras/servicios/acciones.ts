@@ -169,7 +169,7 @@ export async function avanzarOrdenServicio(_previo: unknown, formulario: FormDat
 export async function corregirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['compras.crear', 'compras.detraccion'])) {
-    return { ok: false, error: 'Corregir una orden de servicio corresponde a Logística, y su detracción también a Contabilidad.' }
+    return { ok: false, error: 'No tienes permiso para corregir la orden de servicio.' }
   }
 
   const analisis = z
@@ -207,7 +207,8 @@ export async function corregirOrdenServicio(_previo: unknown, formulario: FormDa
 
 /** Adjuntan y anulan los documentos de una OS los mismos que la base: `puede_adjuntar_documento_servicio`. */
 const ADJUNTAN = ['compras.crear', 'tesoreria.pagar_servicios']
-const NO_ADJUNTA = 'Los documentos de la orden de servicio los adjuntan Logística y Tesorería.'
+const NO_ADJUNTA = 'No tienes permiso para adjuntar documentos a la orden de servicio.'
+const NO_ANULA = 'No tienes permiso para anular documentos de la orden de servicio.'
 
 function repintarDocumentos() {
   revalidatePath('/compras/servicios')
@@ -264,7 +265,7 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
 /** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */
 export async function anularDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ADJUNTA }
+  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ANULA }
   const analisis = z
     .object({ id: z.guid(), motivo: z.string().trim().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.') })
     .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })

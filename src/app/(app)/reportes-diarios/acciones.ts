@@ -339,7 +339,7 @@ export async function observarReporteDiario(_previo: unknown, formulario: FormDa
 export async function anularReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['reporte_diario.registrar', 'rrhh.personal'])) {
-    return { ok: false, error: 'Solo quien subió el reporte o Recursos Humanos lo pueden anular.' }
+    return { ok: false, error: 'No tienes permiso para anular este reporte.' }
   }
 
   const analisis = z

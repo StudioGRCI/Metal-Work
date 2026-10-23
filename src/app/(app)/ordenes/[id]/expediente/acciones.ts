@@ -17,7 +17,7 @@ const uuid = z.guid()
 export async function confirmarIgv(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['cotizaciones.crear', 'cotizaciones.revisar', 'cotizaciones.liberar_tesoreria'])) {
-    return { ok: false, error: 'Solo Ventas, Gerencia o Administración confirman si el precio incluye IGV.' }
+    return { ok: false, error: 'No tienes permiso para confirmar si el precio de la cotización incluye IGV.' }
   }
   const entrada = z
     .object({ cotizacion_id: uuid, orden_id: uuid, incluye_igv: z.enum(['si', 'no']) })
@@ -48,7 +48,7 @@ export async function confirmarIgv(_previo: unknown, datos: FormData): Promise<R
 export async function cerrarCosto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])) {
-    return { ok: false, error: 'El costo lo cierran Costos y Materiales o Administración.' }
+    return { ok: false, error: 'No tienes permiso para cerrar el costo de la OT.' }
   }
   const entrada = z
     .object({ orden_id: uuid, nota: z.string().trim().max(1000).optional().default('') })
@@ -77,7 +77,7 @@ export async function fijarPresupuesto(_previo: unknown, datos: FormData): Promi
   const perfil = await exigirSesion()
   const decide = puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   const ve = puede(perfil, 'costos.ver') && puede(perfil, 'cotizaciones.ver_pdf_comercial')
-  if (!decide || !ve) return { ok: false, error: 'El presupuesto de una OT lo fijan Gerencia o Administración.' }
+  if (!decide || !ve) return { ok: false, error: 'No tienes permiso para fijar el presupuesto de una OT.' }
 
   const entrada = z
     .object({

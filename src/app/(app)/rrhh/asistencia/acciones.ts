@@ -15,7 +15,7 @@ function dato(formulario: FormData, nombre: string) {
 /** El portero marca el ingreso o la salida de una persona. Mismo permiso que `marcar_asistencia`. */
 export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!editaComoRrhh(perfil, 'asistencia.marcar')) return { ok: false, error: 'La asistencia la marca la portería.' }
+  if (!editaComoRrhh(perfil, 'asistencia.marcar')) return { ok: false, error: 'No tienes permiso para marcar la asistencia.' }
 
   const analisis = z
     .object({
@@ -55,7 +55,7 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
 export async function anularAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!editaComoRrhh(perfil, 'rrhh.personal') && !editaComoRrhh(perfil, 'asistencia.marcar'))
-    return { ok: false, error: 'Las marcas las anula Recursos Humanos; la portería, solo las de hoy.' }
+    return { ok: false, error: 'No tienes permiso para anular marcas de asistencia.' }
 
   const analisis = z
     .object({

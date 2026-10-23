@@ -60,7 +60,7 @@ export const TIPO_DOCUMENTO_COMPRA: Record<string, string> = {
   OTRO: 'Otro documento',
 }
 
-/** Los documentos de una OS (migración 20261020210000): los adjuntan Logística y Tesorería. */
+/** Los documentos de una OS (migración 20261020210000): los adjunta quien pasa `puede_adjuntar_documento_servicio`. */
 export const TIPO_DOCUMENTO_SERVICIO: Record<string, string> = {
   FACTURA: 'Factura',
   BOLETA: 'Boleta',

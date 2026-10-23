@@ -110,7 +110,7 @@ const controlEntrada = z.object({
 
 export async function guardarControlVehicular(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'costos.controlar_ot')) return { ok: false, error: 'Solo Costos y Materiales registra la ficha vehicular.' }
+  if (!puede(perfil, 'costos.controlar_ot')) return { ok: false, error: 'No tienes permiso para registrar el control vehicular.' }
   const entrada = controlEntrada.safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'Revisa los datos de la ficha vehicular.' }
   const v = entrada.data
@@ -161,7 +161,7 @@ export async function guardarControlVehicular(_previo: unknown, datos: FormData)
 
 export async function adjuntarControlFirmado(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'costos.controlar_ot')) return { ok: false, error: 'Solo Costos y Materiales adjunta el escaneo.' }
+  if (!puede(perfil, 'costos.controlar_ot')) return { ok: false, error: 'No tienes permiso para adjuntar el escaneo del control vehicular.' }
   const ordenId = uuid.safeParse(datos.get('orden_id'))
   if (!ordenId.success) return { ok: false, error: 'La OT no es válida.' }
   const pdf = await leerPdf(datos)
