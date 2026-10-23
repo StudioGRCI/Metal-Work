@@ -160,7 +160,11 @@ function FormularioSubcontrato({
       alTerminar()
       router.push(`/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`)
     },
-    { refrescar: false, alYaEntrar: alTerminar },
+    // Sin `refrescar: false` aunque el ok navegue: tras «ya quedó» o sin respuesta
+    // no se navega, y al cerrar la lista tiene que mostrar el subcontrato que
+    // entró. Sin refrescar, «la pantalla muestra lo que quedó» no mostraba nada
+    // (decimosexta pasada).
+    { alYaEntrar: alTerminar },
   )
 
   if (subcontratistas.length === 0) {
