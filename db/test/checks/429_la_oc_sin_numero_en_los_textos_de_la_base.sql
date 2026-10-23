@@ -163,6 +163,11 @@ select test.afirmar((select numero from public.compras_que_se_pueden_anular() wh
                       = current_setting('prueba.num1'),
   'en la lista de las que se pueden anular, la de antes de la serie sale «OC sin número (ref. …)» y la otra con su número');
 select public.anular_orden_compra(pg_temp.id('oc2'), 'El proveedor ya no tiene la plancha');
+-- En Aprobación, entre las decididas, la pantalla recibe el número tal cual (vacío
+-- en la de antes de la serie) y la referencia aparte, y la nombra ella.
+select test.afirmar((select numero is null and referencia = 'OC-0429' from public.documentos_por_aprobar() where id = pg_temp.id('oc2'))
+                    and (select numero from public.documentos_por_aprobar() where id = pg_temp.id('oc1')) = current_setting('prueba.num1'),
+  'Aprobación recibe la OC sin número sin la referencia en el lugar del número, y la otra con su número');
 select test.debe_fallar($$ select public.aprobar_compra(pg_temp.id('oc2')) $$,
   'la anulada no se aprueba, y el mensaje no hace pasar la referencia por número',
   'La OC sin número (ref. del proveedor OC-0429) no está esperando aprobación');

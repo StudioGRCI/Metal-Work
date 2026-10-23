@@ -20,9 +20,12 @@
 -- está anulada» y «La OC sin número (ref. del proveedor OC-0001) está anulada».
 --
 -- Lo que la base devuelve como dato suelto (el número o la referencia, sin
--- armar) para que una pantalla lo pinte se queda como está: Aprobación de
--- compras, Gestión de compras, Requerimientos, Almacén y Costeo reciben la
--- referencia aparte o la usan como dato, y se arreglan con sus pantallas.
+-- armar) para que una pantalla lo pinte se queda como está: Gestión de
+-- compras, Requerimientos, Almacén y Costeo reciben la referencia aparte o la
+-- usan como dato, y se arreglan con sus pantallas. Aprobación de compras se
+-- arregla aquí: `documentos_por_aprobar` le pasaba la referencia en lugar del
+-- número, y la pantalla no podía saber que era una OC sin número. Ahora le pasa
+-- el número tal cual (vacío en la de antes de la serie) y la referencia aparte.
 -- Lo ya guardado (avisos, pagos, correcciones) no se reescribe: queda como se
 -- escribió.
 --
@@ -295,7 +298,7 @@ begin
        $v$select string_agg(format('el %s del %s, en la %s', l.item, r.numero, public.nombre_de_oc(c.numero, c.referencia)), '; '$v$),
       (67, 'emitir_compra_de_requerimientos(uuid,jsonb,uuid,text,date,text,integer,text,boolean)',
        $v$'Ya va en otra orden de compra %: desmárcalo o espera a que Gerencia la rechace.'$v$,
-       $v$'Ya va en otra compra: %. Desmárcalo o espera a que Gerencia la rechace.'$v$),
+       $v$'Ya va en otra compra: %. Desmárcalo o espera a que Gerencia la rechace o la anule.'$v$),
       (68, 'fijar_datos_compra(uuid,boolean,text)',
        $v$raise exception 'La compra % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$,
        $v$raise exception 'La % ya tiene su comprobante adjunto: ya no se cambia si viene con factura.',$v$),
@@ -397,7 +400,10 @@ begin
        $v$'No tienes permiso para ver el pago de la OC.'$v$),
       (101, 'devoluciones_sin_nota_credito()',
        $v$'Lo ve Contabilidad.'$v$,
-       $v$'No tienes permiso para ver Adquisiciones.'$v$)
+       $v$'No tienes permiso para ver Adquisiciones.'$v$),
+      (102, 'documentos_por_aprobar()',
+       $v$select 'OC'::text, c.id, coalesce(c.numero, c.referencia), c.referencia,$v$,
+       $v$select 'OC'::text, c.id, c.numero, c.referencia,$v$)
     ) as c(orden, funcion, viejo, nuevo)
     union all
     select null::integer, null, null, null  -- cierra la última función

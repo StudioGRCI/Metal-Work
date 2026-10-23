@@ -255,6 +255,10 @@ writeFileSync(
   comprobar(anulables.includes(NOMBRE) && !anulables.includes(REFERENCIA) && !anulables.includes(`OC ${REFERENCIA}`) &&
     filaAnulable.startsWith('OC sin número ·') && filaAnulable.includes(`Ref. del proveedor: ${REFERENCIA}`),
     `en «Aprobadas que se pueden anular» la base la nombra «${NOMBRE}» y la fila dice «OC sin número» con su referencia aparte («${filaAnulable.slice(0, 80)}»)`)
+  const decididas = pagina.locator('section', { has: pagina.getByRole('heading', { name: 'Decididas en los últimos 30 días' }) })
+  const decidida = limpio(await decididas.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
+  comprobar(decidida.startsWith('OC sin número ·') && decidida.includes(`Ref. del proveedor: ${REFERENCIA}`),
+    `entre las decididas también sale «OC sin número», con su referencia aparte («${decidida.slice(0, 80)}»)`)
   await contexto.close()
   const tel = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
   await tel.pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
