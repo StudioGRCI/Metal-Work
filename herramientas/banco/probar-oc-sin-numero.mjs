@@ -439,7 +439,7 @@ writeFileSync(
   const { pagina, contexto } = await entrar(CUENTAS.logistica)
   await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
   // Gestión de compras todavía la lista por su referencia: se arregla con su pantalla.
-  await pagina.locator(`tr[data-compra="${REFERENCIA_4}"]`).getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  await pagina.locator(`tr[data-compra="${REFERENCIA_4}"]`).first().getByRole('button', { name: 'Adjuntar', exact: true }).click()
   const v = pagina.locator('[role="dialog"]')
   await v.locator('select[name="tipo"]').selectOption('COMPROBANTE')
   await v.locator('input[name="parte"]').check()

@@ -24,7 +24,9 @@
 -- Lo que la base devuelve como dato suelto (el número o la referencia, sin
 -- armar) para que una pantalla lo pinte se queda como está: Gestión de
 -- compras, Requerimientos, Almacén y Costeo reciben la referencia aparte o la
--- usan como dato, y se arreglan con sus pantallas. Aprobación de compras se
+-- usan como dato, y se arreglan con sus pantallas; la frase que el Costeo
+-- muestra de la nota de crédito («baja 10 % de lo de la …») sí se arregla aquí,
+-- porque la arma la base. Aprobación de compras se
 -- arregla aquí: `documentos_por_aprobar` le pasaba la referencia en lugar del
 -- número, y la pantalla no podía saber que era una OC sin número. Ahora le pasa
 -- el número tal cual (vacío en la de antes de la serie) y la referencia aparte.
@@ -425,7 +427,17 @@ begin
        $v$v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);$v$),
       (108, 'fn_adquisicion_no_es_boleta_de_una_parte()',
        $v$select d.numero_documento, coalesce(c.numero, 'OC ' || c.referencia) as compra into v_doc$v$,
-       $v$select d.numero_documento, public.nombre_de_oc(c.numero, c.referencia) as compra into v_doc$v$)
+       $v$select d.numero_documento, public.nombre_de_oc(c.numero, c.referencia) as compra into v_doc$v$),
+      -- La línea de la nota de crédito en el Costeo: la frase la arma la base. El
+      -- documento de la línea sigue siendo el dato suelto, como en las demás.
+      (109, 'codigo_interno_lineas_nota_credito(text)',
+       $v$x.base, c.moneda,
+           coalesce(c.numero, c.referencia) as compra,$v$,
+       $v$x.base, c.moneda, public.nombre_de_oc(c.numero, c.referencia) as nombre_oc,
+           coalesce(c.numero, c.referencia) as compra,$v$),
+      (110, 'codigo_interno_lineas_nota_credito(text)',
+       $v$|| l.compra || ' que va a este código')::text,$v$,
+       $v$|| l.nombre_oc || ' que va a este código')::text,$v$)
     ) as c(orden, funcion, viejo, nuevo)
     union all
     select null::integer, null, null, null  -- cierra la última función
@@ -458,6 +470,7 @@ begin
           or p.prosrc ~ 'Adquisiciones la ven'
           or p.prosrc ~ 'Lo ve Contabilidad\.'
           or p.prosrc ~ 'El pago de la OC lo ven'
+          or p.prosrc ~ 'l\.compra \|\| '' que va a este código'
           -- Los fragmentos de solo mensaje se dan por hechos si su texto nuevo está;
           -- esto ataja el que se haya saltado porque la función decía otra cosa.
           or p.prosrc ~* '(la orden de compra|la compra) %');
