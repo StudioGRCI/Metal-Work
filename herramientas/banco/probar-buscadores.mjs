@@ -174,10 +174,13 @@ const TRABAJADOR = `ZÚÑIGA PEÑA ${sello}, ÁNGEL`
 const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
 await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
   [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, logistico])
-// Una planilla en preparación con alguien, para que salga el reparto entre OT.
+// Una planilla en preparación con alguien, para que salga el reparto entre OT. El nombre
+// lleva el sello en letras: la planilla compara los nombres sin sus cifras, y el de una
+// tanda anterior chocaba («ya está en la planilla de taller de este mes»).
+const PERSONA = `PERSONA BANCO ${[...sello].map((d) => 'ABCDEFGHIJ'[Number(d)]).join('')}`
 const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
                             on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [logistico])
-await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, logistico])
+await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, PERSONA, logistico])
 console.log(`Sembrado con el sello ${sello} (OT ${ot.numero}).`)
 
 // ---------------------------------------------------------------- navegador
@@ -674,7 +677,7 @@ for (const ancho of [390, 1280]) {
   {
     const { pagina } = await sesion('rrhh')
     await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
-    const tarjeta = pagina.locator('details', { hasText: 'Repartir en partes iguales' }).filter({ hasText: `PERSONA BANCO ${sello}` })
+    const tarjeta = pagina.locator('details', { hasText: 'Repartir en partes iguales' }).filter({ hasText: PERSONA })
     const texto = ot.numero.replace('-', '')
     if (await tarjeta.count()) {
       await tarjeta.first().locator('summary').click()

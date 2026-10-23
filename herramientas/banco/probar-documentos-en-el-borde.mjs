@@ -306,6 +306,8 @@ async function ordenConUnPdf() {
     await base.query('commit')
   } catch (e) {
     await base.query('rollback')
+    // El PDF ya estaba en Storage: sin su orden quedaba suelto y otras suites lo contaban.
+    await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot' and name = $1`, [ruta])
     console.log(`  (no se pudo registrar la orden del banco: ${e.message})`)
     return null
   }
