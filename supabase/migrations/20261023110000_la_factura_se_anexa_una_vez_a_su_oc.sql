@@ -1,11 +1,11 @@
 -- La misma factura no se anexa dos veces a la misma OC.
 --
--- Logística anexó la F018-228173 a la OC-5593 desde dos ventanas, con el mismo
+-- Logística anexó la misma factura a una OC desde dos ventanas, con el mismo
 -- PDF bajo dos nombres, y las dos quedaron vigentes (auditoría del 22/10). La
 -- aplicación solo atajaba «el mismo PDF», y lo miraba por nombre y tamaño; la
 -- base no miraba el número. No se paga dos veces —Adquisiciones no registra la
 -- misma factura del mismo proveedor dos veces—, pero Contabilidad veía dos
--- «F018-228173 · OC-5593-MW» y tenía que adivinar cuál PDF era el bueno.
+-- «F001-000123 · OC-0001-MW» y tenía que adivinar cuál PDF era el bueno.
 --
 -- Las reglas hermanas ya lo hacían: la boleta de una parte no entra si la OC ya
 -- la tiene (20261022200000) y la factura de una OS no se adjunta dos veces

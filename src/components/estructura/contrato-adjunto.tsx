@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
@@ -208,19 +209,8 @@ function FormularioContrato({
       <Campo etiqueta="Contrato" htmlFor={campo} requerido>
         <ElegirArchivo id={campo} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} required />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando}>
-          Adjuntar
-        </Boton>
-      </div>
+      {/* Como las demás ventanas: el «ya quedó» sin rojo, con la ventana trabada y solo «Cerrar» (decimoséptima pasada). */}
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Adjuntar" />
     </form>
   )
 }

@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
@@ -81,6 +82,7 @@ export function SubirRecibo({ subcontratoId, hoy, moneda }: { subcontratoId: str
               setAbierta(false)
               recibo.otro()
             }}
+            alCancelar={() => setAbierta(false)}
           />
         )}
       </Ventana>
@@ -96,6 +98,7 @@ function FormularioRecibo({
   alSalir,
   alYaEntrar,
   alTerminar,
+  alCancelar,
 }: {
   /** Un reintento manda el mismo y la base no registra otro. */
   id: string
@@ -105,6 +108,12 @@ function FormularioRecibo({
   alSalir: () => void
   alYaEntrar: () => void
   alTerminar: () => void
+  /**
+   * Cerrar sin enviar, o tras «No llegó la respuesta»: el id sigue hasta saber
+   * cómo terminó. «Cancelar» llamaba a `alTerminar`, que empezaba otro: al
+   * volver a abrir no se preguntaba si aquel entró (decimoséptima pasada).
+   */
+  alCancelar: () => void
 }) {
   const [bruto, setBruto] = useState('')
   // Mientras no la toquen, la casilla sigue al monto: pasa de S/ 1,500, lleva retención.
@@ -197,19 +206,8 @@ function FormularioRecibo({
       <Campo etiqueta="Recibo por honorarios" htmlFor={`${prefijo}-archivo`} requerido ayuda="El PDF que emite SUNAT, o una foto.">
         <ElegirArchivo id={`${prefijo}-archivo`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_SUBCONTRATOS} required />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando}>
-          Registrar recibo
-        </Boton>
-      </div>
+      {/* Como las demás ventanas: el «ya quedó» sin rojo, con la ventana trabada y solo «Cerrar». */}
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar recibo" />
     </form>
   )
 }

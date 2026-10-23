@@ -7,6 +7,8 @@
 export const CLAVES_DEL_ENVIO = [
   'requerimiento',
   'orden_compra',
+  // La del tablero de la OT, que se emite sin factura ni comprobante.
+  'orden_compra_del_tablero',
   'orden_servicio',
   'subcontrato',
   'contrato_subcontrato',

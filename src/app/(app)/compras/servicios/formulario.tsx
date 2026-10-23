@@ -52,7 +52,7 @@ export function NuevaOrdenServicio({
   // Los ids de la orden y de su contrato viven aquí, fuera del formulario que
   // se rehace al abrir: tras «No llegó la respuesta», cancelar y volver a abrir
   // lleva los mismos, y la base no emite otra OS numerada con lo mismo. Antes
-  // nacían con el formulario y salían OS-415 y OS-416 iguales (decimoquinta
+  // nacían con el formulario y salían dos OS numeradas iguales (decimoquinta
   // pasada). Se renuevan con el ok, cuando la base dice que ya quedó o cuando,
   // al volver a abrir, la base dice que aquella OS entró.
   const contrato = useIdDelEnvio()

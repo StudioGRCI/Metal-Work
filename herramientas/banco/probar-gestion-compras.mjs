@@ -19,10 +19,12 @@
  *
  * Siembra sus tres OC aprobadas (Logística las emite y Gerencia las aprueba,
  * con las funciones de la base) y las sigue por su número. Necesita la lista
- * del conductor sin pendientes: las que otras pruebas dejaron en ella las saca
- * Logística al empezar, con la misma función que «Sacar de la lista», y al
- * terminar saca la suya. Las que van en recojo o ya recogidas no se tocan: no
- * llevan lugar y la prueba solo mira las que lo llevan.
+ * del conductor sin pendientes: las que ya estaban en ella las saca Logística
+ * al empezar, con la misma función que «Sacar de la lista», y al terminar saca
+ * la suya y las devuelve en su orden y con su peso, también si la prueba se cae
+ * a medio camino: en un banco compartido son de otro. Las que van en recojo o
+ * ya recogidas no se tocan: no llevan lugar y la prueba solo mira las que lo
+ * llevan.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE y los
  * correos de cada cuenta si no son `*@local.test`.
  */
@@ -104,14 +106,39 @@ const porId = Object.fromEntries((await consulta(`select id, numero from ordenes
 const [ocA, ocB, ocC] = sembradas.map((id) => porId[id])
 const idDe = Object.fromEntries(sembradas.map((id) => [porId[id], id]))
 
-// La lista sin pendientes de otras pruebas: Logística las saca, como con «Sacar de la lista».
+// La lista sin pendientes de antes: Logística las saca, como con «Sacar de la lista», y
+// al terminar las devuelve en su orden y con su peso (`devolverLasDeAntes`).
 await como('logistica')
 const dejadas = await consulta(
-  `select c.id, c.numero from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
+  `select c.id, c.numero, p.peso_kg from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
     where p.posicion is not null and c.recojo = 'POR_RECOGER' order by p.posicion`,
 )
 for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
 await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
+let devueltas = false
+/** Las de antes vuelven al final de la lista en el orden en que estaban: «Poner en la lista» con su peso. */
+async function devolverLasDeAntes() {
+  if (devueltas) return
+  devueltas = true
+  await como('logistica')
+  for (const d of dejadas) {
+    await consulta(
+      `select public.programar_recojo(c.id, $2) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+        where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is null`,
+      [d.id, d.peso_kg],
+    )
+  }
+}
+// Si la prueba se cae a medio camino, la lista no se queda sin las de antes.
+process.on('uncaughtException', async (e) => {
+  console.error(e)
+  try {
+    await devolverLasDeAntes()
+  } catch (otro) {
+    console.error(`No volvieron a la lista ${dejadas.map((d) => d.numero).join(', ')}: ${otro.message}`)
+  }
+  process.exit(1)
+})
 console.log(`Sembradas ${ocA}, ${ocB} y ${ocC}${dejadas.length ? `; salieron de la lista ${dejadas.map((d) => d.numero).join(', ')}` : ''}`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -329,6 +356,13 @@ await navegador.close()
 // La primera ya salió a recogerla y no se saca; no lleva lugar.
 await como('logistica')
 await consulta(`select public.quitar_recojo_de_la_lista(id) from ordenes_compra_materiales where id = $1 and recojo = 'POR_RECOGER'`, [idDe[ocB]])
+await devolverLasDeAntes()
+const [{ n: enLaLista }] = await consulta(
+  `select count(*)::int as n from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
+    where c.id = any($1) and p.posicion is not null and c.recojo = 'POR_RECOGER'`,
+  [dejadas.map((d) => d.id)],
+)
+comprobar(enLaLista === dejadas.length, `las ${dejadas.length} que ya estaban en la lista vuelven a ella (${enLaLista})`)
 await base.end()
 console.log(fallas.length === 0 ? `\nTODO EN VERDE (${ocA}, ${ocB}, ${ocC})` : `\n${fallas.length} FALLAS`)
 process.exit(fallas.length === 0 ? 0 : 1)

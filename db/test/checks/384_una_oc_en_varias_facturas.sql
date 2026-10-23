@@ -248,7 +248,7 @@ select test.afirmar((select numero_documento = 'F001-45' and fecha_emision = cur
   'la factura queda con su número como lo guarda la base y su fecha; la boleta, sin exigirlos');
 
 -- ============================================ 8. La misma factura no se anexa dos veces a la misma OC
--- (migración 20261023110000). Dos ventanas anexaron la F018-228173 a la OC-5593 con el
+-- (migración 20261023110000). Dos ventanas anexaron la misma factura a una OC con el
 -- mismo PDF bajo dos nombres, y las dos quedaron vigentes.
 select set_config('prueba.d' || n, gen_random_uuid()::text, true) from generate_series(6, 10) n;
 -- Como `anexar`, pero a la OC que se diga.

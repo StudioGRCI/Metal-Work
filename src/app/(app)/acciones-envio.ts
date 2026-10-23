@@ -46,6 +46,11 @@ export async function consultarEnvio(clave: ClaveDelEnvio, id: string): Promise<
       const { data } = await supabase.from('requerimientos').select('numero').eq('id', id).maybeSingle()
       return data ? quedo('El requerimiento', 'otro', data.numero) : null
     }
+    case 'orden_compra_del_tablero': {
+      // La ventana del tablero de la OT no lleva factura ni comprobante: no hay archivo que echar en falta.
+      const { data } = await supabase.from('ordenes_compra_materiales').select('numero').eq('id', id).maybeSingle()
+      return data ? quedo('La orden de compra', 'otra', data.numero) : null
+    }
     case 'orden_compra': {
       const { data } = await supabase.from('ordenes_compra_materiales').select('numero').eq('id', id).maybeSingle()
       if (!data) return null
@@ -104,8 +109,13 @@ export async function consultarEnvio(clave: ClaveDelEnvio, id: string): Promise<
       return data.tipo === 'COMPROBANTE' ? quedo('El comprobante', 'otro', detalle) : quedo('El documento', 'otro', detalle)
     }
     case 'documento_servicio': {
-      const { data } = await supabase.from('documentos_orden_servicio').select('numero, nombre_archivo').eq('id', id).maybeSingle()
-      return data ? quedo('El documento', 'otro', data.numero || data.nombre_archivo) : null
+      const { data } = await supabase.from('documentos_orden_servicio').select('tipo, numero, nombre_archivo').eq('id', id).maybeSingle()
+      if (!data) return null
+      const detalle = data.numero || data.nombre_archivo
+      if (data.tipo === 'FACTURA') return quedo('La factura', 'otra', detalle)
+      if (data.tipo === 'BOLETA') return quedo('La boleta', 'otra', detalle)
+      if (data.tipo === 'RECIBO') return quedo('El recibo', 'otro', detalle)
+      return data.tipo === 'CONTRATO' ? quedo('El contrato', 'otro', detalle) : quedo('El documento', 'otro', detalle)
     }
     case 'factura_venta': {
       const { data } = await supabase.from('facturas_venta').select('numero').eq('id', id).maybeSingle()
@@ -128,13 +138,15 @@ export async function consultarEnvio(clave: ClaveDelEnvio, id: string): Promise<
         .eq('id', id)
         .maybeSingle()
       if (!data) return null
-      const { data: filas } = await supabase
+      const { data: filas, error } = await supabase
         .from('pagos_adquisicion')
         .select('monto')
         .eq('adquisicion_id', data.adquisicion_id)
         .eq('registrado_por', data.registrado_por)
         .eq('creado_en', data.creado_en)
-      const tomado = (filas ?? []).reduce((suma, f) => suma + Number(f.monto), 0)
+      // Sin las filas no se sabe cuánto tomó: mejor callar que decir «tomó S/ 0.00».
+      if (error || !filas?.length) return null
+      const tomado = filas.reduce((suma, f) => suma + Number(f.monto), 0)
       const factura = data.adquisiciones?.numero_documento ? `la factura ${data.adquisiciones.numero_documento}` : 'la factura'
       return `Lo que enviaste antes sí quedó: ${factura} tomó ${importe(tomado, data.adquisiciones?.moneda, null)}. Lo que registres ahora irá aparte.`
     }
@@ -163,32 +175,38 @@ export async function consultarEnvio(clave: ClaveDelEnvio, id: string): Promise<
       return data ? quedo('La devolución', 'otra', importe(data.monto, data.moneda, data.fecha)) : null
     }
     case 'movimiento_almacen': {
+      // «2 UND de Disco de corte, con GR-…»: `codigo_unidad` es la unidad del vehículo, no la medida.
       const { data } = await supabase
         .from('movimientos_materiales')
-        .select('tipo, cantidad, codigo_unidad, documento_referencia')
+        .select('tipo, cantidad, documento_referencia, materiales(descripcion, unidad:unidades_medida(codigo))')
         .eq('id', id)
         .maybeSingle()
       if (!data) return null
-      const detalle = [`${cantidad(data.cantidad)}${data.codigo_unidad ? ` ${data.codigo_unidad}` : ''}`, data.documento_referencia]
+      const material = data.materiales
+      const cuanto = [cantidad(data.cantidad), material?.unidad?.codigo].filter(Boolean).join(' ')
+      const detalle = [material?.descripcion ? `${cuanto} de ${material.descripcion}` : cuanto, data.documento_referencia]
         .filter(Boolean)
         .join(', con ')
       return data.tipo === 'DEVOLUCION_PROVEEDOR' ? quedo('La devolución', 'otra', detalle) : quedo('La reposición', 'otra', detalle)
     }
     case 'movimiento_caja': {
-      const { data } = await supabase.from('movimientos_caja').select('tipo, monto, fecha, cajas(moneda)').eq('id', id).maybeSingle()
+      const { data } = await supabase.from('movimientos_caja').select('tipo, monto, fecha, cajas(nombre, moneda)').eq('id', id).maybeSingle()
       if (!data) return null
       const sujeto = data.tipo === 'INGRESO' ? 'El ingreso' : 'El egreso'
-      return quedo(sujeto, 'otro', importe(data.monto, data.cajas?.moneda, data.fecha))
+      const cuenta = data.cajas?.nombre ? `, en ${data.cajas.nombre}` : ''
+      return quedo(sujeto, 'otro', `${importe(data.monto, data.cajas?.moneda, data.fecha)}${cuenta}`)
     }
     case 'transferencia_caja': {
       const { data } = await supabase
         .from('movimientos_caja')
-        .select('monto, fecha, cajas(moneda)')
+        .select('tipo, monto, fecha, cajas(nombre, moneda)')
         .eq('origen', 'TRANSFERENCIA')
         .eq('origen_id', id)
-        .eq('tipo', 'EGRESO')
-        .maybeSingle()
-      return data ? quedo('La transferencia', 'otra', importe(data.monto, data.cajas?.moneda, data.fecha)) : null
+      const sale = data?.find((m) => m.tipo === 'EGRESO')
+      if (!sale) return null
+      const entra = data?.find((m) => m.tipo === 'INGRESO')
+      const cuentas = sale.cajas?.nombre && entra?.cajas?.nombre ? `, de ${sale.cajas.nombre} a ${entra.cajas.nombre}` : ''
+      return quedo('La transferencia', 'otra', `${importe(sale.monto, sale.cajas?.moneda, sale.fecha)}${cuentas}`)
     }
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -28,10 +28,14 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
   // terminó (`useIdDelEnvio`). Con un ok o un «ya quedó» se empieza otra; tras
   // «No llegó la respuesta» sigue el mismo, y la devolución repetida no entra dos
   // veces. Si al volver a abrir la base dice que aquella entró, la ventana lo
-  // dice y se empieza otra.
+  // dice y se empieza otra: se suelta lo elegido para aquella, no lo que se
+  // eligió después de abrir, y el formulario no se rehace, que borraba el motivo
+  // ya escrito (decimoséptima pasada).
+  const enviado = useRef({ elegido: '', repone: '' })
   const devolucion = useIdDelEnvio('movimiento_almacen', () => {
-    setElegido('')
-    setRepone('')
+    const aquella = enviado.current
+    setElegido((e) => (e === aquella.elegido ? '' : e))
+    setRepone((r) => (r === aquella.repone ? '' : r))
   })
   const empezarOtra = () => {
     devolucion.otro()
@@ -41,6 +45,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
   const envio = useEnvio(
     (previo: unknown, datos: FormData) => {
       devolucion.salio()
+      enviado.current = { elegido, repone }
       return devolverAlProveedor(previo, datos)
     },
     () => {
@@ -72,7 +77,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
             No hay ingresos de compra con material en el almacén. Lo que ya salió al taller vuelve primero como devolución del taller.
           </p>
         ) : (
-          <form key={devolucion.id} onSubmit={envio.alEnviar} className="space-y-4">
+          <form onSubmit={envio.alEnviar} className="space-y-4">
             <input type="hidden" name="id" value={devolucion.id ?? ''} />
             <Campo etiqueta="Qué llegó de la compra" htmlFor="dev-ingreso" requerido>
               <Seleccion id="dev-ingreso" name="ingreso" required value={elegido} onChange={(e) => setElegido(e.target.value)}>

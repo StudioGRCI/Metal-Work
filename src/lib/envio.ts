@@ -230,7 +230,11 @@ export function useEnvio<T = never>(
  * Mientras la base no contesta, o si no entró, sigue el mismo: lo peor es un «ya
  * quedó» que se cierra, nunca un documento doble. Antes se adivinaba por el
  * estado de la pantalla —el saldo había bajado—, y tras ponerse al día el mismo
- * pago entraba dos veces sin que nada lo dijera (decimosexta pasada).
+ * pago entraba dos veces sin que nada lo dijera (decimosexta pasada). La nota
+ * se queda hasta el envío siguiente, también al cerrar y volver a abrir: se
+ * borraba al abrir, y si la respuesta había llegado con la ventana cerrada, la
+ * ventana salía muda con un id nuevo y lo mismo enviado otra vez entraba dos
+ * veces (decimoséptima pasada).
  *
  * Sin `clave` no se pregunta: es el id de algo que sale con el documento (su
  * factura, su contrato), y se renueva con él (`alEntrar`).
@@ -252,7 +256,6 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void) {
     abrir() {
       const previo = pendiente.current
       const este = ++turno.current
-      setAnterior(null)
       setId(previo ?? crypto.randomUUID())
       if (!previo || !clave) return
       consultarEnvio(clave, previo).then(
@@ -269,10 +272,12 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void) {
     },
     salio() {
       turno.current++
+      setAnterior(null)
       if (id) pendiente.current = id
     },
     otro() {
       turno.current++
+      setAnterior(null)
       pendiente.current = null
       setId(crypto.randomUUID())
     },

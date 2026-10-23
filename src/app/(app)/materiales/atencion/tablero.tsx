@@ -124,7 +124,7 @@ export function TableroMateriales({
   // tras «No llegó la respuesta», cancelar y volver a abrir lleva el mismo, y la
   // base no emite otra OC numerada con lo mismo (decimoquinta pasada). Si al
   // volver a abrir la base dice que aquella entró, la ventana lo dice y lleva otro.
-  const ordenNueva = useIdDelEnvio('orden_compra')
+  const ordenNueva = useIdDelEnvio('orden_compra_del_tablero')
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()

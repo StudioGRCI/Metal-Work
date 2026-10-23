@@ -41,7 +41,11 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
    * respuesta usa el mismo. Después de adjuntar, el siguiente lleva otro; si
    * la ventana se cierra y se vuelve a abrir, `alAdjuntar` le avisa a quien lo
    * guarda para que no vuelva con el del documento que ya entró. Si quien lo
-   * guarda lo cambia (la base dijo que aquel entró), el formulario toma el nuevo.
+   * guarda con `useIdDelEnvio` (el que pasa `alSalir`) lo cambia —la base dijo
+   * que aquel entró—, el formulario toma el nuevo sin borrar lo elegido. Sin
+   * `alSalir` vale solo el primero: en el tablero de la OT nace en el servidor
+   * con cada repintado, y seguirlo borraba el PDF elegido y mandaba el
+   * reintento a otra ruta (decimoséptima pasada).
    */
   solicitudId: string
   /** Al enviar: quien guarda el id lo conserva hasta saber cómo terminó (`useIdDelEnvio`). */
@@ -61,10 +65,14 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
 }) {
   const [id, setId] = useState(solicitudId)
   const [dado, setDado] = useState(solicitudId)
-  if (solicitudId !== dado) {
+  if (alSalir && solicitudId !== dado) {
     setDado(solicitudId)
     setId(solicitudId)
   }
+  // El formulario se rehace al empezar otro documento, no cada vez que cambia el
+  // id: la nota de que aquel entró llega con la ventana ya abierta, y rehacerlo
+  // borraba lo elegido y dejaba el cursor en la página (decimoséptima pasada).
+  const [vez, setVez] = useState(0)
   const [tipo, setTipo] = useState<string>(tipoInicial ?? '')
   // La OC que llega en partes: esta boleta es solo de una parte y el resto llega con factura.
   const [parte, setParte] = useState(false)
@@ -82,6 +90,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   const aviso = useRef<HTMLParagraphElement>(null)
   function empezarOtro() {
     setId(crypto.randomUUID())
+    setVez((v) => v + 1)
     setParte(false)
     alAdjuntar?.()
     factura.vaciar()
@@ -127,7 +136,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   // va al aviso, como en `PieDeVentana`.
   useCursorAlRechazo(enviando, error, () => aviso.current)
   const quieto = enviando || trabado
-  return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-2 sm:items-end">
+  return <form key={vez} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-2 sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>

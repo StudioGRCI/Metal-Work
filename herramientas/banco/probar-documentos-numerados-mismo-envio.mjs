@@ -13,6 +13,10 @@
  *      el cursor; la respuesta de la pregunta no se pinta encima. Al cerrar, la
  *      lista muestra el primero, con el importe de la primera vez.
  *   c. Cerrada esa ventana, la siguiente registra otro documento.
+ *   d. La respuesta de la pregunta llega con la ventana ya cerrada: al volver
+ *      a abrir, la ventana dice que aquel quedó, y lo sigue diciendo al cerrar
+ *      y abrir sin enviar; lo que se registra después es otro, y la ventana
+ *      siguiente ya no trae la nota.
  *
  *   1. Logística, «Nueva orden de servicio».
  *   2. Logística, «Nueva OC directa».
@@ -336,6 +340,48 @@ async function mismoEnvio(d) {
   const [nuevo] = await hasta(() => d.contar(C), (r) => r.length > 0)
   comprobar(otra && !errorC && Boolean(nuevo) && nuevo.numero !== primero?.numero,
     `[${d.nombre}] la ventana siguiente sale limpia y registra otro (${nuevo?.numero ?? 'nada'})${errorC ? ` (dijo «${errorC}»)` : ''}`)
+
+  // d. Sin respuesta, «Cancelar», volver a abrir y cerrar antes de que la base conteste: la respuesta llega con
+  //    la ventana cerrada. Al volver a abrir, la ventana dice que aquel quedó, y lo sigue diciendo al cerrar y
+  //    abrir sin enviar; lo que se registra después es otro y el primero queda uno (decimoséptima pasada: salía
+  //    muda, con un id nuevo, y lo mismo enviado otra vez entraba dos veces).
+  const D = `${SUFIJO}d`
+  await ir()
+  await abrir()
+  await d.llenar(v, pagina, D, d.valores[0])
+  await sinRespuesta(D)
+  await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await v.waitFor({ state: 'hidden' })
+  const [entroD] = await hasta(() => d.contar(D), (r) => r.length > 0)
+  corte.retener = d.consulta
+  const consultasD = corte.consultas
+  await abrir()
+  await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await v.waitFor({ state: 'hidden' })
+  corte.retener = null
+  corte.soltar()
+  await hasta(() => corte.consultas, (n) => n > consultasD, 15000)
+  await abrir()
+  const notaD = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 10000))
+  await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await v.waitFor({ state: 'hidden' })
+  await abrir()
+  const sigue = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 5000))
+  comprobar(notaD.startsWith(`${d.nota} que enviaste antes sí quedó: ${entroD?.numero}.`) && sigue === notaD,
+    `[${d.nombre}] si la base contesta con la ventana cerrada, al volver a abrir dice que aquel quedó, y lo sigue diciendo al cerrar y abrir sin enviar: «${notaD}»`)
+  const D2 = `${SUFIJO}d2`
+  await d.llenar(v, pagina, D2, d.valores[1])
+  await enviar()
+  const errorD = await esperarVentana(pagina)
+  const [otroD] = await hasta(() => d.contar(D2), (r) => r.length > 0)
+  const deD = await d.contar(D)
+  comprobar(!errorD && deD.length === 1 && Boolean(otroD) && otroD.numero !== entroD?.numero,
+    `[${d.nombre}] y lo que se registra después es otro, sin repetir el primero (${entroD?.numero} una vez y ${otroD?.numero ?? 'nada'})${errorD ? ` (dijo «${errorD}»)` : ''}`)
+  if (!d.alGuardar) {
+    await abrir()
+    comprobar((await v.locator('[data-envio-anterior]').count()) === 0, `[${d.nombre}] tras registrarlo, la ventana siguiente ya no trae la nota`)
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  }
   await contexto.close()
 }
 

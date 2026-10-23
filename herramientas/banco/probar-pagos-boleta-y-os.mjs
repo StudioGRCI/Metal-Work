@@ -610,10 +610,14 @@ let pagoId
   // `pedidas` cuenta los envíos que salieron, y `refrescos` las puestas al día terminadas: se espera a lo que
   // pasó, no un tiempo fijo (la decimosexta pasada pidió quitar las esperas fijas).
   // `sinLlegar` corta antes de que el envío llegue al servidor; `consultas` cuenta las preguntas de la ventana al abrirse.
-  const corte = { quedan: 0, sinLlegar: 0, demora: 0, entregadas: 0, pedidas: 0, refrescos: 0, refrescosAlEntregar: 0, consultas: 0 }
-  pagina.on('requestfinished', (q) => {
+  const corte = { quedan: 0, sinLlegar: 0, demora: 0, entregadas: 0, pedidas: 0, refrescos: 0, refrescosAlEntregar: 0, consultas: 0, contestacion: '' }
+  pagina.on('requestfinished', async (q) => {
     if (q.method() === 'GET' && q.headers()['rsc'] && !q.headers()['next-router-prefetch']) corte.refrescos++
-    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes('"pago_compra"')) corte.consultas++
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes('"pago_compra"')) {
+      // Lo que contestó la base, para no dar por buena una ventana que todavía no recibió la respuesta.
+      corte.contestacion = (await (await q.response())?.text().catch(() => '')) ?? ''
+      corte.consultas++
+    }
   })
   await pagina.route('**/*', async (r) => {
     const q = r.request()
@@ -742,13 +746,16 @@ let pagoId
   const consultasAntes = corte.consultas
   await abrir()
   await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
-  const sinNota = (await v.locator('[data-envio-anterior]').count()) === 0
+  // La base contestó que no entró, y la ventana ya pintó lo que sigue a esa respuesta (dos cuadros después).
+  const contesto = corte.contestacion
+  await pagina.evaluate(() => new Promise((listo) => requestAnimationFrame(() => requestAnimationFrame(() => listo()))))
+  const sinNota = !/sí quedó/.test(contesto) && (await v.locator('[data-envio-anterior]').count()) === 0
   await llenar('14', 'voucher-2.pdf')
   await v.getByRole('button', { name: 'Registrar el pago' }).click()
   await hasta(() => v.count(), (n) => n === 0, 30000)
   const al14 = await nuevos()
   comprobar(sinNota && al14.join() === '20,5,7,9,11,13,14',
-    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; pagos ${al14.join(', ')})`)
+    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; la base: «${contesto.slice(-60)}»; pagos ${al14.join(', ')})`)
   const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
                                     and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])

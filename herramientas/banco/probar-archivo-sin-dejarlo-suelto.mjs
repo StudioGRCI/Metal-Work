@@ -183,6 +183,10 @@ const FACTURA_A = pdfConTexto(['FACTURA ELECTRONICA', 'F001-00000111', 'FECHA DE
 const FACTURA_B = pdfConTexto(['FACTURA ELECTRONICA', 'F002-00000222', 'FECHA DE EMISION: 12/10/2026', 'IMPORTE TOTAL: S/ 236.00'])
 
 const sello = Date.now().toString().slice(-6)
+// Un RUC válido para la factura sin OC: la factura de compra lo pide para ligarse a las OC de su proveedor.
+const RUC_QA = (await uno(`select n from (select '20' || lpad($1::text, 8, '0') || d as n from generate_series(0, 9) d) x
+                            where public.ruc_es_valido(n) limit 1`, [sello]))?.n
+if (!RUC_QA) throw new Error('No salió un RUC válido para la prueba.')
 // Una foto PNG de 1×1: la firma que mira la pantalla y un cuerpo que se abre.
 const PNG_MINIMO = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
 const PDF_MINIMO = (relleno) =>
@@ -694,7 +698,7 @@ async function documentoQueYaQuedo(viewport) {
   const estado = {
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
     // Trabada tras «ya quedó», la ventana cambia «Adjuntar» por «Cerrar».
-    trabado: (await v.getByRole('button', { name: 'Adjuntar' }).count()) === 0 && (await v.getByRole('button', { name: 'Cerrar', exact: true }).count()) === 1 && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
+    trabado: (await v.getByRole('button', { name: 'Adjuntar' }).count()) === 0 && (await v.getByRole('button', { name: 'Cerrar', exact: true }).filter({ hasText: 'Cerrar' }).count()) === 1 && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
     dice: segunda.includes('Este documento ya quedó adjuntado la primera vez que lo enviaste. Si cambiaste algo después, no se guardó'),
   }
   await p.unrouteAll({ behavior: 'ignoreErrors' })
@@ -1213,6 +1217,7 @@ async function loLeidoSeVaConElArchivo(viewport) {
   await pdfR.locator('xpath=..').getByRole('button', { name: /^Quitar / }).click()
   await r.locator('#adq-documento').selectOption('')
   await r.locator('#adq-proveedor').fill(`QA proveedor ${sello}`)
+  await r.locator('#adq-ruc').fill(RUC_QA)
   await r.locator('#adq-numero').fill(`F999-${sello}`)
   await r.locator('#adq-emision').fill(doc.fecha)
   await r.locator('#adq-total').fill('100.00')
@@ -1345,7 +1350,13 @@ async function loLeidoSeVaConElArchivo(viewport) {
       await r.locator(`input[name="parciales"][value="${oc.orden_compra_id}"]`).check()
       await pdfR.setInputFiles({ name: `QA-SIN-OC-${sello}.pdf`, mimeType: 'application/pdf', buffer: FACTURA_B })
       await esperar(async () => (await r.getByText('Leyendo la factura…').count()) === 0, 20000)
-      await r.locator('#adq-numero').fill(numero)
+      // Lo leído llega al campo un instante después del «Leyendo…»: escribir encima en ese
+      // instante juntaba los dos números («F002-222F997-…»). Se espera lo leído y se reescribe.
+      await esperar(async () => (await valor(r, '#adq-numero')) !== '', 5000)
+      await esperar(async () => {
+        await r.locator('#adq-numero').fill(numero)
+        return (await valor(r, '#adq-numero')) === numero
+      }, 5000)
       await r.locator('#adq-emision').fill(doc.fecha)
       await r.locator('#adq-vencimiento').fill(doc.fecha)
       await r.locator('#adq-total').fill('100.00')
