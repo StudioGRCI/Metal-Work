@@ -63,6 +63,10 @@ export function RegistrarNotaCredito({
 }) {
   const m = factura.moneda === 'USD' ? 'USD' : 'PEN'
   const [notaId, setNotaId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState<'DEVOLUCION' | 'DESCUENTO'>('DEVOLUCION')
   const [devolucion, setDevolucion] = useState('')
   const { avisar, aviso } = useAvisar()
@@ -77,17 +81,23 @@ export function RegistrarNotaCredito({
       return registrarNotaCredito(null, datos)
     })
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setNotaId(null)
-    if (r.mensaje) avisar(r.mensaje)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      setNotaId(null)
+      if (r.mensaje) avisar(r.mensaje)
+    },
+    { alYaEntrar: () => setNotaId(null) },
+  )
 
   function abrir() {
     limpiar()
     const inicial = devolucionInicial ?? (devoluciones.length === 1 ? devoluciones[0].id : '')
     setTipo(devolucionInicial || devoluciones.length > 0 ? 'DEVOLUCION' : 'DESCUENTO')
     setDevolucion(inicial)
-    setNotaId(crypto.randomUUID())
+    setNotaId((actual) => actual ?? crypto.randomUUID())
+    setAbierta(true)
   }
   const campo = (nombre: string) => `${nombre}-nota-${factura.id}${devolucionInicial ? `-${devolucionInicial}` : ''}`
   const elegida = devoluciones.find((d) => d.id === devolucion)
@@ -107,8 +117,8 @@ export function RegistrarNotaCredito({
         Nota de crédito
       </Boton>
       <Ventana
-        abierta={notaId !== null}
-        alCerrar={() => setNotaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Nota de crédito de la factura ${factura.numero}`}
         descripcion={`${conPunto(factura.proveedor)} La factura baja sola por el total de la nota; si ya estaba pagada, lo que sobra queda a favor y Tesorería lo descuenta de otra factura o registra que el proveedor lo devolvió.`}
         ancho="md"
@@ -169,7 +179,7 @@ export function RegistrarNotaCredito({
           <Campo etiqueta="La nota de crédito" htmlFor={campo('archivo')} requerido ayuda="El PDF que envió el proveedor, o una foto legible.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setNotaId(null)} texto="Registrar la nota" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la nota" />
         </form>
       </Ventana>
     </>

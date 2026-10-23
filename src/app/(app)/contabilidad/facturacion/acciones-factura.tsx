@@ -51,6 +51,10 @@ export function RegistrarFactura({
   facturado: number
 }) {
   const [facturaId, setFacturaId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [total, setTotal] = useState('')
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)
   const conEsta = facturado + (Number(total) || 0)
@@ -59,7 +63,8 @@ export function RegistrarFactura({
   function abrir() {
     setTotal('')
     setMonedaFactura(monedaCotizacion)
-    setFacturaId(crypto.randomUUID())
+    setFacturaId((actual) => actual ?? crypto.randomUUID())
+    setAbierta(true)
   }
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -72,7 +77,14 @@ export function RegistrarFactura({
       return registrarFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(registrar, () => setFacturaId(null))
+  const { alEnviar, enviando, error } = useEnvio(
+    registrar,
+    () => {
+      setAbierta(false)
+      setFacturaId(null)
+    },
+    { alYaEntrar: () => setFacturaId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-${cotizacionId}`
 
   return (
@@ -82,8 +94,8 @@ export function RegistrarFactura({
         Registrar factura
       </Boton>
       <Ventana
-        abierta={facturaId !== null}
-        alCerrar={() => setFacturaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Factura del código ${codigoInterno}`}
         descripcion={`Por la cotización ${numeroCotizacion}. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Una cotización puede llevar varias: la inicial y el saldo.`}
         ancho="md"
@@ -148,7 +160,7 @@ export function RegistrarFactura({
           <Campo etiqueta="PDF de la factura" htmlFor={campo('archivo')} requerido ayuda="El que descargaste de SUNAT.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setFacturaId(null)} texto="Registrar la factura" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la factura" />
         </form>
       </Ventana>
     </>

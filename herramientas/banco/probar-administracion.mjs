@@ -241,8 +241,8 @@ let ordenId = ''
   rqa = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
   const fila = await uno(`select id, codigo_interno from public.requerimientos where numero = $1`, [rqa])
   comprobar(fila?.codigo_interno === 'TODOS LOS ACTIVOS', `el ${rqa || 'RQA'} queda cargado a TODOS LOS ACTIVOS`)
-  await pagina.waitForTimeout(800)
-  comprobar(limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 'y la lista lo dice')
+  // La lista se pone al día cuando llega la página nueva; con el banco cargado tarda más de 800 ms.
+  comprobar(await esperar(async () => limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 10000), 'y la lista lo dice')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-rqa-lista.png`, fullPage: true })
   // En el teléfono la lista no ensancha la página (la ventana del RQA se salía por la derecha).
   await pagina.setViewportSize({ width: 390, height: 844 })

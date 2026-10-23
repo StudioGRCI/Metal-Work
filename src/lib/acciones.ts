@@ -32,6 +32,14 @@ export const yaEntroLaPrimeraVez = (mensaje: string | null | undefined) =>
   Boolean(mensaje && /la primera vez que l[oa]s? enviaste/.test(mensaje))
 
 /**
+ * Ese aviso, dicho dentro de una ventana. La base pide recargar, pero la
+ * pantalla se pone al día sola al cerrarla; y lo que se cambió en la ventana
+ * seguía a la vista sin que nada dijera que no se guardó (decimocuarta pasada).
+ */
+export const yaEntroEnLaVentana = (mensaje: string) =>
+  mensaje.replace(/[:.] recarga la pantalla para ver cómo quedó\.$/i, '. Lo que cambiaste después no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+
+/**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.
  * Los triggers del esquema ya lanzan mensajes redactados en español, así que se
  * dejan pasar tal cual; aquí solo se reescribe lo que emite el propio motor.

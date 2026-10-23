@@ -20,11 +20,14 @@ const YA_SE_SUBIO = 'Desde esta ventana ya se subió '
 
 /**
  * Después de una respuesta perdida se eligió otro archivo, y en Storage sigue
- * el primero: una fila lo nombra (quedó), o no hubo señal para quitarlo.
+ * el primero: una fila lo nombra (quedó), o no hubo señal para quitarlo. Si
+ * quedó, es un «ya quedó» como los de la base (`yaEntroLaPrimeraVez`): la
+ * ventana ofrece solo «Cerrar» y el envío siguiente lleva otro id. Antes el id
+ * se quedaba y cada documento siguiente de la compra volvía a esa ruta.
  */
 export function otroArchivoEnLaRuta(nombre: string, quedo: boolean) {
   return quedo
-    ? `${YA_SE_SUBIO}${nombre} y quedó registrado: recarga la pantalla para verlo antes de subir otro.`
+    ? `${YA_SE_SUBIO}${nombre} y quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.`
     : `${YA_SE_SUBIO}${nombre} y no se sabe si quedó: recarga la pantalla y mira si está antes de volver a intentar.`
 }
 

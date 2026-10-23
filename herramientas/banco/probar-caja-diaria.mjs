@@ -409,7 +409,10 @@ const movimientos = (caja, fecha) =>
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
-  await pagina.locator('summary', { hasText: 'Cuentas de Tesorería' }).click()
+  // La sección sale abierta sola si algún banco espera la captura de su saldo (las
+  // otras pruebas del banco dejan alguno así): tocar el título entonces la cerraba.
+  const seccion = pagina.locator('details', { has: pagina.locator('summary', { hasText: 'Cuentas de Tesorería' }) })
+  if (!(await seccion.evaluate((d) => d.open))) await seccion.locator('summary').click()
   await pagina.locator(`[data-editar-cuenta="${CHICA}"]`).click()
   const v = pagina.locator(VENTANA)
   comprobar(await v.locator('input[inputmode="decimal"]').isDisabled(), 'con movimientos, el saldo inicial está bloqueado')

@@ -2,7 +2,7 @@ import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
-import { alCerrarLaVentana } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -35,6 +35,13 @@ export function explicarFallo(e: unknown): string {
 type Opciones = {
   /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
   refrescar?: boolean
+  /**
+   * Tras «… ya quedó … la primera vez que lo enviaste»: ese id ya terminó y el
+   * envío siguiente lleva otro. Corre con la ventana ya cerrada, o en el acto si
+   * no la había. Sin esto un id que vive fuera de la ventana se quedaba pegado:
+   * cada documento siguiente de la compra decía «ya quedó» hasta recargar.
+   */
+  alYaEntrar?: () => void
 }
 
 /**
@@ -52,16 +59,50 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true } = opciones
+  const { refrescar = true, alYaEntrar } = opciones
   const router = useRouter()
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
 
+  /**
+   * Lo que sigue a un envío que no salió bien. El aviso de una ventana se va con
+   * ella: si el envío vive fuera (el pago de la tarjeta), volvía a abrirse con el
+   * aviso viejo y, si era un «ya quedó», sin el botón que envía, hasta recargar.
+   * Pasaba también cerrándola mientras se enviaba: la respuesta llegaba después.
+   * Cuando el envío pudo entrar —ya entró, o no llegó la respuesta—, la pantalla
+   * de detrás se pone al día al cerrar, para que no ofrezca otra vez lo que ya
+   * entró: con «No llegó la respuesta», cancelar y volver a abrir, la tarjeta
+   * seguía con el saldo de antes y se pagaba dos veces (decimocuarta pasada). Con
+   * la ventana abierta espera a que se cierre: antes la desmontaba con el aviso a
+   * medio leer (`ventanas-abiertas.ts`). Sin ventana, el aviso se queda a la vista.
+   */
+  function despuesDelRechazo(salida: ResultadoAccion<T>, ventana: number | null, lanzo: boolean) {
+    if (salida.ok) return
+    const desdeVentana = ventana !== null
+    const yaEntro = yaEntroLaPrimeraVez(salida.error)
+    // La subida con su archivo no lanza: devuelve «No llegó la respuesta…» (`anotarSinDejarloSuelto`).
+    const pudoEntrar = lanzo || salida.error.startsWith('No llegó la respuesta')
+    const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
+    if (!desdeVentana) {
+      if (yaEntro) alYaEntrar?.()
+      if (ponerAlDia) iniciar(() => router.refresh())
+      return
+    }
+    const alCerrar = () => {
+      setResultado((r) => (r === salida ? null : r))
+      if (yaEntro) alYaEntrar?.()
+      if (ponerAlDia) router.refresh()
+    }
+    // Si la ventana del envío ya se cerró, en el acto: la que esté abierta ahora es otra.
+    if (ventana !== vecesQueSeCerro() || !alCerrarLaVentana(alCerrar)) iniciar(alCerrar)
+  }
+
   function ejecutar(datos: FormData) {
     if (enCurso.current) return
     enCurso.current = true
     setResultado(null)
+    const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
 
     iniciar(async () => {
       // Mientras Next navega por la redirección de la acción, el botón sigue
@@ -79,7 +120,9 @@ export function useAccion<T = never>(
             soltar = false
             throw deNext
           }
-          setResultado({ ok: false, error: mensaje })
+          const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
+          setResultado(fallo)
+          despuesDelRechazo(fallo, ventana, true)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -87,19 +130,7 @@ export function useAccion<T = never>(
         if (!salida) return
         setResultado(salida)
         if (!salida.ok) {
-          // El envío ya había entrado la primera vez: la pantalla de detrás se
-          // pone al día, para que no ofrezca hacerlo otra vez. Con una ventana
-          // abierta, al cerrarla: antes la desmontaba con el aviso a medio leer
-          // (`ventanas-abiertas.ts`). Al cerrarla, además, el aviso se va: una
-          // ventana cuyo envío vive fuera de ella volvía a abrirse con el «ya
-          // quedó» y sin el botón, y no dejaba pagar el saldo.
-          if (refrescar && yaEntroLaPrimeraVez(salida.error)) {
-            const alCerrar = () => {
-              setResultado((r) => (r === salida ? null : r))
-              router.refresh()
-            }
-            if (!alCerrarLaVentana(alCerrar)) iniciar(() => router.refresh())
-          }
+          despuesDelRechazo(salida, ventana, false)
           return
         }
 

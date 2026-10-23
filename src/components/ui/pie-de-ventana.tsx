@@ -1,9 +1,9 @@
 'use client'
 
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { useCursorAlRechazo } from '@/lib/envio'
 
 /**
@@ -18,6 +18,9 @@ import { useCursorAlRechazo } from '@/lib/envio'
  * aviso va sin rojo y la ventana solo se cierra. Volver a enviar con el mismo
  * id no registra nada, y en rojo y con el botón activo parecía que faltaba
  * algo: se cancelaba y se pagaba otra vez desde la tarjeta (duodécima pasada).
+ * Los campos quedan trabados: lo cambiado seguía editable junto al aviso, el
+ * archivo invitaba a cambiarlo y la cámara del vehículo subía otra foto
+ * (decimocuarta pasada). Como el reporte diario, que lo hace con su `fieldset`.
  */
 export function PieDeVentana({
   error,
@@ -54,6 +57,20 @@ export function PieDeVentana({
   const corregida = useRef<HTMLDivElement>(null)
   const pie = useRef<HTMLDivElement>(null)
   const yaEntro = yaEntroLaPrimeraVez(error)
+  useEffect(() => {
+    const formulario = pie.current?.closest('form')
+    if (!yaEntro || !formulario) return
+    const trabados = [...formulario.elements].filter(
+      (c): c is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement =>
+        (c instanceof HTMLInputElement || c instanceof HTMLSelectElement || c instanceof HTMLTextAreaElement || c instanceof HTMLButtonElement) &&
+        !c.disabled &&
+        !pie.current?.contains(c),
+    )
+    for (const c of trabados) c.disabled = true
+    return () => {
+      for (const c of trabados) c.disabled = false
+    }
+  }, [yaEntro])
   useCursorAlRechazo(enviando, error, () => {
     pie.current?.scrollIntoView({ block: 'nearest' })
     return enLugarDelError ? corregida.current : aviso.current
@@ -74,7 +91,7 @@ export function PieDeVentana({
             data-ya-entro={yaEntro || undefined}
             className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
           >
-            {error}
+            {yaEntro ? yaEntroEnLaVentana(error) : error}
           </p>
         )
       )}

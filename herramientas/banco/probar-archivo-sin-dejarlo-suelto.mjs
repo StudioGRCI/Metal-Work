@@ -193,9 +193,39 @@ const PDF_MINIMO = (relleno) =>
 // Administración adjunta el contrato A y se pierden las dos respuestas (el
 // servidor sí lo anota). En la misma ventana elige otro, B, y vuelve a pulsar:
 // la ruta es la misma y Storage tiene A. No se da por adjunto B.
+/**
+ * Un subcontrato vigente. El banco recién preparado no trae ninguno hasta que
+ * corre `probar-subcontratos`: se registra uno como lo hace Administración,
+ * con su cuenta y no como ADMIN.
+ */
+async function subcontratoVigente() {
+  const ya = await uno(`select id, numero from public.subcontratos where estado = 'VIGENTE' order by creado_en desc limit 1`)
+  if (ya) return ya
+  const ruc = await uno(
+    `select r from (select '10' || $1 || d as r from generate_series(0, 9) d) x where public.ruc_es_valido(r) limit 1`,
+    [`${sello}00`.slice(0, 8)],
+  )
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', (select id::text from public.usuarios where correo = 'administracion.local@metalwork.test'), true),
+                             set_config('request.jwt.claim.role', 'authenticated', true)`)
+    const { sub } = (await base.query(`select public.guardar_subcontratista(gen_random_uuid(), $1, $2, null, null, null, null, true) as sub`,
+      [ruc.r, `Soldador del banco ${sello}`])).rows[0]
+    const { id } = (await base.query(
+      `select public.registrar_subcontrato(gen_random_uuid(), $1, $2, 'Soldadura de refuerzos del banco', 'PEN', 1500, null, null, 'PRD') as id`,
+      [sub, `QA_ARCH_${sello}`])).rows[0]
+    await base.query('commit')
+    return uno(`select id, numero from public.subcontratos where id = $1`, [id])
+  } catch (e) {
+    await base.query('rollback')
+    console.log(`  (no se pudo registrar el subcontrato del banco: ${e.message})`)
+    return null
+  }
+}
+
 async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const tam = nombreDe(viewport)
-  const sc = await uno(`select id, numero from public.subcontratos where estado = 'VIGENTE' order by creado_en desc limit 1`)
+  const sc = await subcontratoVigente()
   if (!sc) return comprobar(false, `[Administración ${tam}] hay un subcontrato vigente`)
   const { pagina: p, contexto } = await entrar('administracion.local@metalwork.test', viewport)
   await ir(p, `/subcontratos/${sc.id}`)
@@ -226,7 +256,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const segunda = limpio(await alerta.innerText().catch(() => ''))
   const contratos = await uno(`select count(*)::int as n, string_agg(archivo_nombre, ', ') as nombres from public.subcontrato_contratos
                                 where subcontrato_id = $1 and archivo_nombre like $2`, [sc.id, `QA-OTRO-%-${sello}.pdf`])
-  comprobar(/Conserva el archivo/.test(primera), `[Administración ${tam}] sin respuesta, pide conservar el archivo: «${primera}»`)
+  comprobar(/con el mismo archivo/.test(primera), `[Administración ${tam}] sin respuesta, pide conservar el archivo: «${primera}»`)
   comprobar(segunda.includes(`Desde esta ventana ya se subió ${nombreA} y quedó registrado`) && acciones === antes,
     `[Administración ${tam}] con otro archivo elegido no lo da por adjunto, dice cuál quedó y no llama a la base: «${segunda}» (${acciones - antes} llamadas)`)
   comprobar(contratos.n === 1 && contratos.nombres === nombreA, `[Administración ${tam}] en la base queda solo el primero (${contratos.nombres})`)
@@ -268,7 +298,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
                                   max((o.metadata ->> 'size')::int) as tam
                              from public.subcontrato_contratos c left join storage.objects o on o.name = c.archivo_ruta
                             where c.subcontrato_id = $1 and c.archivo_nombre in ($2, $3)`, [sc.id, nombreC, nombreD])
-  comprobar(/Conserva el archivo/.test(sinQuedar) && cortes.acciones === 2 && cortes.borrados === 1,
+  comprobar(/con el mismo archivo/.test(sinQuedar) && cortes.acciones === 2 && cortes.borrados === 1,
     `[Administración ${tam}] sin señal para anotarlo ni para quitarlo, pide conservar el archivo: «${sinQuedar}»`)
   comprobar(adjunto && (await p.getByRole('status').filter({ hasText: 'Contrato adjunto' }).count()) > 0 && otros.n === 1 && otros.nombres === nombreD && otros.tam === pdfD.length,
     `[Administración ${tam}] con otro elegido, el de antes se quita y entra el elegido en su lugar (${otros.nombres}, ${otros.tam} bytes en Storage)`)
@@ -331,7 +361,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const alertaG = g.locator('[role=alert]')
   await g.locator('input[name="contrato"]').setInputFiles({ name: nombreG, mimeType: 'application/pdf', buffer: pdfG })
   await g.getByRole('button', { name: 'Adjuntar' }).click()
-  await esperar(async () => /Conserva el archivo/.test(await alertaG.innerText().catch(() => '')), 30000)
+  await esperar(async () => /con el mismo archivo/.test(await alertaG.innerText().catch(() => '')), 30000)
   await g.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-H-${sello}.png`, mimeType: 'image/png', buffer: PNG_MINIMO })
   await g.getByRole('button', { name: 'Adjuntar' }).click()
   await esperar(async () => /ya quedó adjuntado con otro archivo/.test(await alertaG.innerText().catch(() => '')), 30000)
@@ -379,7 +409,7 @@ async function otroArchivoTrasLaRespuestaPerdida(viewport) {
   const alertaN = n.locator('[role=alert]')
   await n.locator('input[name="contrato"]').setInputFiles({ name: nombreJ, mimeType: 'image/png', buffer: PNG_MINIMO })
   await n.getByRole('button', { name: 'Adjuntar' }).click()
-  await esperar(async () => /Conserva el archivo/.test(await alertaN.innerText().catch(() => '')), 30000)
+  await esperar(async () => /con el mismo archivo/.test(await alertaN.innerText().catch(() => '')), 30000)
   await n.locator('input[name="contrato"]').setInputFiles({ name: `QA-OTRO-K-${sello}.pdf`, mimeType: 'application/pdf', buffer: PDF_MINIMO(600) })
   await n.getByRole('button', { name: 'Adjuntar' }).click()
   await esperar(async () => n1.acciones >= 4 && /ya se subió|No quedó/.test(await alertaN.innerText().catch(() => '')), 40000)
@@ -609,6 +639,82 @@ async function segundoDocumentoDeLaMismaOc(viewport) {
                                 from public.documentos_compra_material where nombre_archivo = any($1)`, [nombres])
   comprobar(dijo.every((t) => /adjuntado/.test(t)) && entraron.n === 2 && entraron.ocs === 1,
     `[Logística ${tam}] el segundo documento de la misma OC (${numero}) entra sin recargar: «${dijo.join(' » / « ')}» (${entraron.n} en la base, ${entraron.ocs} OC)`)
+  await contexto.close()
+}
+
+// ------------------------------------------------- 1g. el documento que ya quedó, con otros datos
+// Logística adjunta a una OC el archivo A como «Otro documento» y las dos
+// respuestas se pierden: A quedó. Cambia el tipo y vuelve a pulsar. La
+// decimocuarta pasada lo vio en rojo, con «Adjuntar» activo y el id pegado:
+// cada documento siguiente de la OC decía lo mismo hasta recargar. Ahora dice
+// sin rojo que ya quedó, traba lo cambiado, y al cerrar la OC se pone al día y
+// el documento siguiente entra con otro id.
+async function documentoQueYaQuedo(viewport) {
+  const tam = nombreDe(viewport)
+  const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
+  await ir(p, '/compras/ordenes')
+  const fila = p.locator('tbody tr').filter({ has: p.getByRole('button', { name: 'Adjuntar', exact: true }) }).last()
+  const numero = (await fila.locator('a[aria-label^="Descargar el PDF de la orden "]').first().getAttribute('aria-label').catch(() => ''))?.replace('Descargar el PDF de la orden ', '')
+  if (!numero) {
+    await contexto.close()
+    return comprobar(false, `[Logística ${tam}] hay una OC donde adjuntar documentos`)
+  }
+  const laOc = p.locator('tbody tr').filter({ has: p.locator(`a[aria-label="Descargar el PDF de la orden ${numero}"]`) })
+  const desde = (await base.query('select now() as t')).rows[0].t
+  const nombreA = `QA-SUELTO-DOC-YQ-A-${sello}-${tam}.pdf`
+  const nombreC = `QA-SUELTO-DOC-YQ-C-${sello}-${tam}.pdf`
+  const corte = { quedan: 2 }
+  await p.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(nombreA) && corte.quedan > 0) {
+      corte.quedan--
+      await r.fetch({ timeout: 60000 }).catch(() => {})
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  const abrir = async () => {
+    await laOc.getByRole('button', { name: 'Adjuntar', exact: true }).click()
+    const v = p.getByRole('dialog').first()
+    await v.waitFor({ timeout: 20000 })
+    return v
+  }
+  const dicho = (v) => v.locator('[role=status], [role=alert]').filter({ hasText: /\S/ }).allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+  let v = await abrir()
+  await v.locator('select[id^="tipo-doc-compra-"]').selectOption('OTRO')
+  await v.locator('input[name="archivo"]').setInputFiles({ name: nombreA, mimeType: 'application/pdf', buffer: PDF_MINIMO(400) })
+  await esperar(async () => !(await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()), 20000)
+  await v.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /No llegó la respuesta/.test(await dicho(v)), 60000)
+  const primera = await dicho(v)
+  await v.locator('select[id^="tipo-doc-compra-"]').selectOption('COTIZACION')
+  await v.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /ya quedó/.test(await dicho(v)), 60000)
+  const segunda = await dicho(v)
+  const estado = {
+    neutro: (await v.locator('[data-ya-entro]').count()) === 1,
+    trabado: (await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()) && (await v.locator('select[id^="tipo-doc-compra-"]').isDisabled()),
+    dice: segunda.includes('Este documento ya quedó adjuntado la primera vez que lo enviaste. Lo que cambiaste después no se guardó'),
+  }
+  await p.unrouteAll({ behavior: 'ignoreErrors' })
+  await v.getByRole('button', { name: 'Cerrar' }).first().click()
+  await esperar(async () => (await p.getByRole('dialog').count()) === 0, 5000)
+  v = await abrir()
+  const limpia = (await v.locator('[role=alert]').count()) === 0
+  await v.locator('select[id^="tipo-doc-compra-"]').selectOption('OTRO')
+  await v.locator('input[name="archivo"]').setInputFiles({ name: nombreC, mimeType: 'application/pdf', buffer: PDF_MINIMO(700) })
+  await esperar(async () => !(await v.getByRole('button', { name: 'Adjuntar' }).isDisabled()), 20000)
+  await v.getByRole('button', { name: 'Adjuntar' }).click()
+  await esperar(async () => /adjuntado|No se|ya quedó/.test(await dicho(v)), 60000)
+  const tercera = await dicho(v)
+  await v.getByRole('button', { name: 'Cerrar' }).first().click()
+  const filas = (await base.query(`select d.nombre_archivo, d.tipo from public.documentos_compra_material d where d.nombre_archivo in ($1, $2) order by d.nombre_archivo`, [nombreA, nombreC])).rows
+  const sueltos = Number((await base.query(`select count(*) from storage.objects o where o.bucket_id = 'documentos-compras' and o.created_at >= $1
+                                             and not exists (select 1 from public.documentos_compra_material d where d.ruta_storage = o.name)`, [desde])).rows[0].count)
+  comprobar(/No llegó la respuesta/.test(primera) && Object.values(estado).every(Boolean),
+    `[Logística ${tam}] el documento que ya quedó, con otro tipo: sin rojo, trabado y lo dice («${primera}» → «${segunda}»; ${JSON.stringify(estado)})`)
+  comprobar(limpia && /adjuntado/.test(tercera) && filas.map((f) => `${f.nombre_archivo === nombreA ? 'A' : 'C'}:${f.tipo}`).join() === 'A:OTRO,C:OTRO' && sueltos === 0,
+    `[Logística ${tam}] al cerrar, la ventana abre limpia y el documento siguiente entra con otro id («${tercera}»; ${filas.map((f) => f.tipo).join(', ')}; ${sueltos} sueltos)`)
   await contexto.close()
 }
 
@@ -1731,6 +1837,7 @@ try {
     await quitarElOpcional(viewport)
     await facturaVaciaEnLaOcDirecta(viewport)
     await segundoDocumentoDeLaMismaOc(viewport)
+    await documentoQueYaQuedo(viewport)
     await loEscritoSeQuedaEnLaCotizacion(viewport)
     await loLeidoSeVaConElArchivo(viewport)
     await conexionQueSePierde(viewport)

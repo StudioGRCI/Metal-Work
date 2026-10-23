@@ -14,6 +14,7 @@ import {
 import { Boton } from '@/components/ui/boton'
 import { Campo, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { useEnvio } from '@/lib/envio'
 import { registrarDocumentoCompra } from './acciones-documentos'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
@@ -58,6 +59,10 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   // pide algo, no dice que todo salió bien.
   const [revisar, setRevisar] = useState(false)
   const [avisaTesoreria, setAvisaTesoreria] = useState(false)
+  // El id con el que la base dijo «ya quedó»: mientras siga siendo el de la
+  // ventana, el formulario queda trabado y solo se cierra. Al cerrarla se
+  // empieza otro (`alYaEntrar`); en la lista, sin ventana, en el acto.
+  const [entroCon, setEntroCon] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     setMensaje(null)
     setRevisar(false)
@@ -71,10 +76,12 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     if (falta) return { ok: false, error: falta }
     datos.delete('archivo')
     datos.set('nombre_archivo', archivo.name.trim().slice(0, 200))
-    return subirArchivoPrivado({
+    const r = await subirArchivoPrivado({
       bucket: 'documentos-compras', ruta: `compra/${ordenCompraId}/${id}.pdf`,
       archivo, contentType: 'application/pdf', registrar: () => registrarDocumentoCompra(null, datos),
     })
+    if (!r.ok && yaEntroLaPrimeraVez(r.error)) setEntroCon(id)
+    return r
   }, (r) => {
     setMensaje(r.mensaje ?? 'Documento adjuntado.')
     setRevisar(r.datos?.revisar ?? false)
@@ -83,19 +90,28 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     alAdjuntar?.()
     factura.vaciar()
     void detector.leer(undefined)
+  }, {
+    alYaEntrar: () => {
+      setId(crypto.randomUUID())
+      alAdjuntar?.()
+      factura.vaciar()
+      void detector.leer(undefined)
+    },
   })
+  const yaEntro = yaEntroLaPrimeraVez(error)
+  const trabado = yaEntro && entroCon === id
   return <form key={id} onSubmit={alEnviar} className="grid min-w-0 gap-4 rounded-xl border border-borde bg-superficie p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
-      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+      <Seleccion id={`tipo-doc-compra-${ordenCompraId}`} name="tipo" required disabled={enviando || trabado} value={tipo} onChange={(e) => setTipo(e.target.value)}>
         <option value="" disabled>Elige el tipo</option>
         {TIPOS.map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
       </Seleccion>
     </Campo>
     <Campo etiqueta="Documento PDF" htmlFor={`archivo-compra-${ordenCompraId}`} ayuda="Se conserva en la compra y queda disponible para Contabilidad y Tesorería.">
       {/* Se lee sea cual sea el tipo, por si después se elige «Factura»; el «Leyendo…» solo se dice para la factura. */}
-      <ElegirArchivo id={`archivo-compra-${ordenCompraId}`} name="archivo" accept={ACEPTA_PDF} hastaMb={20} required disabled={enviando}
+      <ElegirArchivo id={`archivo-compra-${ordenCompraId}`} name="archivo" accept={ACEPTA_PDF} hastaMb={20} required disabled={enviando || trabado}
         aviso={detector.aviso} estado={tipo === 'FACTURA' ? detector.leyendo : null}
         onChange={(e) => {
           // Lo leído del archivo anterior se va con él; lo escrito a mano se queda.
@@ -103,13 +119,13 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
           void detector.leer(e.target.files?.[0]).then(factura.completar)
         }} />
     </Campo>
-    <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando}>
+    <Boton type="submit" variante="secundario" tamano="sm" cargando={enviando} disabled={trabado}>
       <FileUp aria-hidden className="size-4" />Adjuntar
     </Boton>
     {tipo === 'FACTURA' && (
       <>
         <div className="grid gap-4 sm:col-span-3 sm:grid-cols-2">
-          <CamposDeLaFactura id={`factura-compra-${ordenCompraId}`} datos={factura} requerido disabled={enviando} />
+          <CamposDeLaFactura id={`factura-compra-${ordenCompraId}`} datos={factura} requerido disabled={enviando || trabado} />
         </div>
         <div className="sm:col-span-3">
           <AvisoFacturaDeLaOrden lectura={detector.lectura} total={orden?.total ?? null}
@@ -117,7 +133,13 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         </div>
       </>
     )}
-    {error && <p role="alert" className="text-xs text-peligro sm:col-span-3">{error}</p>}
+    {/* Lo que ya entró no es un rechazo: va sin rojo, como en `PieDeVentana`. */}
+    {error && (
+      <p role="alert" data-ya-entro={yaEntro || undefined}
+        className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-xs text-texto sm:col-span-3' : 'text-xs text-peligro sm:col-span-3'}>
+        {trabado ? yaEntroEnLaVentana(error) : error}
+      </p>
+    )}
     {mensaje && (
       <p role="status" className={`text-xs sm:col-span-3 ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}

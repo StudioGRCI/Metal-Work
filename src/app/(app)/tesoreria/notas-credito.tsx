@@ -145,8 +145,18 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
  */
 export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy: string; cuentas: CuentaParaPagar[] }) {
   const [id, setId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
+  // Si la ventana se abrió antes de que la pantalla se pusiera al día, lo que queda a favor cambia el propuesto.
+  const [aFavorVisto, setAFavorVisto] = useState(nota.aFavor)
+  if (aFavorVisto !== nota.aFavor) {
+    setAFavorVisto(nota.aFavor)
+    setMonto(nota.aFavor.toFixed(2))
+  }
   const avisar = useAvisoDeLaCaja()
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -159,16 +169,22 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
       return registrarReembolsoNotaCredito(null, datos)
     })
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      setId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setId(null) },
+  )
   function abrir() {
     avisar(null)
     limpiar()
     setDia(hoy)
     setMonto(nota.aFavor.toFixed(2))
-    setId(crypto.randomUUID())
+    setId((actual) => actual ?? crypto.randomUUID())
+    setAbierta(true)
   }
   const campo = (n: string) => `${n}-reembolso-${nota.id}`
   return (
@@ -180,8 +196,8 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
         El proveedor lo devolvió
       </Boton>
       <Ventana
-        abierta={id !== null}
-        alCerrar={() => setId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Devolución de la nota ${nota.numero}`}
         descripcion={`${conPunto(nota.proveedor)} Lo que el proveedor te devolvió de lo que la nota tiene a favor: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(nota.aFavor, nota.moneda)}.`}
         ancho="md"
@@ -217,7 +233,7 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
           <Campo etiqueta="Constancia de la devolución" htmlFor={campo('archivo')} requerido ayuda="La transferencia, el voucher del depósito o la foto del recibo firmado.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setId(null)} texto="Registrar la devolución"
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la devolución"
             disabled={cuentas.length === 0} />
         </form>
       </Ventana>

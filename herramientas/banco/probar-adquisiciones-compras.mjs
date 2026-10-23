@@ -354,7 +354,7 @@ const rechaza = async (pagina, ruta) => {
   const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])
   comprobar(guia?.numero === 'T001-00000403' && objetos.length === 1, `la guía queda en la base como T001-00000403, con su PDF en storage.objects (${guia?.numero}, ${objetos.length})`)
-  comprobar(/Vuelve a intentar desde esta ventana/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.' && guia?.fecha === fechaPrimera,
+  comprobar(/Vuelve a intentar desde esta ventana/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste. Lo que cambiaste después no se guardó: al cerrar, la pantalla muestra lo que quedó.' && guia?.fecha === fechaPrimera,
     `la guía cuya respuesta se perdió no se da por cargada con otra fecha: «${primeraGuia}» → «${segundaGuia}» (queda del ${guia?.fecha})`)
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])

@@ -68,6 +68,10 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  */
 export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
   const [documentoId, setDocumentoId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
 
   async function adjuntar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -81,7 +85,14 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
       return adjuntarDocumentoServicio(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(adjuntar, () => setDocumentoId(null))
+  const { alEnviar, enviando, error } = useEnvio(
+    adjuntar,
+    () => {
+      setAbierta(false)
+      setDocumentoId(null)
+    },
+    { alYaEntrar: () => setDocumentoId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)
 
@@ -93,7 +104,8 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         tamano="sm"
         onClick={() => {
           setTipo('FACTURA')
-          setDocumentoId(crypto.randomUUID())
+          setDocumentoId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-adjuntar-documento-servicio={numero}
       >
@@ -101,8 +113,8 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         Adjuntar documento
       </Boton>
       <Ventana
-        abierta={documentoId !== null}
-        alCerrar={() => setDocumentoId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Documento de la ${numero}`}
         ancho="md"
       >
@@ -128,7 +140,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
           <Campo etiqueta="Archivo" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setDocumentoId(null)} texto="Adjuntar" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Adjuntar" />
         </form>
       </Ventana>
     </>

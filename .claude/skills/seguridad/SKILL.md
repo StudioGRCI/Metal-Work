@@ -225,10 +225,20 @@ En la misma migración que la crea, sin excepción:
   (duodécima pasada); refrescando con la ventana abierta, la página dejaba de
   pintar el botón que la abrió (el vehículo ya salió, la factura quedó pagada)
   y la ventana se desmontaba sola con el aviso a medio leer (decimotercera).
-  Al cerrarla, el aviso se va: un envío que vive fuera de su ventana la volvía
-  a abrir con el «ya quedó» y sin botón. Si además el id vive fuera y no se
-  renueva al abrir, se renueva al cerrar tras el aviso: con el mismo, la
-  devolución siguiente decía otra vez «ya quedó» (`devolucion-proveedor.tsx`).
+  Al cerrarla, el aviso se va —cualquier aviso de una ventana, también si se
+  cerró mientras se enviaba—: un envío que vive fuera de su ventana la volvía
+  a abrir con el «ya quedó» y sin botón (decimocuarta). Mientras, los campos
+  quedan trabados y el aviso dice que lo cambiado no se guardó.
+- **El id de un envío se conserva hasta saber cómo terminó**: se renueva con un
+  ok o con un «ya quedó» (`alYaEntrar` de `useEnvio`, que corre al cerrar la
+  ventana), nunca al abrir ni al cancelar. Con «No llegó la respuesta»,
+  cancelar y volver a abrir, la ventana del pago traía otro id y el mismo pago
+  entraba dos veces; ahora el repetido dice que ya quedó, y la tarjeta se pone
+  al día al cerrar (decimocuarta, P1). El que no se renueva tras el «ya quedó»
+  se queda pegado: cada documento siguiente de la compra lo repetía hasta
+  recargar. Ojo donde la función devuelve el id existente sin comparar el
+  envío (la caja diaria): conservar el id ahí haría que lo distinto se diera
+  por guardado. Primero la función compara; después se conserva el id.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de
   pegarse). Un aviso nuevo de «mismo envío» lleva

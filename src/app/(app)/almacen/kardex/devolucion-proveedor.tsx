@@ -1,12 +1,11 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio } from '@/lib/envio'
 import { redondearCantidad } from '@/lib/dominio/almacen'
@@ -30,24 +29,17 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
     setElegido('')
     setRepone('')
   }
-  // El envío vive fuera de la ventana: si ya había entrado la primera vez, al
-  // cerrarla se empieza otra con un id nuevo. Con el mismo, la devolución
-  // siguiente decía otra vez «ya quedó registrada» y no dejaba registrarla.
-  const yaEntro = useRef(false)
-  const envio = useEnvio(async (previo: unknown, datos: FormData) => {
-    const r = await devolverAlProveedor(previo, datos)
-    if (!r.ok && yaEntroLaPrimeraVez(r.error)) yaEntro.current = true
-    return r
-  }, () => {
-    empezarOtra()
-    setAbierta(false)
-  })
-  const cerrar = () => {
-    setAbierta(false)
-    if (!yaEntro.current) return
-    yaEntro.current = false
-    empezarOtra()
-  }
+  // El envío vive fuera de la ventana: el id se conserva hasta saber cómo
+  // terminó. Con un ok o un «ya quedó» se empieza otra; tras «No llegó la
+  // respuesta» sigue el mismo, y la devolución repetida no entra dos veces.
+  const envio = useEnvio(
+    devolverAlProveedor,
+    () => {
+      empezarOtra()
+      setAbierta(false)
+    },
+    { alYaEntrar: empezarOtra },
+  )
   const ingreso = ingresos.find((i) => i.ingreso_id === elegido)
   return (
     <>
@@ -56,7 +48,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
       </Boton>
       <Ventana
         abierta={abierta}
-        alCerrar={cerrar}
+        alCerrar={() => setAbierta(false)}
         titulo="Devolver al proveedor"
         descripcion="Lo que llegó malo de una compra sale del kardex. No vuelve atrás."
         ancho="lg"
@@ -113,7 +105,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 <option value="no">No lo repone</option>
               </Seleccion>
             </Campo>
-            <PieDeVentana error={envio.error} enviando={envio.enviando} alCancelar={cerrar} texto="Devolver" />
+            <PieDeVentana error={envio.error} enviando={envio.enviando} alCancelar={() => setAbierta(false)} texto="Devolver" />
           </form>
         )}
       </Ventana>

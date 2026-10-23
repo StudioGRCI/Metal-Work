@@ -114,7 +114,7 @@ export async function registrarDocumentoCompra(
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
     if (!esElMismo(existente)) {
-      return { ok: false, error: 'Ese documento ya quedó adjuntado con otros datos. Recarga la compra para verlo antes de volver a intentar.' }
+      return { ok: false, error: 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
     }
     return respuesta()
   }

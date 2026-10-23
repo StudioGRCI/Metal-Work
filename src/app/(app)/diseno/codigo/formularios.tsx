@@ -149,6 +149,8 @@ export function CargarPlano({
       setMensaje(r.mensaje ?? 'Plano cargado.')
       setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() })
     },
+    // Tras «ya quedó», el plano siguiente lleva otro id: con el mismo decía «ya quedó» hasta recargar.
+    { alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }) },
   )
   return (
     <form key={ids.plano} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[8rem_minmax(0,1fr)_12rem_9rem]">
@@ -276,6 +278,7 @@ export function SubirRevision({ plano, numero, solicitudId }: { plano: string; n
       setAbierta(false)
       setRevision(crypto.randomUUID())
     },
+    { alYaEntrar: () => setRevision(crypto.randomUUID()) },
   )
   return (
     <>

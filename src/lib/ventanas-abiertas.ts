@@ -13,6 +13,7 @@
  */
 const abiertas = new Set<object>()
 let pendientes: Array<() => void> = []
+let cerradas = 0
 
 export function abrioVentana(marca: object) {
   abiertas.add(marca)
@@ -20,10 +21,20 @@ export function abrioVentana(marca: object) {
 
 export function cerroVentana(marca: object) {
   if (!abiertas.delete(marca) || abiertas.size > 0) return
+  cerradas++
   const ahora = pendientes
   pendientes = []
   for (const hacer of ahora) hacer()
 }
+
+export const hayVentanaAbierta = () => abiertas.size > 0
+
+/**
+ * Cuántas veces se cerró la última ventana. Si cambió desde un envío, su
+ * ventana ya no está aunque haya otra abierta: se canceló mientras se enviaba
+ * y se volvió a abrir antes de que llegara la respuesta.
+ */
+export const vecesQueSeCerro = () => cerradas
 
 /** Deja `hacer` para cuando se cierre la última ventana. Sin ventana abierta no lo deja y dice que no. */
 export function alCerrarLaVentana(hacer: () => void): boolean {

@@ -69,6 +69,10 @@ export function CobrarFactura({
   cuentas: CuentaParaPagar[]
 }) {
   const [cobroId, setCobroId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // A qué cuenta entró, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si la factura queda cobrada.
@@ -84,10 +88,15 @@ export function CobrarFactura({
       return registrarCobroFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(cobrar, (r) => {
-    setCobroId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    cobrar,
+    (r) => {
+      setAbierta(false)
+      setCobroId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setCobroId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-cobro-${facturaId}`
 
   return (
@@ -98,7 +107,8 @@ export function CobrarFactura({
         onClick={() => {
           avisar(null)
           setDia(hoy)
-          setCobroId(crypto.randomUUID())
+          setCobroId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-cobrar-factura={numero}
       >
@@ -106,8 +116,8 @@ export function CobrarFactura({
         Registrar cobro
       </Boton>
       <Ventana
-        abierta={cobroId !== null}
-        alCerrar={() => setCobroId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Cobro de la factura ${numero}`}
         descripcion={`${cliente}. Le quedan ${moneda(saldo, codigoMoneda)} por cobrar.`}
         ancho="md"
@@ -124,6 +134,8 @@ export function CobrarFactura({
               <Entrada
                 id={campo('monto')}
                 name="monto"
+                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
+                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
@@ -153,7 +165,7 @@ export function CobrarFactura({
           <Campo etiqueta="Voucher o constancia del depósito" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setCobroId(null)} texto="Registrar el cobro" disabled={cuentas.length === 0} />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar el cobro" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -222,6 +234,10 @@ export function PagarServicio({
   paraPagar?: ReactNode
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
@@ -237,10 +253,15 @@ export function PagarServicio({
       return registrarPagoServicio(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
-    setPagoId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    pagar,
+    (r) => {
+      setAbierta(false)
+      setPagoId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setPagoId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-${ordenServicioId}`
 
   return (
@@ -251,7 +272,8 @@ export function PagarServicio({
         onClick={() => {
           avisar(null)
           setDia(hoy)
-          setPagoId(crypto.randomUUID())
+          setPagoId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-pagar-servicio={numero}
       >
@@ -259,8 +281,8 @@ export function PagarServicio({
         Registrar pago
       </Boton>
       <Ventana
-        abierta={pagoId !== null}
-        alCerrar={() => setPagoId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Pago de la ${numero}`}
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)} del monto aprobado.`}
         ancho="md"
@@ -278,6 +300,8 @@ export function PagarServicio({
               <Entrada
                 id={campo('monto')}
                 name="monto"
+                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
+                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
@@ -304,7 +328,7 @@ export function PagarServicio({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -372,6 +396,10 @@ export function PagarFactura({
   paraPagar?: ReactNode
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
@@ -387,10 +415,15 @@ export function PagarFactura({
       return registrarPagoFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
-    setPagoId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    pagar,
+    (r) => {
+      setAbierta(false)
+      setPagoId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setPagoId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-${adquisicionId}`
 
   return (
@@ -401,7 +434,8 @@ export function PagarFactura({
         onClick={() => {
           avisar(null)
           setDia(hoy)
-          setPagoId(crypto.randomUUID())
+          setPagoId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-pagar-factura={numero}
       >
@@ -409,8 +443,8 @@ export function PagarFactura({
         Registrar pago
       </Boton>
       <Ventana
-        abierta={pagoId !== null}
-        alCerrar={() => setPagoId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Pago de la factura ${numero}`}
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}.`}
         ancho="md"
@@ -428,6 +462,8 @@ export function PagarFactura({
               <Entrada
                 id={campo('monto')}
                 name="monto"
+                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
+                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
@@ -446,7 +482,7 @@ export function PagarFactura({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -517,6 +553,10 @@ export function PagarCompra({
   principal?: boolean
 }) {
   const [pagoId, setPagoId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela la OC.
@@ -532,10 +572,15 @@ export function PagarCompra({
       return registrarPagoCompra(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => {
-    setPagoId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    pagar,
+    (r) => {
+      setAbierta(false)
+      setPagoId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setPagoId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-compra-${ordenCompraId}`
 
   return (
@@ -547,7 +592,8 @@ export function PagarCompra({
         onClick={() => {
           avisar(null)
           setDia(hoy)
-          setPagoId(crypto.randomUUID())
+          setPagoId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-pagar-compra={numero}
       >
@@ -555,8 +601,8 @@ export function PagarCompra({
         Registrar pago
       </Boton>
       <Ventana
-        abierta={pagoId !== null}
-        alCerrar={() => setPagoId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Pago de la ${numero}`}
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}; va con boleta, sin IGV.`}
         ancho="md"
@@ -574,6 +620,8 @@ export function PagarCompra({
               <Entrada
                 id={campo('monto')}
                 name="monto"
+                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
+                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
@@ -601,7 +649,7 @@ export function PagarCompra({
           <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setPagoId(null)} texto="Registrar el pago" disabled={cuentas.length === 0} />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar el pago" disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>

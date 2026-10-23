@@ -145,6 +145,7 @@ const PDF = Buffer.from(
 const archivos = join(CAPTURAS, 'archivos-boleta-y-os')
 mkdirSync(archivos, { recursive: true })
 writeFileSync(join(archivos, 'voucher.pdf'), PDF)
+writeFileSync(join(archivos, 'voucher-2.pdf'), PDF)
 writeFileSync(join(archivos, 'factura-os.pdf'), PDF)
 writeFileSync(join(archivos, 'contrato-os.pdf'), PDF)
 
@@ -489,8 +490,10 @@ let pagoId
     neutro: (await v.locator('[data-ya-entro]').count()) === 1,
     sinEnviar: (await v.getByRole('button', { name: 'Registrar el pago' }).count()) === 0,
     cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
+    // Lo cambiado no se guardó: los campos quedan trabados (la decimocuarta los vio editables y el archivo invitando a cambiarlo).
+    trabados: (await v.locator('input[name="monto"]').isDisabled()) && (await v.locator('input[name="archivo"]').isDisabled()),
   }
-  comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo y solo «Cerrar», a la vista 4 s después (${JSON.stringify(yaEntro)})`)
+  comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo, campos trabados y solo «Cerrar», a la vista 4 s después (${JSON.stringify(yaEntro)})`)
   const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
   const sueltos = await hasta(
     () => consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
@@ -501,7 +504,7 @@ let pagoId
   const [{ n: egresos }] = pagos.length === 1
     ? await consulta(`select count(*)::int as n from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagos[0].id])
     : [{ n: -1 }]
-  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.')
+  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste. Lo que cambiaste después no se guardó: al cerrar, la pantalla muestra lo que quedó.')
     && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
     `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
   comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)
@@ -565,6 +568,119 @@ let pagoId
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
   comprobar(guardados.length === 1 && quitado && entro === 0 && pagos.length === 1 && pagos[0].monto === 25 && sueltos.length === 0,
     `el voucher que Storage guardó con un 504 se quita en el acto y el segundo intento entra: «${primera}» (${guardados.length} cortado, ${quitado ? 'quitado' : 'sigue ahí'}, ${pagos.length} pago, ${sueltos.length} sueltos)`)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3a''. Cancelar tras «No llegó la respuesta»
+// La decimocuarta pasada pagó a cuenta, perdió las dos respuestas, canceló y
+// volvió a abrir: la tarjeta seguía en el saldo de antes, la ventana traía otro
+// id y el mismo pago entró dos veces. Ahora la tarjeta se pone al día al
+// cerrar, y el id se conserva hasta saber cómo terminó: el pago repetido dice
+// que ya quedó. Y el «ya quedó» que llega con la ventana ya cerrada (se canceló
+// mientras se enviaba) no se queda guardado: la ventana siguiente abre limpia,
+// con su botón y otro id.
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  const nuevos = () => consulta(`select monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and anulado_en is null
+                                   and not (id = any($2::uuid[])) order by creado_en`, [oc[0], antes]).then((r) => r.map((p) => p.monto))
+  const laTarjeta = () => pagina.locator(`article#compra-${oc[0]}`).innerText().then(limpio).catch(() => '')
+  const v = pagina.locator('[role="dialog"]')
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  const valor = await (async () => {
+    await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+    await v.waitFor()
+    return v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  })()
+  const llenar = async (monto, voucher = 'voucher.pdf') => {
+    await v.locator('input[name="monto"]').fill(monto)
+    await v.locator('select[name="cancela"]').selectOption('no')
+    await v.locator('select[name="caja_id"]').selectOption(valor)
+    await v.locator('input[name="archivo"]').setInputFiles(join(archivos, voucher))
+  }
+  const abrir = async () => {
+    await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+    await v.waitFor()
+  }
+  // El servidor contesta, pero al navegador no le llega: `quedan` respuestas cortadas; `demora` ms antes de entregar la siguiente.
+  const corte = { quedan: 0, demora: 0, entregadas: 0 }
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() !== 'POST' || !q.headers()['next-action'] || !(q.postData() ?? '').includes(oc[0])) return r.continue()
+    const respuesta = await r.fetch().catch(() => null)
+    if (corte.quedan > 0) {
+      corte.quedan--
+      return r.abort('failed')
+    }
+    if (corte.demora) await new Promise((listo) => setTimeout(listo, corte.demora))
+    corte.entregadas++
+    return respuesta ? r.fulfill({ response: respuesta }) : r.abort('failed')
+  })
+
+  // 1. S/ 20 a cuenta, sin respuesta; «Cancelar» y la tarjeta se pone al día.
+  await llenar('20')
+  const tarjetaAntes = await laTarjeta()
+  corte.quedan = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  const sinRespuesta = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  const tarjetaDespues = await hasta(laTarjeta, (t) => t !== tarjetaAntes, 15000)
+  comprobar(/No llegó la respuesta/.test(sinRespuesta) && tarjetaDespues !== tarjetaAntes && (await nuevos()).join() === '20',
+    `sin respuesta y «Cancelar»: la tarjeta se pone al día con el pago que sí entró («${tarjetaAntes.slice(0, 60)}» → «${tarjetaDespues.slice(0, 60)}»)`)
+
+  // 2. Abre otra vez: limpia, con el mismo id. El mismo pago no entra otra vez.
+  await abrir()
+  const limpia = (await v.locator('[role="alert"]').count()) === 0 && (await v.getByRole('button', { name: 'Registrar el pago' }).isVisible())
+  await llenar('20', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  const repetido = limpio(await hasta(aviso, (t) => /ya quedó/.test(t ?? ''), 30000))
+  comprobar(limpia && repetido.startsWith('Este pago ya quedó registrado la primera vez que lo enviaste') && (await nuevos()).join() === '20',
+    `al volver a abrir, la ventana sale limpia y el mismo pago dice que ya quedó en vez de entrar dos veces («${repetido}», pagos ${(await nuevos()).join(', ')})`)
+
+  // 3. Cerrada, la siguiente lleva otro id: S/ 5 entran.
+  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  await abrir()
+  await llenar('5', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  comprobar((await nuevos()).join() === '20,5', `después del «ya quedó», el pago siguiente entra con otro id (pagos ${(await nuevos()).join(', ')})`)
+
+  // 4. S/ 7 sin respuesta; con otro importe se envía otra vez y se cancela antes
+  // de que llegue el «ya quedó» (la respuesta tarda 3 s).
+  await abrir()
+  await llenar('7')
+  corte.quedan = 2
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  corte.demora = 3000
+  await llenar('8', 'voucher-2.pdf')
+  const entregadas = corte.entregadas
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await pagina.waitForTimeout(500)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  // Se vuelve a abrir cuando la respuesta ya llegó, con la ventana cerrada.
+  await hasta(() => corte.entregadas, (n) => n > entregadas, 30000)
+  await pagina.waitForTimeout(1000)
+  corte.demora = 0
+  cortando = false
+  await abrir()
+  const trasCerrar = {
+    sinAviso: (await v.locator('[role="alert"]').count()) === 0,
+    conBoton: await v.getByRole('button', { name: 'Registrar el pago' }).isVisible(),
+  }
+  await llenar('9', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const al9 = await nuevos()
+  comprobar(Object.values(trasCerrar).every(Boolean) && al9.join() === '20,5,7,9',
+    `el «ya quedó» que llega con la ventana cerrada no la traba: abre limpia y el pago siguiente entra con otro id (${JSON.stringify(trasCerrar)}; pagos ${al9.join(', ')})`)
+  const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                                    and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                                    and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
+  comprobar(sueltos.length === 0, `y ningún voucher suelto (${sueltos.length})`)
   await pagina.unrouteAll({ behavior: 'ignoreErrors' })
   await contexto.close()
 }
@@ -874,6 +990,8 @@ let pagoId
   comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1,
     `el desplegable ofrece la factura F009-${SUFIJO} que anexó Logística`)
   await pagina.locator('#adq-proveedor').fill(PROVEEDOR.toLowerCase())
+  // Desde #153 la factura de compra lleva el RUC de quien la emitió.
+  await pagina.locator('#adq-ruc').fill(ruc.n)
   await pagina.locator('#adq-numero').fill(`F009-000${SUFIJO}`)
   await pagina.locator('#adq-total').fill('100')
   await pagina.locator('#adq-emision').fill(hoy)

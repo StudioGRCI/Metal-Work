@@ -104,6 +104,10 @@ export function RegistrarDevolucion({
   principal: boolean
 }) {
   const [devolucionId, setDevolucionId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
   const [deja, setDeja] = useState('')
@@ -137,10 +141,15 @@ export function RegistrarDevolucion({
     }
     return r
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setDevolucionId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      setDevolucionId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setDevolucionId(null) },
+  )
 
   function abrir() {
     avisar(null)
@@ -148,12 +157,13 @@ export function RegistrarDevolucion({
     setDia(hoy)
     setMonto(sugerido)
     setDeja('')
-    setDevolucionId(crypto.randomUUID())
+    setDevolucionId((actual) => actual ?? crypto.randomUUID())
+    setAbierta(true)
   }
   // Cerrada sin registrar después de corregirse, la tarjeta de atrás todavía dice lo de antes: se repinta ahora,
   // que la ventana ya no se pierde si la tarjeta cambia de lista.
   function cerrar() {
-    setDevolucionId(null)
+    setAbierta(false)
     if (rechazo?.para === boleta) router.refresh()
   }
   useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
@@ -181,7 +191,7 @@ export function RegistrarDevolucion({
         Registrar devolución
       </Boton>
       <Ventana
-        abierta={devolucionId !== null}
+        abierta={abierta}
         alCerrar={cerrar}
         titulo={`Devolución de la ${numero}`}
         descripcion={`${conPunto(proveedor)} Lo que el proveedor te devolvió de lo pagado por la boleta: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(tope, codigoMoneda)}.`}
@@ -382,6 +392,10 @@ export function TomarAlCambio({
   diaDelCambio: string | null
 }) {
   const [tomaId, setTomaId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const sugeridoFactura = (() => {
     if (!cambio) return ''
     const enFactura = factura.moneda === 'USD' ? sinTomar / cambio : sinTomar * cambio
@@ -395,14 +409,20 @@ export function TomarAlCambio({
     avisar(null)
     setDeLaBoleta(sinTomar.toFixed(2))
     setEnLaFactura(sugeridoFactura)
-    setTomaId(crypto.randomUUID())
+    setTomaId((actual) => actual ?? crypto.randomUUID())
+    setAbierta(true)
   }
   useAbrirDesdeOtraVentana('al-cambio', ordenCompraId, abrir)
 
-  const { alEnviar, enviando, error } = useEnvio(tomarPagoDeLaBoleta, (r) => {
-    setTomaId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    tomarPagoDeLaBoleta,
+    (r) => {
+      setAbierta(false)
+      setTomaId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setTomaId(null) },
+  )
   const campo = (nombre: string) => `${nombre}-al-cambio-${ordenCompraId}`
   const boleta = leerMonto(deLaBoleta)
   const enFactura = leerMonto(enLaFactura)
@@ -420,8 +440,8 @@ export function TomarAlCambio({
         La factura lo toma al cambio
       </Boton>
       <Ventana
-        abierta={tomaId !== null}
-        alCerrar={() => setTomaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`La factura ${factura.numero} toma lo pagado por la boleta`}
         descripcion={`${conPunto(proveedor)} Lo que el proveedor tomó de lo pagado por la boleta de la ${numero}, a su cambio, a cuenta de la factura ${factura.numero} en ${nombreMoneda(factura.moneda)}. No mueve la caja: el dinero ya salió con el pago de la boleta.`}
         ancho="md"
@@ -475,7 +495,7 @@ export function TomarAlCambio({
                 ? `Con esos montos el dólar sale a S/ ${tipo.toFixed(3)}: revisa los dos montos.`
                 : `Sale a S/ ${tipo.toFixed(3)} por dólar. La factura queda debiendo ${moneda(Math.max(factura.saldo - enFactura, 0), factura.moneda)}.`)}
           </p>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setTomaId(null)} texto="Pasar a la factura" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Pasar a la factura" />
         </form>
       </Ventana>
     </>
@@ -508,6 +528,10 @@ export function DescontarDeOtraFactura({
   facturas: FacturaParaDescontar[]
 }) {
   const [tomaId, setTomaId] = useState<string | null>(null)
+  // El id se conserva hasta saber cómo terminó el envío: tras «No llegó la
+  // respuesta», cancelar y volver a abrir lleva el mismo, y lo repetido dice
+  // que ya quedó en vez de entrar dos veces (decimocuarta pasada).
+  const [abierta, setAbierta] = useState(false)
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
   const avisar = useAvisoDeLaCaja()
@@ -525,10 +549,15 @@ export function DescontarDeOtraFactura({
       return tomarPagoDeLaBoleta(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(descontar, (r) => {
-    setTomaId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    descontar,
+    (r) => {
+      setAbierta(false)
+      setTomaId(null)
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: () => setTomaId(null) },
+  )
   const factura = facturas.find((f) => f.id === elegida)
   const otraMoneda = !!factura && factura.moneda !== monedaOc
   const campo = (nombre: string) => `${nombre}-descontar-${ordenCompraId}`
@@ -542,7 +571,8 @@ export function DescontarDeOtraFactura({
         onClick={() => {
           avisar(null)
           setDeLaBoleta(deMas.toFixed(2))
-          setTomaId(crypto.randomUUID())
+          setTomaId((actual) => actual ?? crypto.randomUUID())
+          setAbierta(true)
         }}
         data-descontar-de-otra={numero}
       >
@@ -550,8 +580,8 @@ export function DescontarDeOtraFactura({
         Lo descuenta de otra factura
       </Boton>
       <Ventana
-        abierta={tomaId !== null}
-        alCerrar={() => setTomaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Lo pagado de más de la ${numero}, a otra factura`}
         descripcion={`${conPunto(proveedor)} El proveedor no devuelve los ${moneda(deMas, monedaOc)}: los descuenta de otra factura suya. Esa factura los toma como pagados, sin mover la caja.`}
         ancho="md"
@@ -622,7 +652,7 @@ export function DescontarDeOtraFactura({
               </Campo>
             </div>
           )}
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setTomaId(null)} texto="Descontar" disabled={facturas.length === 0} />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Descontar" disabled={facturas.length === 0} />
         </form>
       </Ventana>
     </>

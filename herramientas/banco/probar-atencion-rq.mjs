@@ -97,7 +97,10 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos)
   const m = await menu(pagina)
   const req = m.find((g) => g.grupo === 'Requerimientos')
-  comprobar(req && req.items.join(',') === 'Requerimientos,Vehículos,Gasto por código interno', `menú de Requerimientos: ${JSON.stringify(req?.items)}`)
+  // Desde #132 el gasto por código va en «Consultas», con el stock de Almacén.
+  const consultas = m.find((g) => g.grupo === 'Consultas')
+  comprobar(req && req.items.join(',') === 'Requerimientos,Vehículos' && consultas?.items.join(',') === 'Stock en almacén,Gasto por código interno',
+    `menú de Requerimientos: ${JSON.stringify(req?.items)} y ${JSON.stringify(consultas?.items)}`)
   // Hereda el kardex de Costos (almacen.ver), pero la bandeja de atención no es suya.
   comprobar(!m.some((g) => g.items.includes('Atención de requerimiento')), 'Requerimientos no ve «Atención de requerimiento»')
 
@@ -107,9 +110,11 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('#rq-area').selectOption({ label: 'Maestranza' })
   await escribirCodigo(ventana.locator('#rq-codigo'), codigo)
   await ventana.locator('#rq-justificacion').fill('Armado del chasis de la plataforma; no hay planchas en almacén.')
-  await ventana.locator('input[name="descripcion"]').first().fill('Plancha LAF 2 mm 4x8')
-  await ventana.locator('input[name="cantidad"]').first().fill('3')
-  await ventana.locator('select[name="categoria_id"]').first().selectOption({ index: 1 })
+  // Desde #98 cada insumo se elige del catálogo de Almacén; este se pide como material nuevo.
+  await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).first().click()
+  await ventana.locator('[id^="rq-desc-"]').first().fill('Plancha LAF 2 mm 4x8')
+  await ventana.locator('[id^="rq-cant-"]').first().fill('3')
+  await ventana.locator('[id^="rq-cat-"]').first().selectOption({ index: 1 })
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
   await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
   const fila = pagina.locator('tbody tr', { hasText: codigo })
