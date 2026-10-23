@@ -18,7 +18,7 @@ export type EntregaPorValidar = {
   compraId: string
   /**
    * La OC nombrada por la base: su número, u «OC sin número (ref. del proveedor
-   * …)» (migración 20261023110000). Es también el documento que queda en el
+   * …)» (migración 20261023130000). Es también el documento que queda en el
    * kardex si Almacén deja la guía en blanco.
    */
   referencia: string

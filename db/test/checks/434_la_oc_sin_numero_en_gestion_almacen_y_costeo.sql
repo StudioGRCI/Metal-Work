@@ -1,5 +1,5 @@
 -- La OC sin número tampoco pasa por un número de OC en Gestión de compras, Almacén
--- y Costeo (migración 20261023110000). La OC de antes de la serie OC-…-MW no tiene
+-- y Costeo (migración 20261023130000). La OC de antes de la serie OC-…-MW no tiene
 -- número, y su referencia es la cotización del proveedor, con la forma de un número
 -- de OC («OC-0434»). Diez funciones daban `coalesce(numero, referencia)`: la
 -- referencia en el lugar del número, sin que la pantalla pudiera saberlo.

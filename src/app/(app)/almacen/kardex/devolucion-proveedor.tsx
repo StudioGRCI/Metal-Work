@@ -16,7 +16,7 @@ import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from
 /**
  * La guía con que entró, si la hubo. Con la guía en blanco, Almacén deja como
  * documento la OC misma —su número, o su nombre desde la migración
- * 20261023110000, cortado a 100 letras; antes, la referencia suelta de la OC
+ * 20261023130000, cortado a 100 letras; antes, la referencia suelta de la OC
  * sin número—, y repetirla al lado de la compra no dice nada. Se compara entero:
  * la guía «3501» de la OC con referencia «OC-3501» sí se muestra.
  */

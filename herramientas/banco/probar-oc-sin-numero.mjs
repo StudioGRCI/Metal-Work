@@ -23,7 +23,7 @@
  *      y su tarjeta en «Boletas de una parte» la nombran igual.
  *   4. Gerencia, que lee Cuentas por pagar y no paga, ve en Facturas «Ver en
  *      Cuentas por pagar».
- *   5. El circuito de una quinta (migración 20261023110000): Logística la ve
+ *   5. El circuito de una quinta (migración 20261023130000): Logística la ve
  *      «OC sin número» con su referencia aparte en Órdenes de compra y en
  *      Gestión de compras, y la pone en la lista del conductor; Requerimientos
  *      y Supervisión la ven nombrada en su RQ; el conductor, en el teléfono, la
@@ -502,7 +502,7 @@ writeFileSync(
 
 // ----------------- 5. Gestión de compras, el conductor, Almacén, Requerimientos y Costeo
 // Lo que la base daba como dato suelto daba la referencia en el lugar del número
-// (migración 20261023110000). Una quinta OC hace el circuito entero.
+// (migración 20261023130000). Una quinta OC hace el circuito entero.
 {
   const REFERENCIA_5 = `OC-${1000 + ((Number(SUFIJO) + 3) % 8999)}`
   const NOMBRE_5 = `OC sin número (ref. del proveedor ${REFERENCIA_5})`

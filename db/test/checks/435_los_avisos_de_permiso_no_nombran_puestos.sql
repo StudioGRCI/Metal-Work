@@ -1,4 +1,4 @@
--- Los avisos de permiso ya no nombran puestos (migración 20261023120000).
+-- Los avisos de permiso ya no nombran puestos (migración 20261023140000).
 --
 -- DKS objetó los avisos que, al negar algo, dicen qué puestos sí pueden: no eran
 -- ciertos y cambian con cada permiso. Ahora dicen «No tienes permiso para …».

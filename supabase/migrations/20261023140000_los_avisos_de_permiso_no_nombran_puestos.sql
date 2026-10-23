@@ -50,7 +50,7 @@
 --     aviso de permiso responde 403 y uno sin código, 400). Cambia solo el texto.
 --
 -- compras_en_gestion y guias_por_emitir también cambian su select en la
--- 20261023110000, de esta misma rama. Los fragmentos no se pisan: aquella toca
+-- 20261023130000, de esta misma rama. Los fragmentos no se pisan: aquella toca
 -- la línea que nombra la OC y esta, el aviso. Cada uno está una sola vez en su
 -- función y se reemplaza por su texto exacto, así que el orden entre las dos
 -- migraciones da igual.

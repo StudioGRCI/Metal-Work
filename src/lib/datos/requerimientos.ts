@@ -138,7 +138,7 @@ export async function cargarRequerimientos(
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
-  // también el nombre de la OC (migración 20261023110000), porque Supervisión no
+  // también el nombre de la OC (migración 20261023130000), porque Supervisión no
   // lee la tabla de compras.
   const avances = new Map<string, AvanceRequerimiento & { lineas: Map<number, LineaDeAvance> }>()
   // Lo que ya salió del almacén para cada insumo y lo que llegó de su compra:
