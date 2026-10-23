@@ -288,7 +288,8 @@ set local role authenticated;
 select public.registrar_gasto_general(current_setting('prueba.julio')::uuid, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null);
 select public.anular_gasto_general(current_setting('prueba.julio')::uuid, 'Prueba del número anulado');
 select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null)$q$,
-                               current_setting('prueba.julio')), 'un gasto anulado no se vuelve a registrar con su número', 'ya se anuló');
+                               current_setting('prueba.julio')), 'un gasto anulado no se vuelve a registrar con su número, y lo dice como «ya quedó» para que la ventana lleve otro (20261023200000)',
+                               'Este gasto ya quedó registrado la primera vez que lo enviaste, y después se anuló');
 select public.registrar_gasto_general(gen_random_uuid(), date '2021-07-10', 'INTERNET', 'Internet de julio', 100, 'PEN', 'HORAS', null);
 reset role;
 select test.como_usuario(:'rrhh_id');

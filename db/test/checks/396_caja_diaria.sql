@@ -347,6 +347,10 @@ begin
                        'el cierre reabierto queda anulado, como evidencia');
   perform test.afirmar((select count(*) from public.cierres_caja_reabiertos(pg_temp.dia('d2')) where id = pg_temp.id('c2')) = 1,
                        'y la caja de ese día lo muestra con su motivo');
+  -- El mismo cierre repetido, con el día ya reabierto, no dice «listo» sin cerrar
+  -- nada: dice que quedó y después se reabrió, y la ventana lleva otro id (20261023200000).
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 9850, null)', pg_temp.id('c2'), pg_temp.id('bcp_pen'), pg_temp.dia('d2')),
+    'el cierre reabierto repetido no se da por cerrado', 'ya quedó registrado la primera vez que lo enviaste, y después se reabrió el día');
   -- Con el día 2 abierto, la transferencia se anula entera.
   perform public.anular_movimiento_caja((select id from public.movimientos_caja where origen_id = pg_temp.id('t1') and tipo = 'INGRESO'),
                                         'Se repuso dos veces en la prueba');

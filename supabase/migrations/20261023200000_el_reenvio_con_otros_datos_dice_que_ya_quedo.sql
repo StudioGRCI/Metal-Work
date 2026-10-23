@@ -39,20 +39,20 @@
 do $$
 declare
   conocidas constant jsonb := '{
-    "cerrar_dia_caja(uuid,uuid,date,numeric,text)": ["67a0c4e7a9aa1e62ac4c22a771cef507", "a5108b082f137dbd0a1171932b23bca1"],
+    "cerrar_dia_caja(uuid,uuid,date,numeric,text)": ["67a0c4e7a9aa1e62ac4c22a771cef507", "1355f4034843bec6c39a60c942984d01"],
     "despachar_material_con_foto(uuid,uuid,numeric,uuid,text,text)": ["6e83087104cac27434733cac3f3f8c04", "bb691095122b6680488637e7cf862eea"],
     "enviar_planilla_diaria(uuid)": ["9f523bbc7b625ae15a511e27c117bbdc", "786cfd4a0fd5c917eb3e197c3c86d5ff"],
     "guardar_caja(uuid,text,text,text,text,numeric,date,boolean,text)": ["091a67c3d5d762eaccac09ddedc9d6eb", "1525e7af154ab20a431cbd4c8de1a04f"],
     "guardar_caja(uuid,text,text,text,text,numeric,date,boolean,text,boolean)": ["f2b55a2005e9d2068daa95aeeebefda3"],
-    "registrar_gasto_general(uuid,date,text,text,numeric,text,text,numeric)": ["c4a3196f64caff1923efec654dbb36b9", "56b203e6b5b33b7b3a22a592e040f440"],
+    "registrar_gasto_general(uuid,date,text,text,numeric,text,text,numeric)": ["c4a3196f64caff1923efec654dbb36b9", "e8aff60bd92bebd69ab1b0b2a4cf4746"],
     "registrar_recepcion_material(uuid,uuid,cantidad,text)": ["1175bde4e8aa9e3a1c806537eaf7eee8", "e11b3b94d3aa5849f5ce3360df44c0f7"],
     "registrar_salida_material(uuid,uuid,numeric,uuid,text,text,text,text,uuid)": ["97a15d64eae1e958d13e73579defdf5e", "2e3093fd45d5e15edf746dfd13b30a9f"],
-    "rrhh_decidir_horas_extras(uuid,uuid,date,text)": ["a1952fbfa941d21ec80a07cefef3efb6", "d08e3aac2a7540443f8eba42e630876b"],
-    "rrhh_justificar_permiso(uuid,uuid,numeric)": ["18d31ff37806522a78d9774548959a50", "35c7d36a40367c0f210fea378610ab2f"],
-    "rrhh_registrar_observacion(uuid,uuid,date,text,text,text,text,integer)": ["a1e250959284ad7fbac2627d65d64b11", "1dd0b6aa2a28e364eeda4ff92986c406"],
-    "rrhh_registrar_permiso(uuid,uuid,date,numeric,text)": ["8e49f365409cceba750d1b29af9c6af1", "5f4c69598e6f78242c5a5769d0f371bb"],
-    "rrhh_registrar_tareo(uuid,uuid,date,text,numeric,text)": ["e9e47590739188cc24c7641b55846afe", "564e968d613fdd00fab7f84716d4f746"],
-    "rrhh_usar_saldo_horas(uuid,uuid,date,numeric,text)": ["5da886881e216b8cdb6fd12efd24f22b", "5ada8e720473f421495e33af787857fc"]
+    "rrhh_decidir_horas_extras(uuid,uuid,date,text)": ["a1952fbfa941d21ec80a07cefef3efb6", "aa2a7eaf34627a28cf63cdb32b7c7371"],
+    "rrhh_justificar_permiso(uuid,uuid,numeric)": ["18d31ff37806522a78d9774548959a50", "8b735824da5afaa74fc314fe49b83c3b"],
+    "rrhh_registrar_observacion(uuid,uuid,date,text,text,text,text,integer)": ["a1e250959284ad7fbac2627d65d64b11", "340ad1ccc9039c5936894c3c336a8731"],
+    "rrhh_registrar_permiso(uuid,uuid,date,numeric,text)": ["8e49f365409cceba750d1b29af9c6af1", "d837fcb87915faac586893da2560e6aa"],
+    "rrhh_registrar_tareo(uuid,uuid,date,text,numeric,text)": ["e9e47590739188cc24c7641b55846afe", "f2df5208cd38bc1dae7782f5b56e365c"],
+    "rrhh_usar_saldo_horas(uuid,uuid,date,numeric,text)": ["5da886881e216b8cdb6fd12efd24f22b", "afa619923c492b7ff4fe46d688aefde6"]
   }';
   firma text;
   huella text;
@@ -95,6 +95,10 @@ begin
   if found then
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Esta observación ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Esta observación ya quedó registrada la primera vez que la enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
     end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
@@ -159,6 +163,10 @@ begin
   if found then
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Este permiso ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Este permiso ya quedó registrado la primera vez que lo enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
     end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
@@ -226,6 +234,10 @@ begin
   if found then
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Esta carga de horas ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Esta carga de horas ya quedó registrada la primera vez que la enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
     end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
@@ -303,6 +315,10 @@ begin
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Este uso de las horas reservadas ya existe con otros datos. Recarga antes de intentar de nuevo.';
     end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Este uso de las horas reservadas ya quedó registrado la primera vez que lo enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
+    end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
     if v_previo.permiso_id is null and v_previo.trabajador_id = p_trabajador_id and v_previo.fecha = p_fecha
@@ -366,6 +382,10 @@ begin
   if found then
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Esta justificación ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Esta justificación ya quedó registrada la primera vez que la enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
     end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
@@ -440,6 +460,10 @@ begin
     if v_previo.registrado_por is distinct from public.usuario_actual() then
       raise exception 'Esta decisión ya existe con otros datos. Recarga antes de intentar de nuevo.';
     end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Esta decisión ya quedó registrada la primera vez que la enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
+    end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
     if v_previo.trabajador_id = p_trabajador_id and v_previo.fecha = p_fecha and v_previo.decision = p_decision then
@@ -490,6 +514,10 @@ begin
   if found then
     if v_previo.cerrado_por is distinct from public.usuario_actual() then
       raise exception 'Este cierre del día ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Este cierre del día ya quedó registrado la primera vez que lo enviaste, y después se reabrió el día: recarga la pantalla para ver cómo quedó.';
     end if;
     -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
     -- es el mismo: el primero quedó y lo nuevo no se guarda.
@@ -1071,7 +1099,7 @@ begin
       raise exception 'Ese gasto ya existe con otros datos. Recarga la pantalla.';
     end if;
     if v.estado <> 'ACTIVO' then
-      raise exception 'Ese gasto ya se anuló: regístralo de nuevo si corresponde.';
+      raise exception 'Este gasto ya quedó registrado la primera vez que lo enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
     end if;
     if v.periodo = v_periodo and v.concepto = p_concepto and v.monto = p_monto and v.moneda = p_moneda
        and v.descripcion = btrim(p_descripcion) and v.reparto = p_reparto and v.tasa is not distinct from p_tasa then

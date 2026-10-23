@@ -94,7 +94,7 @@ export async function guardarCuenta(_previo: unknown, formulario: FormData): Pro
   let { data, error } = await supabase.rpc('guardar_caja', { ...cuenta, p_alta: formulario.get('alta') === 'si' })
   // Mientras la base no tenga la 20261023200000, la de diez no existe: se guarda
   // como antes, con la de nueve (los tipos juntan las dos y piden `p_alta`).
-  if (error?.code === 'PGRST202') ({ data, error } = await supabase.rpc('guardar_caja', cuenta as typeof cuenta & { p_alta: boolean }))
+  if (error?.code === 'PGRST202' || error?.code === '42883') ({ data, error } = await supabase.rpc('guardar_caja', cuenta as typeof cuenta & { p_alta: boolean }))
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La cuenta no quedó guardada. Recarga la pantalla.' }
 
