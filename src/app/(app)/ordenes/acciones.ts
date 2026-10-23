@@ -168,7 +168,7 @@ export async function cambiarEstadoOrden(
 export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'La garantía la da por terminada Administración.' }
+    return { ok: false, error: 'No tienes permiso para dar por terminada la garantía.' }
   }
   const analisis = z
     .object({ orden_id: z.guid(), nota: z.string().trim().max(500, 'La nota va en 500 caracteres como máximo.').optional() })

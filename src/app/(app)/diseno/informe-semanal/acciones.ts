@@ -15,7 +15,7 @@ async function exigirDiseno() {
 
 export async function registrarTareaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirDiseno()
-  if (!perfil) return { ok: false, error: 'Solo Diseño registra sus tareas.' }
+  if (!perfil) return { ok: false, error: 'No tienes permiso para registrar tareas de Diseño.' }
   const entrada = z.object({
     id: z.guid(),
     orden_id: z.guid(),
@@ -99,7 +99,7 @@ export async function quitarRegistroInforme(_previo: unknown, datos: FormData): 
 export async function guardarInformeDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const sesion=await exigirSesion()
   const perfil=puede(sesion,'diseno.preparar_informe')?sesion:null
-  if (!perfil) return { ok: false, error: 'Solo Diseño prepara el informe semanal.' }
+  if (!perfil) return { ok: false, error: 'No tienes permiso para preparar el informe semanal.' }
   const entrada = z.object({
     semana_inicio: z.iso.date(),
     responsable: z.string().trim().min(2).max(120),

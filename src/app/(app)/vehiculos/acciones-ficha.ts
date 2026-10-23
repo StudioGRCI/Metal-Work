@@ -163,7 +163,7 @@ export async function pedirRevisionSalida(_previo: unknown, formulario: FormData
 /** Tesorería da por revisada la salida o la observa, siempre con su respuesta. */
 export async function responderRevisionSalida(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'tesoreria.liberar')) return { ok: false, error: 'La revisión de la salida la responde Tesorería.' }
+  if (!puede(perfil, 'tesoreria.liberar')) return { ok: false, error: 'No tienes permiso para responder la revisión de la salida.' }
   const analisis = z
     .object({
       id: z.guid(),

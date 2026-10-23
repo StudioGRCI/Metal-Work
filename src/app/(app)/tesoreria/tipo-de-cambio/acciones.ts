@@ -17,7 +17,7 @@ const tasa = z.string().regex(/^\d{1,2}(?:\.\d{1,4})?$/)
 export async function registrarTipoDeCambio(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'tesoreria.tipo_cambio')) {
-    return { ok: false, error: 'El tipo de cambio lo registran Contabilidad y Administración.' }
+    return { ok: false, error: 'No tienes permiso para registrar el tipo de cambio.' }
   }
   const entrada = z
     .object({ fecha: z.iso.date(), compra: tasa, venta: tasa, fuente: z.enum(['SUNAT', 'SBS', 'BANCO', 'OTRO']) })

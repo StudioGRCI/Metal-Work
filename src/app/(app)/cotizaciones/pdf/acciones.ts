@@ -158,7 +158,7 @@ const esquemaCorregir = z.object({
 /** Una nueva versión conserva el número y vuelve a Gerencia. */
 export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'Solo Ventas corrige la cotización que registró.' }
+  if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'No tienes permiso para corregir la cotización.' }
 
   const analisis = esquemaCorregir.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
@@ -301,7 +301,7 @@ export async function aprobarCotizacionConOt(
 ): Promise<ResultadoAccion<{ codigo: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'cotizaciones.revisar')) {
-    return { ok: false, error: 'La cotización la aprueba Gerencia, con su código interno y su OT.' }
+    return { ok: false, error: 'No tienes permiso para aprobar la cotización.' }
   }
 
   const analisis = esquemaAprobarConOt.safeParse(Object.fromEntries(datos))

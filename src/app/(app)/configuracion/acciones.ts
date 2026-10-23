@@ -223,7 +223,7 @@ export async function editarCarroceria(_previo: unknown, datos: FormData): Promi
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa los datos.' }
   const v = analisis.data
   if (!puede(perfil, ['diseno.carrocerias', 'cotizaciones.crear'])) {
-    return { ok: false, error: 'El catálogo de carrocerías lo corrige Diseño e Ingeniería.' }
+    return { ok: false, error: 'No tienes permiso para corregir el catálogo de carrocerías.' }
   }
   const supabase = await createClient()
   // Diseño corrige la fila con su permiso, el mismo que pide la política;
@@ -276,7 +276,7 @@ export async function guardarMedidasCarroceria(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.carrocerias')) {
-    return { ok: false, error: 'Las medidas de las carrocerías las lleva Diseño e Ingeniería.' }
+    return { ok: false, error: 'No tienes permiso para cambiar las medidas de las carrocerías.' }
   }
 
   const analisis = esquemaMedidasCarroceria.safeParse(Object.fromEntries(datos))

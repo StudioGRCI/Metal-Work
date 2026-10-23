@@ -17,7 +17,7 @@ async function permiso() {
 }
 
 export async function agregarPersonaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  if (!await permiso()) return { ok: false, error: 'Solo Diseño organiza su equipo.' }
+  if (!await permiso()) return { ok: false, error: 'No tienes permiso para organizar el equipo de Diseño.' }
   const entrada = z.object({ orden_id: ordenId, nombre, funcion })
     .safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa la persona.' }
@@ -32,7 +32,7 @@ export async function agregarPersonaDiseno(_previo: unknown, datos: FormData): P
 }
 
 export async function actualizarPersonaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  if (!await permiso()) return { ok: false, error: 'Solo Diseño organiza su equipo.' }
+  if (!await permiso()) return { ok: false, error: 'No tienes permiso para organizar el equipo de Diseño.' }
   const entrada = z.object({ orden_id: ordenId, id: integranteId, nombre, funcion })
     .safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: entrada.error.issues[0]?.message ?? 'Revisa la persona.' }
@@ -48,7 +48,7 @@ export async function actualizarPersonaDiseno(_previo: unknown, datos: FormData)
 }
 
 export async function quitarPersonaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  if (!await permiso()) return { ok: false, error: 'Solo Diseño organiza su equipo.' }
+  if (!await permiso()) return { ok: false, error: 'No tienes permiso para organizar el equipo de Diseño.' }
   const entrada = z.object({ orden_id: ordenId, id: integranteId })
     .safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'No se identificó a la persona.' }
@@ -63,7 +63,7 @@ export async function quitarPersonaDiseno(_previo: unknown, datos: FormData): Pr
 }
 
 export async function asignarAutorPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  if (!await permiso()) return { ok: false, error: 'Solo Diseño asigna los planos.' }
+  if (!await permiso()) return { ok: false, error: 'No tienes permiso para asignar los planos.' }
   const entrada = z.object({
     orden_id: ordenId, plano_id: z.guid(),
     integrante_id: z.union([integranteId, z.literal('')]),

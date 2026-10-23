@@ -64,7 +64,7 @@ const marcado = z.string().optional().transform((v) => v === 'on' || v === 'true
 async function exigirDiseno() {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false as const, error: 'Los planos y las piezas los arma Diseño.' }
+    return { ok: false as const, error: 'No tienes permiso para registrar los planos y las piezas.' }
   }
   return { ok: true as const, perfil }
 }
@@ -72,7 +72,7 @@ async function exigirDiseno() {
 async function exigirTaller() {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.registrar')) {
-    return { ok: false as const, error: 'El habilitado y el armado los reportan Maestranza y Producción.' }
+    return { ok: false as const, error: 'No tienes permiso para reportar el habilitado y el armado.' }
   }
   return { ok: true as const, perfil }
 }
