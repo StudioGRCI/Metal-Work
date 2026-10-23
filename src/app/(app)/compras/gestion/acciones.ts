@@ -31,7 +31,7 @@ const PESO = z.preprocess(
  */
 export async function programarRecojo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.programar_recojo')) return { ok: false, error: 'Programar el recojo corresponde a Logística.' }
+  if (!puede(perfil, 'compras.programar_recojo')) return { ok: false, error: 'No tienes permiso para programar el recojo.' }
   const analisis = z
     .object({
       id: z.guid(),
@@ -60,7 +60,7 @@ export async function programarRecojo(_previo: unknown, datos: FormData): Promis
 /** Sacarla de la lista: el conductor deja de verla para salir. Mismo permiso que la base. */
 export async function quitarDeLaLista(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.programar_recojo')) return { ok: false, error: 'Programar el recojo corresponde a Logística.' }
+  if (!puede(perfil, 'compras.programar_recojo')) return { ok: false, error: 'No tienes permiso para programar el recojo.' }
   const id = z.guid().safeParse(datos.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
 

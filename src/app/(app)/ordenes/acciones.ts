@@ -168,7 +168,7 @@ export async function cambiarEstadoOrden(
 export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'La garantía la da por terminada Administración.' }
+    return { ok: false, error: 'No tienes permiso para dar por terminada la garantía.' }
   }
   const analisis = z
     .object({ orden_id: z.guid(), nota: z.string().trim().max(500, 'La nota va en 500 caracteres como máximo.').optional() })
@@ -357,7 +357,7 @@ export async function liberarTesoreria(_previo: unknown, datos: FormData): Promi
 
 export async function registrarSalidaFisica(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'ordenes.entregar')) return { ok: false, error: 'La salida física la registra el responsable de entrega.' }
+  if (!puede(perfil, 'ordenes.entregar')) return { ok: false, error: 'No tienes permiso para registrar la salida física.' }
   const analisis = z.object({ entrega_id: z.guid(), orden_id: z.guid(),
     constancia: z.string().trim().min(10).max(500), confirmada: z.literal('on'),
   }).safeParse(Object.fromEntries(datos))

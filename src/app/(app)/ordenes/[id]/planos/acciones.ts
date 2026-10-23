@@ -40,7 +40,7 @@ export async function registrarVersionPlano(_previo: unknown, datos: FormData): 
 
 export async function resolverRevisionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Jefatura de Diseño revisa los PDF de colaboradores.' }
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'No tienes permiso para revisar los PDF de los colaboradores.' }
   const entrada = z.object({
     id: z.guid(), accion: z.enum(['aprobar', 'observar']),
     observacion: z.string().trim().max(1000).optional(),
@@ -87,7 +87,7 @@ export async function resolverVersionPlano(_previo: unknown, datos: FormData): P
 
 export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'La asignación de Diseño corresponde al líder del área.' }
+  if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'No tienes permiso para asignar el líder y los responsables de los planos.' }
 
   const ordenId = z.guid().safeParse(formulario.get('orden_id'))
   const lider = z.union([z.guid(), z.literal('')]).safeParse(formulario.get('lider_id'))
@@ -120,7 +120,7 @@ export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData
 
 export async function guardarLiderEntregaPlanos(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Diseño puede indicar quién lidera la entrega de planos.' }
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'No tienes permiso para indicar quién lidera la entrega de planos.' }
   const analisis = z.object({ orden_id: z.guid(), nombre: z.string().trim().min(2).max(120) })
     .safeParse(Object.fromEntries(formulario))
   if (!analisis.success) return { ok: false, error: 'Escribe el nombre completo del líder (entre 2 y 120 caracteres).' }

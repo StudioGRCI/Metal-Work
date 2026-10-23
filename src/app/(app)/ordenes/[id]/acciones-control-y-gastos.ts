@@ -69,7 +69,7 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
 
 export async function revisarGastoArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'costos.revisar_gasto')) return { ok: false, error: 'Solo Administración revisa estos gastos.' }
+  if (!puede(perfil, 'costos.revisar_gasto')) return { ok: false, error: 'No tienes permiso para revisar estos gastos.' }
   const entrada = z.object({
     id: uuid, orden_id: uuid, estado: z.enum(['APROBADO','OBSERVADO']),
     observacion_revision: z.string().trim().max(1000),

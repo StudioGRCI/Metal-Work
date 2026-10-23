@@ -19,7 +19,7 @@ function dato(formulario: FormData, nombre: string) {
  */
 export async function fijarMermaOrden(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.merma')) return { ok: false, error: 'La merma la evalúa y la fija Diseño e Ingeniería.' }
+  if (!puede(perfil, 'diseno.merma')) return { ok: false, error: 'No tienes permiso para fijar la merma.' }
 
   const v = z.object({
     orden_id: z.guid(),

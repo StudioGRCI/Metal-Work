@@ -134,7 +134,7 @@ const PASOS = {
 /** En ejecución, conforme o anulada. Mismo permiso que `avanzar_orden_servicio`. */
 export async function avanzarOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Llevar las órdenes de servicio corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para llevar las órdenes de servicio.' }
 
   const analisis = z
     .object({

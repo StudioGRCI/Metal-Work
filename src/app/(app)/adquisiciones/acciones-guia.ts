@@ -35,7 +35,7 @@ const GUIA = z.object({
  */
 export async function registrarGuiaRemision(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.guia_remision')) return { ok: false, error: 'Cargar la guía de remisión corresponde a Contabilidad.' }
+  if (!puede(perfil, 'compras.guia_remision')) return { ok: false, error: 'No tienes permiso para cargar la guía de remisión.' }
   const datos = GUIA.safeParse({
     id: formulario.get('id'),
     orden_compra_id: formulario.get('orden_compra_id'),
@@ -82,7 +82,7 @@ export async function registrarGuiaRemision(_previo: unknown, formulario: FormDa
 /** Anular la guía con su motivo; queda como evidencia y se puede cargar otra. */
 export async function anularGuiaRemision(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.guia_remision')) return { ok: false, error: 'Anular la guía de remisión corresponde a Contabilidad.' }
+  if (!puede(perfil, 'compras.guia_remision')) return { ok: false, error: 'No tienes permiso para anular la guía de remisión.' }
   const datos = z
     .object({ id: z.guid(), motivo: z.string().trim().min(5).max(500) })
     .safeParse({ id: formulario.get('id'), motivo: formulario.get('motivo') })

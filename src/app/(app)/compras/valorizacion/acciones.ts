@@ -20,7 +20,7 @@ function dato(formulario: FormData, nombre: string) {
  */
 export async function valorizarMaterial(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.valorizar')) return { ok: false, error: 'Solo Logística fija el precio de los materiales del almacén.' }
+  if (!puede(perfil, 'almacen.valorizar')) return { ok: false, error: 'No tienes permiso para fijar el precio de los materiales del almacén.' }
 
   const v = z.object({
     operacion_id: z.guid(),
