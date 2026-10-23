@@ -114,7 +114,7 @@ export async function cambiarEstadoEvaluacion(_previo: unknown, datos: FormData)
 
 export async function borrarEvaluacionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.evaluar')) return { ok: false, error: 'Solo quien hizo la evaluación borra su borrador.' }
+  if (!puede(perfil, 'diseno.evaluar')) return { ok: false, error: 'No tienes permiso para borrar el borrador de la evaluación.' }
   const id = z.guid().safeParse(datos.get('id'))
   if (!id.success) return { ok: false, error: 'No se entendió qué evaluación borrar. Vuelve a cargar la pantalla.' }
 

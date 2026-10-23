@@ -49,7 +49,7 @@ const esquemaSubir = z.object({
 export async function registrarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'cotizaciones.crear')) {
-    return { ok: false, error: 'La cotización la sube el vendedor.' }
+    return { ok: false, error: 'No tienes permiso para subir la cotización.' }
   }
 
   const analisis = esquemaSubir.safeParse(Object.fromEntries(datos))

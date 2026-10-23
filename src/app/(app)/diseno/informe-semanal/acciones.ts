@@ -45,7 +45,7 @@ export async function registrarTareaDiseno(_previo: unknown, datos: FormData): P
  */
 export async function registrarEntregaPlanos(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirDiseno()
-  if (!perfil) return { ok: false, error: 'Solo el colaborador de Diseño registra el avance de planos.' }
+  if (!perfil) return { ok: false, error: 'No tienes permiso para registrar el avance de los planos.' }
   const entrada = z.object({
     id: z.guid(),
     semana_inicio: z.iso.date(),
@@ -82,7 +82,7 @@ export async function registrarEntregaPlanos(_previo: unknown, datos: FormData):
 /** Quitar una tarea o una entrega mal cargada. Solo las propias y con la semana abierta. */
 export async function quitarRegistroInforme(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirDiseno()
-  if (!perfil) return { ok: false, error: 'Solo el colaborador de Diseño corrige lo que registró.' }
+  if (!perfil) return { ok: false, error: 'No tienes permiso para corregir este avance.' }
   const entrada = z.object({ id: z.guid(), tabla: z.enum(['tarea', 'entrega']) }).safeParse(Object.fromEntries(datos))
   if (!entrada.success) return { ok: false, error: 'No se entendió qué quitar. Vuelve a cargar la pantalla.' }
   const db = await createClient()

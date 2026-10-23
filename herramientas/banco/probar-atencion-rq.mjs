@@ -165,7 +165,9 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   comprobar((await fila.getByRole('button', { name: 'Lo estoy comprando' }).count()) === 1, 'Logística tiene «Lo estoy comprando»')
   comprobar((await fila.getByRole('button', { name: 'Listo en almacén' }).count()) === 0, 'y no los botones de Almacén')
   await paso(pagina, fila, 'Lo estoy comprando', 'Cotizando con Aceros Arequipa')
-  comprobar((await pagina.locator('tbody tr', { hasText: codigo }).innerText()).includes('En compra'), 'queda «En compra»')
+  // Se espera la fila con el estado nuevo, no una pausa fija: con 800 ms fallaba a ratos.
+  const enCompra = pagina.locator('tbody tr', { hasText: codigo }).filter({ hasText: 'En compra' })
+  comprobar(await enCompra.waitFor({ timeout: 15000 }).then(() => true, () => false), 'queda «En compra»')
   comprobar(errores.length === 0, `sin errores de consola como Logística ${errores.join(' | ')}`)
   await contexto.close()
 }

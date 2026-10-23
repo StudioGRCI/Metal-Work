@@ -222,7 +222,7 @@ const esquemaEstado = z.object({
 export async function cambiarEstadoFlota(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'No tienes permiso para marcar esto.' }
+    return { ok: false, error: 'No tienes permiso para cambiar el estado de la flota.' }
   }
 
   const analisis = esquemaEstado.safeParse(Object.fromEntries(datos))

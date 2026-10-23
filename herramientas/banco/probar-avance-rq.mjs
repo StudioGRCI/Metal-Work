@@ -92,7 +92,7 @@ await base.connect()
 const ruc = (await base.query(`select n::text as ruc from generate_series(20100038400::bigint, 20100038499::bigint) n where public.ruc_es_valido(n::text) limit 1`)).rows[0].ruc
 await base.query(
   `insert into public.proveedores (numero_documento, razon_social, direccion, telefono) values ($1, 'ACEROS AVANCE RQ QA S.A.C.', 'Av. Argentina 459, Lima', '999 333 448')
-   on conflict (tipo_documento, numero_documento) do update set activo = true`,
+   on conflict (tipo_documento, numero_documento) do update set razon_social = excluded.razon_social, activo = true`,
   [ruc],
 )
 await base.end()
@@ -278,6 +278,14 @@ async function mirarRq(cuenta, ruta, captura) {
   await tarjeta.getByRole('button', { name: 'La dejé en almacén' }).click()
   await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Sí, la dejé' }).click()
   await pagina.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 })
+  await contexto.close()
+}
+{
+  // A Almacén le llega el ingreso por validar, sin «S.A.C..» (migración 20261023150000).
+  const { pagina, contexto } = await entrar(CUENTAS.almacen)
+  const avisos = await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' }).then(() => pagina.locator('main').innerText())
+  comprobar(avisos.includes(`Ingreso por validar: ${oc}`) && avisos.includes('ACEROS AVANCE RQ QA S.A.C. 2 líneas dejadas en el almacén por el conductor.'),
+    'a Almacén le llega «Ingreso por validar» con el proveedor bien escrito')
   await contexto.close()
 }
 {

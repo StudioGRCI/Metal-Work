@@ -87,7 +87,7 @@ export async function resolverVersionPlano(_previo: unknown, datos: FormData): P
 
 export async function asignarEquipoDiseno(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'No tienes permiso para asignar los planos.' }
+  if (!puede(perfil, 'diseno.asignar')) return { ok: false, error: 'No tienes permiso para asignar el líder y los responsables de los planos.' }
 
   const ordenId = z.guid().safeParse(formulario.get('orden_id'))
   const lider = z.union([z.guid(), z.literal('')]).safeParse(formulario.get('lider_id'))
