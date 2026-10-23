@@ -1061,13 +1061,12 @@ function Factura({
             <p className="text-xs text-aviso">
               {tomasAnuladas.length === 1 ? (
                 <>
-                  {/* El motivo ya nombra la OC; la línea guardada entre paréntesis la repetía con otro paréntesis adentro. */}
-                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta, que se anuló. {tomasAnuladas[0].motivo_anulacion}.
+                  {/* Qué pago y por qué se anuló lo dice su línea «Anulado» de abajo: aquí repetía la OC con su nombre largo. */}
+                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta, que se anuló.
                 </>
               ) : (
                 <>
-                  Tomaba {moneda(tomabaDeAnulados, m)} de {tomasAnuladas.length} pagos por la boleta que se anularon.{' '}
-                  {[...new Set(tomasAnuladas.map((p) => p.motivo_anulacion))].filter(Boolean).join('. ')}.
+                  Tomaba {moneda(tomabaDeAnulados, m)} de {tomasAnuladas.length} pagos por la boleta que se anularon.
                 </>
               )}{' '}
               {registradoDespues <= 0 ? (

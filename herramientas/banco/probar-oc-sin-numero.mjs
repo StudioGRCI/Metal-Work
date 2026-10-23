@@ -223,6 +223,15 @@ writeFileSync(
   FACTURA_CORREGIDA,
   pdfConTexto(['FACTURA ELECTRONICA', FACTURA, `Fecha de Emision : ${hoy.split('-').reverse().join('/')}`, `Orden de compra ${REFERENCIA_2}`, 'Importe Total : S/ 590.00']),
 )
+// Para el detector del formulario: una factura que cita la OC sin número por su referencia, y otra que cita las dos.
+const fechaEnElPdf = `Fecha de Emision : ${hoy.split('-').reverse().join('/')}`
+const PDF_CITA_UNA = join(ARCHIVOS, `cita-una-${SUFIJO}.pdf`)
+writeFileSync(PDF_CITA_UNA, pdfConTexto(['FACTURA ELECTRONICA', FACTURA, fechaEnElPdf, `Orden de compra ${REFERENCIA}`, 'Importe Total : S/ 295.00']))
+const PDF_CITA_DOS = join(ARCHIVOS, `cita-dos-${SUFIJO}.pdf`)
+writeFileSync(
+  PDF_CITA_DOS,
+  pdfConTexto(['FACTURA ELECTRONICA', FACTURA, fechaEnElPdf, `Orden de compra ${REFERENCIA}`, `Orden de compra ${REFERENCIA_2}`, 'Importe Total : S/ 295.00']),
+)
 const PDF_COMPROBANTE = join(ARCHIVOS, 'minimo.pdf')
 writeFileSync(
   PDF_COMPROBANTE,
@@ -278,6 +287,21 @@ writeFileSync(
   const etiqueta = limpio(await casilla.locator('xpath=ancestor::label').textContent().catch(() => ''))
   comprobar(etiqueta.startsWith('OC sin número ·') && etiqueta.includes(`Ref. del proveedor: ${REFERENCIA}`),
     `en el formulario se marca como «OC sin número», con su referencia aparte (dice «${etiqueta.slice(0, 90)}»)`)
+  // El detector busca la OC sin número por su referencia: con nada marcado, la marca sola;
+  // con ella marcada, ofrece «Marcarla» para la otra que cita la factura.
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_UNA)
+  await pagina.locator('p', { hasText: 'Leído' }).first().waitFor({ timeout: 60000 }).catch(() => {})
+  await pagina.waitForTimeout(500)
+  comprobar(await casilla.isChecked(), 'la factura que cita su referencia marca sola la OC sin número')
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_DOS)
+  const avisoOtra = pagina.locator('ul[role="status"] li', { hasText: `menciona la ${NOMBRE_2} y no está marcada` }).first()
+  await avisoOtra.waitFor({ timeout: 60000 }).catch(() => {})
+  const casilla2 = pagina.locator(`input[name="ordenes_compra"][value="${oc2}"]`)
+  const conBoton = (await avisoOtra.getByRole('button', { name: 'Marcarla' }).count()) === 1
+  if (conBoton) await avisoOtra.getByRole('button', { name: 'Marcarla' }).click()
+  comprobar(conBoton && (await casilla2.isChecked()), `la otra OC sin número que cita la factura se ofrece con «Marcarla», y la marca`)
+  await casilla2.uncheck()
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_COMPROBANTE)
   await casilla.check()
   // Con el RUC de otra empresa, el aviso la nombra sin hacer pasar la referencia por número.
   await pagina.locator('#adq-ruc').fill(await rucLibre())

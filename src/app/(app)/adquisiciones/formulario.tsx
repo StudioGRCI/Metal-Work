@@ -448,7 +448,8 @@ function Formulario({
         sinLeer={sinLeer}
         avisos={avisos.map((a) => ({
           texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
-          marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => (c.numero ?? c.referencia) === a.oc && encaja(c)) : undefined,
+          // El aviso la nombra como `nombreDeOc` (por `ocParaDetector`): se busca igual.
+          marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => nombreDeOc(c) === a.oc && encaja(c)) : undefined,
         }))}
         alMarcar={(c) => marcar(c, true)}
       />

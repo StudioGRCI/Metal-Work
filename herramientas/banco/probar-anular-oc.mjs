@@ -137,7 +137,7 @@ try {
   comprobar(razon.includes('ya recogió'), `y aparte dice por qué: «${razon}»`)
 
   // ------------------------------------------- 3. Anular
-  await anulable(gerencia.pagina, oc[0].numero).getByRole('button', { name: `Anular la compra ${oc[0].numero}` }).click()
+  await anulable(gerencia.pagina, oc[0].numero).getByRole('button', { name: `Anular la ${oc[0].numero}` }).click()
   const ventana = gerencia.pagina.getByRole('dialog')
   await ventana.locator('textarea[name="motivo"]').fill('corto')
   // El navegador ataja el `minLength`: se salta para ver el mensaje del servidor.
