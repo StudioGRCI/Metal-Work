@@ -201,7 +201,7 @@ select test.debe_fallar($$
   select public.crear_personal('Leo', 'Soldador', 'soldadura403b@demo.pe', 'Clave-403-larga',
     (select id from public.roles where codigo = 'OPERARIO'), (select id from public.sedes where codigo = 'QA403'),
     null, 'Soldador', '41255679', null, true, 15)
-$$, 'el administrador no pone el DNI ni el costo al dar de alta', 'Recursos Humanos');
+$$, 'el administrador no pone el DNI ni el costo al dar de alta', 'No tienes permiso para poner el DNI ni el costo por hora');
 select public.crear_personal('Lia', 'Soldadora', 'soldadura403@demo.pe', 'Clave-403-larga',
   (select id from public.roles where codigo = 'OPERARIO'), :'sede_id', null, 'Soldadora', null, null, true, 0) as lia_id \gset
 reset role;
@@ -229,7 +229,7 @@ select test.como_usuario(:'admin_id');
 set local role authenticated;
 select test.debe_fallar($$
   update public.usuarios set costo_hora = 18 where id = current_setting('prueba.lia')::uuid
-$$, 'el administrador no cambia el costo por hora por usuarios', 'Recursos Humanos');
+$$, 'el administrador no cambia el costo por hora por usuarios', 'No tienes permiso para cambiar el DNI ni el costo por hora');
 do $$
 declare v_n integer;
 begin

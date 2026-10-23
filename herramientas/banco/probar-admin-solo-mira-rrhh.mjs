@@ -129,7 +129,7 @@ const deRrhh = new Map()
   } finally {
     await base.query('rollback')
   }
-  comprobar(mensaje.includes('Recursos Humanos'), `la base no le deja guardar el costo: «${mensaje}»`)
+  comprobar(mensaje.includes('el administrador lo ve, pero no lo cambia'), `la base no le deja guardar el costo: «${mensaje}»`)
 }
 
 await navegador.close()

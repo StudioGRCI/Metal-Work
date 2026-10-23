@@ -34,20 +34,20 @@ select test.afirmar((select nombres from public.trabajadores where id = current_
 select test.afirmar((select count(*) from public.rrhh_horas_esperando_costo()) >= 0, 'y lee lo que espera su costo');
 select test.debe_fallar(format($q$select public.rrhh_guardar_trabajador(%L, 'Tito', 'Cambiado', '70000406', 'Soldador', null,
   '08:00', '18:00', 'Banco de Pruebas', 'AHORROS', '191-0000406', null)$q$, current_setting('prueba.t1')),
-  'el administrador no corrige la ficha', 'Recursos Humanos');
+  'el administrador no corrige la ficha', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format('select public.rrhh_guardar_costo_trabajador(%L, 9999)', current_setting('prueba.t1')),
-  'ni el costo mensual', 'Recursos Humanos');
+  'ni el costo mensual', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format($q$select public.rrhh_registrar_tareo(%L, %L, %L, 'PLANTA', 4, null)$q$,
   gen_random_uuid(), current_setting('prueba.t1'), current_setting('prueba.hoy')),
-  'ni carga el tareo', 'Recursos Humanos');
-select test.debe_fallar('select public.rrhh_guardar_regla_tardanza(0, 3, 5)', 'ni la regla de tardanza', 'Recursos Humanos');
+  'ni carga el tareo', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
+select test.debe_fallar('select public.rrhh_guardar_regla_tardanza(0, 3, 5)', 'ni la regla de tardanza', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format($q$select public.rrhh_registrar_observacion(%L, %L, %L, 'VERBAL', 'Prueba 406', null, null, null)$q$,
   gen_random_uuid(), current_setting('prueba.t1'), current_setting('prueba.hoy')),
-  'ni registra una observación', 'Recursos Humanos');
+  'ni registra una observación', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format($q$select public.validar_reporte_diario(%L, 'RRHH')$q$, gen_random_uuid()),
-  'ni da el visto de RR. HH. al reporte diario', 'Recursos Humanos');
+  'ni da el visto de RR. HH. al reporte diario', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format($q$select public.observar_reporte_diario(%L, 'RRHH', 'Faltan las horas de la tarde')$q$, gen_random_uuid()),
-  'ni lo observa como RR. HH.', 'Recursos Humanos');
+  'ni lo observa como RR. HH.', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.afirmar((select count(*) from public.planillas where id = current_setting('prueba.planilla')::uuid) = 1,
   'pero sí ve las planillas del mes');
 reset role;

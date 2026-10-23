@@ -139,7 +139,7 @@ select test.debe_fallar($q$select pg_temp.emitir('os2', 'PLANTA', 10, '037', nul
   'Contabilidad no emite órdenes de servicio', 'permiso');
 select test.debe_fallar(
   $q$select public.corregir_orden_servicio(current_setting('prueba.os2')::uuid, 'PLANTA', null, null)$q$,
-  'Contabilidad no cambia el código interno', 'lo corrige Logística');
+  'Contabilidad no cambia el código interno', 'No tienes permiso para corregir el código interno de la orden de servicio');
 select public.corregir_orden_servicio(current_setting('prueba.os2')::uuid, null, '020', null);
 reset role;
 select test.afirmar(
@@ -152,7 +152,7 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.ordenes_servicio) >= 5, 'Tesorería ve la detracción de las órdenes de servicio');
 select test.debe_fallar(
   $q$select public.corregir_orden_servicio(current_setting('prueba.os2')::uuid, null, '037', null)$q$,
-  'Tesorería no corrige la detracción', 'corresponde a Logística');
+  'Tesorería no corrige la detracción', 'No tienes permiso para corregir la orden de servicio');
 reset role;
 
 select pg_temp.como('supervisor');
@@ -160,7 +160,7 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.ordenes_servicio) = 0, 'un supervisor no ve las órdenes de servicio');
 select test.debe_fallar(
   $q$select public.corregir_orden_servicio(current_setting('prueba.os2')::uuid, 'PLANTA', null, null)$q$,
-  'un supervisor no corrige nada', 'corresponde a Logística');
+  'un supervisor no corrige nada', 'No tienes permiso para corregir la orden de servicio');
 reset role;
 
 -- ============================================ 5. Logística corrige; el porcentaje guardado no cambia solo

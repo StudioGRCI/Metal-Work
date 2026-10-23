@@ -257,7 +257,7 @@ select test.debe_fallar(
               values (%L, %L, %L, 3, 'Retoque que pide Gerencia', 0)$sql$,
          current_setting('prueba.orden'), current_setting('prueba.prd'), current_setting('prueba.etapa_prd')),
   'en una OT con plan de Diseño, ni produccion.cualquier_area arma la hoja de Producción',
-  'Solo Supervisión del área');
+  'No tienes permiso para crear ni modificar esta tarea');
 reset role;
 
 -- --------------- Acabados arma la suya y no se mete en la de Maestranza

@@ -133,7 +133,8 @@ select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantid
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 5, "precio": 10, "insumos": ["{rq1.1}", "{rqa.1}"]}]'),
   'no se mezclan el de operación y el de Administración', 'mismo tipo');
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 5, "precio": 10, "insumos": ["{rqa.1}"]}]'),
-  'Logística no compra el de Administración', 'administradora');
+  'Logística no compra el de Administración',
+  'No tienes permiso para hacer la orden de compra de un requerimiento de Administración');
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 7, "precio": 10, "insumos": ["{rq1.1}"]},
                                               {"material_id": "{m2}", "cantidad": 2, "precio": 6, "insumos": ["{rq1.1}"]}]'),
   'un insumo va en una sola línea', 'una sola línea');

@@ -39,16 +39,16 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.asistencias where trabajador_id = current_setting('prueba.t1')::uuid) = 3,
   'Gerencia ve las marcas');
 select test.debe_fallar(format($q$select public.anular_asistencia(%L, 'Se marcó a otra persona')$q$, current_setting('prueba.hoy')),
-  'Gerencia no anula una marca', 'las anula Recursos Humanos');
+  'Gerencia no anula una marca', 'No tienes permiso para anular marcas de asistencia');
 reset role;
 
 -- El administrador tampoco: ni anula ni marca.
 select test.como_usuario(:'admin_id');
 set local role authenticated;
 select test.debe_fallar(format($q$select public.anular_asistencia(%L, 'Se marcó a otra persona')$q$, current_setting('prueba.hoy')),
-  'el administrador no anula una marca', 'Recursos Humanos');
+  'el administrador no anula una marca', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'SALIDA', null)$q$, gen_random_uuid(), current_setting('prueba.t1')),
-  'ni marca la asistencia', 'Recursos Humanos');
+  'ni marca la asistencia', 'No tienes permiso para cambiar esto: el administrador lo ve, pero no lo cambia');
 reset role;
 
 -- La portería anula la de hoy, no la de ayer.
