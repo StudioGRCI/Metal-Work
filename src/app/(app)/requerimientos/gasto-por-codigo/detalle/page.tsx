@@ -130,7 +130,7 @@ async function Materiales({ codigo }: { codigo: string }) {
     <Tarjeta className="overflow-hidden">
       <TarjetaCabecera
         titulo="Materiales salidos del almacén"
-        ayuda="Cada salida para este código, con lo que vale. Lo que todavía no tiene precio sale «Sin precio» y no se suma como cero."
+        ayuda="Cada salida para este código, con lo que vale. Lo que todavía no tiene precio sale «Sin precio» y no se suma como cero. También suma el IGV de las boletas de una parte y resta el descuento de las notas de crédito, que no salieron del almacén: van sin cantidad."
       />
       <Tabla>
         <TablaCabecera>
@@ -154,7 +154,8 @@ async function Materiales({ codigo }: { codigo: string }) {
                     <p className="text-xs text-texto-suave">{[l.documento, l.detalle].filter(Boolean).join(' · ')}</p>
                   </TD>
                   <TD className="tabular text-right align-top whitespace-nowrap">
-                    {cantidad(l.cantidad)} {l.unidad}
+                    {/* El IGV de una parte y la nota de crédito no son salidas: no tienen cantidad ni unidad. */}
+                    {l.unidad === null ? '—' : `${cantidad(l.cantidad)} ${l.unidad}`}
                   </TD>
                   <TD className="tabular text-right align-top">
                     {l.fuente === 'MATERIALES_SIN_PRECIO' ? <Insignia tono="aviso">Sin precio</Insignia> : moneda(l.monto, l.moneda ?? 'PEN')}

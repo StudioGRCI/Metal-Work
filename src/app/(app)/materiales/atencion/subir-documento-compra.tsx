@@ -118,8 +118,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
       </>
     )}
     {tipo === 'COMPROBANTE' && (
-      <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
-        <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-3">
+      <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+        <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
           <input type="checkbox" name="parte" value="si" className="size-4" checked={parte} disabled={enviando}
             onChange={(e) => setParte(e.target.checked)} />
           <span>Es la boleta de solo una parte de la OC</span>
@@ -138,8 +138,8 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
               <Entrada id={`parte-monto-${ordenCompraId}`} name="parte_monto" inputMode="decimal" required disabled={enviando}
                 autoComplete="off" placeholder="0.00" className="tabular" />
             </Campo>
-            <Campo etiqueta="¿Trae IGV?" htmlFor={`parte-igv-${ordenCompraId}`} requerido
-              ayuda="Lo dice el comprobante. El IGV de una boleta no se recupera y va al costo del código; la nota de venta, el recibo o la boleta del Nuevo RUS no lo traen.">
+            <Campo etiqueta="¿Trae IGV?" htmlFor={`parte-igv-${ordenCompraId}`} requerido ayudaEnIcono={false}
+              ayuda="La boleta lo trae aunque no lo separe; la nota de venta, el recibo y el Nuevo RUS, no.">
               <Seleccion id={`parte-igv-${ordenCompraId}`} name="parte_igv" required disabled={enviando} defaultValue="">
                 <option value="" disabled>Elige…</option>
                 <option value="si">Sí, trae IGV</option>
