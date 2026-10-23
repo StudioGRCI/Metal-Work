@@ -268,7 +268,7 @@ begin
   perform test.afirmar((select count(*) from public.reporte_diario_fotos) = 0, 'ni sus fotos');
   perform test.afirmar((select count(*) from storage.objects where bucket_id = 'fotos-reporte-diario') = 0, 'ni los archivos de sus fotos');
   perform test.debe_fallar(format('select public.anular_reporte_diario(%L, ''No es mío pero lo anulo'')', current_setting('prueba.r1')),
-    'otro supervisor no anula un reporte ajeno', 'quien subió');
+    'otro supervisor no anula un reporte ajeno', 'No tienes permiso para anular este reporte');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
@@ -279,7 +279,7 @@ begin
   perform test.afirmar((select count(*) from public.tareos) = 0, 'Gerencia NO ve el tareo ni el costo de cada persona');
   perform test.debe_fallar('select * from public.reporte_diario_personal_disponible()', 'Gerencia no sube reportes', 'reporte_diario.registrar');
   perform test.debe_fallar(format('select public.anular_reporte_diario(%L, ''Gerencia quiere anularlo'')', current_setting('prueba.r1')),
-    'Gerencia no anula reportes', 'quien subió');
+    'Gerencia no anula reportes', 'No tienes permiso para anular este reporte');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.portero')::uuid);

@@ -7,10 +7,26 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio } from '@/lib/envio'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { redondearCantidad } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 
 import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from './acciones'
+
+/**
+ * La guía con que entró, si la hubo. Con la guía en blanco, Almacén deja como
+ * documento la OC misma —su número, o su nombre desde la migración
+ * 20261023130000, cortado a 100 letras; antes, la referencia suelta de la OC
+ * sin número—, y repetirla al lado de la compra no dice nada. Se compara entero:
+ * la guía «3501» de la OC con referencia «OC-3501» sí se muestra.
+ */
+function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
+  const documento = i.documento?.trim()
+  if (!documento) return null
+  const compra = i.compra ?? ''
+  if (documento === compra || documento === compra.slice(0, 100) || compra === nombreDeOc({ numero: null, referencia: documento })) return null
+  return documento
+}
 
 /**
  * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
@@ -55,7 +71,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 {/* El material primero: la OC sin número se nombra largo y en el teléfono lo tapaba. */}
                 {ingresos.map((i) => (
                   <option key={i.ingreso_id} value={i.ingreso_id ?? ''}>
-                    {`${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.compra} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
+                    {[`${i.material}`, `${cantidad(i.se_puede)} ${i.unidad ?? ''}`, i.compra, guiaDelIngreso(i), fechaHora(i.fecha)].filter(Boolean).join(' · ')}
                   </option>
                 ))}
               </Seleccion>
@@ -63,7 +79,8 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
             {ingreso && (
               <p className="-mt-2 text-xs text-texto-suave">
                 {ingreso.material}, de la {ingreso.compra} · Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)}{' '}
-                {ingreso.unidad ?? ''} con {ingreso.documento} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
+                {ingreso.unidad ?? ''}
+                {guiaDelIngreso(ingreso) && ` con ${guiaDelIngreso(ingreso)}`} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">

@@ -125,12 +125,14 @@ export default async function PaginaGestionCompras() {
 function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecojo; quien: Quien; cuantas: number }) {
   const estado = RECOJO_COMPRA[c.recojo]
   const pendiente = c.recojo === 'POR_RECOGER'
-  const titulo = c.lugar ? `${c.lugar}.º · ${c.numero} · ${c.proveedor}` : `${c.numero} · ${c.proveedor}`
+  // La OC de antes de la serie no tiene número: «OC sin número», y su referencia abajo.
+  const titulo = `${c.lugar ? `${c.lugar}.º · ` : ''}${c.numero ?? 'OC sin número'} · ${c.proveedor}`
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo={titulo}
         descripcion={[
+          c.numero ? null : `Ref. del proveedor: ${c.referencia}`,
           c.proveedor_documento ? `RUC ${c.proveedor_documento}` : null,
           c.codigo_interno ? `Para ${c.codigo_interno}` : c.codigos.length ? `Para ${c.codigos.join(', ')}` : null,
           c.requerimientos.length ? c.requerimientos.join(', ') : c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null,
@@ -211,8 +213,8 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
             <ProgramarRecojo id={c.id} peso={c.peso_kg} lugar={c.en_lista ? c.lugar : null} cuantas={cuantas} pesoFijo={c.guia !== null} />
             {c.en_lista && c.lugar !== null && c.peso_kg !== null && (
               <div className="flex flex-wrap items-center gap-2">
-                <MoverEnLista id={c.id} peso={c.peso_kg} lugar={c.lugar} cuantas={cuantas} numero={c.numero} />
-                <QuitarDeLaLista id={c.id} numero={c.numero} />
+                <MoverEnLista id={c.id} peso={c.peso_kg} lugar={c.lugar} cuantas={cuantas} nombre={c.nombre} />
+                <QuitarDeLaLista id={c.id} nombre={c.nombre} />
               </div>
             )}
           </div>

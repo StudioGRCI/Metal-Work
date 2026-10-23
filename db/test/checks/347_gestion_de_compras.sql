@@ -130,12 +130,12 @@ select test.debe_fallar($q$select public.programar_recojo(current_setting('prueb
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
-select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Almacén no ve la gestión', 'la ven Logística y el conductor');
+select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Almacén no ve la gestión', 'No tienes permiso para ver la gestión de compras');
 select test.afirmar((select count(*) from public.programacion_recojo) = 0, 'ni lee la lista del conductor');
 reset role;
 select pg_temp.como('supervisor');
 set local role authenticated;
-select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Supervisión tampoco', 'la ven Logística y el conductor');
+select test.debe_fallar($q$select count(*) from public.compras_en_gestion()$q$, 'Supervisión tampoco', 'No tienes permiso para ver la gestión de compras');
 reset role;
 
 -- ============================================ 3. Logística programa: peso y lugar

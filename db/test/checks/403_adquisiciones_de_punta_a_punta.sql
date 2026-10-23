@@ -291,7 +291,7 @@ select test.afirmar(public.programar_recojo(current_setting('prueba.oc5')::uuid,
 select public.quitar_recojo_de_la_lista(current_setting('prueba.oc4')::uuid);
 select test.afirmar((select not en_lista from public.compras_en_gestion() where id = current_setting('prueba.oc4')::uuid),
   'y la saca de la lista');
-select test.debe_fallar('select count(*) from public.guias_por_emitir()', 'Logística no carga guías', 'las carga Contabilidad');
+select test.debe_fallar('select count(*) from public.guias_por_emitir()', 'Logística no carga guías', 'No tienes permiso para cargar guías de remisión');
 reset role;
 
 do $$
@@ -301,7 +301,7 @@ begin
     perform pg_temp.como(v);
     set local role authenticated;
     perform test.debe_fallar('select count(*) from public.compras_en_gestion()', v || ' no abre la gestión de compras',
-      'la ven Logística y el conductor');
+      'No tienes permiso para ver la gestión de compras');
     perform test.debe_fallar(format('select public.programar_recojo(%L, 100, null)', current_setting('prueba.oc6')),
       v || ' no programa el recojo', 'compras.programar_recojo');
     perform test.debe_fallar(format('select public.quitar_recojo_de_la_lista(%L)', current_setting('prueba.oc3')),
@@ -406,7 +406,7 @@ begin
     perform test.afirmar((select count(*) from public.guias_remision_compra) = 0
         and (select count(*) from storage.objects where bucket_id = 'guias-remision') = 0,
       v || ' no ve guías ni sus PDF');
-    perform test.debe_fallar('select count(*) from public.guias_por_emitir()', v || ' no ve qué guía falta', 'las carga Contabilidad');
+    perform test.debe_fallar('select count(*) from public.guias_por_emitir()', v || ' no ve qué guía falta', 'No tienes permiso para cargar guías de remisión');
     reset role;
   end loop;
 end $$;

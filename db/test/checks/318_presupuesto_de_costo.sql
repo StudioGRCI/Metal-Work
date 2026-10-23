@@ -133,7 +133,7 @@ begin
   select count(*) into v_n from public.ot_presupuestos where orden_id = v_orden;
   perform test.afirmar(v_n = 0, 'Supervisión general no lee el presupuesto fijado');
   perform test.debe_fallar(format('select public.fijar_presupuesto_ot(%L, 2000, %L)', v_orden, 'Intento QA de supervisión'),
-    'Supervisión general no fija el presupuesto', 'Gerencia o Administración');
+    'Supervisión general no fija el presupuesto', 'No tienes permiso para fijar el presupuesto de una OT');
   reset role;
 
   -- Costos y Materiales no ve el precio: tampoco el presupuesto, que lo delata.
@@ -144,7 +144,7 @@ begin
   select count(*) into v_n from public.ot_presupuestos;
   perform test.afirmar(v_n = 0, 'Costos y Materiales no lee la tabla de presupuestos');
   perform test.debe_fallar(format('select public.fijar_presupuesto_ot(%L, 2000, %L)', v_orden, 'Intento QA de costos'),
-    'Costos y Materiales no fija el presupuesto', 'Gerencia o Administración');
+    'Costos y Materiales no fija el presupuesto', 'No tienes permiso para fijar el presupuesto de una OT');
   reset role;
 
   -- Ventas tampoco: ve el precio pero no el costo.
@@ -153,7 +153,7 @@ begin
   perform test.debe_fallar(format('select * from public.presupuesto_ot(%L)', v_orden),
     'Ventas no ve el presupuesto', 'costos.ver');
   perform test.debe_fallar(format('select public.fijar_presupuesto_ot(%L, 2000, %L)', v_orden, 'Intento QA de ventas'),
-    'Ventas no fija el presupuesto', 'Gerencia o Administración');
+    'Ventas no fija el presupuesto', 'No tienes permiso para fijar el presupuesto de una OT');
   reset role;
 
   -- Gerencia lo devuelve al de la cotización: la fila queda, sin monto.

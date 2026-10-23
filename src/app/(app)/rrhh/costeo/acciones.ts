@@ -13,7 +13,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'El tareo lo lleva Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para registrar ni anular el tareo.'
 
 /** Carga las horas de una persona a un código interno. Mismo permiso que `rrhh_registrar_tareo`. */
 export async function registrarTareo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {

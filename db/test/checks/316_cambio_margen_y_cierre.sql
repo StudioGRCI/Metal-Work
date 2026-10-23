@@ -188,7 +188,7 @@ begin
   select count(*) into v_n from public.ot_cierres_costo where orden_id = v_orden;
   perform test.afirmar(v_n = 0, 'Ventas no lee el cierre de costo');
   perform test.debe_fallar(format('select public.cerrar_costo_ot(%L)', current_setting('prueba.m.sin_cambio')),
-    'Ventas no cierra costos', 'Costos y Materiales o Administración');
+    'Ventas no cierra costos', 'No tienes permiso para cerrar el costo de la OT');
   reset role;
 
   -- Ni el dueño de las tablas lo cambia: el disparador lo impide.

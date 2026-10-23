@@ -92,7 +92,7 @@ const esquemaActividad = z.object({
 export async function agregarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['produccion.actividades', 'diseno.planos', 'produccion.registrar'])) {
-    return { ok: false, error: 'La lista de actividades la arma Diseño o Supervisión del área.' }
+    return { ok: false, error: 'No tienes permiso para agregar actividades a la lista.' }
   }
 
   const analisis = esquemaActividad.safeParse(Object.fromEntries(datos))
@@ -165,7 +165,7 @@ const esquemaEditar = z.object({
 export async function editarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
-    return { ok: false, error: 'La lista de actividades la corrige Diseño o Supervisión del área.' }
+    return { ok: false, error: 'No tienes permiso para corregir la lista de actividades.' }
   }
 
   const analisis = esquemaEditar.safeParse(Object.fromEntries(datos))
@@ -228,7 +228,7 @@ export async function cambiarPesoActividad(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
-    return { ok: false, error: 'El peso lo pone Diseño o Supervisión del área.' }
+    return { ok: false, error: 'No tienes permiso para poner el peso de las actividades.' }
   }
 
   const analisis = esquemaPeso.safeParse(Object.fromEntries(datos))
@@ -265,7 +265,7 @@ const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })
 export async function quitarActividad(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
-    return { ok: false, error: 'La lista la arma Diseño o Supervisión del área.' }
+    return { ok: false, error: 'No tienes permiso para quitar actividades de la lista.' }
   }
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))
@@ -328,7 +328,7 @@ const esquemaFilaCronograma = z.object({
 export async function cargarCronograma(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['produccion.actividades', 'diseno.planos'])) {
-    return { ok: false, error: 'El cronograma lo carga Diseño o Supervisión del área.' }
+    return { ok: false, error: 'No tienes permiso para cargar el cronograma.' }
   }
 
   const orden = z.guid().safeParse(datos.get('orden_id'))
@@ -391,7 +391,7 @@ export async function reportarAvance(_previo: unknown, datos: FormData): Promise
     .select('plan_etapas_manual').eq('id', v.orden_id).maybeSingle()
   if (errorOrden || !orden) return { ok: false, error: 'No se pudo comprobar la orden.' }
   if (!puede(perfil, orden.plan_etapas_manual ? 'produccion.reportar_tarea' : 'produccion.registrar')) {
-    return { ok: false, error: 'El reporte de esta tarea lo registra el supervisor del área.' }
+    return { ok: false, error: 'No tienes permiso para registrar ni corregir el reporte de la tarea.' }
   }
 
   const area = await areaOFallo(v.actividad_id)
@@ -445,7 +445,7 @@ const esquemaHoja = z.object({ orden_id: z.guid() })
 export async function aprobarHojaDeOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.aprobar_reportes')) {
-    return { ok: false, error: 'Administración revisa los reportes de Supervisión.' }
+    return { ok: false, error: 'No tienes permiso para aprobar los reportes de esta orden.' }
   }
 
   const analisis = esquemaHoja.safeParse(Object.fromEntries(datos))

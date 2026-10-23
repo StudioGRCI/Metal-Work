@@ -192,7 +192,7 @@ reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.partes_con_boleta_por_pagar() $$,
-  'Logística no ve la lista de Tesorería', 'las paga Tesorería');
+  'Logística no ve la lista de Tesorería', 'No tienes permiso para ver las boletas de una parte por pagar');
 select test.debe_fallar($$ select public.registrar_pago_parte_con_boleta(gen_random_uuid(), pg_temp.id('b1'), current_setting('prueba.hoy')::date,
                                     10, null, 'x', current_setting('prueba.caja')::uuid, null) $$,
   'ni la paga', 'permiso');

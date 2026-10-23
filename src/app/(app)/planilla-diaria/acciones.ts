@@ -15,7 +15,7 @@ function dato(formulario: FormData, nombre: string) {
 }
 
 const MOTIVO = z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.')
-const NO_ARMA = 'La planilla diaria la arma Recursos Humanos.'
+const NO_ARMA = 'No tienes permiso para armar ni anular la planilla diaria.'
 const NO_PAGA = 'La planilla diaria la paga Tesorería.'
 
 function repintar(planillaId?: string) {
@@ -153,7 +153,7 @@ export async function subirBoletaPlanilla(_previo: unknown, formulario: FormData
 /** RR. HH. marca que entregó la boleta. Mismo permiso que `entregar_boleta_planilla_diaria`. */
 export async function entregarBoletaPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'Las boletas las entrega Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'No tienes permiso para entregar las boletas.' }
   const analisis = z
     .object({ persona_id: z.guid(), planilla_id: z.guid() })
     .safeParse({ persona_id: dato(formulario, 'persona_id'), planilla_id: dato(formulario, 'planilla_id') })

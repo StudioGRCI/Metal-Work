@@ -48,7 +48,7 @@ select test.como_usuario(:'diseno_id');
 set local role authenticated;
 select test.debe_fallar($$insert into public.ot_verificaciones (orden_id, numero, descripcion)
   values (current_setting('prueba.ot')::uuid, 1, 'Paso de Diseño')$$,
-  'Diseño ya no crea los pasos: los crea Administración', 'Solo Administración puede crear');
+  'Diseño ya no crea los pasos: los crea Administración', 'No tienes permiso para crear pasos de verificación');
 reset role;
 
 select test.como_usuario(:'oficina_id');
@@ -97,6 +97,10 @@ select test.afirmar(exists (select 1 from public.ot_verificaciones
 select test.debe_fallar($$update public.ot_verificaciones set avance_2 = true
   where orden_id = current_setting('prueba.ot')::uuid$$,
   'Producción no firma por Maestranza', 'Solo Supervisión de Maestranza');
+-- Firma su columna, pero no cambia lo que escribió Administración en el paso.
+select test.debe_fallar($$update public.ot_verificaciones set observaciones = 'La cambia Producción'
+  where orden_id = current_setting('prueba.ot')::uuid and numero = 2$$,
+  'Producción no cambia los datos del paso', 'No tienes permiso para modificar los datos del paso');
 reset role;
 
 select test.como_usuario(:'taller_id');

@@ -12,7 +12,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'Las horas extras las decide Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para decidir las horas extras ni usar su saldo.'
 const MOTIVO = z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.')
 
 function repintar() {
@@ -128,7 +128,7 @@ export async function anularUsoSaldo(_previo: unknown, formulario: FormData): Pr
 /** RR. HH. ajusta la regla de las horas extras, sin bajar de la ley. Mismo permiso que `rrhh_guardar_regla_horas_extras`. */
 export async function guardarReglaHorasExtras(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'La regla de las horas extras la ajusta Recursos Humanos.' }
+  if (!editaComoRrhh(perfil, 'planilla_diaria.preparar')) return { ok: false, error: 'No tienes permiso para ajustar la regla de las horas extras.' }
   const analisis = z
     .object({
       horas_tramo1: z.coerce.number().min(0, 'Las horas con el primer recargo van de 0 a 2.').max(2, 'Las horas con el primer recargo van de 0 a 2: la ley paga las siguientes con el segundo.'),

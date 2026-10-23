@@ -7,7 +7,7 @@ import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 // Las planillas del mes las arma Recursos Humanos; el administrador las ve (migración 20261020167000).
-const SOLO_RRHH='Las planillas las arma Recursos Humanos: el administrador las ve, pero no las cambia.'
+const SOLO_RRHH='No tienes permiso para cambiar las planillas: el administrador las ve, pero no las cambia.'
 const uuid=z.guid()
 const volver=()=>revalidatePath('/rrhh')
 

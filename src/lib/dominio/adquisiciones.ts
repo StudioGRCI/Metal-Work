@@ -60,7 +60,7 @@ export const TIPO_DOCUMENTO_COMPRA: Record<string, string> = {
   OTRO: 'Otro documento',
 }
 
-/** Los documentos de una OS (migración 20261020210000): los adjuntan Logística y Tesorería. */
+/** Los documentos de una OS (migración 20261020210000): los adjunta quien pasa `puede_adjuntar_documento_servicio`. */
 export const TIPO_DOCUMENTO_SERVICIO: Record<string, string> = {
   FACTURA: 'Factura',
   BOLETA: 'Boleta',
@@ -88,6 +88,17 @@ export function nombreDeOc(o: { numero: string | null; referencia?: string | nul
   if (o.numero) return o.numero
   const referencia = o.referencia?.trim()
   return referencia ? `OC sin número (ref. del proveedor ${referencia})` : 'OC sin número'
+}
+
+/**
+ * Lo inverso de `nombreDeOc`, para lo que la base ya da armado con `nombre_de_oc`
+ * (`ingresos_por_validar`, las compras del Costeo): el título lleva el número o
+ * «OC sin número», y la referencia del proveedor va en su línea, debajo. Sin
+ * esto, el título largo ocupaba tres líneas en el teléfono y partía la referencia.
+ */
+export function partesDeNombreDeOc(nombre: string): { numero: string | null; referencia: string | null } {
+  if (!nombre.startsWith('OC sin número')) return { numero: nombre, referencia: null }
+  return { numero: null, referencia: /^OC sin número \(ref\. del proveedor (.+)\)$/.exec(nombre)?.[1] ?? null }
 }
 
 /**

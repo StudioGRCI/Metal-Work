@@ -13,7 +13,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'Las observaciones y amonestaciones las registra Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para registrar ni anular observaciones o amonestaciones.'
 
 /** Registra una observación, amonestación o suspensión. Mismo permiso que `rrhh_registrar_observacion`. */
 export async function registrarObservacion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {

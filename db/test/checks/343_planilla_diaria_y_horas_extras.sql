@@ -380,7 +380,7 @@ begin
   set local role authenticated;
   perform test.afirmar((select count(*) from public.planilla_diaria_personas) = 2, 'Gerencia consulta las planillas');
   perform test.debe_fallar(format('select * from public.planilla_diaria_cuentas(%L)', current_setting('prueba.pd1')),
-    'Gerencia no ve las cuentas', 'Tesorería');
+    'Gerencia no ve las cuentas', 'No tienes permiso para ver las cuentas de la planilla');
   perform test.afirmar((select count(*) from public.trabajador_remuneraciones) = 0, 'ni la remuneración de la ficha');
   reset role;
 
@@ -389,7 +389,7 @@ begin
   perform test.afirmar((select count(*) from public.planillas_diarias) = 0, 'el supervisor NO ve la planilla');
   perform test.afirmar((select count(*) from public.planilla_diaria_personas) = 0, 'ni lo que se le paga a nadie');
   perform test.debe_fallar(format('select * from public.planilla_diaria_cuentas(%L)', current_setting('prueba.pd1')),
-    'ni las cuentas', 'Tesorería');
+    'ni las cuentas', 'No tienes permiso para ver las cuentas de la planilla');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.portero')::uuid);

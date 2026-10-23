@@ -38,8 +38,12 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   solicitudId: string
   /** El que pide la compra: FACTURA, o COMPROBANTE si es sin factura. */
   tipoInicial?: 'FACTURA' | 'COMPROBANTE'
-  /** El número, el total con IGV y la moneda de la orden: el detector compara la factura con ellos. */
-  orden?: { numero: string; total: number; moneda: string }
+  /**
+   * El número, el total con IGV y la moneda de la orden: el detector compara la
+   * factura con ellos. En la OC sin número, el número es su referencia, que es
+   * lo que cita la factura; el nombre es con el que se la nombra.
+   */
+  orden?: { numero: string; nombre?: string; total: number; moneda: string }
   /** Si quien anexa entra a Adquisiciones (`adquisiciones.ver`): sin él, el enlace a la OC lo dejaría en la puerta. */
   verAdquisiciones?: boolean
 }) {
@@ -113,7 +117,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
         </div>
         <div className="sm:col-span-2">
           <AvisoFacturaDeLaOrden lectura={detector.lectura} total={orden?.total ?? null}
-            moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} parcialPosible />
+            moneda={orden?.moneda ?? 'PEN'} numero={orden?.numero} nombre={orden?.nombre} parcialPosible />
         </div>
       </>
     )}

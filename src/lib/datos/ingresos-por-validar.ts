@@ -16,6 +16,11 @@ export type LineaPorValidar = {
 /** Una entrega del conductor: la OC que dejó en almacén y sus líneas por validar. */
 export type EntregaPorValidar = {
   compraId: string
+  /**
+   * La OC nombrada por la base: su número, u «OC sin número (ref. del proveedor
+   * …)» (migración 20261023130000). Es también el documento que queda en el
+   * kardex si Almacén deja la guía en blanco.
+   */
   referencia: string
   proveedor: string
   directa: boolean
