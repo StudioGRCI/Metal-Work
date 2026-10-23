@@ -83,7 +83,7 @@ export function RegistrarFactura({
       setAbierta(false)
       setFacturaId(null)
     },
-    { alYaEntrar: () => setFacturaId(null) },
+    { alYaEntrar: () => setFacturaId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-${cotizacionId}`
 

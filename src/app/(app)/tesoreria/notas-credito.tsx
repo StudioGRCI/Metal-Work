@@ -151,11 +151,12 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
-  // Si la ventana se abrió antes de que la pantalla se pusiera al día, lo que queda a favor cambia el propuesto.
+  // Si la ventana se abrió antes de que la pantalla se pusiera al día, lo que queda a favor cambia el
+  // propuesto, pero no lo que la persona ya escribió: un refresco tardío lo cambiaba por el total.
   const [aFavorVisto, setAFavorVisto] = useState(nota.aFavor)
   if (aFavorVisto !== nota.aFavor) {
     setAFavorVisto(nota.aFavor)
-    setMonto(nota.aFavor.toFixed(2))
+    if (monto === aFavorVisto.toFixed(2)) setMonto(nota.aFavor.toFixed(2))
   }
   const avisar = useAvisoDeLaCaja()
 
@@ -176,7 +177,7 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
       setId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setId(null) },
+    { alYaEntrar: () => setId(crypto.randomUUID()) },
   )
   function abrir() {
     avisar(null)

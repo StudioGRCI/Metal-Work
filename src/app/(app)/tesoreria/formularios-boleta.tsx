@@ -148,7 +148,7 @@ export function RegistrarDevolucion({
       setDevolucionId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setDevolucionId(null) },
+    { alYaEntrar: () => setDevolucionId(crypto.randomUUID()) },
   )
 
   function abrir() {
@@ -421,7 +421,7 @@ export function TomarAlCambio({
       setTomaId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setTomaId(null) },
+    { alYaEntrar: () => setTomaId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-al-cambio-${ordenCompraId}`
   const boleta = leerMonto(deLaBoleta)
@@ -556,7 +556,7 @@ export function DescontarDeOtraFactura({
       setTomaId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setTomaId(null) },
+    { alYaEntrar: () => setTomaId(crypto.randomUUID()) },
   )
   const factura = facturas.find((f) => f.id === elegida)
   const otraMoneda = !!factura && factura.moneda !== monedaOc

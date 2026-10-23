@@ -287,7 +287,12 @@ async function ordenConUnPdf() {
      values ('adjuntos-ot', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'application/pdf', 'size', $3::bigint))`,
     [ruta, admin.id, pdf.length],
   )
-  const numero = `8${sello.slice(-3)}-2026`
+  // Un número libre: con solo tres cifras del sello, una tanda vieja ya lo había usado
+  // («Ya hay una orden de trabajo 8062-2026»), y su orden ya no tiene un solo PDF.
+  const usados = new Set((await filas(`select split_part(numero, '-', 1) as n from public.ordenes_trabajo where numero like '8___-%'`)).map((f) => f.n))
+  const libre = Array.from({ length: 1000 }, (_, i) => `8${String((Number(sello.slice(-3)) + i) % 1000).padStart(3, '0')}`).find((n) => !usados.has(n))
+  if (!libre) return null
+  const numero = `${libre}-2026`
   await base.query('begin')
   try {
     await base.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`,

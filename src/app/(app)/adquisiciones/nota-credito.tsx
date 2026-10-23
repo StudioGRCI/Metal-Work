@@ -88,7 +88,7 @@ export function RegistrarNotaCredito({
       setNotaId(null)
       if (r.mensaje) avisar(r.mensaje)
     },
-    { alYaEntrar: () => setNotaId(null) },
+    { alYaEntrar: () => setNotaId(crypto.randomUUID()) },
   )
 
   function abrir() {

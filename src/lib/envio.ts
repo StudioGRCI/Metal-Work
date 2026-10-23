@@ -39,7 +39,9 @@ type Opciones = {
    * Tras «… ya quedó … la primera vez que lo enviaste»: ese id ya terminó y el
    * envío siguiente lleva otro. Corre con la ventana ya cerrada, o en el acto si
    * no la había. Sin esto un id que vive fuera de la ventana se quedaba pegado:
-   * cada documento siguiente de la compra decía «ya quedó» hasta recargar.
+   * cada documento siguiente de la compra decía «ya quedó» hasta recargar. Si la
+   * respuesta llega tarde, puede haber otra ventana abierta: que ponga un id
+   * nuevo, no que lo borre, o esa ventana se queda sin id para enviar.
    */
   alYaEntrar?: () => void
 }
@@ -89,13 +91,21 @@ export function useAccion<T = never>(
       if (ponerAlDia) iniciar(() => router.refresh())
       return
     }
-    const alCerrar = () => {
+    const soltar = () => {
       setResultado((r) => (r === salida ? null : r))
       if (yaEntro) alYaEntrar?.()
+    }
+    const alCerrar = () => {
+      soltar()
       if (ponerAlDia) router.refresh()
     }
-    // Si la ventana del envío ya se cerró, en el acto: la que esté abierta ahora es otra.
-    if (ventana !== vecesQueSeCerro() || !alCerrarLaVentana(alCerrar)) iniciar(alCerrar)
+    if (ventana === vecesQueSeCerro() && alCerrarLaVentana(alCerrar)) return
+    // La ventana del envío ya se cerró: la que esté abierta ahora es otra. El
+    // aviso se suelta fuera de la transición: dentro esperaba al refresco, y
+    // con la señal lenta la ventana que se volvía a abrir salía trabada con el
+    // «ya quedó» del envío anterior.
+    soltar()
+    if (ponerAlDia) iniciar(() => router.refresh())
   }
 
   function ejecutar(datos: FormData) {

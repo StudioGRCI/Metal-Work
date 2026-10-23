@@ -236,7 +236,10 @@ En la misma migración que la crea, sin excepción:
   entraba dos veces; ahora el repetido dice que ya quedó, y la tarjeta se pone
   al día al cerrar (decimocuarta, P1). El que no se renueva tras el «ya quedó»
   se queda pegado: cada documento siguiente de la compra lo repetía hasta
-  recargar. Ojo donde la función devuelve el id existente sin comparar el
+  recargar. `alYaEntrar` pone un id nuevo, no lo borra: si la respuesta llega
+  tarde, la ventana que se volvió a abrir se quedaba sin id para enviar. Y el
+  aviso de una ventana ya cerrada se suelta fuera de la transición del
+  refresco, o la ventana nueva sale trabada mientras la señal tarda. Ojo donde la función devuelve el id existente sin comparar el
   envío (la caja diaria): conservar el id ahí haría que lo distinto se diera
   por guardado. Primero la función compara; después se conserva el id.
   Una migración ya aplicada en producción no se reescribe: su cambio va en

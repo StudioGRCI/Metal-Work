@@ -265,7 +265,9 @@ let ordenId = ''
   [salida, materialId, `${rqa} · ítem 1`, foto, fila?.id])
 
   // ---------------------------------------------- 3. Códigos internos, en lectura
-  await ir(pagina, `${BASE}/codigos-internos`)
+  // Buscados por su sello: la lista va de 50 en 50, y el banco que ya corrió otras
+  // tandas tiene más de 50 abiertos, así que A y B podían caer en la segunda página.
+  await ir(pagina, `${BASE}/codigos-internos?q=${sello}`)
   const lista = limpio(await pagina.locator('main').innerText())
   comprobar(lista.includes(A) && lista.includes(B), 've los códigos en la lista de Códigos internos')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-codigos.png`, fullPage: true })

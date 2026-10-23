@@ -91,7 +91,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
       setAbierta(false)
       setDocumentoId(null)
     },
-    { alYaEntrar: () => setDocumentoId(null) },
+    { alYaEntrar: () => setDocumentoId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)

@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeftRight, Ban, HandCoins, Undo2, Wallet } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 import { useAvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta-de-la-caja'
@@ -41,6 +41,23 @@ function conPunto(proveedor: string) {
 /** El monto en una sola línea: el espacio después de «S/» no se parte en el teléfono. */
 function montoEntero(valor: number, codigoMoneda: CodigoMoneda) {
   return moneda(valor, codigoMoneda).replace(' ', '\u00a0')
+}
+
+/**
+ * El importe que propone la ventana: el saldo. Si se abrió antes de que la
+ * pantalla se pusiera al día, el saldo nuevo cambia el propuesto, pero no lo
+ * que la persona ya escribió: con `key={saldo}` el refresco tardío lo borraba
+ * y un pago a cuenta salía por el saldo entero.
+ */
+function ImportePropuesto({ saldo, ...props }: { saldo: number } & Omit<ComponentProps<typeof Entrada>, 'value' | 'defaultValue' | 'onChange'>) {
+  const propuesto = saldo > 0 ? saldo.toFixed(2) : ''
+  const [monto, setMonto] = useState(propuesto)
+  const [visto, setVisto] = useState(propuesto)
+  if (visto !== propuesto) {
+    setVisto(propuesto)
+    if (monto === visto) setMonto(propuesto)
+  }
+  return <Entrada {...props} value={monto} onChange={(e) => setMonto(e.target.value)} />
 }
 
 /**
@@ -95,7 +112,7 @@ export function CobrarFactura({
       setCobroId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setCobroId(null) },
+    { alYaEntrar: () => setCobroId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-cobro-${facturaId}`
 
@@ -131,18 +148,16 @@ export function CobrarFactura({
               <Entrada id={campo('fecha')} name="fecha" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe cobrado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
-              <Entrada
+              <ImportePropuesto
+                saldo={saldo}
                 id={campo('monto')}
                 name="monto"
-                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
-                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
                 max={saldo > 0 ? saldo.toFixed(2) : undefined}
                 step="0.01"
                 required
-                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
                 className="tabular"
               />
             </Campo>
@@ -260,7 +275,7 @@ export function PagarServicio({
       setPagoId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setPagoId(null) },
+    { alYaEntrar: () => setPagoId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-${ordenServicioId}`
 
@@ -297,17 +312,15 @@ export function PagarServicio({
               <Entrada id={campo('fecha')} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
-              <Entrada
+              <ImportePropuesto
+                saldo={saldo}
                 id={campo('monto')}
                 name="monto"
-                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
-                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
                 step="0.01"
                 required
-                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
                 className="tabular"
               />
             </Campo>
@@ -422,7 +435,7 @@ export function PagarFactura({
       setPagoId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setPagoId(null) },
+    { alYaEntrar: () => setPagoId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-${adquisicionId}`
 
@@ -459,18 +472,16 @@ export function PagarFactura({
               <Entrada id={campo('fecha')} name="fecha" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
-              <Entrada
+              <ImportePropuesto
+                saldo={saldo}
                 id={campo('monto')}
                 name="monto"
-                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
-                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
                 max={saldo > 0 ? saldo.toFixed(2) : undefined}
                 step="0.01"
                 required
-                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
                 className="tabular"
               />
             </Campo>
@@ -579,7 +590,7 @@ export function PagarCompra({
       setPagoId(null)
       avisar(r.mensaje ?? null)
     },
-    { alYaEntrar: () => setPagoId(null) },
+    { alYaEntrar: () => setPagoId(crypto.randomUUID()) },
   )
   const campo = (nombre: string) => `${nombre}-compra-${ordenCompraId}`
 
@@ -617,18 +628,16 @@ export function PagarCompra({
               <Entrada id={campo('fecha')} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
             <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
-              <Entrada
+              <ImportePropuesto
+                saldo={saldo}
                 id={campo('monto')}
                 name="monto"
-                // Si la ventana se abrió antes de que la pantalla se pusiera al día, el saldo nuevo cambia el propuesto.
-                key={saldo}
                 type="number"
                 inputMode="decimal"
                 min="0.01"
                 max={saldo > 0 ? saldo.toFixed(2) : undefined}
                 step="0.01"
                 required
-                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
                 className="tabular"
               />
             </Campo>

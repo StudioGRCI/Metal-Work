@@ -677,6 +677,40 @@ let pagoId
   const al9 = await nuevos()
   comprobar(Object.values(trasCerrar).every(Boolean) && al9.join() === '20,5,7,9',
     `el «ya quedó» que llega con la ventana cerrada no la traba: abre limpia y el pago siguiente entra con otro id (${JSON.stringify(trasCerrar)}; pagos ${al9.join(', ')})`)
+
+  // 5. Lo mismo, pero se vuelve a abrir y se escribe otro importe ANTES de que
+  // llegue el «ya quedó» (tarda 4 s) y de que la pantalla se ponga al día: la
+  // ventana nueva no se traba, no se queda sin id y no pierde lo escrito.
+  await abrir()
+  await llenar('11')
+  corte.quedan = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  corte.demora = 4000
+  await llenar('12', 'voucher-2.pdf')
+  const antesDel12 = corte.entregadas
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await pagina.waitForTimeout(500)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  await abrir()
+  await llenar('13', 'voucher-2.pdf')
+  await hasta(() => corte.entregadas, (n) => n > antesDel12, 30000)
+  corte.demora = 0
+  cortando = false
+  await pagina.waitForLoadState('networkidle')
+  await pagina.waitForTimeout(1500)
+  const conLaNueva = {
+    sinAviso: (await v.locator('[role="alert"]').count()) === 0,
+    monto: await v.locator('input[name="monto"]').inputValue(),
+    habilitado: await v.locator('input[name="monto"]').isEnabled(),
+  }
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const dijo = (await v.count()) ? limpio(await aviso()) : ''
+  const al13 = await nuevos()
+  comprobar(conLaNueva.sinAviso && conLaNueva.monto === '13' && conLaNueva.habilitado && al13.join() === '20,5,7,9,11,13',
+    `el «ya quedó» que llega con otra ventana abierta no la traba ni le borra lo escrito, y su pago entra con otro id (${JSON.stringify(conLaNueva)}; pagos ${al13.join(', ')}${dijo ? `; dijo «${dijo}»` : ''})`)
   const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
                                     and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
                                     and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
