@@ -19,11 +19,13 @@
  *   3. Tesorería ve la factura en Cuentas por pagar con la OC nombrada así, y
  *      el PDF de la OC con el mismo nombre; en Facturas, «Pagar en Cuentas por
  *      pagar». En el teléfono, la tarjeta de la OC con boleta no se desborda.
+ *      Logística le anexa a otra la boleta de una parte, y el aviso a Tesorería
+ *      y su tarjeta en «Boletas de una parte» la nombran igual.
  *   4. Gerencia, que lee Cuentas por pagar y no paga, ve en Facturas «Ver en
  *      Cuentas por pagar».
  *
- * Siembra tres OC del RQ, aprobadas: dos con factura y una con boleta, para su
- * tarjeta de Cuentas por pagar en el teléfono. Les quita el número como a una
+ * Siembra cuatro OC del RQ, aprobadas: tres con factura y una con boleta, para
+ * su tarjeta de Cuentas por pagar en el teléfono. Les quita el número como a una
  * de antes de la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre
  * las veces que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
  * CAPTURAS, BANCO_BASE, ARCHIVOS y el correo de cada cuenta si no es
@@ -213,7 +215,11 @@ const oc3 = await ocSinNumero(REFERENCIA_3, false)
 const NOMBRE = `OC sin número (ref. del proveedor ${REFERENCIA})`
 const NOMBRE_2 = `OC sin número (ref. del proveedor ${REFERENCIA_2})`
 const NOMBRE_3 = `OC sin número (ref. del proveedor ${REFERENCIA_3})`
-console.log(`     sembradas tres OC sin número: ${REFERENCIA} y ${REFERENCIA_2} con factura, ${REFERENCIA_3} con boleta`)
+// Con factura, para la boleta de una parte (la OC que llega en partes).
+const REFERENCIA_4 = `OC-${1000 + ((Number(SUFIJO) + 2) % 8999)}`
+const oc4 = await ocSinNumero(REFERENCIA_4)
+const NOMBRE_4 = `OC sin número (ref. del proveedor ${REFERENCIA_4})`
+console.log(`     sembradas cuatro OC sin número: ${REFERENCIA}, ${REFERENCIA_2} y ${REFERENCIA_4} con factura, ${REFERENCIA_3} con boleta`)
 
 const JUSTIFICANTE = join(ARCHIVOS, `justificante-sin-numero-${SUFIJO}.pdf`)
 writeFileSync(JUSTIFICANTE, pdfConTexto(['Correo del proveedor', 'La factura cubre las dos cotizaciones']))
@@ -421,6 +427,56 @@ writeFileSync(
   comprobar(textoBoleta.includes(NOMBRE_3) && medida !== null && medida.dentro <= medida.caja && pagina390 <= 390,
     `la tarjeta de la OC con boleta la nombra «${NOMBRE_3}» sin salirse (${medida ? `${medida.dentro} de ${medida.caja} px` : 'no está'}, página ${pagina390} px)`)
   await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-tesoreria-telefono.png'), fullPage: true, caret: 'initial' })
+  await tel.contexto.close()
+}
+
+// ------------------------------------- 3b. La boleta de una parte de una OC sin número
+// La OC que llega en partes (migración 20261022200000): Logística le anexa la boleta
+// de una parte, y el aviso y la tarjeta de Tesorería la nombran «OC sin número
+// (ref. …)» (migración 20261022220000 y `nombreDeOc`), no «OC <referencia>».
+{
+  const BOLETA_PARTE = `B903-${SUFIJO}`
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
+  // Gestión de compras todavía la lista por su referencia: se arregla con su pantalla.
+  await pagina.locator(`tr[data-compra="${REFERENCIA_4}"]`).getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.locator('select[name="tipo"]').selectOption('COMPROBANTE')
+  await v.locator('input[name="parte"]').check()
+  await v.locator('input[name="parte_numero"]').fill(BOLETA_PARTE)
+  await v.locator('input[name="parte_fecha"]').fill(hoy)
+  await v.locator('input[name="parte_monto"]').fill('100')
+  await v.locator('select[name="parte_igv"]').selectOption('si')
+  await v.locator('input[name="archivo"]').setInputFiles({
+    name: `boleta-${BOLETA_PARTE}.pdf`,
+    mimeType: 'application/pdf',
+    buffer: pdfConTexto(['BOLETA DE VENTA ELECTRONICA', BOLETA_PARTE, 'Importe Total : S/ 100.00']),
+  })
+  await v.getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  await Promise.race([v.locator('[role="status"]').waitFor({ timeout: 30000 }), v.locator('[role="alert"]').waitFor({ timeout: 30000 })]).catch(() => {})
+  const error = limpio(await v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
+  const [parte] = await consulta(`select id from documentos_compra_material where orden_compra_id = $1 and monto_de_la_parte is not null`, [oc4])
+  comprobar(!error && parte, `Logística anexa la boleta de una parte a la OC sin número${error ? ` (${error})` : ''}`)
+  await contexto.close()
+  const avisos = await consulta(`select titulo from notificaciones where origen_id = $1 and usuario_id = $2`, [parte?.id, ids[CUENTAS.tesoreria]])
+  comprobar(avisos.some((a) => a.titulo === `Boleta de una parte por pagar: ${NOMBRE_4}`),
+    `el aviso a Tesorería la nombra bien (${avisos.map((a) => a.titulo).join(' / ') || 'sin aviso'})`)
+
+  const t = await entrar(CUENTAS.tesoreria)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar#partes-con-boleta`, { waitUntil: 'networkidle' })
+  const tarjeta = limpio(await t.pagina.locator(`article#parte-${parte?.id}`).textContent().catch(() => ''))
+  comprobar(tarjeta.includes(`Una parte de la ${NOMBRE_4}`) && tarjeta.includes(`PDF de la ${NOMBRE_4}`) && !tarjeta.includes(`OC ${REFERENCIA_4}`),
+    `en «Boletas de una parte» la tarjeta dice «Una parte de la ${NOMBRE_4}» y su PDF, sin «OC ${REFERENCIA_4}»`)
+  await t.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-parte.png'), fullPage: true, caret: 'initial' })
+  await t.contexto.close()
+  const tel = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
+  await tel.pagina.goto(`${BASE}/tesoreria/por-pagar#partes-con-boleta`, { waitUntil: 'networkidle' })
+  const caja = tel.pagina.locator(`article#parte-${parte?.id}`)
+  const medida = await caja.evaluate((e) => ({ dentro: e.scrollWidth, caja: e.clientWidth })).catch(() => null)
+  const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(medida !== null && medida.dentro <= medida.caja && ancho <= 390,
+    `en el teléfono la tarjeta no se sale (${medida ? `${medida.dentro} de ${medida.caja} px` : 'no está'}, página ${ancho} px)`)
+  await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-parte-telefono.png'), fullPage: true, caret: 'initial' })
   await tel.contexto.close()
 }
 
