@@ -77,17 +77,18 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
             <Campo etiqueta="Qué llegó de la compra" htmlFor="dev-ingreso" requerido>
               <Seleccion id="dev-ingreso" name="ingreso" required value={elegido} onChange={(e) => setElegido(e.target.value)}>
                 <option value="">Elige el ingreso</option>
+                {/* El material primero: la OC sin número se nombra largo y en el teléfono lo tapaba. */}
                 {ingresos.map((i) => (
                   <option key={i.ingreso_id} value={i.ingreso_id ?? ''}>
-                    {`${i.compra} · ${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
+                    {`${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.compra} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
                   </option>
                 ))}
               </Seleccion>
             </Campo>
             {ingreso && (
               <p className="-mt-2 text-xs text-texto-suave">
-                Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)} {ingreso.unidad ?? ''} con {ingreso.documento} · se
-                pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
+                {ingreso.material}, de la {ingreso.compra} · Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)}{' '}
+                {ingreso.unidad ?? ''} con {ingreso.documento} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">

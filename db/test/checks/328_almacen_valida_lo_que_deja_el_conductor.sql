@@ -230,7 +230,7 @@ reset role;
 
 -- 7. Logística se entera de lo observado.
 select test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.comprador')::uuid
-  and origen_id = current_setting('prueba.oc_directa')::uuid and titulo = 'Almacén observó la compra ' || current_setting('prueba.num_directa')),
+  and origen_id = current_setting('prueba.oc_directa')::uuid and titulo = 'Almacén observó la ' || current_setting('prueba.num_directa')),
   'quien emitió la OC recibe el aviso de lo observado');
 
 do $$ begin raise notice 'OK 328: Almacén valida lo que dejó el conductor, con su rol'; end $$;

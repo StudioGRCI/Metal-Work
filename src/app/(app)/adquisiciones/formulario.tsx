@@ -6,7 +6,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
-import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { nombreDeOc, ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeFactura, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
@@ -305,7 +305,8 @@ function Formulario({
 
   /** Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera. */
   function marcarDeLectura(fuente: Fuente, leida: LecturaFactura, deNuevo = false) {
-    const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(c.numero) ?? ''))
+    // La OC sin número, por su referencia: es lo que cita la factura del proveedor.
+    const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(ocParaDetector(c).numero) ?? ''))
     const primera = nombradas.at(0)
     const juntas = primera ? nombradas.filter((c) => mismoEmisor(c, primera) && c.condicion_pago === primera.condicion_pago) : []
     if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda, deNuevo)
@@ -453,8 +454,8 @@ function Formulario({
         moneda: monedaFactura,
         numero,
         ruc: rucEscrito,
-        marcadas: elegidas,
-        disponibles: compras,
+        marcadas: elegidas.map(ocParaDetector),
+        disponibles: compras.map(ocParaDetector),
       })
     : []
   // El detector compara con la primera fuente; si el archivo y la factura de
@@ -759,7 +760,8 @@ function Formulario({
         avisos={[
           ...avisos.map((a) => ({
             texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
-            marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => (c.numero ?? c.referencia) === a.oc && encaja(c)) : undefined,
+            // El aviso la nombra como `nombreDeOc` (por `ocParaDetector`): se busca igual.
+            marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => nombreDeOc(c) === a.oc && encaja(c)) : undefined,
           })),
           ...otraFactura,
         ]}

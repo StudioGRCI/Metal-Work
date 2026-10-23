@@ -343,8 +343,9 @@ async function loQueTomoDeLaBoleta(supabase: Awaited<ReturnType<typeof createCli
   }
   const filas = data ?? []
   if (filas.length === 0) return null
-  // La base nombra la de antes de la serie «OC <referencia>», que pasa por un
-  // número de OC: se nombra con `nombreDeOc`. Si no se pueden leer, sin su número.
+  // El texto que guardó la base es el de cuando se tomó: el de antes de la
+  // migración 20261022220000 dice «OC <referencia>», que pasa por un número de
+  // OC. Se nombra con `nombreDeOc`. Si no se pueden leer, sin su número.
   const ids = filas.flatMap((f) => (f.compra_id ? [f.compra_id] : []))
   const { data: ordenes, error: errorOrdenes } = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)
   if (errorOrdenes) console.error('No se pudieron leer las OC con boleta que tomó la factura', errorOrdenes)

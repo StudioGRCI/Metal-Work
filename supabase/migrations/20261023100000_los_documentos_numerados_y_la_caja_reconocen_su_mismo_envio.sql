@@ -45,7 +45,7 @@ declare
     "emitir_compra_directa(uuid,uuid,text,text,jsonb,date,text,integer,text,boolean,text)": ["82ba581f5e5df093d611f5b9d7777a9a", "08913b4593574875f1d5a4b2b65e72fb"],
     "emitir_orden_servicio(uuid,uuid,uuid,uuid,text,text,text,date,date,text,numeric,text,integer,text,text)": ["c0e2aad4cd0eeb3e7d9fbda4c18dfcff", "2b495b0d3fb22e7f412b0cae3053c835"],
     "emitir_requerimiento(uuid,text,uuid,text,text,date,jsonb)": ["8bc92408ecd5674e5a9cb75d028baef9", "ec33e76c2e0d13aaee16570a7c87cd62"],
-    "registrar_pago_parte_con_boleta(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["7b7f2439cb140bf415cf22721a32c007", "127c9bbc87e65474ffd1d623010a9309"],
+    "registrar_pago_parte_con_boleta(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["7b7f2439cb140bf415cf22721a32c007", "2924bcd71da5c1769f25ee3cbf37065a", "127c9bbc87e65474ffd1d623010a9309", "0c9a5f1c0e1b4f575fb4fbc4a3ef3ae4"],
     "registrar_movimiento_caja(uuid,uuid,date,text,numeric,text,text,text,numeric)": ["fd09f88876ab24d07fdad35e9d622c4a", "449ad49229f4b6288bcdcbecfe3105ea"],
     "registrar_subcontrato(uuid,uuid,text,text,text,numeric,date,date,text)": ["e59d1d42acbe0d72c2642e7fdc4bdd8a", "da2f9df149963d09e28c2c933ec4241e"],
     "registrar_transferencia_caja(uuid,uuid,uuid,date,numeric,numeric,text,text)": ["3dbecb78b9ef85fba2d7036a0e3cce04", "7f68125160eefbce317a030a2eff3716"]
@@ -816,6 +816,28 @@ $function$;
 -- registrar_pago_parte_con_boleta (20261022200000): la cuenta de la que salió
 -- también cuenta, los reintentos esperan su turno, y el id de otra persona ya
 -- existe con otros datos, como en las de arriba.
+--
+-- Nombra la OC con `nombre_de_oc`, como la deja 20261022220000 (#158): la que
+-- no tiene número dice «OC sin número (ref. del proveedor …)» y no «OC OC-0001».
+-- Esa migración puede entrar antes o después de esta: si entra antes, la guarda
+-- de arriba conoce su versión; si entra después, encuentra su cambio ya hecho y
+-- lo salta. Para que la función sirva también en ese rato, `nombre_de_oc` se
+-- crea aquí igual que allá (el `create or replace` de la otra no cambia nada).
+create or replace function public.nombre_de_oc(p_numero text, p_referencia text)
+returns text
+language sql
+immutable
+set search_path to 'public'
+as $$
+  select coalesce(nullif(btrim(p_numero), ''),
+                  case when nullif(btrim(p_referencia), '') is null then 'OC sin número'
+                       else 'OC sin número (ref. del proveedor ' || btrim(p_referencia) || ')' end)
+$$;
+comment on function public.nombre_de_oc(text, text) is
+  'Cómo se nombra una OC en lo que lee la gente: su número, o «OC sin número (ref. del proveedor …)» si es de antes de la serie. Igual que nombreDeOc en la aplicación.';
+revoke all on function public.nombre_de_oc(text, text) from public, anon;
+grant execute on function public.nombre_de_oc(text, text) to authenticated;
+
 create or replace function public.registrar_pago_parte_con_boleta(
   p_id uuid, p_documento uuid, p_fecha_pago date, p_monto numeric, p_operacion text, p_ruta text,
   p_caja uuid, p_monto_cuenta numeric
@@ -860,7 +882,7 @@ begin
   end if;
   select * into v_oc from public.ordenes_compra_materiales where id = v_doc.orden_compra_id for update;
   select * into v_doc from public.documentos_compra_material where id = p_documento;
-  v_nombre := coalesce(v_oc.numero, 'OC ' || v_oc.referencia);
+  v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);
   if v_doc.anulado_en is not null then
     raise exception 'Logística anuló la boleta % de la %: no se paga.', v_doc.numero_documento, v_nombre using errcode = 'check_violation';
   end if;

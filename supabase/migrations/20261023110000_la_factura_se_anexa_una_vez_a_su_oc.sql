@@ -19,7 +19,8 @@
 -- Disparador y no índice único: si ya hay pares, son evidencia y se quedan;
 -- Logística anula uno con su motivo. Va en el INSERT: la tabla no tiene
 -- política de UPDATE y anular un anexo no crea otro. `security definer` para que
--- el anexo vigente no se le esconda a quien anexa por el RLS de lectura.
+-- el anexo vigente no se le esconda a quien anexa por el RLS de lectura. La OC
+-- se nombra con `nombre_de_oc` (20261022220000, y también 20261023100000).
 
 create or replace function public.fn_documento_compra_factura_una_vez()
 returns trigger
@@ -36,7 +37,7 @@ begin
   end if;
   -- Dos anexos a la vez de la misma factura en la misma OC no se cruzan.
   perform pg_advisory_xact_lock(hashtextextended('anexo-factura|' || new.orden_compra_id::text || '|' || v_clave, 0));
-  select d.numero_documento, d.creado_en, coalesce(c.numero, 'orden de compra') as compra
+  select d.numero_documento, d.creado_en, public.nombre_de_oc(c.numero, c.referencia) as compra
     into v_otro
     from public.documentos_compra_material d
     join public.ordenes_compra_materiales c on c.id = d.orden_compra_id

@@ -65,7 +65,8 @@ type NotasDeLaTabla = { notas: Map<string, NotaDeLaFactura[]>; devolucionesDe: M
 
 /** Cómo se lee una devolución en la lista de la nota: qué, cuánto, de qué OC y con qué guía. */
 function textoDeLaDevolucion(d: DevolucionSinNota) {
-  return `${d.material}: ${Number(d.cantidad)} ${d.unidad ?? ''} de la ${d.compra}${d.documento ? ` (${d.documento})` : ''}, del ${fecha(d.fecha)}`.replace(/\s+/g, ' ')
+  // La OC sin número ya trae su paréntesis («OC sin número (ref. del proveedor …)»): la guía va sin otro.
+  return `${d.material}: ${Number(d.cantidad)} ${d.unidad ?? ''} de la ${d.compra}, devuelto el ${fecha(d.fecha)}${d.documento ? ` con ${d.documento}` : ''}`.replace(/\s+/g, ' ')
 }
 
 /**

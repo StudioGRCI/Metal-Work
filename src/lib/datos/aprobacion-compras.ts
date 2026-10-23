@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, insumosPorCompra } from '@/lib/datos/logistica'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -21,6 +22,10 @@ export type CompraParaAprobar = {
   id: string
   numero: string
   referencia: string
+  /** La OC de antes de la serie: no tiene número de la casa, y `numero` trae la referencia del proveedor. */
+  sin_numero: boolean
+  /** Cómo se nombra en una frase: el número, o «OC sin número (ref. del proveedor …)». */
+  nombre: string
   /** REQUERIMIENTO o DIRECTA en una compra; SERVICIO en una orden de servicio. */
   origen: string
   /** Por qué se compra sin requerimiento, o qué se hace en el servicio. */
@@ -63,7 +68,11 @@ export type PuestoAprobador = { id: string; nombre: string }
 /** Una OC aprobada (o sin aprobación) que todavía no llegó a Almacén: Gerencia la anula, o la base dice por qué ya no. */
 export type CompraAnulable = {
   id: string
+  /** Como la nombra la base: el número, o «OC sin número (ref. del proveedor …)». */
   numero: string
+  /** La de antes de la serie, con su referencia aparte para la pantalla; false también si no se pudo leer. */
+  sin_numero: boolean
+  referencia: string | null
   proveedor: string
   moneda: string
   monto: number
@@ -83,9 +92,21 @@ export async function cargarComprasAnulables(): Promise<CompraAnulable[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('compras_que_se_pueden_anular')
   if (error) throw new Error(`No se pudieron leer las compras que se pueden anular: ${error.message}`)
+  // La base ya la nombra «OC sin número (ref. del proveedor …)»; la pantalla pone
+  // la referencia aparte, como en Facturas, para que no se parta en el teléfono.
+  // Sin poder leerla, queda el nombre de la base.
+  const ids = (data ?? []).flatMap((c) => (c.id ? [c.id] : []))
+  const crudas = new Map<string, { numero: string | null; referencia: string }>()
+  if (ids.length > 0) {
+    const r = await supabase.from('ordenes_compra_materiales').select('id, numero, referencia').in('id', ids)
+    if (r.error) console.error('No se pudo leer la referencia de las compras que se pueden anular', r.error)
+    for (const o of r.data ?? []) crudas.set(o.id, { numero: o.numero, referencia: o.referencia })
+  }
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero ?? '',
+    sin_numero: Boolean(c.id && crudas.has(c.id) && !crudas.get(c.id)?.numero),
+    referencia: (c.id && crudas.get(c.id)?.referencia) || null,
     proveedor: c.proveedor ?? '',
     moneda: c.moneda ?? 'PEN',
     monto: Number(c.monto ?? 0),
@@ -154,6 +175,8 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         id: c.id ?? '',
         numero: c.numero ?? c.referencia ?? '',
         referencia: c.referencia ?? '',
+        sin_numero: c.tipo !== 'OS' && !c.numero,
+        nombre: c.tipo === 'OS' ? (c.numero ?? c.referencia ?? '') : nombreDeOc({ numero: c.numero, referencia: c.referencia }),
         origen: c.origen ?? 'REQUERIMIENTO',
         motivo: c.motivo,
         proveedor: c.proveedor ?? '',

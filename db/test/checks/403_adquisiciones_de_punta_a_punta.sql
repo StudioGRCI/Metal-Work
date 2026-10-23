@@ -265,7 +265,7 @@ begin
     perform pg_temp.como(v);
     set local role authenticated;
     perform test.debe_fallar('select count(*) from public.trazabilidad_de_compras()', v || ' no lee Adquisiciones',
-      'Adquisiciones la ven Contabilidad');
+      'No tienes permiso para ver Adquisiciones');
     perform test.afirmar((select count(*) from public.pagos_orden_servicio) = 0
         and (select count(*) from storage.objects where bucket_id = 'pagos-servicio') = 0,
       v || ' tampoco lee los pagos de la OS ni su voucher por la API');

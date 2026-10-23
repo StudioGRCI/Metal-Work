@@ -406,7 +406,8 @@ function ParteConBoletaFila({
   const m = codigoMoneda(x.moneda)
   const saldo = Number(x.saldo ?? 0)
   const pagado = Number(x.pagado ?? 0)
-  const nombre = x.numero ?? `OC ${x.referencia}`
+  // La OC sin número va con la referencia del proveedor aparte: «OC OC-0001» pasaba por un número de OC.
+  const nombre = nombreDeOc(x)
   const boleta = x.boleta ?? 'sin número'
   const documentos: DocumentoParaPagar[] = [
     ...(verOc ? [{ clave: 'oc', etiqueta: `PDF de la ${nombre}`, url: pdfDeLaOc(x.orden_compra_id), descarga: true }] : []),
@@ -424,7 +425,7 @@ function ParteConBoletaFila({
             {saldo <= 0 ? <Insignia tono="exito">Pagada</Insignia> : pagado > 0 ? <Insignia tono="aviso">Pagada en parte</Insignia> : null}
           </p>
           <p className="text-xs text-texto-suave">
-            Una parte de la <span className="tabular whitespace-nowrap">{nombre}</span>
+            Una parte de la <span className={x.numero ? 'tabular whitespace-nowrap' : undefined}>{nombre}</span>
             {x.con_factura ? ', el resto con factura' : ''} · del {fecha(x.fecha_boleta)} · {condicion}
             {x.codigo_interno && ` · ${x.codigo_interno}`}
             {saldo > 0 ? (
@@ -1061,13 +1062,12 @@ function Factura({
             <p className="text-xs text-aviso">
               {tomasAnuladas.length === 1 ? (
                 <>
-                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta ({tomasAnuladas[0].referencia}), que se anuló.{' '}
-                  {tomasAnuladas[0].motivo_anulacion}.
+                  {/* Qué pago y por qué se anuló lo dice su línea «Anulado» de abajo: aquí repetía la OC con su nombre largo. */}
+                  Tomaba {moneda(tomasAnuladas[0].monto, m)} del pago por la boleta, que se anuló.
                 </>
               ) : (
                 <>
-                  Tomaba {moneda(tomabaDeAnulados, m)} de {tomasAnuladas.length} pagos por la boleta que se anularon.{' '}
-                  {[...new Set(tomasAnuladas.map((p) => p.motivo_anulacion))].filter(Boolean).join('. ')}.
+                  Tomaba {moneda(tomabaDeAnulados, m)} de {tomasAnuladas.length} pagos por la boleta que se anularon.
                 </>
               )}{' '}
               {registradoDespues <= 0 ? (
@@ -1089,7 +1089,9 @@ function Factura({
         {c.enEspera ? (
           // La OC con boleta se dio por pagada fuera: la base no deja pagarla hasta que Contabilidad lo diga (migración 20261022175000).
           <p className="text-xs text-aviso">
-            Espera a Contabilidad: la <span className="whitespace-nowrap">{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
+            {/* La base la nombra con `nombre_de_oc`: «OC sin número (ref. del proveedor …)» es largo y tiene que poder partirse. */}
+            Espera a Contabilidad: la{' '}
+            <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
           </p>
         ) : espera ? (
