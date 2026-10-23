@@ -106,9 +106,6 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     void detector.leer(undefined)
   }
   const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
-    setMensaje(null)
-    setRevisar(false)
-    setAvisaTesoreria(false)
     const archivo = datos.get('archivo')
     if (!(archivo instanceof File) || archivo.size < 1 || archivo.size > 20 * 1024 * 1024 || await archivo.slice(0, 5).text() !== '%PDF-') {
       return { ok: false, error: 'Selecciona un PDF válido de hasta 20 MB.' }
@@ -152,7 +149,15 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
   }, [vez, enviando])
   const quieto = enviando || trabado
   return <div className="min-w-0 rounded-xl border border-borde bg-superficie p-4">
-  <form key={vez} onSubmit={alEnviar} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-end">
+  {/* El aviso del documento anterior se vacía aquí y no dentro del envío: dentro
+      de la transición no se pintaba, y el segundo «Documento adjuntado» seguido
+      no se anunciaba (vigésima pasada). */}
+  <form key={vez} onSubmit={(e) => {
+    setMensaje(null)
+    setRevisar(false)
+    setAvisaTesoreria(false)
+    alEnviar(e)
+  }} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-end">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
     <Campo etiqueta="Tipo de documento" htmlFor={`tipo-doc-compra-${ordenCompraId}`}>
@@ -247,7 +252,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
       (decimonovena pasada). */}
   <div role="status">
     {mensaje && (
-      <p className={`mt-4 text-xs ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
+      <p key={vez} className={`mt-4 text-xs ${revisar || avisaTesoreria ? 'text-aviso' : 'text-exito'}`}>
         {mensaje}
         {revisar && verAdquisiciones && (
           <>

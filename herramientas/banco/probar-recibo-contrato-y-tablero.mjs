@@ -15,8 +15,10 @@
  *         Next si la puesta al día no llega—: al volver a abrir dice que aquel
  *         quedó (antes la memoria se iba y entraba dos veces);
  *      e. a 1440, lo pendiente va por cuenta: sigue si vuelve a entrar la
- *         misma, otra no lo ve y, si la primera vuelve, dice que quedó; con
- *         otra cuenta en otra pestaña, esta no reusa el id.
+ *         misma, otra no lo ve y, si la primera vuelve, dice que quedó. Con
+ *         otra cuenta en otra pestaña, esta lo dice, ofrece recargar y no
+ *         envía; si la primera vuelve, sin recargar dice que quedó, y tras
+ *         «Recargar la pantalla» también.
  *   2. Administración, el contrato del subcontrato: la respuesta se pierde y
  *      se elige otro archivo; el «ya se subió» va sin rojo y solo con «Cerrar».
  *   3. Logística, el tablero de una OT:
@@ -54,6 +56,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba, elegirCuenta } from './caja-de-prueba.mjs'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -147,7 +150,7 @@ let cortando = false
 
 async function entrar(puesto, viewport) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|Failed to fetch|TypeError/.test(m.text())) return
     if (/^Failed to load resource: the server responded with a status of 4\d\d/.test(m.text())) return
@@ -356,22 +359,72 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
 
-    // La pestaña vieja: en otra del mismo navegador se cierra la sesión y entra Logística.
+    // La pestaña vieja: en otra del mismo navegador se cierra la sesión y entra
+    // otra cuenta. Esta, pintada con Administración, lo dice, ofrece recargar y
+    // no envía: antes mandaba con la sesión nueva sin decirlo.
+    const enOtraPestana = async (puesto) => {
+      const otra = esperarReactAlNavegar(await contexto.newPage())
+      await otra.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+      await salirYEntrar(otra, puesto)
+      await otra.close()
+    }
+    const OTRA_CUENTA =
+      'En otra pestaña entró otra cuenta y esta pantalla todavía es de la anterior. Recarga la pantalla antes de registrar: desde aquí no se envía nada.'
+    const idEnLaVentana = () => v.locator('input[type=hidden][name=id]').inputValue({ timeout: 500 }).catch(() => '')
     const G = `E144-${SELLO}7`
     const idG = await dejarPendiente(G, '1700')
-    const otraPestana = await contexto.newPage()
-    await otraPestana.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-    await salirYEntrar(otraPestana, 'logistica')
-    await otraPestana.close()
+    await enOtraPestana('logistica')
     await abrirRecibo()
-    const idEnLaVentana = () => v.locator('input[type=hidden][name=id]').inputValue({ timeout: 500 }).catch(() => '')
-    const idAhora = await hasta(idEnLaVentana, (x) => Boolean(x) && x !== idG, 15000)
-    const notaAjena = limpio(await nota())
-    comprobar(Boolean(idG) && Boolean(idAhora) && idAhora !== idG && notaAjena === '',
-      `[Administración 1440] con Logística en otra pestaña, esta no reusa el id pendiente ni cuenta nada de él (${idG === idAhora ? 'el mismo id' : 'otro id'}; «${notaAjena}»)`)
+    const avisa = limpio(await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000))
+    const recargar = await v.getByRole('button', { name: 'Recargar la pantalla' }).count()
+    comprobar(Boolean(idG) && avisa === OTRA_CUENTA && recargar === 1 && (await idEnLaVentana()) === idG,
+      `[Administración 1440] con Logística en otra pestaña, la ventana lo dice y ofrece recargar: «${avisa}» (${recargar} botón)`)
+    await pagina.screenshot({ path: join(CAPTURAS, `recibo-otra-cuenta-${tam}.png`) })
+    const H = `E144-${SELLO}8`
+    await llenarRecibo(H, '1800')
+    await v.getByRole('button', { name: 'Registrar recibo' }).click()
+    const frenado = limpio(await hasta(alerta, (t) => /No se envió/.test(t ?? ''), 15000))
+    const deH = await recibos(H)
+    comprobar(/esta pantalla es de la cuenta anterior/.test(frenado) && deH.length === 0,
+      `[Administración 1440] y desde ahí no envía: «${frenado}» (${deH.length} recibos ${H})`)
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
-    await salirYEntrar(pagina, 'administracion')
+
+    // Si vuelve Administración, sin recargar, la ventana dice que el primero
+    // quedó: antes la pestaña se quedaba con la cuenta que contestó la base, no
+    // leía lo de Administración y el mismo envío entraba dos veces.
+    await enOtraPestana('administracion')
+    await abrirRecibo()
+    const sinRecargar = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+    comprobar(sinRecargar === `El recibo que enviaste antes sí quedó: ${G}. Lo que registres ahora será otro.` && (await idEnLaVentana()) !== idG,
+      `[Administración 1440] al volver Administración, sin recargar, dice que ${G} quedó y lleva otro id: «${sinRecargar}»`)
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await v.waitFor({ state: 'hidden' })
+
+    // Y con «Recargar la pantalla»: lo pendiente sigue en la pestaña y, cuando
+    // la pantalla vuelve a ser de Administración, dice que quedó.
+    const I = `E144-${SELLO}9`
+    const idI = await dejarPendiente(I, '1900')
+    await enOtraPestana('logistica')
+    await abrirRecibo()
+    await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000)
+    await Promise.all([
+      pagina.waitForEvent('load', { timeout: 30000 }),
+      v.getByRole('button', { name: 'Recargar la pantalla' }).click(),
+    ])
+    const recargada = new URL(pagina.url()).pathname
+    const sigue = (await pendientes()).find(([k]) => k === llave)?.[1] ?? null
+    await enOtraPestana('administracion')
+    await ir()
+    await abrirRecibo()
+    const trasElBoton = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+    const deI = await recibos(I)
+    comprobar(Boolean(idI) && sigue === idI && deI.length === 1 && trasElBoton === `El recibo que enviaste antes sí quedó: ${I}. Lo que registres ahora será otro.`,
+      `[Administración 1440] «Recargar la pantalla» recarga (${recargada}), lo pendiente sigue y, de vuelta Administración, dice que ${I} quedó: «${trasElBoton}»`)
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await v.waitFor({ state: 'hidden' })
+    const deG = await recibos(G)
+    comprobar(deG.length === 1, `[Administración 1440] ${G} está una vez (${deG.length})`)
   }
 
   // 2. El contrato: la respuesta se pierde y se elige otro archivo.

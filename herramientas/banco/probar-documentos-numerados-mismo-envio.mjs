@@ -32,13 +32,18 @@
  *   7. Diseño, el plano y su revisión: sin respuesta y con otro PDF, el plano
  *      (sin ventana) y la revisión (con ventana) dicen sin rojo que ya quedó, y
  *      el siguiente entra. La revisión se traba y solo ofrece «Cerrar».
+ *   8. La OC directa con otra cuenta en otra pestaña (Logística y
+ *      Administración pueden emitir): lo que se mandó desde la pantalla de una
+ *      con la sesión de la otra, la otra lo ve como suyo al volver a abrir; la
+ *      pantalla vieja dice que entró otra cuenta, ofrece recargar y no envía,
+ *      y cuando vuelve la primera, sin recargar, dice que lo suyo quedó.
  *
  * El corte deja pasar el envío al servidor y no le entrega la respuesta al
  * navegador, como una señal que se cae a medio camino.
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE, SOLO (las
- * partes que corren, p. ej. `sc,caja`; de os, oc, rq, sc, caja, lista y planos) y el
+ * partes que corren, p. ej. `sc,caja`; de os, oc, rq, sc, caja, lista, planos y cuenta) y el
  * correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
 import { mkdirSync } from 'node:fs'
@@ -165,6 +170,11 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
     if (ruido?.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
+  await ingresar(pagina, puesto)
+  return { pagina, contexto }
+}
+
+async function ingresar(pagina, puesto) {
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
   await pagina.fill('input[type="email"]', CUENTAS[puesto])
   await pagina.fill('input[type="password"]', CLAVE)
@@ -174,7 +184,18 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   ])
   if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${CUENTAS[puesto]}`)
   await pagina.waitForLoadState('networkidle')
-  return { pagina, contexto }
+}
+
+/** En otra pestaña del mismo navegador se cierra la sesión y entra `puesto`: la sesión es de todas. */
+async function enOtraPestana(contexto, puesto) {
+  const otra = esperarReactAlNavegar(await contexto.newPage())
+  await otra.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+  await Promise.all([
+    otra.waitForURL((u) => u.pathname.startsWith('/ingresar'), { timeout: 30000 }),
+    otra.evaluate(() => document.querySelector('form[action="/auth/salir"]')?.requestSubmit()),
+  ])
+  await ingresar(otra, puesto)
+  await otra.close()
 }
 
 /**
@@ -419,7 +440,7 @@ await mismoEnvio({
 })
 
 // ---------------------------------------------------------------- 2. OC directa
-await mismoEnvio({
+const ocDirecta = {
   nombre: 'OC directa',
   clave: 'oc',
   puesto: 'logistica',
@@ -445,7 +466,8 @@ await mismoEnvio({
       [`Reposición de prueba ${marca}`],
     ),
   fila: (p, numero) => p.locator(`tr[data-compra="${numero}"]`),
-})
+}
+await mismoEnvio(ocDirecta)
 
 // ---------------------------------------------------------------- 3. RQ
 await mismoEnvio({
@@ -740,6 +762,96 @@ if (corre('planos')) {
   )
   comprobar(ids.length === 2 && sueltos.length === 0, `[Plano y revisión] ningún PDF suelto en Storage (${sueltos.map((f) => f.name).join(', ') || 'ninguno'})`)
   ruido = null
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 8. La OC directa desde la pantalla de otra cuenta
+if (corre('cuenta')) {
+  const d = ocDirecta
+  const { pagina, contexto } = await entrar('logistica')
+  const v = pagina.locator(VENTANA)
+  const corte = await cortarRespuestas(pagina)
+  const ir = () => pagina.goto(`${BASE}${d.ruta}`, { waitUntil: 'networkidle' })
+  const abrir = async () => {
+    await d.nuevo(pagina).click()
+    await v.waitFor()
+  }
+  const cancelar = async () => {
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await v.waitFor({ state: 'hidden' })
+  }
+  const aviso = () => v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => '')
+  const nota = () => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => '')
+  const enviar = () => v.getByRole('button', { name: d.enviar, exact: true }).click()
+  async function sinRespuesta(marca) {
+    corte.marca = marca
+    corte.quedan = 1
+    cortando = true
+    await enviar()
+    const texto = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+    cortando = false
+    return texto
+  }
+  const autor = async (numero) =>
+    (await consulta(`select u.correo from ordenes_compra_materiales o join usuarios u on u.id = o.creado_por where o.numero = $1`, [numero]))[0]?.correo
+  const pendientesDe = (puesto) =>
+    pagina.evaluate((prefijo) => Object.keys(sessionStorage).filter((k) => k.startsWith(prefijo)), `metal-work:envio-pendiente:${ids[CUENTAS[puesto]]}:`)
+  const OTRA_CUENTA =
+    'En otra pestaña entró otra cuenta y esta pantalla todavía es de la anterior. Recarga la pantalla antes de registrar: desde aquí no se envía nada.'
+
+  // a. La pantalla es de Logística y la sesión, de Administración: la OC entra
+  // a nombre de Administración y su respuesta se pierde. Antes la ventana solo
+  // miraba lo pendiente de Logística, y el reintento entraba dos veces.
+  await ir()
+  await enOtraPestana(contexto, 'administracion')
+  const G = `${SUFIJO}g`
+  await abrir()
+  await d.llenar(v, pagina, G, '130')
+  const corto = await sinRespuesta(G)
+  await cancelar()
+  const [deG] = await hasta(() => d.contar(G), (r) => r.length > 0)
+  const deQuien = deG ? await autor(deG.numero) : null
+  comprobar(corto.startsWith('No llegó la respuesta') && deQuien === CUENTAS.administracion,
+    `[Otra cuenta] desde la pantalla de Logística, ${deG?.numero ?? 'nada'} entra a nombre de Administración (${deQuien}) y su respuesta se pierde`)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  await abrir()
+  const suya = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+  const deLogistica = await pendientesDe('logistica')
+  comprobar(suya.startsWith(`La orden de compra que enviaste antes sí quedó: ${deG?.numero}.`) && deLogistica.length === 0,
+    `[Otra cuenta] recargada, la pantalla de Administración dice que esa OC quedó y suelta lo de Logística: «${suya}» (${deLogistica.length} llaves de Logística)`)
+  await cancelar()
+  comprobar((await d.contar(G)).length === 1, `[Otra cuenta] ${deG?.numero} está una vez`)
+
+  // b. La pestaña vieja: lo de Logística queda pendiente y en otra pestaña
+  // entra Administración. La ventana lo dice, ofrece recargar y no envía; al
+  // volver Logística, sin recargar, dice que lo suyo quedó.
+  await enOtraPestana(contexto, 'logistica')
+  await ir()
+  const H = `${SUFIJO}h`
+  await abrir()
+  await d.llenar(v, pagina, H, '140')
+  await sinRespuesta(H)
+  await cancelar()
+  const [deH] = await hasta(() => d.contar(H), (r) => r.length > 0)
+  await enOtraPestana(contexto, 'administracion')
+  await abrir()
+  const avisa = limpio(await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000))
+  const recargar = await v.getByRole('button', { name: 'Recargar la pantalla' }).count()
+  comprobar(avisa === OTRA_CUENTA && recargar === 1, `[Otra cuenta] con Administración en otra pestaña, la ventana lo dice y ofrece recargar: «${avisa}»`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-otra-cuenta.png') })
+  const H2 = `${SUFIJO}h2`
+  await d.llenar(v, pagina, H2, '150')
+  await enviar()
+  const frenado = limpio(await hasta(aviso, (t) => /No se envió/.test(t ?? ''), 15000))
+  comprobar(/esta pantalla es de la cuenta anterior/.test(frenado) && (await d.contar(H2)).length === 0,
+    `[Otra cuenta] y desde ahí no se emite nada: «${frenado}»`)
+  await cancelar()
+  await enOtraPestana(contexto, 'logistica')
+  await abrir()
+  const alVolver = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+  comprobar(alVolver.startsWith(`La orden de compra que enviaste antes sí quedó: ${deH?.numero}.`) && (await d.contar(H)).length === 1,
+    `[Otra cuenta] de vuelta Logística, sin recargar, dice que ${deH?.numero ?? 'nada'} quedó: «${alVolver}»`)
+  await cancelar()
   await contexto.close()
 }
 

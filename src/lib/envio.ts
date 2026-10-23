@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from 'reac
 
 import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
-import type { ClaveDelEnvio } from '@/lib/dominio/envios'
+import { MAXIMO_PENDIENTES, type ClaveDelEnvio } from '@/lib/dominio/envios'
 import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
@@ -16,6 +16,25 @@ type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira si quedó guardado antes de volver a intentar.'
 
 /**
+ * Lo que dice la ventana de una pantalla que se pintó con una cuenta cuando en
+ * otra pestaña entró otra (`useIdDelEnvio`). `EnvioAnterior` lo pinta con el
+ * botón que recarga.
+ */
+export const OTRA_CUENTA =
+  'En otra pestaña entró otra cuenta y esta pantalla todavía es de la anterior. Recarga la pantalla antes de registrar: desde aquí no se envía nada.'
+
+/** Lo que se enviaba desde esta pantalla entró con la sesión de otra cuenta, que entró en otra pestaña. */
+const QUEDO_CON_OTRA_CUENTA =
+  'Lo que se envió antes desde esta pestaña sí quedó, a nombre de la cuenta que entró en otra pestaña. Lo que registres ahora será otro.'
+
+/** Con lo que `salio()` frena el envío desde una pantalla que es de otra cuenta. */
+class OtraCuentaEnLaPestana extends Error {
+  constructor() {
+    super('No se envió: esta pantalla es de la cuenta anterior. Recárgala para registrar con la cuenta que entró.')
+  }
+}
+
+/**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
  * devolver su resultado. Sin esto la excepción llegaba al límite de error: la
  * pantalla entera caía en «Esta pantalla no se pudo abrir» y se perdía lo
@@ -26,6 +45,7 @@ export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira
  */
 export function explicarFallo(e: unknown): string {
   unstable_rethrow(e)
+  if (e instanceof OtraCuentaEnLaPestana) return e.message
   console.error(e)
   if (unstable_isUnrecognizedActionError(e)) {
     return 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
@@ -137,7 +157,8 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          despuesDelRechazo(fallo, ventana, true)
+          // Lo que frena `salio()` no salió: no hay nada que poner al día al cerrar.
+          despuesDelRechazo(fallo, ventana, !(e instanceof OtraCuentaEnLaPestana))
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -248,30 +269,49 @@ export function useEnvio<T = never>(
  * Next recarga la página entera. La memoria se borraba, la ventana no
  * preguntaba y el mismo pago o el mismo RQ entraba dos veces (decimoctava
  * pasada). `donde` separa las filas: sin él, el pendiente de una OC lo tomaba la
- * ventana de otra. Y va por cuenta (`entroLaCuenta`): si en la pestaña entra
- * otra persona, no ve lo de la primera, y si la primera vuelve, lo suyo sigue
- * pendiente. Borrarlo al cambiar de cuenta dejaba que el pago de la primera
- * entrara dos veces al volver (decimonovena pasada).
+ * ventana de otra.
+ *
+ * Y va por la cuenta con que se pintó la pantalla (`entroLaCuenta`), pero lo
+ * juzga quien lo registró. Al abrir se pregunta por lo pendiente de ese lugar
+ * con todas las cuentas que pasaron por la pestaña, y la base contesta con la
+ * cuenta de la sesión (vigésima pasada):
+ * - Lo que quedó registrado por la sesión se le dice, aunque se haya mandado
+ *   desde una pantalla pintada con otra cuenta: antes la llave de esa cuenta no
+ *   se leía y la OC entraba dos veces.
+ * - Lo de otra cuenta no se le cuenta ni se toca: si la primera vuelve, lo suyo
+ *   sigue pendiente (decimonovena pasada).
+ * - Si la sesión no es la de la pantalla, en otra pestaña entró otra cuenta: la
+ *   ventana lo dice (`OTRA_CUENTA`) y no envía hasta recargar. Antes enviaba con
+ *   la sesión nueva sin decirlo, y lo pendiente se perdía de vista.
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
  * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
  * (`EnvioAnterior`).
  */
-export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void, donde = '') {
+export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuentas) => void, donde = '') {
   const [id, setId] = useState<string | null>(null)
   const [anterior, setAnterior] = useState<string | null>(null)
   // El id que salió sin que se sepa cómo terminó, y de qué cuenta.
   const pendiente = useRef<{ cuenta: string | null; id: string } | null>(null)
   // Cambia con cada apertura y cada envío: la respuesta de una consulta vieja no pisa lo que vino después.
   const turno = useRef(0)
-  function llave() {
-    if (!cuentaDeLaPestana || (!clave && !donde)) return null
-    return `${PENDIENTE}${cuentaDeLaPestana}:${clave ? `${clave}:${donde}` : donde}`
+  // La base contestó con otra cuenta que la de la pantalla: no se envía hasta recargar.
+  const deOtraCuenta = useRef(false)
+  const lugar = clave ? `${clave}:${donde}` : donde
+  function llave(cuenta = cuentaDeLaPestana) {
+    if (!cuenta || !lugar) return null
+    return `${PENDIENTE}${cuenta}:${lugar}`
   }
   function anotar(valor: string | null) {
     pendiente.current = valor ? { cuenta: cuentaDeLaPestana, id: valor } : null
     const enLaPestana = llave()
     if (enLaPestana) guardarEnLaPestana(enLaPestana, valor)
+  }
+  function nuevo() {
+    turno.current++
+    setAnterior(null)
+    anotar(null)
+    setId(crypto.randomUUID())
   }
   return {
     id,
@@ -279,46 +319,80 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: () => void, dond
     abrir() {
       // Tras una recarga la memoria está vacía, y lo pendiente sigue en la pestaña.
       const cuenta = cuentaDeLaPestana
-      const enLaPestana = llave()
+      const propia = llave(cuenta)
       const enMemoria = pendiente.current?.cuenta === cuenta ? pendiente.current.id : null
-      const previo = enMemoria ?? (enLaPestana ? leerDeLaPestana(enLaPestana) : null)
+      const previo = enMemoria ?? (propia ? leerDeLaPestana(propia) : null)
       pendiente.current = previo ? { cuenta, id: previo } : null
+      deOtraCuenta.current = false
+      setAnterior((a) => (a === OTRA_CUENTA ? null : a))
       const este = ++turno.current
       setId(previo ?? crypto.randomUUID())
-      if (!previo || !clave) return
-      consultarEnvio(clave, previo, cuenta).then(
-        (entro) => {
-          if (!entro || turno.current !== este) return
-          if (typeof entro !== 'string') {
-            // La pantalla es de otra cuenta que la que pregunta: en otra pestaña
-            // se cerró la sesión y entró otra persona. Lo pendiente no es suyo.
-            cuentaDeLaPestana = entro.cuenta
-            pendiente.current = null
-            setId(crypto.randomUUID())
+      if (!clave) return
+      // Lo que quedó pendiente aquí con otras cuentas: lo mandado desde una
+      // pantalla pintada con otra cuenta quedó en la llave de esa.
+      const ajenos = lugar ? pendientesEnLaPestana(lugar).filter((p) => p.llave !== propia && p.id !== previo) : []
+      const ids = [...(previo ? [previo] : []), ...ajenos.map((p) => p.id)].slice(0, MAXIMO_PENDIENTES)
+      if (ids.length === 0) return
+      consultarEnvio(clave, ids).then(
+        (respuesta) => {
+          if (!respuesta || turno.current !== este) return
+          if (cuenta && respuesta.cuenta !== cuenta) {
+            // En otra pestaña entró otra cuenta. Lo pendiente se queda como
+            // está: lo resuelve la pantalla recargada, con la cuenta que entró.
+            deOtraCuenta.current = true
+            setAnterior(OTRA_CUENTA)
             return
           }
-          anotar(null)
-          setId(crypto.randomUUID())
-          setAnterior(entro)
-          alEntrar?.()
+          const notas: string[] = []
+          const entraron: (string | null)[] = []
+          const suyo = previo ? respuesta.entraron[previo] : undefined
+          if (suyo !== undefined) {
+            // Entró, con esta cuenta o con la que había en la sesión al enviarlo.
+            anotar(null)
+            setId(crypto.randomUUID())
+            notas.push(suyo === false ? QUEDO_CON_OTRA_CUENTA : suyo)
+            entraron.push(cuenta)
+          }
+          for (const p of ajenos) {
+            const lo = respuesta.entraron[p.id]
+            if (typeof lo !== 'string') continue
+            soltarDeLaPestana(p.llave, p.id)
+            notas.push(lo)
+            entraron.push(p.cuenta)
+          }
+          if (notas.length === 0) return
+          setAnterior(notas.join(' '))
+          alEntrar?.(entraron)
         },
         // Sin respuesta tampoco se sabe: sigue el mismo id.
         () => {},
       )
     },
     salio() {
+      if (deOtraCuenta.current) throw new OtraCuentaEnLaPestana()
       turno.current++
       setAnterior(null)
       if (id) anotar(id)
     },
-    otro() {
-      turno.current++
-      setAnterior(null)
-      anotar(null)
-      setId(crypto.randomUUID())
+    /**
+     * Un id nuevo. Con `cuentas` —las de los envíos que, al abrir, la base dijo
+     * que entraron (`alEntrar`)—, solo si entre ellas está la de la pantalla; de
+     * las otras se suelta lo pendiente de este lugar: el comprobante de la OC
+     * que entró desde la pantalla de otra cuenta, que esa cuenta volvería a usar.
+     */
+    otro(cuentas?: Cuentas) {
+      if (!cuentas) return nuevo()
+      for (const otra of cuentas) {
+        const suya = otra && otra !== cuentaDeLaPestana ? llave(otra) : null
+        if (suya) guardarEnLaPestana(suya, null)
+      }
+      if (cuentas.includes(cuentaDeLaPestana)) nuevo()
     },
   }
 }
+
+/** Las cuentas cuyos envíos pendientes entraron: `null`, la pantalla sin cuenta todavía. */
+type Cuentas = readonly (string | null)[]
 
 const PENDIENTE = 'metal-work:envio-pendiente:'
 const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -341,14 +415,36 @@ function guardarEnLaPestana(llave: string, valor: string | null) {
   } catch {}
 }
 
+/** Lo pendiente de ese lugar con cada cuenta que pasó por la pestaña: `<PENDIENTE><cuenta>:<lugar>`. */
+function pendientesEnLaPestana(lugar: string): { llave: string; cuenta: string; id: string }[] {
+  const hallados: { llave: string; cuenta: string; id: string }[] = []
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const llave = sessionStorage.key(i)
+      if (!llave?.startsWith(PENDIENTE)) continue
+      const cuenta = llave.slice(PENDIENTE.length, PENDIENTE.length + 36)
+      if (!ES_UUID.test(cuenta) || llave.slice(PENDIENTE.length + 36) !== `:${lugar}`) continue
+      const id = leerDeLaPestana(llave)
+      if (id && !hallados.some((h) => h.id === id)) hallados.push({ llave, cuenta, id })
+    }
+  } catch {}
+  return hallados
+}
+
+/** Suelta lo pendiente de esa llave si sigue siendo ese id. */
+function soltarDeLaPestana(llave: string, id: string) {
+  if (leerDeLaPestana(llave) === id) guardarEnLaPestana(llave, null)
+}
+
 let cuentaDeLaPestana: string | null = null
 
 /**
  * La cuenta con la que se pintó la pantalla (`CuentaDeLaPestana`, en el layout).
  * Lo pendiente se guarda con ella: si en la pestaña entra otra persona, su
- * ventana no pregunta por un envío que no es suyo ni reusa ese id, y si vuelve la
- * primera, lo suyo sigue pendiente. Se toma del servidor y no del ingreso: se
- * entra también por el enlace de recuperación, y en otra pestaña.
+ * ventana no reusa ese id, y si vuelve la primera, lo suyo sigue pendiente. Se
+ * toma del servidor y no del ingreso: se entra también por el enlace de
+ * recuperación, y en otra pestaña. Solo la pone el layout: la respuesta de la
+ * base con otra cuenta no la cambia, porque la pantalla sigue siendo la de antes.
  */
 export function entroLaCuenta(usuario: string) {
   cuentaDeLaPestana = usuario

@@ -55,12 +55,13 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 
-const base = new pg.Client({
+const CONEXION = {
   host: process.env.PGHOST ?? '/tmp',
   port: Number(process.env.PGPORT ?? 5433),
   user: process.env.PGUSER ?? 'postgres',
   database: process.env.BANCO_BASE ?? 'mw_demo',
-})
+}
+const base = new pg.Client(CONEXION)
 await base.connect()
 const consulta = async (sql, valores = []) => (await base.query(sql, valores)).rows
 
@@ -69,10 +70,27 @@ const SUFIJO = String(100000 + (Date.now() % 900000))
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
 /** Lo que hace la sesión de esa cuenta: los disparadores y las funciones leen el usuario de aquí. */
-async function como(puesto) {
+async function como(puesto, en = consulta) {
   const sub = ids[CUENTAS[puesto]]
-  await consulta(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claim.role', 'authenticated', false),
-                         set_config('request.jwt.claims', $2, false)`, [sub, JSON.stringify({ sub, role: 'authenticated' })])
+  await en(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claim.role', 'authenticated', false),
+                  set_config('request.jwt.claims', $2, false)`, [sub, JSON.stringify({ sub, role: 'authenticated' })])
+}
+/**
+ * Lo que se hace como Logística para dejar la lista como estaba, en una
+ * conexión propia: la del flujo principal cambia de cuenta y vacía la sesión, y
+ * una señal que llegaba en medio dejaba a `programar_recojo` sin usuario y las
+ * de antes fuera de la lista (vigésima pasada).
+ */
+async function comoLogistica(trabajo) {
+  const propia = new pg.Client(CONEXION)
+  await propia.connect()
+  try {
+    const en = async (sql, valores = []) => (await propia.query(sql, valores)).rows
+    await como('logistica', en)
+    return await trabajo(en)
+  } finally {
+    await propia.end().catch(() => {})
+  }
 }
 
 let ruc
@@ -121,41 +139,44 @@ let devolviendo = null
  * volvía una de cuatro (decimonovena pasada).
  */
 function devolverLasDeAntes() {
-  devolviendo ??= (async () => {
-    await como('logistica')
+  devolviendo ??= comoLogistica(async (en) => {
     for (const d of dejadas) {
-      await consulta(
+      await en(
         `select public.programar_recojo(c.id, $2) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
           where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is null`,
         [d.id, d.peso_kg],
       )
     }
-  })()
+  })
   return devolviendo
 }
 /**
  * Las suyas fuera de la lista: la siguiente vuelta las tomaría por ajenas y las
  * devolvería para siempre. La que ya salió a recogerla no lleva lugar.
  */
-async function sacarLasSuyas() {
-  await como('logistica')
-  await consulta(
-    `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
-      where c.id = any($1) and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
-    [sembradas],
+function sacarLasSuyas() {
+  return comoLogistica((en) =>
+    en(
+      `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+        where c.id = any($1) and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
+      [sembradas],
+    ),
   )
 }
 // Si la prueba se cae a medio camino, o la cortan (Ctrl+C, `timeout`), la lista
 // no se queda sin las de antes ni con las suyas: `uncaughtException` no ve las
 // señales, y con `timeout` las de otros no volvían (decimoctava pasada). Se
 // arma antes de sacar las de antes: una señal en ese bucle las dejaba fuera
-// (decimonovena pasada).
+// (decimonovena pasada). Y espera a que ese bucle termine: devolverlas mientras
+// todavía se sacaban dejaba fuera las que salían después (vigésima pasada).
 let cayendo = false
+let sacando = null
 async function caer(motivo) {
   if (cayendo) return
   cayendo = true
   console.error(motivo)
   try {
+    await sacando?.catch(() => {})
     await sacarLasSuyas()
     await devolverLasDeAntes()
   } catch (otro) {
@@ -166,8 +187,11 @@ async function caer(motivo) {
 process.on('uncaughtException', caer)
 process.on('unhandledRejection', caer)
 for (const senal of ['SIGINT', 'SIGTERM']) process.on(senal, () => caer(`Cortada con ${senal}.`))
-for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
-await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
+sacando = (async () => {
+  for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
+  await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
+})()
+await sacando
 console.log(`Sembradas ${ocA}, ${ocB} y ${ocC}${dejadas.length ? `; salieron de la lista ${dejadas.map((d) => d.numero).join(', ')}` : ''}`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })

@@ -32,3 +32,9 @@ export const CLAVES_DEL_ENVIO = [
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]
+
+/**
+ * Cuántos envíos pendientes de un mismo lugar pregunta la ventana de una vez:
+ * uno por cada cuenta que pasó por la pestaña sin que se supiera si entró.
+ */
+export const MAXIMO_PENDIENTES = 5

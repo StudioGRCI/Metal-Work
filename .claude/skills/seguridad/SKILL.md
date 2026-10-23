@@ -258,11 +258,22 @@ En la misma migración que la crea, sin excepción:
   la OC que se paga, el recibo, la OT del tablero—, o el pendiente de una fila
   lo tomaba la ventana de otra; y el id acompañante lleva el suyo, para que su
   archivo vuelva a la misma ruta. La llave lleva la cuenta con que se pintó la
-  pantalla (`CuentaDeLaPestana`, en el layout): otra cuenta no ve lo de la
-  primera y, si la primera vuelve, lo suyo sigue pendiente —borrarlo al cambiar
-  de cuenta dejaba entrar dos veces su pago (decimonovena)—. `consultarEnvio`
-  recibe esa cuenta y, si quien pregunta es otra (otra pestaña cambió la
-  sesión), no consulta y la ventana deja ese id.
+  pantalla (`CuentaDeLaPestana`, en el layout, con `useLayoutEffect` para que
+  esté antes del primer clic): otra cuenta no reusa ese id y, si la primera
+  vuelve, lo suyo sigue pendiente —borrarlo al cambiar de cuenta dejaba entrar
+  dos veces su pago (decimonovena)—. **Pero lo juzga quien lo registró, no la
+  cuenta pintada** (vigésima): al abrir se pregunta por lo pendiente de ese
+  lugar con todas las cuentas de la pestaña, y `consultarEnvio(clave, ids)`
+  contesta la cuenta de la sesión y, de cada id, la nota si la fila es suya
+  (`creado_por`, `subido_por` o `registrado_por`), `false` si es de otra, y nada
+  si no está. Lo que la sesión mandó desde la pantalla de otra cuenta se le
+  dice; mirar solo la cuenta pintada dejaba entrar dos veces la OC. Lo de otra
+  cuenta no se le cuenta ni se toca. Si la sesión no es la de la pantalla (otra
+  pestaña cambió la sesión), la ventana lo dice con `OTRA_CUENTA`, ofrece
+  recargar y `salio()` no deja enviar; la pestaña no cambia de cuenta por la
+  respuesta, solo por el layout —cambiarla escondía lo pendiente de la primera
+  cuando volvía y el egreso entraba dos veces—. Una clave nueva en
+  `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de
   pegarse). Un aviso nuevo de «mismo envío» lleva

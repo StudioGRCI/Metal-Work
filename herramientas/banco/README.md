@@ -116,7 +116,7 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `probar-pdf-de-la-os.mjs` | El PDF de la orden de servicio, con la cuenta de cada puesto: Logística ve «PDF» solo en la aprobada y en la anulada después de aprobarse (también en el teléfono); el clic descarga, no abre otra ventana, y el texto del PDF trae número, contratista con RUC, OT, código, montos, detracción y firmas, y en la anulada la marca, el motivo y quién la anuló; la por aprobar y la rechazada dan 409; Almacén descarga con la OT aunque no lea las OT, y un supervisor va a «sin permiso». Necesita `pdftotext` |
 | `caja-de-prueba.mjs` | Ayudante de las pruebas que pagan o cobran: da de alta una cuenta de prueba y la elige en la ventana, porque desde la migración `20261019100000` cada pago pide su cuenta. |
 | `con-react.mjs` | Ayudante: `esperarReactAlNavegar(pagina)` hace que cada `goto` y `reload` espere a que React tome cada control de la pantalla. `networkidle` llega antes en una lista larga, y el primer clic se perdía. |
-| `consulta-del-envio.mjs` | Ayudante: reconoce la pregunta que hace la ventana al volver a abrirse (`consultarEnvio(clave, id, cuenta)`), para las suites que la detienen y comprueban que de verdad se detuvo. |
+| `consulta-del-envio.mjs` | Ayudante: reconoce la pregunta que hace la ventana al volver a abrirse (`consultarEnvio(clave, ids)`), para las suites que la detienen y comprueban que de verdad se detuvo. |
 
 ## Lo que respeta y lo que no
 

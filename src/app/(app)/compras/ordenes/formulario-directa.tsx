@@ -262,7 +262,7 @@ export function GenerarCompraDeInsumos({
  */
 function useIdsDeLaCompra(donde: string) {
   const factura = useIdDelEnvio(undefined, undefined, `factura-de-la-orden:${donde}`)
-  const orden = useIdDelEnvio('orden_compra', () => factura.otro(), donde)
+  const orden = useIdDelEnvio('orden_compra', (cuentas) => factura.otro(cuentas), donde)
   return {
     listos: Boolean(orden.id && factura.id),
     orden: orden.id ?? '',

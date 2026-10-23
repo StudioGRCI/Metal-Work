@@ -158,6 +158,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   con esa marca mandaba el cursor al de otra persona (decimonovena). Un aviso
   de «listo» de un formulario que se rehace (`key`) va fuera de él y siempre
   puesto (`role="status"` vacío): el que nace ya con su texto no se anuncia.
+  Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
+  corre en la transición, no se pinta, y el segundo «Documento adjuntado»
+  idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
+- **La ventana de una pantalla que ya no es de la sesión lo dice** (vigésima):
+  si en otra pestaña entró otra cuenta, `useIdDelEnvio` pone `OTRA_CUENTA` y
+  `EnvioAnterior` lo pinta en ámbar con «Recargar la pantalla»; el envío se
+  frena con un rechazo que lo explica. Antes abría limpia y el envío salía en
+  rojo como un problema de permiso del archivo.
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
