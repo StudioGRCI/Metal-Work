@@ -100,6 +100,9 @@ await consulta(`select set_config('request.jwt.claim.sub', '', false), set_confi
 // ---------------------------------------------------------------- navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
+// Las respuestas ≥ 400. Las únicas esperadas: el reintento sube a la ruta que ya tiene su archivo
+// y Storage contesta 400 o 409 (`subirARutaNueva`); el navegador lo anota en la consola.
+const rechazos = []
 let cortando = false
 
 async function entrar(puesto, viewport) {
@@ -107,7 +110,11 @@ async function entrar(puesto, viewport) {
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|Failed to fetch|TypeError/.test(m.text())) return
+    if (/^Failed to load resource: the server responded with a status of 4\d\d/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
+  })
+  pagina.on('response', (r) => {
+    if (r.status() >= 400) rechazos.push(`${puesto}: ${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
   await pagina.fill('input[type="email"]', CUENTAS[puesto])
@@ -122,20 +129,26 @@ async function entrar(puesto, viewport) {
 }
 
 /**
- * La próxima acción de servidor que lleve `marca` llega al servidor y se cumple,
- * pero su respuesta no llega al navegador: una señal que se cae a medio camino.
+ * Las próximas `quedan` acciones de servidor que lleven `marca` llegan al
+ * servidor y se cumplen, pero su respuesta no llega al navegador: una señal que
+ * se cae a medio camino. Son dos: sin respuesta, la subida pregunta otra vez
+ * (`anotarSinDejarloSuelto`), y la segunda contestaría que quedó.
  */
 async function cortarLaRespuesta(pagina) {
-  const corte = { marca: null, cortadas: 0 }
+  const corte = { marca: null, quedan: 0, cortadas: 0 }
+  const armar = (marca) => {
+    corte.marca = marca
+    corte.quedan = 2
+  }
   await pagina.route('**/*', async (r) => {
     const q = r.request()
-    if (!corte.marca || q.method() !== 'POST' || !q.headers()['next-action'] || !(q.postData() ?? '').includes(corte.marca)) return r.continue()
-    corte.marca = null
+    if (corte.quedan <= 0 || q.method() !== 'POST' || !q.headers()['next-action'] || !(q.postData() ?? '').includes(corte.marca)) return r.continue()
+    corte.quedan--
     corte.cortadas++
     await r.fetch({ timeout: 60000 }).catch(() => {})
     return r.abort('failed')
   })
-  return corte
+  return { corte, armar }
 }
 
 /** Cómo quedó la ventana tras el aviso: sin rojo, los campos trabados y qué botones se pueden tocar. */
@@ -157,7 +170,7 @@ function laVentana(v) {
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   const tam = viewport.width
   const { pagina, contexto } = await entrar('administracion', viewport)
-  const corte = await cortarLaRespuesta(pagina)
+  const { corte, armar } = await cortarLaRespuesta(pagina)
   const v = pagina.getByRole('dialog')
   const ir = () => pagina.goto(`${BASE}/subcontratos/${subcontrato}`, { waitUntil: 'networkidle' })
   const abrirRecibo = async () => {
@@ -178,7 +191,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await ir()
   await abrirRecibo()
   await llenarRecibo(A, '1000')
-  corte.marca = A
+  armar(A)
   cortando = true
   await v.getByRole('button', { name: 'Registrar recibo' }).click()
   const corto = limpio(await hasta(alerta, (t) => /respuesta/.test(t ?? ''), 30000))
@@ -186,7 +199,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
   await v.waitFor({ state: 'hidden' })
   const entro = await recibos(A)
-  comprobar(corte.cortadas === 1 && /No llegó la respuesta/.test(corto) && entro.length === 1,
+  comprobar(corte.cortadas === 2 && /No llegó la respuesta/.test(corto) && entro.length === 1,
     `[Administración ${tam}] el recibo ${A} entra y su respuesta se pierde: «${corto}»`)
   await abrirRecibo()
   const dice = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
@@ -208,7 +221,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await abrirRecibo()
   comprobar((await v.locator('[data-envio-anterior]').count()) === 0, `[Administración ${tam}] tras registrarlo, la ventana siguiente ya no trae la nota`)
   await llenarRecibo(C, '1300')
-  corte.marca = C
+  armar(C)
   cortando = true
   await v.getByRole('button', { name: 'Registrar recibo' }).click()
   await hasta(alerta, (t) => /respuesta/.test(t ?? ''), 30000)
@@ -232,7 +245,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await pagina.locator('[data-adjuntar-contrato]').click()
   await v.waitFor()
   await v.locator('input[name="contrato"]').setInputFiles({ name: contratoA, mimeType: 'application/pdf', buffer: PDF(300) })
-  corte.marca = contratoA
+  armar(contratoA)
   cortando = true
   await v.getByRole('button', { name: 'Adjuntar', exact: true }).click()
   await hasta(alerta, (t) => /respuesta/.test(t ?? ''), 30000)
@@ -291,8 +304,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       `[Logística 1440] OT ${fila.numero_ot}, ${fila.numero}: lo elegido sigue tras dos puestas al día, con el mismo id (${JSON.stringify([antes, ...vistos])})`)
 
     // La respuesta se pierde; el reintento va con el mismo id y a la misma ruta.
-    const corte = await cortarLaRespuesta(pagina)
-    corte.marca = nombre
+    const { corte, armar } = await cortarLaRespuesta(pagina)
+    armar(nombre)
     cortando = true
     const adjuntar = form.getByRole('button', { name: 'Adjuntar' })
     await adjuntar.click()
@@ -307,7 +320,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'documentos-compras' and o.name like $1
                                       and not exists (select 1 from documentos_compra_material d where d.ruta_storage = o.name)`,
       [`compra/${fila.orden_compra_id}/%`])
-    comprobar(corte.cortadas === 1 && /No llegó la respuesta/.test(corto) && idTrasElCorte === antes.id,
+    comprobar(corte.cortadas === 2 && /No llegó la respuesta/.test(corto) && idTrasElCorte === antes.id,
       `[Logística 1440] sin respuesta, el formulario se queda con el mismo id: «${corto}»`)
     comprobar(filas.length === 1 && filas[0].id === antes.id && filas[0].ruta_storage === `compra/${fila.orden_compra_id}/${antes.id}.pdf` && sueltos.length === 0,
       `[Logística 1440] el reintento entra una vez, con ese id y su ruta, y sin archivos sueltos («${dijo}»; ${filas.length} fila(s), ${sueltos.length} suelto(s))`)
@@ -320,5 +333,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 await navegador.close()
 await base.end()
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 4).join(' | ')}` : ''}`)
+const ajenos = rechazos.filter((r) => !/: 40[09] POST \/storage\/v1\/object\//.test(r))
+comprobar(ajenos.length === 0, `los únicos rechazos son los de Storage al reintento sobre la misma ruta (${rechazos.length}${ajenos.length ? `; otros: ${ajenos.slice(0, 4).join(' | ')}` : ''})`)
 console.log(fallas.length ? `\n${fallas.length} FALLAS` : '\nTODO EN VERDE')
 process.exit(fallas.length ? 1 : 0)

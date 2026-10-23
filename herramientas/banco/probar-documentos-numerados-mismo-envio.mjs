@@ -587,8 +587,9 @@ if (corre('caja')) {
   await pagina.locator('[data-registrar-movimiento="caja"]').click()
   await v.waitFor()
   const dice = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
-  comprobar(/^El egreso que enviaste antes sí quedó: (S\/|US\$) 40\.00 del \d\d\/\d\d\/\d{4}\. Lo que registres ahora será otro\.$/.test(dice),
-    `[Caja] desde el otro botón, la ventana dice que aquel egreso quedó: «${dice}»`)
+  // Con la cuenta en que quedó: desde el botón de la caja se elige la cuenta, y la nota no la daba (decimoséptima pasada).
+  const nombra = new RegExp(`^El egreso que enviaste antes sí quedó: (S/|US\\$) 40\\.00 del \\d\\d/\\d\\d/\\d{4}, en ${CAJA}\\. Lo que registres ahora será otro\\.$`)
+  comprobar(nombra.test(dice), `[Caja] desde el otro botón, la ventana dice que aquel egreso quedó y en qué cuenta: «${dice}»`)
   const D2 = `${SUFIJO}d2`
   const valorCaja = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).first().getAttribute('value')
   await v.locator('select[name="caja_id"]').selectOption(valorCaja ?? '')
