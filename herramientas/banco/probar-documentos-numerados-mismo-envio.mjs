@@ -20,13 +20,16 @@
  *      cerrar se ve el primero, y la siguiente apertura registra otro.
  *   6. Logística, «Sacar de la lista» sin respuesta: el aviso sale dentro de la
  *      ventana de confirmar, con el cursor, y no detrás.
+ *   7. Diseño, el plano y su revisión: sin respuesta y con otro PDF, el plano
+ *      (sin ventana) y la revisión (con ventana) dicen sin rojo que ya quedó, y
+ *      el siguiente entra. La revisión se traba y solo ofrece «Cerrar».
  *
  * El corte deja pasar el envío al servidor y no le entrega la respuesta al
  * navegador, como una señal que se cae a medio camino.
  *
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE, SOLO (las
- * partes que corren, p. ej. `sc,caja`; de os, oc, rq, sc, caja y lista) y el
+ * partes que corren, p. ej. `sc,caja`; de os, oc, rq, sc, caja, lista y planos) y el
  * correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
  */
 import { mkdirSync } from 'node:fs'
@@ -45,7 +48,7 @@ const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
 const SOLO = process.env.SOLO?.split(',')
 const corre = (parte) => !SOLO || SOLO.includes(parte)
-const CUENTAS = Object.fromEntries(['logistica', 'gerencia', 'requerimientos', 'administracion', 'tesoreria'].map((p) => [p, cuenta(p)]))
+const CUENTAS = Object.fromEntries(['logistica', 'gerencia', 'requerimientos', 'administracion', 'tesoreria', 'diseno'].map((p) => [p, cuenta(p)]))
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -139,6 +142,8 @@ const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--n
 const errores = []
 // Mientras la prueba corta la respuesta a propósito, el navegador anota el corte en la consola.
 let cortando = false
+// Lo que la consola dice a propósito en una parte: la subida a la ruta que ya tiene su archivo da 400/409.
+let ruido = null
 const VENTANA = '[role="dialog"]:not([data-nextjs-dialog])'
 
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
@@ -146,6 +151,7 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|Failed to fetch|TypeError/.test(m.text())) return
+    if (ruido?.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -509,6 +515,107 @@ if (corre('lista')) {
   const fuera = await hasta(() => tarjeta.count(), (n) => n === 0, 20000)
   const [lugar] = await consulta(`select posicion from programacion_recojo where orden_compra_id = $1`, [ocLista])
   comprobar(fuera === 0 && lugar?.posicion === null, `otra vez «Sí, sacarla»: sale de la lista, en la pantalla y en la base (${JSON.stringify(lugar)})`)
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 7. Diseño: el plano y su revisión
+if (corre('planos')) {
+  const CODIGO_PLANOS = `MISMO${SUFIJO.slice(-4)}_SR_O4_1_26/40`
+  const { pagina, contexto } = await entrar('diseno')
+  const corte = await cortarRespuestas(pagina)
+  await pagina.goto(`${BASE}/diseno/codigo?${new URLSearchParams({ codigo: CODIGO_PLANOS })}`, { waitUntil: 'networkidle' })
+  const pdf = (n) => ({ name: `${n}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.4\n% ${n} ${SUFIJO}\n1 0 obj <<>> endobj\ntrailer <<>>\n%%EOF\n`) })
+  const formPlano = pagina.locator('form').filter({ has: pagina.locator('#plano-numero') })
+  const avisoPlano = () => formPlano.locator('[role="alert"], [role="status"]').first().textContent({ timeout: 500 }).catch(() => '')
+  const planos = (numero) =>
+    consulta(
+      `select p.id, (select count(*)::int from codigo_plano_revisiones r where r.plano_id = p.id) as revisiones
+         from codigo_planos p where p.codigo_interno = $1 and p.numero = $2 and p.anulado_en is null`,
+      [CODIGO_PLANOS, numero],
+    )
+  async function llenarPlano(numero, archivo) {
+    await pagina.fill('#plano-numero', numero)
+    await pagina.fill('#plano-nombre', `Plano de prueba ${numero}`)
+    await pagina.selectOption('#plano-area', { label: 'Maestranza' })
+    await pagina.fill('#plano-peso', '10')
+    await pagina.setInputFiles('#plano-pdf', archivo)
+    await pagina.fill('#plano-observacion', `Marca ${SUFIJO} ${numero}`)
+  }
+  const cargar = () => formPlano.getByRole('button', { name: 'Cargar plano' }).click()
+  const cargado = (numero) => pagina.locator('[role="status"]').filter({ hasText: `Plano ${numero} cargado` }).waitFor({ timeout: 30000 }).then(() => true, () => false)
+  ruido = /status of 40[09]|Duplicate/
+
+  // El plano, sin ventana: el 001 entra; el 002 sin respuesta y con otro PDF dice que ya quedó; el 003 entra.
+  await llenarPlano('001', pdf('001'))
+  await cargar()
+  comprobar(await cargado('001'), '[Plano] el 001 entra')
+  await llenarPlano('002', pdf('002'))
+  corte.marca = `Marca ${SUFIJO} 002`
+  corte.quedan = 2
+  cortando = true
+  await cargar()
+  const corto = limpio(await hasta(avisoPlano, (t) => /respuesta/.test(t ?? ''), 60000))
+  cortando = false
+  await pagina.setInputFiles('#plano-pdf', pdf('002-otro'))
+  await cargar()
+  const yaQuedo = limpio(await hasta(avisoPlano, (t) => /primera vez/.test(t ?? ''), 60000))
+  const neutro = await formPlano.locator('[role="alert"][data-ya-entro]').count()
+  const p2 = await planos('002')
+  comprobar(corto.startsWith('No llegó la respuesta') && /la primera vez que lo enviaste/.test(yaQuedo) && neutro === 1 && p2.length === 1,
+    `[Plano] sin respuesta y con otro PDF dice sin rojo que ya quedó, y queda un plano: «${corto}» → «${yaQuedo}» (${p2.length})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-plano-ya-quedo.png'), fullPage: true })
+  await llenarPlano('003', pdf('003'))
+  await cargar()
+  comprobar((await cargado('003')) && (await planos('003')).length === 1, '[Plano] el siguiente entra con otro id')
+
+  // La revisión del 001, en su ventana.
+  const v = pagina.locator(VENTANA)
+  const fila = pagina.locator('li, tr, article, div').filter({ hasText: 'Plano de prueba 001' }).filter({ has: pagina.getByRole('button', { name: 'Subir revisión' }) }).last()
+  const revisiones = async () => (await planos('001'))[0]?.revisiones ?? -1
+  const aviso = () => v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => '')
+  const abrir = async () => {
+    await pagina.waitForLoadState('networkidle')
+    await fila.getByRole('button', { name: 'Subir revisión' }).click()
+    await v.waitFor()
+  }
+  const subir = () => v.getByRole('button', { name: 'Subir revisión', exact: true }).click()
+  const antes = await revisiones()
+  await abrir()
+  await v.locator('textarea[name="cambios"]').fill(`Revisión de prueba ${SUFIJO}`)
+  await v.locator('input[name="archivo"]').setInputFiles(pdf('001-r1'))
+  corte.marca = `Revisión de prueba ${SUFIJO}`
+  corte.quedan = 2
+  cortando = true
+  await subir()
+  const sinRespuesta = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 60000))
+  cortando = false
+  await v.locator('input[name="archivo"]').setInputFiles(pdf('001-r1-otro'))
+  await subir()
+  const yaQuedoRevision = limpio(await hasta(aviso, (t) => /ya quedó|primera vez/.test(t ?? ''), 60000))
+  const estado = await hasta(() => laVentana(pagina), (e) => e.cursor && e.abiertos.length === 0, 5000)
+  comprobar(sinRespuesta.startsWith('No llegó la respuesta') && /la primera vez que lo enviaste\. Si cambiaste algo después, no se guardó/.test(yaQuedoRevision) && (await revisiones()) === antes + 1,
+    `[Revisión] sin respuesta y con otro PDF dice que ya quedó, y entra una: «${yaQuedoRevision}» (${(await revisiones()) - antes})`)
+  comprobar(estado.neutro && estado.cursor && estado.envia === 0 && estado.botones.join() === 'Cerrar' && estado.abiertos.length === 0,
+    `[Revisión] sin rojo, con el cursor, los campos trabados y solo «Cerrar» (${JSON.stringify(estado)})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-revision-ya-quedo.png') })
+  await v.locator('form').getByRole('button', { name: 'Cerrar', exact: true }).click()
+  await v.waitFor({ state: 'hidden' })
+  await abrir()
+  const limpia = (await v.locator('[role="alert"]').count()) === 0
+  await v.locator('textarea[name="cambios"]').fill(`Otra revisión de prueba ${SUFIJO}`)
+  await v.locator('input[name="archivo"]').setInputFiles(pdf('001-r2'))
+  await subir()
+  const errorRevision = await esperarVentana(pagina)
+  comprobar(limpia && !errorRevision && (await hasta(revisiones, (n) => n === antes + 2)) === antes + 2,
+    `[Revisión] la ventana siguiente sale limpia y sube otra${errorRevision ? ` (dijo «${errorRevision}»)` : ''}`)
+  const ids = [...(await planos('001')), ...(await planos('002'))].map((f) => f.id)
+  const sueltos = await consulta(
+    `select o.name from storage.objects o where o.bucket_id = 'planos-codigo' and split_part(o.name, '/', 1) = any($1::text[])
+        and not exists (select 1 from codigo_plano_revisiones r where r.ruta = o.name)`,
+    [ids],
+  )
+  comprobar(ids.length === 2 && sueltos.length === 0, `[Plano y revisión] ningún PDF suelto en Storage (${sueltos.map((f) => f.name).join(', ') || 'ninguno'})`)
+  ruido = null
   await contexto.close()
 }
 
