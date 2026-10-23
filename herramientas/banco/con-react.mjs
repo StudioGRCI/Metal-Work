@@ -7,11 +7,10 @@
  * él, se perdía y la ventana no se abría (2026-10-23). Se espera a que React
  * haya tomado cada control de <main>, no solo <main>: lo que llega en partes
  * (Suspense) se hidrata después, y una captura en ese momento le pone al campo
- * enfocado un `caret-color` que React no reconoce. La pantalla sin <main>
- * (ingresar) espera a los controles de la página: el clic de «Ingresar» antes de
- * hidratar se perdía y la suite caía con «No se pudo entrar…» (vigésima pasada).
- * Si la pantalla redirige ya en el navegador, la espera vuelve a empezar en la
- * página de llegada: antes caía con «Execution context was destroyed».
+ * enfocado un `caret-color` que React no reconoce. Una pantalla sin <main>
+ * espera a los controles de la página. Si la pantalla redirige ya en el
+ * navegador, la espera vuelve a empezar en la página de llegada: tras ingresar
+ * caía con «Execution context was destroyed» (vigésima pasada).
  */
 export async function conReact(pagina, ms = 60000) {
   const limite = Date.now() + ms

@@ -289,7 +289,7 @@ const pendienteDeLaOc = async () =>
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
     }
-    if (corte.retener && e.request.method === 'POST' && h['next-action'] && esConsultaDelEnvio(cuerpo(e.request), 'movimiento_almacen')) {
+    if (corte.retener && e.request.method === 'POST' && h['next-action'] && esConsultaDelEnvio(cuerpo(e.request), 'movimiento_almacen', { conIds: true })) {
       corte.retenida = e.requestId
       corte.soltar = () => cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
       return

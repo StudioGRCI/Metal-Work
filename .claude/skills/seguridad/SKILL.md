@@ -264,15 +264,26 @@ En la misma migración que la crea, sin excepción:
   dos veces su pago (decimonovena)—. **Pero lo juzga quien lo registró, no la
   cuenta pintada** (vigésima): al abrir se pregunta por lo pendiente de ese
   lugar con todas las cuentas de la pestaña, y `consultarEnvio(clave, ids)`
-  contesta la cuenta de la sesión y, de cada id, la nota si la fila es suya
-  (`creado_por`, `subido_por` o `registrado_por`), `false` si es de otra, y nada
-  si no está. Lo que la sesión mandó desde la pantalla de otra cuenta se le
-  dice; mirar solo la cuenta pintada dejaba entrar dos veces la OC. Lo de otra
-  cuenta no se le cuenta ni se toca. Si la sesión no es la de la pantalla (otra
-  pestaña cambió la sesión), la ventana lo dice con `OTRA_CUENTA`, ofrece
-  recargar y `salio()` no deja enviar; la pestaña no cambia de cuenta por la
-  respuesta, solo por el layout —cambiarla escondía lo pendiente de la primera
-  cuando volvía y el egreso entraba dos veces—. Una clave nueva en
+  contesta la cuenta y el puesto de la sesión y, de cada id que está, lo que
+  quedó y, si la fila no es suya (`creado_por`, `subido_por` o
+  `registrado_por`), el puesto de quien la registró. Lo que la sesión mandó
+  desde la pantalla de otra cuenta se le dice; mirar solo la cuenta pintada
+  dejaba entrar dos veces la OC. Lo que otra cuenta registró con el pendiente
+  de otra llave no se le cuenta ni se toca; el de la llave de esta pantalla sí,
+  con su número y el puesto de quien tenía la sesión, porque salió de aquí.
+  **La pestaña que ya no es de la sesión no envía nada** (vigesimoprimera):
+  `CuentaDeLaPestana` avisa a las otras pestañas al entrar (`BroadcastChannel`)
+  y la que se pintó con otra cuenta se traba al momento
+  (`useOtraCuentaEnLaPestana`): `PieDeVentana` traba los campos y cambia el
+  botón que envía por «Recargar la pantalla», y `useAccion` y `salio()` no
+  envían. Si ese aviso no llega, la ventana que pregunta lo sabe al abrir:
+  `abrir()` pregunta aunque no haya nada pendiente. Antes solo se enteraba con
+  algo pendiente, y la pestaña vieja sin nada pendiente emitía la OC a nombre
+  de la otra cuenta. Lo que queda: lo que se envíe antes de que la base conteste
+  esa pregunta, si el aviso entre pestañas no llegó. Se destraba al pintarse con
+  la sesión o si la primera cuenta vuelve a entrar; la pestaña no cambia de
+  cuenta por la respuesta, solo por el layout —cambiarla escondía lo pendiente
+  de la primera cuando volvía y el egreso entraba dos veces—. Una clave nueva en
   `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de

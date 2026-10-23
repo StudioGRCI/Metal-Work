@@ -161,11 +161,20 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
   corre en la transición, no se pinta, y el segundo «Documento adjuntado»
   idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
-- **La ventana de una pantalla que ya no es de la sesión lo dice** (vigésima):
-  si en otra pestaña entró otra cuenta, `useIdDelEnvio` pone `OTRA_CUENTA` y
-  `EnvioAnterior` lo pinta en ámbar con «Recargar la pantalla»; el envío se
-  frena con un rechazo que lo explica. Antes abría limpia y el envío salía en
-  rojo como un problema de permiso del archivo.
+- **La ventana de una pantalla que ya no es de la sesión lo dice y se traba**
+  (vigésima y vigesimoprimera): si en otra pestaña entró otra cuenta,
+  `PieDeVentana` pone el aviso en ámbar en el pie, con el puesto de las dos
+  cuentas, traba los campos y cambia el botón que envía por «Recargar la
+  pantalla»; el cursor va al aviso. Sin nada pendiente también: la pestaña lo
+  sabe por el aviso de la otra (`entroLaCuenta`) o, si no llega, al abrir la
+  ventana que pregunta. Antes el aviso iba arriba, dejaba escribir y enviar, el
+  rojo salía con «Recargar» fuera de la vista y a 1440 empujaba el pie fuera de
+  la ventana. Si la primera cuenta vuelve a entrar, se destraba con lo escrito.
+  Recargar con una cuenta sin permiso lleva a `/sin-permiso`, que dice con qué
+  cuenta está la sesión y ofrece «Salir y entrar con otra cuenta».
+- **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
+  la misma clase van en una frase con su plural; lo que salió de esta pestaña a
+  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,

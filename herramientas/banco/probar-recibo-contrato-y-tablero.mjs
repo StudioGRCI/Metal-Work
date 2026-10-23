@@ -16,9 +16,12 @@
  *         quedó (antes la memoria se iba y entraba dos veces);
  *      e. a 1440, lo pendiente va por cuenta: sigue si vuelve a entrar la
  *         misma, otra no lo ve y, si la primera vuelve, dice que quedó. Con
- *         otra cuenta en otra pestaña, esta lo dice, ofrece recargar y no
- *         envía; si la primera vuelve, sin recargar dice que quedó, y tras
- *         «Recargar la pantalla» también.
+ *         otra cuenta en otra pestaña, la ventana se traba: el aviso en el pie
+ *         con el puesto de las dos, el cursor en él y «Recargar la pantalla»
+ *         en lugar de enviar; si la primera vuelve, sin recargar dice que
+ *         quedó. «Recargar la pantalla» con una cuenta sin permiso lleva a
+ *         «Sin permiso», que dice con qué cuenta está la sesión y ofrece salir;
+ *         de vuelta la primera, dice que quedó.
  *   2. Administración, el contrato del subcontrato: la respuesta se pierde y
  *      se elige otro archivo; el «ya se subió» va sin rojo y solo con «Cerrar».
  *   3. Logística, el tablero de una OT:
@@ -207,7 +210,7 @@ async function cortarLaRespuesta(pagina) {
   return { corte, armar }
 }
 
-/** Cómo quedó la ventana tras el aviso: sin rojo, los campos trabados y qué botones se pueden tocar. */
+/** Cómo quedó la ventana tras el aviso: sin rojo, el cursor, los campos trabados y qué botones se pueden tocar. */
 function laVentana(v) {
   return v.evaluate((ventana) => {
     const aviso = ventana.querySelector('[role="alert"]')
@@ -216,8 +219,10 @@ function laVentana(v) {
     return {
       neutro: aviso?.hasAttribute('data-ya-entro') ?? false,
       rojo: aviso ? getComputedStyle(aviso).color : null,
+      cursor: Boolean(aviso) && document.activeElement === aviso,
       abiertos: campos.filter((c) => !c.disabled).map((c) => c.name || c.id),
       botones: [...new Set(botones.map((b) => b.textContent.trim() || b.getAttribute('aria-label')))],
+      envia: ventana.querySelectorAll('button[type=submit]').length,
     }
   })
 }
@@ -360,33 +365,34 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await v.waitFor({ state: 'hidden' })
 
     // La pestaña vieja: en otra del mismo navegador se cierra la sesión y entra
-    // otra cuenta. Esta, pintada con Administración, lo dice, ofrece recargar y
-    // no envía: antes mandaba con la sesión nueva sin decirlo.
+    // otra cuenta. Esta, pintada con Administración, se traba y solo ofrece
+    // recargar: antes mandaba con la sesión nueva sin decirlo, y después lo
+    // decía arriba pero dejaba escribir y enviar (vigesimoprimera pasada).
     const enOtraPestana = async (puesto) => {
       const otra = esperarReactAlNavegar(await contexto.newPage())
       await otra.goto(`${BASE}/`, { waitUntil: 'networkidle' })
       await salirYEntrar(otra, puesto)
       await otra.close()
     }
-    const OTRA_CUENTA =
-      'En otra pestaña entró otra cuenta y esta pantalla todavía es de la anterior. Recarga la pantalla antes de registrar: desde aquí no se envía nada.'
+    const puestoDe = async (puesto) =>
+      (await consulta(`select coalesce(nullif(trim(u.cargo), ''), r.nombre) as puesto from usuarios u join roles r on r.id = u.rol_id where u.correo = $1`, [
+        CUENTAS[puesto],
+      ]))[0]?.puesto
+    const ADMINISTRACION = await puestoDe('administracion')
+    const LOGISTICA = await puestoDe('logistica')
+    const TRABADA = `Esta pantalla es de la cuenta de ${ADMINISTRACION}, y en otra pestaña entró la de ${LOGISTICA}: desde aquí no se envía nada. Recarga para seguir con ${LOGISTICA}, o vuelve a entrar con ${ADMINISTRACION} en esa pestaña para seguir aquí.`
+    const deOtraCuenta = () => v.locator('[data-otra-cuenta]').textContent({ timeout: 500 }).catch(() => '')
     const idEnLaVentana = () => v.locator('input[type=hidden][name=id]').inputValue({ timeout: 500 }).catch(() => '')
     const G = `E144-${SELLO}7`
     const idG = await dejarPendiente(G, '1700')
     await enOtraPestana('logistica')
     await abrirRecibo()
-    const avisa = limpio(await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000))
-    const recargar = await v.getByRole('button', { name: 'Recargar la pantalla' }).count()
-    comprobar(Boolean(idG) && avisa === OTRA_CUENTA && recargar === 1 && (await idEnLaVentana()) === idG,
-      `[Administración 1440] con Logística en otra pestaña, la ventana lo dice y ofrece recargar: «${avisa}» (${recargar} botón)`)
+    const avisa = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
+    const trabada = await hasta(() => laVentana(v), (e) => e.cursor && e.abiertos.length === 0, 5000)
+    comprobar(Boolean(idG) && avisa === TRABADA && trabada.cursor && trabada.abiertos.length === 0 && trabada.envia === 0
+      && trabada.botones.includes('Recargar la pantalla') && (await idEnLaVentana()) === idG,
+      `[Administración 1440] con Logística en otra pestaña, la ventana se traba, con el cursor en el aviso y solo recargar: «${avisa}» (${JSON.stringify(trabada)})`)
     await pagina.screenshot({ path: join(CAPTURAS, `recibo-otra-cuenta-${tam}.png`) })
-    const H = `E144-${SELLO}8`
-    await llenarRecibo(H, '1800')
-    await v.getByRole('button', { name: 'Registrar recibo' }).click()
-    const frenado = limpio(await hasta(alerta, (t) => /No se envió/.test(t ?? ''), 15000))
-    const deH = await recibos(H)
-    comprobar(/esta pantalla es de la cuenta anterior/.test(frenado) && deH.length === 0,
-      `[Administración 1440] y desde ahí no envía: «${frenado}» (${deH.length} recibos ${H})`)
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
 
@@ -396,23 +402,36 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await enOtraPestana('administracion')
     await abrirRecibo()
     const sinRecargar = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
-    comprobar(sinRecargar === `El recibo que enviaste antes sí quedó: ${G}. Lo que registres ahora será otro.` && (await idEnLaVentana()) !== idG,
-      `[Administración 1440] al volver Administración, sin recargar, dice que ${G} quedó y lleva otro id: «${sinRecargar}»`)
+    comprobar(sinRecargar === `El recibo que enviaste antes sí quedó: ${G}. Lo que registres ahora será otro.` && (await idEnLaVentana()) !== idG
+      && (await v.locator('[data-otra-cuenta]').count()) === 0,
+      `[Administración 1440] al volver Administración, sin recargar, la ventana se destraba, dice que ${G} quedó y lleva otro id: «${sinRecargar}»`)
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
 
-    // Y con «Recargar la pantalla»: lo pendiente sigue en la pestaña y, cuando
-    // la pantalla vuelve a ser de Administración, dice que quedó.
+    // Y con «Recargar la pantalla»: con la sesión de Logística, que no ve los
+    // subcontratos, se llega a «Sin permiso», que dice con qué cuenta se está y
+    // ofrece salir (antes solo «solicítalo al administrador»). Lo pendiente
+    // sigue en la pestaña y, de vuelta Administración, dice que quedó.
     const I = `E144-${SELLO}9`
     const idI = await dejarPendiente(I, '1900')
     await enOtraPestana('logistica')
     await abrirRecibo()
-    await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000)
+    await hasta(deOtraCuenta, (t) => Boolean(t), 15000)
     await Promise.all([
       pagina.waitForEvent('load', { timeout: 30000 }),
       v.getByRole('button', { name: 'Recargar la pantalla' }).click(),
     ])
+    await pagina.waitForLoadState('networkidle')
     const recargada = new URL(pagina.url()).pathname
+    const sinPermiso = recargada === '/sin-permiso'
+      ? {
+          dice: limpio(await pagina.locator('main').innerText().catch(() => '')),
+          salir: await pagina.getByRole('button', { name: 'Salir y entrar con otra cuenta' }).count(),
+        }
+      : null
+    comprobar(!sinPermiso || (sinPermiso.dice.includes(`Estás con la cuenta de ${LOGISTICA}`) && sinPermiso.salir === 1),
+      `[Administración 1440] «Recargar la pantalla» recarga (${recargada})${sinPermiso ? `: «Sin permiso» nombra la cuenta de ${LOGISTICA} y ofrece salir (${sinPermiso.salir} botón)` : ''}`)
+    await pagina.screenshot({ path: join(CAPTURAS, `recibo-recargada-${tam}.png`) })
     const sigue = (await pendientes()).find(([k]) => k === llave)?.[1] ?? null
     await enOtraPestana('administracion')
     await ir()
@@ -420,7 +439,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const trasElBoton = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
     const deI = await recibos(I)
     comprobar(Boolean(idI) && sigue === idI && deI.length === 1 && trasElBoton === `El recibo que enviaste antes sí quedó: ${I}. Lo que registres ahora será otro.`,
-      `[Administración 1440] «Recargar la pantalla» recarga (${recargada}), lo pendiente sigue y, de vuelta Administración, dice que ${I} quedó: «${trasElBoton}»`)
+      `[Administración 1440] lo pendiente sigue y, de vuelta Administración, dice que ${I} quedó: «${trasElBoton}»`)
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
     const deG = await recibos(G)

@@ -162,7 +162,7 @@ async function abrirContrato(p) {
   const pendiente = await p.evaluate(() => Object.keys(sessionStorage).some((k) => k.includes(':contrato_subcontrato:')))
   const pregunta = pendiente
     ? p.waitForResponse((r) => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action'])
-        && esConsultaDelEnvio(r.request().postData(), 'contrato_subcontrato'), { timeout: 20000 }).catch(() => null)
+        && esConsultaDelEnvio(r.request().postData(), 'contrato_subcontrato', { conIds: true }), { timeout: 20000 }).catch(() => null)
     : null
   await p.locator('[data-adjuntar-contrato]').click()
   const ventana = p.getByRole('dialog').first()
@@ -977,7 +977,8 @@ async function loEscritoSeQuedaEnLaCotizacion(viewport) {
 }
 
 // ------------------------------------------------- 1c. la factura vacía de la OC directa
-// Toda acción de servidor se corta: no se emite ninguna OC.
+// Toda acción de servidor se corta: no se emite ninguna OC. Pasa solo la
+// pregunta de la ventana al abrirse (`consultarEnvio`), que lee y no registra.
 async function facturaVaciaEnLaOcDirecta(viewport) {
   const tam = nombreDe(viewport)
   const { pagina: p, contexto } = await entrar('logistica.local@metalwork.test', viewport)
@@ -985,7 +986,7 @@ async function facturaVaciaEnLaOcDirecta(viewport) {
   let acciones = 0
   await p.route('**/*', (r) => {
     const q = r.request()
-    if (q.method() === 'POST' && q.headers()['next-action']) {
+    if (q.method() === 'POST' && q.headers()['next-action'] && !esConsultaDelEnvio(q.postData(), 'orden_compra')) {
       acciones++
       return r.abort('failed')
     }

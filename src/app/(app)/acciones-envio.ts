@@ -2,7 +2,7 @@
 
 import { z } from 'zod'
 
-import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio } from '@/lib/dominio/envios'
+import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cantidad, fecha, moneda, type CodigoMoneda } from '@/lib/format'
 import { obtenerSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -11,33 +11,42 @@ type Cliente = Awaited<ReturnType<typeof createClient>>
 
 /**
  * Lo que la base sabe de los envíos que la pestaña tiene pendientes: con qué
- * cuenta está la sesión, y de cada id que quedó, lo que quedó si lo registró
- * esa cuenta, o `false` si lo registró otra. El id que no está no entró, o no
- * se puede ver.
+ * cuenta está la sesión, y de cada id que quedó, lo que quedó y, si no lo
+ * registró esa cuenta, el puesto de la que sí. El id que no está no entró, o
+ * no se puede ver.
  */
-export type LoQueQuedo = { cuenta: string; entraron: Record<string, string | false> }
+export type LoQueQuedo = { cuenta: string; puesto: string; entraron: Record<string, LoQueEntro> }
 
-const Consulta = z.object({ clave: z.enum(CLAVES_DEL_ENVIO), ids: z.array(z.guid()).min(1).max(MAXIMO_PENDIENTES) })
+// Sin ids también se pregunta: la respuesta dice con qué cuenta está la sesión.
+const Consulta = z.object({ clave: z.enum(CLAVES_DEL_ENVIO), ids: z.array(z.guid()).max(MAXIMO_PENDIENTES) })
 
 // La nota es texto corrido: sin el espacio duro, «S/» quedaba al final de una
 // línea y el monto al comienzo de la otra.
 function importe(monto: number, codigo: string | null | undefined, dia: string | null) {
-  const texto = moneda(monto, (codigo ?? 'PEN') as CodigoMoneda).replace(' ', '\u00a0')
+  const texto = moneda(monto, (codigo ?? 'PEN') as CodigoMoneda).replace(' ', ' ')
   return dia ? `${texto} del ${fecha(dia)}` : texto
 }
 
-/** «La orden … sí quedó: OS-…. Lo que registres ahora será otra.» */
-function quedo(sujeto: string, otra: 'otro' | 'otra', detalle: string | null, despues = '') {
-  return `${sujeto} que enviaste antes sí quedó${detalle ? `: ${detalle}` : ''}.${despues} Lo que registres ahora será ${otra}.`
+/** «La orden de compra … : OS-…. Lo que registres ahora será otra.», contado por `contarLoQueEntro`. */
+function dicho(sujeto: string, plural: string, otra: 'otro' | 'otra', detalle: string | null, falta = ''): LoQueEntro {
+  return { sujeto, plural, detalle, falta, cierre: `Lo que registres ahora será ${otra}.`, autor: null }
 }
 
 /**
  * El archivo que sale después del documento (la factura de la OC, el contrato)
  * no se envió si del documento no llegó la respuesta: si no tiene ninguno, se
- * dice dónde adjuntarlo.
+ * dice dónde adjuntarlo. Solo a quien lo registró: es quien lo había elegido.
  */
-function sinArchivo(cuantos: number | null, texto: string) {
-  return cuantos === 0 ? ` ${texto}` : ''
+async function sinArchivo(registro: PromiseLike<{ count: number | null }>, texto: string) {
+  const { count } = await registro
+  return count === 0 ? ` ${texto}` : ''
+}
+
+/** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene (`obtenerSesion`). */
+async function puestoDe(supabase: Cliente, usuario: string) {
+  const { data } = await supabase.from('usuarios').select('cargo, rol:roles!inner(nombre)').eq('id', usuario).maybeSingle()
+  const rol = data?.rol as unknown as { nombre: string } | null
+  return data?.cargo?.trim() || rol?.nombre || 'otra cuenta'
 }
 
 /**
@@ -51,7 +60,7 @@ function sinArchivo(cuantos: number | null, texto: string) {
  * envió con su sesión, la fila es de esa persona, y es ella la que tiene que
  * ver que quedó; antes la ventana miraba la cuenta pintada, no la encontraba, y
  * el reintento entraba dos veces (vigésima pasada). Lo registrado por otra
- * cuenta no se le cuenta como suyo: decía «que enviaste» de un pago ajeno.
+ * cuenta lleva su puesto, para que la ventana no lo cuente como «que enviaste».
  */
 export async function consultarEnvio(clave: ClaveDelEnvio, ids: string[]): Promise<LoQueQuedo | null> {
   const perfil = await obtenerSesion()
@@ -59,70 +68,72 @@ export async function consultarEnvio(clave: ClaveDelEnvio, ids: string[]): Promi
   const analisis = Consulta.safeParse({ clave, ids })
   if (!analisis.success) return null
   const supabase = await createClient()
-  const entraron: LoQueQuedo['entraron'] = {}
-  for (const id of new Set(analisis.data.ids)) {
-    const lo = await queQuedo(supabase, analisis.data.clave, id, perfil.id)
-    if (lo !== null) entraron[id] = lo
-  }
-  return { cuenta: perfil.id, entraron }
+  const hallados = await Promise.all(
+    [...new Set(analisis.data.ids)].map(async (id) => {
+      const hallado = await queQuedo(supabase, analisis.data.clave, id, perfil.id)
+      if (!hallado) return null
+      const lo = hallado.por === perfil.id ? hallado.lo : { ...hallado.lo, autor: await puestoDe(supabase, hallado.por) }
+      return [id, lo] as const
+    }),
+  )
+  return { cuenta: perfil.id, puesto: perfil.puesto, entraron: Object.fromEntries(hallados.filter((h) => h !== null)) }
 }
 
-/** Lo que quedó con ese id, si es de `yo`; `false` si lo registró otra cuenta; `null` si no está. */
-async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo: string): Promise<string | false | null> {
+/** Lo que quedó con ese id y quién lo registró (`por`); `null` si no está. */
+async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo: string): Promise<{ lo: LoQueEntro; por: string } | null> {
   switch (clave) {
     case 'requerimiento': {
       const { data } = await supabase.from('requerimientos').select('numero, creado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.creado_por === yo && quedo('El requerimiento', 'otro', data.numero)
+      return data && { por: data.creado_por, lo: dicho('El requerimiento', 'Los requerimientos', 'otro', data.numero) }
     }
     case 'orden_compra_del_tablero': {
       // La ventana del tablero de la OT no lleva factura ni comprobante: no hay archivo que echar en falta.
       const { data } = await supabase.from('ordenes_compra_materiales').select('numero, creado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.creado_por === yo && quedo('La orden de compra', 'otra', data.numero)
+      return data && { por: data.creado_por, lo: dicho('La orden de compra', 'Las órdenes de compra', 'otra', data.numero) }
     }
     case 'orden_compra': {
       const { data } = await supabase.from('ordenes_compra_materiales').select('numero, creado_por').eq('id', id).maybeSingle()
       if (!data) return null
-      if (data.creado_por !== yo) return false
-      const { count } = await supabase
-        .from('documentos_compra_material')
-        .select('id', { count: 'exact', head: true })
-        .eq('orden_compra_id', id)
-      const falta = sinArchivo(count, 'Si le elegiste factura o comprobante, no se adjuntó: adjúntalo desde la fila de la orden.')
-      return quedo('La orden de compra', 'otra', data.numero, falta)
+      const falta =
+        data.creado_por === yo
+          ? await sinArchivo(
+              supabase.from('documentos_compra_material').select('id', { count: 'exact', head: true }).eq('orden_compra_id', id),
+              'Si le elegiste factura o comprobante, no se adjuntó: adjúntalo desde la fila de la orden.',
+            )
+          : ''
+      return { por: data.creado_por, lo: dicho('La orden de compra', 'Las órdenes de compra', 'otra', data.numero, falta) }
     }
     case 'orden_servicio': {
       const { data } = await supabase.from('ordenes_servicio').select('numero, creado_por').eq('id', id).maybeSingle()
       if (!data) return null
-      if (data.creado_por !== yo) return false
-      const { count } = await supabase
-        .from('documentos_orden_servicio')
-        .select('id', { count: 'exact', head: true })
-        .eq('orden_servicio_id', id)
-      const falta = sinArchivo(count, 'Si le elegiste contrato, no se adjuntó: adjúntalo desde la fila de la orden, con «Adjuntar documento».')
-      return quedo('La orden de servicio', 'otra', data.numero, falta)
+      const falta =
+        data.creado_por === yo
+          ? await sinArchivo(
+              supabase.from('documentos_orden_servicio').select('id', { count: 'exact', head: true }).eq('orden_servicio_id', id),
+              'Si le elegiste contrato, no se adjuntó: adjúntalo desde la fila de la orden, con «Adjuntar documento».',
+            )
+          : ''
+      return { por: data.creado_por, lo: dicho('La orden de servicio', 'Las órdenes de servicio', 'otra', data.numero, falta) }
     }
     case 'subcontrato': {
       const { data } = await supabase.from('subcontratos').select('numero, creado_por').eq('id', id).maybeSingle()
       if (!data) return null
-      if (data.creado_por !== yo) return false
-      const { count } = await supabase
-        .from('subcontrato_contratos')
-        .select('id', { count: 'exact', head: true })
-        .eq('subcontrato_id', id)
-      const falta = sinArchivo(count, 'Si le elegiste contrato, no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».')
-      return quedo('El subcontrato', 'otro', data.numero, falta)
+      const falta =
+        data.creado_por === yo
+          ? await sinArchivo(
+              supabase.from('subcontrato_contratos').select('id', { count: 'exact', head: true }).eq('subcontrato_id', id),
+              'Si le elegiste contrato, no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».',
+            )
+          : ''
+      return { por: data.creado_por, lo: dicho('El subcontrato', 'Los subcontratos', 'otro', data.numero, falta) }
     }
     case 'contrato_subcontrato': {
       const { data } = await supabase.from('subcontrato_contratos').select('archivo_nombre, subido_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.subido_por === yo && quedo('El contrato', 'otro', data.archivo_nombre)
+      return data && { por: data.subido_por, lo: dicho('El contrato', 'Los contratos', 'otro', data.archivo_nombre) }
     }
     case 'recibo_honorarios': {
       const { data } = await supabase.from('recibos_honorarios').select('numero, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El recibo', 'otro', data.numero)
+      return data && { por: data.registrado_por, lo: dicho('El recibo', 'Los recibos', 'otro', data.numero) }
     }
     case 'pago_recibo': {
       const { data } = await supabase
@@ -130,8 +141,12 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .select('monto, fecha_pago, registrado_por, recibos_honorarios(moneda)')
         .eq('id', id)
         .maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El pago', 'otro', importe(data.monto, data.recibos_honorarios?.moneda, data.fecha_pago))
+      return (
+        data && {
+          por: data.registrado_por,
+          lo: dicho('El pago', 'Los pagos', 'otro', importe(data.monto, data.recibos_honorarios?.moneda, data.fecha_pago)),
+        }
+      )
     }
     case 'documento_compra': {
       const { data } = await supabase
@@ -140,35 +155,34 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .eq('id', id)
         .maybeSingle()
       if (!data) return null
-      if (data.subido_por !== yo) return false
       const detalle = data.numero_documento || data.nombre_archivo
-      if (data.tipo === 'FACTURA') return quedo('La factura', 'otra', detalle)
-      return data.tipo === 'COMPROBANTE' ? quedo('El comprobante', 'otro', detalle) : quedo('El documento', 'otro', detalle)
+      if (data.tipo === 'FACTURA') return { por: data.subido_por, lo: dicho('La factura', 'Las facturas', 'otra', detalle) }
+      if (data.tipo === 'COMPROBANTE') return { por: data.subido_por, lo: dicho('El comprobante', 'Los comprobantes', 'otro', detalle) }
+      return { por: data.subido_por, lo: dicho('El documento', 'Los documentos', 'otro', detalle) }
     }
     case 'documento_servicio': {
       const { data } = await supabase.from('documentos_orden_servicio').select('tipo, numero, nombre_archivo, subido_por').eq('id', id).maybeSingle()
       if (!data) return null
-      if (data.subido_por !== yo) return false
       const detalle = data.numero || data.nombre_archivo
-      if (data.tipo === 'FACTURA') return quedo('La factura', 'otra', detalle)
-      if (data.tipo === 'BOLETA') return quedo('La boleta', 'otra', detalle)
-      if (data.tipo === 'RECIBO') return quedo('El recibo', 'otro', detalle)
-      return data.tipo === 'CONTRATO' ? quedo('El contrato', 'otro', detalle) : quedo('El documento', 'otro', detalle)
+      if (data.tipo === 'FACTURA') return { por: data.subido_por, lo: dicho('La factura', 'Las facturas', 'otra', detalle) }
+      if (data.tipo === 'BOLETA') return { por: data.subido_por, lo: dicho('La boleta', 'Las boletas', 'otra', detalle) }
+      if (data.tipo === 'RECIBO') return { por: data.subido_por, lo: dicho('El recibo', 'Los recibos', 'otro', detalle) }
+      if (data.tipo === 'CONTRATO') return { por: data.subido_por, lo: dicho('El contrato', 'Los contratos', 'otro', detalle) }
+      return { por: data.subido_por, lo: dicho('El documento', 'Los documentos', 'otro', detalle) }
     }
     case 'factura_venta': {
       const { data } = await supabase.from('facturas_venta').select('numero, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('La factura', 'otra', data.numero)
+      return data && { por: data.registrado_por, lo: dicho('La factura', 'Las facturas', 'otra', data.numero) }
     }
     case 'cobro_factura': {
       const { data } = await supabase.from('cobros_factura_venta').select('monto, moneda, fecha, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El cobro', 'otro', importe(data.monto, data.moneda, data.fecha))
+      return data && { por: data.registrado_por, lo: dicho('El cobro', 'Los cobros', 'otro', importe(data.monto, data.moneda, data.fecha)) }
     }
     case 'pago_factura': {
       const { data } = await supabase.from('pagos_adquisicion').select('monto, fecha, registrado_por, adquisiciones(moneda)').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El pago', 'otro', importe(data.monto, data.adquisiciones?.moneda, data.fecha))
+      return (
+        data && { por: data.registrado_por, lo: dicho('El pago', 'Los pagos', 'otro', importe(data.monto, data.adquisiciones?.moneda, data.fecha)) }
+      )
     }
     case 'toma_de_la_boleta': {
       // El id es el de la primera fila de la toma; las demás nacen con la misma
@@ -179,7 +193,6 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .eq('id', id)
         .maybeSingle()
       if (!data) return null
-      if (data.registrado_por !== yo) return false
       const { data: filas, error } = await supabase
         .from('pagos_adquisicion')
         .select('monto')
@@ -190,37 +203,37 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       if (error || !filas?.length) return null
       const tomado = filas.reduce((suma, f) => suma + Number(f.monto), 0)
       const factura = data.adquisiciones?.numero_documento ? `la factura ${data.adquisiciones.numero_documento}` : 'la factura'
-      return `Lo que enviaste antes sí quedó: ${factura} tomó ${importe(tomado, data.adquisiciones?.moneda, null)}. Lo que registres ahora irá aparte.`
+      return {
+        por: data.registrado_por,
+        lo: {
+          ...dicho('Lo', 'Las tomas de la boleta', 'otro', `${factura} tomó ${importe(tomado, data.adquisiciones?.moneda, null)}`),
+          cierre: 'Lo que registres ahora irá aparte.',
+        },
+      }
     }
     case 'pago_compra': {
       const { data } = await supabase.from('pagos_orden_compra').select('monto, moneda, fecha_pago, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El pago', 'otro', importe(data.monto, data.moneda, data.fecha_pago))
+      return data && { por: data.registrado_por, lo: dicho('El pago', 'Los pagos', 'otro', importe(data.monto, data.moneda, data.fecha_pago)) }
     }
     case 'devolucion_compra': {
       const { data } = await supabase.from('devoluciones_orden_compra').select('monto, moneda, fecha, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('La devolución', 'otra', importe(data.monto, data.moneda, data.fecha))
+      return data && { por: data.registrado_por, lo: dicho('La devolución', 'Las devoluciones', 'otra', importe(data.monto, data.moneda, data.fecha)) }
     }
     case 'pago_servicio': {
       const { data } = await supabase.from('pagos_orden_servicio').select('monto, moneda, fecha_pago, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El pago', 'otro', importe(data.monto, data.moneda, data.fecha_pago))
+      return data && { por: data.registrado_por, lo: dicho('El pago', 'Los pagos', 'otro', importe(data.monto, data.moneda, data.fecha_pago)) }
     }
     case 'pago_parte_boleta': {
       const { data } = await supabase.from('pagos_parte_con_boleta').select('monto, moneda, fecha_pago, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('El pago', 'otro', importe(data.monto, data.moneda, data.fecha_pago))
+      return data && { por: data.registrado_por, lo: dicho('El pago', 'Los pagos', 'otro', importe(data.monto, data.moneda, data.fecha_pago)) }
     }
     case 'nota_credito': {
       const { data } = await supabase.from('notas_credito_compra').select('numero, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('La nota de crédito', 'otra', data.numero)
+      return data && { por: data.registrado_por, lo: dicho('La nota de crédito', 'Las notas de crédito', 'otra', data.numero) }
     }
     case 'reembolso_nota_credito': {
       const { data } = await supabase.from('reembolsos_nota_credito').select('monto, moneda, fecha, registrado_por').eq('id', id).maybeSingle()
-      if (!data) return null
-      return data.registrado_por === yo && quedo('La devolución', 'otra', importe(data.monto, data.moneda, data.fecha))
+      return data && { por: data.registrado_por, lo: dicho('La devolución', 'Las devoluciones', 'otra', importe(data.monto, data.moneda, data.fecha)) }
     }
     case 'movimiento_almacen': {
       // «2 UND de Disco de corte, con GR-…»: `codigo_unidad` es la unidad del vehículo, no la medida.
@@ -230,21 +243,28 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .eq('id', id)
         .maybeSingle()
       if (!data) return null
-      if (data.registrado_por !== yo) return false
       const material = data.materiales
       const cuanto = [cantidad(data.cantidad), material?.unidad?.codigo].filter(Boolean).join(' ')
       const detalle = [material?.descripcion ? `${cuanto} de ${material.descripcion}` : cuanto, data.documento_referencia]
         .filter(Boolean)
         .join(', con ')
-      return data.tipo === 'DEVOLUCION_PROVEEDOR' ? quedo('La devolución', 'otra', detalle) : quedo('La reposición', 'otra', detalle)
+      return {
+        por: data.registrado_por,
+        lo:
+          data.tipo === 'DEVOLUCION_PROVEEDOR'
+            ? dicho('La devolución', 'Las devoluciones', 'otra', detalle)
+            : dicho('La reposición', 'Las reposiciones', 'otra', detalle),
+      }
     }
     case 'movimiento_caja': {
       const { data } = await supabase.from('movimientos_caja').select('tipo, monto, fecha, registrado_por, cajas(nombre, moneda)').eq('id', id).maybeSingle()
       if (!data) return null
-      if (data.registrado_por !== yo) return false
-      const sujeto = data.tipo === 'INGRESO' ? 'El ingreso' : 'El egreso'
       const cuenta = data.cajas?.nombre ? `, en ${data.cajas.nombre}` : ''
-      return quedo(sujeto, 'otro', `${importe(data.monto, data.cajas?.moneda, data.fecha)}${cuenta}`)
+      const detalle = `${importe(data.monto, data.cajas?.moneda, data.fecha)}${cuenta}`
+      return {
+        por: data.registrado_por,
+        lo: data.tipo === 'INGRESO' ? dicho('El ingreso', 'Los ingresos', 'otro', detalle) : dicho('El egreso', 'Los egresos', 'otro', detalle),
+      }
     }
     case 'transferencia_caja': {
       const { data } = await supabase
@@ -254,10 +274,12 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .eq('origen_id', id)
       const sale = data?.find((m) => m.tipo === 'EGRESO')
       if (!sale) return null
-      if (sale.registrado_por !== yo) return false
       const entra = data?.find((m) => m.tipo === 'INGRESO')
       const cuentas = sale.cajas?.nombre && entra?.cajas?.nombre ? `, de ${sale.cajas.nombre} a ${entra.cajas.nombre}` : ''
-      return quedo('La transferencia', 'otra', `${importe(sale.monto, sale.cajas?.moneda, sale.fecha)}${cuentas}`)
+      return {
+        por: sale.registrado_por,
+        lo: dicho('La transferencia', 'Las transferencias', 'otra', `${importe(sale.monto, sale.cajas?.moneda, sale.fecha)}${cuentas}`),
+      }
     }
   }
 }

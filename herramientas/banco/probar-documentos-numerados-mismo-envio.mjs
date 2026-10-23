@@ -33,10 +33,19 @@
  *      (sin ventana) y la revisión (con ventana) dicen sin rojo que ya quedó, y
  *      el siguiente entra. La revisión se traba y solo ofrece «Cerrar».
  *   8. La OC directa con otra cuenta en otra pestaña (Logística y
- *      Administración pueden emitir): lo que se mandó desde la pantalla de una
- *      con la sesión de la otra, la otra lo ve como suyo al volver a abrir; la
- *      pantalla vieja dice que entró otra cuenta, ofrece recargar y no envía,
- *      y cuando vuelve la primera, sin recargar, dice que lo suyo quedó.
+ *      Administración pueden emitir):
+ *      a. sin nada pendiente y con la ventana abierta, la pestaña vieja se
+ *         traba al momento, con el puesto de las dos cuentas en el pie, el
+ *         cursor en el aviso y «Recargar la pantalla» en lugar de emitir; si
+ *         vuelve Logística, se destraba con lo escrito y emite a su nombre;
+ *      b. sin el aviso entre pestañas, la ventana lo sabe al abrir;
+ *      c. lo que sale antes de que la base conteste esa pregunta entra con la
+ *         sesión de Administración; recargada con Logística, la ventana dice
+ *         cuál quedó y a nombre de quién;
+ *      d. lo mismo, recargada con Administración: lo ve como suyo y suelta lo
+ *         de Logística;
+ *      e. con lo de Logística pendiente, la pestaña vieja se traba y no emite;
+ *         de vuelta Logística, sin recargar, dice que lo suyo quedó.
  *
  * El corte deja pasar el envío al servidor y no le entrega la respuesta al
  * navegador, como una señal que se cae a medio camino.
@@ -186,9 +195,15 @@ async function ingresar(pagina, puesto) {
   await pagina.waitForLoadState('networkidle')
 }
 
-/** En otra pestaña del mismo navegador se cierra la sesión y entra `puesto`: la sesión es de todas. */
-async function enOtraPestana(contexto, puesto) {
+/**
+ * En otra pestaña del mismo navegador se cierra la sesión y entra `puesto`: la
+ * sesión es de todas. Con `sinAviso`, esa pestaña no tiene `BroadcastChannel` y
+ * las otras no se enteran por ella (un navegador sin él, o el instante entre la
+ * sesión nueva y el aviso).
+ */
+async function enOtraPestana(contexto, puesto, { sinAviso = false } = {}) {
   const otra = esperarReactAlNavegar(await contexto.newPage())
+  if (sinAviso) await otra.addInitScript(() => Object.defineProperty(window, 'BroadcastChannel', { value: undefined }))
   await otra.goto(`${BASE}/`, { waitUntil: 'networkidle' })
   await Promise.all([
     otra.waitForURL((u) => u.pathname.startsWith('/ingresar'), { timeout: 30000 }),
@@ -204,15 +219,17 @@ async function enOtraPestana(contexto, puesto) {
  * siquiera llegan al servidor.
  */
 async function cortarRespuestas(pagina) {
-  // `retener`: la clave de `consultarEnvio` cuya pregunta se detiene hasta `soltar()`; `retenidas`, las que se
-  // detuvieron; `consultas`, las que terminaron.
-  const corte = { marca: null, quedan: 0, sinEnviar: false, retener: null, soltar: () => {}, retenidas: 0, consultas: 0 }
+  // `retener`: la clave de `consultarEnvio` cuya pregunta se detiene hasta `soltar()`, la que lleva algún id
+  // pendiente o, con `retenerSinIds`, también la que no; `retenidas`, las que se detuvieron; `consultas`, las
+  // que terminaron.
+  const corte = { marca: null, quedan: 0, sinEnviar: false, retener: null, retenerSinIds: false, soltar: () => {}, retenidas: 0, consultas: 0 }
   pagina.on('requestfinished', (q) => {
     if (q.method() === 'POST' && q.headers()['next-action'] && esConsultaDelEnvio(q.postData())) corte.consultas++
   })
   await pagina.route('**/*', async (r) => {
     const q = r.request()
-    if (q.method() === 'POST' && q.headers()['next-action'] && corte.retener && esConsultaDelEnvio(q.postData(), corte.retener)) {
+    if (q.method() === 'POST' && q.headers()['next-action'] && corte.retener
+      && esConsultaDelEnvio(q.postData(), corte.retener, { conIds: !corte.retenerSinIds })) {
       corte.retenidas++
       await new Promise((listo) => (corte.soltar = listo))
       return r.continue()
@@ -776,12 +793,16 @@ if (corre('cuenta')) {
     await d.nuevo(pagina).click()
     await v.waitFor()
   }
+  // Tras «No llegó la respuesta», al cerrar la pantalla se pone al día: se espera a que termine.
   const cancelar = async () => {
     await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
     await v.waitFor({ state: 'hidden' })
+    await pagina.waitForLoadState('networkidle')
   }
+  const delMenu = () => pagina.locator('section[aria-label="Tu cuenta"]').first().innerText().catch(() => '')
   const aviso = () => v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => '')
   const nota = () => v.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => '')
+  const deOtraCuenta = () => v.locator('[data-otra-cuenta]').textContent({ timeout: 500 }).catch(() => '')
   const enviar = () => v.getByRole('button', { name: d.enviar, exact: true }).click()
   async function sinRespuesta(marca) {
     corte.marca = marca
@@ -796,55 +817,151 @@ if (corre('cuenta')) {
     (await consulta(`select u.correo from ordenes_compra_materiales o join usuarios u on u.id = o.creado_por where o.numero = $1`, [numero]))[0]?.correo
   const pendientesDe = (puesto) =>
     pagina.evaluate((prefijo) => Object.keys(sessionStorage).filter((k) => k.startsWith(prefijo)), `metal-work:envio-pendiente:${ids[CUENTAS[puesto]]}:`)
-  const OTRA_CUENTA =
-    'En otra pestaña entró otra cuenta y esta pantalla todavía es de la anterior. Recarga la pantalla antes de registrar: desde aquí no se envía nada.'
+  // Como nombra la cuenta el menú: el cargo, o el rol si no lo tiene.
+  const puestoDe = async (puesto) =>
+    (await consulta(`select coalesce(nullif(trim(u.cargo), ''), r.nombre) as puesto from usuarios u join roles r on r.id = u.rol_id where u.correo = $1`, [
+      CUENTAS[puesto],
+    ]))[0]?.puesto
+  const LOGISTICA = await puestoDe('logistica')
+  const ADMINISTRACION = await puestoDe('administracion')
+  const TRABADA = `Esta pantalla es de la cuenta de ${LOGISTICA}, y en otra pestaña entró la de ${ADMINISTRACION}: desde aquí no se envía nada. Recarga para seguir con ${ADMINISTRACION}, o vuelve a entrar con ${LOGISTICA} en esa pestaña para seguir aquí.`
+  /** La ventana trabada por la otra cuenta: el cursor en el aviso, nada que escribir y «Recargar la pantalla» en lugar de emitir. */
+  const comoQuedo = async () => {
+    const e = await laVentana(pagina)
+    return { ...e, trabada: e.cursor && e.abiertos.length === 0 && e.envia === 0 && e.botones.includes('Recargar la pantalla') }
+  }
+  /**
+   * Administración entra en otra pestaña sin avisar, y en esta se emite antes de
+   * que la base conteste la pregunta de la ventana (se detiene): Next despacha
+   * las acciones de una en una y el envío sale detrás, con la sesión que haya.
+   * Su respuesta se pierde: con la ventana trabada no se ve «No llegó la
+   * respuesta», así que el corte se da por terminado al cerrarla (`cortando`).
+   */
+  async function carrera(marca, precio) {
+    await enOtraPestana(contexto, 'administracion', { sinAviso: true })
+    corte.retener = d.consulta
+    corte.retenerSinIds = true
+    const retenidas = corte.retenidas
+    await abrir()
+    await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)
+    await d.llenar(v, pagina, marca, precio)
+    corte.marca = marca
+    corte.quedan = 1
+    cortando = true
+    // El envío falla en el navegador cuando el servidor ya contestó: hasta entonces la ventana no se cierra.
+    const fallo = pagina.waitForEvent('requestfailed', { predicate: (q) => (q.postData() ?? '').includes(marca), timeout: 60000 }).catch(() => null)
+    await enviar()
+    corte.retener = null
+    corte.retenerSinIds = false
+    corte.soltar()
+    const [fila] = await hasta(() => d.contar(marca), (r) => r.length > 0, 30000)
+    const dijo = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
+    await fallo
+    await pagina.evaluate(() => new Promise((listo) => setTimeout(listo, 300)))
+    return { fila, dijo }
+  }
 
-  // a. La pantalla es de Logística y la sesión, de Administración: la OC entra
-  // a nombre de Administración y su respuesta se pierde. Antes la ventana solo
-  // miraba lo pendiente de Logística, y el reintento entraba dos veces.
+  // a. Sin nada pendiente y con la ventana abierta, en otra pestaña entra
+  // Administración. Antes la pestaña vieja sin nada pendiente no preguntaba y
+  // emitía a nombre de Administración (vigesimoprimera pasada).
   await ir()
-  await enOtraPestana(contexto, 'administracion')
-  const G = `${SUFIJO}g`
+  const G = `${SUFIJO}xg`
   await abrir()
   await d.llenar(v, pagina, G, '130')
-  const corto = await sinRespuesta(G)
-  await cancelar()
+  await enOtraPestana(contexto, 'administracion')
+  const alMomento = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
+  const enA = await hasta(comoQuedo, (e) => e.trabada, 5000)
+  comprobar(alMomento === TRABADA && enA.trabada && (await d.contar(G)).length === 0,
+    `[Otra cuenta] sin nada pendiente y con la ventana abierta, entra Administración en otra pestaña: se traba al momento, con el cursor en el aviso y sin emitir: «${alMomento}» (${JSON.stringify(enA)})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-otra-cuenta.png') })
+  await enOtraPestana(contexto, 'logistica')
+  await hasta(deOtraCuenta, (t) => !t, 15000)
+  const escrito = await v.locator('#ocd-motivo').inputValue()
+  const libre = await laVentana(pagina)
+  comprobar(escrito === `Reposición de prueba ${G}` && libre.abiertos.length > 0 && libre.envia === 1,
+    `[Otra cuenta] de vuelta Logística en la otra pestaña, la ventana se destraba con lo escrito (${JSON.stringify({ escrito, abiertos: libre.abiertos.length, envia: libre.envia })})`)
+  await enviar()
+  await v.waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {})
   const [deG] = await hasta(() => d.contar(G), (r) => r.length > 0)
-  const deQuien = deG ? await autor(deG.numero) : null
-  comprobar(corto.startsWith('No llegó la respuesta') && deQuien === CUENTAS.administracion,
-    `[Otra cuenta] desde la pantalla de Logística, ${deG?.numero ?? 'nada'} entra a nombre de Administración (${deQuien}) y su respuesta se pierde`)
+  comprobar(Boolean(deG) && (await autor(deG.numero)) === CUENTAS.logistica && (await d.contar(G)).length === 1,
+    `[Otra cuenta] y emite ${deG?.numero ?? 'nada'} a nombre de Logística, una vez`)
+
+  // b. Sin el aviso de la otra pestaña: la ventana pregunta al abrir aunque no
+  // haya nada pendiente, y se traba con la respuesta.
+  await enOtraPestana(contexto, 'administracion', { sinAviso: true })
+  const preguntas = corte.consultas
+  await abrir()
+  const alAbrir = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
+  const enB = await hasta(comoQuedo, (e) => e.trabada, 5000)
+  comprobar(alAbrir === TRABADA && enB.trabada && corte.consultas > preguntas,
+    `[Otra cuenta] sin el aviso de la otra pestaña, la ventana pregunta al abrir y se traba igual: «${alAbrir}»`)
+  await cancelar()
+  // Vuelve Logística, tampoco avisa: la pregunta siguiente la destraba.
+  await enOtraPestana(contexto, 'logistica', { sinAviso: true })
+  await abrir()
+  const destrabada = await hasta(deOtraCuenta, (t) => !t, 15000)
+  comprobar(!destrabada, '[Otra cuenta] vuelve Logística sin avisar: al abrir, la respuesta de la base destraba la ventana')
+  await cancelar()
+
+  // c. Lo que sale antes de que la base conteste esa pregunta entra con la
+  // sesión de Administración. Al cerrar, la pantalla se pone al día con esa
+  // sesión; vuelve Logística, se recarga, y la ventana dice cuál quedó y a
+  // nombre de quién (antes «a nombre de la cuenta que entró», sin número).
+  const C = `${SUFIJO}xc`
+  const c = await carrera(C, '140')
+  comprobar(Boolean(c.fila) && (await autor(c.fila.numero)) === CUENTAS.administracion && c.dijo === TRABADA,
+    `[Otra cuenta] lo emitido antes de que la base conteste entra a nombre de Administración (${c.fila?.numero ?? 'nada'}) y la ventana se traba al contestar`)
+  await cancelar()
+  cortando = false
+  const alDia = limpio(await hasta(delMenu, (t) => (t ?? '').includes(ADMINISTRACION), 15000))
+  comprobar(alDia.includes(ADMINISTRACION), `[Otra cuenta] al cerrar, la pantalla se pone al día con la sesión: el menú es de ${ADMINISTRACION} («${alDia}»)`)
+  await enOtraPestana(contexto, 'logistica')
+  await abrir()
+  await hasta(deOtraCuenta, (t) => Boolean(t), 15000)
+  await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }), v.getByRole('button', { name: 'Recargar la pantalla' }).click()])
+  await pagina.waitForLoadState('networkidle')
+  const recargada = new URL(pagina.url()).pathname
+  await abrir()
+  const aNombre = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
+  comprobar(recargada === d.ruta
+    && aNombre === `La orden de compra que se envió antes desde esta pestaña sí quedó, a nombre de ${ADMINISTRACION}, que tenía la sesión: ${c.fila?.numero}. Lo que registres ahora será otra.`,
+    `[Otra cuenta] «Recargar la pantalla» la pinta con Logística (${recargada}) y la ventana dice cuál quedó y a nombre de quién: «${aNombre}»`)
+  await cancelar()
+  comprobar((await d.contar(C)).length === 1, `[Otra cuenta] ${c.fila?.numero} está una vez`)
+
+  // d. Otra vez, y recargada con Administración: lo ve como suyo y suelta lo de
+  // Logística. Antes la ventana solo miraba lo de la cuenta pintada, y el
+  // reintento entraba dos veces (vigésima pasada).
+  const D = `${SUFIJO}xd`
+  const dd = await carrera(D, '150')
+  await cancelar()
+  cortando = false
   await pagina.reload({ waitUntil: 'networkidle' })
   await abrir()
   const suya = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
   const deLogistica = await pendientesDe('logistica')
-  comprobar(suya.startsWith(`La orden de compra que enviaste antes sí quedó: ${deG?.numero}.`) && deLogistica.length === 0,
-    `[Otra cuenta] recargada, la pantalla de Administración dice que esa OC quedó y suelta lo de Logística: «${suya}» (${deLogistica.length} llaves de Logística)`)
+  comprobar(Boolean(dd.fila) && suya.startsWith(`La orden de compra que enviaste antes sí quedó: ${dd.fila?.numero}.`) && deLogistica.length === 0,
+    `[Otra cuenta] recargada con Administración, dice que ${dd.fila?.numero ?? 'nada'} quedó y suelta lo de Logística: «${suya}» (${deLogistica.length} llaves de Logística)`)
   await cancelar()
-  comprobar((await d.contar(G)).length === 1, `[Otra cuenta] ${deG?.numero} está una vez`)
+  comprobar((await d.contar(D)).length === 1, `[Otra cuenta] ${dd.fila?.numero} está una vez`)
 
-  // b. La pestaña vieja: lo de Logística queda pendiente y en otra pestaña
-  // entra Administración. La ventana lo dice, ofrece recargar y no envía; al
-  // volver Logística, sin recargar, dice que lo suyo quedó.
+  // e. Lo de Logística queda pendiente y en otra pestaña entra Administración:
+  // la pestaña vieja se traba y no emite; de vuelta Logística, sin recargar,
+  // dice que lo suyo quedó.
   await enOtraPestana(contexto, 'logistica')
-  await ir()
-  const H = `${SUFIJO}h`
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const H = `${SUFIJO}xh`
   await abrir()
-  await d.llenar(v, pagina, H, '140')
+  await d.llenar(v, pagina, H, '160')
   await sinRespuesta(H)
   await cancelar()
   const [deH] = await hasta(() => d.contar(H), (r) => r.length > 0)
   await enOtraPestana(contexto, 'administracion')
   await abrir()
-  const avisa = limpio(await hasta(nota, (t) => /otra cuenta/.test(t ?? ''), 15000))
-  const recargar = await v.getByRole('button', { name: 'Recargar la pantalla' }).count()
-  comprobar(avisa === OTRA_CUENTA && recargar === 1, `[Otra cuenta] con Administración en otra pestaña, la ventana lo dice y ofrece recargar: «${avisa}»`)
-  await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-otra-cuenta.png') })
-  const H2 = `${SUFIJO}h2`
-  await d.llenar(v, pagina, H2, '150')
-  await enviar()
-  const frenado = limpio(await hasta(aviso, (t) => /No se envió/.test(t ?? ''), 15000))
-  comprobar(/esta pantalla es de la cuenta anterior/.test(frenado) && (await d.contar(H2)).length === 0,
-    `[Otra cuenta] y desde ahí no se emite nada: «${frenado}»`)
+  const conPendiente = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
+  const enE = await hasta(comoQuedo, (e) => e.trabada, 5000)
+  comprobar(conPendiente === TRABADA && enE.trabada && (await d.contar(H)).length === 1,
+    `[Otra cuenta] con ${deH?.numero ?? 'nada'} pendiente y Administración en otra pestaña, la ventana se traba y no emite (${JSON.stringify(enE)})`)
   await cancelar()
   await enOtraPestana(contexto, 'logistica')
   await abrir()
