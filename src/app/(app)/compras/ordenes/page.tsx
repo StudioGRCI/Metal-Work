@@ -164,6 +164,8 @@ function FilaCompra({
           <span className={c.numero ? 'tabular font-semibold text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
           {origen && <Insignia tono={origen.tono}>{origen.etiqueta}</Insignia>}
         </div>
+        {/* Lo único que distingue dos OC sin número del mismo proveedor: va primero, como en Gestión. */}
+        {c.numero === null && <p className="text-xs text-texto-suave">Ref. del proveedor: {c.referencia}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-[11px] text-texto-suave">sin IGV</span>
@@ -180,7 +182,7 @@ function FilaCompra({
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-[11px] text-texto-suave">
           {[
-            c.numero === null ? `Ref. del proveedor: ${c.referencia}` : c.referencia && c.referencia !== c.numero ? `Ref. ${c.referencia}` : null,
+            c.numero !== null && c.referencia && c.referencia !== c.numero ? `Ref. ${c.referencia}` : null,
             condicionDePago(c.condicion_pago, c.dias_credito),
             `${c.lineas} ${c.lineas === 1 ? 'línea' : 'líneas'}`,
             fecha(c.creado_en),

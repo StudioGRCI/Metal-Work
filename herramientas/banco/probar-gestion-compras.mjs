@@ -22,7 +22,8 @@
  * Necesita al menos tres OC aprobadas que Logística todavía no programa
  * (`probar-adquisiciones-compras.mjs` siembra las OC). Si la lista del
  * conductor trae alguna por recoger, Logística la saca primero (paso 0); las
- * que el conductor ya lleva encima no estorban.
+ * que el conductor ya lleva encima no estorban. Como vacía esa lista, no se
+ * corre a la vez que otra sonda o que alguien que la esté usando en el banco.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
  * cuenta si no son las `*.local@metalwork.test` que siembra `preparar.sh`.
  */

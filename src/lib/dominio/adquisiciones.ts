@@ -91,6 +91,17 @@ export function nombreDeOc(o: { numero: string | null; referencia?: string | nul
 }
 
 /**
+ * Lo inverso de `nombreDeOc`, para lo que la base ya da armado con `nombre_de_oc`
+ * (`ingresos_por_validar`, las compras del Costeo): el título lleva el número o
+ * «OC sin número», y la referencia del proveedor va en su línea, debajo. Sin
+ * esto, el título largo ocupaba tres líneas en el teléfono y partía la referencia.
+ */
+export function partesDeNombreDeOc(nombre: string): { numero: string | null; referencia: string | null } {
+  if (!nombre.startsWith('OC sin número')) return { numero: nombre, referencia: null }
+  return { numero: null, referencia: /^OC sin número \(ref\. del proveedor (.+)\)$/.exec(nombre)?.[1] ?? null }
+}
+
+/**
  * La OC como la busca el detector de facturas: por su número, y la de antes de
  * la serie por su referencia, que es lo que cita la factura del proveedor. Sin
  * esto, la factura de una OC sin número decía «menciona la OC 8602 y no está

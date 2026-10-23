@@ -31,6 +31,7 @@ import {
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import {
   CODIGO_SIN_AVANCE,
   CODIGO_TODOS_LOS_ACTIVOS,
@@ -1354,17 +1355,19 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
             ) : (
               compras.map((oc) => {
                 const situacion = situacionCompra({ ...oc, validacion: validacionDeCompra(oc.validaciones) })
-                const numero = oc.numero ?? 'OC sin número'
+                // La base la da nombrada entera: el número, o «OC sin número» con la referencia debajo.
+                const { numero, referencia } = partesDeNombreDeOc(oc.numero ?? 'OC sin número')
                 return (
                   <TR key={oc.id} data-compra={oc.id}>
                     <TD className="align-top">
                       {abrePdf ? (
                         <a href={`/compras/${oc.id}/pdf`} className="font-medium text-acento hover:underline" target="_blank" rel="noopener">
-                          {numero}
+                          {numero ?? 'OC sin número'}
                         </a>
                       ) : (
-                        <p className="font-medium text-texto">{numero}</p>
+                        <p className="font-medium text-texto">{numero ?? 'OC sin número'}</p>
                       )}
+                      {referencia && <p className="text-xs text-texto-suave">Ref. del proveedor: {referencia}</p>}
                       <p className="text-xs text-texto-suave">
                         {fecha(oc.fecha)}
                         {oc.requerimientos && ` · ${oc.requerimientos}`}
@@ -1376,7 +1379,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
                     </TD>
                     <TD className="tabular text-right align-top">
-                      {moneda(oc.monto, oc.moneda)}
+                      <span className="whitespace-nowrap">{moneda(oc.monto, oc.moneda)}</span>
                       {oc.sin_precio > 0 && (
                         <p className="text-xs text-aviso">
                           {oc.sin_precio} de {oc.lineas} {oc.lineas === 1 ? 'línea' : 'líneas'} sin precio

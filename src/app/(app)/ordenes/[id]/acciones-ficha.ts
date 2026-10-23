@@ -54,7 +54,7 @@ async function exigirEscribirOrden(): Promise<Guarda> {
   if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los datos de la ficha los completa Administración.',
+      error: 'No tienes permiso para completar los datos de la ficha.',
     }
   }
   return { ok: true, perfil }
@@ -70,7 +70,7 @@ async function exigirArmarFicha(): Promise<Guarda> {
   if (!puede(perfil, 'ordenes.editar')) {
     return {
       ok: false,
-      error: 'Los accesorios y repuestos los completa Administración.',
+      error: 'No tienes permiso para completar los accesorios y repuestos.',
     }
   }
   return { ok: true, perfil }

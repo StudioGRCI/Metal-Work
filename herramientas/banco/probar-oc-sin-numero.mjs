@@ -589,7 +589,9 @@ writeFileSync(
     await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
     const entrega = pagina.locator(`form[aria-labelledby="pv-${oc5.slice(0, 8)}-titulo"]`)
     const cabecera = limpio(await entrega.locator('h3').textContent().catch(() => ''))
-    comprobar(cabecera.startsWith(`${NOMBRE_5} · `), `la bandeja de Almacén la nombra entera: «${cabecera.slice(0, 70) || 'no está'}»`)
+    comprobar(cabecera.startsWith('OC sin número · ') && !cabecera.includes(REFERENCIA_5)
+      && limpio(await entrega.textContent().catch(() => '')).includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `la bandeja de Almacén dice «OC sin número» y la referencia debajo: «${cabecera.slice(0, 70) || 'no está'}»`)
     comprobar(limpio(await entrega.textContent().catch(() => '')).includes(`Vacío: queda con ${NOMBRE_5}.`), 'y la ayuda dice con qué queda si la guía va en blanco')
     await entrega.getByRole('button', { name: 'Validar ingreso' }).click()
     await pagina.locator('[role="status"]', { hasText: `${NOMBRE_5}:` }).waitFor({ timeout: 30000 }).catch(() => {})
@@ -615,10 +617,19 @@ writeFileSync(
     const { pagina, contexto } = await entrar(CUENTAS[puesto])
     await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
     const compra = limpio(await pagina.locator(`tr[data-compra="${oc5}"]`).first().textContent().catch(() => ''))
-    comprobar(compra.startsWith(NOMBRE_5), `${puesto}: en las compras del código, la OC sale «${NOMBRE_5}» (${compra.slice(0, 60) || 'no está'})`)
+    comprobar(compra.startsWith('OC sin número') && compra.includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `${puesto}: en las compras del código, la OC sale «OC sin número» con «Ref. del proveedor: ${REFERENCIA_5}» (${compra.slice(0, 60) || 'no está'})`)
     const igv = limpio(await pagina.locator('tr', { hasText: `IGV de la boleta B903-${SUFIJO}` }).first().textContent().catch(() => ''))
     comprobar(igv.includes(`${NOMBRE_4} · `), `${puesto}: la línea del IGV de la boleta de una parte empieza con la OC nombrada (${igv.slice(0, 90) || 'no está'})`)
     await contexto.close()
+    // En el teléfono, la fila no se parte: el título corto y el importe en una línea.
+    const tel = await entrar(CUENTAS[puesto], { width: 390, height: 844 })
+    await tel.pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    const importe = tel.pagina.locator(`tr[data-compra="${oc5}"] td span.whitespace-nowrap`).first()
+    const alto = await importe.evaluate((e) => e.getBoundingClientRect().height).catch(() => 0)
+    const px = await ancho(tel.pagina)
+    comprobar(alto > 0 && alto < 24 && px <= 390, `${puesto}: a 390 px el importe va en una línea (${Math.round(alto)} px de alto) y la página no se ensancha (${px} px)`)
+    await tel.contexto.close()
   }
 }
 

@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { EntregaPorValidar } from '@/lib/datos/ingresos-por-validar'
+import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { useEnvio } from '@/lib/envio'
 import { cantidad, fechaHora } from '@/lib/format'
 
@@ -50,6 +51,8 @@ function EntregaParaValidar({ entrega, puedeValidar, abreOt, alValidar }: {
     Object.fromEntries(entrega.lineas.map((l) => [l.id, String(l.cantidad)])))
   const [observar, setObservar] = useState<Record<string, boolean>>({})
   const prefijo = `pv-${entrega.compraId.slice(0, 8)}`
+  // La base la da nombrada entera; el título lleva el número y la referencia va debajo.
+  const oc = partesDeNombreDeOc(entrega.referencia)
 
   const faltaAlgo = entrega.lineas.some((l) => Number(llego[l.id]) < l.cantidad || observar[l.id])
 
@@ -59,8 +62,9 @@ function EntregaParaValidar({ entrega, puedeValidar, abreOt, alValidar }: {
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-borde px-4 py-3">
         <div className="min-w-0">
           <h3 id={`${prefijo}-titulo`} className="text-sm font-semibold text-texto">
-            {entrega.referencia} · <span className="font-normal">{entrega.proveedor}</span>
+            {oc.numero ?? 'OC sin número'} · <span className="font-normal">{entrega.proveedor}</span>
           </h3>
+          {oc.referencia && <p className="text-xs text-texto-suave">Ref. del proveedor: {oc.referencia}</p>}
           <p className="text-xs text-texto-suave">
             Dejado {fechaHora(entrega.dejadoEn)}{entrega.dejadoPor ? ` por ${entrega.dejadoPor}` : ''}
             {entrega.recogidoEn ? ` · recogido ${fechaHora(entrega.recogidoEn)}` : ''}

@@ -7,6 +7,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio } from '@/lib/envio'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { redondearCantidad } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 
@@ -15,12 +16,15 @@ import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from
 /**
  * La guía con que entró, si la hubo. Con la guía en blanco, Almacén deja como
  * documento la OC misma —su número, o su nombre desde la migración
- * 20261023110000; antes, la referencia suelta de la OC sin número—, y repetirla
- * al lado de la compra no dice nada.
+ * 20261023110000, cortado a 100 letras; antes, la referencia suelta de la OC
+ * sin número—, y repetirla al lado de la compra no dice nada. Se compara entero:
+ * la guía «3501» de la OC con referencia «OC-3501» sí se muestra.
  */
 function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
   const documento = i.documento?.trim()
-  if (!documento || documento === i.compra || i.compra?.endsWith(`${documento})`)) return null
+  if (!documento) return null
+  const compra = i.compra ?? ''
+  if (documento === compra || documento === compra.slice(0, 100) || compra === nombreDeOc({ numero: null, referencia: documento })) return null
   return documento
 }
 
