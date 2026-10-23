@@ -249,8 +249,13 @@ En la misma migración que la crea, sin excepción:
   quedó… la primera vez»; otra persona, «ya existe con otros datos». **Una
   función que inserta o corrige con el mismo id (un upsert, `guardar_caja`) no
   distingue sola el alta repetida de una corrección**: la ventana manda
-  `p_alta` y el alta repetida compara en vez de actualizar. Banco:
-  `probar-reenvio-con-otros-datos.mjs`.
+  `p_alta` y el alta repetida compara en vez de actualizar. Sus ventanas llevan
+  clave (`observacion_personal`, `permiso_personal`, `tareo`, `uso_saldo`,
+  `cuenta_caja`); el cierre del día no la necesita, porque cerrado ya no se
+  ofrece. **Sin ventana** (pagar o reservar, la llegada y el despacho del
+  tablero) el «ya quedó» va en `AvisoYaQuedo`, en lugar del botón, y la
+  pantalla se pone al día cuando se pide (`refrescar: false`): sola, la fila
+  se iba con el aviso a medio leer. Banco: `probar-reenvio-con-otros-datos.mjs`.
   **Al volver a abrir, se pregunta a la base** (`useIdDelEnvio(clave)` con
   `consultarEnvio`, en `src/app/(app)/acciones-envio.ts`): si aquel envío
   entró, la ventana lo dice con su número (`EnvioAnterior`) y lleva otro id.
