@@ -4,7 +4,7 @@ import { Camera } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -51,6 +51,14 @@ export function RegistrarAvance({
   const enCurso = etapas.filter((e) => !['TERMINADA', 'OMITIDA'].includes(e.estado))
   const etapa = enCurso.find((e) => e.id === etapaId)
 
+  // Sin registrar, las fotos ya subidas no las nombra ningún avance: se quitan
+  // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas.
+  function cerrar() {
+    quitarFotosSueltas('fotos-avance', fotos)
+    setFotos([])
+    setAbierto(false)
+  }
+
   // Cada vez que se abre empieza limpia: sin el error ni las fotos de la vez
   // anterior. Es un evento, no un efecto.
   function abrir() {
@@ -77,7 +85,7 @@ export function RegistrarAvance({
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo="Avance del día"
         descripcion="Qué se hizo hoy en esta unidad. Con la foto, el cliente y la gerencia ven cómo va sin tener que bajar al taller."
         ancho="lg"
@@ -151,7 +159,7 @@ export function RegistrarAvance({
           {/* En el teléfono, «Registrar» ocupa todo el ancho y queda arriba de
               «Cancelar»: es el que se busca con el pulgar. */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton

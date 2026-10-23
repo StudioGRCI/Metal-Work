@@ -4,14 +4,31 @@ import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { redondearCantidad } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
 
 import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from './acciones'
+
+/**
+ * La guía con que entró, si la hubo. Con la guía en blanco, Almacén deja como
+ * documento la OC misma —su número, o su nombre desde la migración
+ * 20261023130000, cortado a 100 letras; antes, la referencia suelta de la OC
+ * sin número—, y repetirla al lado de la compra no dice nada. Se compara entero:
+ * la guía «3501» de la OC con referencia «OC-3501» sí se muestra.
+ */
+function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
+  const documento = i.documento?.trim()
+  if (!documento) return null
+  const compra = i.compra ?? ''
+  if (documento === compra || documento === compra.slice(0, 100) || compra === nombreDeOc({ numero: null, referencia: documento })) return null
+  return documento
+}
 
 /**
  * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
@@ -21,43 +38,40 @@ import { dejarDeEsperarReposicion, devolverAlProveedor, recibirReposicion } from
  */
 export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolver[] }) {
   const [abierta, setAbierta] = useState(false)
-  const [id, setId] = useState(() => crypto.randomUUID())
   const [elegido, setElegido] = useState('')
   const [repone, setRepone] = useState('')
+  // El envío vive fuera de la ventana: el id se conserva hasta saber cómo
+  // terminó (`useIdDelEnvio`). Con un ok o un «ya quedó» se empieza otra; tras
+  // «No llegó la respuesta» sigue el mismo, y la devolución repetida no entra dos
+  // veces. Si al volver a abrir la base dice que aquella entró, la ventana lo
+  // dice y se empieza otra: se suelta lo elegido para aquella, no lo que se
+  // eligió después de abrir, y el formulario no se rehace, que borraba el motivo
+  // ya escrito (decimoséptima pasada).
+  const enviado = useRef({ elegido: '', repone: '' })
+  const devolucion = useIdDelEnvio('movimiento_almacen', () => {
+    const aquella = enviado.current
+    setElegido((e) => (e === aquella.elegido ? '' : e))
+    setRepone((r) => (r === aquella.repone ? '' : r))
+  }, 'devolucion')
   const empezarOtra = () => {
-    setId(crypto.randomUUID())
+    devolucion.otro()
     setElegido('')
     setRepone('')
   }
-  // El envío vive fuera de la ventana: el id se conserva hasta saber cómo
-  // terminó. Con un ok o un «ya quedó» se empieza otra; tras «No llegó la
-  // respuesta» sigue el mismo, y la devolución repetida no entra dos veces.
-  // Pero si al volver a abrir lo que se puede devolver ya no es lo de cuando
-  // salió, aquel envío entró: se empieza otra, como en `useIdDelEnvio`.
-  const estado = ingresos.map((i) => `${i.ingreso_id}:${i.se_puede}`).join(',')
-  const salioCon = useRef<string | null>(null)
   const envio = useEnvio(
     (previo: unknown, datos: FormData) => {
-      salioCon.current = estado
+      devolucion.salio()
+      enviado.current = { elegido, repone }
       return devolverAlProveedor(previo, datos)
     },
     () => {
-      salioCon.current = null
       empezarOtra()
       setAbierta(false)
     },
-    {
-      alYaEntrar: () => {
-        salioCon.current = null
-        empezarOtra()
-      },
-    },
+    { alYaEntrar: empezarOtra },
   )
   function abrir() {
-    if (salioCon.current !== null && salioCon.current !== estado) {
-      salioCon.current = null
-      empezarOtra()
-    }
+    devolucion.abrir()
     setAbierta(true)
   }
   const ingreso = ingresos.find((i) => i.ingreso_id === elegido)
@@ -73,27 +87,30 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
         descripcion="Lo que llegó malo de una compra sale del kardex. No vuelve atrás."
         ancho="lg"
       >
+        <EnvioAnterior texto={devolucion.anterior} />
         {ingresos.length === 0 ? (
           <p className="text-sm text-texto-suave">
             No hay ingresos de compra con material en el almacén. Lo que ya salió al taller vuelve primero como devolución del taller.
           </p>
         ) : (
-          <form key={id} onSubmit={envio.alEnviar} className="space-y-4">
-            <input type="hidden" name="id" value={id} />
+          <form onSubmit={envio.alEnviar} className="space-y-4">
+            <input type="hidden" name="id" value={devolucion.id ?? ''} />
             <Campo etiqueta="Qué llegó de la compra" htmlFor="dev-ingreso" requerido>
               <Seleccion id="dev-ingreso" name="ingreso" required value={elegido} onChange={(e) => setElegido(e.target.value)}>
                 <option value="">Elige el ingreso</option>
+                {/* El material primero: la OC sin número se nombra largo y en el teléfono lo tapaba. */}
                 {ingresos.map((i) => (
                   <option key={i.ingreso_id} value={i.ingreso_id ?? ''}>
-                    {`${i.compra} · ${i.material} · ${cantidad(i.se_puede)} ${i.unidad ?? ''} · ${i.documento ?? ''} · ${fechaHora(i.fecha)}`}
+                    {[`${i.material}`, `${cantidad(i.se_puede)} ${i.unidad ?? ''}`, i.compra, guiaDelIngreso(i), fechaHora(i.fecha)].filter(Boolean).join(' · ')}
                   </option>
                 ))}
               </Seleccion>
             </Campo>
             {ingreso && (
               <p className="-mt-2 text-xs text-texto-suave">
-                Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)} {ingreso.unidad ?? ''} con {ingreso.documento} · se
-                pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
+                {ingreso.material}, de la {ingreso.compra} · Proveedor: {ingreso.proveedor} · entraron {cantidad(ingreso.ingresado)}{' '}
+                {ingreso.unidad ?? ''}
+                {guiaDelIngreso(ingreso) && ` con ${guiaDelIngreso(ingreso)}`} · se pueden devolver {cantidad(ingreso.se_puede)} {ingreso.unidad ?? ''}
               </p>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -177,6 +194,10 @@ function Devolucion({
   alTerminar: (mensaje: string) => void
 }) {
   const [abierta, setAbierta] = useState<'llego' | 'ya-no' | null>(null)
+  // El id de la reposición vive en la fila y no en el formulario, que se rehace
+  // al abrir: tras «No llegó la respuesta», cancelar y volver a abrir lleva el
+  // mismo, y la base no la recibe dos veces (decimosexta pasada).
+  const reposicion = useIdDelEnvio('movimiento_almacen', undefined, `reposicion:${d.devolucion_id}`)
   // En metros, 5.3 − 2.1 da 3.1999999999999997 en el navegador, y la base no lo acepta.
   const falta = redondearCantidad(Number(d.devuelto) - Number(d.repuesto))
   const unidad = d.unidad ?? ''
@@ -203,7 +224,15 @@ function Devolucion({
       {(puedeRecibir || puedeDejar) && (
         <div className="flex flex-wrap gap-2">
           {puedeRecibir && (
-            <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierta('llego')}>
+            <Boton
+              type="button"
+              variante="secundario"
+              tamano="sm"
+              onClick={() => {
+                reposicion.abrir()
+                setAbierta('llego')
+              }}
+            >
               Llegó la reposición
             </Boton>
           )}
@@ -222,9 +251,11 @@ function Devolucion({
           ? `Faltan ${cantidad(falta)} ${unidad} de lo devuelto de la ${d.compra}. Entra al kardex.`
           : `Los ${cantidad(falta)} ${unidad} que faltan vuelven a la lista de Logística para comprarlos en otra OC, y Contabilidad espera la nota de crédito. No vuelve atrás.`}
       >
-        {abierta === 'llego' && (
-          <Reposicion devolucion={d} falta={falta} alCancelar={() => setAbierta(null)}
-            alTerminar={(m) => { setAbierta(null); alTerminar(m) }} />
+        {abierta === 'llego' && <EnvioAnterior texto={reposicion.anterior} />}
+        {abierta === 'llego' && reposicion.id && (
+          <Reposicion devolucion={d} falta={falta} id={reposicion.id} alSalir={reposicion.salio} alYaEntrar={reposicion.otro}
+            alCancelar={() => setAbierta(null)}
+            alTerminar={(m) => { setAbierta(null); reposicion.otro(); alTerminar(m) }} />
         )}
         {abierta === 'ya-no' && (
           <YaNoRepone devolucion={d} alCancelar={() => setAbierta(null)}
@@ -235,14 +266,23 @@ function Devolucion({
   )
 }
 
-function Reposicion({ devolucion: d, falta, alCancelar, alTerminar }: {
+function Reposicion({ devolucion: d, falta, id, alSalir, alYaEntrar, alCancelar, alTerminar }: {
   devolucion: DevolucionPorReponer
   falta: number
+  id: string
+  alSalir: () => void
+  alYaEntrar: () => void
   alCancelar: () => void
   alTerminar: (mensaje: string) => void
 }) {
-  const [id] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(recibirReposicion, (r) => alTerminar(r.mensaje ?? 'Recibido.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      alSalir()
+      return recibirReposicion(previo, datos)
+    },
+    (r) => alTerminar(r.mensaje ?? 'Recibido.'),
+    { alYaEntrar },
+  )
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />

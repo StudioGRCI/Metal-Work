@@ -15,7 +15,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const NO_PAGA = 'Las boletas de una parte las paga Tesorería.'
+const NO_PAGA = 'No tienes permiso para registrar ni anular el pago de las boletas de una parte.'
 const MOTIVO = z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.')
 
 function repintar() {

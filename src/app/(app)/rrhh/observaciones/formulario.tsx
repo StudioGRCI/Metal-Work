@@ -38,7 +38,7 @@ export function RegistrarObservacion({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio()
+  const envio = useIdDelEnvio(undefined, undefined, 'registrar-observacion')
   return (
     <>
       <Boton

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -28,8 +29,9 @@ function sacarArchivo(datos: FormData): File | null {
  * Contabilidad registra la factura que emitió en SUNAT. El PDF sube primero a
  * Storage, en la carpeta de la factura, y si la factura no entra se retira.
  * El id de la factura vive fuera de la ventana (`useIdDelEnvio`): un reintento
- * no registra otra, y con lo facturado ya al día la siguiente lleva otro. Si con ella lo facturado pasa del total de
- * la cotización, avisa sin impedirlo (pedido de Gerencia del 2026-10-14).
+ * no registra otra, y si aquella entró, la ventana lo dice al volver a abrirse y
+ * la siguiente lleva otro. Si con ella lo facturado pasa del total de la
+ * cotización, avisa sin impedirlo (pedido de Gerencia del 2026-10-14).
  */
 export function RegistrarFactura({
   cotizacionId,
@@ -50,7 +52,7 @@ export function RegistrarFactura({
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
 }) {
-  const factura = useIdDelEnvio(facturado)
+  const factura = useIdDelEnvio('factura_venta', undefined, cotizacionId)
   const [abierta, setAbierta] = useState(false)
   const [total, setTotal] = useState('')
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)
@@ -98,6 +100,7 @@ export function RegistrarFactura({
         descripcion={`Por la cotización ${numeroCotizacion}. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Una cotización puede llevar varias: la inicial y el saldo.`}
         ancho="md"
       >
+        <EnvioAnterior texto={factura.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={factura.id ?? ''} />
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />

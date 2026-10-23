@@ -12,7 +12,7 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-const SIN_PERMISO = 'Los permisos del personal los gestiona Recursos Humanos.'
+const SIN_PERMISO = 'No tienes permiso para gestionar los permisos del personal.'
 
 /** El saldo de horas extras cambia con cada justificación: se repintan las dos pantallas. */
 function repintar() {

@@ -8,6 +8,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoPlanilla } from '@/lib/archivos-planilla'
@@ -79,6 +80,7 @@ export function RegistrarPago({
           setAbierta(true)
         }}
         data-registrar-pago
+        data-cursor-vuelve="registrar-pago"
       >
         <Wallet aria-hidden className="size-4" />
         Registrar pago
@@ -128,19 +130,14 @@ export function RegistrarPago({
           <Campo etiqueta="Comprobante" htmlFor={`pago-archivo-${pagoId}`} requerido>
             <ElegirArchivo id={`pago-archivo-${pagoId}`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_PLANILLA} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={marcadas.length === 0 || cuentas.length === 0}>
-              Registrar el pago
-            </Boton>
-          </div>
+          {/* El pago repetido que ya entró se dice sin rojo, con la ventana trabada y solo «Cerrar»: en rojo y con el botón activo parecía que faltaba algo (decimoséptima pasada). */}
+          <PieDeVentana
+            error={error}
+            enviando={enviando}
+            alCancelar={() => setAbierta(false)}
+            texto="Registrar el pago"
+            disabled={marcadas.length === 0 || cuentas.length === 0}
+          />
         </form>
       </Ventana>
     </>

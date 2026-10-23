@@ -148,6 +148,33 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo; el
   de un archivo («Falta el PDF»), en el `aviso` de su `ElegirArchivo`. Llevar
   el cursor a un campo que no dice nada deja a la persona sin el porqué.
+  Tras un envío bien hecho que rehace el formulario sin ventana (el documento
+  del tablero de la OT), el cursor va al primer campo del siguiente cuando
+  deja de estar trabado, no dentro del `alTerminar`: el botón que lo tenía
+  desaparece y caía a la página. Si lo que se rehace es el botón que abrió la
+  ventana (otra llave, como el pago de la planilla), ponle
+  `data-cursor-vuelve="<nombre>"` y `Ventana` lleva el cursor al único que
+  quede con esa marca. Solo al que se rehace igual: un «Anular pago» por fila
+  con esa marca mandaba el cursor al de otra persona (decimonovena). Un aviso
+  de «listo» de un formulario que se rehace (`key`) va fuera de él y siempre
+  puesto (`role="status"` vacío): el que nace ya con su texto no se anuncia.
+  Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
+  corre en la transición, no se pinta, y el segundo «Documento adjuntado»
+  idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
+- **La ventana de una pantalla que ya no es de la sesión lo dice y se traba**
+  (vigésima y vigesimoprimera): si en otra pestaña entró otra cuenta,
+  `PieDeVentana` pone el aviso en ámbar en el pie, con el puesto de las dos
+  cuentas, traba los campos y cambia el botón que envía por «Recargar la
+  pantalla»; el cursor va al aviso. Sin nada pendiente también: la pestaña lo
+  sabe por el aviso de la otra (`entroLaCuenta`) o, si no llega, al abrir la
+  ventana que pregunta. Antes el aviso iba arriba, dejaba escribir y enviar, el
+  rojo salía con «Recargar» fuera de la vista y a 1440 empujaba el pie fuera de
+  la ventana. Si la primera cuenta vuelve a entrar, se destraba con lo escrito.
+  Recargar con una cuenta sin permiso lleva a `/sin-permiso`, que dice con qué
+  cuenta está la sesión y ofrece «Salir y entrar con otra cuenta».
+- **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
+  la misma clase van en una frase con su plural; lo que salió de esta pestaña a
+  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
@@ -437,3 +464,15 @@ en un check con `set local role authenticated`.
   pantalla tenga que componer pasa por `redondearCantidad`
   (`src/lib/dominio/almacen.ts`). Las pruebas con unidades enteras no lo ven: el
   `probar-*.mjs` de una cantidad lleva un material en metros.
+
+- **En una sonda, después del clic que cierra una ventana se espera lo que cambia,
+  no a la red.** La ventana se cierra con el resultado de la acción, unos 230 ms
+  después del clic, y la pantalla repintada llega entre 0,4 y 1 s más tarde.
+  `waitForLoadState('networkidle')` no espera nada: la página ya llegó a ese
+  estado al abrirse y la llamada vuelve en el acto. `probar-anular-oc` leyó así
+  la fila de la OC antes de que se fuera y falló en todas sus corridas, también
+  en `main`, hasta el 2026-10-23. Se espera el localizador del estado esperado
+  —`waitFor({ state: 'detached' })` de la fila que se va, o la que aparece con
+  `hasText`— con su `timeout`, y la comprobación va después: si a los 15 s no
+  cambió, falla, que es lo correcto. Hay unos 58 `networkidle` más en las sondas
+  que pueden esconder la misma carrera.

@@ -6,12 +6,14 @@ import { useState } from 'react'
 import { SubirDocumentoCompra } from '@/app/(app)/materiales/atencion/subir-documento-compra'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
+import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir } from './acciones'
 
@@ -21,7 +23,7 @@ import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir
  */
 export function AccionesCompra({
   id,
-  numero,
+  oc,
   recojo,
   adjuntar,
   conFactura,
@@ -34,7 +36,8 @@ export function AccionesCompra({
   verAdquisiciones,
 }: {
   id: string
-  numero: string
+  /** Como la busca el detector (el número, o la referencia en la OC sin número) y como se nombra. */
+  oc: { numero: string; nombre: string }
   /** Quien adjunta entra a Adquisiciones: el aviso de un anexo por revisar enlaza a la OC. */
   verAdquisiciones: boolean
   /** El total con IGV (si va con factura) y la moneda: el detector compara la factura con ellos. */
@@ -63,10 +66,15 @@ export function AccionesCompra({
   }
   // El documento lleva un identificador fijo: un reintento no lo duplica. La
   // ventana desmonta el formulario al cerrarse, así que se guarda aquí, y cambia
-  // solo cuando uno entró: si no, el segundo documento de la OC volvía con el
-  // id y la ruta del primero.
-  const [idDocumento, setIdDocumento] = useState(() => crypto.randomUUID())
+  // cuando uno entró: si no, el segundo documento de la OC volvía con el id y la
+  // ruta del primero. Al volver a abrir tras «No llegó la respuesta», la base
+  // dice si aquel entró (`useIdDelEnvio`).
+  const documento = useIdDelEnvio('documento_compra', undefined, id)
   const envio = useAccion(mandarARecojo)
+  // En la OC sin número, el título dice eso y la referencia va en la línea de
+  // abajo: con todo en el título, en el teléfono ocupaba tres líneas.
+  const { numero: titulo, referencia } = partesDeNombreDeOc(oc.nombre)
+  const deLaReferencia = referencia ? `Ref. del proveedor: ${referencia} · ` : ''
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -87,13 +95,21 @@ export function AccionesCompra({
         </Boton>
       )}
       {adjuntar && (
-        <Boton type="button" variante="contorno" tamano="sm" onClick={() => setDocumentos(true)}>
+        <Boton
+          type="button"
+          variante="contorno"
+          tamano="sm"
+          onClick={() => {
+            documento.abrir()
+            setDocumentos(true)
+          }}
+        >
           <FileUp aria-hidden className="size-4" />
           Adjuntar
         </Boton>
       )}
       {adjuntar && (
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${numero}`}>
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${oc.nombre}`}>
           <Pencil aria-hidden className="size-4" />
           Corregir
         </Boton>
@@ -111,29 +127,33 @@ export function AccionesCompra({
       <Ventana
         abierta={documentos}
         alCerrar={() => setDocumentos(false)}
-        titulo={`Adjuntar a la compra ${numero}`}
+        titulo={`Adjuntar a la compra ${titulo ?? 'OC sin número'}`}
         descripcion={
-          conFactura
+          deLaReferencia + (conFactura
             ? 'La factura, o cualquier PDF de la compra. Queda en la compra y Tesorería lo ve para pagar.'
-            : 'Es sin factura: adjunta la boleta, nota de venta o recibo. Queda en la compra y Tesorería lo ve para pagar.'
+            : 'Es sin factura: adjunta la boleta, nota de venta o recibo. Queda en la compra y Tesorería lo ve para pagar.')
         }
         ancho="lg"
       >
-        <SubirDocumentoCompra
-          ordenCompraId={id}
-          solicitudId={idDocumento}
-          alAdjuntar={() => setIdDocumento(crypto.randomUUID())}
-          alCerrar={() => setDocumentos(false)}
-          tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
-          orden={{ numero, total, moneda }}
-          verAdquisiciones={verAdquisiciones}
-        />
+        <EnvioAnterior texto={documento.anterior} />
+        {documento.id && (
+          <SubirDocumentoCompra
+            ordenCompraId={id}
+            solicitudId={documento.id}
+            alSalir={documento.salio}
+            alAdjuntar={documento.otro}
+            alCerrar={() => setDocumentos(false)}
+            tipoInicial={conFactura ? 'FACTURA' : 'COMPROBANTE'}
+            orden={{ numero: oc.numero, nombre: oc.nombre, total, moneda }}
+            verAdquisiciones={verAdquisiciones}
+          />
+        )}
       </Ventana>
       <Ventana
         abierta={corrigiendo}
         alCerrar={() => setCorrigiendo(false)}
-        titulo={`Corregir la compra ${numero}`}
-        descripcion="Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante."
+        titulo={`Corregir la compra ${titulo ?? 'OC sin número'}`}
+        descripcion={`${deLaReferencia}Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante.`}
         ancho="lg"
       >
         {corrigiendo && (

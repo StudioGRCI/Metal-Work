@@ -9,6 +9,7 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -78,7 +79,8 @@ const leerMonto = (texto: string) => {
  * Sin factura, si queda algo pagado sin llegar al total, pregunta si con eso
  * la OC queda pagada: el proveedor cobró de más o entregó menos, aunque el
  * material ya esté en el almacén. El id vive fuera de la ventana
- * (`useIdDelEnvio`): un reintento no registra otra.
+ * (`useIdDelEnvio`): un reintento no registra otra, y si aquella entró, la
+ * ventana lo dice al volver a abrirse y la siguiente lleva otro.
  */
 export function RegistrarDevolucion({
   ordenCompraId,
@@ -103,7 +105,7 @@ export function RegistrarDevolucion({
   /** Con algo pagado de más es lo que la tarjeta le pide a Tesorería: va como botón principal. */
   principal: boolean
 }) {
-  const devolucion = useIdDelEnvio(boleta.neto)
+  const devolucion = useIdDelEnvio('devolucion_compra', undefined, ordenCompraId)
   const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
@@ -195,6 +197,7 @@ export function RegistrarDevolucion({
         descripcion={`${conPunto(proveedor)} Lo que el proveedor te devolvió de lo pagado por la boleta: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(tope, codigoMoneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={devolucion.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
           <p className="text-sm text-texto-suave">
@@ -389,7 +392,7 @@ export function TomarAlCambio({
   cambio: number | null
   diaDelCambio: string | null
 }) {
-  const toma = useIdDelEnvio(sinTomar)
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `cambio:${ordenCompraId}:${factura.id}`)
   const [abierta, setAbierta] = useState(false)
   const sugeridoFactura = (() => {
     if (!cambio) return ''
@@ -444,6 +447,7 @@ export function TomarAlCambio({
         descripcion={`${conPunto(proveedor)} Lo que el proveedor tomó de lo pagado por la boleta de la ${numero}, a su cambio, a cuenta de la factura ${factura.numero} en ${nombreMoneda(factura.moneda)}. No mueve la caja: el dinero ya salió con el pago de la boleta.`}
         ancho="md"
       >
+        <EnvioAnterior texto={toma.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
@@ -525,7 +529,7 @@ export function DescontarDeOtraFactura({
   monedaOc: CodigoMoneda
   facturas: FacturaParaDescontar[]
 }) {
-  const toma = useIdDelEnvio(deMas)
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `descuento:${ordenCompraId}`)
   const [abierta, setAbierta] = useState(false)
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
@@ -582,6 +586,7 @@ export function DescontarDeOtraFactura({
         descripcion={`${conPunto(proveedor)} El proveedor no devuelve los ${moneda(deMas, monedaOc)}: los descuenta de otra factura suya. Esa factura los toma como pagados, sin mover la caja.`}
         ancho="md"
       >
+        <EnvioAnterior texto={toma.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />

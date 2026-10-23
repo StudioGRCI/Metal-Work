@@ -333,7 +333,10 @@ export function avisosDeLaOrden(
     lectura: LecturaFactura
     total: number | null
     moneda: string
+    /** Con el que se busca en la factura: el número, o la referencia en la OC sin número. */
     numero?: string | null
+    /** Con el que se nombra en el aviso; sin él, el número. */
+    nombre?: string | null
     /** El número de la factura que se escribió en el formulario. */
     anotada?: string | null
   },
@@ -355,7 +358,7 @@ export function avisosDeLaOrden(
   }
   const propia = numeroDeOc(entrada.numero)
   if (propia && l.ordenes.length > 0 && !l.ordenes.includes(propia)) {
-    avisos.push(`La factura menciona ${l.ordenes.map((n) => `la OC ${n}`).join(' y ')}, y esta es la ${entrada.numero}: revisa que sea su factura.`)
+    avisos.push(`La factura menciona ${l.ordenes.map((n) => `la OC ${n}`).join(' y ')}, y esta es la ${entrada.nombre ?? entrada.numero}: revisa que sea su factura.`)
   }
   return avisos
 }

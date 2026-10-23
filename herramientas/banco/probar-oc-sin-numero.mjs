@@ -6,7 +6,9 @@
  * cuenta de cada puesto (nunca ADMIN), consultando la base después del clic:
  *
  *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
- *      sale «OC sin número» con su referencia aparte.
+ *      sale «OC sin número» con su referencia aparte. En Aprobación, la lista de
+ *      las que puede anular la nombra igual, porque el nombre lo arma la base
+ *      (migración 20261022220000), y en el teléfono no ensancha la página.
  *   2. Contabilidad la ve igual en el formulario (también el aviso de otro
  *      RUC), registra su factura, y la tabla la nombra igual. En «Corregir»,
  *      la lista también; el detector, al leer un PDF que menciona la otra OC
@@ -17,11 +19,21 @@
  *   3. Tesorería ve la factura en Cuentas por pagar con la OC nombrada así, y
  *      el PDF de la OC con el mismo nombre; en Facturas, «Pagar en Cuentas por
  *      pagar». En el teléfono, la tarjeta de la OC con boleta no se desborda.
+ *      Logística le anexa a otra la boleta de una parte, y el aviso a Tesorería
+ *      y su tarjeta en «Boletas de una parte» la nombran igual.
  *   4. Gerencia, que lee Cuentas por pagar y no paga, ve en Facturas «Ver en
  *      Cuentas por pagar».
+ *   5. El circuito de una quinta (migración 20261023130000): Logística la ve
+ *      «OC sin número» con su referencia aparte en Órdenes de compra y en
+ *      Gestión de compras, y la pone en la lista del conductor; Requerimientos
+ *      y Supervisión la ven nombrada en su RQ; el conductor, en el teléfono, la
+ *      recoge y la deja; Almacén valida su ingreso con la guía en blanco y el
+ *      kardex guarda su nombre, no la referencia; y Gerencia y Requerimientos
+ *      la ven nombrada en el Costeo y en el gasto del código, con la línea del
+ *      IGV de la boleta de una parte del paso 3b.
  *
- * Siembra tres OC del RQ, aprobadas: dos con factura y una con boleta, para su
- * tarjeta de Cuentas por pagar en el teléfono. Les quita el número como a una
+ * Siembra cinco OC del RQ, aprobadas: cuatro con factura y una con boleta, para
+ * su tarjeta de Cuentas por pagar en el teléfono. Les quita el número como a una
  * de antes de la serie (sin disparadores: ninguna pantalla deja hacerlo). Corre
  * las veces que haga falta. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
  * CAPTURAS, BANCO_BASE, ARCHIVOS y el correo de cada cuenta si no es
@@ -40,7 +52,9 @@ const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const ARCHIVOS = process.env.ARCHIVOS ?? CAPTURAS
 const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
-const CUENTAS = Object.fromEntries(['logistica', 'contabilidad', 'tesoreria', 'gerencia', 'requerimientos', 'almacen'].map((p) => [p, cuenta(p)]))
+const CUENTAS = Object.fromEntries(['logistica', 'contabilidad', 'tesoreria', 'gerencia', 'requerimientos', 'almacen', 'conductor'].map((p) => [p, cuenta(p)]))
+// Un supervisor solo ve los RQ de su área: los que siembra esta sonda son de Maestranza.
+CUENTAS.supervision = process.env.SUPERVISION ?? 'sup.mtz.local@metalwork.test'
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -211,7 +225,11 @@ const oc3 = await ocSinNumero(REFERENCIA_3, false)
 const NOMBRE = `OC sin número (ref. del proveedor ${REFERENCIA})`
 const NOMBRE_2 = `OC sin número (ref. del proveedor ${REFERENCIA_2})`
 const NOMBRE_3 = `OC sin número (ref. del proveedor ${REFERENCIA_3})`
-console.log(`     sembradas tres OC sin número: ${REFERENCIA} y ${REFERENCIA_2} con factura, ${REFERENCIA_3} con boleta`)
+// Con factura, para la boleta de una parte (la OC que llega en partes).
+const REFERENCIA_4 = `OC-${1000 + ((Number(SUFIJO) + 2) % 8999)}`
+const oc4 = await ocSinNumero(REFERENCIA_4)
+const NOMBRE_4 = `OC sin número (ref. del proveedor ${REFERENCIA_4})`
+console.log(`     sembradas cuatro OC sin número: ${REFERENCIA}, ${REFERENCIA_2} y ${REFERENCIA_4} con factura, ${REFERENCIA_3} con boleta`)
 
 const JUSTIFICANTE = join(ARCHIVOS, `justificante-sin-numero-${SUFIJO}.pdf`)
 writeFileSync(JUSTIFICANTE, pdfConTexto(['Correo del proveedor', 'La factura cubre las dos cotizaciones']))
@@ -220,6 +238,15 @@ const FACTURA_CORREGIDA = join(ARCHIVOS, `factura-sin-numero-${SUFIJO}.pdf`)
 writeFileSync(
   FACTURA_CORREGIDA,
   pdfConTexto(['FACTURA ELECTRONICA', FACTURA, `Fecha de Emision : ${hoy.split('-').reverse().join('/')}`, `Orden de compra ${REFERENCIA_2}`, 'Importe Total : S/ 590.00']),
+)
+// Para el detector del formulario: una factura que cita la OC sin número por su referencia, y otra que cita las dos.
+const fechaEnElPdf = `Fecha de Emision : ${hoy.split('-').reverse().join('/')}`
+const PDF_CITA_UNA = join(ARCHIVOS, `cita-una-${SUFIJO}.pdf`)
+writeFileSync(PDF_CITA_UNA, pdfConTexto(['FACTURA ELECTRONICA', FACTURA, fechaEnElPdf, `Orden de compra ${REFERENCIA}`, 'Importe Total : S/ 295.00']))
+const PDF_CITA_DOS = join(ARCHIVOS, `cita-dos-${SUFIJO}.pdf`)
+writeFileSync(
+  PDF_CITA_DOS,
+  pdfConTexto(['FACTURA ELECTRONICA', FACTURA, fechaEnElPdf, `Orden de compra ${REFERENCIA}`, `Orden de compra ${REFERENCIA_2}`, 'Importe Total : S/ 295.00']),
 )
 const PDF_COMPROBANTE = join(ARCHIVOS, 'minimo.pdf')
 writeFileSync(
@@ -246,7 +273,26 @@ writeFileSync(
   const fila = limpio(await pagina.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
   comprobar(fila.includes('OC sin número') && fila.includes(`Ref. del proveedor: ${REFERENCIA}`), 'la OC sin número sale «OC sin número», con su referencia aparte')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-gerencia.png'), fullPage: true, caret: 'initial' })
+  // En Aprobación, las que puede anular: el nombre lo arma la base (migración 20261022220000).
+  await pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  const anulables = await pagina.locator('tr[data-anulable]').evaluateAll((filas) => filas.map((f) => f.getAttribute('data-anulable')))
+  const filaAnulable = limpio(await pagina.locator(`tr[data-anulable="${NOMBRE}"]`).first().textContent().catch(() => ''))
+  comprobar(anulables.includes(NOMBRE) && !anulables.includes(REFERENCIA) && !anulables.includes(`OC ${REFERENCIA}`) &&
+    filaAnulable.startsWith('OC sin número ·') && filaAnulable.includes(`Ref. del proveedor: ${REFERENCIA}`),
+    `en «Aprobadas que se pueden anular» la base la nombra «${NOMBRE}» y la fila dice «OC sin número» con su referencia aparte («${filaAnulable.slice(0, 80)}»)`)
+  const decididas = pagina.locator('section', { has: pagina.getByRole('heading', { name: 'Decididas en los últimos 30 días' }) })
+  const decidida = limpio(await decididas.locator('tbody tr', { hasText: REFERENCIA }).first().textContent().catch(() => ''))
+  comprobar(decidida.startsWith('OC sin número ·') && decidida.includes(`Ref. del proveedor: ${REFERENCIA}`),
+    `entre las decididas también sale «OC sin número», con su referencia aparte («${decidida.slice(0, 80)}»)`)
   await contexto.close()
+  const tel = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
+  await tel.pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
+  const ref3 = tel.pagina.locator(`tr[data-anulable="${NOMBRE_3}"] span.whitespace-nowrap`, { hasText: REFERENCIA_3 }).first()
+  const renglones = await ref3.evaluate((e) => e.getClientRects().length).catch(() => 0)
+  const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(renglones === 1 && ancho <= 390, `en el teléfono, la referencia larga (${REFERENCIA_3}) va en un renglón y la página no se ensancha (${renglones} renglón, ${ancho} px)`)
+  await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-aprobacion-telefono.png'), fullPage: true, caret: 'initial' })
+  await tel.contexto.close()
 }
 
 // ------------------------------------------------------------- 2. Contabilidad
@@ -257,6 +303,25 @@ writeFileSync(
   const etiqueta = limpio(await casilla.locator('xpath=ancestor::label').textContent().catch(() => ''))
   comprobar(etiqueta.startsWith('OC sin número ·') && etiqueta.includes(`Ref. del proveedor: ${REFERENCIA}`),
     `en el formulario se marca como «OC sin número», con su referencia aparte (dice «${etiqueta.slice(0, 90)}»)`)
+  // El detector busca la OC sin número por su referencia: con nada marcado, la marca sola;
+  // con ella marcada, ofrece «Marcarla» para la otra que cita la factura.
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_UNA)
+  await pagina.locator('p', { hasText: 'Leído' }).first().waitFor({ timeout: 60000 }).catch(() => {})
+  await pagina.waitForTimeout(500)
+  comprobar(await casilla.isChecked(), 'la factura que cita su referencia marca sola la OC sin número')
+  // Lo que marcó la lectura se va con su archivo (#148): marcada a mano, se queda al
+  // cambiar el PDF, y la otra que cita la factura nueva se ofrece con «Marcarla».
+  await casilla.uncheck()
+  await casilla.check()
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_DOS)
+  const avisoOtra = pagina.locator('ul[role="status"] li', { hasText: `menciona la ${NOMBRE_2} y no está marcada` }).first()
+  await avisoOtra.waitFor({ timeout: 60000 }).catch(() => {})
+  const casilla2 = pagina.locator(`input[name="ordenes_compra"][value="${oc2}"]`)
+  const conBoton = (await avisoOtra.getByRole('button', { name: 'Marcarla' }).count()) === 1
+  if (conBoton) await avisoOtra.getByRole('button', { name: 'Marcarla' }).click()
+  comprobar(conBoton && (await casilla2.isChecked()), `la otra OC sin número que cita la factura se ofrece con «Marcarla», y la marca`)
+  await casilla2.uncheck()
+  await pagina.locator('#adq-pdf').setInputFiles(PDF_COMPROBANTE)
   await casilla.check()
   // Con el RUC de otra empresa, el aviso la nombra sin hacer pasar la referencia por número.
   await pagina.locator('#adq-ruc').fill(await rucLibre())
@@ -332,6 +397,10 @@ writeFileSync(
   const historial = limpio(await cuerpo.textContent().catch(() => ''))
   comprobar(historial.includes(`Se sumó la ${NOMBRE_2}`) && !historial.includes(`Se sumó la ${REFERENCIA_2}`),
     `el historial dice «Se sumó la ${NOMBRE_2}»`)
+  // El detector de la factura registrada busca la OC sin número por su referencia: la que el PDF cita es suya.
+  const citada = REFERENCIA_2.replace(/\D/g, '')
+  comprobar(!historial.includes(`menciona la OC ${citada}`) && historial.includes(`La ${NOMBRE} es de esta factura y la factura no la menciona`),
+    'el detector reconoce la OC sin número que el PDF cita, y avisa solo de la que no cita')
   await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-contabilidad.png'), fullPage: true, caret: 'initial' })
   await contexto.close()
 
@@ -375,6 +444,56 @@ writeFileSync(
   await tel.contexto.close()
 }
 
+// ------------------------------------- 3b. La boleta de una parte de una OC sin número
+// La OC que llega en partes (migración 20261022200000): Logística le anexa la boleta
+// de una parte, y el aviso y la tarjeta de Tesorería la nombran «OC sin número
+// (ref. …)» (migración 20261022220000 y `nombreDeOc`), no «OC <referencia>».
+{
+  const BOLETA_PARTE = `B903-${SUFIJO}`
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
+  // La fila de la OC sin número se busca por su referencia, que es lo que cita el proveedor.
+  await pagina.locator(`tr[data-compra="${REFERENCIA_4}"]`).first().getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.locator('select[name="tipo"]').selectOption('COMPROBANTE')
+  await v.locator('input[name="parte"]').check()
+  await v.locator('input[name="parte_numero"]').fill(BOLETA_PARTE)
+  await v.locator('input[name="parte_fecha"]').fill(hoy)
+  await v.locator('input[name="parte_monto"]').fill('100')
+  await v.locator('select[name="parte_igv"]').selectOption('si')
+  await v.locator('input[name="archivo"]').setInputFiles({
+    name: `boleta-${BOLETA_PARTE}.pdf`,
+    mimeType: 'application/pdf',
+    buffer: pdfConTexto(['BOLETA DE VENTA ELECTRONICA', BOLETA_PARTE, 'Importe Total : S/ 100.00']),
+  })
+  await v.getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  await Promise.race([v.locator('[role="status"]').waitFor({ timeout: 30000 }), v.locator('[role="alert"]').waitFor({ timeout: 30000 })]).catch(() => {})
+  const error = limpio(await v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
+  const [parte] = await consulta(`select id from documentos_compra_material where orden_compra_id = $1 and monto_de_la_parte is not null`, [oc4])
+  comprobar(!error && parte, `Logística anexa la boleta de una parte a la OC sin número${error ? ` (${error})` : ''}`)
+  await contexto.close()
+  const avisos = await consulta(`select titulo from notificaciones where origen_id = $1 and usuario_id = $2`, [parte?.id, ids[CUENTAS.tesoreria]])
+  comprobar(avisos.some((a) => a.titulo === `Boleta de una parte por pagar: ${NOMBRE_4}`),
+    `el aviso a Tesorería la nombra bien (${avisos.map((a) => a.titulo).join(' / ') || 'sin aviso'})`)
+
+  const t = await entrar(CUENTAS.tesoreria)
+  await t.pagina.goto(`${BASE}/tesoreria/por-pagar#partes-con-boleta`, { waitUntil: 'networkidle' })
+  const tarjeta = limpio(await t.pagina.locator(`article#parte-${parte?.id}`).textContent().catch(() => ''))
+  comprobar(tarjeta.includes(`Una parte de la ${NOMBRE_4}`) && tarjeta.includes(`PDF de la ${NOMBRE_4}`) && !tarjeta.includes(`OC ${REFERENCIA_4}`),
+    `en «Boletas de una parte» la tarjeta dice «Una parte de la ${NOMBRE_4}» y su PDF, sin «OC ${REFERENCIA_4}»`)
+  await t.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-parte.png'), fullPage: true, caret: 'initial' })
+  await t.contexto.close()
+  const tel = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
+  await tel.pagina.goto(`${BASE}/tesoreria/por-pagar#partes-con-boleta`, { waitUntil: 'networkidle' })
+  const caja = tel.pagina.locator(`article#parte-${parte?.id}`)
+  const medida = await caja.evaluate((e) => ({ dentro: e.scrollWidth, caja: e.clientWidth })).catch(() => null)
+  const ancho = await tel.pagina.evaluate(() => document.documentElement.scrollWidth)
+  comprobar(medida !== null && medida.dentro <= medida.caja && ancho <= 390,
+    `en el teléfono la tarjeta no se sale (${medida ? `${medida.dentro} de ${medida.caja} px` : 'no está'}, página ${ancho} px)`)
+  await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-parte-telefono.png'), fullPage: true, caret: 'initial' })
+  await tel.contexto.close()
+}
+
 // ------------------------------------------------- 4. Gerencia, en Facturas
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
@@ -383,6 +502,139 @@ writeFileSync(
   comprobar(enFacturas.includes('Ver en Cuentas por pagar') && !enFacturas.includes('Pagar en Cuentas por pagar'),
     `Gerencia, que no paga, tiene «Ver en Cuentas por pagar» (${enFacturas ? 'la fila está' : 'no encontró la fila'})`)
   await contexto.close()
+}
+
+// ----------------- 5. Gestión de compras, el conductor, Almacén, Requerimientos y Costeo
+// Lo que la base daba como dato suelto daba la referencia en el lugar del número
+// (migración 20261023130000). Una quinta OC hace el circuito entero.
+{
+  const REFERENCIA_5 = `OC-${1000 + ((Number(SUFIJO) + 3) % 8999)}`
+  const NOMBRE_5 = `OC sin número (ref. del proveedor ${REFERENCIA_5})`
+  const oc5 = await ocSinNumero(REFERENCIA_5)
+  const [{ requerimiento_id: rq5 }] = await consulta(`select requerimiento_id from ordenes_compra_materiales where id = $1`, [oc5])
+  const ancho = (pagina) => pagina.evaluate(() => document.documentElement.scrollWidth)
+
+  // Logística: Órdenes de compra y Gestión de compras.
+  {
+    const { pagina, contexto } = await entrar(CUENTAS.logistica)
+    await pagina.goto(`${BASE}/compras/ordenes`, { waitUntil: 'networkidle' })
+    const fila = pagina.locator(`tr[data-compra="${REFERENCIA_5}"]`).first()
+    const enFila = limpio(await fila.textContent().catch(() => ''))
+    comprobar(enFila.startsWith('OC sin número') && enFila.includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `en Órdenes de compra sale «OC sin número» con «Ref. del proveedor: ${REFERENCIA_5}» (${enFila.slice(0, 80) || 'no está'})`)
+    comprobar((await fila.getByRole('link', { name: `Descargar el PDF de la ${NOMBRE_5}` }).count()) === 1, 'y su PDF la nombra entera')
+
+    await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+    const enSeccion = (id) => pagina.locator(`section[aria-labelledby="${id}"] > div`).filter({ hasText: REFERENCIA_5 })
+    const porProgramar = limpio(await enSeccion('titulo-por-programar').textContent().catch(() => ''))
+    comprobar(porProgramar.startsWith(`OC sin número · ${PROVEEDOR}`) && porProgramar.includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `en Gestión de compras, por programar: «OC sin número · ${PROVEEDOR}» con su referencia aparte (${porProgramar.slice(0, 60) || 'no está'})`)
+    await enSeccion('titulo-por-programar').locator('input[name="peso"]').fill('75')
+    await enSeccion('titulo-por-programar').getByRole('button', { name: 'Poner en la lista' }).click()
+    await enSeccion('titulo-lista').waitFor({ timeout: 20000 }).catch(() => {})
+    const enLista = limpio(await enSeccion('titulo-lista').textContent().catch(() => ''))
+    comprobar(/^\d+\.º · OC sin número · /.test(enLista), `pasa a la lista del conductor con su lugar: «${enLista.slice(0, 50)}»`)
+    await enSeccion('titulo-lista').getByRole('button', { name: 'Sacar de la lista' }).click()
+    const pregunta = limpio(await pagina.locator('[role="dialog"]').textContent().catch(() => ''))
+    comprobar(pregunta.includes(`¿Sacar ${NOMBRE_5} de la lista del conductor?`), 'la pregunta de sacarla la nombra entera')
+    await pagina.keyboard.press('Escape')
+    await pagina.locator('[role="dialog"]').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+    await como('logistica')
+    const [enGestion] = await consulta(`select numero, referencia, en_lista, lugar from public.compras_en_gestion() where id = $1`, [oc5])
+    comprobar(enGestion?.numero === null && enGestion?.referencia === REFERENCIA_5 && enGestion?.en_lista === true,
+      `la base le da a la pantalla el número vacío y la referencia aparte, y la deja en la lista (${JSON.stringify(enGestion)})`)
+    await contexto.close()
+    const tel = await entrar(CUENTAS.logistica, { width: 390, height: 844 })
+    await tel.pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+    const px = await ancho(tel.pagina)
+    comprobar(px <= 390, `Gestión de compras en el teléfono no ensancha la página (${px} px)`)
+    await tel.pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-gestion-telefono.png'), fullPage: true, caret: 'initial' })
+    await tel.contexto.close()
+  }
+
+  // Requerimientos y Supervisión ven su RQ con la OC nombrada (el avance lo arma la base).
+  for (const puesto of ['requerimientos', 'supervision']) {
+    const { pagina, contexto } = await entrar(CUENTAS[puesto], { width: 390, height: 844 })
+    await pagina.goto(`${BASE}/requerimientos?rq=${rq5}`, { waitUntil: 'networkidle' })
+    const tarjeta = limpio(await pagina.locator('[data-rq]').first().textContent().catch(() => ''))
+    comprobar(tarjeta.includes(NOMBRE_5) && !tarjeta.includes(`· ${REFERENCIA_5} ·`),
+      `${puesto} ve en su RQ la ${NOMBRE_5}, no «${REFERENCIA_5}» suelta (${tarjeta ? 'la tarjeta está' : 'no está'})`)
+    const px = await ancho(pagina)
+    comprobar(px <= 390, `${puesto}, en el teléfono, no ensancha la página (${px} px)`)
+    await contexto.close()
+  }
+
+  // El conductor, en el teléfono, la recoge y la deja.
+  {
+    const { pagina, contexto } = await entrar(CUENTAS.conductor, { width: 390, height: 844 })
+    await pagina.goto(`${BASE}/recojos`, { waitUntil: 'networkidle' })
+    const tarjeta = pagina.locator('main section > div').filter({ hasText: REFERENCIA_5 }).first()
+    const enTarjeta = limpio(await tarjeta.textContent().catch(() => ''))
+    comprobar(/^\d+\.º · OC sin número · /.test(enTarjeta) && enTarjeta.includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `el conductor la ve «N.º · OC sin número» con la referencia que el proveedor reconoce (${enTarjeta.slice(0, 60) || 'no está'})`)
+    const px = await ancho(pagina)
+    comprobar(px <= 390, `Recojos en el teléfono no ensancha la página (${px} px)`)
+    await pagina.screenshot({ path: join(CAPTURAS, 'oc-sin-numero-recojos-telefono.png'), fullPage: true, caret: 'initial' })
+    await tarjeta.getByRole('button', { name: 'Salgo a recoger' }).click()
+    await tarjeta.getByRole('button', { name: 'Ya la recogí' }).click({ timeout: 20000 })
+    await tarjeta.getByRole('button', { name: 'La dejé en almacén' }).click({ timeout: 20000 })
+    const pregunta = limpio(await pagina.locator('[role="dialog"]').textContent().catch(() => ''))
+    comprobar(pregunta.includes(`¿Dejaste ${NOMBRE_5} en almacén?`), 'la pregunta de dejarla la nombra entera')
+    await pagina.getByRole('button', { name: 'Sí, la dejé' }).click()
+    await pagina.locator('[role="dialog"]').waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {})
+    const [{ recojo }] = await consulta(`select recojo from ordenes_compra_materiales where id = $1`, [oc5])
+    comprobar(recojo === 'DEJADO', `la deja en almacén (${recojo})`)
+    await contexto.close()
+  }
+
+  // Almacén valida el ingreso con la guía en blanco: el kardex guarda su nombre.
+  {
+    const { pagina, contexto } = await entrar(CUENTAS.almacen)
+    await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    const entrega = pagina.locator(`form[aria-labelledby="pv-${oc5.slice(0, 8)}-titulo"]`)
+    const cabecera = limpio(await entrega.locator('h3').textContent().catch(() => ''))
+    comprobar(cabecera.startsWith('OC sin número · ') && !cabecera.includes(REFERENCIA_5)
+      && limpio(await entrega.textContent().catch(() => '')).includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `la bandeja de Almacén dice «OC sin número» y la referencia debajo: «${cabecera.slice(0, 70) || 'no está'}»`)
+    comprobar(limpio(await entrega.textContent().catch(() => '')).includes(`Vacío: queda con ${NOMBRE_5}.`), 'y la ayuda dice con qué queda si la guía va en blanco')
+    await entrega.getByRole('button', { name: 'Validar ingreso' }).click()
+    await pagina.locator('[role="status"]', { hasText: `${NOMBRE_5}:` }).waitFor({ timeout: 30000 }).catch(() => {})
+    const aviso = limpio(await pagina.locator('[role="status"]').first().textContent().catch(() => ''))
+    comprobar(aviso.startsWith(`${NOMBRE_5}:`), `el aviso de validado la nombra: «${aviso.slice(0, 80)}»`)
+    const guardado = await consulta(
+      `select m.documento_referencia from ingresos_pendientes_almacen p join movimientos_materiales m on m.id = p.movimiento_id where p.orden_compra_id = $1`, [oc5])
+    comprobar(guardado.length > 0 && guardado.every((g) => g.documento_referencia === NOMBRE_5),
+      `el kardex guarda «${NOMBRE_5}» como documento, no «${REFERENCIA_5}» (${guardado.map((g) => g.documento_referencia).join(' / ') || 'sin movimiento'})`)
+    await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    comprobar((await pagina.locator(`span[title="${NOMBRE_5}"]`).count()) > 0, 'en el kardex, la columna del documento la nombra entera')
+    await contexto.close()
+    const tel = await entrar(CUENTAS.almacen, { width: 390, height: 844 })
+    await tel.pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+    const px = await ancho(tel.pagina)
+    comprobar(px <= 390, `el kardex en el teléfono no ensancha la página (${px} px)`)
+    await tel.contexto.close()
+  }
+
+  // Gerencia en el Costeo del código, y Requerimientos en su gasto: la OC y la línea del IGV.
+  const CODIGO = encodeURIComponent('PLA_SR_O4_1_26/21')
+  for (const [puesto, ruta] of [['gerencia', `/codigos-internos/detalle?codigo=${CODIGO}&vista=costeo`], ['requerimientos', `/requerimientos/gasto-por-codigo/detalle?codigo=${CODIGO}`]]) {
+    const { pagina, contexto } = await entrar(CUENTAS[puesto])
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    const compra = limpio(await pagina.locator(`tr[data-compra="${oc5}"]`).first().textContent().catch(() => ''))
+    comprobar(compra.startsWith('OC sin número') && compra.includes(`Ref. del proveedor: ${REFERENCIA_5}`),
+      `${puesto}: en las compras del código, la OC sale «OC sin número» con «Ref. del proveedor: ${REFERENCIA_5}» (${compra.slice(0, 60) || 'no está'})`)
+    const igv = limpio(await pagina.locator('tr', { hasText: `IGV de la boleta B903-${SUFIJO}` }).first().textContent().catch(() => ''))
+    comprobar(igv.includes(`${NOMBRE_4} · `), `${puesto}: la línea del IGV de la boleta de una parte empieza con la OC nombrada (${igv.slice(0, 90) || 'no está'})`)
+    await contexto.close()
+    // En el teléfono, la fila no se parte: el título corto y el importe en una línea.
+    const tel = await entrar(CUENTAS[puesto], { width: 390, height: 844 })
+    await tel.pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    const importe = tel.pagina.locator(`tr[data-compra="${oc5}"] td span.whitespace-nowrap`).first()
+    const alto = await importe.evaluate((e) => e.getBoundingClientRect().height).catch(() => 0)
+    const px = await ancho(tel.pagina)
+    comprobar(alto > 0 && alto < 24 && px <= 390, `${puesto}: a 390 px el importe va en una línea (${Math.round(alto)} px de alto) y la página no se ensancha (${px} px)`)
+    await tel.contexto.close()
+  }
 }
 
 await navegador.close()

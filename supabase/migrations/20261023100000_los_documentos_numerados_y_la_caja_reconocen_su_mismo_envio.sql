@@ -7,22 +7,25 @@
 -- llevaba otro, y si el primero había entrado salía otro documento numerado con
 -- lo mismo, que ya no se puede borrar (lo encontró la decimoquinta pasada de los
 -- auditores, el 2026-10-23). Ahora el id vive fuera de la ventana y vuelve con
--- ella hasta saber cómo terminó; la caja diaria ya lo hacía así desde la
--- decimoquinta.
+-- ella hasta saber cómo terminó, también en la caja diaria, que hasta aquí lo
+-- decidía al abrir porque su función no comparaba nada; y al volver a abrir, la
+-- pantalla pregunta si aquel envío entró antes de seguir con el mismo id.
 --
 -- Eso pide que la base compare todo lo que se escribe. Cada función reconocía el
--- id repetido mirando solo una parte: el RQ no miraba la fecha ni los insumos;
--- la OC, la referencia, la entrega ni el pago; la OS, la OT, el código, las
--- fechas ni la detracción; el subcontrato, el código, el trabajo ni las fechas;
--- y la caja no miraba nada. Lo cambiado en esas partes se daba por registrado y
--- no se guardaba, y la OC con su comprobante cambiaba en silencio el comprobante
--- y el código de la orden que ya había quedado.
+-- id repetido mirando solo una parte: el RQ no miraba la fecha, los insumos ni la
+-- unidad que se elige para un material de unidad por confirmar; la OC, la
+-- referencia, la entrega ni el pago; la OS, la OT, el código, las fechas ni la
+-- detracción; el subcontrato, el código, el trabajo ni las fechas; la caja no
+-- miraba nada, y el pago de la boleta de una parte (20261022200000) no miraba la
+-- cuenta de la que salió. Lo cambiado en esas partes se daba por registrado y no
+-- se guardaba, y la OC con su comprobante cambiaba en silencio el comprobante y
+-- el código de la orden que ya había quedado.
 --
 -- Ahora el mismo envío repetido devuelve el mismo documento, y otro envío de la
--- misma persona con el mismo id dice que el primero ya quedó, como el cobro y el
--- pago (20261022195000): la pantalla lo muestra sin rojo, traba la ventana y la
--- pone al día al cerrarla. El de otra persona con el mismo id sigue diciendo que
--- ya existe con otros datos.
+-- misma persona con el mismo id dice que el primero ya quedó, con su número, como
+-- el cobro y el pago (20261022195000): la pantalla lo muestra sin rojo, traba la
+-- ventana y la pone al día al cerrarla. El de otra persona con el mismo id sigue
+-- diciendo que ya existe con otros datos.
 --
 -- Cada función va entera, tal como queda después de todas las migraciones
 -- anteriores; cambia solo lo que reconoce el id. `create or replace` conserva
@@ -35,15 +38,16 @@
 do $$
 declare
   conocidas constant jsonb := '{
-    "crear_compra_agrupada(uuid,text,text,jsonb,date,text,integer,text)": ["9819a67502398f48004ff34b7bd87116", "51fff96f8d17253a55c6eb289361a093"],
-    "emitir_compra_agrupada(uuid,uuid,text,jsonb,date,text,integer,text)": ["fb4e480fb416b95ce2fac834ab178492", "5d7a06de339ec686806b3e18bcdd06f9"],
-    "emitir_compra_agrupada(uuid,uuid,text,jsonb,date,text,integer,text,boolean,text)": ["a798ab67698852ecc0b350723ddb5102", "308d343f977b56a4010bf4a241f051ad"],
-    "emitir_compra_directa(uuid,uuid,text,text,jsonb,date,text,integer,text)": ["f88bcabd99ff7128f515fe77f4332a43", "e1b2803ceced5d51b5863e8fb24c7d24"],
-    "emitir_compra_directa(uuid,uuid,text,text,jsonb,date,text,integer,text,boolean,text)": ["82ba581f5e5df093d611f5b9d7777a9a", "681bea52f3ec29c2908808821e179257"],
-    "emitir_orden_servicio(uuid,uuid,uuid,uuid,text,text,text,date,date,text,numeric,text,integer,text,text)": ["c0e2aad4cd0eeb3e7d9fbda4c18dfcff", "ad342256d0aabd9ae3a2883e234fa244"],
-    "emitir_requerimiento(uuid,text,uuid,text,text,date,jsonb)": ["8bc92408ecd5674e5a9cb75d028baef9", "59cf1285147eaf00fd7dde0036dbc968"],
+    "crear_compra_agrupada(uuid,text,text,jsonb,date,text,integer,text)": ["9819a67502398f48004ff34b7bd87116", "26e67ba9bf217a77e1d143a59d8e7292"],
+    "emitir_compra_agrupada(uuid,uuid,text,jsonb,date,text,integer,text)": ["fb4e480fb416b95ce2fac834ab178492", "68e13e33b81ee7b09f4cc46faec2d632"],
+    "emitir_compra_agrupada(uuid,uuid,text,jsonb,date,text,integer,text,boolean,text)": ["a798ab67698852ecc0b350723ddb5102", "4e5e2e77363f61f4cc53328b7062c5c0"],
+    "emitir_compra_directa(uuid,uuid,text,text,jsonb,date,text,integer,text)": ["f88bcabd99ff7128f515fe77f4332a43", "d2a9899dc64e60fa447ddad9069ce38a"],
+    "emitir_compra_directa(uuid,uuid,text,text,jsonb,date,text,integer,text,boolean,text)": ["82ba581f5e5df093d611f5b9d7777a9a", "08913b4593574875f1d5a4b2b65e72fb"],
+    "emitir_orden_servicio(uuid,uuid,uuid,uuid,text,text,text,date,date,text,numeric,text,integer,text,text)": ["c0e2aad4cd0eeb3e7d9fbda4c18dfcff", "2b495b0d3fb22e7f412b0cae3053c835"],
+    "emitir_requerimiento(uuid,text,uuid,text,text,date,jsonb)": ["8bc92408ecd5674e5a9cb75d028baef9", "ec33e76c2e0d13aaee16570a7c87cd62"],
+    "registrar_pago_parte_con_boleta(uuid,uuid,date,numeric,text,text,uuid,numeric)": ["7b7f2439cb140bf415cf22721a32c007", "2924bcd71da5c1769f25ee3cbf37065a", "127c9bbc87e65474ffd1d623010a9309", "0c9a5f1c0e1b4f575fb4fbc4a3ef3ae4"],
     "registrar_movimiento_caja(uuid,uuid,date,text,numeric,text,text,text,numeric)": ["fd09f88876ab24d07fdad35e9d622c4a", "449ad49229f4b6288bcdcbecfe3105ea"],
-    "registrar_subcontrato(uuid,uuid,text,text,text,numeric,date,date,text)": ["e59d1d42acbe0d72c2642e7fdc4bdd8a", "76d54709805cb37ea31abb65a884ad2b"],
+    "registrar_subcontrato(uuid,uuid,text,text,text,numeric,date,date,text)": ["e59d1d42acbe0d72c2642e7fdc4bdd8a", "da2f9df149963d09e28c2c933ec4241e"],
     "registrar_transferencia_caja(uuid,uuid,uuid,date,numeric,numeric,text,text)": ["3dbecb78b9ef85fba2d7036a0e3cce04", "7f68125160eefbce317a030a2eff3716"]
   }';
   firma text;
@@ -149,6 +153,10 @@ begin
                   case when x.linea->>'cantidad' ~ '^\s*[0-9]+(\.[0-9]+)?\s*$' then (x.linea->>'cantidad')::numeric end
              or case when nullif(x.linea->>'material_id', '') is not null
                      then l.material_id::text is distinct from lower(btrim(x.linea->>'material_id'))
+                          -- Con la unidad por confirmar vale la que eligió quien pide (abajo).
+                          or (nullif(btrim(x.linea->>'unidad_medida_id'), '') is not null
+                              and exists (select 1 from public.materiales m where m.id = l.material_id and m.unidad_pendiente)
+                              and l.unidad_medida_id::text is distinct from lower(btrim(x.linea->>'unidad_medida_id')))
                      else public.nombre_de_material(l.descripcion)
                             is distinct from public.nombre_de_material(btrim(coalesce(x.linea->>'descripcion', '')))
                           or l.unidad_medida_id::text is distinct from lower(nullif(btrim(x.linea->>'unidad_medida_id'), ''))
@@ -156,7 +164,8 @@ begin
                 end) then
       return p_id;
     end if;
-    raise exception 'Este requerimiento ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Este requerimiento ya quedó registrado% la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || v_actual.numero, '');
   end if;
 
   v_numero := public.siguiente_correlativo('REQUERIMIENTO', case p_tipo when 'ADMINISTRACION' then '002' else '001' end, null);
@@ -314,7 +323,8 @@ begin
               from jsonb_to_recordset(p_detalles) x(material_id uuid, cantidad numeric, precio numeric)) then
       return p_id;
     end if;
-    raise exception 'Esta orden de compra ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Esta orden de compra ya quedó registrada% la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || v_actual.numero, '');
   end if;
   if not v_proveedor.activo then
     raise exception 'El proveedor % está dado de baja. Reactívalo en Proveedores o elige otro.', v_proveedor.razon_social;
@@ -359,7 +369,8 @@ begin
               where c.id = p_id and c.creado_por = public.usuario_actual()
                 and (c.con_factura is distinct from p_con_factura
                      or (c.codigo_interno is not null and c.codigo_interno is distinct from btrim(p_codigo_interno)))) then
-    raise exception 'Esta orden de compra ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Esta orden de compra ya quedó registrada% la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || (select c.numero from public.ordenes_compra_materiales c where c.id = p_id), '');
   end if;
   perform public.emitir_compra_directa(p_id, p_proveedor_id, p_referencia, p_motivo, p_detalles,
                                        p_fecha, p_condicion, p_dias, p_moneda);
@@ -388,7 +399,8 @@ begin
               where c.id = p_id and c.creado_por = public.usuario_actual()
                 and (c.con_factura is distinct from p_con_factura
                      or (c.codigo_interno is not null and c.codigo_interno is distinct from btrim(p_codigo_interno)))) then
-    raise exception 'Esta orden de compra ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Esta orden de compra ya quedó registrada% la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || (select c.numero from public.ordenes_compra_materiales c where c.id = p_id), '');
   end if;
   perform public.emitir_compra_agrupada(p_id, p_proveedor_id, p_referencia, p_detalles,
                                         p_fecha, p_condicion, p_dias, p_moneda);
@@ -418,7 +430,8 @@ begin
   select proveedor_id into v_actual from public.ordenes_compra_materiales where id = p_id;
   if found and v_actual is distinct from p_proveedor_id then
     if exists (select 1 from public.ordenes_compra_materiales where id = p_id and creado_por = public.usuario_actual()) then
-      raise exception 'Esta orden de compra ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+      raise exception 'Esta orden de compra ya quedó registrada% la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || (select c.numero from public.ordenes_compra_materiales c where c.id = p_id), '');
     end if;
     raise exception 'Esta compra ya existe con otro proveedor. Recarga antes de intentar de nuevo.';
   end if;
@@ -466,7 +479,8 @@ begin
    and (select jsonb_agg(jsonb_build_object('id',d.requerimiento_detalle_id,'cantidad',d.cantidad,'precio',d.precio_unitario) order by d.requerimiento_detalle_id) from public.orden_compra_material_detalles d where d.orden_compra_id=p_id)
      =(select jsonb_agg(jsonb_build_object('id',x.id,'cantidad',x.cantidad,'precio',x.precio) order by x.id) from jsonb_to_recordset(p_detalles) x(id uuid,cantidad numeric,precio numeric))
    then return p_id; end if;
-   raise exception 'Esta orden de compra ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+   raise exception 'Esta orden de compra ya quedó registrada% la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      coalesce(' como ' || (select c.numero from public.ordenes_compra_materiales c where c.id = p_id), '');
  end if;
  for v_linea in select * from jsonb_to_recordset(p_detalles) x(id uuid,cantidad numeric,precio numeric) order by id loop
    if v_linea.cantidad is null or v_linea.cantidad<=0 or v_linea.cantidad<>round(v_linea.cantidad,3)
@@ -548,7 +562,8 @@ begin
        and v_actual.detraccion_motivo is not distinct from v_det.motivo then
       return p_id;
     end if;
-    raise exception 'Esta orden de servicio ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Esta orden de servicio ya quedó registrada como % la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.',
+      v_actual.numero;
   end if;
   if not v_proveedor.activo then
     raise exception 'El proveedor % está dado de baja. Reactívalo en Proveedores o elige otro.', v_proveedor.razon_social;
@@ -624,7 +639,8 @@ begin
        and v_actual.fecha_inicio is not distinct from p_fecha_inicio and v_actual.fecha_fin is not distinct from p_fecha_fin then
       return p_id;
     end if;
-    raise exception 'Este subcontrato ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.';
+    raise exception 'Este subcontrato ya quedó registrado como % la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.',
+      v_actual.numero;
   end if;
   select * into v_sub from public.subcontratistas where id = p_subcontratista_id;
   if not found then raise exception 'Elige un subcontratista del padrón.' using errcode = 'check_violation'; end if;
@@ -796,3 +812,124 @@ begin
   return p_id;
 end;
 $function$;
+
+-- registrar_pago_parte_con_boleta (20261022200000): la cuenta de la que salió
+-- también cuenta, los reintentos esperan su turno, y el id de otra persona ya
+-- existe con otros datos, como en las de arriba.
+--
+-- Nombra la OC con `nombre_de_oc`, como la deja 20261022220000 (#158): la que
+-- no tiene número dice «OC sin número (ref. del proveedor …)» y no «OC OC-0001».
+-- Esa migración puede entrar antes o después de esta: si entra antes, la guarda
+-- de arriba conoce su versión; si entra después, encuentra su cambio ya hecho y
+-- lo salta. Para que la función sirva también en ese rato, `nombre_de_oc` se
+-- crea aquí igual que allá (el `create or replace` de la otra no cambia nada).
+create or replace function public.nombre_de_oc(p_numero text, p_referencia text)
+returns text
+language sql
+immutable
+set search_path to 'public'
+as $$
+  select coalesce(nullif(btrim(p_numero), ''),
+                  case when nullif(btrim(p_referencia), '') is null then 'OC sin número'
+                       else 'OC sin número (ref. del proveedor ' || btrim(p_referencia) || ')' end)
+$$;
+comment on function public.nombre_de_oc(text, text) is
+  'Cómo se nombra una OC en lo que lee la gente: su número, o «OC sin número (ref. del proveedor …)» si es de antes de la serie. Igual que nombreDeOc en la aplicación.';
+revoke all on function public.nombre_de_oc(text, text) from public, anon;
+grant execute on function public.nombre_de_oc(text, text) to authenticated;
+
+create or replace function public.registrar_pago_parte_con_boleta(
+  p_id uuid, p_documento uuid, p_fecha_pago date, p_monto numeric, p_operacion text, p_ruta text,
+  p_caja uuid, p_monto_cuenta numeric
+) returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_yo     uuid := public.usuario_actual();
+  v_hoy    date := (now() at time zone 'America/Lima')::date;
+  v_doc    public.documentos_compra_material%rowtype;
+  v_oc     public.ordenes_compra_materiales%rowtype;
+  v_previo public.pagos_parte_con_boleta%rowtype;
+  v_nombre text;
+  v_pagado numeric;
+  v_mon    text;
+  v_op     text := nullif(btrim(coalesce(p_operacion, '')), '');
+  v_obj    storage.objects%rowtype;
+begin
+  perform public.exigir_permiso('tesoreria.registrar_pagos');
+  if p_id is null then raise exception 'Vuelve a abrir el formulario del pago.' using errcode = 'check_violation'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));
+  select * into v_previo from public.pagos_parte_con_boleta where id = p_id;
+  if found then
+    if v_previo.registrado_por is distinct from v_yo then
+      raise exception 'Ese pago ya existe con otros datos. Recarga antes de intentar de nuevo.' using errcode = 'check_violation';
+    end if;
+    -- La cuenta de la que salió también cuenta: con otra cuenta, u otro monto en
+    -- la cuenta de otra moneda, ya no es el mismo envío.
+    if (v_previo.documento_compra_id, v_previo.fecha_pago, v_previo.monto, v_previo.operacion, v_previo.archivo_ruta)
+         is not distinct from (p_documento, p_fecha_pago, p_monto, v_op, p_ruta)
+       and not exists (
+         select 1 from public.movimientos_caja m join public.cajas c on c.id = m.caja_id
+          where m.origen = 'PAGO_PARTE_BOLETA' and m.origen_id = p_id and m.tipo = 'EGRESO'
+            and (m.caja_id is distinct from p_caja
+                 or m.monto is distinct from case when c.moneda = v_previo.moneda then p_monto else p_monto_cuenta end)) then
+      return p_id;
+    end if;
+    raise exception 'Ese pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla y míralo antes de registrar otro.'
+      using errcode = 'check_violation';
+  end if;
+  select * into v_doc from public.documentos_compra_material where id = p_documento;
+  if not found or v_doc.monto_de_la_parte is null then
+    raise exception 'Esa boleta no es la de una parte de una OC.' using errcode = 'check_violation';
+  end if;
+  select * into v_oc from public.ordenes_compra_materiales where id = v_doc.orden_compra_id for update;
+  select * into v_doc from public.documentos_compra_material where id = p_documento;
+  v_nombre := public.nombre_de_oc(v_oc.numero, v_oc.referencia);
+  if v_doc.anulado_en is not null then
+    raise exception 'Logística anuló la boleta % de la %: no se paga.', v_doc.numero_documento, v_nombre using errcode = 'check_violation';
+  end if;
+  if v_oc.aprobacion not in ('APROBADA', 'NO_REQUERIDA') then
+    raise exception 'La % no está aprobada: no se paga.', v_nombre using errcode = 'check_violation';
+  end if;
+  if p_fecha_pago is null or p_fecha_pago > v_hoy or p_fecha_pago < v_hoy - 365 then
+    raise exception 'Elige el día del pago: de hoy hacia atrás.' using errcode = 'check_violation';
+  end if;
+  if p_monto is null or p_monto <= 0 or p_monto > 999999999 or p_monto <> round(p_monto, 2) then
+    raise exception 'Escribe lo que se pagó, en dos decimales.' using errcode = 'check_violation';
+  end if;
+  v_mon := case when v_oc.moneda = 'USD' then 'US$ ' else 'S/ ' end;
+  select coalesce(sum(x.monto), 0) into v_pagado
+    from public.pagos_parte_con_boleta x where x.documento_compra_id = p_documento and x.anulado_en is null;
+  if v_pagado >= v_doc.monto_de_la_parte then
+    raise exception 'La boleta % de la % ya está pagada.', v_doc.numero_documento, v_nombre using errcode = 'check_violation';
+  end if;
+  if v_pagado + p_monto > v_doc.monto_de_la_parte then
+    raise exception 'Con ese pago la boleta % pasaría de su monto (%): le quedan % por pagar.', v_doc.numero_documento,
+      v_mon || to_char(v_doc.monto_de_la_parte, 'FM999G999G990D00'),
+      v_mon || to_char(v_doc.monto_de_la_parte - v_pagado, 'FM999G999G990D00') using errcode = 'check_violation';
+  end if;
+  if v_op is not null and char_length(v_op) > 60 then
+    raise exception 'El número de operación pasa de 60 caracteres.' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from public.pagos_orden_compra where archivo_ruta = p_ruta)
+     or exists (select 1 from public.devoluciones_orden_compra where archivo_ruta = p_ruta)
+     or exists (select 1 from public.pagos_parte_con_boleta where archivo_ruta = p_ruta) then
+    raise exception 'Ese voucher ya es el de otro pago: adjunta el de este.' using errcode = 'check_violation';
+  end if;
+  v_obj := public.archivo_subido_por_mi('pagos-compras', p_ruta, v_oc.id,
+                                        array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+
+  insert into public.pagos_parte_con_boleta (id, documento_compra_id, orden_compra_id, fecha_pago, moneda, monto, operacion,
+                                             archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+  values (p_id, p_documento, v_oc.id, p_fecha_pago, v_oc.moneda, p_monto, v_op,
+          p_ruta, v_obj.metadata->>'mimetype', (v_obj.metadata->>'size')::integer, v_yo);
+
+  perform public.caja_mover_por_pago('PAGO_PARTE_BOLETA', p_id, 'EGRESO', p_caja, p_fecha_pago, p_monto, v_oc.moneda, p_monto_cuenta,
+    'Pago de la boleta ' || v_doc.numero_documento || ' de la ' || v_nombre || ' · ' || v_oc.proveedor, v_oc.codigo_interno, v_op);
+
+  perform public.notificar_a_permiso('compras.crear',
+    case when v_pagado + p_monto >= v_doc.monto_de_la_parte then 'Boleta de una parte pagada: ' else 'Pago a cuenta de la boleta de una parte: ' end
+      || v_nombre,
+    v_oc.proveedor || ' · ' || v_doc.numero_documento || ' · ' || v_mon || to_char(p_monto, 'FM999G999G990D00'),
+    '/compras/ordenes', 'pagos_parte_con_boleta', p_id, v_yo);
+  return p_id;
+end;
+$$;

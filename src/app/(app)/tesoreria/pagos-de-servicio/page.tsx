@@ -179,7 +179,7 @@ function Servicio({
                 paraPagar={<ParaPagar documentos={documentos} cuentas={s.cuentas} monedaDocumento={m} sinCuentas={sinCuentas} />}
               />
             )}
-            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} documentos={s.documentos.length} />}
+            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
           </div>
         )}
       </div>

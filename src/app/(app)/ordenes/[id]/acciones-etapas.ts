@@ -12,7 +12,7 @@ const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export async function definirEtapas(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Solo Diseño define las etapas.' }
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'No tienes permiso para definir las etapas.' }
   const orden = uuid.safeParse(datos.get('orden_id'))
   const seleccion = datos.getAll('etapa_id').map((valor) => uuid.safeParse(valor))
   if (!orden.success || seleccion.length === 0 || seleccion.some((id) => !id.success) ||

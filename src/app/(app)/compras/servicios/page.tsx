@@ -31,7 +31,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver', 'compras.detraccion'])
   const emite = puede(perfil, 'compras.crear')
   const corrigeDetraccion = puede(perfil, ['compras.crear', 'compras.detraccion'])
-  // La factura y el contrato de la OS los adjuntan Logística y Tesorería (`puede_adjuntar_documento_servicio`).
+  // La factura y el contrato de la OS los adjunta quien pasa `puede_adjuntar_documento_servicio`.
   const adjunta = puede(perfil, ['compras.crear', 'tesoreria.pagar_servicios'])
   const { codigo = '' } = await searchParams
   const buscado = codigo.trim()
@@ -188,7 +188,7 @@ function FilaServicio({
               anular
             />
           )}
-          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} documentos={s.documentos.length} />}
+          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
           {corrigeDetraccion && vigente && (
             <CorregirServicio
               id={s.id}

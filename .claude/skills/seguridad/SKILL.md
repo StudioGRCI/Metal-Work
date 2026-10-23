@@ -241,15 +241,59 @@ En la misma migración que la crea, sin excepción:
   aviso de una ventana ya cerrada se suelta fuera de la transición del
   refresco, o la ventana nueva sale trabada mientras la señal tarda. Ojo donde la función devuelve el id existente sin comparar el
   envío: conservar el id ahí haría que lo distinto se diera por guardado.
-  Primero la función compara; después se conserva el id. La `20261023200000`
-  lo hizo en RR. HH. (observación, permiso, carga de horas, usar el saldo,
-  justificar, pagar o reservar), la caja (cierre y cuenta nueva), el gasto del
-  mes y el almacén (recepción, despacho y salida del kardex): la misma persona
-  con lo mismo recibe lo de antes; con otra cosa, «ya quedó… la primera vez»;
-  otra persona, «ya existe con otros datos». **Una función que inserta o
-  corrige con el mismo id (un upsert, `guardar_caja`) no distingue sola el alta
-  repetida de una corrección**: la ventana manda `p_alta` y el alta repetida
-  compara en vez de actualizar. Banco: `probar-reenvio-con-otros-datos.mjs`.
+  Primero la función compara; después se conserva el id.
+  La `20261023200000` compara en RR. HH. (observación, permiso, carga de
+  horas, usar el saldo, justificar, pagar o reservar), la caja (cierre y cuenta
+  nueva), el gasto del mes y el almacén (recepción, despacho y salida del
+  kardex): la misma persona con lo mismo recibe lo de antes; con otra cosa, «ya
+  quedó… la primera vez»; otra persona, «ya existe con otros datos». **Una
+  función que inserta o corrige con el mismo id (un upsert, `guardar_caja`) no
+  distingue sola el alta repetida de una corrección**: la ventana manda
+  `p_alta` y el alta repetida compara en vez de actualizar. Banco:
+  `probar-reenvio-con-otros-datos.mjs`.
+  **Al volver a abrir, se pregunta a la base** (`useIdDelEnvio(clave)` con
+  `consultarEnvio`, en `src/app/(app)/acciones-envio.ts`): si aquel envío
+  entró, la ventana lo dice con su número (`EnvioAnterior`) y lleva otro id.
+  Sin preguntar, la OS, el RQ o el SC siguiente decía «ya quedó» y no se
+  guardaba aunque la lista ya mostrara el primero; y adivinarlo por la
+  pantalla (el saldo había bajado) dejaba entrar el mismo pago dos veces en
+  cuanto la tarjeta se ponía al día (decimosexta). Una ventana nueva que pide
+  documento o dinero lleva su clave en `src/lib/dominio/envios.ts` y su caso en
+  `consultarEnvio`; el id que sale con el documento (su factura, su contrato)
+  se renueva con él (`alEntrar`). **Lo pendiente vive también en la pestaña**
+  (`sessionStorage`): si la puesta al día al cerrar no llega, Next carga la
+  página entera, la memoria se va y el mismo pago entraba dos veces
+  (decimoctava). Por eso cada llamada lleva su `donde` —la fila de la ventana:
+  la OC que se paga, el recibo, la OT del tablero—, o el pendiente de una fila
+  lo tomaba la ventana de otra; y el id acompañante lleva el suyo, para que su
+  archivo vuelva a la misma ruta. La llave lleva la cuenta con que se pintó la
+  pantalla (`CuentaDeLaPestana`, en el layout, con `useLayoutEffect` para que
+  esté antes del primer clic): otra cuenta no reusa ese id y, si la primera
+  vuelve, lo suyo sigue pendiente —borrarlo al cambiar de cuenta dejaba entrar
+  dos veces su pago (decimonovena)—. **Pero lo juzga quien lo registró, no la
+  cuenta pintada** (vigésima): al abrir se pregunta por lo pendiente de ese
+  lugar con todas las cuentas de la pestaña, y `consultarEnvio(clave, ids)`
+  contesta la cuenta y el puesto de la sesión y, de cada id que está, lo que
+  quedó y, si la fila no es suya (`creado_por`, `subido_por` o
+  `registrado_por`), el puesto de quien la registró. Lo que la sesión mandó
+  desde la pantalla de otra cuenta se le dice; mirar solo la cuenta pintada
+  dejaba entrar dos veces la OC. Lo que otra cuenta registró con el pendiente
+  de otra llave no se le cuenta ni se toca; el de la llave de esta pantalla sí,
+  con su número y el puesto de quien tenía la sesión, porque salió de aquí.
+  **La pestaña que ya no es de la sesión no envía nada** (vigesimoprimera):
+  `CuentaDeLaPestana` avisa a las otras pestañas al entrar (`BroadcastChannel`)
+  y la que se pintó con otra cuenta se traba al momento
+  (`useOtraCuentaEnLaPestana`): `PieDeVentana` traba los campos y cambia el
+  botón que envía por «Recargar la pantalla», y `useAccion` y `salio()` no
+  envían. Si ese aviso no llega, la ventana que pregunta lo sabe al abrir:
+  `abrir()` pregunta aunque no haya nada pendiente. Antes solo se enteraba con
+  algo pendiente, y la pestaña vieja sin nada pendiente emitía la OC a nombre
+  de la otra cuenta. Lo que queda: lo que se envíe antes de que la base conteste
+  esa pregunta, si el aviso entre pestañas no llegó. Se destraba al pintarse con
+  la sesión o si la primera cuenta vuelve a entrar; la pestaña no cambia de
+  cuenta por la respuesta, solo por el layout —cambiarla escondía lo pendiente
+  de la primera cuando volvía y el egreso entraba dos veces—. Una clave nueva en
+  `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de
   pegarse). Un aviso nuevo de «mismo envío» lleva

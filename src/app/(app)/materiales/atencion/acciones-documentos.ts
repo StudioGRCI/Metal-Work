@@ -47,7 +47,7 @@ export async function registrarDocumentoCompra(
   formulario: FormData,
 ): Promise<ResultadoAccion<{ revisar: boolean; avisaTesoreria: boolean }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Adjuntar documentos de compra corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para adjuntar documentos de compra.' }
 
   const datos = FORMATO.safeParse({
     id: formulario.get('id'),
@@ -250,7 +250,7 @@ const ANULACION = z.object({
  */
 export async function anularDocumentoCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Anular un documento de compra corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para anular documentos de compra.' }
   const datos = ANULACION.safeParse({ id: formulario.get('id'), motivo: formulario.get('motivo') })
   if (!datos.success) return { ok: false, error: datos.error.issues[0]?.message ?? 'Cuenta por qué se anula.' }
   const supabase = await createClient()

@@ -107,9 +107,9 @@ select test.afirmar(pg_temp.correr(pg_temp.movimiento(250, 'Flete   de prueba 43
 select test.debe_fallar(pg_temp.movimiento(260, 'Flete de prueba 433', 'PLA_SR_04', '0099'),
   'otro monto con el mismo id dice que el primero ya quedó', 'Este movimiento ya quedó registrado la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.movimiento(250, 'Flete de otra cosa 433', 'PLA_SR_04', '0099'),
-  'otra descripción con el mismo id tampoco se da por registrada', 'ya quedó registrado la primera vez');
+  'otra descripción con el mismo id tampoco se da por registrada', 'la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.movimiento(250, 'Flete de prueba 433', 'PLA_SR_05', '0099'),
-  'otro código con el mismo id tampoco', 'ya quedó registrado la primera vez');
+  'otro código con el mismo id tampoco', 'la primera vez que lo enviaste');
 select test.afirmar((select count(*) = 1 and min(monto) = 250 and min(codigo_interno) = 'PLA_SR_04'
                        from public.movimientos_caja where id = pg_temp.id('m1')),
   'queda un solo movimiento, con lo de la primera vez');
@@ -120,12 +120,12 @@ select test.afirmar(pg_temp.correr(pg_temp.transferencia('t1', 'pen2', 400, 999,
 select test.debe_fallar(pg_temp.transferencia('t1', 'pen2', 450, null, 'Para la caja chica 433'),
   'otro monto en la transferencia con el mismo id dice que ya quedó', 'Esta transferencia ya quedó registrada la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.transferencia('t1', 'usd', 400, 100, 'Para la caja chica 433'),
-  'otra cuenta de destino tampoco se da por registrada', 'ya quedó registrada la primera vez');
+  'otra cuenta de destino tampoco se da por registrada', 'la primera vez que la enviaste');
 select pg_temp.correr(pg_temp.transferencia('t2', 'usd', 3750, 1000, 'Compra de dólares 433'));
 select test.afirmar(pg_temp.correr(pg_temp.transferencia('t2', 'usd', 3750, 1000, 'Compra de dólares 433')) = pg_temp.txt('t2'),
   'la compra de dólares repetida devuelve la misma');
 select test.debe_fallar(pg_temp.transferencia('t2', 'usd', 3750, 1010, 'Compra de dólares 433'),
-  'entre monedas, otro monto de destino ya no es el mismo envío', 'ya quedó registrada la primera vez');
+  'entre monedas, otro monto de destino ya no es el mismo envío', 'la primera vez que la enviaste');
 select test.afirmar((select count(*) from public.movimientos_caja where origen_id in (pg_temp.id('t1'), pg_temp.id('t2'))) = 4
                     and (select monto from public.movimientos_caja where origen_id = pg_temp.id('t1') and tipo = 'EGRESO') = 400,
   'cada transferencia queda con sus dos movimientos de la primera vez');
@@ -155,15 +155,15 @@ select pg_temp.correr(pg_temp.directa('prov', 'Cot. 433', 12, 0, true, 'PLANTA')
 select test.afirmar(pg_temp.correr(pg_temp.directa('prov', ' Cot. 433 ', 12, 0, true, ' PLANTA ')) = pg_temp.txt('oc1'),
   'la misma OC repetida devuelve la misma');
 select test.debe_fallar(pg_temp.directa('prov', 'Cot. 433-B', 12, 0, true, 'PLANTA'),
-  'otra referencia con el mismo id dice que la primera ya quedó', 'Esta orden de compra ya quedó registrada la primera vez que la enviaste');
+  'otra referencia con el mismo id dice que la primera ya quedó', (select 'Esta orden de compra ya quedó registrada como ' || numero || ' la primera vez' from public.ordenes_compra_materiales where id = pg_temp.id('oc1')));
 select test.debe_fallar(pg_temp.directa('prov', 'Cot. 433', 12, 30, true, 'PLANTA'),
-  'otro plazo de pago tampoco se da por registrado', 'ya quedó registrada la primera vez');
+  'otro plazo de pago tampoco se da por registrado', 'la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.directa('prov', 'Cot. 433', 13, 0, true, 'PLANTA'),
-  'otro precio tampoco', 'ya quedó registrada la primera vez');
+  'otro precio tampoco', 'la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.directa('prov', 'Cot. 433', 12, 0, false, 'PLANTA'),
-  'sin factura en el reintento ya no es el mismo envío', 'ya quedó registrada la primera vez');
+  'sin factura en el reintento ya no es el mismo envío', 'la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.directa('prov', 'Cot. 433', 12, 0, true, 'OFICINA'),
-  'otro código interno tampoco', 'ya quedó registrada la primera vez');
+  'otro código interno tampoco', 'la primera vez que la enviaste');
 select test.afirmar((select count(*) = 1 and bool_and(con_factura) and min(codigo_interno) = 'PLANTA' and min(referencia) = 'Cot. 433'
                             and min(dias_credito) = 0
                        from public.ordenes_compra_materiales where id = pg_temp.id('oc1')),
@@ -190,11 +190,11 @@ select pg_temp.correr(pg_temp.os(current_setting('prueba.hoy'), '025', 'Cot. OS 
 select test.afirmar(pg_temp.correr(pg_temp.os(current_setting('prueba.hoy'), '025', ' Cot. OS 433 ')) = pg_temp.txt('os1'),
   'la misma OS repetida devuelve la misma');
 select test.debe_fallar(pg_temp.os(((now() at time zone 'America/Lima')::date + 5)::text, '025', 'Cot. OS 433'),
-  'otra fecha de término con el mismo id dice que la primera ya quedó', 'Esta orden de servicio ya quedó registrada la primera vez que la enviaste');
+  'otra fecha de término con el mismo id dice que la primera ya quedó', (select 'Esta orden de servicio ya quedó registrada como ' || numero || ' la primera vez' from public.ordenes_servicio where id = pg_temp.id('os1')));
 select test.debe_fallar(pg_temp.os(current_setting('prueba.hoy'), 'NO_SUJETA', 'Cot. OS 433'),
-  'otra detracción tampoco se da por registrada', 'ya quedó registrada la primera vez');
+  'otra detracción tampoco se da por registrada', 'la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.os(current_setting('prueba.hoy'), '025', 'Otra cotización'),
-  'otra referencia tampoco', 'ya quedó registrada la primera vez');
+  'otra referencia tampoco', 'la primera vez que la enviaste');
 select test.afirmar((select count(*) = 1 and min(detraccion_codigo) = '025' and min(referencia) = 'Cot. OS 433'
                        from public.ordenes_servicio where id = pg_temp.id('os1')),
   'queda una sola OS, con lo de la primera vez');
@@ -224,14 +224,14 @@ select pg_temp.correr(pg_temp.rq('rq1', null, pg_temp.lineas(3, 'Lija al agua gr
 select test.afirmar(pg_temp.correr(pg_temp.rq('rq1', null, pg_temp.lineas(3, '  Lija al agua grano 400 (prueba 433) '))) = pg_temp.txt('rq1'),
   'el mismo RQ repetido devuelve el mismo');
 select test.debe_fallar(pg_temp.rq('rq1', null, pg_temp.lineas(4, 'Lija al agua grano 400 (prueba 433)')),
-  'otra cantidad con el mismo id dice que el primero ya quedó', 'Este requerimiento ya quedó registrado la primera vez que lo enviaste');
+  'otra cantidad con el mismo id dice que el primero ya quedó', (select 'Este requerimiento ya quedó registrado como ' || numero || ' la primera vez' from public.requerimientos where id = pg_temp.id('rq1')));
 select test.debe_fallar(pg_temp.rq('rq1', null, pg_temp.lineas(3, 'Lija al agua grano 600 (prueba 433)')),
-  'otro material nuevo tampoco se da por registrado', 'ya quedó registrado la primera vez');
+  'otro material nuevo tampoco se da por registrado', 'la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.rq('rq1', current_setting('prueba.hoy'), pg_temp.lineas(3, 'Lija al agua grano 400 (prueba 433)')),
-  'otra fecha en que se necesita tampoco', 'ya quedó registrado la primera vez');
+  'otra fecha en que se necesita tampoco', 'la primera vez que lo enviaste');
 select test.debe_fallar(pg_temp.rq('rq1', null, pg_temp.lineas(3, 'Lija al agua grano 400 (prueba 433)')
                                                   || jsonb_build_array(jsonb_build_object('material_id', pg_temp.txt('per'), 'cantidad', 1))),
-  'un insumo más tampoco', 'ya quedó registrado la primera vez');
+  'un insumo más tampoco', 'la primera vez que lo enviaste');
 select test.afirmar((select count(*) = 2 and min(cantidad) = 2.5 and max(cantidad) = 3
                        from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq1')),
   'queda un solo RQ, con sus dos insumos de la primera vez');
@@ -245,6 +245,29 @@ select test.afirmar(pg_temp.correr(pg_temp.rq('rq2', null, jsonb_build_array(jso
   'descripcion', 'perno  hexagonal (prueba 433)', 'cantidad', 6, 'unidad_medida_id', pg_temp.txt('und'),
   'categoria_id', pg_temp.txt('cat'))))) = pg_temp.txt('rq2'),
   'y su reintento, escrito igual, devuelve el mismo RQ');
+reset role;
+
+-- Un material de unidad por confirmar: vale la unidad que elige quien pide, y
+-- el reintento con otra ya no es el mismo envío (decimosexta pasada).
+insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id, unidad_pendiente)
+values ('CHK433-PEN', 'Pintura epóxica (prueba 433)', pg_temp.id('cat'), pg_temp.id('und'), true);
+select set_config('prueba.pen', (select id::text from public.materiales where codigo = 'CHK433-PEN'), true);
+select set_config('prueba.rq5', gen_random_uuid()::text, true);
+select set_config('prueba.gal', (select id::text from public.unidades_medida where codigo = 'GAL'), true);
+select set_config('prueba.kg', (select id::text from public.unidades_medida where codigo = 'KG'), true);
+create or replace function pg_temp.pintura(p_unidad text) returns jsonb language sql as $$
+  select jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.pen'), 'cantidad', 4,
+                                              'unidad_medida_id', current_setting('prueba.' || p_unidad)));
+$$;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select pg_temp.correr(pg_temp.rq('rq5', null, pg_temp.pintura('gal')));
+select test.afirmar(pg_temp.correr(pg_temp.rq('rq5', null, pg_temp.pintura('gal'))) = pg_temp.txt('rq5'),
+  'el RQ con la unidad elegida para el material de unidad por confirmar, repetido igual, devuelve el mismo');
+select test.debe_fallar(pg_temp.rq('rq5', null, pg_temp.pintura('kg')),
+  'con otra unidad para ese material, dice que el primero ya quedó', 'la primera vez que lo enviaste');
+select test.afirmar((select unidad_medida_id = pg_temp.id('gal') from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq5')),
+  'y el insumo queda en la unidad de la primera vez');
 reset role;
 
 select pg_temp.como('requerimientos2');
@@ -283,9 +306,9 @@ select test.afirmar((select codigo_interno is null from public.ordenes_compra_ma
 select test.afirmar(pg_temp.correr(pg_temp.de_insumos(11, true)) = pg_temp.txt('oci'),
   'su reintento igual devuelve la misma, aunque la orden no tenga código propio');
 select test.debe_fallar(pg_temp.de_insumos(12, true),
-  'otro precio con el mismo id dice que ya quedó', 'Esta orden de compra ya quedó registrada la primera vez que la enviaste');
+  'otro precio con el mismo id dice que ya quedó', (select 'Esta orden de compra ya quedó registrada como ' || numero || ' la primera vez' from public.ordenes_compra_materiales where id = pg_temp.id('oci')));
 select test.debe_fallar(pg_temp.de_insumos(11, false),
-  'sin factura en el reintento tampoco', 'ya quedó registrada la primera vez');
+  'sin factura en el reintento tampoco', 'la primera vez que la enviaste');
 select test.afirmar((select count(*) = 1 and bool_and(con_factura) from public.ordenes_compra_materiales where id = pg_temp.id('oci'))
                     and (select precio_unitario = 11 from public.orden_compra_material_detalles where orden_compra_id = pg_temp.id('oci')),
   'queda una sola OC de insumos, con lo de la primera vez');
@@ -304,9 +327,9 @@ select pg_temp.correr(pg_temp.sc('Soldadura de la tolva de la prueba 433', null)
 select test.afirmar(pg_temp.correr(pg_temp.sc('  Soldadura de la tolva de la prueba 433 ', null)) = pg_temp.txt('sc1'),
   'el mismo subcontrato repetido devuelve el mismo');
 select test.debe_fallar(pg_temp.sc('Soldadura y pintura de la tolva de la prueba 433', null),
-  'otro trabajo con el mismo id dice que el primero ya quedó', 'Este subcontrato ya quedó registrado la primera vez que lo enviaste');
+  'otro trabajo con el mismo id dice que el primero ya quedó', (select 'Este subcontrato ya quedó registrado como ' || numero || ' la primera vez' from public.subcontratos where id = pg_temp.id('sc1')));
 select test.debe_fallar(pg_temp.sc('Soldadura de la tolva de la prueba 433', current_setting('prueba.hoy')),
-  'otra fecha de término tampoco se da por registrada', 'ya quedó registrado la primera vez');
+  'otra fecha de término tampoco se da por registrada', 'la primera vez que lo enviaste');
 select test.afirmar((select count(*) = 1 and min(descripcion) = 'Soldadura de la tolva de la prueba 433' and bool_and(fecha_fin is null)
                        from public.subcontratos where id = pg_temp.id('sc1')),
   'queda un solo subcontrato, con lo de la primera vez');
@@ -358,11 +381,11 @@ select pg_temp.correr(pg_temp.agrupada('prov', 20, true));
 select test.afirmar(pg_temp.correr(pg_temp.agrupada('prov', 20, true)) = pg_temp.txt('ag1'),
   'la misma OC agrupada repetida devuelve la misma');
 select test.debe_fallar(pg_temp.agrupada('prov2', 20, true),
-  'otro proveedor con el mismo id dice que la primera ya quedó', 'Esta orden de compra ya quedó registrada la primera vez que la enviaste');
+  'otro proveedor con el mismo id dice que la primera ya quedó', (select 'Esta orden de compra ya quedó registrada como ' || numero || ' la primera vez' from public.ordenes_compra_materiales where id = pg_temp.id('ag1')));
 select test.debe_fallar(pg_temp.agrupada('prov', 21, true),
-  'otro precio tampoco se da por registrado', 'ya quedó registrada la primera vez');
+  'otro precio tampoco se da por registrado', 'la primera vez que la enviaste');
 select test.debe_fallar(pg_temp.agrupada('prov', 20, false),
-  'sin factura en el reintento tampoco', 'ya quedó registrada la primera vez');
+  'sin factura en el reintento tampoco', 'la primera vez que la enviaste');
 select test.afirmar((select count(*) = 1 and bool_and(con_factura) and min(proveedor_id::text) = pg_temp.txt('prov')
                        from public.ordenes_compra_materiales where id = pg_temp.id('ag1')),
   'queda una sola OC agrupada, con lo de la primera vez');

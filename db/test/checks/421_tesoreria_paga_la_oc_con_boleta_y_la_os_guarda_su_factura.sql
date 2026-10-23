@@ -271,12 +271,12 @@ reset role;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.compras_con_boleta_por_pagar() $$,
-  'Contabilidad no la pide: no paga', 'Tesorería');
+  'Contabilidad no la pide: no paga', 'No tienes permiso para ver las OC con boleta por pagar');
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.compras_con_boleta_por_pagar() $$,
-  'Logística tampoco', 'Tesorería');
+  'Logística tampoco', 'No tienes permiso para ver las OC con boleta por pagar');
 -- Logística no sube vouchers al bucket de los pagos.
 select test.debe_fallar($$ select pg_temp.subir('pagos-compras', 'oc1') $$,
   'Logística no sube al bucket de los vouchers', 'row-level security');
@@ -639,7 +639,7 @@ reset role;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.situacion_de_pago_de_compra(pg_temp.id('oc4')) $$,
-  'Contabilidad no: no paga ni emitió la OC', 'Tesorería y Logística');
+  'Contabilidad no: no paga ni emitió la OC', 'No tienes permiso para ver el pago de la OC');
 reset role;
 
 -- ============================================ 7. Dos caminos son dos pagos
@@ -838,6 +838,35 @@ begin
                          and pg_temp.pago('oc1') = 'PAGO_PARCIAL',
       'que se pagan por la factura: la OC sale de la lista de las boletas y Adquisiciones la da pagada en parte');
     reset role;
+    raise exception using errcode = 'Q4210', message = 'deshacer';
+  exception when sqlstate 'Q4210' then null;
+  end;
+end $$;
+
+-- La misma factura, si la OC 1 fuera de antes de la serie (sin número) y su
+-- referencia larga: la línea del pago la nombra «OC sin número (ref. del
+-- proveedor …)» (migración 20261022220000), y como no cabe todo en sus 108
+-- letras, queda la operación entera y se va la fecha, que se ve al lado del
+-- pago. Nada cortado a medias. Se prueba y se deshace.
+do $$
+declare
+  v_ref text;
+begin
+  begin
+    alter table public.ordenes_compra_materiales disable trigger user;
+    update public.ordenes_compra_materiales set numero = null, referencia = 'PROFORMA-421421-2026-ACEROS'
+     where id = pg_temp.id('oc1');
+    alter table public.ordenes_compra_materiales enable trigger user;
+    perform pg_temp.como('contabilidad');
+    set local role authenticated;
+    insert into public.adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values (pg_temp.id('f1'), pg_temp.id('oc1'));
+    update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf'
+     where id = pg_temp.id('f1');
+    reset role;
+    select referencia into v_ref from public.pagos_adquisicion
+     where adquisicion_id = pg_temp.id('f1') and anulado_en is null and pago_orden_compra_id = pg_temp.id('p1');
+    perform test.afirmar(v_ref = 'Pago por la boleta de la OC sin número (ref. del proveedor PROFORMA-421421-2026-ACEROS) · op. OP-421',
+      format('la OC sin número va con su nombre y la operación entera, sin la fecha que no cabe: «%s»', v_ref));
     raise exception using errcode = 'Q4210', message = 'deshacer';
   exception when sqlstate 'Q4210' then null;
   end;
@@ -1062,7 +1091,7 @@ begin
     perform pg_temp.como('almacenero');
     set local role authenticated;
     perform test.debe_fallar($q$ select * from public.pago_directo_de_la_factura(pg_temp.id('fh')) $q$,
-      'Almacén no', 'Adquisiciones la ven');
+      'Almacén no', 'No tienes permiso para ver Adquisiciones');
     reset role;
     raise exception using errcode = 'Q4210', message = 'deshacer';
   exception when sqlstate 'Q4210' then null;
@@ -1647,7 +1676,7 @@ reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;
 select test.debe_fallar($$ select * from public.situacion_de_facturas_anexadas(array[pg_temp.id('dfac')]) $$,
-  'el desplegable es de quien ve Adquisiciones', 'Adquisiciones la ven');
+  'el desplegable es de quien ve Adquisiciones', 'No tienes permiso para ver Adquisiciones');
 reset role;
 
 -- Pagada de más: la factura se registró y se pagó en parte (S/ 300) sin anexo,
@@ -1698,7 +1727,7 @@ select test.afirmar(pg_temp.avisos('tesoreria', 'Compra pagada de más: ') = 1
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.debe_fallar($$ select public.anular_documento_compra(pg_temp.id('d12'), 'No era de esta OC, era de otra') $$,
-  'Tesorería no anula lo que anexa Logística', 'corresponde a Logística');
+  'Tesorería no anula lo que anexa Logística', 'No tienes permiso para anular documentos de compra');
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -3069,7 +3098,7 @@ set local role authenticated;
 select test.debe_fallar($$ select pg_temp.subir('documentos-servicio', 'os1') $$,
   'Almacén no sube documentos de la OS', 'row-level security');
 select test.debe_fallar($$ select public.adjuntar_documento_servicio(gen_random_uuid(), pg_temp.id('os1'), 'OTRO', null, 'x.pdf', 'x') $$,
-  'ni los anota', 'Logística y Tesorería');
+  'ni los anota', 'No tienes permiso para adjuntar documentos a la orden de servicio');
 select test.afirmar((select count(*) from public.documentos_orden_servicio) = 0
     and (select count(*) from storage.objects where bucket_id = 'documentos-servicio') = 0,
   'ni los ve');

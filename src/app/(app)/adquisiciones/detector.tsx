@@ -1,5 +1,6 @@
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { ControlDeFactura } from '@/lib/datos/adquisiciones'
+import { ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { avisosDelDetector, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
 import { moneda } from '@/lib/format'
 
@@ -17,7 +18,7 @@ export function avisosDeFacturaRegistrada(
     total: factura.total === null ? null : Number(factura.total),
     moneda: factura.moneda ?? 'PEN',
     numero: factura.numero_documento ?? '',
-    marcadas: control?.ordenes ?? [],
+    marcadas: (control?.ordenes ?? []).map(ocParaDetector),
   }).map((a) => textoDelAviso(a, (monto, m) => moneda(monto, m), { registrada: true }))
 }
 

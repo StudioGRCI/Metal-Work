@@ -11,6 +11,12 @@
  *   4. Logística, en el teléfono, ve la devolución en Órdenes de compra y dice
  *      que el que falta ya no viene: el RQ se parte y el nuevo insumo sale en
  *      su lista «por comprar», con «Se compra otra vez».
+ *   5. La devolución entra y su respuesta se pierde; con otra cantidad, la
+ *      ventana dice sin rojo que ya quedó, y la siguiente entra con un id nuevo.
+ *   6. Otra se pierde igual: «Cancelar», volver a abrir y escribir el motivo
+ *      antes de que la base conteste. La nota nombra cantidad, unidad, material
+ *      y guía; el motivo se queda con el cursor y el ingreso de aquella se
+ *      suelta.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * CAPTURAS y el correo de cada cuenta si no es la `<puesto>.local@metalwork.test`
@@ -21,6 +27,8 @@ import { join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+
+import { esConsultaDelEnvio } from './consulta-del-envio.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -51,6 +59,16 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+/** Lee hasta que se cumple o se acaba el tiempo: se espera a lo que pasa, no un tiempo fijo. */
+async function hasta(leer, cumple, ms = 15000) {
+  const fin = Date.now() + ms
+  let v = await leer()
+  while (!cumple(v) && Date.now() < fin) {
+    await new Promise((r) => setTimeout(r, 250))
+    v = await leer()
+  }
+  return v
+}
 
 // ---------------------------------------------------------------- siembra
 const SUFIJO = String(100000 + (Date.now() % 900000))
@@ -261,7 +279,8 @@ const pendienteDeLaOc = async () =>
   const { pagina, contexto } = await entrar(CUENTAS.almacen, { width: 390, height: 844 })
   const cdp = await contexto.newCDPSession(pagina)
   await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
-  const corte = { armado: null, cortadas: 0 }
+  // `retener`: la pregunta de la ventana al abrirse (`consultarEnvio`) llega a la base y su respuesta espera a `soltar()`.
+  const corte = { armado: null, cortadas: 0, retener: false, retenida: null, soltar: async () => {} }
   const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
   cdp.on('Fetch.requestPaused', async (e) => {
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
@@ -269,6 +288,11 @@ const pendienteDeLaOc = async () =>
       corte.armado = null
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
+    }
+    if (corte.retener && e.request.method === 'POST' && h['next-action'] && esConsultaDelEnvio(cuerpo(e.request), 'movimiento_almacen', { conIds: true })) {
+      corte.retenida = e.requestId
+      corte.soltar = () => cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
+      return
     }
     return cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
   })
@@ -320,6 +344,45 @@ const pendienteDeLaOc = async () =>
   await pagina.getByText('Devuelto al proveedor: la OC vuelve a esperar').waitFor({ timeout: 30000 }).catch(() => {})
   const [otra] = await consulta(`select count(*)::int as n from movimientos_materiales where id = $1 and documento_referencia = $2`, [id2, `${documento}-B`])
   comprobar(otra.n === 1, '[Almacén 390] y la devolución siguiente entra con ese id')
+
+  // 6. La nota llega con lo escrito ya en la ventana: la respuesta se pierde, «Cancelar», y al volver a abrir
+  //    se escribe el motivo antes de que la base conteste. La nota nombra la cantidad, la unidad, el material y la
+  //    guía; el motivo escrito se queda y el cursor no se va; el ingreso elegido para aquella se suelta
+  //    (decimoséptima pasada: el formulario se rehacía y borraba lo escrito, y la nota decía «1, con GR-…»).
+  const documentoC = `GR-NOTA-${SUFIJO}`
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  d = pagina.getByRole('dialog')
+  await d.waitFor()
+  await llenar(d, '0.2', documentoC)
+  corte.armado = documentoC
+  await d.getByRole('button', { name: 'Devolver' }).click()
+  await d.locator('[role="alert"]', { hasText: 'No llegó la respuesta' }).waitFor({ timeout: 30000 }).catch(() => {})
+  await d.getByRole('button', { name: 'Cancelar' }).click()
+  await d.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+  corte.retener = true
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  d = pagina.getByRole('dialog')
+  await d.waitFor()
+  const retenida = await hasta(() => corte.retenida, (r) => Boolean(r), 15000)
+  comprobar(Boolean(retenida), '[Almacén 390] la pregunta de la ventana se detiene hasta escribir el motivo')
+  const motivo = 'Llegó con la rosca dañada (banco, nota)'
+  await d.locator('#dev-motivo').fill(motivo)
+  corte.retener = false
+  await corte.soltar()
+  const nota = limpio(await hasta(() => d.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+  const tras = {
+    motivo: await d.locator('#dev-motivo').inputValue(),
+    cursor: await d.locator('#dev-motivo').evaluate((c) => document.activeElement === c),
+    ingreso: await d.locator('#dev-ingreso').inputValue(),
+  }
+  comprobar(nota.startsWith(`La devolución que enviaste antes sí quedó: 0.2 M de ${MATERIAL}, con ${documentoC}.`),
+    `[Almacén 390] la nota nombra la cantidad, la unidad, el material y la guía: «${nota}»`)
+  comprobar(tras.motivo === motivo && tras.cursor && tras.ingreso === '',
+    `[Almacén 390] el motivo escrito se queda con el cursor, y el ingreso elegido para aquella se suelta (${JSON.stringify(tras)})`)
+  await pagina.screenshot({ path: join(CAPTURAS, '6-nota-con-lo-escrito.png'), fullPage: true })
+  await d.getByRole('button', { name: 'Cancelar' }).click()
+  const deC = await consulta(`select count(*)::int as n from movimientos_materiales where documento_referencia = $1`, [documentoC])
+  comprobar(deC[0].n === 1, `[Almacén 390] la devolución de la nota queda una vez (${deC[0].n})`)
   await contexto.close()
 }
 

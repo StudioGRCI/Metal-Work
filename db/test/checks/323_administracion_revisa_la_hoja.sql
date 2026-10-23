@@ -6,7 +6,8 @@
 --   · la lectura: `puede_ver_hoja_de_area` no la contaba, y una tarea que el RLS
 --     esconde no se ve ni se aprueba —el UPDATE tocaba cero filas—;
 --   · el disparador del taller: en una OT del flujo nuevo, aprobar contestaba
---     «El reporte de la tarea corresponde al supervisor».
+--     «El reporte de la tarea corresponde al supervisor» (hoy, «No tienes permiso para
+--     registrar ni corregir el reporte de la tarea»).
 -- Aquí, con los roles reales: Administración ve la tarea y el reporte, lo observa
 -- y lo aprueba, pero no lo corrige; el supervisor no se aprueba solo y su
 -- corrección sin foto sigue rechazada; Tesorería no ve la hoja.
@@ -98,7 +99,7 @@ begin
     update public.ot_actividad_avances set revision = 'APROBADO' where id = v_reporte;
     raise exception 'FALLO: el supervisor aprobó su propio reporte';
   exception when others then
-    if sqlerrm not like 'Administración revisa los reportes%' then raise; end if;
+    if sqlerrm not like 'No tienes permiso para revisar estos reportes%' then raise; end if;
   end;
   reset role;
 
@@ -121,7 +122,7 @@ begin
     update public.ot_actividad_avances set nota = 'Corregida por Administración' where id = v_reporte;
     raise exception 'FALLO: Administración corrigió la nota del reporte del supervisor';
   exception when others then
-    if sqlerrm not like 'El reporte de la tarea corresponde al supervisor%' then raise; end if;
+    if sqlerrm not like 'No tienes permiso para registrar ni corregir el reporte de la tarea%' then raise; end if;
   end;
   reset role;
 

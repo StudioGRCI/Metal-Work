@@ -133,7 +133,8 @@ select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantid
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 5, "precio": 10, "insumos": ["{rq1.1}", "{rqa.1}"]}]'),
   'no se mezclan el de operación y el de Administración', 'mismo tipo');
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 5, "precio": 10, "insumos": ["{rqa.1}"]}]'),
-  'Logística no compra el de Administración', 'administradora');
+  'Logística no compra el de Administración',
+  'No tienes permiso para hacer la orden de compra de un requerimiento de Administración');
 select test.debe_fallar(pg_temp.comprar('oc1', '[{"material_id": "{m1}", "cantidad": 7, "precio": 10, "insumos": ["{rq1.1}"]},
                                               {"material_id": "{m2}", "cantidad": 2, "precio": 6, "insumos": ["{rq1.1}"]}]'),
   'un insumo va en una sola línea', 'una sola línea');
@@ -165,7 +166,7 @@ select test.afirmar(public.emitir_compra_de_requerimientos(current_setting('prue
 select test.afirmar((select count(*) from public.insumos_de_compras(array[current_setting('prueba.oc1')::uuid])) = 3,
   'Logística ve los tres insumos de la orden');
 select test.debe_fallar(pg_temp.comprar('oc2', '[{"material_id": "{m1}", "cantidad": 4, "precio": 10, "insumos": ["{rq1.1}"]}]'),
-  'un insumo que ya tiene su orden no va en otra', 'Ya va en otra orden');
+  'un insumo que ya tiene su orden no va en otra', 'Ya va en otra compra');
 reset role;
 -- La aprobación se decide al confirmar la transacción: se adelanta aquí.
 set constraints all immediate;

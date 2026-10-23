@@ -29,7 +29,7 @@ export function RegistrarPermiso({ personal, hoy }: { personal: Persona[]; hoy: 
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio()
+  const envio = useIdDelEnvio(undefined, undefined, 'registrar-permiso')
   return (
     <>
       <Boton
@@ -167,8 +167,8 @@ export function JustificarPermiso({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  // Con menos por justificar, aquel envío entró y este es otro (`useIdDelEnvio`).
-  const envio = useIdDelEnvio(porJustificar)
+  // El id sigue hasta saber cómo terminó, también tras recargar (`useIdDelEnvio`).
+  const envio = useIdDelEnvio(undefined, undefined, `justificar-permiso:${permisoId}`)
   const tope = Math.min(porJustificar, saldo)
   return (
     <>

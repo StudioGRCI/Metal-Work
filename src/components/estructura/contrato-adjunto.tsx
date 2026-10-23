@@ -6,11 +6,13 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
 import { ACEPTA_CONTRATO, MAXIMO_MB_CONTRATO, type ContratoAdjunto } from '@/lib/dominio/contratos'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha } from '@/lib/format'
 
 type Adjuntar = (datos: { id: string; ruta: string; nombre: string }) => Promise<ResultadoAccion>
@@ -95,7 +97,10 @@ function EnlaceContrato({ c, texto }: { c: ContratoAdjunto; texto: string }) {
 /**
  * Adjuntar el contrato después, o una versión nueva encima (una adenda, el
  * firmado que reemplaza al borrador). `adjuntar` es la acción de servidor ya
- * atada al subcontrato.
+ * atada al subcontrato. El id vive en el botón y no en el formulario, que se
+ * rehace al abrir (`useIdDelEnvio`): tras «No llegó la respuesta», cancelar y
+ * volver a abrir lleva el mismo, y la misma versión no entra dos veces; si
+ * aquella entró, la ventana lo dice y la siguiente lleva otro.
  */
 export function AdjuntarContrato({
   bucket,
@@ -113,6 +118,7 @@ export function AdjuntarContrato({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  const contrato = useIdDelEnvio('contrato_subcontrato', undefined, carpeta)
   return (
     <>
       <Boton
@@ -121,6 +127,7 @@ export function AdjuntarContrato({
         tamano="sm"
         onClick={() => {
           setAviso(null)
+          contrato.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -146,62 +153,64 @@ export function AdjuntarContrato({
         }
         ancho="md"
       >
-        <FormularioContrato
-          key={vez}
-          bucket={bucket}
-          carpeta={carpeta}
-          adjuntar={adjuntar}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
-          alCancelar={() => setAbierta(false)}
-        />
+        <EnvioAnterior texto={contrato.anterior} />
+        {contrato.id && (
+          <FormularioContrato
+            key={vez}
+            id={contrato.id}
+            bucket={bucket}
+            carpeta={carpeta}
+            adjuntar={adjuntar}
+            alSalir={contrato.salio}
+            alYaEntrar={contrato.otro}
+            alTerminar={(mensaje) => {
+              setAbierta(false)
+              contrato.otro()
+              setAviso(mensaje)
+            }}
+            alCancelar={() => setAbierta(false)}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioContrato({
+  id,
   bucket,
   carpeta,
   adjuntar,
+  alSalir,
+  alYaEntrar,
   alTerminar,
   alCancelar,
 }: {
+  /** Un reintento sube a la misma ruta y la base no duplica el contrato. */
+  id: string
   bucket: string
   carpeta: string
   adjuntar: Adjuntar
+  alSalir: () => void
+  alYaEntrar: () => void
   alTerminar: (mensaje: string) => void
   alCancelar: () => void
 }) {
-  // Decidido aquí: un reintento sube a la misma ruta y la base no duplica el contrato.
-  const [id] = useState(() => crypto.randomUUID())
   async function enviar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = sacarContrato(datos)
     if (!archivo) return { ok: false, error: 'Elige el archivo del contrato.' }
+    alSalir()
     return subirContrato({ bucket, carpeta, id, archivo, adjuntar })
   }
-  const { alEnviar, enviando, error } = useEnvio(enviar, (r) => alTerminar(r.mensaje ?? 'Contrato adjunto.'))
+  const { alEnviar, enviando, error } = useEnvio(enviar, (r) => alTerminar(r.mensaje ?? 'Contrato adjunto.'), { alYaEntrar })
   const campo = `contrato-${id.slice(0, 8)}`
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <Campo etiqueta="Contrato" htmlFor={campo} requerido>
         <ElegirArchivo id={campo} name="contrato" accept={ACEPTA_CONTRATO} hastaMb={MAXIMO_MB_CONTRATO} required />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando}>
-          Adjuntar
-        </Boton>
-      </div>
+      {/* Como las demás ventanas: el «ya quedó» sin rojo, con la ventana trabada y solo «Cerrar» (decimoséptima pasada). */}
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Adjuntar" />
     </form>
   )
 }

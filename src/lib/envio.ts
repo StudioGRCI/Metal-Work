@@ -1,7 +1,9 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
 
+import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
+import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
@@ -12,6 +14,13 @@ type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
  * mirar antes de repetirla.
  */
 export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira si quedó guardado antes de volver a intentar.'
+
+/** Con lo que se frena el envío desde una pantalla que es de otra cuenta (`useOtraCuentaEnLaPestana`). */
+class OtraCuentaEnLaPestana extends Error {
+  constructor() {
+    super('No se envió: esta pantalla es de la cuenta anterior. Recárgala para registrar con la cuenta que entró.')
+  }
+}
 
 /**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
@@ -24,6 +33,7 @@ export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira
  */
 export function explicarFallo(e: unknown): string {
   unstable_rethrow(e)
+  if (e instanceof OtraCuentaEnLaPestana) return e.message
   console.error(e)
   if (unstable_isUnrecognizedActionError(e)) {
     return 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
@@ -113,6 +123,13 @@ export function useAccion<T = never>(
 
   function ejecutar(datos: FormData) {
     if (enCurso.current) return
+    // La sesión es de la cuenta que entró en otra pestaña: lo que saliera de
+    // aquí entraría a su nombre. La ventana ya lo dice y no ofrece enviar
+    // (`PieDeVentana`); esto frena lo que no va en una ventana.
+    if (otraCuenta !== null) {
+      setResultado({ ok: false, error: new OtraCuentaEnLaPestana().message })
+      return
+    }
     enCurso.current = true
     setResultado(null)
     const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
@@ -135,7 +152,8 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          despuesDelRechazo(fallo, ventana, true)
+          // Lo que frena `salio()` no salió: no hay nada que poner al día al cerrar.
+          despuesDelRechazo(fallo, ventana, !(e instanceof OtraCuentaEnLaPestana))
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -215,36 +233,293 @@ export function useEnvio<T = never>(
 }
 
 /**
- * El id de un envío que vive fuera de su ventana (el pago de la tarjeta), con el
- * estado de la pantalla con que salió: el saldo, lo facturado, lo que queda a
- * favor. Se conserva hasta saber cómo terminó: tras «No llegó la respuesta»,
+ * El id de un envío que vive fuera de su ventana (el pago de la tarjeta, la OS,
+ * el RQ). Se conserva hasta saber cómo terminó: tras «No llegó la respuesta»,
  * cancelar y volver a abrir lleva el mismo, y lo repetido dice que ya quedó en
- * vez de entrar dos veces (decimocuarta pasada). Pero si al volver a abrir la
- * pantalla ya cambió —el saldo bajó—, aquel envío entró y este es otro: con el
- * mismo id, pagar lo que faltaba decía «ya quedó» y no se registraba
- * (decimoquinta pasada). Si la pantalla todavía no se puso al día, sale el
- * mismo id: lo peor es un «ya quedó» que se cierra, nunca un pago doble.
+ * vez de entrar dos veces (decimocuarta pasada).
+ *
+ * Al volver a abrir se pregunta a la base si aquel envío entró
+ * (`consultarEnvio`). Si entró, lo que se escriba ahora es otro documento u otro
+ * pago: con el mismo id, la OS, el RQ o el subcontrato siguiente decía «ya
+ * quedó» y no se guardaba, aunque la lista ya mostrara el primero (decimosexta
+ * pasada). Entonces la ventana dice cuál quedó (`anterior`) y lleva un id nuevo.
+ * Mientras la base no contesta, o si no entró, sigue el mismo: lo peor es un «ya
+ * quedó» que se cierra, nunca un documento doble. Antes se adivinaba por el
+ * estado de la pantalla —el saldo había bajado—, y tras ponerse al día el mismo
+ * pago entraba dos veces sin que nada lo dijera (decimosexta pasada). La nota
+ * se queda hasta el envío siguiente, también al cerrar y volver a abrir: se
+ * borraba al abrir, y si la respuesta había llegado con la ventana cerrada, la
+ * ventana salía muda con un id nuevo y lo mismo enviado otra vez entraba dos
+ * veces (decimoséptima pasada).
+ *
+ * Sin `clave` no se pregunta: es el id de algo que sale con el documento (su
+ * factura, su contrato), y se renueva con él (`alEntrar`). Con `donde`, se
+ * guarda en la pestaña como el del documento: tras una recarga, su archivo
+ * vuelve a la misma ruta y no queda uno suelto.
+ *
+ * El id pendiente se guarda también en la pestaña (`sessionStorage`), por
+ * `clave` y por `donde` —la fila de la ventana: la OC que se paga, el recibo—,
+ * porque al cerrar tras «No llegó la respuesta» la pantalla se pone al día, y si
+ * ese refresco no llega (sin señal, el servidor que reinicia, un despliegue),
+ * Next recarga la página entera. La memoria se borraba, la ventana no
+ * preguntaba y el mismo pago o el mismo RQ entraba dos veces (decimoctava
+ * pasada). `donde` separa las filas: sin él, el pendiente de una OC lo tomaba la
+ * ventana de otra.
+ *
+ * Y va por la cuenta con que se pintó la pantalla (`entroLaCuenta`), pero lo
+ * juzga quien lo registró. Al abrir se pregunta por lo pendiente de ese lugar
+ * con todas las cuentas que pasaron por la pestaña, y la base contesta con la
+ * cuenta de la sesión (vigésima pasada):
+ * - Lo que quedó registrado por la sesión se le dice, aunque se haya mandado
+ *   desde una pantalla pintada con otra cuenta: antes la llave de esa cuenta no
+ *   se leía y la OC entraba dos veces.
+ * - Lo que otra cuenta registró con lo pendiente de otra llave no se le cuenta
+ *   ni se toca: si la primera vuelve, lo suyo sigue pendiente (decimonovena
+ *   pasada). Lo pendiente de la llave de esta pantalla sí se dice aunque lo haya
+ *   registrado otra: salió de aquí. Va con su número y con el puesto de quien
+ *   tenía la sesión (vigesimoprimera pasada).
+ * - Si la sesión no es la de la pantalla, en otra pestaña entró otra cuenta: la
+ *   pestaña se traba hasta recargar (`useOtraCuentaEnLaPestana`). Se pregunta al
+ *   abrir aunque no haya nada pendiente: sin eso, la pestaña vieja sin nada
+ *   pendiente enviaba con la sesión nueva (vigesimoprimera pasada). La pregunta
+ *   tarda lo que tarda la base; lo que se envíe antes de que conteste sale con la
+ *   sesión que haya, como antes. Lo normal es que la pestaña ya lo sepa por el
+ *   aviso de la otra (`entroLaCuenta`).
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
- * `otro()` con el ok y con `alYaEntrar`.
+ * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
+ * (`EnvioAnterior`).
  */
-export function useIdDelEnvio(estado?: string | number) {
+export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuentas) => void, donde = '') {
   const [id, setId] = useState<string | null>(null)
-  const enviado = useRef<{ id: string; estado: string | number | undefined } | null>(null)
+  const [anterior, setAnterior] = useState<string | null>(null)
+  // El id que salió sin que se sepa cómo terminó, y de qué cuenta.
+  const pendiente = useRef<{ cuenta: string | null; id: string } | null>(null)
+  // Cambia con cada apertura y cada envío: la respuesta de una consulta vieja no pisa lo que vino después.
+  const turno = useRef(0)
+  const lugar = clave ? `${clave}:${donde}` : donde
+  function llave(cuenta = cuentaDeLaPestana) {
+    if (!cuenta || !lugar) return null
+    return `${PENDIENTE}${cuenta}:${lugar}`
+  }
+  function anotar(valor: string | null) {
+    pendiente.current = valor ? { cuenta: cuentaDeLaPestana, id: valor } : null
+    const enLaPestana = llave()
+    if (enLaPestana) guardarEnLaPestana(enLaPestana, valor)
+  }
+  function nuevo() {
+    turno.current++
+    setAnterior(null)
+    anotar(null)
+    setId(crypto.randomUUID())
+  }
   return {
     id,
+    anterior,
     abrir() {
-      const previo = enviado.current
-      setId(previo && previo.estado === estado ? previo.id : crypto.randomUUID())
+      // Tras una recarga la memoria está vacía, y lo pendiente sigue en la pestaña.
+      const cuenta = cuentaDeLaPestana
+      const propia = llave(cuenta)
+      const enMemoria = pendiente.current?.cuenta === cuenta ? pendiente.current.id : null
+      const previo = enMemoria ?? (propia ? leerDeLaPestana(propia) : null)
+      pendiente.current = previo ? { cuenta, id: previo } : null
+      const este = ++turno.current
+      setId(previo ?? crypto.randomUUID())
+      if (!clave) return
+      // Lo que quedó pendiente aquí con otras cuentas: lo mandado desde una
+      // pantalla pintada con otra cuenta quedó en la llave de esa.
+      const ajenos = lugar ? pendientesEnLaPestana(lugar).filter((p) => p.llave !== propia && p.id !== previo) : []
+      const ids = [...(previo ? [previo] : []), ...ajenos.map((p) => p.id)].slice(0, MAXIMO_PENDIENTES)
+      const visto = noticias
+      consultarEnvio(clave, ids).then(
+        (respuesta) => {
+          if (!respuesta || !cuenta) return
+          const deOtra = respuesta.cuenta !== cuenta
+          // Si mientras tanto llegó otra noticia de la sesión, vale esa.
+          if (noticias === visto) marcarOtraCuenta(deOtra ? textoOtraCuenta(respuesta.puesto) : null)
+          // Lo pendiente lo resuelve la pantalla pintada con la cuenta que entró.
+          if (deOtra || turno.current !== este) return
+          const propios: LoQueEntro[] = []
+          let deOtraCuenta: LoQueEntro | null = null
+          const entraron: (string | null)[] = []
+          const suyo = previo ? respuesta.entraron[previo] : undefined
+          if (suyo) {
+            // Entró, con esta cuenta o con la que había en la sesión al enviarlo.
+            anotar(null)
+            setId(crypto.randomUUID())
+            if (suyo.autor) deOtraCuenta = suyo
+            else propios.push(suyo)
+            entraron.push(cuenta)
+          }
+          for (const p of ajenos) {
+            const lo = respuesta.entraron[p.id]
+            if (!lo || lo.autor) continue
+            soltarDeLaPestana(p.llave, p.id)
+            propios.push(lo)
+            entraron.push(p.cuenta)
+          }
+          if (entraron.length === 0) return
+          setAnterior(contarLoQueEntro(propios, deOtraCuenta))
+          alEntrar?.(entraron)
+        },
+        // Sin respuesta tampoco se sabe: sigue el mismo id.
+        () => {},
+      )
     },
     salio() {
-      if (id) enviado.current = { id, estado }
+      if (otraCuenta !== null) throw new OtraCuentaEnLaPestana()
+      turno.current++
+      setAnterior(null)
+      if (id) anotar(id)
     },
-    otro() {
-      enviado.current = null
-      setId(crypto.randomUUID())
+    /**
+     * Un id nuevo. Con `cuentas` —las de los envíos que, al abrir, la base dijo
+     * que entraron (`alEntrar`)—, solo si entre ellas está la de la pantalla; de
+     * las otras se suelta lo pendiente de este lugar: el comprobante de la OC
+     * que entró desde la pantalla de otra cuenta, que esa cuenta volvería a usar.
+     */
+    otro(cuentas?: Cuentas) {
+      if (!cuentas) return nuevo()
+      for (const otra of cuentas) {
+        const suya = otra && otra !== cuentaDeLaPestana ? llave(otra) : null
+        if (suya) guardarEnLaPestana(suya, null)
+      }
+      if (cuentas.includes(cuentaDeLaPestana)) nuevo()
     },
   }
+}
+
+/** Las cuentas cuyos envíos pendientes entraron: `null`, la pantalla sin cuenta todavía. */
+type Cuentas = readonly (string | null)[]
+
+const PENDIENTE = 'metal-work:envio-pendiente:'
+const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// La pestaña puede no dejar guardar (navegación privada, almacenamiento lleno):
+// entonces vale solo la memoria, como antes.
+function leerDeLaPestana(llave: string): string | null {
+  try {
+    const valor = sessionStorage.getItem(llave)
+    return valor && ES_UUID.test(valor) ? valor : null
+  } catch {
+    return null
+  }
+}
+
+function guardarEnLaPestana(llave: string, valor: string | null) {
+  try {
+    if (valor) sessionStorage.setItem(llave, valor)
+    else sessionStorage.removeItem(llave)
+  } catch {}
+}
+
+/** Lo pendiente de ese lugar con cada cuenta que pasó por la pestaña: `<PENDIENTE><cuenta>:<lugar>`. */
+function pendientesEnLaPestana(lugar: string): { llave: string; cuenta: string; id: string }[] {
+  const hallados: { llave: string; cuenta: string; id: string }[] = []
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const llave = sessionStorage.key(i)
+      if (!llave?.startsWith(PENDIENTE)) continue
+      const cuenta = llave.slice(PENDIENTE.length, PENDIENTE.length + 36)
+      if (!ES_UUID.test(cuenta) || llave.slice(PENDIENTE.length + 36) !== `:${lugar}`) continue
+      const id = leerDeLaPestana(llave)
+      if (id && !hallados.some((h) => h.id === id)) hallados.push({ llave, cuenta, id })
+    }
+  } catch {}
+  return hallados
+}
+
+/** Suelta lo pendiente de esa llave si sigue siendo ese id. */
+function soltarDeLaPestana(llave: string, id: string) {
+  if (leerDeLaPestana(llave) === id) guardarEnLaPestana(llave, null)
+}
+
+let cuentaDeLaPestana: string | null = null
+let puestoDeLaPestana = ''
+
+/**
+ * La cuenta con la que se pintó la pantalla (`CuentaDeLaPestana`, en el layout).
+ * Lo pendiente se guarda con ella: si en la pestaña entra otra persona, su
+ * ventana no reusa ese id, y si vuelve la primera, lo suyo sigue pendiente. Se
+ * toma del servidor y no del ingreso: se entra también por el enlace de
+ * recuperación, y en otra pestaña. Solo la pone el layout: la respuesta de la
+ * base con otra cuenta no la cambia, porque la pantalla sigue siendo la de antes.
+ *
+ * Y se avisa a las otras pestañas del navegador, que comparten la sesión: la
+ * que se pintó con otra cuenta se traba al momento (`useOtraCuentaEnLaPestana`),
+ * y se destraba si la suya vuelve a entrar. Pintarse con la sesión también la
+ * destraba: la pantalla ya es de esa cuenta.
+ */
+export function entroLaCuenta(usuario: string, puesto: string) {
+  cuentaDeLaPestana = usuario
+  puestoDeLaPestana = puesto
+  marcarOtraCuenta(null)
+  // Sin `BroadcastChannel` (o sin dejar usarlo) queda la pregunta al abrir (`useIdDelEnvio`).
+  try {
+    if (!canal) {
+      canal = new BroadcastChannel(CANAL)
+      canal.onmessage = ({ data }: MessageEvent<{ usuario?: unknown; puesto?: unknown }>) => {
+        if (!cuentaDeLaPestana || typeof data?.usuario !== 'string') return
+        const puestoQueEntro = typeof data.puesto === 'string' ? data.puesto : ''
+        marcarOtraCuenta(data.usuario === cuentaDeLaPestana ? null : textoOtraCuenta(puestoQueEntro))
+      }
+    }
+    canal.postMessage({ usuario, puesto })
+  } catch {}
+}
+
+const CANAL = 'metal-work:cuenta'
+let canal: BroadcastChannel | null = null
+
+/**
+ * Lo que dice la pantalla si en otra pestaña del mismo navegador entró otra
+ * cuenta: la sesión ya es de ella, y esta pantalla, pintada con la anterior,
+ * enviaría a su nombre. El egreso, la OC o el recibo entraban con la otra
+ * persona sin que nada lo dijera, y con lo que esa no puede ver salía «No
+ * tienes permiso» (vigésima y vigesimoprimera pasada). Mientras dure, las
+ * ventanas se traban y solo ofrecen recargar (`PieDeVentana`) y nada se envía
+ * (`useAccion`).
+ */
+let otraCuenta: string | null = null
+// Cuenta las noticias de la sesión: la respuesta de una pregunta que salió antes no pisa lo que llegó después.
+let noticias = 0
+const vigias = new Set<() => void>()
+
+function marcarOtraCuenta(texto: string | null) {
+  noticias++
+  if (otraCuenta === texto) return
+  otraCuenta = texto
+  for (const avisar of vigias) avisar()
+}
+
+function vigilar(avisar: () => void) {
+  vigias.add(avisar)
+  return () => {
+    vigias.delete(avisar)
+  }
+}
+
+/** El aviso de que en otra pestaña entró otra cuenta, o `null` si esta pantalla es de la sesión. */
+export function useOtraCuentaEnLaPestana() {
+  return useSyncExternalStore(
+    vigilar,
+    () => otraCuenta,
+    () => null,
+  )
+}
+
+/**
+ * Con el puesto de las dos cuentas, que es como las nombra el menú: «en otra
+ * pestaña entró otra cuenta» no decía cuál, y quien recargaba sin saberlo caía
+ * en «No tienes acceso» (vigesimoprimera pasada). Volver a entrar con la primera
+ * en esa pestaña destraba esta sin perder lo escrito.
+ */
+function textoOtraCuenta(puestoQueEntro: string) {
+  const pintada = puestoDeLaPestana
+  if (!puestoQueEntro || !pintada || puestoQueEntro === pintada) {
+    return 'En otra pestaña entró otra cuenta y esta pantalla es de la anterior: desde aquí no se envía nada. Recarga para seguir con la que entró, o vuelve a entrar con la anterior en esa pestaña para seguir aquí.'
+  }
+  return `Esta pantalla es de la cuenta de ${pintada}, y en otra pestaña entró la de ${puestoQueEntro}: desde aquí no se envía nada. Recarga para seguir con ${puestoQueEntro}, o vuelve a entrar con ${pintada} en esa pestaña para seguir aquí.`
 }
 
 /**

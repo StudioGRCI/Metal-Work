@@ -292,7 +292,7 @@ export async function validarReporteDiario(_previo: unknown, formulario: FormDat
   const analisis = z.object({ id: z.guid(), lado: LADO }).safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const { id, lado } = analisis.data
-  if (!daElVisto(perfil, lado)) return { ok: false, error: `El visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} lo da esa área.` }
+  if (!daElVisto(perfil, lado)) return { ok: false, error: `No tienes permiso para dar el visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'}.` }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('validar_reporte_diario', { p_id: id, p_lado: lado })
@@ -320,7 +320,7 @@ export async function observarReporteDiario(_previo: unknown, formulario: FormDa
     .safeParse({ id: dato(formulario, 'id'), lado: dato(formulario, 'lado'), motivo: dato(formulario, 'motivo') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
   const { id, lado, motivo } = analisis.data
-  if (!daElVisto(perfil, lado)) return { ok: false, error: `Como ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'} observa esa área.` }
+  if (!daElVisto(perfil, lado)) return { ok: false, error: 'No tienes permiso para observar este reporte.' }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('observar_reporte_diario', { p_id: id, p_lado: lado, p_motivo: motivo })
@@ -339,7 +339,7 @@ export async function observarReporteDiario(_previo: unknown, formulario: FormDa
 export async function anularReporteDiario(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['reporte_diario.registrar', 'rrhh.personal'])) {
-    return { ok: false, error: 'Solo quien subió el reporte o Recursos Humanos lo pueden anular.' }
+    return { ok: false, error: 'No tienes permiso para anular este reporte.' }
   }
 
   const analisis = z

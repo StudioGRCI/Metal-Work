@@ -64,13 +64,13 @@ export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabaja
  * «Permisos», que también descuenta de aquí. El id vive aquí y no llega con la
  * página (`useIdDelEnvio`): tras «No llegó la respuesta», cerrar pone la
  * pantalla al día, y con el id de la página la ventana siguiente llevaba otro y
- * el mismo uso entraba dos veces. Con otro saldo a la vista, aquel entró y este
- * es otro.
+ * el mismo uso entraba dos veces. Ahora sigue el mismo hasta saber cómo terminó,
+ * también tras recargar, y la base dice si aquel ya quedó.
  */
 export function UsarSaldo({ trabajadorId, nombre, saldo, hoy }: { trabajadorId: string; nombre: string; saldo: number; hoy: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useIdDelEnvio(saldo)
+  const envio = useIdDelEnvio(undefined, undefined, `usar-saldo:${trabajadorId}`)
   return (
     <>
       <Boton

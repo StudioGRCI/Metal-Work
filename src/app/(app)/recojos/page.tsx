@@ -93,9 +93,10 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
   return (
     <Tarjeta>
       <TarjetaCabecera
-        titulo={r.recojo === 'POR_RECOGER' && r.lugar ? `${r.lugar}.º · ${r.numero} · ${r.proveedor}` : `${r.numero} · ${r.proveedor}`}
+        // La OC de antes de la serie no tiene número: «OC sin número», y la referencia que el proveedor reconoce.
+        titulo={`${r.recojo === 'POR_RECOGER' && r.lugar ? `${r.lugar}.º · ` : ''}${r.numero ?? 'OC sin número'} · ${r.proveedor}`}
         descripcion={[
-          r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
+          r.numero === null ? `Ref. del proveedor: ${r.referencia}` : r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
           r.codigo_interno ? `Para ${r.codigo_interno}` : null,
           r.origen === 'DIRECTA' ? 'Para el almacén' : r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
           r.fecha_estimada ? `Lista desde ${fecha(r.fecha_estimada)}` : null,
@@ -193,7 +194,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
 
         {/* Sale a recoger solo lo que Logística le programó; la base también lo exige. */}
         {conductor && SIGUIENTE_PASO[r.recojo] && (r.recojo !== 'POR_RECOGER' || r.en_lista) && (
-          <PasoRecojo id={r.id} numero={r.numero} paso={SIGUIENTE_PASO[r.recojo]} />
+          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>

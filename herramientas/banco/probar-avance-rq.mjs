@@ -14,7 +14,8 @@
  *   6. «Ya la recogí» y «La dejé en almacén»: el RQ sube a 70 % y a 80 %.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
- * cuenta si no son `*@local.test`.
+ * cuenta si no son las `*.local@metalwork.test` que siembra `preparar.sh`. La de
+ * Supervisión es la del área del RQ: un supervisor solo ve los de su área.
  */
 import { mkdirSync } from 'node:fs'
 
@@ -26,14 +27,10 @@ const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
-const CUENTAS = {
-  requerimientos: process.env.REQUERIMIENTOS ?? 'requerimientos@local.test',
-  almacen: process.env.ALMACEN ?? 'almacen@local.test',
-  logistica: process.env.LOGISTICA ?? 'logistica@local.test',
-  gerencia: process.env.GERENCIA ?? 'gerencia@local.test',
-  supervisor: process.env.SUPERVISOR ?? 'supervisor@local.test',
-  conductor: process.env.CONDUCTOR ?? 'conductor@local.test',
-}
+const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
+const CUENTAS = Object.fromEntries(['requerimientos', 'almacen', 'logistica', 'gerencia', 'conductor'].map((p) => [p, cuenta(p)]))
+// La del supervisor se elige con el área del RQ, en el paso 1.
+const SUPERVISION_DEL_AREA = { Maestranza: 'sup.mtz', Producción: 'sup.prd', Acabados: 'sup.acb' }
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -106,6 +103,10 @@ async function mirarRq(cuenta, ruta, captura) {
   await pagina.getByRole('button', { name: 'Nuevo requerimiento' }).click()
   const ventana = pagina.locator('[role="dialog"]')
   await ventana.locator('#rq-area').selectOption({ index: 1 })
+  const area = (await ventana.locator('#rq-area option:checked').innerText()).trim()
+  const sup = Object.entries(SUPERVISION_DEL_AREA).find(([nombre]) => area.includes(nombre))?.[1]
+  CUENTAS.supervisor = process.env.SUPERVISOR ?? (sup ? `${sup}.local@metalwork.test` : '')
+  comprobar(CUENTAS.supervisor !== '', `hay supervisor para el área del RQ (${area})`)
   await escribirCodigo(ventana.locator('#rq-codigo'), `PLA_SR_O4_1_26/${sello.slice(-2)}`)
   await ventana.locator('#rq-justificacion').fill('Armado del chasis de la plataforma; no hay planchas en almacén.')
   // Desde #98 cada insumo se elige del catálogo de Almacén; estos se piden como material nuevo.

@@ -7,10 +7,11 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { AreaSolicitante, OtParaLogistica } from '@/lib/datos/logistica'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
@@ -51,10 +52,11 @@ export function NuevaOrdenServicio({
   // Los ids de la orden y de su contrato viven aquí, fuera del formulario que
   // se rehace al abrir: tras «No llegó la respuesta», cancelar y volver a abrir
   // lleva los mismos, y la base no emite otra OS numerada con lo mismo. Antes
-  // nacían con el formulario y salían OS-415 y OS-416 iguales (decimoquinta
-  // pasada). Se renuevan con el ok o cuando la base dice que ya quedó.
-  const orden = useIdDelEnvio()
-  const contrato = useIdDelEnvio()
+  // nacían con el formulario y salían dos OS numeradas iguales (decimoquinta
+  // pasada). Se renuevan con el ok, cuando la base dice que ya quedó o cuando,
+  // al volver a abrir, la base dice que aquella OS entró.
+  const contrato = useIdDelEnvio(undefined, undefined, 'contrato-de-la-os')
+  const orden = useIdDelEnvio('orden_servicio', (cuentas) => contrato.otro(cuentas))
   const [aviso, setAviso] = useState<string | null>(null)
   // La OS entró pero su contrato no: se dice por qué y dónde adjuntarlo.
   const [faltaContrato, setFaltaContrato] = useState<string | null>(null)
@@ -91,6 +93,7 @@ export function NuevaOrdenServicio({
         descripcion="Un trabajo que hace un tercero. El número OS-…-MW lo pone el sistema y Gerencia la aprueba antes de que el proveedor empiece."
         ancho="lg"
       >
+        <EnvioAnterior texto={orden.anterior} />
         {orden.id && contrato.id && (
           <FormularioServicio
             key={vez}
@@ -175,6 +178,12 @@ function FormularioServicio({
 
     alSalir()
     const emitida = await emitirOrdenServicio(previo, datos)
+    // Con «ya quedó» la OS es la de la primera vez y el contrato no sube: se dice
+    // dónde adjuntarlo. El aviso decía solo que lo cambiado no se guardó, y quien
+    // cambió el monto no entendía que el contrato tampoco (decimosexta pasada).
+    if (!emitida.ok && contrato && yaEntroLaPrimeraVez(emitida.error)) {
+      return { ok: false, error: `${yaEntroEnLaVentana(emitida.error)} El contrato que elegiste no se adjuntó: adjúntalo desde la fila de la orden, con «Adjuntar documento».` }
+    }
     if (!emitida.ok || !contrato) return emitida
     const documento = new FormData()
     documento.set('id', contratoId)

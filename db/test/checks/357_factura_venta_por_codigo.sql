@@ -291,7 +291,7 @@ do $$ begin
   set local role authenticated;
   perform test.afirmar((select count(*) from public.facturas_venta) = 0 and (select count(*) from public.cobros_factura_venta) = 0,
     'Logística no ve facturas de venta ni cobros');
-  perform test.debe_fallar('select * from public.cotizaciones_para_facturar()', 'ni las cotizaciones por facturar', 'Contabilidad y Tesorería');
+  perform test.debe_fallar('select * from public.cotizaciones_para_facturar()', 'ni las cotizaciones por facturar', 'No tienes permiso para ver las cotizaciones aprobadas');
   perform test.afirmar((select count(*) from storage.objects where bucket_id = 'cobros-venta' and name = current_setting('prueba.c1_ruta')) = 0,
     'ni los vouchers');
   perform test.debe_fallar(format('insert into storage.objects (bucket_id, name, owner_id, metadata) values (''facturas-venta'', %L, %L, ''{}'')',
@@ -325,7 +325,7 @@ do $$ begin
     and (select count(*) from public.cotizaciones_pdf_versiones where cotizacion_id = current_setting('prueba.cot1')::uuid) = 0
     and (select count(*) from public.facturas_venta) = 0,
     'Supervisión General ya no ve la cotización ni sus facturas');
-  perform test.debe_fallar('select * from public.cotizaciones_para_facturar()', 'ni la bandeja de facturación', 'Contabilidad y Tesorería');
+  perform test.debe_fallar('select * from public.cotizaciones_para_facturar()', 'ni la bandeja de facturación', 'No tienes permiso para ver las cotizaciones aprobadas');
   reset role;
   perform test.como_usuario(current_setting('prueba.diseno')::uuid);
   set local role authenticated;

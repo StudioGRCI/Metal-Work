@@ -14,7 +14,7 @@ import { marcarRecojo } from './acciones'
  * recogí» y «La dejé en almacén». El último pide confirmar: después de eso
  * Almacén recibe el ingreso y el paso no se deshace.
  */
-export function PasoRecojo({ id, numero, paso }: { id: string; numero: string; paso: 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO' }) {
+export function PasoRecojo({ id, nombre, paso }: { id: string; nombre: string; paso: 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO' }) {
   const [confirmando, setConfirmando] = useState(false)
   const accion = useAccion(marcarRecojo, () => setConfirmando(false))
 
@@ -51,7 +51,7 @@ export function PasoRecojo({ id, numero, paso }: { id: string; numero: string; p
       <Ventana
         abierta={confirmando}
         alCerrar={() => setConfirmando(false)}
-        titulo={`¿Dejaste ${numero} en almacén?`}
+        titulo={`¿Dejaste ${nombre} en almacén?`}
         descripcion="Almacén recibe el ingreso para validarlo contra lo que entregaste. Esto no se deshace."
         ancho="sm"
       >

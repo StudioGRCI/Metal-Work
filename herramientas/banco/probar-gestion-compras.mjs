@@ -17,24 +17,32 @@
  *   6. Contabilidad anula la guía con motivo desde Adquisiciones: al conductor
  *      le vuelve a decir que falta, y la anulada queda contada.
  *
- * Necesita al menos tres OC aprobadas que Logística todavía no programa, y la
- * lista del conductor vacía (`probar-adquisiciones-compras.mjs` siembra las OC).
- * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos de cada
- * cuenta si no son `*@local.test`.
+ *   7. Logística saca la segunda de la lista con «Sacar de la lista»: vuelve
+ *      a «Por programar».
+ *
+ * Siembra sus tres OC aprobadas (Logística las emite y Gerencia las aprueba,
+ * con las funciones de la base) y las sigue por su número. Necesita la lista
+ * del conductor sin pendientes: las que ya estaban en ella las saca Logística
+ * al empezar, con la misma función que «Sacar de la lista», y al terminar saca
+ * la suya y las devuelve en su orden y con su peso, también si la prueba se cae
+ * a medio camino: en un banco compartido son de otro. Las que van en recojo o
+ * ya recogidas no se tocan: no llevan lugar y la prueba solo mira las que lo
+ * llevan.
+ * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE y los
+ * correos de cada cuenta si no son las `*.local@metalwork.test` que siembra
+ * `preparar.sh`.
  */
 import { mkdirSync } from 'node:fs'
 
+import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
-const CUENTAS = {
-  logistica: process.env.LOGISTICA ?? 'comprador@local.test',
-  contabilidad: process.env.CONTABILIDAD ?? 'contabilidad@local.test',
-  conductor: process.env.CONDUCTOR ?? 'conductor@local.test',
-}
+const cuenta = (puesto) => process.env[puesto.toUpperCase()] ?? `${puesto}.local@metalwork.test`
+const CUENTAS = Object.fromEntries(['logistica', 'contabilidad', 'conductor', 'gerencia'].map((p) => [p, cuenta(p)]))
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -46,6 +54,145 @@ function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
   if (!cond) fallas.push(texto)
 }
+
+const CONEXION = {
+  host: process.env.PGHOST ?? '/tmp',
+  port: Number(process.env.PGPORT ?? 5433),
+  user: process.env.PGUSER ?? 'postgres',
+  database: process.env.BANCO_BASE ?? 'mw_demo',
+}
+const base = new pg.Client(CONEXION)
+await base.connect()
+const consulta = async (sql, valores = []) => (await base.query(sql, valores)).rows
+
+// ---------------------------------------------------------------- siembra
+const SUFIJO = String(100000 + (Date.now() % 900000))
+const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
+for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
+/** Lo que hace la sesión de esa cuenta: los disparadores y las funciones leen el usuario de aquí. */
+async function como(puesto, en = consulta) {
+  const sub = ids[CUENTAS[puesto]]
+  await en(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claim.role', 'authenticated', false),
+                  set_config('request.jwt.claims', $2, false)`, [sub, JSON.stringify({ sub, role: 'authenticated' })])
+}
+/**
+ * Lo que se hace como Logística para dejar la lista como estaba, en una
+ * conexión propia: la del flujo principal cambia de cuenta y vacía la sesión, y
+ * una señal que llegaba en medio dejaba a `programar_recojo` sin usuario y las
+ * de antes fuera de la lista (vigésima pasada).
+ */
+async function comoLogistica(trabajo) {
+  const propia = new pg.Client(CONEXION)
+  await propia.connect()
+  try {
+    const en = async (sql, valores = []) => (await propia.query(sql, valores)).rows
+    await como('logistica', en)
+    return await trabajo(en)
+  } finally {
+    await propia.end().catch(() => {})
+  }
+}
+
+let ruc
+while (!ruc) {
+  const prefijo = `20${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`
+  ;[ruc] = await consulta(
+    `select n from (select $1 || d as n from generate_series(0, 9) d) x
+      where public.ruc_es_valido(n) and not exists (select 1 from proveedores p where p.numero_documento = n) limit 1`,
+    [prefijo],
+  )
+}
+const [{ id: proveedor }] = await consulta(
+  `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. de prueba 789, Lima', '999 000 333') returning id`,
+  [ruc.n, `PROVEEDOR GESTION ${SUFIJO}`],
+)
+const [material] = await consulta(`select id from materiales where activo and not coalesce(unidad_pendiente, false) order by codigo limit 1`)
+if (!material) throw new Error('El banco no tiene materiales.')
+await como('logistica')
+const sembradas = []
+for (let i = 1; i <= 3; i++) {
+  const [{ id }] = await consulta(
+    `select public.emitir_compra_directa(gen_random_uuid(), $1, $2, 'Reposición del almacén, prueba de la gestión', $3::jsonb,
+                                         current_date + 5, 'CONTADO', 0, 'PEN', false, 'PLANTA') as id`,
+    [proveedor, `COT-GES-${SUFIJO}-${i}`, JSON.stringify([{ material_id: material.id, cantidad: 2, precio: 80 }])],
+  )
+  sembradas.push(id)
+}
+await como('gerencia')
+for (const id of sembradas) await consulta(`select public.aprobar_compra($1)`, [id])
+const porId = Object.fromEntries((await consulta(`select id, numero from ordenes_compra_materiales where id = any($1)`, [sembradas])).map((f) => [f.id, f.numero]))
+const [ocA, ocB, ocC] = sembradas.map((id) => porId[id])
+const idDe = Object.fromEntries(sembradas.map((id) => [porId[id], id]))
+
+// La lista sin pendientes de antes: Logística las saca, como con «Sacar de la lista», y
+// al terminar las devuelve en su orden y con su peso (`devolverLasDeAntes`).
+await como('logistica')
+const dejadas = await consulta(
+  `select c.id, c.numero, p.peso_kg from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
+    where p.posicion is not null and c.recojo = 'POR_RECOGER' order by p.posicion`,
+)
+let devolviendo = null
+/**
+ * Las de antes vuelven al final de la lista en el orden en que estaban: «Poner
+ * en la lista» con su peso. Una sola vez, y quien llegue después espera a esa:
+ * una señal a mitad de la devolución cortaba el bucle con `process.exit` y
+ * volvía una de cuatro (decimonovena pasada).
+ */
+function devolverLasDeAntes() {
+  devolviendo ??= comoLogistica(async (en) => {
+    for (const d of dejadas) {
+      await en(
+        `select public.programar_recojo(c.id, $2) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+          where c.id = $1 and c.recojo = 'POR_RECOGER' and p.posicion is null`,
+        [d.id, d.peso_kg],
+      )
+    }
+  })
+  return devolviendo
+}
+/**
+ * Las suyas fuera de la lista: la siguiente vuelta las tomaría por ajenas y las
+ * devolvería para siempre. La que ya salió a recogerla no lleva lugar.
+ */
+function sacarLasSuyas() {
+  return comoLogistica((en) =>
+    en(
+      `select public.quitar_recojo_de_la_lista(c.id) from ordenes_compra_materiales c join programacion_recojo p on p.orden_compra_id = c.id
+        where c.id = any($1) and c.recojo = 'POR_RECOGER' and p.posicion is not null`,
+      [sembradas],
+    ),
+  )
+}
+// Si la prueba se cae a medio camino, o la cortan (Ctrl+C, `timeout`), la lista
+// no se queda sin las de antes ni con las suyas: `uncaughtException` no ve las
+// señales, y con `timeout` las de otros no volvían (decimoctava pasada). Se
+// arma antes de sacar las de antes: una señal en ese bucle las dejaba fuera
+// (decimonovena pasada). Y espera a que ese bucle termine: devolverlas mientras
+// todavía se sacaban dejaba fuera las que salían después (vigésima pasada).
+let cayendo = false
+let sacando = null
+async function caer(motivo) {
+  if (cayendo) return
+  cayendo = true
+  console.error(motivo)
+  try {
+    await sacando?.catch(() => {})
+    await sacarLasSuyas()
+    await devolverLasDeAntes()
+  } catch (otro) {
+    console.error(`No volvieron a la lista ${dejadas.map((d) => d.numero).join(', ')}: ${otro.message}`)
+  }
+  process.exit(1)
+}
+process.on('uncaughtException', caer)
+process.on('unhandledRejection', caer)
+for (const senal of ['SIGINT', 'SIGTERM']) process.on(senal, () => caer(`Cortada con ${senal}.`))
+sacando = (async () => {
+  for (const d of dejadas) await consulta(`select public.quitar_recojo_de_la_lista($1)`, [d.id])
+  await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
+})()
+await sacando
+console.log(`Sembradas ${ocA}, ${ocB} y ${ocC}${dejadas.length ? `; salieron de la lista ${dejadas.map((d) => d.numero).join(', ')}` : ''}`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
@@ -80,9 +227,6 @@ async function abrirGuia(contexto, href) {
   return { estado: r.status(), cabeza: (await r.body()).subarray(0, 5).toString() }
 }
 
-let ocA = ''
-let ocB = ''
-let ocC = ''
 let esperanAntes = 0
 
 // ------------------------------------------------ 1. Sin programar, el conductor no sale
@@ -114,8 +258,7 @@ let esperanAntes = 0
     const n = t.match(/OC-\d+-MW/)
     if (n) numeros.push(n[0])
   }
-  comprobar(numeros.length >= 3, `Por programar trae las OC aprobadas: ${numeros.join(', ')}`)
-  ;[ocA, ocB, ocC] = numeros
+  comprobar([ocA, ocB, ocC].every((n) => numeros.includes(n)), `Por programar trae las OC aprobadas: ${[ocA, ocB, ocC].join(', ')}`)
 
   // A al final (la primera), con coma decimal.
   let t = tarjeta(pagina, 'titulo-por-programar', ocA)
@@ -216,11 +359,18 @@ let hrefGuia = ''
   const { pagina, contexto, errores } = await entrar(CUENTAS.conductor, 390)
   await pagina.goto(`${BASE}/recojos`, { waitUntil: 'networkidle' })
   const tarjetas = pagina.locator('main section').first().locator('> div')
-  const textos = (await tarjetas.allInnerTexts()).map((x) => x.replace(/\s+/g, ' '))
-  comprobar(textos[0]?.startsWith(`1.º · ${ocA}`) && textos[1]?.startsWith(`2.º · ${ocB}`), `en el teléfono, su lista en el orden de Logística: ${textos.map((x) => x.slice(0, 18)).join(' | ')}`)
-  comprobar(/Pesa 350[,.]5 kg/.test(textos[0] ?? '') && /Pesa 120 kg/.test(textos[1] ?? ''), 'cada una con su peso')
-  comprobar(textos[0]?.includes('Guía de remisión T001-00000123 (PDF)'), 'la primera con su guía')
-  comprobar(textos[1]?.includes('Contabilidad todavía no carga la guía de remisión'), 'la segunda dice que falta la guía')
+  // Solo las que llevan lugar: las que van en recojo o ya recogidas van antes, sin lugar.
+  const textos = (await tarjetas.allInnerTexts()).map((x) => x.replace(/\s+/g, ' ')).filter((x) => /^\d+\.º · /.test(x))
+  // Lo que el conductor ya lleva encima va primero, y otra sonda pudo dejarle
+  // una recogida: las dos de esta se buscan por su número, y el orden lo dice
+  // su lugar en la lista.
+  const iA = textos.findIndex((x) => x.startsWith(`1.º · ${ocA}`))
+  const iB = textos.findIndex((x) => x.startsWith(`2.º · ${ocB}`))
+  const [a, b] = [textos[iA] ?? '', textos[iB] ?? '']
+  comprobar(iA >= 0 && iB === iA + 1, `en el teléfono, su lista en el orden de Logística: ${textos.map((x) => x.slice(0, 18)).join(' | ')}`)
+  comprobar(/Pesa 350[,.]5 kg/.test(a) && /Pesa 120 kg/.test(b), 'cada una con su peso')
+  comprobar(a.includes('Guía de remisión T001-00000123 (PDF)'), 'la primera con su guía')
+  comprobar(b.includes('Contabilidad todavía no carga la guía de remisión'), 'la segunda dice que falta la guía')
   const quedan = esperanAntes - 2
   const aviso = quedan === 1 ? '1 compra aprobada espera que Logística la programe' : `${quedan} compras aprobadas esperan que Logística`
   comprobar((await texto(pagina.locator('main'))).includes(aviso), `las que no programó siguen solo como aviso: «${aviso}»`)
@@ -260,6 +410,30 @@ let hrefGuia = ''
   await contexto.close()
 }
 
+// ------------------------------------------------ 7. Logística saca la segunda de la lista
+// La deja como la encontró: con una OC en la lista del conductor, la próxima
+// vuelta no empieza en «1.º».
+{
+  const { pagina, contexto } = await entrar(CUENTAS.logistica)
+  await pagina.goto(`${BASE}/compras/gestion`, { waitUntil: 'networkidle' })
+  await tarjeta(pagina, 'titulo-lista', ocB).getByRole('button', { name: 'Sacar de la lista' }).click()
+  await pagina.getByRole('button', { name: 'Sí, sacarla' }).click()
+  await tarjeta(pagina, 'titulo-por-programar', ocB).waitFor({ timeout: 20000 }).catch(() => {})
+  comprobar((await tarjeta(pagina, 'titulo-lista', ocB).count()) === 0 && (await tarjeta(pagina, 'titulo-por-programar', ocB).count()) === 1, `${ocB} sale de la lista y vuelve a Por programar`)
+  await contexto.close()
+}
+
 await navegador.close()
+// Las suyas, fuera de la lista también si el paso 7 no llegó a sacar la
+// segunda: la siguiente prueba la encuentra sin pendientes.
+await sacarLasSuyas()
+await devolverLasDeAntes()
+const [{ n: enLaLista }] = await consulta(
+  `select count(*)::int as n from programacion_recojo p join ordenes_compra_materiales c on c.id = p.orden_compra_id
+    where c.id = any($1) and p.posicion is not null and c.recojo = 'POR_RECOGER'`,
+  [dejadas.map((d) => d.id)],
+)
+comprobar(enLaLista === dejadas.length, `las ${dejadas.length} que ya estaban en la lista vuelven a ella (${enLaLista})`)
+await base.end()
 console.log(fallas.length === 0 ? `\nTODO EN VERDE (${ocA}, ${ocB}, ${ocC})` : `\n${fallas.length} FALLAS`)
 process.exit(fallas.length === 0 ? 0 : 1)

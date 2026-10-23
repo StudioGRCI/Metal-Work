@@ -30,7 +30,7 @@ export function CargarHoras({ personal, codigos, hoy }: { personal: PersonaTareo
   const [vez, setVez] = useState(0)
   const [ultimo, setUltimo] = useState({ fecha: hoy, codigo: '' })
   const [aviso, setAviso] = useState<string | null>(null)
-  const envio = useIdDelEnvio()
+  const envio = useIdDelEnvio(undefined, undefined, 'cargar-horas')
   return (
     <>
       <Boton

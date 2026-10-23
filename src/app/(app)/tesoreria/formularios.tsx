@@ -9,6 +9,7 @@ import { ImportePropuesto } from '@/components/finanzas/importe-propuesto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -49,8 +50,9 @@ function montoEntero(valor: number, codigoMoneda: CodigoMoneda) {
  * con él la factura queda cancelada, el número de operación, la cuenta de la
  * caja a la que entró —la caja diaria se mueve sola— y el voucher. El voucher
  * sube primero a Storage, en la carpeta de la factura, y si el cobro no entra
- * se retira. El id del cobro vive fuera de la ventana
- * (`useIdDelEnvio`): un reintento no registra otro.
+ * se retira. El id del cobro vive fuera de la ventana (`useIdDelEnvio`): un
+ * reintento no registra otro, y si aquel entró, la ventana lo dice al volver a
+ * abrirse y el siguiente lleva otro.
  */
 export function CobrarFactura({
   facturaId,
@@ -69,7 +71,7 @@ export function CobrarFactura({
   codigoMoneda: CodigoMoneda
   cuentas: CuentaParaPagar[]
 }) {
-  const cobro = useIdDelEnvio(saldo)
+  const cobro = useIdDelEnvio('cobro_factura', undefined, facturaId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -121,6 +123,7 @@ export function CobrarFactura({
         descripcion={`${conPunto(cliente)} Le quedan ${moneda(saldo, codigoMoneda)} por cobrar.`}
         ancho="md"
       >
+        <EnvioAnterior texto={cobro.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="cobro" />
           <input type="hidden" name="id" value={cobro.id ?? ''} />
@@ -208,7 +211,8 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
  * o es a cuenta, el número de operación, el comprobante del proveedor, la cuenta
  * de la caja de la que salió —la caja diaria se mueve sola— y el voucher. El
  * voucher sube primero a Storage y, si el pago no entra, se retira.
- * El id del pago vive fuera de la ventana (`useIdDelEnvio`): un reintento no registra otro.
+ * El id del pago vive fuera de la ventana (`useIdDelEnvio`): un reintento no
+ * registra otro, y si aquel entró, la ventana lo dice al volver a abrirse.
  */
 export function PagarServicio({
   ordenServicioId,
@@ -230,7 +234,7 @@ export function PagarServicio({
   /** Los documentos de la OS y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio(saldo)
+  const pago = useIdDelEnvio('pago_servicio', undefined, ordenServicioId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -282,6 +286,7 @@ export function PagarServicio({
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)} del monto aprobado.`}
         ancho="md"
       >
+        <EnvioAnterior texto={pago.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           {paraPagar}
@@ -366,7 +371,8 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
  * número de operación y la cuenta de la caja de la que salió —la caja diaria se
  * mueve sola—. El voucher sube primero a Storage y, si el pago no entra,
  * se retira. El id del pago vive fuera de la ventana (`useIdDelEnvio`): un
- * reintento no registra otro.
+ * reintento no registra otro, y si aquel entró, la ventana lo dice al volver a
+ * abrirse.
  */
 export function PagarFactura({
   adquisicionId,
@@ -388,7 +394,7 @@ export function PagarFactura({
   /** La factura, sus OC y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
-  const pago = useIdDelEnvio(saldo)
+  const pago = useIdDelEnvio('pago_factura', undefined, adquisicionId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -440,6 +446,7 @@ export function PagarFactura({
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={pago.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           {paraPagar}
@@ -516,7 +523,8 @@ export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
  * 20261020210000): el día, lo pagado, si la cancela o es a cuenta, el número de
  * operación, el de la boleta si ya la entregaron, la cuenta de la caja de la que
  * salió y el voucher. El voucher sube primero a `pagos-compras/{oc}/…`.
- * El id del pago vive fuera de la ventana (`useIdDelEnvio`): un reintento no registra otro.
+ * El id del pago vive fuera de la ventana (`useIdDelEnvio`): un reintento no
+ * registra otro, y si aquel entró, la ventana lo dice al volver a abrirse.
  */
 export function PagarCompra({
   ordenCompraId,
@@ -541,7 +549,7 @@ export function PagarCompra({
   /** La que el proveedor devolvió entera no se debe: pagarla es la excepción y el botón va de contorno. */
   principal?: boolean
 }) {
-  const pago = useIdDelEnvio(saldo)
+  const pago = useIdDelEnvio('pago_compra', undefined, ordenCompraId)
   const [abierta, setAbierta] = useState(false)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
@@ -594,6 +602,7 @@ export function PagarCompra({
         descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)}; va con boleta, sin IGV.`}
         ancho="md"
       >
+        <EnvioAnterior texto={pago.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           {paraPagar}
