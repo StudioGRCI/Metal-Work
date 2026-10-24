@@ -36,7 +36,7 @@ do $$
 declare v_ot uuid; v_req uuid; v_mat uuid; v_om uuid; v_det uuid; i int;
 begin
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono, contacto)
-  values ('20100047218', 'PROVEEDOR DE PRUEBA 325', 'Av. Argentina 123, Lima', '999 111 222', 'Rosa')
+  values ('20100047218', 'PROVEEDOR DE PRUEBA 325 S.A.C.', 'Av. Argentina 123, Lima', '999 111 222', 'Rosa')
   on conflict (tipo_documento, numero_documento) do update set activo = true
   returning id into v_mat;
   perform set_config('prueba.proveedor', v_mat::text, true);
@@ -237,6 +237,12 @@ select test.afirmar(
   (select count(*) from public.notificaciones where origen_id = current_setting('prueba.oc1')::uuid
       and usuario_id = current_setting('prueba.almacenero')::uuid and ruta = '/almacen/kardex') = 1,
   'a Almacén le llega el aviso del ingreso por validar');
+-- Con un proveedor que termina en punto, el aviso no dice «S.A.C..» ni «líneas dejadas» de una (20261023150000).
+select test.afirmar(
+  (select cuerpo from public.notificaciones where origen_id = current_setting('prueba.oc1')::uuid
+      and usuario_id = current_setting('prueba.almacenero')::uuid and ruta = '/almacen/kardex')
+    = 'PROVEEDOR DE PRUEBA 325 S.A.C. 2 líneas dejadas en el almacén por el conductor.',
+  'el aviso a Almacén no repite el punto del proveedor');
 select test.debe_fallar(
   $q$update public.ordenes_compra_materiales set recojo = 'RECOGIDO' where id = current_setting('prueba.oc1')::uuid$q$,
   'el recojo no retrocede', 'no puede pasar');

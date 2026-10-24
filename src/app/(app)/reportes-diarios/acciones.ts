@@ -87,7 +87,7 @@ function trabajoParaLaBase(t: Trabajo, general: boolean) {
  */
 export async function opcionesDelCodigo(codigo: string, corrige: string | null, fecha: string | null): Promise<ResultadoAccion<OpcionDeTrabajo[]>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
+  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'No tienes permiso para registrar el reporte diario.' }
   const analisis = z
     .object({ codigo: z.string().trim().min(2).max(60), corrige: z.guid().nullable(), fecha: z.iso.date().nullable() })
     .safeParse({ codigo, corrige, fecha })
@@ -136,7 +136,7 @@ function sinGente(d: { trabajos: Trabajo[]; general: boolean; personal_general: 
  */
 export async function registrarReporteCorregido(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
+  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'No tienes permiso para registrar el reporte diario.' }
 
   const analisis = z
     .object({
@@ -200,7 +200,7 @@ export async function registrarReporteCorregido(_previo: unknown, formulario: Fo
  */
 export async function registrarReportesDiarios(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'El reporte diario lo suben los supervisores.' }
+  if (!puede(perfil, 'reporte_diario.registrar')) return { ok: false, error: 'No tienes permiso para registrar el reporte diario.' }
 
   const analisis = z
     .object({

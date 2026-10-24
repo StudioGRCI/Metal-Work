@@ -28,7 +28,7 @@ const nulo = (v: string | undefined) => (v && v.trim().length > 0 ? v.trim() : n
 export async function guardarMaterial(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'El catálogo de materiales lo mantiene Diseño.' }
+    return { ok: false, error: 'No tienes permiso para cambiar el catálogo de materiales.' }
   }
 
   const analisis = esquema.safeParse(Object.fromEntries(datos))
@@ -105,7 +105,7 @@ export async function cambiarEstadoMaterial(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'El catálogo de materiales lo mantiene Diseño.' }
+    return { ok: false, error: 'No tienes permiso para cambiar el catálogo de materiales.' }
   }
 
   const analisis = esquemaEstado.safeParse(Object.fromEntries(datos))

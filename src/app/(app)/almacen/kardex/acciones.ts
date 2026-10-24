@@ -47,7 +47,7 @@ export type SalidaRegistrada = { deLaUnidad: string }
  */
 export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<SalidaRegistrada>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Solo Almacén registra salidas de material.' }
+  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'No tienes permiso para registrar salidas de material.' }
 
   const destino = dato(formulario, 'destino')
   const v = z.object({
@@ -139,7 +139,7 @@ export async function registrarSalidaAlmacen(_previo: unknown, formulario: FormD
  */
 export async function cerrarSalidaConFormato(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Solo Almacén cierra salidas con el formato firmado.' }
+  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'No tienes permiso para cerrar salidas con el formato firmado.' }
 
   const v = z.object({
     movimiento_id: z.guid(),
@@ -272,7 +272,7 @@ export async function leerPlanillaAlmacen(_previo: unknown, datos: FormData): Pr
   const perfil = await exigirSesion()
   const ingresa = puede(perfil, 'almacen.recibir')
   const despacha = puede(perfil, 'almacen.despachar')
-  if (!ingresa && !despacha) return { ok: false, error: 'Solo Almacén carga la planilla.' }
+  if (!ingresa && !despacha) return { ok: false, error: 'No tienes permiso para cargar la planilla.' }
 
   const abierto = await abrirLibro(datos.get('archivo'), 'la planilla')
   if ('error' in abierto) return { ok: false, error: abierto.error }
@@ -567,7 +567,7 @@ const esquemaFecha = z.iso.date('Indica la fecha del conteo.')
  */
 export async function leerConteoInicial(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ filas: FilaConteo[] }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén carga el conteo inicial.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para cargar el conteo inicial.' }
 
   const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
   if (!fecha.success) return { ok: false, error: 'Indica la fecha en que se hizo el conteo.' }
@@ -637,7 +637,7 @@ export async function registrarConteoInicial(
   datos: FormData,
 ): Promise<ResultadoAccion<{ resultados: { id: string; error: string | null }[] }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén carga el conteo inicial.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para cargar el conteo inicial.' }
 
   const fecha = esquemaFecha.safeParse(dato(datos, 'fecha'))
   let crudas: unknown
@@ -703,7 +703,7 @@ export async function registrarConteoInicial(
  */
 export async function fijarStockMinimo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo Almacén fija el stock mínimo.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para fijar el stock mínimo.' }
 
   const texto = dato(datos, 'minimo').trim()
   const v = z.object({
@@ -731,7 +731,7 @@ export async function fijarStockMinimo(_previo: unknown, datos: FormData): Promi
  */
 export async function validarIngresosCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'Solo quien recibe en Almacén valida los ingresos.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para validar los ingresos.' }
 
   const compra = z.guid().safeParse(dato(formulario, 'compra_id'))
   const ids = formulario.getAll('linea').map(String)
@@ -825,7 +825,7 @@ const REPOSICION = z.object({
 /** Llegó lo que el proveedor repone: entra al kardex contra su devolución (`recibir_reposicion`). */
 export async function recibirReposicion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'La reposición la recibe Almacén.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para recibir la reposición.' }
   const v = REPOSICION.safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? 'Revisa lo que llegó.' }
   const supabase = await createClient()

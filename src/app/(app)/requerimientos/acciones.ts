@@ -143,7 +143,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
 export async function anularRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
-    return { ok: false, error: 'Los requerimientos los anula quien los registra: Requerimientos o la administradora.' }
+    return { ok: false, error: 'No tienes permiso para anular requerimientos.' }
   }
 
   const analisis = z
@@ -199,7 +199,7 @@ const CAMBIOS_RQ = z.object({
 export async function corregirRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
-    return { ok: false, error: 'Los requerimientos los corrige quien los registra: Requerimientos o la administradora.' }
+    return { ok: false, error: 'No tienes permiso para corregir requerimientos.' }
   }
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció el requerimiento. Vuelve a cargar la pantalla.' }

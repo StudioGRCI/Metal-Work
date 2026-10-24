@@ -19,6 +19,7 @@
  */
 import { mkdirSync } from 'node:fs'
 
+import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { escribirCodigo } from './campo-codigo.mjs'
@@ -79,6 +80,22 @@ const porcentaje = async (fila) => {
   return m ? Number(m[1]) : NaN
 }
 const sello = Date.now().toString().slice(-6)
+
+// El banco no trae proveedores: uno con un RUC válido, para la OC del paso 2.
+const base = new pg.Client({
+  host: process.env.PGHOST ?? '/tmp',
+  port: Number(process.env.PGPORT ?? 5433),
+  user: process.env.PGUSER ?? 'postgres',
+  database: process.env.BANCO_BASE ?? 'mw_demo',
+})
+await base.connect()
+const ruc = (await base.query(`select n::text as ruc from generate_series(20100038400::bigint, 20100038499::bigint) n where public.ruc_es_valido(n::text) limit 1`)).rows[0].ruc
+await base.query(
+  `insert into public.proveedores (numero_documento, razon_social, direccion, telefono) values ($1, 'ACEROS AVANCE RQ QA S.A.C.', 'Av. Argentina 459, Lima', '999 333 448')
+   on conflict (tipo_documento, numero_documento) do update set razon_social = excluded.razon_social, activo = true`,
+  [ruc],
+)
+await base.end()
 let numeroRq = ''
 let oc = ''
 
@@ -109,17 +126,15 @@ async function mirarRq(cuenta, ruta, captura) {
   comprobar(CUENTAS.supervisor !== '', `hay supervisor para el área del RQ (${area})`)
   await escribirCodigo(ventana.locator('#rq-codigo'), `PLA_SR_O4_1_26/${sello.slice(-2)}`)
   await ventana.locator('#rq-justificacion').fill('Armado del chasis de la plataforma; no hay planchas en almacén.')
-  // Desde #98 cada insumo se elige del catálogo de Almacén; estos se piden como material nuevo.
-  const descs = ventana.locator('[id^="rq-desc-"]')
-  await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).last().click()
-  await descs.nth(0).fill(`Plancha LAF 2 mm 4x8 ${sello}`)
-  await ventana.locator('[id^="rq-cant-"]').nth(0).fill('3')
-  await ventana.locator('[id^="rq-cat-"]').nth(0).selectOption({ index: 1 })
-  await ventana.getByRole('button', { name: 'Agregar insumo' }).click()
-  await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).last().click()
-  await descs.nth(1).fill(`Guantes de cuero ${sello}`)
-  await ventana.locator('[id^="rq-cant-"]').nth(1).fill('6')
-  await ventana.locator('[id^="rq-cat-"]').nth(1).selectOption({ index: 1 })
+  // Desde #98 cada insumo se elige del catálogo de Almacén; estos son inventados,
+  // así que se piden como material nuevo, como en probar-dos-requerimientos.
+  for (const [i, [descripcion, cantidad]] of [[`Plancha LAF 2 mm 4x8 ${sello}`, 3], [`Guantes de cuero ${sello}`, 6]].entries()) {
+    if (i > 0) await ventana.getByRole('button', { name: 'Agregar insumo' }).click()
+    await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).last().click()
+    await ventana.locator('[id^="rq-desc-"]').nth(i).fill(descripcion)
+    await ventana.locator('[id^="rq-cant-"]').nth(i).fill(String(cantidad))
+    await ventana.locator('[id^="rq-cat-"]').nth(i).selectOption({ index: 1 })
+  }
   await ventana.getByRole('button', { name: /Registrar/ }).click()
   await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
   const aviso = await pagina.locator('[role="status"]').innerText()
@@ -150,14 +165,19 @@ async function mirarRq(cuenta, ruta, captura) {
   await pagina.goto(`${BASE}/requerimientos/atencion`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('tbody tr', { hasText: numeroRq })
   comprobar((await porcentaje(fila)) === 20 && (await texto(fila)).includes('Por comprar'), 'sin stock: 20 %, por comprar')
-  await fila.getByRole('button', { name: 'Generar OC' }).click()
+  // Desde #128 «Generar OC» lleva a «Por comprar» con los insumos de este RQ marcados,
+  // y el botón de abajo abre la orden con ellos.
+  await fila.getByRole('link', { name: 'Generar OC' }).click()
+  await pagina.waitForURL(/vista=comprar/)
+  await pagina.getByRole('button', { name: /Generar OC · 2 insumos/ }).click()
   const ventana = pagina.locator('[role="dialog"]')
+  await ventana.waitFor()
   await ventana.locator('#ocd-proveedor').click()
-  await pagina.locator('[role="option"]').first().click()
-  await ventana.locator('[id^="ocd-mat-"]').first().click()
-  await pagina.locator('[role="option"]').first().click()
-  await ventana.locator('[id^="ocd-cant-"]').first().fill('3')
-  await ventana.locator('[id^="ocd-precio-"]').first().fill('120.50')
+  await pagina.keyboard.type(ruc)
+  await pagina.getByRole('option', { name: /ACEROS AVANCE RQ QA/ }).first().click()
+  // Cada línea llega con su material y lo que falta de él: queda el precio.
+  comprobar((await ventana.locator('[id^="ocd-cant-"]').count()) === 2, 'la orden trae los dos insumos del RQ')
+  for (const precio of await ventana.locator('[id^="ocd-precio-"]').all()) await precio.fill('120.50')
   await ventana.getByRole('button', { name: 'Emitir orden de compra' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
   // Con todos sus insumos cubiertos, el RQ ya no ofrece «Generar OC» y el aviso
@@ -258,6 +278,14 @@ async function mirarRq(cuenta, ruta, captura) {
   await tarjeta.getByRole('button', { name: 'La dejé en almacén' }).click()
   await pagina.locator('[role="dialog"]').getByRole('button', { name: 'Sí, la dejé' }).click()
   await pagina.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 })
+  await contexto.close()
+}
+{
+  // A Almacén le llega el ingreso por validar, sin «S.A.C..» (migración 20261023150000).
+  const { pagina, contexto } = await entrar(CUENTAS.almacen)
+  const avisos = await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' }).then(() => pagina.locator('main').innerText())
+  comprobar(avisos.includes(`Ingreso por validar: ${oc}`) && avisos.includes('ACEROS AVANCE RQ QA S.A.C. 2 líneas dejadas en el almacén por el conductor.'),
+    'a Almacén le llega «Ingreso por validar» con el proveedor bien escrito')
   await contexto.close()
 }
 {

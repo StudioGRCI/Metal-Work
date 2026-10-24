@@ -13,7 +13,7 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['REQUERIMIENTOS:REQ', 'COMPRADOR:LOG', 'ALMACENERO:ALM', 'GERENTE:GER', 'VENDEDOR:VEN',
+  foreach v in array array['REQUERIMIENTOS:REQ', 'COMPRADOR:LOG', 'ALMACENERO:ALM', 'GERENTE:GGE', 'VENDEDOR:GCO',
                            'TESORERIA:TES', 'CONTABILIDAD:CON'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.431@prueba.local');

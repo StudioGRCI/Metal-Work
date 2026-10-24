@@ -31,7 +31,7 @@ const DatosEvaluacion = z.object({
 export async function guardarEvaluacionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.evaluar')) {
-    return { ok: false, error: 'Solo la jefatura de Diseño e Ingeniería registra evaluaciones.' }
+    return { ok: false, error: 'No tienes permiso para registrar evaluaciones.' }
   }
   const entrada = DatosEvaluacion.safeParse(Object.fromEntries(datos))
   if (!entrada.success) {
@@ -82,10 +82,10 @@ export async function cambiarEstadoEvaluacion(_previo: unknown, datos: FormData)
 
   const { id, accion, observacion = '' } = entrada.data
   if (accion === 'enviar' && !puede(perfil, 'diseno.evaluar')) {
-    return { ok: false, error: 'Solo quien hizo la evaluación la envía a Administración.' }
+    return { ok: false, error: 'No tienes permiso para enviar la evaluación.' }
   }
   if (accion !== 'enviar' && !puede(perfil, 'administracion.recibir_evaluacion')) {
-    return { ok: false, error: 'Solo Administración recibe o devuelve las evaluaciones.' }
+    return { ok: false, error: 'No tienes permiso para recibir o devolver las evaluaciones.' }
   }
   if (accion === 'devolver' && observacion.length < 10) {
     return { ok: false, error: 'Explica en al menos 10 caracteres qué hay que corregir.' }
@@ -114,7 +114,7 @@ export async function cambiarEstadoEvaluacion(_previo: unknown, datos: FormData)
 
 export async function borrarEvaluacionDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.evaluar')) return { ok: false, error: 'Solo quien hizo la evaluación borra su borrador.' }
+  if (!puede(perfil, 'diseno.evaluar')) return { ok: false, error: 'No tienes permiso para borrar el borrador de la evaluación.' }
   const id = z.guid().safeParse(datos.get('id'))
   if (!id.success) return { ok: false, error: 'No se entendió qué evaluación borrar. Vuelve a cargar la pantalla.' }
 

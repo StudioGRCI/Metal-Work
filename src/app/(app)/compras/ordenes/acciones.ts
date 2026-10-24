@@ -183,7 +183,7 @@ const INSUMOS_DE_LINEAS = z
  */
 export async function emitirCompraDeInsumos(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Generar la orden de compra de los requerimientos corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para generar la orden de compra de los requerimientos.' }
   const leido = leerFormularioDeCompra(formulario, true)
   if (!leido.ok) return leido
   const d = leido.datos
@@ -222,7 +222,7 @@ export async function emitirCompraDeInsumos(_previo: unknown, formulario: FormDa
 /** Mandar a recojo una compra que ya se puede enviar. Mismo permiso que la base. */
 export async function mandarARecojo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Mandar compras a recojo corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para mandar compras a recojo.' }
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
 
@@ -247,7 +247,7 @@ export type LineaParaCorregir = {
 /** Las líneas de la OC, para corregir su cantidad o su precio. Las lee quien ve compras. */
 export async function lineasDeLaCompra(id: string): Promise<ResultadoAccion<LineaParaCorregir[]>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para corregir una compra.' }
   const v = z.guid().safeParse(id)
   if (!v.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
   const supabase = await createClient()
@@ -302,7 +302,7 @@ const CAMBIOS_OC = z.object({
  */
 export async function corregirCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Corregir una compra corresponde a Logística.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para corregir una compra.' }
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: 'No se reconoció la compra. Vuelve a cargar la pantalla.' }
   const correccion = datosDeCorreccion(formulario)

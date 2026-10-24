@@ -205,7 +205,7 @@ export async function anularPlano(_previo: unknown, formulario: FormData): Promi
 /** El supervisor marca que recibió la revisión vigente de un plano de su área. */
 export async function recibirPlano(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'codigos_internos.area')) return { ok: false, error: 'El plano lo recibe el supervisor del área a la que va.' }
+  if (!puede(perfil, 'codigos_internos.area')) return { ok: false, error: 'No tienes permiso para recibir este plano.' }
   const revision = z.guid().safeParse(formulario.get('revision'))
   if (!revision.success) return { ok: false, error: NO_SE_RECONOCE }
   const supabase = await createClient()
@@ -366,7 +366,7 @@ const MARCA = z.object({
 export async function marcarEtapa(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, ['diseno.codigos', 'codigos_internos.area'])) {
-    return { ok: false, error: 'La etapa la marca Diseño o el supervisor del área que la hace.' }
+    return { ok: false, error: 'No tienes permiso para marcar esta etapa.' }
   }
   const datos = MARCA.safeParse({
     id: formulario.get('id'),
