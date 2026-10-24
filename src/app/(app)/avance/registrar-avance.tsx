@@ -4,7 +4,7 @@ import { Camera } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, type FotoLista } from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -44,6 +44,8 @@ export function RegistrarAvance({
   // Antes la ventana quedaba abierta con «Registrar» activo, y un segundo toque
   // era un segundo avance.
   const { alEnviar, enviando, error, limpiar } = useEnvio(registrarAvance, (r) => {
+    // El avance entró sin sus fotos: ya subidas, ningún registro las nombra.
+    if (r.datos?.fotosSueltas) quitarFotosSueltas('fotos-avance', fotos)
     setAbierto(false)
     setAviso(r.mensaje ?? 'Avance registrado.')
   })
@@ -52,9 +54,12 @@ export function RegistrarAvance({
   const etapa = enCurso.find((e) => e.id === etapaId)
 
   // Sin registrar, las fotos ya subidas no las nombra ningún avance: se quitan
-  // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas.
+  // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas. Si se
+  // cierra mientras se envía, se quedan: el avance que está entrando las nombra,
+  // y quitarlas lo dejaba con fotos que no abren (vigesimosegunda pasada).
   function cerrar() {
-    quitarFotosSueltas('fotos-avance', fotos)
+    if (enviando) soltarMiniaturas(fotos)
+    else quitarFotosSueltas('fotos-avance', fotos)
     setFotos([])
     setAbierto(false)
   }

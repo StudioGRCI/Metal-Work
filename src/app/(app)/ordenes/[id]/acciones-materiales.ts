@@ -47,7 +47,7 @@ const esquemaAlta = z.object({
 export async function agregarMaterial(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'La lista de materiales la arma Diseño.' }
+    return { ok: false, error: 'No tienes permiso para armar la lista de materiales.' }
   }
 
   const analisis = esquemaAlta.safeParse(Object.fromEntries(datos))
@@ -183,7 +183,7 @@ export async function editarLineaMaterial(
 ): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'La lista de materiales la arma Diseño.' }
+    return { ok: false, error: 'No tienes permiso para armar la lista de materiales.' }
   }
 
   const analisis = esquemaEdicion.safeParse(Object.fromEntries(datos))
@@ -224,7 +224,7 @@ const esquemaQuitar = z.object({
 export async function quitarMaterial(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.planos')) {
-    return { ok: false, error: 'La lista de materiales la arma Diseño.' }
+    return { ok: false, error: 'No tienes permiso para armar la lista de materiales.' }
   }
 
   const analisis = esquemaQuitar.safeParse(Object.fromEntries(datos))

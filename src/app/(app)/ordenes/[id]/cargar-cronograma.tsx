@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
-import { explicarFallo } from '@/lib/envio'
+import { explicarFallo, laPestanaEsDeOtraCuenta } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -103,6 +103,8 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
   function cargar() {
     if (enCurso.current || !listo) return
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {

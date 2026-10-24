@@ -285,19 +285,29 @@ En la misma migración que la crea, sin excepción:
   dejaba entrar dos veces la OC. Lo que otra cuenta registró con el pendiente
   de otra llave no se le cuenta ni se toca; el de la llave de esta pantalla sí,
   con su número y el puesto de quien tenía la sesión, porque salió de aquí.
-  **La pestaña que ya no es de la sesión no envía nada** (vigesimoprimera):
-  `CuentaDeLaPestana` avisa a las otras pestañas al entrar (`BroadcastChannel`)
-  y la que se pintó con otra cuenta se traba al momento
-  (`useOtraCuentaEnLaPestana`): `PieDeVentana` traba los campos y cambia el
-  botón que envía por «Recargar la pantalla», y `useAccion` y `salio()` no
-  envían. Si ese aviso no llega, la ventana que pregunta lo sabe al abrir:
-  `abrir()` pregunta aunque no haya nada pendiente. Antes solo se enteraba con
-  algo pendiente, y la pestaña vieja sin nada pendiente emitía la OC a nombre
-  de la otra cuenta. Lo que queda: lo que se envíe antes de que la base conteste
-  esa pregunta, si el aviso entre pestañas no llegó. Se destraba al pintarse con
-  la sesión o si la primera cuenta vuelve a entrar; la pestaña no cambia de
-  cuenta por la respuesta, solo por el layout —cambiarla escondía lo pendiente
-  de la primera cuando volvía y el egreso entraba dos veces—. Una clave nueva en
+  **La pestaña que ya no es de la sesión no envía nada** (vigesimoprimera y
+  vigesimosegunda). Quién tiene la sesión lo dice su cookie
+  (`sb-…-auth-token`, que `@supabase/ssr` deja legible para su cliente del
+  navegador): `laPestanaEsDeOtraCuenta()` la lee en el acto, y la llaman
+  `useAccion`, `salio()` y los formularios que suben por su cuenta (conteo
+  inicial, planilla, cotización, orden nueva, cronograma) antes de enviar.
+  Esperar el aviso de la otra pestaña (`BroadcastChannel`) dejaba un hueco de
+  segundos —llega cuando esa termina de pintarse— en que la OC entraba a nombre
+  de la otra cuenta. La traba es una sola para toda la pantalla
+  (`CuentaDeLaPestana`, un `<dialog>` modal que vuelve inerte lo demás): la del
+  pie de cada ventana dejaba fuera las que no lo usan y los botones de la
+  pantalla. Se pone con el cambio de la cookie (`cookieStore`), al volver a la
+  pestaña, con el aviso de la otra y al enviar; un aviso no se cree si la
+  cookie se puede leer —uno viejo destrababa una pestaña que ya era de otra—.
+  Sin la cookie a la vista quedan el aviso y la pregunta al abrir
+  (`consultarEnvio` contesta la cuenta de la sesión), y vale la respuesta de la
+  última pregunta. Lo que queda, solo entonces: lo que se envíe antes de que
+  la base conteste. Se destraba al pintarse con la sesión o si la primera
+  cuenta vuelve a entrar; la pestaña no cambia de cuenta por la respuesta, solo
+  por el layout —cambiarla escondía lo pendiente de la primera cuando volvía y
+  el egreso entraba dos veces—. Un formulario nuevo que envía sin `useAccion`
+  llama a `laPestanaEsDeOtraCuenta()` antes de salir.
+  Una clave nueva en
   `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
   otra (`20261022195000` lleva el texto que la 160000 cambió después de

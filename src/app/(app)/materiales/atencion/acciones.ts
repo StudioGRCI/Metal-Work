@@ -32,7 +32,7 @@ function dato(formulario: FormData, nombre: string) {
 
 export async function resolverPropuesta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Diseño aprueba las propuestas de materiales.' }
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'No tienes permiso para aprobar las propuestas de materiales.' }
   const v = z.object({ detalle_id: z.guid(), decision: z.enum(['aprobar', 'rechazar']) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Elige una propuesta y una decisión válidas.' }
@@ -50,7 +50,7 @@ export async function resolverPropuesta(_previo: unknown, formulario: FormData):
 
 export async function revisarStock(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Almacén revisa el stock.' }
+  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'No tienes permiso para revisar el stock.' }
   const v = z.object({ detalle_id: z.guid(), decision: z.enum(['STOCK', 'COMPRA']) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Elige el material y la decisión de stock.' }
@@ -68,7 +68,7 @@ export async function revisarStock(_previo: unknown, formulario: FormData): Prom
 
 export async function registrarConteo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'Solo Almacén registra el conteo físico.' }
+  if (!puede(perfil, 'almacen.ver')) return { ok: false, error: 'No tienes permiso para registrar el conteo físico.' }
   const v = z.object({
     operacion_id: z.guid(), material_id: z.guid(),
     cantidad_fisica: z.coerce.number().min(0), motivo: z.string().trim().min(10).max(300),
@@ -89,7 +89,7 @@ export async function registrarConteo(_previo: unknown, formulario: FormData): P
 
 export async function registrarPrecioCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística registra el precio del insumo.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para registrar el precio del insumo.' }
   const v = z.object({ detalle_id: z.guid(), precio: z.coerce.number().min(0) })
     .safeParse(Object.fromEntries(formulario))
   if (!v.success) return { ok: false, error: 'Indica un precio unitario válido.' }
@@ -107,7 +107,7 @@ export async function registrarPrecioCompra(_previo: unknown, formulario: FormDa
 
 export async function fijarCondicionCompra(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Logística define la condición de pago.' }
+  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para definir la condición de pago.' }
   const v = z.object({
     compra_id: z.guid(), condicion: z.enum(['CONTADO','CREDITO']),
     dias: z.coerce.number().int().min(0).max(365), moneda: z.enum(['PEN','USD']),
@@ -296,7 +296,7 @@ export async function despacharMaterial(_previo: unknown, formulario: FormData):
  */
 export async function registrarIngresoGeneral(_previo:unknown,formulario:FormData):Promise<ResultadoAccion> {
   const perfil=await exigirSesion()
-  if(!puede(perfil,'almacen.recibir')) return {ok:false,error:'Solo Almacén registra sus ingresos.'}
+  if(!puede(perfil,'almacen.recibir')) return {ok:false,error:'No tienes permiso para registrar ingresos al almacén.'}
   const v=z.object({operacion_id:z.guid(),material_id:z.guid().optional(),
     material_nuevo_id:z.guid().optional(),descripcion:z.string().trim().max(200).optional(),unidad_id:z.guid().optional(),
     cantidad:z.coerce.number().positive().multipleOf(0.001),

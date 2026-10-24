@@ -135,7 +135,7 @@ export async function anularPagoPlanilla(_previo: unknown, formulario: FormData)
 /** Tesorería adjunta la boleta de pago de una persona, ya subida a Storage. Mismo permiso que `subir_boleta_planilla_diaria`. */
 export async function subirBoletaPlanilla(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'planilla_diaria.pagar')) return { ok: false, error: 'La boleta la adjunta Tesorería.' }
+  if (!puede(perfil, 'planilla_diaria.pagar')) return { ok: false, error: 'No tienes permiso para adjuntar la boleta.' }
   const analisis = z
     .object({ persona_id: z.guid(), planilla_id: z.guid(), ruta: z.string().min(1, 'Adjunta la boleta.').max(200) })
     .safeParse({ persona_id: dato(formulario, 'persona_id'), planilla_id: dato(formulario, 'planilla_id'), ruta: dato(formulario, 'ruta') })

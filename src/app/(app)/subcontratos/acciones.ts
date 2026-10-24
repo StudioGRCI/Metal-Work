@@ -324,7 +324,7 @@ export async function adjuntarContratoSubcontrato(
  */
 export async function marcarFechasReales(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'subcontratos.area')) return { ok: false, error: 'Las fechas reales las marca el supervisor del área.' }
+  if (!puede(perfil, 'subcontratos.area')) return { ok: false, error: 'No tienes permiso para marcar las fechas reales.' }
   const analisis = z
     .object({ id: z.guid(), inicio: z.iso.date().optional(), fin: z.iso.date().optional() })
     .safeParse({ id: dato(formulario, 'id'), inicio: dato(formulario, 'inicio_real') || undefined, fin: dato(formulario, 'fin_real') || undefined })

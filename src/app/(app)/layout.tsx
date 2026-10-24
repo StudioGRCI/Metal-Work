@@ -22,7 +22,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
 
   return (
     <ContextoOrden><div className="flex min-h-dvh flex-col">
-      <CuentaDeLaPestana usuario={perfil.id} puesto={perfil.puesto} />
+      <CuentaDeLaPestana usuario={perfil.id} puesto={perfil.puesto} nombre={`${perfil.nombres} ${perfil.apellidos}`} />
       <BarraSuperior />
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />

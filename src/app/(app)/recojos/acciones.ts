@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function marcarRecojo(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.recojo')) return { ok: false, error: 'Marcar recojos corresponde al conductor de Logística.' }
+  if (!puede(perfil, 'compras.recojo')) return { ok: false, error: 'No tienes permiso para marcar recojos.' }
   const analisis = z
     .object({ id: z.guid(), paso: z.enum(['EN_RECOJO', 'RECOGIDO', 'DEJADO']) })
     .safeParse({ id: datos.get('id'), paso: datos.get('paso') })

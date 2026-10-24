@@ -15,10 +15,14 @@ type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
  */
 export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira si quedó guardado antes de volver a intentar.'
 
-/** Con lo que se frena el envío desde una pantalla que es de otra cuenta (`useOtraCuentaEnLaPestana`). */
-class OtraCuentaEnLaPestana extends Error {
+/**
+ * Con lo que se frena el envío desde una pantalla que es de otra cuenta
+ * (`laPestanaEsDeOtraCuenta`). En `useAccion` no se dice: lo dice la traba de la
+ * pantalla, que se abre al mismo tiempo.
+ */
+export class OtraCuentaEnLaPestana extends Error {
   constructor() {
-    super('No se envió: esta pantalla es de la cuenta anterior. Recárgala para registrar con la cuenta que entró.')
+    super('No se envió: esta pantalla es de otra cuenta. Vuelve a entrar con la tuya en la otra pestaña, o recarga.')
   }
 }
 
@@ -124,12 +128,12 @@ export function useAccion<T = never>(
   function ejecutar(datos: FormData) {
     if (enCurso.current) return
     // La sesión es de la cuenta que entró en otra pestaña: lo que saliera de
-    // aquí entraría a su nombre. La ventana ya lo dice y no ofrece enviar
-    // (`PieDeVentana`); esto frena lo que no va en una ventana.
-    if (otraCuenta !== null) {
-      setResultado({ ok: false, error: new OtraCuentaEnLaPestana().message })
-      return
-    }
+    // aquí entraría a su nombre. Se mira la cookie en el momento del toque, no
+    // solo el aviso de la otra pestaña, que llega cuando esa termina de pintarse
+    // (vigesimosegunda pasada). No queda ningún rojo: lo dice la traba de la
+    // pantalla, que se abre con esto, y un «No se envió» se quedaba en la fila
+    // después de que la cuenta volviera.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setResultado(null)
     const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
@@ -143,6 +147,8 @@ export function useAccion<T = never>(
         try {
           salida = await accion(null, datos)
         } catch (e) {
+          // Lo frenó `salio()`: no salió nada, y la traba de la pantalla ya lo dice.
+          if (e instanceof OtraCuentaEnLaPestana) return
           let mensaje: string
           try {
             mensaje = explicarFallo(e)
@@ -152,8 +158,7 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          // Lo que frena `salio()` no salió: no hay nada que poner al día al cerrar.
-          despuesDelRechazo(fallo, ventana, !(e instanceof OtraCuentaEnLaPestana))
+          despuesDelRechazo(fallo, ventana, true)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -279,12 +284,9 @@ export function useEnvio<T = never>(
  *   registrado otra: salió de aquí. Va con su número y con el puesto de quien
  *   tenía la sesión (vigesimoprimera pasada).
  * - Si la sesión no es la de la pantalla, en otra pestaña entró otra cuenta: la
- *   pestaña se traba hasta recargar (`useOtraCuentaEnLaPestana`). Se pregunta al
- *   abrir aunque no haya nada pendiente: sin eso, la pestaña vieja sin nada
- *   pendiente enviaba con la sesión nueva (vigesimoprimera pasada). La pregunta
- *   tarda lo que tarda la base; lo que se envíe antes de que conteste sale con la
- *   sesión que haya, como antes. Lo normal es que la pestaña ya lo sepa por el
- *   aviso de la otra (`entroLaCuenta`).
+ *   pestaña se traba (`laPestanaEsDeOtraCuenta`) y lo pendiente no se toca. La
+ *   respuesta de la pregunta dice con qué cuenta está la sesión, y vale solo si
+ *   la cookie de la sesión no se puede leer: la cookie es más nueva.
  *
  * Uso: `abrir()` al abrir la ventana, `salio()` al enviar (dentro de la acción),
  * `otro()` con el ok y con `alYaEntrar`; `anterior`, dentro de la ventana
@@ -317,6 +319,8 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuenta
     id,
     anterior,
     abrir() {
+      // La ventana se abre ya trabada si la sesión cambió sin que nada avisara.
+      laPestanaEsDeOtraCuenta()
       // Tras una recarga la memoria está vacía, y lo pendiente sigue en la pestaña.
       const cuenta = cuentaDeLaPestana
       const propia = llave(cuenta)
@@ -330,13 +334,12 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuenta
       // pantalla pintada con otra cuenta quedó en la llave de esa.
       const ajenos = lugar ? pendientesEnLaPestana(lugar).filter((p) => p.llave !== propia && p.id !== previo) : []
       const ids = [...(previo ? [previo] : []), ...ajenos.map((p) => p.id)].slice(0, MAXIMO_PENDIENTES)
-      const visto = noticias
+      const pregunta = preguntaDeLaSesion()
       consultarEnvio(clave, ids).then(
         (respuesta) => {
           if (!respuesta || !cuenta) return
           const deOtra = respuesta.cuenta !== cuenta
-          // Si mientras tanto llegó otra noticia de la sesión, vale esa.
-          if (noticias === visto) marcarOtraCuenta(deOtra ? textoOtraCuenta(respuesta.puesto) : null)
+          pregunta(respuesta.cuenta, respuesta.puesto, respuesta.nombre)
           // Lo pendiente lo resuelve la pantalla pintada con la cuenta que entró.
           if (deOtra || turno.current !== este) return
           const propios: LoQueEntro[] = []
@@ -367,7 +370,7 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuenta
       )
     },
     salio() {
-      if (otraCuenta !== null) throw new OtraCuentaEnLaPestana()
+      if (laPestanaEsDeOtraCuenta()) throw new OtraCuentaEnLaPestana()
       turno.current++
       setAnterior(null)
       if (id) anotar(id)
@@ -435,7 +438,6 @@ function soltarDeLaPestana(llave: string, id: string) {
 }
 
 let cuentaDeLaPestana: string | null = null
-let puestoDeLaPestana = ''
 
 /**
  * La cuenta con la que se pintó la pantalla (`CuentaDeLaPestana`, en el layout).
@@ -445,48 +447,189 @@ let puestoDeLaPestana = ''
  * recuperación, y en otra pestaña. Solo la pone el layout: la respuesta de la
  * base con otra cuenta no la cambia, porque la pantalla sigue siendo la de antes.
  *
- * Y se avisa a las otras pestañas del navegador, que comparten la sesión: la
- * que se pintó con otra cuenta se traba al momento (`useOtraCuentaEnLaPestana`),
- * y se destraba si la suya vuelve a entrar. Pintarse con la sesión también la
- * destraba: la pantalla ya es de esa cuenta.
+ * Pintarse con la sesión destraba la pestaña: la pantalla ya es de esa cuenta,
+ * salvo que la cookie diga que mientras llegaba la página entró otra. Y se avisa
+ * a las otras pestañas del navegador, que comparten la sesión
+ * (`escucharLaSesion`).
  */
-export function entroLaCuenta(usuario: string, puesto: string) {
+export function entroLaCuenta(usuario: string, puesto: string, nombre: string) {
   cuentaDeLaPestana = usuario
-  puestoDeLaPestana = puesto
+  conocer(usuario, puesto, nombre)
+  noticias++
   marcarOtraCuenta(null)
-  // Sin `BroadcastChannel` (o sin dejar usarlo) queda la pregunta al abrir (`useIdDelEnvio`).
+  revisarLaSesion()
+  escucharLaSesion()
   try {
-    if (!canal) {
-      canal = new BroadcastChannel(CANAL)
-      canal.onmessage = ({ data }: MessageEvent<{ usuario?: unknown; puesto?: unknown }>) => {
-        if (!cuentaDeLaPestana || typeof data?.usuario !== 'string') return
-        const puestoQueEntro = typeof data.puesto === 'string' ? data.puesto : ''
-        marcarOtraCuenta(data.usuario === cuentaDeLaPestana ? null : textoOtraCuenta(puestoQueEntro))
-      }
-    }
-    canal.postMessage({ usuario, puesto })
+    canal?.postMessage({ usuario, puesto, nombre })
   } catch {}
+}
+
+/** El puesto y el nombre de cada cuenta que se supo en esta pestaña: con ellos se nombran en la traba. */
+const conocidas = new Map<string, { puesto: string; nombre: string }>()
+
+function conocer(usuario: string, puesto: unknown, nombre: unknown) {
+  if (typeof puesto !== 'string' || !puesto) return
+  conocidas.set(usuario, { puesto, nombre: typeof nombre === 'string' ? nombre : '' })
 }
 
 const CANAL = 'metal-work:cuenta'
 let canal: BroadcastChannel | null = null
+let escuchando = false
+
+/**
+ * Cómo se entera la pestaña de que la sesión ya no es la suya, sin esperar a
+ * que se envíe nada:
+ * - La cookie de la sesión cambia en el momento en que otra pestaña entra: el
+ *   navegador que lo cuenta (`cookieStore`) traba al instante, y en todos se
+ *   vuelve a mirar al volver a la pestaña.
+ * - La otra pestaña avisa cuando termina de pintarse (`BroadcastChannel`), con
+ *   el puesto y el nombre de quien entró. El aviso no se cree solo si la cookie
+ *   se puede leer: un aviso viejo —la página de una tercera pestaña que llegó
+ *   tarde— destrababa una pestaña que ya tenía la sesión de otra
+ *   (vigesimosegunda pasada).
+ * Lo que no se pueda usar (un navegador sin `cookieStore`, sin
+ * `BroadcastChannel`) se deja: queda lo demás, y se mira otra vez al enviar.
+ */
+function escucharLaSesion() {
+  if (escuchando) return
+  escuchando = true
+  try {
+    canal = new BroadcastChannel(CANAL)
+    canal.onmessage = ({ data }: MessageEvent<{ usuario?: unknown; puesto?: unknown; nombre?: unknown }>) => {
+      if (!cuentaDeLaPestana || typeof data?.usuario !== 'string') return
+      conocer(data.usuario, data.puesto, data.nombre)
+      if (revisarLaSesion()) return
+      noticias++
+      marcarOtraCuenta(data.usuario === cuentaDeLaPestana ? null : textoOtraCuenta(data.usuario))
+    }
+  } catch {}
+  try {
+    ;(globalThis as { cookieStore?: EventTarget }).cookieStore?.addEventListener('change', () => revisarLaSesion())
+  } catch {}
+  window.addEventListener('focus', () => revisarLaSesion())
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') revisarLaSesion()
+  })
+}
+
+/**
+ * Mira la cookie y traba o destraba según de quién sea la sesión. `false` si la
+ * cookie no dice nada: entonces vale lo que digan el aviso y la pregunta.
+ */
+function revisarLaSesion(): boolean {
+  if (!cuentaDeLaPestana || typeof document === 'undefined') return false
+  const sesion = cuentaEnLaCookie()
+  if (!sesion) return false
+  noticias++
+  marcarOtraCuenta(sesion === cuentaDeLaPestana ? null : textoOtraCuenta(sesion))
+  return true
+}
+
+/**
+ * Si esta pestaña es de otra cuenta que la de la sesión. Se mira la cookie en
+ * el acto: lo llama todo lo que envía (`useAccion`, `salio()`, los formularios
+ * que suben por su cuenta) antes de salir. El aviso de la otra pestaña llega
+ * cuando esa termina de pintarse —3,5 s en el banco—, y lo enviado en ese rato,
+ * o desde una ventana abierta antes del cambio sin aviso, entraba a nombre de la
+ * otra cuenta (vigesimosegunda pasada).
+ */
+export function laPestanaEsDeOtraCuenta() {
+  revisarLaSesion()
+  return otraCuenta !== null
+}
+
+/**
+ * La pregunta al abrir una ventana (`consultarEnvio`) también dice con qué
+ * cuenta está la sesión. Vale solo si la cookie no se puede leer, y solo la de
+ * la última pregunta y si mientras tanto no llegó otra noticia: con dos
+ * aperturas seguidas, la respuesta de la primera gastaba la noticia y la de la
+ * segunda, que decía «otra cuenta», se ignoraba (vigesimosegunda pasada).
+ */
+function preguntaDeLaSesion() {
+  const esta = ++preguntas
+  const visto = noticias
+  return (cuenta: string, puesto: string, nombre: string) => {
+    conocer(cuenta, puesto, nombre)
+    if (revisarLaSesion() || esta !== preguntas || visto !== noticias || !cuentaDeLaPestana) return
+    marcarOtraCuenta(cuenta === cuentaDeLaPestana ? null : textoOtraCuenta(cuenta))
+  }
+}
+
+/**
+ * Con qué cuenta está la sesión según su cookie, la que el navegador manda con
+ * cada envío. La de Supabase (`sb-<proyecto>-auth-token`, en trozos `.0`, `.1`
+ * si es larga) lleva la sesión en JSON, en base64 desde `@supabase/ssr` 0.4, y
+ * se puede leer desde la página (`httpOnly: false`, como la deja `@supabase/ssr`
+ * para su cliente del navegador). `undefined` si no se puede saber: sin cookie,
+ * con varias o con un formato que no se reconoce. Entonces la cookie no traba
+ * nada: leerla mal trabaría a todos.
+ */
+function cuentaEnLaCookie(): string | undefined {
+  try {
+    const trozos = new Map<string, Map<number, string>>()
+    for (const par of document.cookie.split(';')) {
+      const igual = par.indexOf('=')
+      if (igual < 0) continue
+      const coincide = COOKIE_DE_LA_SESION.exec(par.slice(0, igual).trim())
+      if (!coincide) continue
+      const deEsa = trozos.get(coincide[1]) ?? new Map<number, string>()
+      deEsa.set(coincide[2] === undefined ? -1 : Number(coincide[2]), par.slice(igual + 1).trim())
+      trozos.set(coincide[1], deEsa)
+    }
+    if (trozos.size !== 1) return undefined
+    const [partes] = trozos.values()
+    let valor = partes.get(-1)
+    if (valor === undefined) {
+      const orden = [...partes.keys()].sort((a, b) => a - b)
+      if (orden.some((n, i) => n !== i)) return undefined
+      valor = orden.map((n) => partes.get(n)).join('')
+    }
+    let texto = decodeURIComponent(valor)
+    if (texto.startsWith(BASE64)) texto = desdeBase64Url(texto.slice(BASE64.length))
+    const id = idDeLaSesion(JSON.parse(texto))
+    return id && ES_UUID.test(id) ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const COOKIE_DE_LA_SESION = /^(sb-.+-auth-token)(?:\.(0|[1-9]\d*))?$/
+const BASE64 = 'base64-'
+
+function idDeLaSesion(sesion: unknown): string | undefined {
+  if (!sesion || typeof sesion !== 'object') return undefined
+  const { user, access_token } = sesion as { user?: { id?: unknown }; access_token?: unknown }
+  if (typeof user?.id === 'string') return user.id
+  if (typeof access_token !== 'string') return undefined
+  const carga = access_token.split('.')[1]
+  if (!carga) return undefined
+  const { sub } = JSON.parse(desdeBase64Url(carga)) as { sub?: unknown }
+  return typeof sub === 'string' ? sub : undefined
+}
+
+function desdeBase64Url(texto: string) {
+  const base64 = texto.replace(/-/g, '+').replace(/_/g, '/')
+  const binario = atob(base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '='))
+  return new TextDecoder().decode(Uint8Array.from(binario, (c) => c.charCodeAt(0)))
+}
 
 /**
  * Lo que dice la pantalla si en otra pestaña del mismo navegador entró otra
  * cuenta: la sesión ya es de ella, y esta pantalla, pintada con la anterior,
  * enviaría a su nombre. El egreso, la OC o el recibo entraban con la otra
  * persona sin que nada lo dijera, y con lo que esa no puede ver salía «No
- * tienes permiso» (vigésima y vigesimoprimera pasada). Mientras dure, las
- * ventanas se traban y solo ofrecen recargar (`PieDeVentana`) y nada se envía
- * (`useAccion`).
+ * tienes permiso» (vigésima y vigesimoprimera pasada). Mientras dure, la
+ * pantalla entera queda debajo de una traba que solo ofrece recargar
+ * (`CuentaDeLaPestana`) y nada se envía (`laPestanaEsDeOtraCuenta`).
  */
 let otraCuenta: string | null = null
-// Cuenta las noticias de la sesión: la respuesta de una pregunta que salió antes no pisa lo que llegó después.
+// Cuenta las noticias de la sesión (la cookie, el aviso, la pantalla pintada): la respuesta de una pregunta que salió antes no pisa lo que llegó después.
 let noticias = 0
+// Cuenta las preguntas al abrir: vale la respuesta de la última.
+let preguntas = 0
 const vigias = new Set<() => void>()
 
 function marcarOtraCuenta(texto: string | null) {
-  noticias++
   if (otraCuenta === texto) return
   otraCuenta = texto
   for (const avisar of vigias) avisar()
@@ -509,17 +652,25 @@ export function useOtraCuentaEnLaPestana() {
 }
 
 /**
- * Con el puesto de las dos cuentas, que es como las nombra el menú: «en otra
- * pestaña entró otra cuenta» no decía cuál, y quien recargaba sin saberlo caía
- * en «No tienes acceso» (vigesimoprimera pasada). Volver a entrar con la primera
- * en esa pestaña destraba esta sin perder lo escrito.
+ * Con el puesto de las dos cuentas, que es como las nombra el menú, y con el
+ * nombre si las dos son del mismo puesto. Lo que no pierde lo escrito va
+ * primero: recargar lo pierde, y antes se ofrecía primero y sin decirlo
+ * (vigesimosegunda pasada).
  */
-function textoOtraCuenta(puestoQueEntro: string) {
-  const pintada = puestoDeLaPestana
-  if (!puestoQueEntro || !pintada || puestoQueEntro === pintada) {
-    return 'En otra pestaña entró otra cuenta y esta pantalla es de la anterior: desde aquí no se envía nada. Recarga para seguir con la que entró, o vuelve a entrar con la anterior en esa pestaña para seguir aquí.'
+function textoOtraCuenta(usuarioQueEntro: string) {
+  const pintada = cuentaDeLaPestana ? conocidas.get(cuentaDeLaPestana) : undefined
+  if (!pintada) {
+    return 'Esta pantalla se abrió con otra cuenta que la que entró en otra pestaña: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con la anterior en esa pestaña. Si recargas, sigues con la que entró y se pierde lo escrito aquí.'
   }
-  return `Esta pantalla es de la cuenta de ${pintada}, y en otra pestaña entró la de ${puestoQueEntro}: desde aquí no se envía nada. Recarga para seguir con ${puestoQueEntro}, o vuelve a entrar con ${pintada} en esa pestaña para seguir aquí.`
+  const entro = conocidas.get(usuarioQueEntro)
+  const mismoPuesto = entro?.puesto === pintada.puesto
+  const nombrar = (c: { puesto: string; nombre: string }) => (mismoPuesto && c.nombre ? `${c.nombre} (${c.puesto})` : c.puesto)
+  const aqui = nombrar(pintada)
+  const alla = entro && (!mismoPuesto || entro.nombre) ? nombrar(entro) : null
+  if (!alla) {
+    return `Esta pantalla se abrió con la cuenta de ${aqui}, y en otra pestaña entró otra: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con ${aqui} en esa pestaña. Si recargas, sigues con la cuenta que entró y se pierde lo escrito aquí.`
+  }
+  return `Esta pantalla se abrió con la cuenta de ${aqui}, y en otra pestaña entró la de ${alla}: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con ${aqui} en esa pestaña. Si recargas, sigues con ${alla} y se pierde lo escrito aquí.`
 }
 
 /**

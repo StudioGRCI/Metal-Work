@@ -11,7 +11,7 @@ const id = z.guid()
 
 export async function solicitarTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'costos.solicitar_pago')) return { ok: false, error: 'Solo Costos y Materiales envía estas solicitudes.' }
+  if (!puede(perfil, 'costos.solicitar_pago')) return { ok: false, error: 'No tienes permiso para enviar estas solicitudes.' }
   // Desde la OT solo se pide la revisión de salida: la solicitud de pago de
   // materiales se retiró de la pestaña Costos el 2026-10-01.
   const entrada = z.object({
@@ -33,7 +33,7 @@ export async function solicitarTesoreria(_previo: unknown, datos: FormData): Pro
 
 export async function responderSolicitudTesoreria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'tesoreria.liberar')) return { ok: false, error: 'Solo Tesorería responde estas solicitudes.' }
+  if (!puede(perfil, 'tesoreria.liberar')) return { ok: false, error: 'No tienes permiso para responder estas solicitudes.' }
   const entrada = z.object({
     id,
     orden_id: id,

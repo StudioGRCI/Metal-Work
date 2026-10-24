@@ -60,7 +60,7 @@ export async function registrarTrabajoSinOrden(
 ): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'Los trabajos sin orden los registra el supervisor de cada área.' }
+    return { ok: false, error: 'No tienes permiso para registrar trabajos sin orden.' }
   }
 
   const analisis = esquemaTrabajo.safeParse(Object.fromEntries(datos))
@@ -222,7 +222,7 @@ const esquemaEstado = z.object({
 export async function cambiarEstadoFlota(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.actividades')) {
-    return { ok: false, error: 'Eso lo marca el supervisor del área.' }
+    return { ok: false, error: 'No tienes permiso para cambiar el estado de la flota.' }
   }
 
   const analisis = esquemaEstado.safeParse(Object.fromEntries(datos))

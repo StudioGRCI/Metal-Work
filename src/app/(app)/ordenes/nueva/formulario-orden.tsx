@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -159,6 +159,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     setErrorNumero(null)

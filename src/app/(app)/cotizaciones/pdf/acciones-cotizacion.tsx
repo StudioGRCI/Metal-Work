@@ -16,7 +16,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -241,6 +241,8 @@ export function CorregirCotizacion({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {
@@ -605,6 +607,8 @@ export function AprobarConOt({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {

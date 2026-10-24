@@ -180,7 +180,7 @@ export async function revisarStockRequerimiento(_previo: unknown, formulario: Fo
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'El stock lo revisa Almacén.' }
+  if (!puede(perfil, 'almacen.recibir')) return { ok: false, error: 'No tienes permiso para revisar el stock.' }
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('rq_revisar_stock', {
