@@ -20,7 +20,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO, BUCKET_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, pasoTrasLoQueQuedo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { adjuntarContratoSubcontrato, guardarSubcontratista, registrarSubcontrato } from './acciones'
 
@@ -153,20 +153,23 @@ function FormularioSubcontrato({
       return { ok: false, error: `${yaEntroEnLaVentana(r.error)} El contrato que elegiste no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».` }
     }
     if (!r.ok || !contrato) return r.ok ? { ...r, datos: { id, contratoPendiente: false } } : r
-    const c = await subirContrato({
-      bucket: BUCKET_SUBCONTRATOS,
-      carpeta: id,
-      id: idContrato,
-      archivo: contrato,
-      adjuntar: (d) => adjuntarContratoSubcontrato(id, d),
-    })
+    // Si entró otra cuenta a media subida, el contrato no sale a su nombre: queda pendiente.
+    const c = await pasoTrasLoQueQuedo(() =>
+      subirContrato({
+        bucket: BUCKET_SUBCONTRATOS,
+        carpeta: id,
+        id: idContrato,
+        archivo: contrato,
+        adjuntar: (d) => adjuntarContratoSubcontrato(id, d),
+      }),
+    )
     return { ...r, datos: { id, contratoPendiente: !c.ok } }
   }
   const { alEnviar, enviando, error } = useEnvio(
     registrar,
     (r) => {
       alTerminar()
-      router.push(`/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`)
+      navegarSiEsDeLaPestana(router, `/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`)
     },
     // Sin `refrescar: false` aunque el ok navegue: tras «ya quedó» o sin respuesta
     // no se navega, y al cerrar la lista tiene que mostrar el subcontrato que

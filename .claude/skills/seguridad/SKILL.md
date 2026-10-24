@@ -276,7 +276,8 @@ En la misma migración que la crea, sin excepción:
   (`sb-…-auth-token`, que `@supabase/ssr` deja legible para su cliente del
   navegador): `laPestanaEsDeOtraCuenta()` la lee en el acto, y la llaman
   `useAccion`, `salio()` y los formularios que suben por su cuenta (conteo
-  inicial, planilla, cotización, orden nueva, cronograma) antes de enviar.
+  inicial, planilla, cotización, orden nueva, cronograma, PDF de la orden)
+  antes de enviar.
   Esperar el aviso de la otra pestaña (`BroadcastChannel`) dejaba un hueco de
   segundos —llega cuando esa termina de pintarse— en que la OC entraba a nombre
   de la otra cuenta. La traba es una sola para toda la pantalla
@@ -287,12 +288,33 @@ En la misma migración que la crea, sin excepción:
   cookie se puede leer —uno viejo destrababa una pestaña que ya era de otra—.
   Sin la cookie a la vista quedan el aviso y la pregunta al abrir
   (`consultarEnvio` contesta la cuenta de la sesión), y vale la respuesta de la
-  última pregunta. Lo que queda, solo entonces: lo que se envíe antes de que
-  la base conteste. Se destraba al pintarse con la sesión o si la primera
+  última pregunta. Lo que queda: lo que se envíe antes de que la base
+  conteste y, aun con la cookie a la vista, lo que ya esperaba en la cola de
+  acciones de Next cuando cambió la sesión. Cerrarlo del todo es que el
+  servidor compare la cuenta pintada con la de la sesión: pendiente. Se destraba al pintarse con la sesión o si la primera
   cuenta vuelve a entrar; la pestaña no cambia de cuenta por la respuesta, solo
   por el layout —cambiarla escondía lo pendiente de la primera cuando volvía y
   el egreso entraba dos veces—. Un formulario nuevo que envía sin `useAccion`
-  llama a `laPestanaEsDeOtraCuenta()` antes de salir.
+  llama a `laPestanaEsDeOtraCuenta()` antes de salir. **Cada paso de una
+  cadena mira la sesión, no solo el primero** (vigesimotercera): `useAccion` y
+  `salio()` miran el toque, pero lo que sigue sale con la sesión de ese
+  momento, y el comprobante de la OC quedaba subido por la cuenta que entró a
+  media subida. `seguirConLaCuentaDeLaPestana()` lanza `OtraCuentaEnLaPestana`
+  antes de cada subida (`subirArchivoPrivado`, `subirAdjunto`,
+  `subirArchivoFinanzas`, `subirArchivoSubcontrato`, `subirArchivoPlanilla`),
+  antes de anotar lo subido (`anotarSinDejarloSuelto`) y cuando Storage
+  rechaza con la sesión cambiada, que no es «No tienes permiso». Lo que sale
+  por partes (las fotos de `SelectorFotos`, la planilla y el conteo del
+  kardex, los planos por área, la cotización con cliente nuevo) mira antes de
+  cada parte y para ahí. El paso que sigue a uno que ya quedó va en
+  `pasoTrasLoQueQuedo`, que no lanza: devuelve `ENTRO_OTRA_CUENTA` para que la
+  ventana diga qué falta. El archivo que una cadena cortada dejó subido no se
+  anota ni se quita con la otra sesión —Storage no la deja—: se quita cuando
+  vuelve la cuenta de la pantalla (`cuandoVuelvaLaCuenta`); si en vez de
+  volver se recarga, se queda suelto, visible solo para quien lo subió. El
+  refresco y la navegación tras un envío también esperan
+  (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`): con la otra sesión
+  pintaban su pantalla y se llevaban la traba.
   Una clave nueva en
   `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en

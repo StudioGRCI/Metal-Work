@@ -28,7 +28,7 @@ import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -301,7 +301,7 @@ export function FormularioReporteDiario({
       }
       return salida
     },
-    (r) => router.push(`/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`),
+    (r) => navegarSiEsDeLaPestana(router, `/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`),
     { refrescar: false },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)

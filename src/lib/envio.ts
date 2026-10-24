@@ -1,5 +1,5 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
+import { startTransition, useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
 
 import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
@@ -105,7 +105,7 @@ export function useAccion<T = never>(
     const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
-      if (ponerAlDia) iniciar(() => router.refresh())
+      if (ponerAlDia) iniciar(() => refrescarSiEsDeLaPestana(router))
       return
     }
     const soltar = () => {
@@ -114,7 +114,7 @@ export function useAccion<T = never>(
     }
     const alCerrar = () => {
       soltar()
-      if (ponerAlDia) router.refresh()
+      if (ponerAlDia) refrescarSiEsDeLaPestana(router)
     }
     if (ventana === vecesQueSeCerro() && alCerrarLaVentana(alCerrar)) return
     // La ventana del envío ya se cerró: la que esté abierta ahora es otra. El
@@ -122,7 +122,7 @@ export function useAccion<T = never>(
     // con la señal lenta la ventana que se volvía a abrir salía trabada con el
     // «ya quedó» del envío anterior. Sin otra ventana, el rechazo se queda.
     if (yaEntro || hayVentanaAbierta()) soltar()
-    if (ponerAlDia) iniciar(() => router.refresh())
+    if (ponerAlDia) iniciar(() => refrescarSiEsDeLaPestana(router))
   }
 
   function ejecutar(datos: FormData) {
@@ -171,7 +171,8 @@ export function useAccion<T = never>(
         }
 
         alTerminar?.(salida)
-        if (refrescar) iniciar(() => router.refresh())
+        // El ok puede llegar con la traba ya puesta: salió antes del cambio de cuenta.
+        if (refrescar) iniciar(() => refrescarSiEsDeLaPestana(router))
       } finally {
         if (soltar) enCurso.current = false
       }
@@ -453,11 +454,14 @@ let cuentaDeLaPestana: string | null = null
  * (`escucharLaSesion`).
  */
 export function entroLaCuenta(usuario: string, puesto: string, nombre: string) {
+  // Lo que esperaba a la cuenta de antes (`cuandoVuelvaLaCuenta`) no es de esta: se suelta.
+  if (cuentaDeLaPestana !== null && cuentaDeLaPestana !== usuario) alVolver.clear()
   cuentaDeLaPestana = usuario
   conocer(usuario, puesto, nombre)
   noticias++
-  marcarOtraCuenta(null)
-  revisarLaSesion()
+  // De una vez: destrabar y volver a trabar corría lo que esperaba a la cuenta
+  // con la sesión de la otra.
+  if (!revisarLaSesion()) marcarOtraCuenta(null)
   escucharLaSesion()
   try {
     canal?.postMessage({ usuario, puesto, nombre })
@@ -628,11 +632,80 @@ let noticias = 0
 // Cuenta las preguntas al abrir: vale la respuesta de la última.
 let preguntas = 0
 const vigias = new Set<() => void>()
+// Lo que se dejó para cuando la pantalla vuelva a ser de la sesión (`cuandoVuelvaLaCuenta`).
+const alVolver = new Set<() => void>()
 
 function marcarOtraCuenta(texto: string | null) {
   if (otraCuenta === texto) return
+  const estabaTrabada = otraCuenta !== null
   otraCuenta = texto
   for (const avisar of vigias) avisar()
+  if (texto !== null || !estabaTrabada) return
+  const pendientes = [...alVolver]
+  alVolver.clear()
+  for (const hacer of pendientes) hacer()
+}
+
+/**
+ * Deja `hacer` para cuando la pantalla vuelva a ser de la sesión: lo que solo la
+ * cuenta de la pantalla puede hacer, como quitar un archivo suyo que quedó
+ * suelto, o ponerse al día. Con la traba puesta, la sesión es de la otra cuenta:
+ * Storage no la deja quitar el archivo de esta, y el refresco pinta su pantalla
+ * y se lleva la traba. Si en vez de volver se recarga, no se hace.
+ */
+export function cuandoVuelvaLaCuenta(hacer: () => void) {
+  alVolver.add(hacer)
+}
+
+/**
+ * Para seguir una cadena de pasos (subir y anotar, fila por fila, tanda por
+ * tanda): lanza `OtraCuentaEnLaPestana` si la sesión ya es de otra cuenta. El
+ * primer toque se mira en `useAccion` y `salio()`, pero lo que sigue sale con la
+ * sesión que haya en ese momento: el comprobante de la OC quedaba subido por la
+ * cuenta que entró en otra pestaña a media subida (vigesimotercera pasada).
+ */
+export function seguirConLaCuentaDeLaPestana() {
+  if (laPestanaEsDeOtraCuenta()) throw new OtraCuentaEnLaPestana()
+}
+
+/** Lo que se dice cuando el paso que sigue a uno que ya quedó no sale porque entró otra cuenta. */
+export const ENTRO_OTRA_CUENTA = 'En otra pestaña entró otra cuenta.'
+
+/**
+ * El paso que sigue a uno que ya quedó (el comprobante de la OC recién
+ * emitida, el contrato del subcontrato recién registrado). Si la sesión cambió,
+ * no lanza: lo que sí quedó no se diría y la ventana seguiría abierta como si
+ * nada. Devuelve `ENTRO_OTRA_CUENTA` para que se diga qué falta y dónde hacerlo.
+ */
+export async function pasoTrasLoQueQuedo<T>(paso: () => Promise<ResultadoAccion<T>>): Promise<ResultadoAccion<T>> {
+  try {
+    return await paso()
+  } catch (e) {
+    if (e instanceof OtraCuentaEnLaPestana) return { ok: false, error: ENTRO_OTRA_CUENTA }
+    throw e
+  }
+}
+
+/**
+ * Pone la pantalla al día tras un envío, salvo con la traba puesta: el refresco
+ * la pintaba con la cuenta que entró en la otra pestaña, se llevaba la traba sin
+ * que nadie recargara y anunciaba «Volvió la cuenta de» la que nunca estuvo
+ * (vigesimotercera pasada). Entonces espera a que vuelva la de la pantalla,
+ * como `RefrescoAlVolver`.
+ */
+export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
+  if (!laPestanaEsDeOtraCuenta()) return router.refresh()
+  cuandoVuelvaLaCuenta(() => startTransition(() => router.refresh()))
+}
+
+/**
+ * Lo mismo para la pantalla a la que lleva un envío (la orden recién abierta, el
+ * subcontrato recién registrado): con la traba puesta, se pintaría con la cuenta
+ * que entró y se llevaría la traba. Espera a que vuelva la de la pantalla.
+ */
+export function navegarSiEsDeLaPestana(router: { push(url: string): void }, url: string) {
+  if (!laPestanaEsDeOtraCuenta()) return router.push(url)
+  cuandoVuelvaLaCuenta(() => startTransition(() => router.push(url)))
 }
 
 function vigilar(avisar: () => void) {

@@ -54,6 +54,11 @@
  *         quedó y a nombre de quién;
  *      g. lo mismo, y «Recargar la pantalla» con Administración: lo ve como
  *         suyo y suelta lo de Logística.
+ *      Con la cookie a la vista otra vez:
+ *      h. la OC ya entró y su comprobante termina de subir cuando entra
+ *         Administración: no se anota con ella, la ventana se cierra diciendo
+ *         que falta, y de vuelta Logística el archivo suelto se quita y la
+ *         lista se pone al día.
  *
  * El corte deja pasar el envío al servidor y no le entrega la respuesta al
  * navegador, como una señal que se cae a medio camino.
@@ -911,6 +916,9 @@ if (corre('cuenta')) {
   await abrir()
   await d.llenar(v, pagina, G, '130')
   await v.locator('#ocd-motivo').focus()
+  // Una tecla, como quien escribe: así el cursor que lleva la traba cuenta como
+  // del teclado (`:focus-visible`), que es cuando aparecía el anillo.
+  await pagina.keyboard.press('End')
   await enOtraPestana(contexto, 'administracion')
   const alMomento = limpio(await hasta(deOtraCuenta, (t) => limpio(t) === TRABADA, 15000))
   const enA = await laTraba()
@@ -919,6 +927,21 @@ if (corre('cuenta')) {
   await unRato()
   comprobar(alMomento === TRABADA && enA.trabada && !detras && salieron(G) === 0 && (await d.contar(G)).length === 0,
     `[Otra cuenta] con la ventana abierta entra Administración en otra pestaña: la pantalla se traba entera, con el cursor en la traba, lo de detrás sin toque y un envío forzado sin salir: «${alMomento}» (${JSON.stringify({ ...enA, detras, salieron: salieron(G) })})`)
+  // El texto tiene el cursor para que el lector lo lea, pero no es un campo: sin
+  // anillo, y sin `aria-describedby` hacia el mismo texto, que se oía dos veces
+  // (vigesimotercera pasada).
+  const anillo = await pagina.evaluate((selector) => {
+    const traba = document.querySelector(selector)
+    const p = traba?.querySelector('[data-otra-cuenta]')
+    return {
+      cursor: Boolean(p) && p === document.activeElement,
+      teclado: Boolean(p?.matches(':focus-visible')),
+      estilo: p ? getComputedStyle(p).outlineStyle : '',
+      describe: traba?.getAttribute('aria-describedby') ?? null,
+    }
+  }, TRABA)
+  comprobar(anillo.cursor && anillo.teclado && anillo.estilo === 'none' && anillo.describe === null,
+    `[Otra cuenta] el texto de la traba tiene el cursor del teclado, sin anillo de campo, y no se describe dos veces (${JSON.stringify(anillo)})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'mismo-envio-otra-cuenta.png') })
   // Un toque en el fondo deja el cursor fuera de la traba; Escape, dos veces, no
   // la cierra ni cierra la ventana de detrás con lo escrito.
@@ -933,10 +956,10 @@ if (corre('cuenta')) {
   await hasta(deOtraCuenta, (t) => !t, 15000)
   const escrito = await v.locator('#ocd-motivo').inputValue()
   const libre = await laVentana(pagina)
-  const vuelta = await pagina.evaluate((selector) => ({
+  const vuelta = await pagina.evaluate(() => ({
     cursor: document.activeElement?.id ?? '',
     anuncio: document.querySelector('[data-volvio-la-cuenta]')?.textContent ?? '',
-  }), TRABA)
+  }))
   comprobar(escrito === `Reposición de prueba ${G}` && libre.abiertos.length > 0 && libre.envia === 1 && vuelta.cursor === 'ocd-motivo'
     && vuelta.anuncio === `Volvió la cuenta de ${NOMBRE_LOGISTICA} (${LOGISTICA}): puedes seguir donde estabas.`,
     `[Otra cuenta] de vuelta Logística, se destraba con lo escrito, el cursor donde estaba y lo anuncia (${JSON.stringify({ escrito, abiertos: libre.abiertos.length, envia: libre.envia, ...vuelta })})`)
@@ -1104,6 +1127,60 @@ if (corre('cuenta')) {
   await cancelar()
   comprobar((await d.contar(D)).length === 1, `[Otra cuenta] ${dd.fila?.numero} está una vez`)
   await contexto.close()
+
+  // h. La cadena se corta a la mitad: la OC ya entró y su comprobante terminaba
+  // de subir cuando en otra pestaña entró Administración. Antes el comprobante se
+  // anotaba con la sesión de Administración; ahora no se anota, la ventana se
+  // cierra diciendo que falta, y el archivo de Logística se quita cuando ella
+  // vuelve (vigesimotercera pasada). Con la cookie a la vista, en una pestaña nueva.
+  const { pagina: ph, contexto: ch } = await entrar('logistica')
+  const vh = ph.locator(VENTANA)
+  const K = `${SUFIJO}xk`
+  const subida = { retenidas: 0, esperan: [] }
+  await ph.route((u) => u.pathname.includes('/storage/v1/object/documentos-compras/'), async (r) => {
+    if (r.request().method() !== 'POST') return r.continue()
+    // Llega a Storage con la sesión de Logística; lo que se detiene es la respuesta.
+    const respuesta = await r.fetch()
+    subida.retenidas++
+    await new Promise((listo) => subida.esperan.push(listo))
+    return r.fulfill({ response: respuesta })
+  })
+  await ir(ph)
+  await abrir(ph)
+  await d.llenar(vh, ph, K, '170')
+  await vh.locator('#ocd-comprobante').selectOption('false')
+  await vh.locator('#ocd-factura').setInputFiles({ name: `boleta-${K}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.4\n% ${K}\n1 0 obj <<>> endobj\ntrailer <<>>\n%%EOF\n`) })
+  await unRato(ph, 800)
+  await enviar(ph)
+  await hasta(() => subida.retenidas, (n) => n > 0, 30000)
+  const [deK] = await hasta(() => d.contar(K), (r) => r.length > 0, 30000)
+  const ocK = (await consulta(`select id from ordenes_compra_materiales where numero = $1`, [deK?.numero]))[0]?.id
+  const enStorage = async () =>
+    (await consulta(`select owner_id::text as dueno from storage.objects where bucket_id = 'documentos-compras' and name like $1`, [`compra/${ocK}/%`]))
+  const documentos = async () =>
+    (await consulta(`select u.correo from documentos_compra_material x join usuarios u on u.id = x.subido_por where x.orden_compra_id = $1`, [ocK]))
+  await enOtraPestana(ch, 'administracion')
+  await hasta(() => deOtraCuenta(ph), (t) => Boolean(t), 15000)
+  for (const listo of subida.esperan.splice(0)) listo()
+  const avisoK = ph.getByText(/no se adjuntó/)
+  await hasta(() => avisoK.count(), (n) => n > 0, 30000)
+  const dijoK = limpio(await avisoK.first().textContent())
+  await unRato(ph)
+  const trabadaK = await laTraba(ph)
+  const subidoK = await enStorage()
+  const anotadosK = await documentos()
+  comprobar(Boolean(deK) && (await autor(deK.numero)) === CUENTAS.logistica && trabadaK.trabada && !(await vh.isVisible())
+    && /no se adjuntó: en otra pestaña entró otra cuenta\. Adjúntal[oa] desde la lista\./.test(dijoK)
+    && anotadosK.length === 0 && subidoK.length === 1 && subidoK[0].dueno === ids[CUENTAS.logistica],
+    `[Otra cuenta] la OC ${deK?.numero ?? 'nada'} entra a nombre de Logística y su comprobante, cortado por Administración, no se anota con ella: la ventana se cierra y dice que falta (${JSON.stringify({ dijoK, anotados: anotadosK.length, enStorage: subidoK.length })})`)
+  await enOtraPestana(ch, 'logistica')
+  await hasta(() => deOtraCuenta(ph), (t) => !t, 15000)
+  const quitado = await hasta(enStorage, (r) => r.length === 0, 15000)
+  const enLista = await hasta(() => d.fila(ph, deK?.numero).count(), (n) => n > 0, 15000)
+  comprobar(quitado.length === 0 && enLista > 0 && (await documentos()).length === 0,
+    `[Otra cuenta] de vuelta Logística, el comprobante suelto se quita de Storage y la lista se pone al día con ${deK?.numero ?? 'nada'} (${JSON.stringify({ enStorage: quitado.length, enLista })})`)
+  await ph.unrouteAll({ behavior: 'ignoreErrors' })
+  await ch.close()
 }
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)

@@ -6,7 +6,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Ventana } from '@/components/ui/ventana'
-import { useAccion } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
 
 import { enviarPlanillaDiaria } from './acciones'
 
@@ -18,7 +18,7 @@ import { enviarPlanillaDiaria } from './acciones'
 export function EnviarPlanilla({ id, resumen }: { id: string; resumen: string }) {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
-  const { ejecutar, enviando, error } = useAccion(enviarPlanillaDiaria, (r) => router.push(`/planilla-diaria/${r.datos?.id ?? id}`), {
+  const { ejecutar, enviando, error } = useAccion(enviarPlanillaDiaria, (r) => navegarSiEsDeLaPestana(router, `/planilla-diaria/${r.datos?.id ?? id}`), {
     refrescar: false,
   })
   return (

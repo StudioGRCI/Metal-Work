@@ -25,7 +25,7 @@ import {
   rutaDeCapturaDeSaldo,
   SALDO,
 } from '@/lib/dominio/caja'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -543,8 +543,11 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
       // A sabiendas sin aviso ni error: la cuenta ya quedó con la nueva. Si la vieja la
       // subió otra persona, la política no la deja quitar (`remove` devuelve su error,
       // no lo lanza) y se queda donde solo la ve ella; un corte de red tampoco deshace
-      // lo guardado.
-      await createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
+      // lo guardado. Con la sesión de otra cuenta la política tampoco la deja, y
+      // no se pide con ella: se quita cuando vuelva la tuya.
+      const quitarLaAnterior = () => createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
+      if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(() => void quitarLaAnterior())
+      else await quitarLaAnterior()
     }
     return resultado
   }

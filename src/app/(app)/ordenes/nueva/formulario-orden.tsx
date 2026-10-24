@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeOtraCuenta, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, navegarSiEsDeLaPestana, OtraCuentaEnLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -172,6 +172,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       let listo = false
       try {
         const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
@@ -202,8 +204,11 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         }
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
-        router.push(`/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
-      } catch {
+        navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
         // Lo que se cae acá es la subida: la orden todavía no se registró.
         setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
       } finally {

@@ -1,5 +1,6 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -40,8 +41,15 @@ export async function subirAdjunto(
   const contentType = esPdf ? TIPOS.pdf : TIPOS.xlsx
   const supabase = createClient()
 
+  // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la
+  // de otra pestaña: el archivo saldría a su nombre (`seguirConLaCuentaDeLaPestana`).
+  seguirConLaCuentaDeLaPestana()
   const { error } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, contentType)
-  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  if (error) {
+    // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+    seguirConLaCuentaDeLaPestana()
+    return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  }
 
   const datos = new FormData()
   datos.set('orden_id', ordenId)

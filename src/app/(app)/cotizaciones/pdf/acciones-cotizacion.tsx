@@ -16,7 +16,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeOtraCuenta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -251,6 +251,8 @@ export function CorregirCotizacion({
       let subido = false
       try {
         const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
@@ -285,8 +287,11 @@ export function CorregirCotizacion({
           return
         }
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
         // Lo que se cae acá es la subida: la corrección todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo subir la corrección. Vuelve a intentar.')
@@ -620,6 +625,8 @@ export function AprobarConOt({
       let subido = false
       try {
         const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
@@ -647,8 +654,11 @@ export function AprobarConOt({
           return
         }
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
         // Lo que se cae acá es la subida: todavía no se aprobó.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
         setError('No se pudo aprobar con la OT. Vuelve a intentar.')

@@ -1,6 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
-import { SIN_RESPUESTA } from '@/lib/envio'
+import { seguirConLaCuentaDeLaPestana, SIN_RESPUESTA } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -33,8 +33,15 @@ export async function subirArchivoFinanzas(
 
   const ruta = `${carpeta}/${crypto.randomUUID()}.${extension}`
   const supabase = createClient()
+  // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la
+  // de otra pestaña: el archivo saldría a su nombre (`seguirConLaCuentaDeLaPestana`).
+  seguirConLaCuentaDeLaPestana()
   const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, archivo, archivo.type)
-  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  if (error) {
+    // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+    seguirConLaCuentaDeLaPestana()
+    return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  }
 
   return anotarSinDejarloSuelto({
     bucket,

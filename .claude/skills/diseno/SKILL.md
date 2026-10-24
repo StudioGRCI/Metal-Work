@@ -167,17 +167,42 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   la `Ventana` abierta—, con el puesto de las dos cuentas (y el nombre si son
   del mismo puesto), el cursor en el aviso y solo «Recargar la pantalla». Dice
   primero lo que conserva lo escrito (volver a entrar con la primera en la otra
-  pestaña) y que recargar lo pierde. Escape no la cierra. Lo de detrás no se
+  pestaña) y que recargar lo pierde. Escape no la cierra. El aviso no lleva
+  `aria-describedby`: ya tiene el cursor, y con los dos se leía dos veces. Ni
+  pinta anillo: es texto donde la traba pone el cursor, no un mando, y la regla
+  global de `:focus-visible` respeta `outline-none` (`globals.css`,
+  vigesimotercera). Lo de detrás no se
   toca ni se pierde: si la primera cuenta vuelve, se destraba con lo escrito,
   el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Antes la
   traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
   botones de la pantalla y la ventana de una pregunta. Mientras dure, la
-  pantalla no se refresca sola (`RefrescoAlVolver`). Recargar con una cuenta
+  pantalla no se refresca sola (`RefrescoAlVolver`), ni tras un envío que salió
+  antes del cambio, ni lleva a la pantalla que sigue: lo hace cuando vuelve la
+  cuenta (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`). Refrescar con
+  la otra sesión pintaba su pantalla y se llevaba la traba sin que nadie
+  recargara (vigesimotercera). Recargar con una cuenta
   sin permiso lleva a `/sin-permiso`, que dice con qué cuenta está la sesión y
   ofrece «Salir y entrar con otra cuenta».
 - **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
   la misma clase van en una frase con su plural; lo que salió de esta pestaña a
   nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.
+- **Una cola de fotos se corta con la traba** (`SelectorFotos`): cada foto mira
+  la sesión antes de subir, no solo la primera. La que se cortó y las que
+  esperaban quedan en la lista con «Reintentar» y su vista previa, y se achican
+  al reintentar; antes, las que seguían en la cola subían a nombre de la cuenta
+  que entró y volvían con «No tienes permiso», que no era cierto. Quitar con ✕
+  una foto que todavía sube, o cerrar la ventana mientras sube, la quita en
+  cuanto termina: quedaba en Storage sin fila que la nombrara (reporte diario,
+  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera).
+- **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
+  uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
+  subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que
+  quedó y dice qué falta y dónde hacerlo: «…no se adjuntó: en otra pestaña
+  entró otra cuenta. Adjúntala desde la lista.» (`pasoTrasLoQueQuedo`):
+  callado, la ventana seguiría abierta como si nada hubiera entrado. En lo que sale fila
+  por fila (planilla y conteo del kardex, planos por área) lo que no salió se
+  queda con su motivo y su botón para enviarlo cuando vuelva la cuenta. Si no
+  quedó nada, no se dice nada: lo dice la traba.
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,

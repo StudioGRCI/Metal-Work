@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeOtraCuenta, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -253,6 +253,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
         let carroceria = carroceriaId
         if (carroceriaNueva) {
+          // Cada paso sale con la sesión de ese momento: se mira antes de cada uno.
+          seguirConLaCuentaDeLaPestana()
           const datos = new FormData()
           datos.set('nombre', nombreCarroceria.trim())
           const r = await crearCarroceria(null, datos)
@@ -267,7 +269,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           setCarroceriaNueva(false)
         }
 
+        seguirConLaCuentaDeLaPestana()
         const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
@@ -302,8 +307,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         }
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
         // Lo único que puede caerse acá es la carrocería nueva o la subida:
         // la cotización todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])

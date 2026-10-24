@@ -19,7 +19,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { TipoDetraccion } from '@/lib/dominio/detraccion'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { pasoTrasLoQueQuedo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { adjuntarDocumentoServicio, emitirOrdenServicio } from './acciones'
@@ -190,10 +190,13 @@ function FormularioServicio({
     documento.set('orden_servicio_id', id)
     documento.set('tipo', 'CONTRATO')
     documento.set('nombre', contrato.name)
-    const adjunto = await subirArchivoFinanzas(BUCKET_DOCUMENTOS_SERVICIO, id, contrato, TIPOS_COMPROBANTE_PAGO, (ruta) => {
-      documento.set('ruta', ruta)
-      return adjuntarDocumentoServicio(null, documento)
-    })
+    // Si entró otra cuenta a media subida, el contrato no sale a su nombre: se dice que falta.
+    const adjunto = await pasoTrasLoQueQuedo(() =>
+      subirArchivoFinanzas(BUCKET_DOCUMENTOS_SERVICIO, id, contrato, TIPOS_COMPROBANTE_PAGO, (ruta) => {
+        documento.set('ruta', ruta)
+        return adjuntarDocumentoServicio(null, documento)
+      }),
+    )
     if (adjunto.ok) return { ok: true, mensaje: `${emitida.mensaje ?? 'Orden de servicio emitida.'} Su contrato quedó adjunto.` }
     // La ventana ya se cerró: el aviso no pide «vuelve a intentar», dice dónde adjuntarlo.
     // Sin respuesta, el contrato pudo quedar: primero se mira (`subirArchivoFinanzas`).

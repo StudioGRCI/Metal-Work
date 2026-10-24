@@ -16,6 +16,11 @@
  *   3. El supervisor de Maestranza, en el celular, sube su reporte diario;
  *      tras la respuesta perdida cambia el asunto y agrega una foto: la
  *      pantalla dice que ya quedó, quita la foto nueva y lleva al reporte.
+ *   4. El mismo supervisor elige tres fotos y, mientras sube la primera, en
+ *      otra pestaña entra Logística: las otras dos no suben (antes salían a
+ *      nombre de Logística y volvían con «No tienes permiso»), quedan con
+ *      «Reintentar» y, cuando vuelve su cuenta, suben y el reporte entra con
+ *      las tres, todas suyas en Storage.
  *
  * La respuesta se corta con CDP, en la etapa de la respuesta: el pedido llega
  * entero al servidor, la acción se cumple y el navegador no se entera.
@@ -100,7 +105,12 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
   // salir tarde: por eso no se corta la primera acción que pase, sino esa.
   const cdp = await contexto.newCDPSession(pagina)
   await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
-  const corte = { armado: null, cortadas: 0 }
+  // `retenerFoto`: la respuesta de la próxima foto que sube se detiene hasta
+  // `soltar()`; la foto ya llegó al servidor, con la sesión de ese momento.
+  const corte = { armado: null, cortadas: 0, retenerFoto: false, fotosRetenidas: 0, esperan: [] }
+  corte.soltar = () => {
+    for (const listo of corte.esperan.splice(0)) listo()
+  }
   const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
   cdp.on('Fetch.requestPaused', async (e) => {
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
@@ -109,9 +119,34 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
     }
+    if (corte.retenerFoto && e.request.method === 'POST' && e.request.url.includes('/storage/v1/object/')) {
+      corte.retenerFoto = false
+      corte.fotosRetenidas++
+      await new Promise((listo) => corte.esperan.push(listo))
+    }
     return cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
   })
   return { pagina, contexto, errores, corte }
+}
+
+/** En otra pestaña del mismo navegador se cierra la sesión y entra `correo`: la sesión es de todas. */
+async function enOtraPestana(contexto, correo) {
+  const otra = await contexto.newPage()
+  await ir(otra, `${BASE}/`)
+  await Promise.all([
+    otra.waitForURL((u) => u.pathname.startsWith('/ingresar'), { timeout: 30000 }),
+    otra.evaluate(() => document.querySelector('form[action="/auth/salir"]')?.requestSubmit()),
+  ])
+  await quieta(otra)
+  await otra.fill('input[type="email"]', correo)
+  await otra.fill('input[type="password"]', CLAVE)
+  await Promise.all([
+    otra.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
+    otra.click('button[type="submit"]'),
+  ])
+  if (otra.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
+  await quieta(otra)
+  await otra.close()
 }
 
 const sello = Date.now().toString().slice(-6)
@@ -423,6 +458,85 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await pagina.waitForURL(`**/reportes-diarios/${rep?.id}`, { timeout: 20000 }).catch(() => {})
   comprobar(new URL(pagina.url()).pathname === `/reportes-diarios/${rep?.id}`, `[Maestranza 390] «Ver el reporte» abre el que entró (${new URL(pagina.url()).pathname})`)
   comprobar(errores.length === 0, `[Maestranza 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 4. La cola de fotos con la traba (Maestranza, en el celular)
+// Vigesimotercera pasada: `SelectorFotos` miraba la sesión al elegir y no antes
+// de cada foto. Si en otra pestaña entraba otra cuenta mientras subía la
+// primera, las que seguían salían con esa sesión.
+{
+  const persona = `Rita ${sello}`
+  await consulta(
+    `with nueva as (
+       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
+       values ($1, 'Prueba Cola De Fotos', '7' || $2, 'Soldadora', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3))
+       returning id)
+     insert into trabajador_costos (trabajador_id, costo_mensual) select id, 2400 from nueva`,
+    [persona, sello.padStart(7, '0'), CUENTAS.rrhh],
+  )
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
+  const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
+  const [logistica] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.logistica])
+  const asunto = `Cola de fotos ${sello}`
+  await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
+  await pagina.fill('#rd-codigo', `QA_SR_O4_1_26/${sello.slice(-2)}`)
+  await pagina.fill('#rd-asunto', asunto)
+  await pagina.fill('#rd-descripcion', 'Se armó la cola de la tolva.')
+  const elegir = async (etiqueta, texto) => {
+    await pagina.getByRole('combobox', { name: etiqueta }).click()
+    await pagina.keyboard.type(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
+  }
+  const t1 = pagina.locator('fieldset[data-trabajo="1"]')
+  await elegir('Trabajo 1: sobre qué', 'Tarea nueva')
+  await t1.locator('textarea').fill('Armado de la cola')
+  await t1.locator('input[type="number"]').first().fill('30')
+  await elegir('Personal del trabajo 1: persona 1', persona)
+  await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('3')
+
+  const [{ desde }] = await consulta(`select now() as desde`)
+  const deQuien = () =>
+    consulta(
+      `select count(*) filter (where owner_id = $2)::int as mias, count(*) filter (where owner_id = $3)::int as de_logistica
+         from storage.objects where bucket_id = 'fotos-reporte-diario' and created_at >= $1`,
+      [desde, yo.id, logistica.id],
+    ).then(([r]) => r)
+  corte.retenerFoto = true
+  await pagina.locator('input[type="file"]:not([capture])').setInputFiles([fotos.uno, fotos.dos, fotos.tres])
+  await hasta(async () => corte.fotosRetenidas, (n) => n === 1)
+  await enOtraPestana(contexto, CUENTAS.logistica)
+  const traba = pagina.locator('dialog[data-traba-otra-cuenta]')
+  const trabada = await hasta(() => traba.evaluate((d) => d.open).catch(() => false), Boolean, 10000)
+  corte.soltar()
+  const reintentar = pagina.getByRole('button', { name: /^Volver a subir / })
+  const quedaron = await hasta(() => reintentar.count(), (n) => n === 2)
+  await esperarSubidas(pagina)
+  const avisos = limpio((await pagina.getByRole('list', { name: 'Fotos que no entraron' }).allInnerTexts()).join(' '))
+  const enStorage = await deQuien()
+  comprobar(trabada && corte.fotosRetenidas === 1 && quedaron === 2 && (avisos.match(/No se subió: en otra pestaña entró otra cuenta/g) ?? []).length === 2
+      && !avisos.includes('permiso') && enStorage.mias === 1 && enStorage.de_logistica === 0,
+    `[Maestranza 390] entra Logística a media cola: sube la que ya salía, las otras dos esperan con «Reintentar» y nada sube a su nombre (${quedaron} por reintentar; Storage: ${enStorage.mias} suya, ${enStorage.de_logistica} de Logística; «${avisos.slice(0, 90)}…»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'cola-de-fotos-con-la-traba-390.png'), fullPage: true })
+
+  await enOtraPestana(contexto, CUENTAS.mtz)
+  const destrabada = await hasta(() => traba.evaluate((d) => !d.open).catch(() => true), Boolean, 10000)
+  for (let i = 0; i < 2; i++) await reintentar.first().click()
+  await esperarSubidas(pagina)
+  const sinFallas = await hasta(() => pagina.getByRole('list', { name: 'Fotos que no entraron' }).count(), (n) => n === 0, 10000)
+  const despues = await deQuien()
+  comprobar(destrabada && sinFallas === 0 && despues.mias === 3 && despues.de_logistica === 0,
+    `[Maestranza 390] vuelve su cuenta, «Reintentar» achica y sube las dos, y quedan las tres a su nombre (Storage: ${despues.mias} suyas, ${despues.de_logistica} de Logística)`)
+
+  await pagina.getByRole('button', { name: 'Subir reporte' }).click()
+  await pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {})
+  const [rep] = await consulta(
+    `select r.registrado_por = $2 as suyo, (select count(*)::int from reporte_diario_fotos f where f.reporte_id = r.id) as fotos
+       from reportes_diarios r where asunto = $1`,
+    [asunto, yo.id],
+  )
+  comprobar(rep?.suyo && rep?.fotos === 3, `[Maestranza 390] el reporte entra a su nombre con las tres fotos (${rep?.fotos ?? 'sin reporte'})`)
+  comprobar(errores.length === 0, `[Maestranza 390, cola] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

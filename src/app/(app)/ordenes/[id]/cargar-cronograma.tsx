@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
-import { explicarFallo, laPestanaEsDeOtraCuenta } from '@/lib/envio'
+import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -30,6 +30,8 @@ function motivoDelExcel(error: string): string {
   // Sin respuesta dos veces y el Excel retirado: no quedó, y se sube otra vez igual.
   if (motivo.startsWith('Revisa la señal') || motivo === NO_QUEDO_SIN_RESPUESTA) return `Revisa la señal y ${otraVez}`
   if (motivo.startsWith('Inténtalo de nuevo')) return `Para guardarlo, ${otraVez} Si vuelve a pasar, avisa al administrador.`
+  // Entró otra cuenta antes de subirlo: no salió a su nombre, y se sube igual cuando vuelva la tuya.
+  if (motivo === ENTRO_OTRA_CUENTA) return `${motivo} Para guardarlo, ${otraVez}`
   return motivo
 }
 
@@ -135,7 +137,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         let guardado: typeof excel = null
         if (guardarExcel && archivo) {
           try {
-            const subida = await subirAdjunto(ordenId, archivo, 'CRONOGRAMA')
+            const subida = await pasoTrasLoQueQuedo(() => subirAdjunto(ordenId, archivo, 'CRONOGRAMA'))
             guardado = subida.ok
               ? { ok: true }
               : subida.error === NO_SE_SABE_SI_QUEDO
@@ -148,7 +150,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         setAviso(r.mensaje ?? 'Cronograma cargado.')
         setExcel(guardado)
         setAbierto(false)
-        iniciar(() => router.refresh())
+        iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
         // Lo mismo que en useAccion: sin señal, la pantalla entera caía y se
         // perdía el Excel leído.

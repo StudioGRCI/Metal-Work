@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 
 import { abrirOrdenDelTaller } from './acciones'
 
@@ -49,7 +49,7 @@ export function FormularioOrdenTaller() {
   const { alEnviar, enviando, resultado, error } = useEnvio(
     abrirOrdenDelTaller,
     (r) => {
-      if (r.datos) router.push(`/ordenes/${r.datos.id}?vista=actividades&abierta=1`)
+      if (r.datos) navegarSiEsDeLaPestana(router, `/ordenes/${r.datos.id}?vista=actividades&abierta=1`)
     },
     { refrescar: false },
   )

@@ -1,4 +1,5 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { noGuardoNada } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 
@@ -73,6 +74,8 @@ export async function anotarSinDejarloSuelto<T = never>({
   // Un archivo que la política no deja quitar vuelve sin error y sin nada
   // quitado: por eso se cuenta lo que volvió.
   const quitarSiSuelto = async (): Promise<'quitado' | 'se queda' | 'sin respuesta'> => {
+    // Con la sesión de otra cuenta el borrado vuelve vacío, como si una fila lo nombrara.
+    if (laPestanaEsDeOtraCuenta()) return 'sin respuesta'
     try {
       const { data, error } = await supabase.storage.from(bucket).remove([ruta])
       if (error) return 'sin respuesta'
@@ -84,11 +87,22 @@ export async function anotarSinDejarloSuelto<T = never>({
     }
   }
 
+  // La sesión cambió en otra pestaña mientras el archivo subía: lo que se anote
+  // ahora entraría a nombre de la otra cuenta, y Storage no la deja quitar el
+  // archivo de esta. No se anota, y el archivo se quita si vuelve la cuenta de
+  // la pantalla (vigesimotercera pasada).
+  if (laPestanaEsDeOtraCuenta()) {
+    cuandoVuelvaLaCuenta(() => void quitarSiSuelto())
+    seguirConLaCuentaDeLaPestana()
+  }
   let primera: ResultadoAccion<T>
   try {
     primera = await anotar()
   } catch {
     await new Promise((listo) => setTimeout(listo, PAUSA_ANTES_DE_PREGUNTAR_MS))
+    // En la pausa entró otra cuenta: no se pregunta con ella. No se sabe si la
+    // primera quedó, y el archivo no se toca: la fila pudo nombrarlo.
+    if (laPestanaEsDeOtraCuenta()) return { ok: false, error: sinRespuesta }
     let otraVez: ResultadoAccion<T> | null
     try {
       otraVez = await anotar()
@@ -152,6 +166,9 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
   // Una respuesta perdida puede haber registrado el documento: el reintento
   // con el mismo ID confirma el resultado guardado.
   const sinRespuesta = NO_SE_CONFIRMO
+  // Antes de tocar Storage: la cadena pudo empezar con la cuenta de la pantalla
+  // y llegar aquí con la de otra pestaña.
+  seguirConLaCuentaDeLaPestana()
   const supabase = createClient()
   const clave = `${bucket}/${ruta}`
   const documento = `${bucket}/${ruta.replace(/\.[^./]+$/, '')}`
@@ -218,11 +235,14 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
       }
     }
     if (error && error.statusCode !== '409') {
+      // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+      seguirConLaCuentaDeLaPestana()
       return { ok: false, error: `${NO_SE_CARGO_EL_ARCHIVO} ${motivoDeSubida(error)}` }
     }
     if (!error) confirmados.set(clave, este)
     intentados.set(clave, este)
-  } catch {
+  } catch (e) {
+    if (e instanceof OtraCuentaEnLaPestana) throw e
     return { ok: false, error: sinRespuesta }
   }
   const resultado = await anotarSinDejarloSuelto({

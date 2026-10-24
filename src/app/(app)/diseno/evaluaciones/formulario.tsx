@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { CRITERIOS_DISENO, ESCALA_DISENO, criteriosPorGrupo, mesDeIngreso } from '@/lib/dominio/evaluacion-diseno'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { guardarEvaluacionDiseno } from './acciones'
 
@@ -42,7 +42,7 @@ export function FormularioEvaluacion({ inicial, hoy, cargo, nombres }: {
   )
   const envio = useEnvio(
     guardarEvaluacionDiseno,
-    (resultado) => router.push(`/diseno/evaluaciones/${resultado.datos?.id ?? id}`),
+    (resultado) => navegarSiEsDeLaPestana(router, `/diseno/evaluaciones/${resultado.datos?.id ?? id}`),
     { refrescar: false },
   )
 

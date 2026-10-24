@@ -19,7 +19,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { pasoTrasLoQueQuedo, useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, esOtroArchivoEnLaRuta, subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -401,17 +401,20 @@ function FormularioCompraDirecta({
         documento.set('factura_numero', datosFactura.numero)
         documento.set('factura_fecha', datosFactura.fecha)
       }
-      const adjunta = await subirArchivoPrivado({
-        bucket: 'documentos-compras',
-        ruta: `compra/${id}/${idFactura}.pdf`,
-        archivo: factura,
-        contentType: 'application/pdf',
-        registrar: () => registrarDocumentoCompra(null, documento),
-      })
+      const adjunta = await pasoTrasLoQueQuedo(() =>
+        subirArchivoPrivado({
+          bucket: 'documentos-compras',
+          ruta: `compra/${id}/${idFactura}.pdf`,
+          archivo: factura,
+          contentType: 'application/pdf',
+          registrar: () => registrarDocumentoCompra(null, documento),
+        }),
+      )
       // La orden ya quedó y la ventana se cierra: si el comprobante no subió, se
       // dice, en el color de lo que falta, y se adjunta desde la lista. Si no se
       // sabe, se mira antes: desde la lista va con otro id y, si había quedado,
-      // saldría dos veces.
+      // saldría dos veces. Si entró otra cuenta a media subida, no sale a su
+      // nombre: se dice que falta (`pasoTrasLoQueQuedo`).
       if (!adjunta.ok) {
         aRevisar.current = true
         if (adjunta.error.startsWith(NO_SE_CONFIRMO) || esOtroArchivoEnLaRuta(adjunta.error)) {

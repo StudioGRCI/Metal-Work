@@ -23,7 +23,7 @@ import {
   topeDeLaDevolucion,
   type BoletaParaDevolver,
 } from '@/lib/dominio/pago-de-boleta'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { refrescarSiEsDeLaPestana, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
 import { anularDevolucionCompra, registrarDevolucionCompra, soltarPagoDeLaBoleta, tomarPagoDeLaBoleta } from './acciones'
@@ -164,7 +164,7 @@ export function RegistrarDevolucion({
   // que la ventana ya no se pierde si la tarjeta cambia de lista.
   function cerrar() {
     setAbierta(false)
-    if (rechazo?.para === boleta) router.refresh()
+    if (rechazo?.para === boleta) refrescarSiEsDeLaPestana(router)
   }
   useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
 

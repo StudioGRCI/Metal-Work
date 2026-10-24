@@ -44,7 +44,6 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
   const estado = useRef<HTMLParagraphElement>(null)
   const ultimoVolvio = useRef(volvio)
   const idTitulo = useId()
-  const idAviso = useId()
   const trabada = texto !== null
   // El aviso de que volvió la cuenta vive solo alrededor de la traba: nace con
   // ella, para que exista antes de escribirle, y se va un rato después. Uno
@@ -98,10 +97,11 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
 
   return (
     <>
+      {/* Sin `aria-describedby`: el cursor cae en el texto, que el lector ya lee
+          entero, y con las dos se oía dos veces (vigesimotercera pasada). */}
       <dialog
         ref={traba}
         aria-labelledby={idTitulo}
-        aria-describedby={idAviso}
         data-traba-otra-cuenta
         className="m-auto w-[calc(100%-2rem)] max-w-md rounded-[calc(var(--radius-base)*1.5)] border border-borde bg-superficie p-0 text-texto shadow-alta backdrop:bg-black/50"
       >
@@ -109,7 +109,7 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
           <h2 id={idTitulo} className="text-base font-semibold text-texto">
             Esta pantalla es de otra cuenta
           </h2>
-          <p ref={aviso} id={idAviso} tabIndex={-1} data-otra-cuenta className="text-sm text-texto outline-none">
+          <p ref={aviso} tabIndex={-1} data-otra-cuenta className="text-sm text-texto outline-none">
             {texto}
           </p>
           <div className="flex justify-end">

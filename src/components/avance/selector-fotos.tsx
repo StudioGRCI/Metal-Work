@@ -48,8 +48,14 @@ export function hayFallidas(fotos: FotoLista[]) {
   return fotos.some((f) => f.error)
 }
 
-// Las que se retiraron mientras subían o se achicaban.
+// Las que se retiraron mientras subían o se achicaban: al terminar, se quitan de Storage.
 const retiradas = new WeakSet<FotoLista>()
+// De ellas, las que se quitaron una por una (✕): la cola sigue con las demás.
+const quitadas = new WeakSet<FotoLista>()
+// Las que se eligieron y todavía no se achicaron: «Reintentar» las achica antes de subirlas.
+const sinAchicar = new WeakSet<FotoLista>()
+
+const NO_SUBIO_OTRA_CUENTA = 'No se subió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, usa «Reintentar».'
 
 /**
  * Al cerrar sin registrar, las fotos ya subidas quedan sueltas en Storage: se
@@ -62,10 +68,15 @@ const retiradas = new WeakSet<FotoLista>()
  * pasada).
  */
 export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
-  for (const f of fotos) if (f.subiendo) retiradas.add(f)
+  retirarLasQueSuben(fotos)
   const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
   if (rutas.length > 0) void createClient().storage.from(bucket).remove(rutas)
   soltarMiniaturas(fotos)
+}
+
+/** La que todavía sube, o se achica, se quita de Storage sola cuando termina. */
+export function retirarLasQueSuben(fotos: FotoLista[]) {
+  for (const f of fotos) if (f.subiendo) retiradas.add(f)
 }
 
 /** Las miniaturas viven en la memoria del navegador hasta que se sueltan. */
@@ -137,7 +148,18 @@ export function SelectorFotos({
   /** `null` cuando el formulario ya le pone su propio título a la sección. */
   titulo?: string | null
 }) {
+  /**
+   * Sube la foto con la sesión que haya. La sesión se mira justo antes de que
+   * salga, no solo al elegir: subir varias, o achicarlas, toma segundos, y si
+   * en ese rato entraba otra cuenta en otra pestaña, las que seguían en la cola
+   * salían a su nombre —y a la vuelta decían «No tienes permiso», que no era
+   * cierto— (vigesimotercera pasada). `false` si no salió por eso.
+   */
   async function subir(foto: FotoLista) {
+    if (laPestanaEsDeOtraCuenta()) {
+      alCambiar((f) => f.map((item) => (item === foto ? { ...item, subiendo: false, error: NO_SUBIO_OTRA_CUENTA } : item)))
+      return false
+    }
     const supabase = createClient()
     const extension = comprimir
       ? (EXTENSION[foto.archivo.type] ?? 'jpg')
@@ -148,7 +170,7 @@ export function SelectorFotos({
     // Se cerró sin registrar mientras subía: nada la va a nombrar.
     if (retiradas.has(foto)) {
       if (!error) void supabase.storage.from(bucket).remove([ruta])
-      return
+      return true
     }
 
     alCambiar((f) =>
@@ -158,11 +180,48 @@ export function SelectorFotos({
               ...item,
               subiendo: false,
               ruta: error ? undefined : ruta,
-              error: error ? explicarFalla(error.message) : undefined,
+              // Si la sesión cambió mientras subía, el rechazo es por eso y no por el permiso.
+              error: error ? (laPestanaEsDeOtraCuenta() ? NO_SUBIO_OTRA_CUENTA : explicarFalla(error.message)) : undefined,
             }
           : item,
       ),
     )
+    return true
+  }
+
+  /**
+   * Achica la que hace falta achicar y la sube. `retirada` si se cerró la
+   * ventana mientras tanto, `quitada` si se quitó esa sola con ✕, `cortada` si
+   * la sesión ya es de otra cuenta.
+   */
+  async function prepararYSubir(foto: FotoLista): Promise<'sigue' | 'retirada' | 'quitada' | 'cortada'> {
+    let lista = foto
+    if (sinAchicar.has(foto)) {
+      // Mientras se achica, la miniatura ya está con «subiendo…» encima.
+      let achicada: File | null = null
+      try {
+        achicada = await comprimirFoto(foto.archivo)
+      } catch {
+        achicada = null
+      }
+      if (retiradas.has(foto)) return quitadas.has(foto) ? 'quitada' : 'retirada'
+      const falla = !achicada
+        ? 'No se pudo abrir esta foto: tómala de nuevo o elige otra.'
+        : achicada.size > maximoMb * 1024 * 1024
+          ? `Aun achicada pesa más de ${maximoMb} MB.`
+          : null
+      if (!achicada || falla) {
+        // Sin miniatura no se ofrece «Reintentar»: volvería a fallar igual.
+        URL.revokeObjectURL(foto.vistaPrevia)
+        alCambiar((f) => f.map((item) => (item === foto ? { ...item, vistaPrevia: '', subiendo: false, error: falla ?? undefined } : item)))
+        return 'sigue'
+      }
+      lista = { ...foto, archivo: achicada }
+      alCambiar((f) => f.map((item) => (item === foto ? lista : item)))
+    }
+    const salio = await subir(lista)
+    if (retiradas.has(lista)) return quitadas.has(lista) ? 'quitada' : 'retirada'
+    return salio ? 'sigue' : 'cortada'
   }
 
   async function agregar(lista: FileList | null) {
@@ -171,6 +230,9 @@ export function SelectorFotos({
     if (!lista || laPestanaEsDeOtraCuenta()) return
 
     const disponibles = Math.max(0, (maximo ?? Number.POSITIVE_INFINITY) - fotos.length)
+    // Si a media cola entra otra cuenta, las que faltan se quedan elegidas, sin
+    // subir y con «Reintentar» para cuando vuelva la de la pantalla.
+    let cortada = false
     for (const archivo of Array.from(lista).slice(0, disponibles)) {
       // Con las mismas palabras que el campo de los documentos (ElegirArchivo).
       const tope = comprimir ? MAXIMO_ORIGINAL_MB : maximoMb
@@ -186,38 +248,16 @@ export function SelectorFotos({
         continue
       }
 
-      const foto: FotoLista = { archivo, vistaPrevia: URL.createObjectURL(archivo), subiendo: true }
+      const foto: FotoLista = cortada
+        ? { archivo, vistaPrevia: URL.createObjectURL(archivo), subiendo: false, error: NO_SUBIO_OTRA_CUENTA }
+        : { archivo, vistaPrevia: URL.createObjectURL(archivo), subiendo: true }
+      if (comprimir) sinAchicar.add(foto)
       alCambiar((f) => [...f, foto])
-      if (!comprimir) {
-        await subir(foto)
-        // Se cerró mientras subía: las que siguen ya no tienen ventana.
-        if (retiradas.has(foto)) break
-        continue
-      }
-
-      // Mientras se achica, la miniatura ya está con «subiendo…» encima.
-      let achicada: File | null = null
-      try {
-        achicada = await comprimirFoto(archivo)
-      } catch {
-        achicada = null
-      }
-      if (retiradas.has(foto)) break
-      const falla = !achicada
-        ? 'No se pudo abrir esta foto: tómala de nuevo o elige otra.'
-        : achicada.size > maximoMb * 1024 * 1024
-          ? `Aun achicada pesa más de ${maximoMb} MB.`
-          : null
-      if (!achicada || falla) {
-        // Sin miniatura no se ofrece «Reintentar»: volvería a fallar igual.
-        URL.revokeObjectURL(foto.vistaPrevia)
-        alCambiar((f) => f.map((item) => (item === foto ? { ...item, vistaPrevia: '', subiendo: false, error: falla ?? undefined } : item)))
-        continue
-      }
-      const lista: FotoLista = { ...foto, archivo: achicada }
-      alCambiar((f) => f.map((item) => (item === foto ? lista : item)))
-      await subir(lista)
-      if (retiradas.has(lista)) break
+      if (cortada) continue
+      const resultado = await prepararYSubir(foto)
+      // Se cerró mientras subía: las que siguen ya no tienen ventana.
+      if (resultado === 'retirada') break
+      if (resultado === 'cortada') cortada = true
     }
   }
 
@@ -225,11 +265,19 @@ export function SelectorFotos({
   function reintentar(foto: FotoLista) {
     if (laPestanaEsDeOtraCuenta()) return
     const otraVez: FotoLista = { ...foto, subiendo: true, error: undefined }
+    if (sinAchicar.has(foto)) sinAchicar.add(otraVez)
     alCambiar((f) => f.map((item) => (item === foto ? otraVez : item)))
-    void subir(otraVez)
+    void prepararYSubir(otraVez)
   }
 
   async function quitar(foto: FotoLista) {
+    // Quitada mientras sube o se achica: la subida termina después y la quita
+    // de Storage. Antes llegaba igual y quedaba suelta, sin nada en la pantalla
+    // que la nombrara (vigesimotercera pasada).
+    if (foto.subiendo) {
+      retiradas.add(foto)
+      quitadas.add(foto)
+    }
     if (foto.ruta) {
       const supabase = createClient()
       await supabase.storage.from(bucket).remove([foto.ruta])
