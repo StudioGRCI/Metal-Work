@@ -54,6 +54,13 @@ const SIN_CONTRATO_DEL_SUBCONTRATO: Falta = {
   dondeVarios: 'desde cada subcontrato, con «Adjuntar contrato»',
 }
 
+/** «3 h de Juan Pérez el 20 oct. 2026», o sin las horas. */
+function deLaPersona(persona: { nombres: string; apellidos: string } | null, dia: string, horas?: number | null) {
+  const quien = persona ? `${persona.nombres} ${persona.apellidos}` : null
+  const cuanto = horas != null ? `${cantidad(horas)} h` : null
+  return [[cuanto, quien].filter(Boolean).join(' de '), `el ${fecha(dia)}`].filter(Boolean).join(' ')
+}
+
 /** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene (`obtenerSesion`). */
 async function puestoDe(supabase: Cliente, usuario: string) {
   const { data } = await supabase.from('usuarios').select('cargo, rol:roles!inner(nombre)').eq('id', usuario).maybeSingle()
@@ -282,6 +289,37 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         por: data.registrado_por,
         lo: data.tipo === 'INGRESO' ? dicho('El ingreso', 'Los ingresos', 'otro', detalle) : dicho('El egreso', 'Los egresos', 'otro', detalle),
       }
+    }
+    case 'observacion_personal': {
+      const { data } = await supabase.from('observaciones_personal').select('fecha, registrado_por, trabajadores(nombres, apellidos)').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La observación', 'Las observaciones', 'otra', deLaPersona(data.trabajadores, data.fecha)) }
+    }
+    case 'permiso_personal': {
+      const { data } = await supabase.from('permisos_personal').select('fecha, horas, registrado_por, trabajadores(nombres, apellidos)').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El permiso', 'Los permisos', 'otro', deLaPersona(data.trabajadores, data.fecha, data.horas)) }
+    }
+    case 'tareo': {
+      const { data } = await supabase.from('tareos').select('fecha, horas, registrado_por, trabajadores(nombres, apellidos)').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La carga de horas', 'Las cargas de horas', 'otra', deLaPersona(data.trabajadores, data.fecha, data.horas)) }
+    }
+    case 'uso_saldo': {
+      const { data } = await supabase
+        .from('horas_compensadas')
+        .select('fecha, horas, permiso_id, registrado_por, trabajadores(nombres, apellidos)')
+        .eq('id', id)
+        .maybeSingle()
+      if (!data) return null
+      const detalle = deLaPersona(data.trabajadores, data.fecha, data.horas)
+      return {
+        por: data.registrado_por,
+        lo: data.permiso_id
+          ? dicho('La justificación', 'Las justificaciones', 'otra', detalle)
+          : dicho('El uso de las horas reservadas', 'Los usos de las horas reservadas', 'otro', detalle),
+      }
+    }
+    case 'cuenta_caja': {
+      const { data } = await supabase.from('cajas').select('nombre, creado_por').eq('id', id).maybeSingle()
+      return data && { por: data.creado_por, lo: dicho('La cuenta', 'Las cuentas', 'otra', data.nombre) }
     }
     case 'transferencia_caja': {
       const { data } = await supabase

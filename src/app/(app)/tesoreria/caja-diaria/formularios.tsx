@@ -11,7 +11,7 @@ import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import {
   ACEPTA_CAPTURA_SALDO,
   BUCKET_APERTURA_CAJA,
@@ -342,13 +342,29 @@ export function AnularMovimiento({ id, descripcion, cuenta, otraCuenta }: {
 
 // ---------------------------------------------------------------- cerrar y reabrir el día
 
+/**
+ * El id del cierre vive aquí, como el del movimiento (`useIdDelEnvio`): tras «No
+ * llegó la respuesta», cancelar y volver a abrir lleva el mismo, y la base dice
+ * si ya quedó en vez de dar por cerrado el día con otro saldo (20261023200000).
+ */
 export function CerrarDia({ cuenta, dia, saldoFinal }: { cuenta: CuentaElegible; dia: string; saldoFinal: number }) {
   const v = useVentana()
+  const envio = useIdDelEnvio(undefined, undefined, `cierre-del-dia:${cuenta.id}:${dia}`)
   return (
     <>
       {/* En contorno, como «Registrar»: va en la cabecera de cada cuenta, y en azul lleno
           era lo más visible de la caja a media mañana, cuando lo que toca es registrar. */}
-      <Boton type="button" variante="contorno" tamano="sm" onClick={v.abrir} aria-label={`Cerrar el día de ${cuenta.nombre}`} data-cerrar-dia={cuenta.nombre}>
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          envio.abrir()
+          v.abrir()
+        }}
+        aria-label={`Cerrar el día de ${cuenta.nombre}`}
+        data-cerrar-dia={cuenta.nombre}
+      >
         <Lock aria-hidden className="size-4" />
         Cerrar el día
       </Boton>
@@ -359,21 +375,32 @@ export function CerrarDia({ cuenta, dia, saldoFinal }: { cuenta: CuentaElegible;
         descripcion={`La caja dice ${moneda(saldoFinal, monedaDeCuenta(cuenta.moneda))}. Escribe lo que dice el estado de cuenta; cerrado, el día ya no cambia.`}
         ancho="sm"
       >
-        <FormularioCierre key={v.vez} cuenta={cuenta} dia={dia} saldoFinal={saldoFinal} alTerminar={v.cerrar} />
+        {envio.id && <FormularioCierre key={v.vez} envio={envio} cuenta={cuenta} dia={dia} saldoFinal={saldoFinal} alTerminar={v.cerrar} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
+function FormularioCierre({ envio, cuenta, dia, saldoFinal, alTerminar }: {
+  envio: ReturnType<typeof useIdDelEnvio>
   cuenta: CuentaElegible
   dia: string
   saldoFinal: number
   alTerminar: () => void
 }) {
-  const [id] = useState(() => crypto.randomUUID())
+  const id = envio.id ?? ''
   const [banco, setBanco] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(cerrarDia, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return cerrarDia(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   const m = monedaDeCuenta(cuenta.moneda)
   // Se lee igual que en el servidor: «-508,61» es -508.61, no -50 861.
   const escrito = normalizarMonto(banco)
@@ -403,7 +430,8 @@ function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
           onChange={(e) => setBanco(e.target.value)}
         />
       </Campo>
-      {diferencia !== null && (
+      {/* Con «ya quedó», lo escrito no se guardó: no se pide explicar su diferencia. */}
+      {diferencia !== null && !yaEntroLaPrimeraVez(error) && (
         <p role="status" className={diferencia === 0 ? 'text-sm text-exito' : 'text-sm text-aviso'}>
           {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
         </p>
@@ -463,17 +491,34 @@ export type CuentaEditable = {
 /** Lo que respalda el saldo inicial: en un banco, la pantalla del aplicativo; en la caja chica, el conteo. */
 const respaldoDe = (tipo: string) => (tipo === 'BANCO' ? 'la captura del saldo' : 'la foto del conteo')
 
+/**
+ * El alta conserva su id y el de su captura fuera del formulario
+ * (`useIdDelEnvio`): tras «No llegó la respuesta», cancelar y volver a abrir lleva
+ * los mismos, y la base reconoce el alta repetida en vez de abrir otra cuenta o
+ * corregir en silencio la que ya quedó (20261023200000). Corregir lleva el id de
+ * la cuenta, como siempre.
+ */
 export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: CuentaEditable; hoy: string; primera?: boolean }) {
   const v = useVentana()
+  const captura = useIdDelEnvio(undefined, undefined, 'captura-de-la-cuenta-nueva')
+  // Si la base dice que el alta anterior entró, su captura se fue con ella.
+  const alta = useIdDelEnvio('cuenta_caja', (cuentas) => captura.otro(cuentas))
+  const abrir = () => {
+    if (!cuenta) {
+      alta.abrir()
+      captura.abrir()
+    }
+    v.abrir()
+  }
   return (
     <>
       {cuenta ? (
-        <Boton type="button" tamano="sm" variante="fantasma" onClick={v.abrir} aria-label={`Corregir ${cuenta.nombre}`} data-editar-cuenta={cuenta.nombre}>
+        <Boton type="button" tamano="sm" variante="fantasma" onClick={abrir} aria-label={`Corregir ${cuenta.nombre}`} data-editar-cuenta={cuenta.nombre}>
           <Pencil aria-hidden className="size-4" />
           Corregir
         </Boton>
       ) : (
-        <Boton type="button" tamano="sm" variante={primera ? 'primario' : 'contorno'} onClick={v.abrir} data-agregar-cuenta>
+        <Boton type="button" tamano="sm" variante={primera ? 'primario' : 'contorno'} onClick={abrir} data-agregar-cuenta>
           <Plus aria-hidden className="size-4" />
           {primera ? 'Dar de alta la primera cuenta' : 'Agregar cuenta'}
         </Boton>
@@ -493,16 +538,43 @@ export function EditarCuenta({ cuenta, hoy, primera = false }: { cuenta?: Cuenta
         }
         ancho="md"
       >
-        <FormularioCuenta key={v.vez} cuenta={cuenta} hoy={hoy} alTerminar={v.cerrar} />
+        {!cuenta && <EnvioAnterior texto={alta.anterior} />}
+        {(cuenta || (alta.id && captura.id)) && (
+          <FormularioCuenta
+            key={v.vez}
+            cuenta={cuenta}
+            alta={
+              cuenta
+                ? undefined
+                : {
+                    id: alta.id ?? '',
+                    capturaId: captura.id ?? '',
+                    salio: () => {
+                      alta.salio()
+                      captura.salio()
+                    },
+                    otro: () => {
+                      alta.otro()
+                      captura.otro()
+                    },
+                  }
+            }
+            hoy={hoy}
+            alTerminar={v.cerrar}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
-function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable; hoy: string; alTerminar: () => void }) {
-  const [id] = useState(() => cuenta?.id ?? crypto.randomUUID())
-  // El nombre de la captura en Storage, decidido al abrir: un reintento sube al mismo sitio y no la duplica.
-  const [capturaId] = useState(() => crypto.randomUUID())
+type EnvioDelAlta = { id: string; capturaId: string; salio: () => void; otro: () => void }
+
+function FormularioCuenta({ cuenta, alta, hoy, alTerminar }: { cuenta?: CuentaEditable; alta?: EnvioDelAlta; hoy: string; alTerminar: () => void }) {
+  const id = cuenta?.id ?? alta?.id ?? ''
+  // El nombre de la captura en Storage, decidido al abrir (en el alta, con su id): un reintento sube al mismo sitio y no la duplica.
+  const [capturaPropia] = useState(() => crypto.randomUUID())
+  const capturaId = alta?.capturaId ?? capturaPropia
   const [tipo, setTipo] = useState(cuenta?.tipo ?? 'BANCO')
   const fijo = cuenta?.con_movimientos ?? false
   const anterior = cuenta?.apertura_ruta ?? null
@@ -518,6 +590,10 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
    * nombra; si no se puede, se queda donde solo la ve quien la subió.
    */
   async function guardar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+    if (alta) {
+      alta.salio()
+      datos.set('alta', 'si')
+    }
     const archivo = datos.get('captura')
     datos.delete('captura')
     // Una captura elegida y vacía no se deja de lado callada.
@@ -548,7 +624,14 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
     }
     return resultado
   }
-  const { alEnviar, enviando, error } = useEnvio(guardar, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    guardar,
+    () => {
+      alta?.otro()
+      alTerminar()
+    },
+    { alYaEntrar: alta?.otro },
+  )
   const p = `cuenta-${id.slice(0, 8)}`
 
   return (

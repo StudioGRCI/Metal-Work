@@ -151,6 +151,13 @@ begin
   -- Un reintento con el mismo id no duplica.
   v_id := public.rrhh_registrar_permiso(p1, a, date '2026-09-10', 4, 'trámite en el banco por la mañana');
   perform test.afirmar((select count(*) from public.permisos_personal where trabajador_id = a) = 1, 'el reintento no duplica el permiso');
+  -- Con algo cambiado ya no es el mismo envío (20261023200000).
+  perform test.debe_fallar(format('select public.rrhh_registrar_permiso(%L, %L, ''2026-09-10'', 3, ''trámite en el banco por la mañana'')', p1, a),
+    'otras horas con el mismo id dicen que el primero ya quedó', 'Este permiso ya quedó registrado la primera vez que lo enviaste');
+  perform test.debe_fallar(format('select public.rrhh_registrar_permiso(%L, %L, ''2026-09-11'', 4, ''trámite en el banco por la mañana'')', p1, a),
+    'otro día con el mismo id tampoco', 'ya quedó registrado la primera vez');
+  perform test.afirmar((select horas = 4 and fecha = date '2026-09-10' from public.permisos_personal where id = p1),
+    'el permiso sigue como la primera vez');
   perform test.debe_fallar(format('select public.rrhh_registrar_permiso(%L, %L, ''2026-09-10'', 5, ''cita médica por la tarde'')', gen_random_uuid(), a),
     'en un día no pasa de las 8 horas de la jornada', 'pasaría de las 8 horas');
   perform test.debe_fallar(format('select public.rrhh_registrar_permiso(%L, %L, ''2026-09-11'', 9, ''dos días de viaje familiar'')', gen_random_uuid(), a),
@@ -181,6 +188,12 @@ begin
                        and (select fecha from public.horas_compensadas where id = current_setting('prueba.j1')::uuid) = date '2026-09-10',
     'la justificación es un uso del saldo que nombra al permiso, en su día');
   perform test.afirmar((select usadas from public.saldo_horas_por_persona(a)) = 3, 'Horas extras ve las 3 horas usadas');
+  -- Sin horas escritas, la primera vez justificó lo que alcanzaba: lo mismo
+  -- escrito es el mismo envío; otra cantidad, no.
+  v_id := public.rrhh_justificar_permiso(current_setting('prueba.j1')::uuid, p1, 3);
+  perform test.afirmar(v_id = current_setting('prueba.j1')::uuid, 'la justificación repetida con sus horas escritas devuelve la misma');
+  perform test.debe_fallar(format('select public.rrhh_justificar_permiso(%L, %L, 2)', current_setting('prueba.j1'), p1),
+    'otras horas con el mismo id dicen que la primera ya quedó', 'Esta justificación ya quedó registrada la primera vez que la enviaste');
   perform test.debe_fallar(format('select public.rrhh_justificar_permiso(%L, %L)', gen_random_uuid(), p1),
     'sin más saldo no se justifica lo que falta');
   reset role;

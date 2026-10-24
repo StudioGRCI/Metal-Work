@@ -240,8 +240,22 @@ En la misma migración que la crea, sin excepción:
   tarde, la ventana que se volvió a abrir se quedaba sin id para enviar. Y el
   aviso de una ventana ya cerrada se suelta fuera de la transición del
   refresco, o la ventana nueva sale trabada mientras la señal tarda. Ojo donde la función devuelve el id existente sin comparar el
-  envío (la caja diaria): conservar el id ahí haría que lo distinto se diera
-  por guardado. Primero la función compara; después se conserva el id.
+  envío: conservar el id ahí haría que lo distinto se diera por guardado.
+  Primero la función compara; después se conserva el id.
+  La `20261023200000` compara en RR. HH. (observación, permiso, carga de
+  horas, usar el saldo, justificar, pagar o reservar), la caja (cierre y cuenta
+  nueva), el gasto del mes y el almacén (recepción, despacho y salida del
+  kardex): la misma persona con lo mismo recibe lo de antes; con otra cosa, «ya
+  quedó… la primera vez»; otra persona, «ya existe con otros datos». **Una
+  función que inserta o corrige con el mismo id (un upsert, `guardar_caja`) no
+  distingue sola el alta repetida de una corrección**: la ventana manda
+  `p_alta` y el alta repetida compara en vez de actualizar. Sus ventanas llevan
+  clave (`observacion_personal`, `permiso_personal`, `tareo`, `uso_saldo`,
+  `cuenta_caja`); el cierre del día no la necesita, porque cerrado ya no se
+  ofrece. **Sin ventana** (pagar o reservar, la llegada y el despacho del
+  tablero) el «ya quedó» va en `AvisoYaQuedo`, en lugar del botón, y la
+  pantalla se pone al día cuando se pide (`refrescar: false`): sola, la fila
+  se iba con el aviso a medio leer. Banco: `probar-reenvio-con-otros-datos.mjs`.
   **Al volver a abrir, se pregunta a la base** (`useIdDelEnvio(clave)` con
   `consultarEnvio`, en `src/app/(app)/acciones-envio.ts`): si aquel envío
   entró, la ventana lo dice con su número (`EnvioAnterior`) y lleva otro id.

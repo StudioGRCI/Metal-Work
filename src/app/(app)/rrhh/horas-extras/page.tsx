@@ -141,7 +141,7 @@ export default async function PaginaHorasExtras() {
                     <TD className="tabular text-right font-semibold text-texto">{horasCortas(s.saldo)}</TD>
                     {decide && (
                       <TD className="text-right">
-                        {s.saldo > 0 && <UsarSaldo id={crypto.randomUUID()} trabajadorId={s.trabajador_id} nombre={s.nombre} saldo={s.saldo} hoy={hoy} />}
+                        {s.saldo > 0 && <UsarSaldo trabajadorId={s.trabajador_id} nombre={s.nombre} saldo={s.saldo} hoy={hoy} />}
                       </TD>
                     )}
                   </TR>

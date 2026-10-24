@@ -22,12 +22,14 @@ begin;
 
 insert into public.sedes (codigo, nombre) values ('QA01', 'Taller prueba de gastos del mes') on conflict (codigo) do nothing;
 select test.crear_usuario('Olga', 'Oficina', 'oficina401@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA01')) as oficina_id \gset
+select test.crear_usuario('Otto', 'Oficina', 'oficina2.401@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA01')) as oficina2_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia401@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA01')) as gerente_id \gset
 select test.crear_usuario('Vico', 'Ventas', 'ventas401@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA01')) as vendedor_id \gset
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh401@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA01')) as rrhh_id \gset
 select test.crear_usuario('Coco', 'Costos', 'costos401@demo.pe', 'COSTOS_MATERIALES', (select id from public.sedes where codigo = 'QA01')) as costos_id \gset
 select test.crear_usuario('Ada', 'Admin', 'admin401@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA01')) as admin_id \gset
 select set_config('prueba.oficina', :'oficina_id', true);
+select set_config('prueba.oficina2', :'oficina2_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.rrhh', :'rrhh_id', true);
@@ -109,6 +111,25 @@ select public.registrar_gasto_general(current_setting('prueba.luz')::uuid, date 
 select test.afirmar(public.registrar_gasto_general(current_setting('prueba.luz')::uuid, date '2021-03-20', 'ELECTRICIDAD',
   'Recibo de luz de marzo', 1000, 'PEN', 'HORAS', null) = current_setting('prueba.luz')::uuid,
   'el reintento del mismo gasto devuelve el mismo, sin duplicarlo');
+-- Con algo cambiado ya no es el mismo envío: el primero quedó y lo nuevo no se
+-- da por guardado, sin rojo en la pantalla (20261023200000).
+select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-03-20', 'ELECTRICIDAD',
+  'Recibo de luz de marzo', 1100, 'PEN', 'HORAS', null)$q$, current_setting('prueba.luz')),
+  'otro importe con el mismo id dice que el primero ya quedó', 'Este gasto ya quedó registrado la primera vez que lo enviaste');
+select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-03-20', 'ELECTRICIDAD',
+  'Recibo de luz de marzo y abril', 1000, 'PEN', 'HORAS', null)$q$, current_setting('prueba.luz')),
+  'otro detalle con el mismo id tampoco', 'ya quedó registrado la primera vez');
+select test.afirmar((select monto = 1000 and descripcion = 'Recibo de luz de marzo' from public.gastos_generales_mes
+                      where id = current_setting('prueba.luz')::uuid), 'el gasto sigue como la primera vez');
+reset role;
+select pg_temp.como('oficina2');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-03-20', 'ELECTRICIDAD',
+  'Recibo de luz de marzo', 1000, 'PEN', 'HORAS', null)$q$, current_setting('prueba.luz')),
+  'el gasto de otra persona de Administración no se da por suyo', 'Ese gasto ya existe con otros datos');
+reset role;
+select pg_temp.como('oficina');
+set local role authenticated;
 select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
   'Por horas con tasa', 100, 'PEN', 'HORAS', 5)$q$, 'por horas no lleva tasa', 'se reparten por horas');
 select test.debe_fallar($q$select public.registrar_gasto_general(gen_random_uuid(), date '2021-03-20', 'AGUA',
@@ -267,7 +288,8 @@ set local role authenticated;
 select public.registrar_gasto_general(current_setting('prueba.julio')::uuid, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null);
 select public.anular_gasto_general(current_setting('prueba.julio')::uuid, 'Prueba del número anulado');
 select test.debe_fallar(format($q$select public.registrar_gasto_general(%L, date '2021-07-10', 'AGUA', 'Recibo de agua de julio', 100, 'PEN', 'HORAS', null)$q$,
-                               current_setting('prueba.julio')), 'un gasto anulado no se vuelve a registrar con su número', 'ya se anuló');
+                               current_setting('prueba.julio')), 'un gasto anulado no se vuelve a registrar con su número, y lo dice como «ya quedó» para que la ventana lleve otro (20261023200000)',
+                               'Este gasto ya quedó registrado la primera vez que lo enviaste, y después se anuló');
 select public.registrar_gasto_general(gen_random_uuid(), date '2021-07-10', 'INTERNET', 'Internet de julio', 100, 'PEN', 'HORAS', null);
 reset role;
 select test.como_usuario(:'rrhh_id');

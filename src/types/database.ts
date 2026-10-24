@@ -13881,6 +13881,7 @@ export type Database = {
           p_fecha_inicio: string | null
           p_activa: boolean | null
           p_apertura_ruta: string | null
+          p_alta: boolean | null
         }
         Returns: string
       }
