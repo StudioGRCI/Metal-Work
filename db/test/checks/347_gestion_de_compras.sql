@@ -215,6 +215,15 @@ select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current
   ' t001-00000123 ', (now() at time zone 'America/Lima')::date, 'guia-t001-123.pdf');
 select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
   'T001-00000123', (now() at time zone 'America/Lima')::date, 'guia-t001-123.pdf');  -- respuesta perdida: no duplica
+-- Con otra fecha o con el PDF de otro nombre ya no es el mismo envío: se cambió
+-- antes de volver a pulsar, y la ventana no puede cerrarse como si hubiera
+-- entrado (migración 20261022180000).
+select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
+    'T001-00000123', (now() at time zone 'America/Lima')::date - 1, 'guia-t001-123.pdf')$q$,
+  'con otra fecha y el mismo id, la guía no se da por cargada', 'ya quedó cargada la primera vez que la enviaste');
+select test.debe_fallar($q$select public.cargar_guia_remision(current_setting('prueba.guia')::uuid, current_setting('prueba.oc2')::uuid,
+    'T001-00000123', (now() at time zone 'America/Lima')::date, 'otra-guia.pdf')$q$,
+  'ni con el PDF de otro nombre', 'ya quedó cargada la primera vez que la enviaste');
 select test.afirmar(
   (select numero = 'T001-00000123' from public.guias_remision_compra
     where orden_compra_id = current_setting('prueba.oc2')::uuid and anulada_en is null and id = current_setting('prueba.guia')::uuid)

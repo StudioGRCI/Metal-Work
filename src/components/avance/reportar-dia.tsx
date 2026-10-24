@@ -1,11 +1,11 @@
 'use client'
 
 import { CalendarDays, TrendingUp } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { reportarAvance } from '@/app/(app)/ordenes/[id]/acciones-actividades'
 import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, retirarLasQueSuben, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -51,7 +51,12 @@ export function ReportarDia({
   const [abierto, setAbierto] = useState(false)
   const [fotos, setFotos] = useState<FotoLista[]>([])
   const [aviso, setAviso] = useState<string | null>(null)
+  // Se cerró mientras se enviaba: la foto quedó en manos del envío.
+  const cerradaEnviando = useRef(false)
   async function limpiarFotoPendiente() {
+    // La que todavía sube se quita sola al terminar: antes llegaba a Storage
+    // después de cancelar y quedaba suelta (vigesimotercera pasada).
+    retirarLasQueSuben(fotos)
     const rutas = fotosParaEnviar(fotos).map(f => f.ruta_storage)
     if (rutas.length > 0) {
       const { error } = await createClient().storage.from('fotos-avance').remove(rutas)
@@ -65,22 +70,32 @@ export function ReportarDia({
   async function enviarConLimpieza(previo: unknown, datos: FormData) {
     try {
       const resultado = await reportarAvance(previo, datos)
-      if (!resultado.ok && esNueva) await limpiarFotoPendiente()
+      // Si se cerró mientras iba, nadie más las quita: la ventana ya no está.
+      if (!resultado.ok && (esNueva || cerradaEnviando.current)) await limpiarFotoPendiente()
       return resultado
     } catch (error) {
       if (esNueva) await limpiarFotoPendiente()
       throw error
     }
   }
-  function cancelar() {
-    void limpiarFotoPendiente()
-    setAbierto(false)
-  }
   const { alEnviar, enviando, error, limpiar } = useEnvio(enviarConLimpieza, (r) => {
     setFotos([])
     setAbierto(false)
     setAviso(r.mensaje ?? 'Avance del día reportado.')
   })
+  // Mientras se envía, la foto se queda: el reporte que está entrando la nombra,
+  // y quitarla lo dejaba con una foto que no abre. Si la base lo rechaza, la
+  // quita el envío (`enviarConLimpieza`), como en «Registrar avance».
+  function cancelar() {
+    if (enviando) {
+      cerradaEnviando.current = true
+      soltarMiniaturas(fotos)
+      setFotos([])
+    } else {
+      void limpiarFotoPendiente()
+    }
+    setAbierto(false)
+  }
 
   const falta = Math.max(0, 100 - Number(actividad.avance_pct))
   const prefijo = `${deOtroDia ? 'o' : 'r'}-${actividad.id.slice(0, 8)}`
@@ -93,6 +108,7 @@ export function ReportarDia({
         onClick={() => {
           limpiar()
           setAviso(null)
+          cerradaEnviando.current = false
           setAbierto(true)
         }}
       >

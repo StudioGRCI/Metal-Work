@@ -160,7 +160,14 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
             ayuda="Elige la factura que anexó Logística, que trae su número, su fecha y su OC; o marca las OC que cubre y adjunta el PDF."
           />
           <TarjetaCuerpo>
-            <FormularioAdquisicion ordenes={ordenes.data ?? []} compras={sinFactura} documentos={porRegistrar} />
+            <FormularioAdquisicion
+              ordenes={ordenes.data ?? []}
+              compras={sinFactura}
+              documentos={porRegistrar}
+              borradores={tabla.facturas.flatMap(({ factura: f }) =>
+                f.estado === 'BORRADOR' && f.registrado_por === perfil.id ? [{ proveedor: f.proveedor, numero: f.numero_documento }] : [],
+              )}
+            />
           </TarjetaCuerpo>
         </Tarjeta>
       )}

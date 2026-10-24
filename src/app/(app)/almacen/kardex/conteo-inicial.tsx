@@ -10,11 +10,14 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { laPestanaEsDeOtraCuenta, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
 
 type Resultado = { estado: 'ok' } | { estado: 'error'; mensaje: string }
+
+const NO_SALIO_OTRA_CUENTA = 'No se envió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a registrarlo; lo registrado no se duplica.'
 const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 /** El tope con que el servidor abre el libro (`abrirLibro`). */
 const MAXIMO_MB_EXCEL = 8
@@ -71,7 +74,7 @@ export function ConteoInicial() {
   function cerrar() {
     if (registrando) return
     setAbierta(false)
-    if (Object.keys(resultados).length > 0) router.refresh()
+    if (Object.keys(resultados).length > 0) refrescarSiEsDeLaPestana(router)
     reiniciar()
   }
 
@@ -114,10 +117,20 @@ export function ConteoInicial() {
 
   async function registrar() {
     if (enCurso.current || pendientes.length === 0) return
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
     try {
       for (let i = 0; i < pendientes.length; i += TANDA_CONTEO) {
+        // Tanda por tanda, cada una sale con la sesión de ese momento. Si entró
+        // otra cuenta, lo que falta se queda con su motivo y sale cuando vuelva
+        // la tuya (vigesimotercera pasada).
+        if (laPestanaEsDeOtraCuenta()) {
+          const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
+          setResultados((previos) => ({ ...previos, ...quedan }))
+          break
+        }
         const tanda = pendientes.slice(i, i + TANDA_CONTEO)
         const datos = new FormData()
         datos.set('fecha', fechaLeida)

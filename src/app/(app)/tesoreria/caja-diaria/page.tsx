@@ -14,7 +14,7 @@ import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esExtorno, e
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
-import { AnularMovimiento, CerrarDia, EditarCuenta, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
+import { AnularMovimiento, CerrarDia, EditarCuenta, EnviosDeLaCaja, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
 
 export const metadata = { title: 'Caja diaria' }
 
@@ -62,7 +62,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const bancosSinCaptura = caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length
 
   return (
-    <>
+    <EnviosDeLaCaja>
       <EncabezadoPagina
         titulo="Caja diaria"
         ayuda="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco. Los pagos y cobros del sistema entran solos."
@@ -235,7 +235,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           </div>
         </SeccionDesplegable>
       )}
-    </>
+    </EnviosDeLaCaja>
   )
 }
 

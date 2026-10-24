@@ -64,6 +64,14 @@ const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
  * Se espera la carga completa y, a lo sumo diez segundos, la red quieta.
  */
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+async function esperar(fn, ms = 15000) {
+  const hasta = Date.now() + ms
+  while (Date.now() < hasta) {
+    if (await fn().catch(() => false)) return true
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return false
+}
 async function ir(pagina, url) {
   await pagina.goto(url, { waitUntil: 'load' })
   await quieta(pagina)
@@ -233,8 +241,8 @@ let ordenId = ''
   rqa = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
   const fila = await uno(`select id, codigo_interno from public.requerimientos where numero = $1`, [rqa])
   comprobar(fila?.codigo_interno === 'TODOS LOS ACTIVOS', `el ${rqa || 'RQA'} queda cargado a TODOS LOS ACTIVOS`)
-  await pagina.waitForTimeout(800)
-  comprobar(limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 'y la lista lo dice')
+  // La lista se pone al día cuando llega la página nueva; con el banco cargado tarda más de 800 ms.
+  comprobar(await esperar(async () => limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 10000), 'y la lista lo dice')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-rqa-lista.png`, fullPage: true })
   // En el teléfono la lista no ensancha la página (la ventana del RQA se salía por la derecha).
   await pagina.setViewportSize({ width: 390, height: 844 })
@@ -257,7 +265,9 @@ let ordenId = ''
   [salida, materialId, `${rqa} · ítem 1`, foto, fila?.id])
 
   // ---------------------------------------------- 3. Códigos internos, en lectura
-  await ir(pagina, `${BASE}/codigos-internos`)
+  // Buscados por su sello: la lista va de 50 en 50, y el banco que ya corrió otras
+  // tandas tiene más de 50 abiertos, así que A y B podían caer en la segunda página.
+  await ir(pagina, `${BASE}/codigos-internos?q=${sello}`)
   const lista = limpio(await pagina.locator('main').innerText())
   comprobar(lista.includes(A) && lista.includes(B), 've los códigos en la lista de Códigos internos')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-codigos.png`, fullPage: true })
@@ -317,9 +327,11 @@ let ordenId = ''
     await pagina.getByText(`Ya hay una orden de trabajo ${repetido}`).waitFor({ timeout: 30000 }).catch(() => {})
     comprobar(limpio(await pagina.locator('main').innerText()).includes(`Ya hay una orden de trabajo ${repetido}`),
       `con el número ${repetido}, que ya es de otra orden, no se registra y lo dice`)
-    comprobar((await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
-              && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero',
-      'el rechazo queda en el campo del número, con el cursor ahí')
+    // Mientras envía, los campos están trabados: el cursor llega al número cuando se liberan.
+    const enElNumero = async () => (await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
+      && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero'
+    const llego = await esperar(enElNumero, 3000)
+    comprobar(llego, `el rechazo queda en el campo del número, con el cursor ahí (${await pagina.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`)})`)
     // El de su campo también es `role="alert"`: se cuentan los que lo dicen.
     comprobar((await pagina.locator('[role="alert"]', { hasText: 'Ya hay una orden de trabajo' }).count()) === 1,
       'y no se repite en el aviso de abajo')

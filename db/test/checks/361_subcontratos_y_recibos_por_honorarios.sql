@@ -178,6 +178,15 @@ begin
   perform test.afirmar(r.numero = 'E001-25' and r.retencion_porcentaje = 8 and r.retencion_monto = 160 and r.monto_neto = 1840
     and r.moneda = 'PEN' and r.archivo_mime = 'application/pdf',
     'con retención: 2,000 brutos, 160 retenidos (8 %) y 1,840 netos');
+  -- El mismo envío repetido devuelve el mismo recibo; con otro archivo, no
+  -- (migración 20261022160000).
+  perform test.afirmar(public.registrar_recibo_honorarios(current_setting('prueba.rec1')::uuid, current_setting('prueba.sc')::uuid,
+      ' e001-25 ', (now() at time zone 'America/Lima')::date - 2, 'Primer avance: tolva', 2000, true, current_setting('prueba.arch1')) = v
+      and (select count(*) from public.recibos_honorarios where id = v) = 1,
+    'el recibo repetido con su archivo devuelve el mismo');
+  perform test.debe_fallar(format('select public.registrar_recibo_honorarios(%L, %L, ''E001-25'', current_date, null, 2000, true, %L)',
+      current_setting('prueba.rec1'), current_setting('prueba.sc'), current_setting('prueba.arch2')),
+    'el mismo recibo con otro archivo no se da por registrado', 'ya quedó registrado la primera vez que lo enviaste');
   perform pg_temp.subir(current_setting('prueba.arch2'), 'application/pdf');
   perform test.debe_fallar(format('select public.registrar_recibo_honorarios(%L, %L, ''E001-25'', current_date, null, 900, false, %L)',
       current_setting('prueba.rec2'), current_setting('prueba.sc'), current_setting('prueba.arch2')),

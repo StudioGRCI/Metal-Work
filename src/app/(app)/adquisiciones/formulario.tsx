@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -8,8 +8,8 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
 import { nombreDeOc, ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
-import { avisosDelDetector, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
-import { useEnvio } from '@/lib/envio'
+import { avisosDelDetector, numeroDeFactura, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as dia, moneda as dinero } from '@/lib/format'
 import { ACEPTA_XML_FACTURA, camposDeLectura, leerFactura, leerFacturaDeEnlace } from '@/lib/leer-factura'
 
@@ -17,7 +17,43 @@ import { completarAdquisicion, enlaceDeFacturaDeLogistica, registrarAdquisicion 
 
 type Fuente = 'xml' | 'pdf' | 'logistica'
 
+type Dato = 'total' | 'numero' | 'emision' | 'ruc'
+const DATOS: Dato[] = ['total', 'numero', 'emision', 'ruc']
+/** Cada dato y la fuente que lo llenó; `null` si lo escribió la persona o está vacío. */
+type Llenado = Record<Dato, { valor: string; fuente: Fuente | null }>
+const VACIO = { valor: '', fuente: null }
+const SIN_LLENAR: Llenado = { total: VACIO, numero: VACIO, emision: VACIO, ruc: VACIO }
+
+/** Lo que está vacío se llena con lo que trae la fuente, y queda anotado que vino de ella. */
+function llenarCon(d: Llenado, fuente: Fuente, valores: Partial<Record<Dato, string | null | undefined>>): Llenado {
+  let n = d
+  for (const k of DATOS) {
+    const v = valores[k]
+    if (v && !n[k].valor) n = { ...n, [k]: { valor: v, fuente } }
+  }
+  return n
+}
+const valoresDe = (l: LecturaFactura) => ({ total: l.total !== null ? l.total.toFixed(2) : null, numero: l.numero, emision: l.fecha_emision, ruc: l.ruc })
+
 const ACEPTA_PDF = 'application/pdf,.pdf'
+
+/** Lo que la primera marca de OC llena de su OC. */
+type Valores = { proveedor: string; condicion: string; moneda: string; ot: string }
+
+/**
+ * Un estado que también se lee al día: lo que se decide al terminar una lectura,
+ * o justo después de soltar un archivo, mira lo que hay ahora y no lo que había
+ * cuando se pintó la pantalla.
+ */
+function useEstadoAlDia<T>(inicial: T) {
+  const [valor, setValor] = useState(inicial)
+  const ahora = useRef(inicial)
+  const poner = (nuevo: T | ((antes: T) => T)) => {
+    ahora.current = typeof nuevo === 'function' ? (nuevo as (antes: T) => T)(ahora.current) : nuevo
+    setValor(ahora.current)
+  }
+  return [valor, poner, ahora] as const
+}
 
 type Props = {
   ordenes: { id: string; numero: string }[]
@@ -49,11 +85,29 @@ const pendiente = (c: CompraSinFactura) => Math.max(Math.round((Number(c.total) 
  * El detector lee la factura apenas se adjunta (el XML de SUNAT, el PDF o la que
  * subió Logística): llena el total, el número, la fecha y las OC que menciona si
  * están vacíos, y avisa lo que no calza. Lo leído se guarda con el comprobante.
+ * Si se quita o se cambia el archivo, lo que llenó y nadie tocó se va con él.
  */
-export function FormularioAdquisicion(props: Props) {
+export function FormularioAdquisicion({ borradores, ...props }: Props & { borradores: { proveedor: string; numero: string }[] }) {
   // Al registrar, el formulario se vuelve a montar vacío y el aviso queda arriba.
+  // Si el comprobante quedó en borrador, también: lo escrito ya está en él, y
+  // volver a enviarlo chocaría con su propio número. Su aviso sigue abajo,
+  // donde estaba, hasta que la persona empiece el siguiente o lo complete en
+  // su fila: dura lo que el borrador en la lista (`borradores`, los de esta
+  // persona). La lista lo trae un momento después del aviso: se va cuando ya
+  // estuvo y dejó de estar, y en su lugar queda el «completado», con lo que
+  // falte hacer con «Corregir» si al borrador le faltó una OC.
   const [vuelta, setVuelta] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [borrador, setBorrador] = useState<{ texto: string; clave: string; numero: string; enLaLista: boolean } | null>(null)
+  const [completado, setCompletado] = useState<{ texto: string; falta: string | null } | null>(null)
+  const sigue = borrador !== null && borradores.some((b) => claveDeBorrador(b.proveedor, b.numero) === borrador.clave)
+  if (borrador && sigue && !borrador.enLaLista) setBorrador({ ...borrador, enLaLista: true })
+  if (borrador?.enLaLista && !sigue) {
+    setBorrador(null)
+    // El último «Después, …»: si el motivo de la base trajera uno, no se toma ese.
+    const falta = /.* Después, (.+ con «Corregir»\.|avisa al administrador para .+\.)$/.exec(borrador.texto)?.[1] ?? null
+    setCompletado({ texto: `Comprobante ${borrador.numero} completado y registrado.`, falta: falta && `Ahora ${falta}` })
+  }
   return (
     <>
       {aviso && (
@@ -64,37 +118,84 @@ export function FormularioAdquisicion(props: Props) {
       <Formulario
         key={vuelta}
         {...props}
+        borrador={borrador?.texto ?? null}
+        completado={completado}
         alRegistrar={(mensaje) => {
           setAviso(mensaje)
+          setBorrador(null)
+          setCompletado(null)
           setVuelta((v) => v + 1)
         }}
-        alEscribir={() => setAviso(null)}
+        alQuedarEnBorrador={(texto, proveedor, numero) => {
+          setAviso(null)
+          setCompletado(null)
+          setBorrador({ texto, clave: claveDeBorrador(proveedor, numero), numero: numero.trim(), enLaLista: false })
+          setVuelta((v) => v + 1)
+        }}
+        alEscribir={() => {
+          setAviso(null)
+          setBorrador(null)
+          setCompletado(null)
+        }}
       />
     </>
   )
 }
 
+/** Cómo se reconoce un comprobante en la lista: proveedor y número son únicos juntos. */
+const claveDeBorrador = (proveedor: string, numero: string) => `${proveedor.trim()}|${numero.trim()}`
+
+/** Los avisos de la acción que dejan el comprobante creado, en borrador. */
+const quedoEnBorrador = (error: string) => /\bborrador\b/.test(error)
+
 function Formulario({
   ordenes,
   compras,
   documentos,
+  borrador,
+  completado,
   alRegistrar,
+  alQuedarEnBorrador,
   alEscribir,
-}: Props & { alRegistrar: (mensaje: string) => void; alEscribir: () => void }) {
-  const [marcadas, setMarcadas] = useState<string[]>([])
+}: Props & {
+  borrador: string | null
+  completado: { texto: string; falta: string | null } | null
+  alRegistrar: (mensaje: string) => void
+  alQuedarEnBorrador: (mensaje: string, proveedor: string, numero: string) => void
+  alEscribir: () => void
+}) {
+  const [marcadas, setMarcadas, marcadasAhora] = useEstadoAlDia<string[]>([])
   const [parciales, setParciales] = useState<string[]>([])
-  const [proveedor, setProveedor] = useState('')
   const [tipo, setTipo] = useState('FACTURA_COMPRA')
-  // El RUC de quien emitió la factura: lo pone su OC o lo lee el detector; si no, lo escribe Contabilidad.
-  const [ruc, setRuc] = useState('')
-  // La factura que anexó Logística, si se eligió: su OC pone el proveedor.
+  const [proveedor, setProveedor, proveedorAhora] = useEstadoAlDia('')
+  const [condicion, setCondicion, condicionAhora] = useEstadoAlDia('CONTADO')
+  const [monedaFactura, setMonedaFactura, monedaAhora] = useEstadoAlDia('PEN')
+  const [ot, setOt, otAhora] = useEstadoAlDia('')
+  // Las OC que marcó cada fuente sola (al leerla, o al elegir la factura de
+  // Logística): se van con su archivo si nadie las cambió, como el total
+  // (`soltar`). Una OC puede ser de dos fuentes; se va cuando no queda ninguna.
+  const marcadasPor = useRef<Partial<Record<Fuente, string[]>>>({})
+  // Lo que las fuentes pusieron en el proveedor, la condición, la moneda y la OT
+  // (`puestos`) y lo que había antes de la primera (`base`): cuando ya no queda
+  // ninguna, vuelve lo de antes en lo que nadie cambió.
+  const puesto = useRef<{ base: Valores; puestos: Valores } | null>(null)
+  // Los de esos cuatro que la persona cambió a mano: una fuente que vuelve a
+  // marcar lo suyo después de que se fue otra no se los pisa.
+  const tocados = useRef(new Set<keyof Valores>())
+  const tocar = (k: keyof Valores) => tocados.current.add(k)
+  // La factura de Logística elegida: su número, su fecha y su OC cuentan como
+  // lo leído de esa fuente, aunque su PDF no se pueda leer (`documento`, que se
+  // lee al soltar, en el mismo evento). Mientras esté, el proveedor es el de su
+  // OC, con el que la base reconoce la misma factura, y no se escribe: el campo
+  // lo muestra sin pisar el que había, que vuelve al soltarla.
+  const documento = useRef<FacturaDeLogistica | null>(null)
   const [elegida, setElegida] = useState<FacturaDeLogistica | null>(null)
-  const [condicion, setCondicion] = useState('CONTADO')
-  const [monedaFactura, setMonedaFactura] = useState('PEN')
-  const [total, setTotal] = useState('')
-  const [ot, setOt] = useState('')
-  const [numero, setNumero] = useState('')
-  const [emision, setEmision] = useState('')
+  // El total, el número y la emisión, con la fuente que los llenó: lo que llenó un
+  // archivo se va con él si nadie lo cambió (`soltar`).
+  const [llenado, setLlenado] = useState<Llenado>(SIN_LLENAR)
+  const { total, numero, emision, ruc } = { total: llenado.total.valor, numero: llenado.numero.valor, emision: llenado.emision.valor, ruc: llenado.ruc.valor }
+  // Lo que escribe la persona ya no es de ninguna fuente: quitar un archivo no lo toca.
+  const escribir = (dato: Dato, valor: string) => setLlenado((d) => ({ ...d, [dato]: { valor, fuente: null } }))
   // Lo que leyó el detector de cada fuente; manda el XML, después el PDF, después el de Logística.
   const [lecturas, setLecturas] = useState<Record<Fuente, LecturaFactura | null | undefined>>({ xml: undefined, pdf: undefined, logistica: undefined })
   // Lo que está leyendo cada fuente: el PDF y el XML lo dicen en su campo; la de Logística, abajo.
@@ -102,12 +203,68 @@ function Formulario({
   // Por qué el PDF o el XML elegido no sirve: va en su campo, y no se lee.
   const [avisoArchivo, setAvisoArchivo] = useState<Record<'xml' | 'pdf', string | null>>({ xml: null, pdf: null })
   const turno = useRef<Record<Fuente, number>>({ xml: 0, pdf: 0, logistica: 0 })
-  const { alEnviar, enviando, error } = useEnvio(registrarAdquisicion, (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const resultado = await registrarAdquisicion(previo, datos)
+      if (!resultado.ok && quedoEnBorrador(resultado.error)) {
+        alQuedarEnBorrador(resultado.error, String(datos.get('proveedor') ?? ''), String(datos.get('numero_documento') ?? ''))
+      }
+      return resultado
+    },
+    (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'),
+  )
+  const campoPdf = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  // Lo que es del PDF se dice en su campo, que se marca, y no se repite abajo.
+  // Lo que dejó un borrador no se arregla eligiendo otro PDF: se completa en su
+  // fila de la lista, así que su aviso va abajo.
+  const [faltaPdf, setFaltaPdf] = useState(false)
+  const errorPdf = error && /\bPDF\b/.test(error) && !quedoEnBorrador(error) ? error : null
+  const avisoAbajo = error && !errorPdf ? error : borrador
+  useCursorAlRechazo(enviando, error, () => (errorPdf ? campoPdf.current : avisoError.current))
+  // El formulario vuelve vacío con el aviso del borrador: el cursor, en el aviso.
+  useEffect(() => {
+    if (borrador) avisoError.current?.focus()
+  }, [borrador])
+  // Al elegir o quitar el PDF, o la factura de Logística, el aviso del PDF ya no vale.
+  const yaNoFaltaPdf = () => {
+    setFaltaPdf(false)
+    if (errorPdf) limpiar()
+  }
+
+  function registrar(e: FormEvent<HTMLFormElement>) {
+    // Con el RUC de otra OC, el aviso del campo ya dice por qué: no se envía para recibir el mismo rechazo.
+    if (deOtroRuc) {
+      e.preventDefault()
+      return document.getElementById('adq-ruc')?.focus()
+    }
+    const elegido = campoPdf.current?.files?.[0]
+    const conLogistica = Boolean(new FormData(e.currentTarget).get('documento_compra_id'))
+    // El PDF elegido y vacío ya lo dice su campo; sin PDF ni factura de
+    // Logística, lo dice también. No se envía, y el cursor va ahí.
+    if (elegido?.size === 0 || (!elegido && !conLogistica)) {
+      e.preventDefault()
+      if (!elegido) setFaltaPdf(true)
+      campoPdf.current?.focus()
+      return
+    }
+    alEnviar(e, (datos) => {
+      // El campo que nadie tocó no se manda: en el servidor llegaría como un
+      // archivo vacío con un nombre inventado («undefined») y no se distinguiría
+      // de uno elegido vacío.
+      const pdf = datos.get('pdf')
+      if (pdf instanceof File && pdf.name === '') datos.delete('pdf')
+    })
+  }
 
   const elegidas = compras.filter((c) => marcadas.includes(c.orden_compra_id))
   const enParte = elegidas.filter((c) => parciales.includes(c.orden_compra_id))
-  const base = elegidas[0]
-  const encaja = (c: CompraSinFactura) => !base || (mismoEmisor(c, base) && c.condicion_pago === base.condicion_pago)
+  // Una OC entra con las marcadas si es del mismo proveedor y condición que ellas.
+  const encajaCon = (ids: string[], c: CompraSinFactura) => {
+    const base = compras.find((x) => ids.includes(x.orden_compra_id))
+    return !base || (mismoEmisor(c, base) && c.condicion_pago === base.condicion_pago)
+  }
+  const encaja = (c: CompraSinFactura) => encajaCon(marcadas, c)
   // Con el RUC escrito, la OC de otro RUC no se liga (migración 20261022170000): se dice antes de registrar.
   const rucEscrito = soloDigitos(ruc)
   // La OC del anexo de Logística también: su RUC sale lleno, pero se puede corregir
@@ -136,30 +293,141 @@ function Formulario({
     setLecturas((l) => ({ ...l, [fuente]: undefined }))
     anotar(leer ? 'Leyendo la factura…' : null)
     if (!leer) return
-    const sinMarcar = marcadas.length === 0
     const leida = await leer(anotar).catch(() => null)
     if (vez !== turno.current[fuente]) return
     anotar(null)
     setLecturas((l) => ({ ...l, [fuente]: leida }))
     if (!leida) return
-    if (leida.total !== null) setTotal((t) => t || leida.total!.toFixed(2))
-    if (leida.numero) setNumero((n) => n || leida.numero!)
-    if (leida.fecha_emision) setEmision((e) => e || leida.fecha_emision!)
-    if (leida.ruc) setRuc((r) => r || leida.ruc!)
-    if (!sinMarcar) return
-    // Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera.
+    setLlenado((d) => llenarCon(d, fuente, valoresDe(leida)))
+    // Las OC se marcan solas si al terminar de leer no hay ninguna marcada.
+    if (marcadasAhora.current.length === 0) marcarDeLectura(fuente, leida)
+  }
+
+  /** Las OC que nombra la factura y esperan la suya, del mismo proveedor y condición que la primera. */
+  function marcarDeLectura(fuente: Fuente, leida: LecturaFactura, deNuevo = false) {
     // La OC sin número, por su referencia: es lo que cita la factura del proveedor.
     const nombradas = compras.filter((c) => leida.ordenes.includes(numeroDeOc(ocParaDetector(c).numero) ?? ''))
     const primera = nombradas.at(0)
-    if (primera) {
-      const juntas = nombradas.filter((c) => mismoEmisor(c, primera) && c.condicion_pago === primera.condicion_pago)
-      setMarcadas((m) => (m.length > 0 ? m : juntas.map((c) => c.orden_compra_id)))
-      setProveedor((p) => p.trim() || primera.proveedor)
-      if (primera.ruc) setRuc((r) => r || primera.ruc!)
-      setCondicion(primera.condicion_pago)
-      setMonedaFactura(primera.moneda)
-      if (primera.orden_id) setOt((o) => o || primera.orden_id!)
-    } else if (leida.moneda) setMonedaFactura(leida.moneda)
+    const juntas = primera ? nombradas.filter((c) => mismoEmisor(c, primera) && c.condicion_pago === primera.condicion_pago) : []
+    if (juntas.length > 0 || leida.moneda) marcarSolas(fuente, juntas, leida.moneda, deNuevo)
+  }
+
+  /** La OC de la factura de Logística elegida, si espera su factura. */
+  const compraDelDocumento = () => compras.find((x) => x.orden_compra_id === documento.current?.orden_compra_id)
+
+  const valoresAhora = (): Valores => ({
+    proveedor: proveedorAhora.current,
+    condicion: condicionAhora.current,
+    moneda: monedaAhora.current,
+    ot: otAhora.current,
+  })
+  const ponerValores = (v: Valores) => {
+    setProveedor(v.proveedor)
+    setCondicion(v.condicion)
+    setMonedaFactura(v.moneda)
+    setOt(v.ot)
+  }
+  const CAMPOS = ['proveedor', 'condicion', 'moneda', 'ot'] as const
+  const cada = (f: (k: (typeof CAMPOS)[number]) => string) => Object.fromEntries(CAMPOS.map((k) => [k, f(k)])) as Valores
+
+  /**
+   * Una fuente marca sola las primeras OC: llena con la primera el proveedor (si
+   * está vacío), la condición, la moneda y la OT (si está vacía). Sin OC, pone
+   * la moneda que leyó. Queda anotado qué marcó y qué había, para soltarlo.
+   * `deNuevo`: la fuente seguía puesta y vuelve a marcar porque se fue otra; lo
+   * que la persona cambió a mano se queda.
+   */
+  function marcarSolas(fuente: Fuente, cs: CompraSinFactura[], monedaLeida?: string | null, deNuevo = false) {
+    const primera = cs.at(0)
+    const ahora = valoresAhora()
+    const antes = puesto.current
+    // Lo de antes de la primera fuente se guarda; lo que la persona cambió
+    // después de una fuente pasa a ser lo suyo.
+    const base = antes ? cada((k) => (ahora[k] === antes.puestos[k] ? antes.base[k] : ahora[k])) : ahora
+    const leidos: Valores = primera
+      ? { proveedor: ahora.proveedor.trim() || primera.proveedor, condicion: primera.condicion_pago, moneda: primera.moneda, ot: ahora.ot || (primera.orden_id ?? '') }
+      : { ...ahora, moneda: monedaLeida || ahora.moneda }
+    const puestos = deNuevo ? cada((k) => (tocados.current.has(k) ? ahora[k] : leidos[k])) : leidos
+    // Lo que la persona cambió y esta fuente pisó al marcar por primera vez ya
+    // no es suyo: cuenta lo que cambie después.
+    if (!deNuevo) for (const k of CAMPOS) if (puestos[k] !== ahora[k]) tocados.current.delete(k)
+    const ids = cs.map((c) => c.orden_compra_id)
+    // El RUC de su OC llena el campo vacío, y se va con la fuente como el total.
+    if (primera?.ruc) setLlenado((l) => llenarCon(l, fuente, { ruc: primera.ruc }))
+    setMarcadas(ids)
+    ponerValores(puestos)
+    marcadasPor.current[fuente] = ids
+    puesto.current = { base, puestos }
+  }
+
+  /** Una fuente que sigue puesta vuelve a marcar lo suyo: la de Logística, su OC; las demás, lo que leyeron. */
+  function marcarDeFuente(f: Fuente) {
+    const c = f === 'logistica' ? compraDelDocumento() : undefined
+    if (c) return marcarSolas('logistica', [c], null, true)
+    const l = lecturas[f]
+    if (l) marcarDeLectura(f, l, true)
+  }
+
+  /**
+   * Lo que llenó una fuente se va con su archivo (quitado o cambiado por otro), si
+   * nadie lo cambió: se vacía y se vuelve a llenar con lo que traen las demás.
+   * Las OC que marcó sola se desmarcan, salvo las que también son de otra
+   * fuente; si no queda ninguna, el proveedor, la condición, la moneda y la OT
+   * vuelven a lo que había antes de la primera fuente, y otra fuente que siga
+   * puesta marca las suyas.
+   */
+  function soltar(fuente: Fuente) {
+    const otras = (['xml', 'pdf', 'logistica'] as const).filter((f) => f !== fuente)
+    const valoresDeFuente = (f: Fuente): Partial<Record<Dato, string | null>> => {
+      const l = lecturas[f]
+      const leidos: Partial<Record<Dato, string | null>> = l ? valoresDe(l) : {}
+      const d = f === 'logistica' ? documento.current : null
+      return d ? { ...leidos, numero: d.numero || leidos.numero, emision: d.fecha || leidos.emision, ruc: leidos.ruc || d.ruc } : leidos
+    }
+    setLlenado((d) => {
+      const sueltos = DATOS.filter((k) => d[k].fuente === fuente)
+      if (sueltos.length === 0) return d
+      let n = d
+      for (const k of sueltos) n = { ...n, [k]: VACIO }
+      for (const f of otras) {
+        const valores = valoresDeFuente(f)
+        n = llenarCon(n, f, Object.fromEntries(sueltos.map((k) => [k, valores[k]])))
+      }
+      return n
+    })
+    const suyas = marcadasPor.current[fuente]
+    delete marcadasPor.current[fuente]
+    if (!suyas) return
+    const deOtras = otras.flatMap((f) => marcadasPor.current[f] ?? [])
+    const sueltas = suyas.filter((id) => !deOtras.includes(id))
+    const quedan = marcadasAhora.current.filter((id) => !sueltas.includes(id))
+    setMarcadas(quedan)
+    setParciales((p) => p.filter((id) => !sueltas.includes(id)))
+    const p = puesto.current
+    if (quedan.length > 0) {
+      // La moneda y la OT de la OC que se fue pasan a ser las de la primera que
+      // queda, en lo que nadie cambió; el proveedor y la condición son los mismos.
+      const sigue = compras.find((c) => quedan.includes(c.orden_compra_id))
+      if (p && sigue && sueltas.length > 0) {
+        const ahora = valoresAhora()
+        const sigueSiNadieLoCambio = (k: 'moneda' | 'ot', valor: string) =>
+          ahora[k] === p.puestos[k] && !tocados.current.has(k) ? valor : ahora[k]
+        const puestos = { ...ahora, moneda: sigueSiNadieLoCambio('moneda', sigue.moneda), ot: sigueSiNadieLoCambio('ot', sigue.orden_id ?? p.base.ot) }
+        ponerValores(puestos)
+        puesto.current = { base: p.base, puestos }
+      }
+      return
+    }
+    if (p) {
+      // En lo que nadie cambió vuelve lo de antes; lo que cambió la persona se queda.
+      const vuelto = cada((k) => (valoresAhora()[k] === p.puestos[k] ? p.base[k] : valoresAhora()[k]))
+      ponerValores(vuelto)
+      puesto.current = { base: vuelto, puestos: vuelto }
+    }
+    for (const f of otras) {
+      marcarDeFuente(f)
+      if (marcadasAhora.current.length > 0) break
+    }
   }
 
   /**
@@ -167,8 +435,10 @@ function Formulario({
    * Word con el nombre cambiado a «.pdf» queda en rojo en su campo y no se lee.
    */
   async function elegirArchivo(fuente: 'xml' | 'pdf', archivo: File | undefined, accept: string, hastaMb: number) {
+    soltar(fuente)
     void detectar(fuente, null)
     setAvisoArchivo((a) => ({ ...a, [fuente]: null }))
+    if (fuente === 'pdf') yaNoFaltaPdf()
     if (!archivo) return
     const vez = turno.current[fuente]
     const motivo = await revisarArchivo(archivo, accept, hastaMb)
@@ -188,39 +458,64 @@ function Formulario({
         disponibles: compras.map(ocParaDetector),
       })
     : []
+  // El detector compara con la primera fuente; si el archivo y la factura de
+  // Logística son de facturas distintas, también se dice, una sola vez: si el
+  // número del formulario ya es el de Logística, el detector lo está diciendo.
+  const deLogistica = numeroDeFactura(elegida?.numero ?? null)
+  const delArchivo = (lecturas.xml ?? lecturas.pdf)?.numero ?? null
+  const yaLoDice = avisos.some((a) => a.tipo === 'NUMERO' && numeroDeFactura(a.registrado) === deLogistica)
+  const otraFactura =
+    deLogistica && delArchivo && deLogistica !== delArchivo && !yaLoDice
+      ? [{ texto: `El ${lecturas.xml ? 'XML' : 'PDF'} es la factura ${delArchivo} y la de Logística es la ${deLogistica}: revisa que sean la misma.` }]
+      : []
 
   function marcar(c: CompraSinFactura, si: boolean) {
     alEscribir()
+    // La OC que marca o desmarca la persona ya no es de ninguna fuente: quitar un archivo no la toca.
+    for (const [f, ids] of Object.entries(marcadasPor.current)) marcadasPor.current[f as Fuente] = ids.filter((id) => id !== c.orden_compra_id)
     if (!si) {
       setParciales((p) => p.filter((id) => id !== c.orden_compra_id))
       return setMarcadas((m) => m.filter((id) => id !== c.orden_compra_id))
     }
-    if (marcadas.length === 0) {
-      if (!proveedor.trim()) setProveedor(c.proveedor)
-      if (!ruc.trim() && c.ruc) setRuc(c.ruc)
+    if (marcadasAhora.current.length === 0) {
+      // La primera la marcó la persona: lo que llena ya no se va con ningún archivo.
+      puesto.current = null
+      marcadasPor.current = {}
+      if (!proveedorAhora.current.trim()) setProveedor(c.proveedor)
+      if (c.ruc) setLlenado((l) => (l.ruc.valor ? l : { ...l, ruc: { valor: c.ruc!, fuente: null } }))
       setCondicion(c.condicion_pago)
       setMonedaFactura(c.moneda)
-      if (!ot && c.orden_id) setOt(c.orden_id)
+      if (!otAhora.current && c.orden_id) setOt(c.orden_id)
     }
     setMarcadas((m) => (m.includes(c.orden_compra_id) ? m : [...m, c.orden_compra_id]))
   }
 
   /**
    * La factura de Logística trae su número, su fecha, su OC y el proveedor de su
-   * OC: el número y la fecha se llenan si están vacíos; el proveedor es el de su
-   * OC y no se cambia, porque con él la base reconoce la misma factura
-   * (migración 20261020210000). La OC con boleta no está entre las que esperan
-   * factura, así que el proveedor no llega marcándola.
+   * OC. El número y la fecha llenan lo vacío como cualquier fuente, y su OC se
+   * marca sola; todo se va al cambiarla o quitarla. El proveedor es el de su OC
+   * mientras esté elegida y no se cambia, porque con él la base reconoce la
+   * misma factura (migración 20261020210000). La OC con boleta no está entre las
+   * que esperan factura, así que el proveedor no llega marcándola.
    */
   function elegirDeLogistica(id: string) {
     const d = documentos.find((x) => x.id === id) ?? null
+    if (d) yaNoFaltaPdf()
+    soltar('logistica')
+    documento.current = d
     setElegida(d)
-    if (d?.numero) setNumero((n) => n || d.numero!)
-    if (d?.fecha) setEmision((e) => e || d.fecha!)
-    if (d?.proveedor) setProveedor(d.proveedor)
-    if (d?.ruc) setRuc(d.ruc)
-    const c = d && compras.find((x) => x.orden_compra_id === d.orden_compra_id)
-    if (c && !marcadas.includes(c.orden_compra_id) && encaja(c)) marcar(c, true)
+    if (d) setLlenado((l) => llenarCon(l, 'logistica', { numero: d.numero, emision: d.fecha, ruc: d.ruc }))
+    const c = compraDelDocumento()
+    // Su OC se marca sola (o queda anotada como suya si otra fuente ya la
+    // marcó), y se desmarca si se cambia o se quita esta factura.
+    if (c && encajaCon(marcadasAhora.current, c)) {
+      alEscribir()
+      if (marcadasAhora.current.length === 0) marcarSolas('logistica', [c])
+      else {
+        setMarcadas((m) => (m.includes(c.orden_compra_id) ? m : [...m, c.orden_compra_id]))
+        marcadasPor.current.logistica = [c.orden_compra_id]
+      }
+    }
     void detectar(
       'logistica',
       id
@@ -233,18 +528,7 @@ function Formulario({
   }
 
   return (
-    <form
-      onSubmit={(e) => {
-        // Con el RUC de otra OC, el aviso del campo ya dice por qué: no se envía para recibir el mismo rechazo.
-        if (deOtroRuc) {
-          e.preventDefault()
-          return document.getElementById('adq-ruc')?.focus()
-        }
-        return alEnviar(e)
-      }}
-      onChange={alEscribir}
-      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
-    >
+    <form onSubmit={registrar} onChange={alEscribir} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <Campo etiqueta="Tipo de comprobante" htmlFor="adq-tipo" requerido>
         <Seleccion id="adq-tipo" name="tipo" required value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="FACTURA_COMPRA">Factura de compra</option>
@@ -266,11 +550,14 @@ function Formulario({
           minLength={2}
           maxLength={160}
           required
-          value={proveedor}
+          value={elegida?.proveedor || proveedor}
           readOnly={Boolean(elegida?.proveedor)}
           // Sale de la OC del anexo y no se escribe: que no parezca un campo abierto.
           className="read-only:cursor-default read-only:bg-superficie-2"
-          onChange={(e) => setProveedor(e.target.value)}
+          onChange={(e) => {
+            tocar('proveedor')
+            setProveedor(e.target.value)
+          }}
         />
       </Campo>
       <Campo
@@ -296,7 +583,7 @@ function Formulario({
           aria-describedby={deOtroRuc ? 'adq-ruc-otro' : undefined}
           className="tabular"
           value={ruc}
-          onChange={(e) => setRuc(e.target.value)}
+          onChange={(e) => escribir('ruc', e.target.value)}
         />
         {deOtroRuc && (
           <p id="adq-ruc-otro" role="alert" className="text-xs text-peligro">
@@ -314,7 +601,7 @@ function Formulario({
           autoComplete="off"
           className="tabular"
           value={numero}
-          onChange={(e) => setNumero(e.target.value)}
+          onChange={(e) => escribir('numero', e.target.value)}
         />
       </Campo>
 
@@ -395,7 +682,15 @@ function Formulario({
       </fieldset>
 
       <Campo etiqueta="OT relacionada" htmlFor="adq-ot" ayuda="Sale sola de la OC marcada, si tiene OT.">
-        <Seleccion id="adq-ot" name="orden_id" value={ot} onChange={(e) => setOt(e.target.value)}>
+        <Seleccion
+          id="adq-ot"
+          name="orden_id"
+          value={ot}
+          onChange={(e) => {
+            tocar('ot')
+            setOt(e.target.value)
+          }}
+        >
           <option value="">Sin OT específica</option>
           {ordenes.map((o) => (
             <option key={o.id} value={o.id}>
@@ -405,16 +700,32 @@ function Formulario({
         </Seleccion>
       </Campo>
       <Campo etiqueta="Moneda" htmlFor="adq-moneda">
-        <Seleccion id="adq-moneda" name="moneda" value={monedaFactura} onChange={(e) => setMonedaFactura(e.target.value)}>
+        <Seleccion
+          id="adq-moneda"
+          name="moneda"
+          value={monedaFactura}
+          onChange={(e) => {
+            tocar('moneda')
+            setMonedaFactura(e.target.value)
+          }}
+        >
           <option value="PEN">Soles</option>
           <option value="USD">Dólares</option>
         </Seleccion>
       </Campo>
       <Campo etiqueta="Fecha de emisión" htmlFor="adq-emision" requerido>
-        <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => setEmision(e.target.value)} />
+        <Entrada id="adq-emision" name="fecha_emision" type="date" required value={emision} onChange={(e) => escribir('emision', e.target.value)} />
       </Campo>
       <Campo etiqueta="Condición de pago" htmlFor="adq-condicion">
-        <Seleccion id="adq-condicion" name="condicion_pago" value={condicion} onChange={(e) => setCondicion(e.target.value)}>
+        <Seleccion
+          id="adq-condicion"
+          name="condicion_pago"
+          value={condicion}
+          onChange={(e) => {
+            tocar('condicion')
+            setCondicion(e.target.value)
+          }}
+        >
           <option value="CONTADO">Contado</option>
           <option value="CREDITO">Crédito</option>
         </Seleccion>
@@ -438,7 +749,7 @@ function Formulario({
           required
           className="tabular"
           value={total}
-          onChange={(e) => setTotal(e.target.value)}
+          onChange={(e) => escribir('total', e.target.value)}
         />
       </Campo>
       <AvisoDeMonto elegidas={elegidas} enParte={enParte} total={total} monedaFactura={monedaFactura} />
@@ -446,11 +757,14 @@ function Formulario({
         lectura={lectura}
         leyendo={leyendo.logistica}
         sinLeer={sinLeer}
-        avisos={avisos.map((a) => ({
-          texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
-          // El aviso la nombra como `nombreDeOc` (por `ocParaDetector`): se busca igual.
-          marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => nombreDeOc(c) === a.oc && encaja(c)) : undefined,
-        }))}
+        avisos={[
+          ...avisos.map((a) => ({
+            texto: textoDelAviso(a, (monto, m) => dinero(monto, m)),
+            // El aviso la nombra como `nombreDeOc` (por `ocParaDetector`): se busca igual.
+            marcar: a.tipo === 'OC_NO_MARCADA' && a.espera ? compras.find((c) => nombreDeOc(c) === a.oc && encaja(c)) : undefined,
+          })),
+          ...otraFactura,
+        ]}
         alMarcar={(c) => marcar(c, true)}
       />
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
@@ -504,11 +818,13 @@ function Formulario({
       </Campo>
       <Campo etiqueta="PDF del comprobante" htmlFor="adq-pdf" ayuda="Obligatorio si no eliges una factura de Logística.">
         <ElegirArchivo
+          ref={campoPdf}
           id="adq-pdf"
           name="pdf"
           accept={ACEPTA_PDF}
           hastaMb={10}
-          aviso={avisoArchivo.pdf}
+          disabled={enviando}
+          aviso={avisoArchivo.pdf ?? (faltaPdf ? 'Falta el PDF: adjúntalo o elige la factura que anexó Logística' : errorPdf)}
           estado={leyendo.pdf}
           onChange={(e) => void elegirArchivo('pdf', e.target.files?.[0], ACEPTA_PDF, 10)}
         />
@@ -522,6 +838,7 @@ function Formulario({
           id="adq-xml"
           accept={ACEPTA_XML_FACTURA}
           hastaMb={20}
+          disabled={enviando}
           aviso={avisoArchivo.xml}
           estado={leyendo.xml}
           onChange={(e) => void elegirArchivo('xml', e.target.files?.[0], ACEPTA_XML_FACTURA, 20)}
@@ -534,15 +851,46 @@ function Formulario({
         <Boton type="submit" cargando={enviando}>
           Registrar comprobante
         </Boton>
-        {error && (
-          <p role="alert" className="text-sm text-peligro">
-            {error}
+        {avisoAbajo && (
+          <p ref={avisoError} role="alert" tabIndex={-1} className="text-sm text-peligro">
+            {avisoAbajo}
           </p>
         )}
+        {/* El borrador completado se dice donde estaba su aviso. Que quedó
+            registrado ya lo dijo su fila: aquí el cursor va a él si se quedó
+            sin lugar (el botón de la fila se fue), y la región viva, montada
+            desde antes, anuncia solo lo que falta hacer. */}
+        <p id="adq-completado" className={completado && !avisoAbajo ? 'text-sm' : 'sr-only'}>
+          {completado && !avisoAbajo && (
+            <span ref={enfocarSiSeSolto} tabIndex={-1} className="scroll-mt-20 text-exito outline-none">
+              {completado.texto}
+            </span>
+          )}
+          <span role="status" className="text-aviso">
+            {completado && !avisoAbajo && completado.falta ? ` ${completado.falta}` : null}
+          </span>
+        </p>
       </div>
     </form>
   )
 }
+
+/**
+ * El cursor que se quedó sin lugar (en la página) va al elemento que acaba de
+ * aparecer; el que está en otra parte no se toca. A diferencia de
+ * `AvisoEnfocado`, no lo quita de donde la persona lo puso: el «completado»
+ * llega segundos después del clic, cuando ya pudo seguir en otra cosa. Si
+ * mientras esperaba rodó la página, el cursor va igual (el lector lo dice),
+ * pero la página no salta bajo su dedo: a 390 saltaba 1319 px (undécima pasada).
+ */
+function enfocarSiSeSolto(elemento: HTMLElement | null) {
+  if (!elemento || (document.activeElement && document.activeElement !== document.body)) return
+  const rodo = alturaAlCompletar !== null && Math.abs(window.scrollY - alturaAlCompletar) > 48
+  elemento.focus({ preventScroll: rodo })
+}
+
+/** Dónde estaba la página al pulsar «Completar comprobante» (`enfocarSiSeSolto`). */
+let alturaAlCompletar: number | null = null
 
 const FUENTE: Record<LecturaFactura['fuente'], string> = { XML: 'del XML de SUNAT', PDF: 'del PDF', OCR: 'del escaneo' }
 
@@ -703,7 +1051,13 @@ export function CompletarAdquisicion({ id, pideRuc = false }: { id: string; pide
   }
 
   return (
-    <form onSubmit={alEnviar} className="mt-2 flex flex-wrap items-end gap-2">
+    <form
+      onSubmit={(evento) => {
+        alturaAlCompletar = window.scrollY
+        alEnviar(evento)
+      }}
+      className="mt-2 flex flex-wrap items-end gap-2"
+    >
       <input type="hidden" name="id" value={id} />
       {Object.entries(camposDeLectura(lectura)).map(([nombre, valor]) => (
         <input key={nombre} type="hidden" name={nombre} value={valor} />

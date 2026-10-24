@@ -1,13 +1,15 @@
 'use client'
 
 import { ArrowLeftRight, Ban, ImageIcon, Lock, LockOpen, Pencil, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { CODIGOS_FIJOS } from '@/lib/dominio/codigos-internos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import {
@@ -23,7 +25,7 @@ import {
   rutaDeCapturaDeSaldo,
   SALDO,
 } from '@/lib/dominio/caja'
-import { useEnvio } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -32,33 +34,6 @@ import { anularMovimiento, cerrarDia, guardarCuenta, reabrirDia, registrarMovimi
 
 /** Una cuenta que se puede elegir en un formulario de la caja. */
 export type CuentaElegible = { id: string; nombre: string; moneda: string; tipo: string }
-
-/** El pie de todos los formularios: el error, cancelar y el botón que envía. */
-function Pie({ error, enviando, alCancelar, texto, variante }: {
-  error: string | null
-  enviando: boolean
-  alCancelar: () => void
-  texto: string
-  variante?: 'primario' | 'peligro'
-}) {
-  return (
-    <>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" variante={variante} cargando={enviando}>
-          {texto}
-        </Boton>
-      </div>
-    </>
-  )
-}
 
 /** Abre una ventana con un formulario nuevo cada vez: otro id, nada de lo escrito la vez anterior. */
 function useVentana() {
@@ -77,6 +52,27 @@ function useVentana() {
 
 // ---------------------------------------------------------------- ingreso o egreso
 
+/**
+ * Un solo id pendiente para los movimientos de la caja, sea cual sea el botón:
+ * el de la cabecera y el de cada cuenta abren la misma ventana, y tras «No llegó
+ * la respuesta», cancelar en uno y volver a abrir en el otro llevaba otro id, y
+ * el mismo egreso entraba dos veces (decimosexta pasada).
+ */
+const EnvioDelMovimiento = createContext<ReturnType<typeof useIdDelEnvio> | null>(null)
+
+export function EnviosDeLaCaja({ children }: { children: ReactNode }) {
+  const movimiento = useIdDelEnvio('movimiento_caja')
+  return <EnvioDelMovimiento.Provider value={movimiento}>{children}</EnvioDelMovimiento.Provider>
+}
+
+/**
+ * El id del movimiento vive fuera del formulario que se rehace cada vez que se
+ * abre (`useIdDelEnvio`, compartido por `EnviosDeLaCaja`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y la base dice que ya
+ * quedó en vez de registrarlo dos veces; si aquel entró, la ventana lo dice y el
+ * siguiente lleva otro. Antes el id nacía con el formulario y el mismo egreso
+ * entraba dos veces (decimoquinta pasada).
+ */
 export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto = false }: {
   cuentas: CuentaElegible[]
   cuentaId?: string
@@ -85,6 +81,8 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
   compacto?: boolean
 }) {
   const v = useVentana()
+  const propio = useIdDelEnvio('movimiento_caja')
+  const envio = useContext(EnvioDelMovimiento) ?? propio
   const cuenta = cuentas.find((c) => c.id === cuentaId)
   return (
     <>
@@ -92,7 +90,10 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
         type="button"
         tamano="sm"
         variante={compacto ? 'contorno' : 'primario'}
-        onClick={v.abrir}
+        onClick={() => {
+          envio.abrir()
+          v.abrir()
+        }}
         aria-label={cuenta ? `Registrar en ${cuenta.nombre}` : undefined}
         data-registrar-movimiento={cuenta?.nombre ?? 'caja'}
       >
@@ -114,24 +115,35 @@ export function RegistrarMovimiento({ cuentas, cuentaId, dia, codigos, compacto 
         descripcion={`Del ${fecha(dia)}. Solo lo que no pasa por el sistema: los pagos y cobros de Tesorería —facturas, órdenes de servicio, recibos, planilla diaria— entran solos. Escríbelo como sale en el estado de cuenta; si es de una unidad, con su código interno.`}
         ancho="md"
       >
-        <FormularioMovimiento key={v.vez} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />
+        <EnvioAnterior texto={envio.anterior} />
+        {envio.id && <FormularioMovimiento key={v.vez} envio={envio} cuentas={cuentas} cuentaId={cuentaId} dia={dia} codigos={codigos} alTerminar={v.cerrar} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
+function FormularioMovimiento({ envio, cuentas, cuentaId, dia, codigos, alTerminar }: {
+  envio: ReturnType<typeof useIdDelEnvio>
   cuentas: CuentaElegible[]
   cuentaId?: string
   dia: string
   codigos: CodigoParaElegir[] | null
   alTerminar: () => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no registra otro.
-  const [id] = useState(() => crypto.randomUUID())
+  const id = envio.id ?? ''
   const [caja, setCaja] = useState(cuentaId ?? cuentas[0]?.id ?? '')
   const [codigo, setCodigo] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(registrarMovimiento, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarMovimiento(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   const p = `mov-${id.slice(0, 8)}`
   const m = monedaDeCuenta(cuentas.find((c) => c.id === caja)?.moneda)
 
@@ -179,19 +191,30 @@ function FormularioMovimiento({ cuentas, cuentaId, dia, codigos, alTerminar }: {
           <Entrada id={`${p}-cambio`} name="tipo_cambio" inputMode="decimal" autoComplete="off" className="tabular" />
         </Campo>
       </div>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar" />
     </form>
   )
 }
 
 // ---------------------------------------------------------------- entre cuentas
 
+/** Como el movimiento: el id vive aquí y se conserva hasta saber cómo terminó. */
 export function Transferir({ cuentas, dia }: { cuentas: CuentaElegible[]; dia: string }) {
   const v = useVentana()
+  const envio = useIdDelEnvio('transferencia_caja')
   if (cuentas.length < 2) return null
   return (
     <>
-      <Boton type="button" tamano="sm" variante="contorno" onClick={v.abrir} data-transferir>
+      <Boton
+        type="button"
+        tamano="sm"
+        variante="contorno"
+        onClick={() => {
+          envio.abrir()
+          v.abrir()
+        }}
+        data-transferir
+      >
         <ArrowLeftRight aria-hidden className="size-4" />
         Transferir<span className="hidden sm:inline"> entre cuentas</span>
       </Boton>
@@ -202,17 +225,33 @@ export function Transferir({ cuentas, dia }: { cuentas: CuentaElegible[]; dia: s
         descripcion={`Del ${fecha(dia)}: sale de una cuenta y entra a la otra el mismo día, como la reposición de la caja chica o la compra de dólares.`}
         ancho="md"
       >
-        <FormularioTransferencia key={v.vez} cuentas={cuentas} dia={dia} alTerminar={v.cerrar} />
+        <EnvioAnterior texto={envio.anterior} />
+        {envio.id && <FormularioTransferencia key={v.vez} envio={envio} cuentas={cuentas} dia={dia} alTerminar={v.cerrar} />}
       </Ventana>
     </>
   )
 }
 
-function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: CuentaElegible[]; dia: string; alTerminar: () => void }) {
-  const [id] = useState(() => crypto.randomUUID())
+function FormularioTransferencia({ envio, cuentas, dia, alTerminar }: {
+  envio: ReturnType<typeof useIdDelEnvio>
+  cuentas: CuentaElegible[]
+  dia: string
+  alTerminar: () => void
+}) {
+  const id = envio.id ?? ''
   const [origen, setOrigen] = useState(cuentas[0]?.id ?? '')
   const [destino, setDestino] = useState(cuentas[1]?.id ?? '')
-  const { alEnviar, enviando, error } = useEnvio(registrarTransferencia, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarTransferencia(previo, datos)
+    },
+    () => {
+      envio.otro()
+      alTerminar()
+    },
+    { alYaEntrar: envio.otro },
+  )
   const p = `tr-${id.slice(0, 8)}`
   const sale = cuentas.find((c) => c.id === origen)
   const entra = cuentas.find((c) => c.id === destino)
@@ -258,7 +297,7 @@ function FormularioTransferencia({ cuentas, dia, alTerminar }: { cuentas: Cuenta
       <Campo etiqueta="Descripción" htmlFor={`${p}-descripcion`} ayuda="Si la dejas vacía, dice «Transferencia entre cuentas».">
         <Entrada id={`${p}-descripcion`} name="descripcion" maxLength={300} autoComplete="off" />
       </Campo>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar la transferencia" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Registrar la transferencia" />
     </form>
   )
 }
@@ -294,7 +333,7 @@ export function AnularMovimiento({ id, descripcion, cuenta, otraCuenta }: {
           <Campo etiqueta="Motivo" htmlFor={`anular-mov-${id}`} requerido>
             <AreaTexto id={`anular-mov-${id}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Anular" variante="peligro" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={v.cerrar} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -372,7 +411,7 @@ function FormularioCierre({ cuenta, dia, saldoFinal, alTerminar }: {
       <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={conObservaciones}>
         <AreaTexto id={`${p}-obs`} name="observaciones" required={conObservaciones} minLength={conObservaciones ? 10 : undefined} maxLength={500} />
       </Campo>
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
     </form>
   )
 }
@@ -398,7 +437,7 @@ export function ReabrirDia({ cierreId, cuenta, dia }: { cierreId: string; cuenta
           <Campo etiqueta="Motivo" htmlFor={`reabrir-${cierreId}`} requerido>
             <AreaTexto id={`reabrir-${cierreId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          <Pie error={error} enviando={enviando} alCancelar={v.cerrar} texto="Reabrir el día" variante="peligro" />
+          <PieDeVentana error={error} enviando={enviando} alCancelar={v.cerrar} texto="Reabrir el día" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -481,6 +520,10 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
   async function guardar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('captura')
     datos.delete('captura')
+    // Una captura elegida y vacía no se deja de lado callada.
+    if (archivo instanceof File && archivo.name !== '' && archivo.size === 0) {
+      return { ok: false, error: pideCaptura ? 'La captura está vacía: elige otra.' : 'La captura está vacía: elige otra o quítala.' }
+    }
     if (!(archivo instanceof File) || archivo.size === 0) {
       if (pideCaptura) return { ok: false, error: 'Adjunta la captura del aplicativo del banco con el saldo de ese día.' }
       return guardarCuenta(null, datos)
@@ -500,8 +543,11 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
       // A sabiendas sin aviso ni error: la cuenta ya quedó con la nueva. Si la vieja la
       // subió otra persona, la política no la deja quitar (`remove` devuelve su error,
       // no lo lanza) y se queda donde solo la ve ella; un corte de red tampoco deshace
-      // lo guardado.
-      await createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
+      // lo guardado. Con la sesión de otra cuenta la política tampoco la deja, y
+      // no se pide con ella: se quita cuando vuelva la tuya.
+      const quitarLaAnterior = () => createClient().storage.from(BUCKET_APERTURA_CAJA).remove([anterior]).catch(() => null)
+      if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(() => void quitarLaAnterior())
+      else await quitarLaAnterior()
     }
     return resultado
   }
@@ -617,7 +663,7 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
           <ElegirArchivo id={`${p}-captura`} name="captura" accept={ACEPTA_CAPTURA_SALDO} hastaMb={MAXIMO_MB_CAPTURA_SALDO} required={pideCaptura} />
         </Campo>
       )}
-      <Pie error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto={cuenta ? 'Guardar' : 'Agregar la cuenta'} />
     </form>
   )
 }

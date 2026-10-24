@@ -1,6 +1,9 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { seguirConLaCuentaDeLaPestana } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 
 /**
  * Subir un archivo a la orden, desde el navegador (migración 099).
@@ -8,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
  * El archivo va directo a Storage —bucket `adjuntos-ot`, ruta `ot/{orden}/…`,
  * que es de donde las políticas sacan de qué orden es— y después una acción lo
  * anota en `ot_adjuntos`. Si la anotación falla, el archivo se quita: no queda
- * un archivo suelto que nadie ve.
+ * un archivo suelto que nadie ve (`anotarSinDejarloSuelto`).
  */
 export const MAXIMO_ADJUNTO_MB = 20
 
@@ -38,8 +41,15 @@ export async function subirAdjunto(
   const contentType = esPdf ? TIPOS.pdf : TIPOS.xlsx
   const supabase = createClient()
 
-  const { error } = await supabase.storage.from('adjuntos-ot').upload(ruta, archivo, { contentType, upsert: false })
-  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la
+  // de otra pestaña: el archivo saldría a su nombre (`seguirConLaCuentaDeLaPestana`).
+  seguirConLaCuentaDeLaPestana()
+  const { error } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, contentType)
+  if (error) {
+    // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+    seguirConLaCuentaDeLaPestana()
+    return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  }
 
   const datos = new FormData()
   datos.set('orden_id', ordenId)
@@ -51,14 +61,12 @@ export async function subirAdjunto(
 
   // Si la base dice que no, el archivo se quita: un archivo en Storage que
   // ninguna fila nombra no lo ve nadie más que quien lo subió. Pasó una vez con
-  // el Excel de un cronograma.
-  try {
-    const resultado = await registrarAdjunto(null, datos)
-    if (!resultado.ok) await supabase.storage.from('adjuntos-ot').remove([ruta])
-    return resultado
-  } catch {
-    // Sin respuesta no se sabe si quedó anotado: el archivo no se toca, y
-    // reintentar a ciegas lo subiría dos veces.
-    return { ok: false, error: NO_SE_SABE_SI_QUEDO }
-  }
+  // el Excel de un cronograma. Sin respuesta se pregunta otra vez con la misma
+  // ruta, que `ot_adjuntos` no deja repetir.
+  return anotarSinDejarloSuelto({
+    bucket: 'adjuntos-ot',
+    ruta,
+    anotar: () => registrarAdjunto(null, datos),
+    sinRespuesta: NO_SE_SABE_SI_QUEDO,
+  })
 }

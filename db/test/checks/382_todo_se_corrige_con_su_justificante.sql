@@ -1,7 +1,9 @@
 -- Todo se corrige con su justificante: el RQ (Requerimientos), la OC
 -- (Logística) y la factura de compra (Contabilidad). Sin el archivo no hay
 -- corrección; cada una deja motivo, antes, después, quién y cuándo, y no se
--- edita ni se borra. Cada paso con el rol que lo hace —nunca ADMIN— y
+-- edita ni se borra. Un reintento con el mismo id se reconoce solo si trae lo
+-- mismo: el justificante, quién, el motivo y los cambios (migración
+-- 20261022180000). Cada paso con el rol que lo hace —nunca ADMIN— y
 -- `set local role authenticated`. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -24,6 +26,12 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
+  v_id := gen_random_uuid();
+  insert into auth.users (id, email) values (v_id, 'requerimientos2.382@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+  select v_id, 'REQUERIMIENTOS 2', 'Check 382', 'requerimientos2.382@prueba.local', r.id, (select id from public.areas where codigo = 'REQ')
+    from public.roles r where r.codigo = 'REQUERIMIENTOS';
+  perform set_config('prueba.requerimientos2', v_id::text, true);
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.und', (select id::text from public.unidades_medida where codigo = 'UND'), true);
   perform set_config('prueba.cat', (select id::text from public.categorias_material
@@ -106,10 +114,39 @@ select test.afirmar(
 select test.afirmar(
   (select count(*) = 1 and bool_and(c.corregido_por = current_setting('prueba.requerimientos')::uuid
                                     and c.antes->>'codigo_interno' = 'CHK382_SR_1' and c.despues->>'codigo_interno' = 'CHK382_SR_2'
-                                    and c.justificante_mime = 'application/pdf' and c.justificante_nombre = 'correo-maestranza.pdf')
+                                    and c.justificante_mime = 'application/pdf' and c.justificante_nombre = 'correo-maestranza.pdf'
+                                    and c.huella_del_envio is not null)
      from public.correcciones c where c.documento_id = current_setting('prueba.rq')::uuid),
-  'la corrección queda una vez, con quién, antes, después y su justificante');
+  'la corrección queda una vez, con quién, antes, después, su justificante y la huella de su envío');
+-- Otro envío con el mismo id ya no es el mismo (migración 20261022180000): las
+-- dos respuestas se perdieron y en la misma ventana se eligió otro justificante,
+-- se cambió el motivo o se cambió un dato antes de volver a pulsar.
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('justificantes-correccion', current_setting('prueba.rq') || '/' || current_setting('prueba.c1') || '.jpg',
+        public.usuario_actual()::text, '{"mimetype": "image/jpeg", "size": 2048}');
+select test.debe_fallar(format($q$select public.corregir_requerimiento('%s', '%s', 'Maestranza pidió plancha de 2 mm y el plano dice 3 mm',
+  '%s/%s.jpg', 'foto.jpg', '{"codigo_interno": "CHK382_SR_2", "lineas": [{"item": 1, "material_id": "%s", "cantidad": 6}]}'::jsonb)$q$,
+  current_setting('prueba.c1'), current_setting('prueba.rq'), current_setting('prueba.rq'), current_setting('prueba.c1'), current_setting('prueba.m2')),
+  'con otro justificante y el mismo id, la corrección no se da por registrada', 'ya quedó registrada la primera vez que la enviaste');
+select test.debe_fallar(format($q$select public.corregir_requerimiento('%s', '%s', 'El plano final pide plancha de 3 mm, no de 2',
+  '%s/%s.pdf', 'correo-maestranza.pdf', '{"codigo_interno": "CHK382_SR_2", "lineas": [{"item": 1, "material_id": "%s", "cantidad": 6}]}'::jsonb)$q$,
+  current_setting('prueba.c1'), current_setting('prueba.rq'), current_setting('prueba.rq'), current_setting('prueba.c1'), current_setting('prueba.m2')),
+  'ni con el mismo justificante y otro motivo', 'ya quedó registrada la primera vez que la enviaste');
+select test.debe_fallar(format($q$select public.corregir_requerimiento('%s', '%s', 'Maestranza pidió plancha de 2 mm y el plano dice 3 mm',
+  '%s/%s.pdf', 'correo-maestranza.pdf', '{"codigo_interno": "CHK382_SR_2", "lineas": [{"item": 1, "material_id": "%s", "cantidad": 5}]}'::jsonb)$q$,
+  current_setting('prueba.c1'), current_setting('prueba.rq'), current_setting('prueba.rq'), current_setting('prueba.c1'), current_setting('prueba.m2')),
+  'ni con el mismo justificante, el mismo motivo y otra cantidad', 'ya quedó registrada la primera vez que la enviaste');
 reset role;
+select pg_temp.como('requerimientos2');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.corregir_requerimiento('%s', '%s', 'Maestranza pidió plancha de 2 mm y el plano dice 3 mm',
+  '%s/%s.pdf', 'correo-maestranza.pdf', '{"codigo_interno": "CHK382_SR_2", "lineas": [{"item": 1, "material_id": "%s", "cantidad": 6}]}'::jsonb)$q$,
+  current_setting('prueba.c1'), current_setting('prueba.rq'), current_setting('prueba.rq'), current_setting('prueba.c1'), current_setting('prueba.m2')),
+  'ni con todo igual desde otra cuenta', 'ya quedó registrada la primera vez que la enviaste');
+reset role;
+select test.afirmar((select count(*) = 1 and bool_and((despues->'lineas'->0->>'cantidad')::numeric = 6 and motivo like 'Maestranza pidió%')
+                       from public.correcciones where documento_id = current_setting('prueba.rq')::uuid),
+  'y la corrección sigue siendo una, con lo del primer envío');
 
 select test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.almacenero')::uuid
                                 and titulo like 'Requerimiento corregido:%' and origen_id = current_setting('prueba.rq')::uuid),
@@ -176,6 +213,21 @@ select test.afirmar((select d.precio_unitario = 95.5 and c.codigo_interno = 'CHK
                     and (select count(*) from public.correcciones where documento_id = current_setting('prueba.oc1')::uuid
                            and documento = 'ORDEN_COMPRA') = 1,
   'Logística corrige el precio y el código de la OC, con su justificante');
+-- El mismo envío otra vez se reconoce; con otro precio ya no es el mismo (migración 20261022180000).
+select public.corregir_orden_compra(current_setting('prueba.c3')::uuid, current_setting('prueba.oc1')::uuid,
+  'El proveedor confirmó 95.50 por plancha en su factura', current_setting('prueba.oc1') || '/' || current_setting('prueba.c3') || '.pdf',
+  'factura-proveedor.pdf',
+  format('{"codigo_interno": "CHK382_SR_2", "lineas": [{"detalle_id": "%s", "precio_unitario": 95.5}]}',
+         (select id from public.orden_compra_material_detalles where orden_compra_id = current_setting('prueba.oc1')::uuid))::jsonb);
+select test.debe_fallar(format($q$select public.corregir_orden_compra('%s', '%s', 'El proveedor confirmó 95.50 por plancha en su factura',
+  '%s/%s.pdf', 'factura-proveedor.pdf', '{"codigo_interno": "CHK382_SR_2", "lineas": [{"detalle_id": "%s", "precio_unitario": 96}]}'::jsonb)$q$,
+  current_setting('prueba.c3'), current_setting('prueba.oc1'), current_setting('prueba.oc1'), current_setting('prueba.c3'),
+  (select id from public.orden_compra_material_detalles where orden_compra_id = current_setting('prueba.oc1')::uuid)),
+  'la corrección de la OC con otro precio y el mismo id no se da por registrada', 'ya quedó registrada la primera vez que la enviaste');
+select test.afirmar((select d.precio_unitario = 95.5 from public.orden_compra_material_detalles d
+                      where d.orden_compra_id = current_setting('prueba.oc1')::uuid)
+                    and (select count(*) from public.correcciones where documento_id = current_setting('prueba.oc1')::uuid) = 1,
+  'la OC sigue con el precio del primer envío y una sola corrección');
 reset role;
 
 -- Lo que entró al almacén queda en el kardex: la línea ya no se corrige.
@@ -254,6 +306,17 @@ select test.afirmar(
 select test.afirmar((select jsonb_array_length(ordenes) = 1 and control = 'CALZA'
                        from public.adquisiciones_control(array[current_setting('prueba.adq')::uuid])),
   'el aviso cuenta solo las OC que quedan');
+-- El mismo envío otra vez se reconoce; con otro total ya no es el mismo (migración 20261022180000).
+select public.corregir_factura_compra(current_setting('prueba.c6')::uuid, current_setting('prueba.adq')::uuid,
+  'La OC de 59.00 tiene su propia factura', current_setting('prueba.adq') || '/' || current_setting('prueba.c6') || '.pdf', 'correo.pdf',
+  format('{"total": 1126.9, "ordenes": ["%s"]}', current_setting('prueba.oc1'))::jsonb);
+select test.debe_fallar(format($q$select public.corregir_factura_compra('%s', '%s', 'La OC de 59.00 tiene su propia factura', '%s/%s.pdf',
+  'correo.pdf', '{"total": 1127.9, "ordenes": ["%s"]}'::jsonb)$q$, current_setting('prueba.c6'), current_setting('prueba.adq'),
+  current_setting('prueba.adq'), current_setting('prueba.c6'), current_setting('prueba.oc1')),
+  'la corrección de la factura con otro total y el mismo id no se da por registrada', 'ya quedó registrada la primera vez que la enviaste');
+select test.afirmar((select total = 1126.9 from public.adquisiciones where id = current_setting('prueba.adq')::uuid)
+                    and (select count(*) from public.correcciones where id = current_setting('prueba.c6')::uuid) = 1,
+  'la factura sigue con el total del primer envío');
 select test.debe_fallar(format($q$select public.corregir_factura_compra('%s', '%s', 'Corrección sin cambiar nada', '%s/%s.pdf', 'x.pdf', '{}'::jsonb)$q$,
   current_setting('prueba.c7'), current_setting('prueba.adq'), current_setting('prueba.adq'), current_setting('prueba.c7')),
   'sin el justificante de esa corrección no entra', 'vuelve a adjuntarlo');

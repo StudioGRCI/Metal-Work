@@ -2,15 +2,17 @@
 
 import { ArrowDown, ArrowUp, Check, FileUp, FolderOpen, ListPlus, Pencil, Percent, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
+import { yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
 import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -31,11 +33,24 @@ import {
 
 type Area = { id: string; codigo: string; nombre: string }
 
-function Alerta({ error, mensaje }: { error: string | null; mensaje?: string | null }) {
+/**
+ * El aviso del formulario sin ventana. Si la base dice que el envío ya entró la
+ * primera vez, no es un rechazo: va sin rojo, como en `PieDeVentana`, y el
+ * formulario ya se vació para el próximo (decimoquinta pasada). No pide
+ * recargar: la lista ya se puso al día, y dice que lo de esta vez no se guardó.
+ */
+function Alerta({ error, mensaje, aviso }: { error: string | null; mensaje?: string | null; aviso?: RefObject<HTMLParagraphElement | null> }) {
   if (error) {
+    const yaEntro = yaEntroLaPrimeraVez(error)
     return (
-      <p role="alert" className="text-sm text-peligro">
-        {error}
+      <p
+        ref={aviso}
+        role="alert"
+        tabIndex={-1}
+        data-ya-entro={yaEntro || undefined}
+        className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
+      >
+        {yaEntro ? yaEntroSinVentana(error) : error}
       </p>
     )
   }
@@ -149,7 +164,12 @@ export function CargarPlano({
       setMensaje(r.mensaje ?? 'Plano cargado.')
       setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() })
     },
+    // Tras «ya quedó», el plano siguiente lleva otro id: con el mismo decía «ya quedó» hasta recargar.
+    { alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }) },
   )
+  // El cursor va al aviso: con el formulario vaciado tras «ya quedó», caía a la página.
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
   return (
     <form key={ids.plano} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[8rem_minmax(0,1fr)_12rem_9rem]">
       <input type="hidden" name="plano" value={ids.plano} />
@@ -203,7 +223,7 @@ export function CargarPlano({
         </Boton>
       </div>
       <div className="sm:col-span-2 lg:col-span-4">
-        <Alerta error={error} mensaje={mensaje} />
+        <Alerta error={error} mensaje={mensaje} aviso={aviso} />
       </div>
     </form>
   )
@@ -241,15 +261,7 @@ export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; num
               disabled={enviando}
             />
           </Campo>
-          <Alerta error={error} />
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Guardar
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Guardar" />
         </form>
       </Ventana>
     </>
@@ -276,6 +288,7 @@ export function SubirRevision({ plano, numero, solicitudId }: { plano: string; n
       setAbierta(false)
       setRevision(crypto.randomUUID())
     },
+    { alYaEntrar: () => setRevision(crypto.randomUUID()) },
   )
   return (
     <>
@@ -299,15 +312,7 @@ export function SubirRevision({ plano, numero, solicitudId }: { plano: string; n
           <Campo etiqueta="PDF corregido" htmlFor={`revision-pdf-${plano}`} requerido>
             <ElegirArchivo id={`revision-pdf-${plano}`} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_PLANO} required disabled={enviando} />
           </Campo>
-          <Alerta error={error} />
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Subir revisión
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Subir revisión" />
         </form>
       </Ventana>
     </>
@@ -336,15 +341,7 @@ export function AnularPlano({ plano, numero }: { plano: string; numero: string }
           <Campo etiqueta="Por qué se anula" htmlFor={`motivo-plano-${plano}`} requerido>
             <AreaTexto id={`motivo-plano-${plano}`} name="motivo" rows={3} minLength={5} maxLength={500} required disabled={enviando} />
           </Campo>
-          <Alerta error={error} />
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular plano
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular plano" variante="peligro" />
         </form>
       </Ventana>
     </>
@@ -512,8 +509,9 @@ export function QuitarMaterial({ id, nombre }: { id: string; nombre: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Quitar de la lista"
-        detalle={`${nombre} sale de la lista de materiales del código. Queda en el historial.${error ? ` ${error}` : ''}`}
+        detalle={`${nombre} sale de la lista de materiales del código. Queda en el historial.`}
         trabajando={enviando}
+        error={error}
         alConfirmar={() => {
           const datos = new FormData()
           datos.set('id', id)
@@ -666,8 +664,9 @@ export function QuitarEtapa({ id, nombre }: { id: string; nombre: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Quitar la etapa"
-        detalle={`«${nombre}» sale de las etapas del código, con sus fechas. Queda en el historial.${error ? ` ${error}` : ''}`}
+        detalle={`«${nombre}» sale de las etapas del código, con sus fechas. Queda en el historial.`}
         trabajando={enviando}
+        error={error}
         alConfirmar={() => {
           const datos = new FormData()
           datos.set('id', id)

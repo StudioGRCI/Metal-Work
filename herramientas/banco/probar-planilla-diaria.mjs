@@ -371,7 +371,13 @@ let numeroPlanilla = null
   const error = await esperarVentana(pagina)
   comprobar(!error, `usa media hora de su saldo${error ? `: ${error}` : ''}`)
   const [s] = await consulta(`select saldo::float from saldo_horas_por_persona($1)`, [ids[mario]]).catch(() => [{}])
-  const saldoPantalla = limpio(await pagina.locator('[data-saldo]', { hasText: mario }).textContent().catch(() => ''))
+  // La pantalla se pone al día después de cerrar la ventana: con el banco cargado, un instante después.
+  const leerSaldo = async () => limpio(await pagina.locator('[data-saldo]', { hasText: mario }).textContent().catch(() => ''))
+  let saldoPantalla = await leerSaldo()
+  for (let i = 0; i < 30 && !/0[,.]5 h/.test(saldoPantalla); i++) {
+    await pagina.waitForTimeout(500)
+    saldoPantalla = await leerSaldo()
+  }
   comprobar(saldoPantalla.includes('0,5 h') || saldoPantalla.includes('0.5 h'), `le queda media hora en pantalla (${saldoPantalla}; base: ${s?.saldo ?? 'sin sesión'})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'pd-08-rrhh-saldo.png'), fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)

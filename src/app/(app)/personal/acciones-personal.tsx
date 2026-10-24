@@ -10,7 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -248,7 +248,7 @@ export function FilaDePersona({
     () => {
       setVentana(null)
       const lista = persona.activo ? 'bajas' : 'activos'
-      router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+      navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
     { refrescar: false },

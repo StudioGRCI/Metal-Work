@@ -139,9 +139,9 @@ const [{ id: factura }] = await consulta(`select gen_random_uuid() as id`)
 const [{ total: totalOc2 }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[1]])
 await como('contabilidad')
 await consulta(
-  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-   values ($1, 'FACTURA_COMPRA', $2, $3, (now() at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date, 'PEN', $4, 'CONTADO')`,
-  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalOc2],
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+   values ($1, 'FACTURA_COMPRA', $2, $3, (now() at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date, 'PEN', $4, 'CONTADO', $5)`,
+  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalOc2, ruc.n],
 )
 await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [factura, oc[1]])
 await subir('comprobantes-financieros', `adquisiciones/${factura}/comprobante.pdf`, 'contabilidad')
@@ -191,11 +191,18 @@ console.log(`Sembrado ${SUFIJO}: ${numeroRq}, ${oc.map(nombre).join(', ')} y QA-
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
 
+/**
+ * Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» de la consola es el corte, y el
+ * 400 es Storage diciendo que el PDF ya está en su ruta (el reintento lo sube otra vez).
+ */
+let cortando = false
+
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
+    if (cortando && /net::ERR_FAILED|status of 400/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -209,7 +216,7 @@ async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   await pagina.waitForLoadState('networkidle')
   return { pagina, contexto }
 }
-const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
+const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
 const buscar = `q=${SUFIJO}`
 const fila = (pagina, id) => pagina.locator(`tbody tr[data-orden="${id.startsWith('QA-OS') ? id : nombre(id)}"]`)
@@ -309,11 +316,46 @@ const rechaza = async (pagina, ruta) => {
   comprobar(limpio(await ventana.innerText()).includes('245.5 kg'), 'la ventana dice el peso con que se emite')
   await ventana.locator('input[name="numero"]').fill(' t001- 00000403 ')
   await ventana.locator('input[name="archivo"]').setInputFiles({ name: 'guia.pdf', mimeType: 'application/pdf', buffer: PDF })
+  // Las respuestas se pierden (la guía entra) y, en la misma ventana, se cambia la fecha antes de volver a
+  // enviar: la base no da por cargada otra guía con la de la primera vez (undécima pasada, migración
+  // 20261022180000). Lo dice, y la guía queda con su fecha de la primera vez.
+  const fechaPrimera = await ventana.locator('input[name="fecha"]').inputValue()
+  cortando = true
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(oc[2])) {
+      await r.fetch().catch(() => {})
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  const avisoGuia = () => ventana.locator('[role="alert"]').allTextContents().then((t) => limpio(t.join(' '))).catch(() => '')
+  const esperarAviso = async (cumple) => {
+    for (let i = 0; i < 120 && !cumple(await avisoGuia()); i++) await pagina.waitForTimeout(250)
+    return avisoGuia()
+  }
   await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  const primeraGuia = await esperarAviso((t) => /Vuelve a intentar ahora/.test(t))
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  const ayer = new Date(Date.parse(`${fechaPrimera}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  await ventana.locator('input[name="fecha"]').fill(ayer)
+  await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  const segundaGuia = await esperarAviso((t) => /ya quedó cargada/.test(t))
+  cortando = false
+  // Ya entró: sin rojo y sin «Cargar guía»; la ventana solo se cierra (duodécima pasada).
+  const yaEntroGuia = {
+    neutro: (await ventana.locator('[data-ya-entro]').count()) === 1,
+    sinEnviar: (await ventana.getByRole('button', { name: 'Cargar guía' }).count()) === 0,
+    cerrar: await ventana.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
+  }
+  comprobar(Object.values(yaEntroGuia).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntroGuia)})`)
+  await ventana.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
-  const [guia] = await consulta(`select id, numero, ruta from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
+  const [guia] = await consulta(`select id, numero, ruta, fecha_emision::text as fecha from guias_remision_compra where orden_compra_id = $1 and anulada_en is null`, [oc[2]])
   const objetos = await consulta(`select name from storage.objects where bucket_id = 'guias-remision' and name = $1`, [guia?.ruta ?? ''])
   comprobar(guia?.numero === 'T001-00000403' && objetos.length === 1, `la guía queda en la base como T001-00000403, con su PDF en storage.objects (${guia?.numero}, ${objetos.length})`)
+  comprobar(/Vuelve a intentar ahora/.test(primeraGuia) && segundaGuia === 'Esta guía ya quedó cargada la primera vez que la enviaste. Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.' && guia?.fecha === fechaPrimera,
+    `la guía cuya respuesta se perdió no se da por cargada con otra fecha: «${primeraGuia}» → «${segundaGuia}» (queda del ${guia?.fecha})`)
   await ir(pagina, `/adquisiciones?${buscar}`)
   const conGuia = fila(pagina, oc[2])
   comprobar((await conGuia.getByRole('link', { name: 'Guía de remisión T001-00000403' }).count()) === 1, 'la fila muestra la guía')
@@ -438,6 +480,9 @@ const rechaza = async (pagina, ruta) => {
 
 comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
 await navegador.close()
+// La OC programada, fuera de la lista del conductor: no le deja pendientes a la prueba siguiente.
+await como('logistica')
+await consulta(`select public.quitar_recojo_de_la_lista(id) from ordenes_compra_materiales where id = $1 and recojo = 'POR_RECOGER'`, [oc[2]])
 await base.end()
 console.log(fallas.length === 0 ? `\nTODO EN VERDE (${SUFIJO})` : `\n${fallas.length} FALLAS`)
 process.exit(fallas.length === 0 ? 0 : 1)

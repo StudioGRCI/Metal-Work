@@ -13,7 +13,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import {
   buscarCliente,
   nombreParaCatalogo,
@@ -22,6 +22,9 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { registrarCotizacionPdf } from './acciones'
@@ -53,6 +56,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Si el total trae IGV: sin ese dato el margen de la OT saldría inflado en el 18 % de la venta.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
@@ -63,6 +68,15 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al número repetido o al aviso.
+  const campoNumero = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  // El número repetido se dice junto a su campo, que se marca; lo demás, abajo.
+  const errorNumero = error?.startsWith('Ya hay una cotización con el número') ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
+  // Lo que la persona escribió o eligió a mano: la lectura del archivo, aunque
+  // termine después o sea de otro archivo, no lo pisa.
+  const aMano = useRef(new Set<'numero' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
 
@@ -81,9 +95,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [nombreCarroceria, setNombreCarroceria] = useState('')
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
+    setTotalLeido(null)
     setIncluyeIgv('')
     setProgreso('')
     setError(null)
@@ -105,35 +121,40 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setAbierto(true)
   }
 
-  /** Lo que se leyó llena el formulario; lo que no, se deja como estaba. */
+  /** Lo que se leyó llena el formulario; lo que no, o lo que la persona ya puso a mano, se deja como estaba. */
   function aplicar(r: CabeceraCotizacion) {
     setLectura(r)
-    if (r.numero) setNumero(r.numero)
+    if (r.numero && !aMano.current.has('numero')) setNumero(r.numero)
 
-    const registrado = buscarCliente(r, listaClientes)
-    setReconocido(Boolean(registrado))
-    if (registrado) {
-      setClienteNuevo(false)
-      setClienteId(registrado.id)
-    } else if (r.cliente || r.documento) {
-      setClienteNuevo(true)
-      setClienteId('')
-      setTipoDoc(r.documento?.tipo ?? 'RUC')
-      setNumeroDoc(r.documento?.numero ?? '')
-      setRazonSocial(r.cliente ?? '')
+    if (!aMano.current.has('cliente')) {
+      const registrado = buscarCliente(r, listaClientes)
+      setReconocido(Boolean(registrado))
+      if (registrado) {
+        setClienteNuevo(false)
+        setClienteId(registrado.id)
+      } else if (r.cliente || r.documento) {
+        setClienteNuevo(true)
+        setClienteId('')
+        setTipoDoc(r.documento?.tipo ?? 'RUC')
+        setNumeroDoc(r.documento?.numero ?? '')
+        setRazonSocial(r.cliente ?? '')
+      }
     }
 
     const prop = proponerCarroceria(r.producto, listaCarrocerias)
     setPropuesta(prop)
-    setCarroceriaNueva(false)
-    setCarroceriaId(prop?.id ?? '')
-    setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    if (!aMano.current.has('carroceria')) {
+      setCarroceriaNueva(false)
+      setCarroceriaId(prop?.id ?? '')
+      setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    }
   }
 
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
     setError(null)
     setLectura(null)
+    setTotalLeido(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoArchivo(noSirve)
@@ -143,8 +164,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     try {
       const resultado = await leerCabeceraDeArchivo(elegido, setProgreso)
       aplicar(resultado.cabecera)
-      setTotal(resultado.total)
-      setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
+      setTotalLeido(resultado.total)
+      const montoAMano = aMano.current.has('monto')
+      const monedaAMano = aMano.current.has('moneda')
+      setTotal((v) => ({
+        monto: montoAMano ? v.monto : resultado.total.monto,
+        moneda: monedaAMano ? v.moneda : resultado.total.moneda,
+      }))
+      if (!aMano.current.has('igv')) setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
     } finally {
       setLeyendo(false)
     }
@@ -190,6 +217,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {
@@ -224,6 +253,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
         let carroceria = carroceriaId
         if (carroceriaNueva) {
+          // Cada paso sale con la sesión de ese momento: se mira antes de cada uno.
+          seguirConLaCuentaDeLaPestana()
           const datos = new FormData()
           datos.set('nombre', nombreCarroceria.trim())
           const r = await crearCarroceria(null, datos)
@@ -238,9 +269,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           setCarroceriaNueva(false)
         }
 
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        seguirConLaCuentaDeLaPestana()
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
@@ -260,20 +292,28 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await registrarCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la cotización no quedó, el
+        // archivo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => registrarCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la cotización quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
-        // Si la anotación se cae por el camino, el archivo se quita: uno que
-        // ninguna fila nombra no lo ve nadie y no lo borra nadie.
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
+        // Lo único que puede caerse acá es la carrocería nueva o la subida:
+        // la cotización todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo registrar la cotización. Vuelve a intentar.')
       } finally {
@@ -308,6 +348,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           <Campo etiqueta="La cotización" htmlFor="cot-archivo" requerido>
             <ElegirArchivo
               ref={campoArchivo}
@@ -362,11 +404,16 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             </div>
           )}
 
-          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" requerido>
+          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" error={errorNumero ?? undefined} requerido>
             <Entrada
+              ref={campoNumero}
               id="cot-numero"
               value={numero}
-              onChange={(e) => setNumero(e.target.value)}
+              onChange={(e) => {
+                aMano.current.add('numero')
+                if (errorNumero) setError(null)
+                setNumero(e.target.value)
+              }}
               required
               maxLength={40}
               placeholder="3522-2025"
@@ -375,11 +422,25 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
-              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" placeholder="0.00" required />
-            </Campo>
+            {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}
+            <div className="space-y-1.5">
+              <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }} inputMode="decimal" placeholder="0.00" required />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-pretty text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="cot-moneda" requerido>
-              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => {
+                  aMano.current.add('moneda')
+                  setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))
+                }} required>
                 <option value="" disabled>Confirma</option>
                 <option value="PEN">Soles (S/)</option>
                 <option value="USD">Dólares (US$)</option>
@@ -389,7 +450,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               <Seleccion
                 id="cot-igv"
                 value={incluyeIgv}
-                onChange={(e) => setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')}
+                onChange={(e) => {
+                  aMano.current.add('igv')
+                  setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')
+                }}
                 required
               >
                 <option value="" disabled>Confirma</option>
@@ -408,7 +472,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               </p>
               <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
                 <Campo etiqueta="Documento" htmlFor="cot-tipo-doc" requerido>
-                  <Seleccion id="cot-tipo-doc" value={tipoDoc} onChange={(e) => setTipoDoc(e.target.value as TipoDocumento)}>
+                  <Seleccion
+                    id="cot-tipo-doc"
+                    value={tipoDoc}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setTipoDoc(e.target.value as TipoDocumento)
+                    }}
+                  >
                     <option value="RUC">RUC</option>
                     <option value="DNI">DNI</option>
                     <option value="CE">CE</option>
@@ -419,7 +490,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   <Entrada
                     id="cot-num-doc"
                     value={numeroDoc}
-                    onChange={(e) => setNumeroDoc(e.target.value)}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setNumeroDoc(e.target.value)
+                    }}
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={20}
@@ -430,12 +504,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-razon"
                   value={razonSocial}
-                  onChange={(e) => setRazonSocial(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('cliente')
+                    setRazonSocial(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={200}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setClienteNuevo(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('cliente')
+                  setClienteNuevo(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir uno registrado
               </Boton>
@@ -452,6 +537,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   id="cot-cliente"
                   value={clienteId}
                   onChange={(e) => {
+                    aMano.current.add('cliente')
                     setClienteId(e.target.value)
                     setReconocido(false)
                   }}
@@ -471,6 +557,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 variante="fantasma"
                 tamano="sm"
                 onClick={() => {
+                  aMano.current.add('cliente')
                   setClienteNuevo(true)
                   if (!razonSocial && lectura?.cliente) setRazonSocial(lectura.cliente)
                 }}
@@ -492,12 +579,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-carroceria-nueva"
                   value={nombreCarroceria}
-                  onChange={(e) => setNombreCarroceria(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setNombreCarroceria(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={120}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir del catálogo
               </Boton>
@@ -518,7 +616,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 }
                 requerido
               >
-                <Seleccion id="cot-carroceria" value={carroceriaId} onChange={(e) => setCarroceriaId(e.target.value)}>
+                <Seleccion
+                  id="cot-carroceria"
+                  value={carroceriaId}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setCarroceriaId(e.target.value)
+                  }}
+                >
                   <option value="" disabled>
                     Elige la carrocería
                   </option>
@@ -529,15 +634,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   ))}
                 </Seleccion>
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(true)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(true)
+                }}
+              >
                 <Plus aria-hidden className="size-3.5" />
                 No está en el catálogo
               </Boton>
             </div>
           )}
 
-          {error && (
-            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+          {error && !errorNumero && (
+            <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
               {error}
             </p>
           )}
@@ -550,6 +663,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               Subir y mandar a Gerencia
             </Boton>
           </div>
+          </fieldset>
           </div>
           <aside aria-label="Vista previa de la cotización" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
             <div className="border-b border-borde px-4 py-3">

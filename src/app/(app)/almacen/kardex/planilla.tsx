@@ -11,6 +11,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +24,8 @@ const MAXIMO_MB_EXCEL = 8
 const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
 const MAXIMO_MB_FOTO = 10
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
+
+const NO_SALIO_OTRA_CUENTA = 'No se envió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, usa «Registrar lo que falta».'
 /** Lo que eligió Almacén para una fila sin material: uno del catálogo o darlo de alta. */
 const NUEVO = 'NUEVO'
 
@@ -95,7 +98,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   function cerrar() {
     if (registrando) return
     alCerrar()
-    if (Object.keys(resultados).length > 0) router.refresh()
+    if (Object.keys(resultados).length > 0) refrescarSiEsDeLaPestana(router)
     reiniciar()
   }
 
@@ -139,6 +142,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
 
   async function registrar() {
     if (enCurso.current || faltan.length === 0) return
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
     try {
@@ -148,7 +153,18 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       // Primero todos los ingresos y después las salidas: así el saldo alcanza
       // aunque la salida esté anotada antes que el ingreso del mismo día.
       const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
-      for (const f of orden) {
+      // Fila por fila, cada una sale con la sesión de ese momento. Si entró otra
+      // cuenta, la que iba y las que siguen se quedan con su motivo, y salen
+      // cuando vuelva la tuya (vigesimotercera pasada).
+      const cortar = (desde: number) => {
+        const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
+        setResultados((r) => ({ ...r, ...quedan }))
+      }
+      for (const [i, f] of orden.entries()) {
+        if (laPestanaEsDeOtraCuenta()) {
+          cortar(i)
+          break
+        }
         setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
         const datos = new FormData()
         datos.set('hoja', f.hoja)
@@ -187,7 +203,11 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               registrar: () => registrarFilaPlanilla(null, datos),
             })
           }
-        } catch {
+        } catch (e) {
+          if (e instanceof OtraCuentaEnLaPestana) {
+            cortar(i)
+            break
+          }
           resultado = { ok: false, error: 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.' }
         }
         setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))

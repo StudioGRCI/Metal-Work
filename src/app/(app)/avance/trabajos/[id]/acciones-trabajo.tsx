@@ -1,13 +1,14 @@
 'use client'
 
 import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { pudoHaberEntrado } from '@/lib/acciones'
 import { useEnvio } from '@/lib/envio'
 
 import { cambiarEstadoFlota, reportarFlota } from '../../acciones-flota'
@@ -79,16 +80,45 @@ function Reportar({
   const [aviso, setAviso] = useState<string | null>(null)
   // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
   // el aviso queda al lado del botón para que nadie dude de si entró.
-  const { alEnviar, enviando, error, limpiar } = useEnvio(reportarFlota, (r) => {
+  // Se cerró mientras se enviaba: las fotos quedaron en manos del envío.
+  const cerradaEnviando = useRef(false)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const r = await reportarFlota(previo, datos)
+      // Se cerró mientras iba y la base lo rechazó: ningún reporte las nombra,
+      // y la ventana ya no está para quitarlas. Sin respuesta pudo entrar con ellas.
+      if (!r.ok && cerradaEnviando.current && !pudoHaberEntrado(r.error)) quitarFotosSueltas('fotos-avance', fotos)
+      return r
+    },
+    (r) => {
+      // El reporte entró sin sus fotos: ya subidas, ningún registro las nombra.
+      if (r.datos?.fotosSueltas) quitarFotosSueltas('fotos-avance', fotos)
+      setAbierto(false)
+      setAviso(r.mensaje ?? 'Reporte registrado.')
+    },
+  )
+
+  // Sin reportar, las fotos ya subidas no las nombra ningún reporte: se quitan
+  // de Storage, como en «Registrar avance». Antes «Cancelar» solo cerraba y
+  // quedaban sueltas (vigesimotercera pasada). Mientras se envía se quedan: el
+  // reporte que está entrando las nombra.
+  function cerrar() {
+    if (enviando) {
+      cerradaEnviando.current = true
+      soltarMiniaturas(fotos)
+    } else {
+      quitarFotosSueltas('fotos-avance', fotos)
+    }
+    setFotos([])
     setAbierto(false)
-    setAviso(r.mensaje ?? 'Reporte registrado.')
-  })
+  }
 
   const areaInicial = areas.some((a) => a.id === areaPropia) ? areaPropia : areas[0]?.id
 
   function abrir() {
     limpiar()
     setAviso(null)
+    cerradaEnviando.current = false
     setFotos([])
     setAbierto(true)
   }
@@ -107,7 +137,7 @@ function Reportar({
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo="Qué se hizo hoy"
         descripcion="Lo del día, con la foto de cómo quedó. Si recién empieza, cuenta cómo está: esa foto es la que vale después."
         ancho="lg"
@@ -174,7 +204,7 @@ function Reportar({
           {/* En el teléfono, «Registrar» ocupa todo el ancho y queda arriba de
               «Cancelar»: es el que se busca con el pulgar. */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton

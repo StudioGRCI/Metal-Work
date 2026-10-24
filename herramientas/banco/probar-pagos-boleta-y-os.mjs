@@ -13,6 +13,9 @@
  *   2. El PDF de la OC lo descarga Tesorería (200, application/pdf).
  *   3. Tesorería anula el pago con su motivo: la OC vuelve a estar por pagar y
  *      el egreso queda anulado.
+ *   3a. (PR #148) Un pago a cuenta cuyas dos respuestas se pierden: la ventana
+ *      dice que no llegó, y volver a pulsar no lo da por pagado con otro
+ *      voucher; un pago, un egreso y ningún voucher suelto.
  *   3b. La OC con boleta de antes sale «Pago fuera del sistema» y no está en
  *      Cuentas por pagar; Tesorería la pasa con «No se pagó» (tres toques, un
  *      cambio en la auditoría) y ya pide su pago. Tras «No se pagó» la fila dice lo
@@ -81,6 +84,7 @@ import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -142,6 +146,7 @@ const PDF = Buffer.from(
 const archivos = join(CAPTURAS, 'archivos-boleta-y-os')
 mkdirSync(archivos, { recursive: true })
 writeFileSync(join(archivos, 'voucher.pdf'), PDF)
+writeFileSync(join(archivos, 'voucher-2.pdf'), PDF)
 writeFileSync(join(archivos, 'factura-os.pdf'), PDF)
 writeFileSync(join(archivos, 'contrato-os.pdf'), PDF)
 
@@ -255,9 +260,9 @@ const [{ id: factura }] = await consulta(`select gen_random_uuid() as id`)
 const [{ total: totalFactura }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc[1]])
 await como('contabilidad')
 await consulta(
-  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-   values ($1, 'FACTURA_COMPRA', $2, $3, $5::date, $5::date, 'PEN', $4, 'CONTADO')`,
-  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalFactura, hoy],
+  `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+   values ($1, 'FACTURA_COMPRA', $2, $3, $5::date, $5::date, 'PEN', $4, 'CONTADO', $6)`,
+  [factura, PROVEEDOR, `F001-${SUFIJO}`, totalFactura, hoy, ruc.n],
 )
 await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [factura, oc[1]])
 await subir('comprobantes-financieros', `adquisiciones/${factura}/comprobante.pdf`, 'contabilidad')
@@ -303,9 +308,9 @@ let cortando = false
 async function entrar(puesto, viewport = { width: 1280, height: 900 }) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
-    if (cortando && m.text().includes('net::ERR_FAILED')) return
+    if (cortando && /net::ERR_FAILED|status of 504/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -427,6 +432,339 @@ let pagoId
   await contexto.close()
 }
 
+// ---------------------------------------------------------------- 3a. El pago cuya respuesta se pierde
+// Tesorería paga a cuenta la misma OC y las dos respuestas de la acción se
+// pierden (el pago entra): la ventana dice que no llegó. Vuelve a pulsar desde
+// la misma ventana, como hace la gente: la pantalla sube el voucher a otra ruta,
+// y la base ya no da por pagado ese envío con otro voucher (migración
+// 20261022177000): lo dice, y el voucher nuevo, que ninguna fila nombra, se
+// quita. Un pago, un egreso y ningún voucher suelto. Queda a cuenta: Gerencia y
+// el teléfono (6 y 7) siguen viendo su botón de pagar. En el teléfono, que es donde el
+// botón quedaba bajo el borde de la hoja tras el rechazo (undécima pasada).
+{
+  const { pagina, contexto } = await entrar('tesoreria', { width: 390, height: 844 })
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  const laTarjeta = () => pagina.locator(`article#compra-${oc[0]}`).innerText().then(limpio).catch(() => '')
+  const tarjetaAntes = await laTarjeta()
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('input[name="monto"]').fill('50')
+  await v.locator('select[name="cancela"]').selectOption('no')
+  const valor = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valor)
+  await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  const cortes = { acciones: 0 }
+  cortando = true
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(oc[0]) && ++cortes.acciones <= 2) {
+      await r.fetch().catch(() => {})
+      return r.abort('failed')
+    }
+    return r.continue()
+  })
+  const boton = v.getByRole('button', { name: 'Registrar el pago' })
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  await boton.click()
+  const primera = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+  // Tras el rechazo, el cursor en el aviso y el botón entero a la vista (undécima pasada: quedaba en la página).
+  const alRechazo = () => pagina.evaluate(() => {
+    const ventana = document.querySelector('[role="dialog"]:not([data-nextjs-dialog])')
+    const aviso = ventana?.querySelector('[role="alert"]')
+    const boton = [...(ventana?.querySelectorAll('button[type=submit]') ?? [])].find((b) => b.textContent.trim() === 'Registrar el pago')
+    const r = boton?.getBoundingClientRect()
+    return { cursor: document.activeElement === aviso, boton: Boolean(r && r.top >= 0 && r.bottom <= innerHeight) }
+  })
+  const trasLaPrimera = await hasta(alRechazo, (e) => e.cursor && e.boton, 5000)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await boton.click()
+  const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
+  cortando = false
+  // Ya entró: el aviso sin rojo, sin «Registrar el pago», solo «Cerrar», y la
+  // ventana sigue ahí hasta que la persona la cierra. La decimotercera pasada
+  // la vio irse sola a los 3 s, sin dejar leer el aviso, cuando el pago
+  // cancelaba y la tarjeta ya no pintaba el botón que la abrió.
+  await pagina.waitForTimeout(4000)
+  const yaEntro = {
+    neutro: (await v.locator('[data-ya-entro]').count()) === 1,
+    sinEnviar: (await v.getByRole('button', { name: 'Registrar el pago' }).count()) === 0,
+    cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
+    // Lo cambiado no se guardó: los campos quedan trabados (la decimocuarta los vio editables y el archivo invitando a cambiarlo).
+    trabados: (await v.locator('input[name="monto"]').isDisabled()) && (await v.locator('input[name="archivo"]').isDisabled()),
+  }
+  comprobar(Object.values(yaEntro).every(Boolean), `ya entró: aviso sin rojo, campos trabados y solo «Cerrar», a la vista 4 s después (${JSON.stringify(yaEntro)})`)
+  const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  const sueltos = await hasta(
+    () => consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                      and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                      and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`]),
+    (r) => r.length === 0,
+  )
+  const [{ n: egresos }] = pagos.length === 1
+    ? await consulta(`select count(*)::int as n from movimientos_caja where origen = 'PAGO_ORDEN_COMPRA' and origen_id = $1`, [pagos[0].id])
+    : [{ n: -1 }]
+  comprobar(/No llegó la respuesta/.test(primera) && segunda.includes('Este pago ya quedó registrado la primera vez que lo enviaste. Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+    && pagos.length === 1 && pagos[0].monto === 50 && egresos === 1 && sueltos.length === 0,
+    `el pago cuya respuesta se perdió no entra dos veces y el aviso no habla de otro voucher: «${primera}» → «${segunda}» (${pagos.length} pago, ${egresos} egreso, ${sueltos.length} vouchers sueltos)`)
+  comprobar(trasLaPrimera?.cursor && trasLaPrimera?.boton, `tras el rechazo, el cursor en el aviso y «Registrar el pago» a la vista (${JSON.stringify(trasLaPrimera)})`)
+  // Al cerrar, la tarjeta de atrás se pone al día sin recargar (la duodécima la
+  // vio seguir en el saldo de antes: se volvía a pagar desde ella y entraban
+  // dos), y la ventana se vuelve a abrir limpia para pagar el saldo (la
+  // decimotercera la vio volver con el «ya quedó» y sin botón).
+  await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  const tarjetaDespues = await hasta(laTarjeta, (t) => t !== tarjetaAntes, 15000)
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  await v.waitFor()
+  const deNuevo = {
+    sinAviso: (await v.locator('[data-ya-entro], [role="alert"]').count()) === 0,
+    conBoton: await v.getByRole('button', { name: 'Registrar el pago' }).isVisible(),
+  }
+  comprobar(tarjetaDespues !== tarjetaAntes && Object.values(deNuevo).every(Boolean),
+    `al cerrar, la tarjeta al día y la ventana se abre otra vez limpia (${JSON.stringify(deNuevo)}; «${tarjetaAntes.slice(0, 80)}» → «${tarjetaDespues.slice(0, 80)}»)`)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3a'. El voucher que Storage guardó sin contestar
+// Storage guarda el voucher y al navegador le llega un 504 de la pasarela. La
+// ruta era nueva y nadie la vuelve a usar: la pantalla lo quita en el acto, y
+// el segundo intento, a otra ruta, entra. Un pago y ningún voucher suelto
+// (undécima pasada: el primero quedaba suelto aunque el segundo entrara).
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor()
+  await v.locator('input[name="monto"]').fill('25')
+  await v.locator('select[name="cancela"]').selectOption('no')
+  const valor = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valor)
+  await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  const guardados = []
+  await pagina.route(`**/storage/v1/object/pagos-compras/${oc[0]}/**`, async (r) => {
+    if (r.request().method() !== 'POST' || guardados.length) return r.continue()
+    guardados.push(new URL(r.request().url()).pathname.split('/pagos-compras/')[1])
+    await r.fetch().catch(() => {})
+    return r.fulfill({ status: 504, contentType: 'text/html', body: '<html><body>504 Gateway Time-out</body></html>' })
+  })
+  const boton = v.getByRole('button', { name: 'Registrar el pago' })
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  cortando = true
+  await boton.click()
+  const primera = limpio(await hasta(aviso, (t) => /No se pudo subir/.test(t ?? ''), 30000))
+  cortando = false
+  const quitado = guardados.length === 1 && (await hasta(
+    () => consulta(`select 1 from storage.objects where bucket_id = 'pagos-compras' and name = $1`, [decodeURIComponent(guardados[0])]),
+    (r) => r.length === 0,
+  )).length === 0
+  await boton.click()
+  const entro = await hasta(() => v.count(), (n) => n === 0, 30000)
+  const pagos = await consulta(`select id, monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                                    and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                                    and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
+  comprobar(guardados.length === 1 && quitado && entro === 0 && pagos.length === 1 && pagos[0].monto === 25 && sueltos.length === 0,
+    `el voucher que Storage guardó con un 504 se quita en el acto y el segundo intento entra: «${primera}» (${guardados.length} cortado, ${quitado ? 'quitado' : 'sigue ahí'}, ${pagos.length} pago, ${sueltos.length} sueltos)`)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await contexto.close()
+}
+
+// ---------------------------------------------------------------- 3a''. Cancelar tras «No llegó la respuesta»
+// La decimocuarta pasada pagó a cuenta, perdió las dos respuestas, canceló y
+// volvió a abrir: la tarjeta seguía en el saldo de antes, la ventana traía otro
+// id y el mismo pago entró dos veces. Ahora la tarjeta se pone al día al
+// cerrar, y el id se conserva hasta saber cómo terminó. Al volver a abrir, la
+// ventana pregunta a la base si aquel pago entró: si entró, lo dice con su
+// importe y el siguiente lleva otro id (decimosexta pasada); si ni llegó, sigue
+// el mismo y entra una vez. Y el «ya quedó» que llega con la ventana ya cerrada
+// (se canceló mientras se enviaba) no se queda guardado: la ventana siguiente
+// abre limpia, con su botón y otro id.
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  const nuevos = () => consulta(`select monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and anulado_en is null
+                                   and not (id = any($2::uuid[])) order by creado_en`, [oc[0], antes]).then((r) => r.map((p) => p.monto))
+  const laTarjeta = () => pagina.locator(`article#compra-${oc[0]}`).innerText().then(limpio).catch(() => '')
+  const v = pagina.locator('[role="dialog"]')
+  const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+  const valor = await (async () => {
+    await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+    await v.waitFor()
+    return v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  })()
+  const llenar = async (monto, voucher = 'voucher.pdf') => {
+    await v.locator('input[name="monto"]').fill(monto)
+    await v.locator('select[name="cancela"]').selectOption('no')
+    await v.locator('select[name="caja_id"]').selectOption(valor)
+    await v.locator('input[name="archivo"]').setInputFiles(join(archivos, voucher))
+  }
+  const abrir = async () => {
+    await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+    await v.waitFor()
+  }
+  // El servidor contesta, pero al navegador no le llega: `quedan` respuestas cortadas; `demora` ms antes de entregar la siguiente.
+  // `pedidas` cuenta los envíos que salieron, y `refrescos` las puestas al día terminadas: se espera a lo que
+  // pasó, no un tiempo fijo (la decimosexta pasada pidió quitar las esperas fijas).
+  // `sinLlegar` corta antes de que el envío llegue al servidor; `consultas` cuenta las preguntas de la ventana al abrirse.
+  const corte = { quedan: 0, sinLlegar: 0, demora: 0, entregadas: 0, pedidas: 0, refrescos: 0, refrescosAlEntregar: 0, consultas: 0, contestacion: '' }
+  pagina.on('requestfinished', async (q) => {
+    if (q.method() === 'GET' && q.headers()['rsc'] && !q.headers()['next-router-prefetch']) corte.refrescos++
+    if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes('"pago_compra"')) {
+      // Lo que contestó la base, para no dar por buena una ventana que todavía no recibió la respuesta.
+      corte.contestacion = (await (await q.response())?.text().catch(() => '')) ?? ''
+      corte.consultas++
+    }
+  })
+  await pagina.route('**/*', async (r) => {
+    const q = r.request()
+    if (q.method() !== 'POST' || !q.headers()['next-action'] || !(q.postData() ?? '').includes(oc[0])) return r.continue()
+    corte.pedidas++
+    if (corte.sinLlegar > 0) {
+      corte.sinLlegar--
+      return r.abort('failed')
+    }
+    const respuesta = await r.fetch().catch(() => null)
+    if (corte.quedan > 0) {
+      corte.quedan--
+      return r.abort('failed')
+    }
+    if (corte.demora) await new Promise((listo) => setTimeout(listo, corte.demora))
+    corte.entregadas++
+    corte.refrescosAlEntregar = corte.refrescos
+    return respuesta ? r.fulfill({ response: respuesta }) : r.abort('failed')
+  })
+  // La respuesta tardía ya llegó y la pantalla se puso al día con ella.
+  const trasLaTardia = async () => {
+    await hasta(() => corte.refrescos - corte.refrescosAlEntregar, (n) => n > 0, 30000)
+  }
+
+  // 1. S/ 20 a cuenta, sin respuesta; «Cancelar» y la tarjeta se pone al día.
+  await llenar('20')
+  const tarjetaAntes = await laTarjeta()
+  corte.quedan = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  const sinRespuesta = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  const tarjetaDespues = await hasta(laTarjeta, (t) => t !== tarjetaAntes, 15000)
+  comprobar(/No llegó la respuesta/.test(sinRespuesta) && tarjetaDespues !== tarjetaAntes && (await nuevos()).join() === '20',
+    `sin respuesta y «Cancelar»: la tarjeta se pone al día con el pago que sí entró («${tarjetaAntes.slice(0, 60)}» → «${tarjetaDespues.slice(0, 60)}»)`)
+
+  // 2. Abre otra vez: limpia, y la ventana dice que aquel pago sí quedó, con su importe.
+  await abrir()
+  const limpia = (await v.locator('[role="alert"]').count()) === 0 && (await v.getByRole('button', { name: 'Registrar el pago' }).isVisible())
+  const nota = limpio(await hasta(() => v.locator('[data-envio-anterior]').textContent().catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+  const enLaRegion = await v.locator('[aria-live="polite"] [data-envio-anterior]').count()
+  comprobar(limpia && /^El pago que enviaste antes sí quedó: S\/ 20\.00 del \d\d\/\d\d\/\d{4}\. Lo que registres ahora será otro\.$/.test(nota)
+    && enLaRegion === 1 && (await nuevos()).join() === '20',
+    `al volver a abrir, la ventana sale limpia y dice que aquel pago quedó, en una región que se anuncia («${nota}», pagos ${(await nuevos()).join(', ')})`)
+
+  // 3. En esa misma ventana, el pago siguiente lleva otro id: S/ 5 entran.
+  await llenar('5', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  comprobar((await nuevos()).join() === '20,5', `el pago siguiente entra con otro id, sin decir «ya quedó» (pagos ${(await nuevos()).join(', ')})`)
+
+  // 4. S/ 7 sin respuesta; con otro importe se envía otra vez y se cancela antes
+  // de que llegue el «ya quedó» (la respuesta tarda 3 s).
+  await abrir()
+  await llenar('7')
+  corte.quedan = 2
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  corte.demora = 3000
+  await llenar('8', 'voucher-2.pdf')
+  const entregadas = corte.entregadas
+  const pedidas = corte.pedidas
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => corte.pedidas, (n) => n > pedidas, 30000)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  // Se vuelve a abrir cuando la respuesta ya llegó, con la ventana cerrada.
+  await hasta(() => corte.entregadas, (n) => n > entregadas, 30000)
+  await trasLaTardia()
+  corte.demora = 0
+  cortando = false
+  await abrir()
+  const trasCerrar = {
+    sinAviso: (await v.locator('[role="alert"]').count()) === 0,
+    conBoton: await v.getByRole('button', { name: 'Registrar el pago' }).isVisible(),
+  }
+  await llenar('9', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const al9 = await nuevos()
+  comprobar(Object.values(trasCerrar).every(Boolean) && al9.join() === '20,5,7,9',
+    `el «ya quedó» que llega con la ventana cerrada no la traba: abre limpia y el pago siguiente entra con otro id (${JSON.stringify(trasCerrar)}; pagos ${al9.join(', ')})`)
+
+  // 5. Lo mismo, pero se vuelve a abrir y se escribe otro importe ANTES de que
+  // llegue el «ya quedó» (tarda 4 s) y de que la pantalla se ponga al día: la
+  // ventana nueva no se traba, no se queda sin id y no pierde lo escrito.
+  await abrir()
+  await llenar('11')
+  corte.quedan = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  corte.demora = 4000
+  await llenar('12', 'voucher-2.pdf')
+  const antesDel12 = corte.entregadas
+  const pedidasDel12 = corte.pedidas
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => corte.pedidas, (n) => n > pedidasDel12, 30000)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  await abrir()
+  await llenar('13', 'voucher-2.pdf')
+  await hasta(() => corte.entregadas, (n) => n > antesDel12, 30000)
+  corte.demora = 0
+  cortando = false
+  await trasLaTardia()
+  const conLaNueva = {
+    sinAviso: (await v.locator('[role="alert"]').count()) === 0,
+    monto: await v.locator('input[name="monto"]').inputValue(),
+    habilitado: await v.locator('input[name="monto"]').isEnabled(),
+  }
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const dijo = (await v.count()) ? limpio(await aviso()) : ''
+  const al13 = await nuevos()
+  comprobar(conLaNueva.sinAviso && conLaNueva.monto === '13' && conLaNueva.habilitado && al13.join() === '20,5,7,9,11,13',
+    `el «ya quedó» que llega con otra ventana abierta no la traba ni le borra lo escrito, y su pago entra con otro id (${JSON.stringify(conLaNueva)}; pagos ${al13.join(', ')}${dijo ? `; dijo «${dijo}»` : ''})`)
+  // 6. Contraprueba: si el envío ni llegó a la base, al volver a abrir no hay nada que decir, sigue el mismo id y el pago entra una vez.
+  await abrir()
+  await llenar('14')
+  corte.sinLlegar = 2
+  cortando = true
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000)
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  corte.sinLlegar = 0
+  cortando = false
+  const consultasAntes = corte.consultas
+  await abrir()
+  await hasta(() => corte.consultas, (n) => n > consultasAntes, 15000)
+  // La base contestó que no entró, y la ventana ya pintó lo que sigue a esa respuesta (dos cuadros después).
+  const contesto = corte.contestacion
+  await pagina.evaluate(() => new Promise((listo) => requestAnimationFrame(() => requestAnimationFrame(() => listo()))))
+  const sinNota = !/sí quedó/.test(contesto) && (await v.locator('[data-envio-anterior]').count()) === 0
+  await llenar('14', 'voucher-2.pdf')
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const al14 = await nuevos()
+  comprobar(sinNota && al14.join() === '20,5,7,9,11,13,14',
+    `si el pago ni llegó, la ventana pregunta, no dice nada y el pago entra una vez (nota: ${!sinNota}; la base: «${contesto.slice(-60)}»; pagos ${al14.join(', ')})`)
+  const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'pagos-compras' and o.name like $1
+                                    and not exists (select 1 from pagos_orden_compra p where p.archivo_ruta = o.name)
+                                    and not exists (select 1 from devoluciones_orden_compra d where d.archivo_ruta = o.name)`, [`${oc[0]}/%`])
+  comprobar(sueltos.length === 0, `y ningún voucher suelto (${sueltos.length})`)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await contexto.close()
+}
+
 // ---------------------------------------------------------------- 3b. La OC con boleta de antes que no se pagó
 {
   const { pagina, contexto } = await entrar('tesoreria')
@@ -472,9 +810,9 @@ let pagoId
   await como('contabilidad')
   const [{ id: otra }] = await consulta('select gen_random_uuid() as id')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 80, 'CONTADO')`,
-    [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 80, 'CONTADO', $5)`,
+    [otra, PROVEEDOR, `F002-${SUFIJO}`, hoy, ruc.n],
   )
   const rechazo = await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [otra, oc[2]])
     .then(() => '')
@@ -584,9 +922,9 @@ let pagoId
   const [{ id: registrada }] = await consulta('select gen_random_uuid() as id')
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7)`,
-    [registrada, PROVEEDOR, `F010-${SUFIJO}`, hoy, totalFactura, oc[4], facturaTarde],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', $5, 'CONTADO', $6, $7, $8)`,
+    [registrada, PROVEEDOR, `F010-${SUFIJO}`, hoy, totalFactura, oc[4], facturaTarde, ruc.n],
   )
   await consulta(`update adquisiciones set estado = 'REGISTRADA' where id = $1`, [registrada])
   await como(null)
@@ -732,6 +1070,7 @@ let pagoId
   comprobar((await pagina.locator('#adq-documento option', { hasText: `F009-${SUFIJO}` }).count()) === 1,
     `el desplegable ofrece la factura F009-${SUFIJO} que anexó Logística`)
   await pagina.locator('#adq-proveedor').fill(PROVEEDOR.toLowerCase())
+  // Desde #153 la factura de compra lleva el RUC de quien la emitió.
   await pagina.locator('#adq-ruc').fill(ruc.n)
   await pagina.locator('#adq-numero').fill(`F009-000${SUFIJO}`)
   await pagina.locator('#adq-total').fill('100')
@@ -767,9 +1106,9 @@ let pagoId
   const [{ id: parcial }] = await consulta('select gen_random_uuid() as id')
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 200, 'CONTADO')`,
-    [parcial, PROVEEDOR, PARCIAL, hoy],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, 'PEN', 200, 'CONTADO', $5)`,
+    [parcial, PROVEEDOR, PARCIAL, hoy, ruc.n],
   )
   await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id, parcial) values ($1, $2, true)`, [parcial, ocParte])
   await subir('comprobantes-financieros', `adquisiciones/${parcial}/comprobante.pdf`, 'contabilidad')

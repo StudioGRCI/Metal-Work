@@ -118,7 +118,7 @@ const esquemaFotos = z.array(
   }),
 )
 
-export async function reportarFlota(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+export async function reportarFlota(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ fotosSueltas: boolean }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'produccion.registrar')) {
     return { ok: false, error: 'No tienes permiso para reportar avance del taller.' }
@@ -196,9 +196,11 @@ export async function reportarFlota(_previo: unknown, datos: FormData): Promise<
       // El reporte quedó escrito: se avisa lo que faltó, no se pierde el
       // trabajo de quien ya escribió.
       revalidarFlota(v.flota_id)
+      // Ya subidas y sin fila que las nombre: la ventana las quita (`fotosSueltas`).
       return {
         ok: true,
         mensaje: `Reporte registrado, pero las fotos no se adjuntaron: ${traducir(errorFotos)}`,
+        datos: { fotosSueltas: true },
       }
     }
   }

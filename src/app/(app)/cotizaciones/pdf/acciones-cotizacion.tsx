@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -11,19 +11,23 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { fecha } from '@/lib/format'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
-import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { useEnvio } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { aprobarCotizacionConOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
-function Falla({ texto }: { texto: string | null }) {
+/** El rechazo de un envío; con `ref`, recibe el cursor al volver (`useCursorAlRechazo`). */
+function Falla({ texto, ref }: { texto: string | null; ref?: Ref<HTMLParagraphElement> }) {
   if (!texto) return null
   return (
-    <p role="alert" className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+    <p ref={ref} role="alert" tabIndex={-1} className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
       {texto}
     </p>
   )
@@ -144,6 +148,8 @@ export function CorregirCotizacion({
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Una versión nueva vuelve a preguntar por el IGV: el PDF corregido puede decir otra cosa.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [cliente, setCliente] = useState(clienteId)
@@ -156,13 +162,20 @@ export function CorregirCotizacion({
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al aviso: la ventana estuvo trabada.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => avisoError.current)
+  // Lo que la persona escribió a mano: la lectura del archivo no lo pisa.
+  const aMano = useRef(new Set<'monto' | 'moneda' | 'igv'>())
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setDice(null)
     setError(null)
     setAvisoArchivo(null)
     setTotal({ monto: null, moneda: null })
+    setTotalLeido(null)
     setIncluyeIgv('')
     setCliente(clienteId)
     setCarroceria(carroceriaId)
@@ -174,6 +187,7 @@ export function CorregirCotizacion({
   async function elegir(elegido: File | undefined) {
     if (!elegido) return
     setDice(null)
+    setTotalLeido(null)
     setError(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
@@ -183,8 +197,11 @@ export function CorregirCotizacion({
     try {
       const lectura = await leerCabeceraDeArchivo(elegido, setProgreso)
       setDice(lectura.cabecera.numero)
-      setTotal(lectura.total)
-      setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
+      setTotalLeido(lectura.total)
+      const montoAMano = aMano.current.has('monto')
+      const monedaAMano = aMano.current.has('moneda')
+      setTotal((v) => ({ monto: montoAMano ? v.monto : lectura.total.monto, moneda: monedaAMano ? v.moneda : lectura.total.moneda }))
+      if (!aMano.current.has('igv')) setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
     } finally {
       setLeyendo(false)
     }
@@ -224,6 +241,8 @@ export function CorregirCotizacion({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {
@@ -231,9 +250,9 @@ export function CorregirCotizacion({
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
@@ -254,19 +273,26 @@ export function CorregirCotizacion({
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await corregirCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la corrección no quedó, el
+        // archivo nuevo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => corregirCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la corrección quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
-        // Si la anotación se cae, el archivo nuevo se quita: uno que ninguna
-        // fila nombra no lo ve nadie y no lo borra nadie.
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
+        // Lo que se cae acá es la subida: la corrección todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo subir la corrección. Vuelve a intentar.')
       } finally {
@@ -289,7 +315,9 @@ export function CorregirCotizacion({
         descripcion="Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión."
         ancho="md"
       >
-        <form onSubmit={enviar} className="space-y-4">
+        <form onSubmit={enviar}>
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           {observacion && (
             <div className="flex items-start gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
               <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -332,12 +360,38 @@ export function CorregirCotizacion({
             />
           </Campo>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
-              <Entrada id="corregir-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" required />
-            </Campo>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* El monto, en su propia fila: la ventana es angosta y en un tercio su
+                ayuda y su aviso se partían en tres renglones. El aviso va pegado a él. */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada
+                  id="corregir-monto"
+                  value={total.monto ?? ''}
+                  onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }}
+                  inputMode="decimal"
+                  required
+                />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-pretty text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="corregir-moneda" requerido>
-              <Seleccion id="corregir-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+              <Seleccion
+                id="corregir-moneda"
+                value={total.moneda ?? ''}
+                onChange={(e) => {
+                  aMano.current.add('moneda')
+                  setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))
+                }}
+                required
+              >
                 <option value="" disabled>Confirma</option>
                 <option value="PEN">Soles (S/)</option>
                 <option value="USD">Dólares (US$)</option>
@@ -347,7 +401,10 @@ export function CorregirCotizacion({
               <Seleccion
                 id="corregir-igv"
                 value={incluyeIgv}
-                onChange={(e) => setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')}
+                onChange={(e) => {
+                  aMano.current.add('igv')
+                  setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')
+                }}
                 required
               >
                 <option value="" disabled>Confirma</option>
@@ -364,7 +421,7 @@ export function CorregirCotizacion({
             </p>
           )}
 
-          <Falla texto={error} />
+          <Falla ref={avisoError} texto={error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
@@ -374,6 +431,7 @@ export function CorregirCotizacion({
               Guardar versión y enviar a Gerencia
             </Boton>
           </div>
+          </fieldset>
         </form>
       </Ventana>
     </>
@@ -463,8 +521,24 @@ export function AprobarConOt({
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Al volver de un rechazo, el cursor va al número repetido, que se dice junto
+  // a su campo, o al aviso: la ventana estuvo trabada.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  const campoNumero = useRef<HTMLInputElement>(null)
+  const errorNumero = error?.startsWith('Ya hay una OT') ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
+  // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
+  // después o sea de otro PDF, no lo pisa.
+  const aMano = useRef(new Set<'numero' | 'fecha' | 'tipo'>())
+  // Si el número escrito no es el del PDF, se dice.
+  const otroNumero =
+    !leyendo && datosLeidos?.numero && numeroOrden.trim() && !mismaOt(numeroOrden, datosLeidos.numero) ? datosLeidos.numero : null
+  // Y la fecha de entrega escrita, si no es la del PDF.
+  const otraFecha =
+    !leyendo && datosLeidos?.fechaEntrega && fechaEntrega && fechaEntrega !== datosLeidos.fechaEntrega ? datosLeidos.fechaEntrega : null
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setRechazado(null)
     setFaltaPdf(false)
@@ -492,9 +566,20 @@ export function AprobarConOt({
     try {
       const datos = await leerArchivoOrden(elegido, setAvisoLectura)
       setDatosLeidos(datos)
-      if (datos.numero) setNumeroOrden(datos.numero)
-      if (datos.fechaEntrega) setFechaEntrega(datos.fechaEntrega)
-      if (datos.tipoUnidad) setTipo(datos.tipoUnidad)
+      // El número escrito a mano se queda, salvo que sea la misma OT: entonces
+      // va el del PDF, que trae el año. Si el año lo trae solo lo escrito, se
+      // queda lo escrito: la base completaría el del PDF con el año de hoy.
+      const leido = datos.numero
+      const numeroAMano = aMano.current.has('numero')
+      if (leido) {
+        setNumeroOrden((escrito) => {
+          if (!numeroAMano || !escrito.trim()) return leido
+          if (!mismaOt(escrito, leido)) return escrito
+          return conAnio(escrito) && !conAnio(leido) ? escrito : leido
+        })
+      }
+      if (datos.fechaEntrega && !aMano.current.has('fecha')) setFechaEntrega(datos.fechaEntrega)
+      if (datos.tipoUnidad && !aMano.current.has('tipo')) setTipo(datos.tipoUnidad)
       setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de aprobar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
     } catch {
       setAvisoLectura('No se pudo leer el PDF. Completa los datos mirando la vista previa.')
@@ -527,6 +612,8 @@ export function AprobarConOt({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
     iniciar(async () => {
@@ -537,9 +624,9 @@ export function AprobarConOt({
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('adjuntos-ot')
-          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
           setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
@@ -552,19 +639,27 @@ export function AprobarConOt({
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
 
-        const r = await aprobarCotizacionConOt(null, datos)
+        // Si no se aprobó, el PDF que ya viajó se quita, para que no quede un
+        // archivo que ninguna OT nombra. Sin respuesta se pregunta otra vez con
+        // la misma orden: si la primera entró, la base no crea otra.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'adjuntos-ot',
+          ruta,
+          anotar: () => aprobarCotizacionConOt(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la cotización quedó aprobada antes de volver a intentar.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('adjuntos-ot').remove([ruta])
-          subido = false
           setError(r.error)
           return
         }
-        subido = false
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
-        // No se aprobó: el PDF que ya viajó se quita, para que no quede un
-        // archivo que ninguna OT nombra.
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
+        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
+        if (e instanceof OtraCuentaEnLaPestana) return
+        // Lo que se cae acá es la subida: todavía no se aprobó.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
         setError('No se pudo aprobar con la OT. Vuelve a intentar.')
       } finally {
@@ -594,6 +689,8 @@ export function AprobarConOt({
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
@@ -642,9 +739,11 @@ export function AprobarConOt({
             etiqueta="N.º de la OT"
             htmlFor="eo-numero"
             ayuda="El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año"
+            error={errorNumero ?? undefined}
             requerido
           >
             <Entrada
+              ref={campoNumero}
               id="eo-numero"
               name="numero"
               autoComplete="off"
@@ -653,10 +752,19 @@ export function AprobarConOt({
               required
               maxLength={11}
               value={numeroOrden}
-              onChange={(e) => setNumeroOrden(e.target.value)}
+              onChange={(e) => {
+                aMano.current.add('numero')
+                if (errorNumero) setError(null)
+                setNumeroOrden(e.target.value)
+              }}
               placeholder="2922"
             />
           </Campo>
+          {otroNumero && (
+            <p role="status" className="-mt-2 text-xs text-aviso">
+              El PDF dice la OT {otroNumero}: revisa el número.
+            </p>
+          )}
 
           <div className="grid gap-4">
             <Campo
@@ -670,7 +778,10 @@ export function AprobarConOt({
                 name="tipo_unidad"
                 required
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
+                onChange={(e) => {
+                  aMano.current.add('tipo')
+                  setTipo(e.target.value)
+                }}
               >
                 <option value="" disabled>
                   Elige el tipo
@@ -700,10 +811,25 @@ export function AprobarConOt({
             ayuda="La que se le dijo al cliente: es la que manda al medir si la OT se entregó a tiempo"
             requerido
           >
-            <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />
+            <Entrada
+              id="eo-fecha"
+              name="fecha_entrega"
+              type="date"
+              required
+              value={fechaEntrega}
+              onChange={(e) => {
+                aMano.current.add('fecha')
+                setFechaEntrega(e.target.value)
+              }}
+            />
           </Campo>
+          {otraFecha && (
+            <p role="status" className="-mt-2 text-xs text-aviso">
+              El PDF dice la entrega el {fecha(otraFecha)}: revisa la fecha.
+            </p>
+          )}
 
-          <Falla texto={error} />
+          <Falla ref={avisoError} texto={errorNumero ? null : error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
@@ -713,6 +839,7 @@ export function AprobarConOt({
               {yaAprobada ? 'Guardar código y OT' : 'Aprobar con código y OT'}
             </Boton>
           </div>
+          </fieldset>
           </div>
           <aside aria-label="Vista previa de la orden de trabajo" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
             <div className="border-b border-borde px-4 py-3">
@@ -725,4 +852,16 @@ export function AprobarConOt({
       </Ventana>
     </>
   )
+}
+
+/** «390-2025» trae el año; «390» no. */
+const conAnio = (t: string) => /-\d{4}$/.test(t.trim())
+
+/** 390, 0390 y 0390-2026 son la misma OT; el año, si se escribe en los dos, se compara. */
+function mismaOt(a: string, b: string) {
+  const partes = (t: string) => /^0*(\d+)(?:-(\d{4}))?$/.exec(t.trim())
+  const x = partes(a)
+  const y = partes(b)
+  if (!x || !y) return a.trim() === b.trim()
+  return x[1] === y[1] && (!x[2] || !y[2] || x[2] === y[2])
 }

@@ -68,6 +68,7 @@ import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -237,9 +238,9 @@ async function registrar(numero, [principal = null, ...resto], { documento = nul
   const id = await nuevoId()
   await como('contabilidad')
   await consulta(
-    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id)
-     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, $8, $5, 'CONTADO', $6, $7)`,
-    [id, PROVEEDOR, numero, hoy, monto, principal, documento, moneda],
+    `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, orden_compra_id, documento_compra_id, ruc_proveedor)
+     values ($1, 'FACTURA_COMPRA', $2, $3, $4::date, $4::date, $8, $5, 'CONTADO', $6, $7, $9)`,
+    [id, PROVEEDOR, numero, hoy, monto, principal, documento, moneda, ruc.n],
   )
   for (const o of resto) await consulta(`insert into adquisiciones_ordenes_compra (adquisicion_id, orden_compra_id) values ($1, $2)`, [id, o])
   const ruta = documento ? null : await subir('comprobantes-financieros', `adquisiciones/${id}/comprobante.pdf`, 'contabilidad')
@@ -337,11 +338,15 @@ const anulado = async (id) => (await consulta(`select anulado_en, anulado_por, m
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
 
+/** Mientras una prueba corta la respuesta a propósito, el «net::ERR_FAILED» y el «Failed to fetch» de la consola son el corte. */
+let cortando = false
+
 async function entrar(puesto) {
   const correo = CUENTAS[puesto]
   const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   pagina.on('console', (m) => {
+    if (cortando && /net::ERR_FAILED|Failed to fetch/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -721,6 +726,56 @@ comprobar(!(await anulado(anexoZMal))?.anulado_en, 'el anexo mal escrito sigue e
   comprobar(!errorSoltar, `deshace la toma${errorSoltar ? ` (dijo «${errorSoltar}»)` : ''}`)
   await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
   comprobar(limpio(await pagina.locator(`article#compra-${oc.H}`).innerText().catch(() => '')).includes('Factura en otra moneda'), 'la OC vuelve a «Factura en otra moneda»')
+
+  // La respuesta se pierde (la toma entra) y se vuelve a enviar desde la misma ventana con otro monto: la base
+  // no da por tomado lo nuevo con lo de la primera vez (undécima pasada, migración 20261022177000). Lo dice con
+  // los montos que sí quedaron, y la toma queda como entró.
+  {
+    await pagina.locator(`article#compra-${oc.H} [data-tomar-al-cambio]`).click()
+    const v = pagina.locator('[role="dialog"]')
+    await v.waitFor()
+    await v.locator('input[name="monto_factura"]').fill('97.70')
+    cortando = true
+    await pagina.route('**/*', async (r) => {
+      const q = r.request()
+      if (q.method() === 'POST' && q.headers()['next-action'] && (q.postData() ?? '').includes(facturaH)) {
+        await r.fetch().catch(() => {})
+        return r.abort('failed')
+      }
+      return r.continue()
+    })
+    const aviso = () => v.locator('[role="alert"]').textContent().catch(() => '')
+    await v.getByRole('button', { name: 'Pasar a la factura' }).click()
+    const primera = limpio(await hasta(aviso, (t) => /respuesta/.test(t ?? ''), 30000))
+    await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+    await v.locator('input[name="monto_factura"]').fill('90.00')
+    await v.getByRole('button', { name: 'Pasar a la factura' }).click()
+    const segunda = limpio(await hasta(aviso, (t) => /ya quedó registrado/.test(t ?? ''), 30000))
+    cortando = false
+    const tomasAhora = await consulta(`select monto::float as monto, monto_de_la_boleta::float as boleta from pagos_adquisicion where adquisicion_id = $1 and anulado_en is null`, [facturaH])
+    comprobar(/No llegó la respuesta/.test(primera) && segunda.startsWith('Lo que toma la factura ya quedó registrado la primera vez que lo enviaste')
+      && tomasAhora.length === 1 && tomasAhora[0].monto === 97.7 && tomasAhora[0].boleta === total,
+      `la toma cuya respuesta se perdió no se da por hecha con otro monto: «${primera}» → «${segunda}» (${JSON.stringify(tomasAhora)})`)
+    // Ya entró: sin rojo y sin «Pasar a la factura»; la ventana solo se cierra (duodécima pasada).
+    const yaEntro = {
+      neutro: (await v.locator('[data-ya-entro]').count()) === 1,
+      sinEnviar: (await v.getByRole('button', { name: 'Pasar a la factura' }).count()) === 0,
+      cerrar: await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).isVisible(),
+    }
+    comprobar(Object.values(yaEntro).every(Boolean), `ya entró: el aviso sin rojo y solo «Cerrar» (${JSON.stringify(yaEntro)})`)
+    await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+    // Se deshace para seguir con la toma por menos.
+    await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+    const conLaToma = pagina.locator(`article#factura-${facturaH}`)
+    await abrirPlegada(pagina.locator('details', { has: conLaToma }))
+    await conLaToma.locator('[data-soltar-toma]').click()
+    const vs2 = pagina.locator('[role="dialog"]')
+    await vs2.locator('textarea[name="motivo"]').fill('Se registró con el monto equivocado')
+    await vs2.getByRole('button', { name: 'Deshacer' }).click()
+    const errorSoltar2 = await esperarVentana(pagina)
+    comprobar(!errorSoltar2, `y se deshace${errorSoltar2 ? ` (dijo «${errorSoltar2}»)` : ''}`)
+    await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  }
 
   // Por menos: la factura debe el resto y se paga desde la cuenta en dólares.
   await tomar('95.00')

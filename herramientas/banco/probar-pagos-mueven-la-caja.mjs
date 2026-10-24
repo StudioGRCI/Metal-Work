@@ -34,6 +34,7 @@ import { join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -77,7 +78,7 @@ const CELULAR = { width: 390, height: 844 }
 
 async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   const errores = []
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
@@ -162,7 +163,7 @@ try {
     `insert into proveedores (numero_documento, razon_social)
      select '2010099' || $1::text || d, 'PROVEEDOR PRUEBA CAJA' from generate_series(0, 9) d where ruc_es_valido('2010099' || $1::text || d) limit 1
      on conflict (tipo_documento, numero_documento) do update set activo = true
-     returning id`,
+     returning id, numero_documento`,
     [sello.slice(0, 3)],
   )
   // La factura registrada lleva su PDF en el almacenamiento (fn_proteger_adquisicion).
@@ -180,9 +181,9 @@ try {
       [id, teso.id],
     )
     await consulta(
-      `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, ruta_storage, registrado_por)
-       values ($1::uuid, 'FACTURA_COMPRA', 'PROVEEDOR PRUEBA CAJA', $2, $3::date - $7::int, $3::date - $7::int, $4, $5, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || $1::text || '/comprobante.pdf', $6)`,
-      [id, numero, hoy, monedaFactura, total, teso.id, dias],
+      `insert into adquisiciones (id, tipo, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total, condicion_pago, estado, ruta_storage, registrado_por, ruc_proveedor)
+       values ($1::uuid, 'FACTURA_COMPRA', 'PROVEEDOR PRUEBA CAJA', $2, $3::date - $7::int, $3::date - $7::int, $4, $5, 'CONTADO', 'REGISTRADA', 'adquisiciones/' || $1::text || '/comprobante.pdf', $6, $8)`,
+      [id, numero, hoy, monedaFactura, total, teso.id, dias, prov.numero_documento],
     )
     ids[clave] = id
   }

@@ -296,8 +296,14 @@ h1, h2, h3 {
      relleno del propio botón.
    No se fuerza `border-radius` aquí: al hacerlo, el anillo cambiaba el radio
    del control al enfocarlo y las esquinas «saltaban». El outline sigue solo
-   el radio que ya tenga el elemento. */
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+   el radio que ya tenga el elemento.
+   Lo que lleva `outline-none` queda fuera: son textos que reciben el cursor
+   por código para que el lector los lea (el aviso que se enfoca, el `<main>`,
+   el texto de la traba de otra cuenta), no mandos. Esta regla no está en
+   ninguna capa y le gana a las utilidades, así que `outline-none` no bastaba
+   y el texto de la traba salía con el anillo, como si fuera un campo
+   (vigesimotercera pasada). */
+:where(a, button, input, select, textarea, [tabindex]):not(:where(.outline-none)):focus-visible {
   outline: 3px solid var(--anillo-foco);
   outline-offset: 2px;
 }

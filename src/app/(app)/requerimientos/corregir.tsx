@@ -7,6 +7,7 @@ import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
@@ -204,20 +205,14 @@ function Formulario({
       </fieldset>
 
       <CamposDeCorreccion id={rq.id} disabled={enviando} />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {sinCambios && <p className="mr-auto text-xs text-texto-suave">Todavía no cambiaste nada.</p>}
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={sinCambios}>
-          Corregir
-        </Boton>
-      </div>
+      <PieDeVentana
+        error={error}
+        enviando={enviando}
+        alCancelar={alTerminar}
+        texto="Corregir"
+        disabled={sinCambios}
+        nota={sinCambios && 'Todavía no cambiaste nada.'}
+      />
     </form>
   )
 }

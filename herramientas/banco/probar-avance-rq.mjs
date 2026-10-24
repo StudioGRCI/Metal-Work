@@ -183,8 +183,15 @@ async function mirarRq(cuenta, ruta, captura) {
   // Con todos sus insumos cubiertos, el RQ ya no ofrece «Generar OC» y el aviso
   // se va con el botón: el número se lee entonces de la fila del RQ.
   const aviso = await pagina.locator('[role="status"]').waitFor({ timeout: 5000 }).then(() => pagina.locator('[role="status"]').innerText(), () => '')
-  await pagina.waitForTimeout(800)
-  oc = ((aviso || (await pagina.locator('tbody tr', { hasText: numeroRq }).innerText())).match(/OC-\d+-MW/) ?? [''])[0]
+  // Sin aviso, el número sale de la fila del RQ, y esa fila tarda: la bandeja se
+  // revalida en el servidor y con muchas filas eso pasa del segundo (2,8 s en el
+  // banco del hilo con 113 RQ). Por eso se espera a que llegue, no un rato fijo.
+  for (let i = 0; i < 40; i++) {
+    const texto = aviso || (await pagina.locator('tbody tr', { hasText: numeroRq }).innerText().catch(() => ''))
+    oc = (texto.match(/OC-\d+-MW/) ?? [''])[0]
+    if (oc) break
+    await pagina.waitForTimeout(250)
+  }
   comprobar(oc !== '', `OC ${oc} para los dos insumos`)
   await contexto.close()
 }

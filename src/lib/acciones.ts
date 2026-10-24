@@ -22,6 +22,44 @@ export const NO_TOCO_NADA =
   'No se pudo guardar: vuelve a cargar la pantalla y comprueba que el registro sigue a la vista.'
 
 /**
+ * El rechazo que en realidad dice que el envío ya entró: la respuesta de la
+ * primera vez se perdió, se volvió a pulsar y la base contesta «Este pago ya
+ * quedó registrado la primera vez que lo enviaste…». Lo que se quería ya está,
+ * y la pantalla de detrás quedó vieja: seguía ofreciendo pagar el saldo de
+ * antes, y un segundo pago entraba de verdad (duodécima pasada).
+ */
+export const yaEntroLaPrimeraVez = (mensaje: string | null | undefined) =>
+  Boolean(mensaje && /la primera vez que l[oa]s? enviaste/.test(mensaje))
+
+/**
+ * Ese aviso, dicho dentro de una ventana. La base pide recargar, pero la
+ * pantalla se pone al día sola al cerrarla; y lo que se cambió en la ventana
+ * seguía a la vista sin que nada dijera que no se guardó (decimocuarta pasada).
+ * Con un «si»: quien reenvió lo mismo no cambió nada (decimoquinta pasada).
+ */
+export const yaEntroEnLaVentana = (mensaje: string) =>
+  mensaje.replace(/[:.] recarga la pantalla[^.]*\.$/i, '. Si cambiaste algo después, no se guardó: al cerrar, la pantalla muestra lo que quedó.')
+
+/**
+ * Ese aviso en un formulario sin ventana (cargar un plano). La pantalla ya se
+ * puso al día sola; pedir que se recargue, sin decir que lo de esta vez no se
+ * guardó, dejaba pensar que el segundo PDF había entrado (decimosexta pasada).
+ * `donde` dice dónde se ve lo que quedó: el tablero de la OT no tiene lista de
+ * documentos, y mandar a mirarla no llevaba a ninguna parte (decimonovena pasada).
+ */
+export const yaEntroSinVentana = (mensaje: string, donde = 'la lista ya muestra lo que quedó') =>
+  mensaje.replace(/[:.] recarga la pantalla[^.]*\.$/i, `. Lo que enviaste esta vez no se guardó: ${donde}.`)
+
+/**
+ * El envío pudo entrar y no se sabe: no llegó la respuesta, o después de eso se
+ * eligió otro archivo y el primero sigue en su ruta sin saberse si quedó
+ * (`otroArchivoEnLaRuta`). La pantalla de detrás se pone al día al cerrar la
+ * ventana; con el segundo no lo hacía (decimoquinta pasada).
+ */
+export const pudoHaberEntrado = (mensaje: string) =>
+  mensaje.startsWith('No llegó la respuesta') || /^Antes ya se subió .* y no se sabe si quedó/.test(mensaje)
+
+/**
  * Traduce los errores de Postgres a algo que el usuario del taller entienda.
  * Los triggers del esquema ya lanzan mensajes redactados en español, así que se
  * dejan pasar tal cual; aquí solo se reescribe lo que emite el propio motor.
@@ -54,6 +92,19 @@ export function mensajeDeError(error: { message: string; code?: string }): strin
   // un fallo del sistema, no del dato: en inglés no le sirve a nadie. Pasó con
   // la regla de las horas extras (2026-10-20).
   if (error.code?.startsWith('42')) return 'El sistema no pudo guardar esto. Avisa al administrador.'
+
+  // Los fallos de paso del motor llegaban en inglés («canceling statement due
+  // to statement timeout»), justo en los avisos que piden volver a intentar
+  // (undécima pasada). Con estos, la transacción se deshizo: nada se guardó.
+  if (error.code === '40001' || error.code === '40P01') return 'Otra persona guardaba algo relacionado a la vez y esto no se guardó.'
+  if (error.code === '57014') return 'La base tardó demasiado y esto no se guardó.'
+  if (error.code?.startsWith('53') || error.code?.startsWith('57P') || ['PGRST000', 'PGRST002', 'PGRST003'].includes(error.code ?? '')) {
+    return 'La base no estaba disponible y esto no se guardó.'
+  }
+  // Con estos, en cambio, el pedido pudo llegar y la respuesta perderse.
+  if (error.code?.startsWith('08') || error.code === 'PGRST001' || (!error.code && /fetch failed|network|ECONNRESET|socket hang up|other side closed/i.test(m))) {
+    return 'No llegó la respuesta de la base; recarga la pantalla y mira si se guardó.'
+  }
 
   const check = /violates check constraint "([^"]+)"/.exec(m)
   if (check) return `El dato no cumple la regla ${check[1]}.`

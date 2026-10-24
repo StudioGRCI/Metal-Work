@@ -41,7 +41,10 @@ En `src/components/ui/`:
   salta al primer campo vacío de abajo con el rojo fuera de la vista. Con dos
   documentos del mismo nombre, se distinguen por la hora (la nota, el
   `aria-label` de «Quitar» y su confirmación), y al quitar uno el foco vuelve
-  a la tarjeta. Lo único aparte es `SelectorFotos` (avance, vehículos,
+  a la tarjeta. Un campo opcional sin `archivo` lleva «Quitar» con el elegido
+  (la OC directa decía «Quítalo» y no había cómo): vacía el campo, la
+  pantalla se entera por su `onChange` con «nada» y vacía lo que leyó; el
+  obligatorio no lo lleva, se cambia eligiendo otro. Lo único aparte es `SelectorFotos` (avance, vehículos,
   reportes, trabajos): varias fotos a la vez, cada una con su miniatura, su
   subida y su «Reintentar», HEIC y achicadas en el teléfono, cámara y
   galería. Habla igual: formatos y tope antes de elegir, el motivo con las
@@ -136,10 +139,92 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   botón desactivado y el texto todavía en el campo.
 - `useActionState` sí desactiva su botón a tiempo, pero también vacía el
   formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
+- **El cursor vuelve a donde está el problema después del rechazo**, con
+  `useCursorAlRechazo` (`src/lib/envio.ts`): al campo que lo causó, o al aviso
+  (`tabIndex={-1}`) si no es de un campo. No se llama a `focus()` dentro del
+  `alEnviar`: mientras envía, el `<fieldset disabled>` no acepta el foco y se
+  pierde sin aviso (el banco de Administración lo vio el 2026-10-22).
+  El error de un campo (un número que ya existe) va en el `error` de su
+  `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo; el
+  de un archivo («Falta el PDF»), en el `aviso` de su `ElegirArchivo`. Llevar
+  el cursor a un campo que no dice nada deja a la persona sin el porqué.
+  Tras un envío bien hecho que rehace el formulario sin ventana (el documento
+  del tablero de la OT), el cursor va al primer campo del siguiente cuando
+  deja de estar trabado, no dentro del `alTerminar`: el botón que lo tenía
+  desaparece y caía a la página. Si lo que se rehace es el botón que abrió la
+  ventana (otra llave, como el pago de la planilla), ponle
+  `data-cursor-vuelve="<nombre>"` y `Ventana` lleva el cursor al único que
+  quede con esa marca. Solo al que se rehace igual: un «Anular pago» por fila
+  con esa marca mandaba el cursor al de otra persona (decimonovena). Un aviso
+  de «listo» de un formulario que se rehace (`key`) va fuera de él y siempre
+  puesto (`role="status"` vacío): el que nace ya con su texto no se anuncia.
+  Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
+  corre en la transición, no se pinta, y el segundo «Documento adjuntado»
+  idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
+- **Una pantalla que ya no es de la sesión queda entera debajo de una traba**
+  (vigésima a vigesimosegunda): si en otra pestaña entró otra cuenta,
+  `CuentaDeLaPestana` abre un `<dialog>` modal por encima de todo —también de
+  la `Ventana` abierta—, con el puesto de las dos cuentas (y el nombre si son
+  del mismo puesto), el cursor en el aviso y solo «Recargar la pantalla». Dice
+  primero lo que conserva lo escrito (volver a entrar con la primera en la otra
+  pestaña) y que recargar lo pierde. Escape no la cierra. El aviso no lleva
+  `aria-describedby`: ya tiene el cursor, y con los dos se leía dos veces. Ni
+  pinta anillo: es texto donde la traba pone el cursor, no un mando, y la regla
+  global de `:focus-visible` respeta `outline-none` (`globals.css`,
+  vigesimotercera). Lo de detrás no se
+  toca ni se pierde: si la primera cuenta vuelve, se destraba con lo escrito,
+  el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Antes la
+  traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
+  botones de la pantalla y la ventana de una pregunta. Mientras dure, la
+  pantalla no se refresca sola (`RefrescoAlVolver`), ni tras un envío que salió
+  antes del cambio, ni lleva a la pantalla que sigue: lo hace cuando vuelve la
+  cuenta (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`). Refrescar con
+  la otra sesión pintaba su pantalla y se llevaba la traba sin que nadie
+  recargara (vigesimotercera). Recargar con una cuenta
+  sin permiso lleva a `/sin-permiso`, que dice con qué cuenta está la sesión y
+  ofrece «Salir y entrar con otra cuenta».
+- **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
+  la misma clase van en una frase con su plural; lo que salió de esta pestaña a
+  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.
+- **Una cola de fotos se corta con la traba** (`SelectorFotos`): cada foto mira
+  la sesión antes de subir, no solo la primera. La que se cortó y las que
+  esperaban quedan en la lista con «Reintentar» y su vista previa, y se achican
+  al reintentar; antes, las que seguían en la cola subían a nombre de la cuenta
+  que entró y volvían con «No tienes permiso», que no era cierto. Quitar con ✕
+  una foto que todavía sube, o cerrar la ventana mientras sube, la quita en
+  cuanto termina: quedaba en Storage sin fila que la nombrara (reporte diario,
+  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera).
+- **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
+  uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
+  subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que
+  quedó y dice qué falta y dónde hacerlo: «…no se adjuntó: en otra pestaña
+  entró otra cuenta. Adjúntala desde la lista.» (`pasoTrasLoQueQuedo`):
+  callado, la ventana seguiría abierta como si nada hubiera entrado. En lo que sale fila
+  por fila (planilla y conteo del kardex, planos por área) lo que no salió se
+  queda con su motivo y su botón para enviarlo cuando vuelva la cuenta. Si no
+  quedó nada, no se dice nada: lo dice la traba.
+- **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
+  lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
+  lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
+  vaciado al abrir) y la lectura llena solo los demás; si lo escrito no calza
+  con lo leído, se avisa bajo el campo en una línea ámbar con `role="status"`
+  («El PDF dice la OT …», «El documento dice US$ 1,180.00: revisa el total»),
+  no en su ayuda gris, que se lee como un dato más. «Detectado en el
+  documento» se dice solo mientras es lo que se leyó (`ayudaDelMonto`). Lo que el
+  documento no trae no pisa lo que sí trae lo escrito: «390-2025» no pasa a
+  «390» porque el PDF no dice el año. Al quitar el archivo se va lo que puso
+  él, no lo escrito.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
   lugar de «Cancelar» tras el éxito.
+- **Un rechazo que deja el registro creado** (el comprobante que entró en
+  borrador y su PDF no subió) vacía el formulario como al registrar, con el
+  aviso donde estaba y el cursor en él, hasta que se empieza el siguiente: lo
+  escrito ya está en el borrador, y volver a enviarlo choca con su propio
+  número. Lleno, invitaba a «Registrar» otra vez después de completarlo en la
+  lista (`adquisiciones/formulario.tsx`). Se detecta envolviendo la acción que
+  recibe `useEnvio`, no con un efecto sobre el resultado.
 - Marcar de a uno (un check, un V°B°) es un `<form>` mínimo por casilla con
   campos ocultos — sin modal, sin recargar el formulario entero (ver
   `ficha-taller.tsx`).
@@ -170,14 +255,23 @@ se queda donde ninguna fila lo nombra, y ahí solo lo ve quien lo subió (en
 `adjuntos-ot`, por `owner_id` desde la migración `20261017402000`; antes no lo
 veía nadie y hubo que sacar a mano el Excel de un cronograma).
 
-La forma correcta es la de `src/lib/adjuntos.ts`: si la anotación devuelve
-`!ok`, `storage.remove([ruta])`. Si **no llega la respuesta** (excepción, señal
-cortada), el archivo **no se toca**: la fila pudo entrar, y quitarlo deja una
-orden que nombra un archivo que no existe —el banco lo mostró el 2026-10-19 con
-«Subir PDF»—. La pantalla dice «No llegó la respuesta: mira si quedó antes de
-volver a subirlo», porque reintentar a ciegas lo sube dos veces. Y si la subida
-es opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no
-puede tragarse el aviso de lo que sí entró.
+La forma correcta es anotar con `anotarSinDejarloSuelto`
+(`src/lib/subida-privada.ts`), como ya hacen `subirArchivoPrivado`,
+`adjuntos.ts` y las demás: si la anotación devuelve `!ok`, quita el archivo. Si
+**no llega la respuesta**, no lo quita a ciegas —la fila pudo entrar, y quitarlo
+deja una orden que nombra un archivo que no existe; el banco lo mostró el
+2026-10-19 con «Subir PDF»—: pregunta otra vez con la misma ruta y el mismo id.
+Para eso **la acción tiene que contestar `ok` cuando es el mismo pedido otra
+vez**: o por id (`if exists … then return p_id` en la función), o, ante el
+duplicado, releyendo la fila por su ruta —un uuid de esa subida— y comparando
+quién y para qué documento (`registrarAdjunto`, `crearOrden`, las tres de la
+cotización, `registrarDocumentoCompra`). Si contesta «duplicado» o «ya quedó
+registrada», la pantalla dice en rojo «mira si quedó» aunque quedó (lo vio la
+auditoría del 2026-10-22). Si ni la segunda vez hay un sí, intenta quitarlo: la
+política del bucket deja quitar solo el que ninguna fila nombra. Lo que queda sin
+saber se dice: «mira si quedó antes de volver a subirlo». Y si la subida es
+opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no puede
+tragarse el aviso de lo que sí entró.
 
 Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista,
 el identificador se decide en el navegador con `crypto.randomUUID()` y la base

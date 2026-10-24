@@ -309,6 +309,10 @@ writeFileSync(
   await pagina.locator('p', { hasText: 'Leído' }).first().waitFor({ timeout: 60000 }).catch(() => {})
   await pagina.waitForTimeout(500)
   comprobar(await casilla.isChecked(), 'la factura que cita su referencia marca sola la OC sin número')
+  // Lo que marcó la lectura se va con su archivo (#148): marcada a mano, se queda al
+  // cambiar el PDF, y la otra que cita la factura nueva se ofrece con «Marcarla».
+  await casilla.uncheck()
+  await casilla.check()
   await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_DOS)
   const avisoOtra = pagina.locator('ul[role="status"] li', { hasText: `menciona la ${NOMBRE_2} y no está marcada` }).first()
   await avisoOtra.waitFor({ timeout: 60000 }).catch(() => {})

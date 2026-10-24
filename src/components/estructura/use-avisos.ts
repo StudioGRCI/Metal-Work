@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
-import { useAccion } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
 import { destinoAviso } from '@/lib/dominio/destino-aviso'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 
@@ -20,7 +20,7 @@ export function useAvisos(alAbrir?: () => void) {
     }
   }, ({ datos }) => {
     if (datos?.abrir) alAbrir?.()
-    if (datos?.destino) router.push(datos.destino)
+    if (datos?.destino) navegarSiEsDeLaPestana(router, datos.destino)
   })
   function abrir(aviso: Notificacion) {
     const datos = new FormData()

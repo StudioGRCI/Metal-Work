@@ -6,7 +6,9 @@ import { useState } from 'react'
 import { fotosParaEnviar, hayFallidas, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { BUCKET_FOTOS_VEHICULO } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 
@@ -43,12 +45,26 @@ export function ControlesVehiculo({
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
   const [fotos, setFotos] = useState<FotoLista[]>([])
-  const salida = useEnvio(registrarSalidaVehiculo, () => {
-    // Ya son parte de la salida: solo se sueltan las miniaturas.
-    soltarMiniaturas(fotos)
-    setFotos([])
-    setPaso(null)
-  })
+  const salida = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const r = await registrarSalidaVehiculo(previo, datos)
+      // La salida ya había entrado la primera vez: las fotos de este envío no
+      // las nombra nadie y se quitan ya, no al cerrar (las de la primera vez,
+      // que su salida nombra, la base no las deja quitar). Al cerrar, la
+      // página se pone al día y esta ventana ya no está para quitarlas.
+      if (!r.ok && yaEntroLaPrimeraVez(r.error)) {
+        quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
+        setFotos([])
+      }
+      return r
+    },
+    () => {
+      // Ya son parte de la salida: solo se sueltan las miniaturas.
+      soltarMiniaturas(fotos)
+      setFotos([])
+      setPaso(null)
+    },
+  )
   const anular = useEnvio(anularRegistroVehiculo, () => setPaso(null))
   const envio = paso === 'ANULAR' ? anular : salida
   const sale = paso === 'SALIDA' || paso === 'ARENADO'
@@ -150,25 +166,16 @@ export function ControlesVehiculo({
           {sale && (
             <FotosDelMomento titulo="Fotos al salir" fotos={fotos} setFotos={setFotos} prefijoRuta={`${cuentaId}/${id}/salida`} />
           )}
-          {envio.error && (
-            <p role="alert" className="text-sm text-peligro">
-              {envio.error}
-            </p>
-          )}
           {sale && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={cerrar}>
-              Cancelar
-            </Boton>
-            <Boton
-              type="submit"
-              variante={paso === 'ANULAR' ? 'peligro' : 'primario'}
-              cargando={envio.enviando}
-              disabled={bloqueado}
-            >
-              {paso === 'ANULAR' ? 'Anular' : subiendo ? 'Esperando las fotos…' : paso === 'ARENADO' ? 'Registrar salida al arenado' : 'Registrar salida'}
-            </Boton>
-          </div>
+          {/* Si la salida ya había entrado la primera vez, «Cerrar» quita las fotos nuevas, que no nombra nadie. */}
+          <PieDeVentana
+            error={envio.error}
+            enviando={envio.enviando}
+            alCancelar={cerrar}
+            texto={paso === 'ANULAR' ? 'Anular' : subiendo ? 'Esperando las fotos…' : paso === 'ARENADO' ? 'Registrar salida al arenado' : 'Registrar salida'}
+            variante={paso === 'ANULAR' ? 'peligro' : 'primario'}
+            disabled={bloqueado}
+          />
         </form>
       </Ventana>
     </div>

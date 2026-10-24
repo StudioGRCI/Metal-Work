@@ -7,10 +7,11 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { useEnvio } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import type { ResultadoAccion } from '@/lib/acciones'
+import { anotarSinDejarloSuelto, NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 import type { VersionPlano, catalogosDePlanos } from '@/lib/datos/versiones-planos'
 import { asignarEquipoDiseno, guardarLiderEntregaPlanos, registrarVersionPlano, resolverRevisionDiseno, resolverVersionPlano } from './acciones'
 
@@ -127,30 +128,64 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     const enviadas: string[] = []
     const fallidas: string[] = []
     let mensaje: string | undefined
-    for (const area of areas) {
+    // Área por área, cada una sale con la sesión de ese momento. Si entró otra
+    // cuenta, la que iba y las que siguen no salen, y se dice cuáles faltan
+    // (vigesimotercera pasada). El archivo que haya subido se quita cuando vuelva
+    // la tuya (`anotarSinDejarloSuelto`).
+    let cortadaEn: number | null = null
+    for (const [i, area] of areas.entries()) {
+      if (laPestanaEsDeOtraCuenta()) {
+        cortadaEn = i
+        break
+      }
       const ruta = `${sesion.user.id}/${ids[area]}.pdf`
       try {
         const { error: subida } = await supabase.storage.from('planos-privados').upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
         // El mismo identificador permite confirmar un envío cuya respuesta se perdió.
-        if (subida && subida.statusCode !== '409') { fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`); continue }
-        const formulario = new FormData()
-        formulario.set('id', ids[area])
-        formulario.set('plano_id', String(datos.get('plano_id') ?? ''))
-        formulario.set('area_id', area)
-        formulario.set('nombre_archivo', archivo.name.slice(0, 200))
-        formulario.set('nota_envio', String(datos.get('nota_envio') ?? ''))
-        const resultado = await registrarVersionPlano(null, formulario)
-        if (resultado.ok) { enviadas.push(nombre(area)); mensaje = resultado.mensaje; continue }
-        const { error: limpieza } = await supabase.storage.from('planos-privados').remove([ruta])
-        fallidas.push(`${nombre(area)}: ${resultado.error}${limpieza ? ' No se pudo retirar el archivo sin registrar.' : ''}`)
+        if (subida && subida.statusCode !== '409') {
+          // Con la sesión de otra cuenta, el rechazo no es del PDF: es el corte.
+          if (laPestanaEsDeOtraCuenta()) {
+            cortadaEn = i
+            break
+          }
+          fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`)
+          continue
+        }
       } catch {
-        // Si ya se registró, RLS impide borrarlo. Un reintento conserva la misma solicitud.
-        await supabase.storage.from('planos-privados').remove([ruta]).catch(() => undefined)
-        fallidas.push(`${nombre(area)}: no se pudo confirmar el envío`)
+        fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`)
+        continue
       }
+      const formulario = new FormData()
+      formulario.set('id', ids[area])
+      formulario.set('plano_id', String(datos.get('plano_id') ?? ''))
+      formulario.set('area_id', area)
+      formulario.set('nombre_archivo', archivo.name.slice(0, 200))
+      formulario.set('nota_envio', String(datos.get('nota_envio') ?? ''))
+      // Sin respuesta se pregunta otra vez con la misma solicitud, que la base
+      // no duplica; el archivo se quita solo si ninguna versión lo nombra.
+      let resultado: ResultadoAccion
+      try {
+        resultado = await anotarSinDejarloSuelto({
+          bucket: 'planos-privados',
+          ruta,
+          anotar: () => registrarVersionPlano(null, formulario),
+          sinRespuesta: 'no se pudo confirmar el envío',
+          siNoSeRetira: 'No se pudo retirar el archivo sin registrar.',
+        })
+      } catch (e) {
+        if (!(e instanceof OtraCuentaEnLaPestana)) throw e
+        cortadaEn = i
+        break
+      }
+      if (resultado.ok) { enviadas.push(nombre(area)); mensaje = resultado.mensaje; continue }
+      fallidas.push(`${nombre(area)}: ${resultado.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : resultado.error}`)
     }
+    // Sin nada enviado, lo dice la traba, como en cualquier envío.
+    if (cortadaEn === 0) throw new OtraCuentaEnLaPestana()
+    if (cortadaEn !== null) for (const area of areas.slice(cortadaEn)) fallidas.push(`${nombre(area)}: no salió, en otra pestaña entró otra cuenta`)
     if (fallidas.length > 0) {
-      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar con el mismo archivo.` }
+      // Volver a elegir el archivo cambia la solicitud: se reenvía sin tocarlo.
+      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.` }
     }
     return { ok: true, mensaje: `${mensaje ?? 'PDF registrado.'} Áreas: ${enviadas.join(', ')}.` }
   }

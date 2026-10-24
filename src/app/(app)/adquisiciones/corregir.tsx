@@ -7,6 +7,7 @@ import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/jus
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { CompraSinFactura, OrdenDeFactura } from '@/lib/datos/adquisiciones'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
@@ -322,6 +323,7 @@ function Formulario({
             name="pdf"
             accept={ACEPTA_PDF}
             hastaMb={10}
+            disabled={enviando}
             aviso={avisoPdf}
             estado={leyendo}
             onChange={(e) => void leerPdf(e.target.files?.[0])}
@@ -404,20 +406,15 @@ function Formulario({
       )}
 
       <CamposDeCorreccion id={id} disabled={enviando} />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {sinCambios && <p className="mr-auto text-xs text-texto-suave">Todavía no cambiaste nada.</p>}
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando || Boolean(leyendo)} disabled={sinCambios}>
-          Corregir
-        </Boton>
-      </div>
+      <PieDeVentana
+        error={error}
+        enviando={enviando}
+        alCancelar={alTerminar}
+        texto="Corregir"
+        disabled={sinCambios}
+        cargando={Boolean(leyendo)}
+        nota={sinCambios && 'Todavía no cambiaste nada.'}
+      />
     </form>
   )
 }

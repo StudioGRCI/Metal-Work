@@ -4,12 +4,33 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
+import { moneda } from '@/lib/format'
+import { ocupada, subirARutaNueva } from '@/lib/ruta-nueva'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
 
 const uuid = z.guid()
 const pdfMaximo = 15 * 1024 * 1024
+
+/**
+ * Quita el PDF que ninguna fila nombra. Dice que sí solo si Storage lo quitó:
+ * un borrado que la política no deja ver afecta cero archivos sin error, y la
+ * pantalla decía «el PDF subido se retiró» sin haberlo hecho (duodécima pasada).
+ */
+async function quitarSuelto(db: Awaited<ReturnType<typeof createClient>>, cubeta: 'gastos-ot' | 'control-ot', ruta: string) {
+  const { data, error } = await db.storage.from(cubeta).remove([ruta])
+  return !error && (data?.length ?? 0) > 0
+}
+
+/** El PDF guardado es este mismo, byte a byte. Si no se puede leer, no se da por el mismo. */
+async function mismoContenido(db: Awaited<ReturnType<typeof createClient>>, ruta: string | null, bytes: Uint8Array) {
+  if (!ruta) return false
+  const { data } = await db.storage.from('gastos-ot').download(ruta)
+  if (!data) return false
+  const guardado = new Uint8Array(await data.arrayBuffer())
+  return guardado.length === bytes.length && guardado.every((b, i) => b === bytes[i])
+}
 
 async function leerPdf(datos: FormData) {
   const archivo = datos.get('pdf')
@@ -37,13 +58,33 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   if (Number(v.monto) <= 0) return { ok: false, error: 'El importe debe ser mayor que cero.' }
   const db = await createClient()
   const { data: previo, error: previoError } = await db.from('ot_gastos_areas')
-    .select('id, registrado_por').eq('id', v.id).maybeSingle()
+    .select('id, registrado_por, orden_id, tipo, descripcion, fecha, monto, moneda, comprobante_nombre, comprobante_ruta').eq('id', v.id).maybeSingle()
   if (previoError) return { ok: false, error: mensajeDeError(previoError) }
-  if (previo) return previo.registrado_por === perfil.id
-    ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
-    : { ok: false, error: 'El identificador del gasto ya está en uso.' }
+  if (previo) {
+    if (previo.registrado_por !== perfil.id) return { ok: false, error: 'El identificador del gasto ya está en uso.' }
+    // El mismo envío repetido trae todo igual, también el PDF: otro con el
+    // mismo nombre no es el mismo. Con otro importe, otra descripción u otro
+    // PDF ya no es el mismo envío: antes se daba por registrado y la pantalla
+    // se vaciaba con lo de la primera vez guardado (duodécima y decimotercera pasadas).
+    const mismo = previo.orden_id === v.orden_id && previo.tipo === v.tipo && previo.descripcion === v.descripcion
+      && previo.fecha === v.fecha && Number(previo.monto) === Number(v.monto) && previo.moneda === v.moneda
+      && previo.comprobante_nombre === pdf.archivo.name.slice(0, 200)
+      && await mismoContenido(db, previo.comprobante_ruta, pdf.bytes)
+    // Lo que entró y cómo se corrige: «recarga la pantalla» solo dejaba el
+    // formulario vacío, que se leía como que el cambio había entrado.
+    return mismo
+      ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
+      : { ok: false, error: `Este gasto ya quedó registrado la primera vez que lo enviaste, por ${moneda(previo.monto, previo.moneda === 'USD' ? 'USD' : 'PEN')}, y lo que cambiaste después no se guardó. Está en la lista de abajo; si algo está mal, pide a Administración que lo observe.` }
+  }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
-  const { error: errorArchivo } = await db.storage.from('gastos-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
+  const cubeta = db.storage.from('gastos-ot')
+  let { error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf')
+  // Ninguna fila nombra todavía la ruta de este gasto: lo que ocupa la ruta lo
+  // dejó un intento anterior del mismo formulario (la subida llegó y la
+  // respuesta no), `subirARutaNueva` ya lo quitó, y se sube otra vez. Antes
+  // cada reintento chocaba con ese archivo para siempre. Quitarlo pide que su
+  // dueño lo vea mientras ninguna fila lo nombra (migración 20261022193000).
+  if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf'))
   if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {
     const { data, error } = await db.from('ot_gastos_areas').insert({
@@ -52,18 +93,17 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
       moneda: v.moneda, comprobante_ruta: ruta, comprobante_nombre: pdf.archivo.name.slice(0, 200),
     }).select('id').maybeSingle()
     if (error || !data) {
-      const { error: limpieza } = await db.storage.from('gastos-ot').remove([ruta])
-      return { ok: false, error: limpieza
-        ? `No se registró el gasto y no se pudo retirar el PDF huérfano: ${mensajeDeError(error ?? { message: NO_TOCO_NADA })}`
-        : mensajeDeError(error ?? { message: NO_TOCO_NADA }) }
+      const retirado = await quitarSuelto(db, 'gastos-ot', ruta)
+      return { ok: false, error: retirado
+        ? mensajeDeError(error ?? { message: NO_TOCO_NADA })
+        : `No se registró el gasto y no se pudo retirar el PDF huérfano: ${mensajeDeError(error ?? { message: NO_TOCO_NADA })}` }
     }
     revalidatePath(`/ordenes/${v.orden_id}`)
     return { ok: true, mensaje: `Gasto ${data.id} enviado a Administración para revisión.` }
   } catch {
-    const { error: limpieza } = await db.storage.from('gastos-ot').remove([ruta])
-    return { ok: false, error: limpieza
-      ? 'No se pudo registrar el gasto y el PDF subido requiere revisión de Administración.'
-      : 'No se pudo registrar el gasto; el PDF subido se retiró.' }
+    return { ok: false, error: (await quitarSuelto(db, 'gastos-ot', ruta))
+      ? 'No se pudo registrar el gasto; el PDF subido se retiró.'
+      : 'No se pudo registrar el gasto y el PDF subido requiere revisión de Administración.' }
   }
 }
 
@@ -170,24 +210,26 @@ export async function adjuntarControlFirmado(_previo: unknown, datos: FormData):
   const { data: control, error: lectura } = await db.from('ot_control_vehicular')
     .select('id, salida_cerrada_en, escaneo_ruta').eq('orden_id', ordenId.data).maybeSingle()
   if (lectura) return { ok: false, error: mensajeDeError(lectura) }
-  if (!control?.salida_cerrada_en || control.escaneo_ruta) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo; solo se admite un archivo.' }
+  // Ya con su escaneo: también es el reintento de un envío que entró y cuya
+  // respuesta se perdió, y decirle que cierre la salida lo confundía.
+  if (control?.escaneo_ruta) return { ok: false, error: 'La ficha ya tiene su escaneo firmado: recarga la pantalla para verlo. Solo se admite uno.' }
+  if (!control?.salida_cerrada_en) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo.' }
   const ruta = `ot/${ordenId.data}/control/${crypto.randomUUID()}.pdf`
-  const { error: subida } = await db.storage.from('control-ot').upload(ruta, pdf.bytes, { contentType: 'application/pdf', upsert: false })
+  const { error: subida } = await subirARutaNueva(db.storage.from('control-ot'), ruta, pdf.bytes, 'application/pdf')
   if (subida) return { ok: false, error: `No se pudo subir el escaneo: ${mensajeDeArchivo(subida)}` }
   try {
     const { data, error } = await db.from('ot_control_vehicular').update({
       escaneo_ruta: ruta, escaneo_nombre: pdf.archivo.name.slice(0, 200),
     }).eq('id', control.id).is('escaneo_ruta', null).select('id').maybeSingle()
     if (error || !data) {
-      await db.storage.from('control-ot').remove([ruta])
+      await quitarSuelto(db, 'control-ot', ruta)
       return { ok: false, error: mensajeDeError(error ?? { message: NO_TOCO_NADA }) }
     }
     revalidatePath(`/ordenes/${ordenId.data}`)
     return { ok: true, mensaje: `Escaneo firmado agregado a la ficha ${data.id}.` }
   } catch {
-    const { error: limpieza } = await db.storage.from('control-ot').remove([ruta])
-    return { ok: false, error: limpieza
-      ? 'No se pudo asociar el escaneo y el PDF subido requiere revisión de Administración.'
-      : 'No se pudo asociar el escaneo; el PDF subido se retiró.' }
+    return { ok: false, error: (await quitarSuelto(db, 'control-ot', ruta))
+      ? 'No se pudo asociar el escaneo; el PDF subido se retiró.'
+      : 'No se pudo asociar el escaneo y el PDF subido requiere revisión de Administración.' }
   }
 }

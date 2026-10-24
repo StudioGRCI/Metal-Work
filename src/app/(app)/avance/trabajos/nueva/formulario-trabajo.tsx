@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 
 import { registrarTrabajoSinOrden } from '../../acciones-flota'
 
@@ -23,7 +23,7 @@ export function FormularioTrabajo() {
   const { alEnviar, enviando, resultado, error } = useEnvio(
     registrarTrabajoSinOrden,
     (r) => {
-      if (r.datos) router.push(`/avance/trabajos/${r.datos.id}`)
+      if (r.datos) navegarSiEsDeLaPestana(router, `/avance/trabajos/${r.datos.id}`)
     },
     { refrescar: false },
   )

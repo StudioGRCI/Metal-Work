@@ -21,8 +21,9 @@
  * Arma lo suyo con el sello QA-BORDE-… en la base del banco. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo), CAPTURAS.
  */
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import ExcelJS from 'exceljs'
 import pg from 'pg'
@@ -32,6 +33,7 @@ const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
+const ARCHIVOS = process.env.BANCO_ARCHIVOS ?? '/tmp/banco-archivos'
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')
   process.exit(1)
@@ -258,13 +260,63 @@ async function relojAdelantado(viewport) {
 // ---------------------------------------------- 3. el corregido con el mismo nombre
 const tarjetaOrden = (p) => p.getByRole('heading', { name: 'Orden de trabajo' }).first().locator('xpath=ancestor::div[contains(@class,"rounded")][1]')
 
+/**
+ * Una orden abierta sin cotización que ya tenga su PDF, como la que se corrige.
+ * El banco recién preparado no trae ninguna: se registra una como lo hace
+ * Administración, con `registrar_orden_sin_cotizacion` y su PDF en
+ * `adjuntos-ot`, con la cuenta del puesto y no como ADMIN.
+ */
+async function ordenConUnPdf() {
+  const ya = await uno(`select o.id, o.numero from public.ordenes_trabajo o
+                         where o.cotizacion_pdf_id is null and o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR')
+                           and (select count(*) from public.ot_adjuntos a where a.orden_id = o.id and a.tipo = 'ORDEN') = 1
+                         order by o.numero limit 1`)
+  if (ya) return ya
+  const admin = await uno(`select id from public.usuarios where correo = 'administracion.local@metalwork.test'`)
+  const cliente = await uno(`select id from public.clientes order by creado_en limit 1`)
+  const sede = await uno(`select id from public.sedes where codigo = 'PRIN'`)
+  if (!admin || !cliente || !sede) return null
+  const id = randomUUID()
+  const ruta = `ot/${id}/${randomUUID()}.pdf`
+  const pdf = PDF_MINIMO(800)
+  const destino = join(ARCHIVOS, 'adjuntos-ot', ruta)
+  mkdirSync(dirname(destino), { recursive: true })
+  writeFileSync(destino, pdf)
+  await base.query(
+    `insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+     values ('adjuntos-ot', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'application/pdf', 'size', $3::bigint))`,
+    [ruta, admin.id, pdf.length],
+  )
+  // Un número libre: con solo tres cifras del sello, una tanda vieja ya lo había usado
+  // («Ya hay una orden de trabajo 8062-2026»), y su orden ya no tiene un solo PDF.
+  const usados = new Set((await filas(`select split_part(numero, '-', 1) as n from public.ordenes_trabajo where numero like '8___-%'`)).map((f) => f.n))
+  const libre = Array.from({ length: 1000 }, (_, i) => `8${String((Number(sello.slice(-3)) + i) % 1000).padStart(3, '0')}`).find((n) => !usados.has(n))
+  if (!libre) return null
+  const numero = `${libre}-2026`
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`,
+      [JSON.stringify({ sub: admin.id, role: 'authenticated' }), admin.id])
+    await base.query('set local role authenticated')
+    await base.query(
+      `select public.registrar_orden_sin_cotizacion($1, $2, $3, null, $4, null, 'FABRICACION', 'NORMAL',
+              'Tolva del banco para corregir su PDF', null, null, null, null, null, null, $5, 'orden-del-banco.pdf', $6)`,
+      [id, numero, cliente.id, sede.id, ruta, pdf.length],
+    )
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    // El PDF ya estaba en Storage: sin su orden quedaba suelto y otras suites lo contaban.
+    await base.query(`delete from storage.objects where bucket_id = 'adjuntos-ot' and name = $1`, [ruta])
+    console.log(`  (no se pudo registrar la orden del banco: ${e.message})`)
+    return null
+  }
+  return { id, numero }
+}
+
 async function mismoNombre(viewport) {
   const tam = nombreDe(viewport)
-  // Una orden abierta sin cotización que ya tenga su PDF, como la que se corrige.
-  const orden = await uno(`select o.id, o.numero from public.ordenes_trabajo o
-                            where o.cotizacion_pdf_id is null and o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR')
-                              and (select count(*) from public.ot_adjuntos a where a.orden_id = o.id and a.tipo = 'ORDEN') = 1
-                            order by o.numero limit 1`)
+  const orden = await ordenConUnPdf()
   if (!orden) {
     comprobar(false, `[Administración ${tam}] hay una orden abierta con un solo PDF`)
     return
@@ -290,7 +342,9 @@ async function mismoNombre(viewport) {
   const nota = limpio(await p.getByText(/Vale el marcado/).innerText())
   comprobar(nota.includes(`(${original.nombre_archivo}, del ${cuandoAnterior})`),
     `[Administración ${tam}] la nota nombra el anterior por su hora: «${nota}»`)
-  const quitar = await tarjetaOrden(p).getByRole('button', { name: /^Quitar / }).evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')))
+  // Los de los dos PDF: la orden puede llevar además su cronograma, con su propio «Quitar».
+  const quitar = (await tarjetaOrden(p).getByRole('button', { name: /^Quitar / }).evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))))
+    .filter((l) => l.startsWith(`Quitar ${original.nombre_archivo},`))
   comprobar(quitar.length === 2 && quitar[0] !== quitar[1] && quitar[0].endsWith(', el vigente') && quitar[1].includes(cuandoAnterior),
     `[Administración ${tam}] los dos «Quitar» se distinguen: ${JSON.stringify(quitar)}`)
   // La hora entera en su renglón: «p. m.» no se parte.
@@ -471,6 +525,24 @@ async function excelQueNoQuedo(viewport) {
       await esperar(async () => (await uno(`select count(*)::int as n from public.ot_adjuntos where orden_id = $1 and nombre_archivo = $2`, [orden.id, nombre])).n === 0, 20000)
     }
     await contexto.close()
+  }
+}
+
+// La salida del kardex necesita un material con saldo libre. En una base recién
+// armada no hay ninguno: se ingresa como Almacén, con su permiso.
+if (!(await uno(`select 1 as hay from public.v_existencias_materiales where disponible >= 6 limit 1`))) {
+  const material = await uno(`select id from public.materiales where activo order by codigo limit 1`)
+  const { id: almacenero } = await uno(`select id from public.usuarios where lower(correo) = 'almacen.local@metalwork.test'`)
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+                             set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [almacenero])
+    await base.query('set local role authenticated')
+    await base.query(`select public.registrar_ingreso_almacen(gen_random_uuid(), $1, 10, 'INGRESO_GENERAL', 'Ingreso del banco', 1, 'PEN')`, [material.id])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
   }
 }
 

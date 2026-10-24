@@ -11,6 +11,12 @@
  *   4. Logística, en el teléfono, ve la devolución en Órdenes de compra y dice
  *      que el que falta ya no viene: el RQ se parte y el nuevo insumo sale en
  *      su lista «por comprar», con «Se compra otra vez».
+ *   5. La devolución entra y su respuesta se pierde; con otra cantidad, la
+ *      ventana dice sin rojo que ya quedó, y la siguiente entra con un id nuevo.
+ *   6. Otra se pierde igual: «Cancelar», volver a abrir y escribir el motivo
+ *      antes de que la base conteste. La nota nombra cantidad, unidad, material
+ *      y guía; el motivo se queda con el cursor y el ingreso de aquella se
+ *      suelta.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * CAPTURAS y el correo de cada cuenta si no es la `<puesto>.local@metalwork.test`
@@ -21,6 +27,8 @@ import { join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+
+import { esConsultaDelEnvio } from './consulta-del-envio.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -51,6 +59,16 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+/** Lee hasta que se cumple o se acaba el tiempo: se espera a lo que pasa, no un tiempo fijo. */
+async function hasta(leer, cumple, ms = 15000) {
+  const fin = Date.now() + ms
+  let v = await leer()
+  while (!cumple(v) && Date.now() < fin) {
+    await new Promise((r) => setTimeout(r, 250))
+    v = await leer()
+  }
+  return v
+}
 
 // ---------------------------------------------------------------- siembra
 const SUFIJO = String(100000 + (Date.now() % 900000))
@@ -121,7 +139,8 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
+    // El corte a propósito de la sección 5 deja su error de red en la consola.
+    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket') && !/ERR_CONNECTION_RESET|Failed to fetch/.test(m.text())) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
   pagina.on('response', (r) => {
     if (r.status() >= 400) errores.push(`${correo}: ${r.status()} ${r.request().method()} ${r.url().replace(/[?#].*$/, '')}`)
@@ -250,6 +269,123 @@ const pendienteDeLaOc = async () =>
   comprobar((await pagina.getByText('Se compra otra vez: el proveedor no repuso lo devuelto').count()) >= 1, 'Requerimientos ve «Se compra otra vez» en su RQ')
   await contexto.close()
 }
+// ------------------------------------------------------- 5. La respuesta perdida y el reenvío con otra cantidad
+// La devolución entra y su respuesta no llega; Almacén cambia la cantidad y
+// vuelve a pulsar. Ya había entrado: la ventana lo dice sin rojo, solo ofrece
+// «Cerrar» y sigue a la vista hasta que se cierra. El envío vive fuera de la
+// ventana: al volver a abrirla, llega sin el aviso y con un id nuevo, y la
+// devolución siguiente entra (antes decía otra vez «ya quedó»).
+{
+  const { pagina, contexto } = await entrar(CUENTAS.almacen, { width: 390, height: 844 })
+  const cdp = await contexto.newCDPSession(pagina)
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
+  // `retener`: la pregunta de la ventana al abrirse (`consultarEnvio`) llega a la base y su respuesta espera a `soltar()`.
+  const corte = { armado: null, cortadas: 0, retener: false, retenida: null, soltar: async () => {} }
+  const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
+  cdp.on('Fetch.requestPaused', async (e) => {
+    const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
+    if (corte.armado && e.request.method === 'POST' && h['next-action'] && cuerpo(e.request).includes(corte.armado)) {
+      corte.armado = null
+      corte.cortadas++
+      return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
+    }
+    if (corte.retener && e.request.method === 'POST' && h['next-action'] && esConsultaDelEnvio(cuerpo(e.request), 'movimiento_almacen', { conIds: true })) {
+      corte.retenida = e.requestId
+      corte.soltar = () => cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
+      return
+    }
+    return cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
+  })
+  const documento = `GR-CORTE-${SUFIJO}`
+  const llenar = async (d, cantidadDevuelta, doc) => {
+    await d.locator('#dev-ingreso').selectOption(ing)
+    await d.locator('#dev-cantidad').fill(cantidadDevuelta)
+    await d.locator('#dev-documento').fill(doc)
+    await d.locator('#dev-motivo').fill('Otro tramo llegó doblado (banco, corte)')
+    await d.locator('#dev-repone').selectOption('si')
+  }
+  await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  let d = pagina.getByRole('dialog')
+  await d.waitFor()
+  const id1 = await d.locator('input[name="id"]').inputValue()
+  await llenar(d, '0.5', documento)
+  corte.armado = documento
+  await d.getByRole('button', { name: 'Devolver' }).click()
+  const sinRespuesta = await d.locator('[role="alert"]', { hasText: 'No llegó la respuesta' }).waitFor({ timeout: 30000 }).then(() => true, () => false)
+  comprobar(sinRespuesta && corte.cortadas === 1, '[Almacén 390] la devolución entra y la respuesta se pierde')
+  await d.locator('#dev-cantidad').fill('0.6')
+  await d.getByRole('button', { name: 'Devolver' }).click()
+  const neutro = d.locator('[data-ya-entro]')
+  await neutro.waitFor({ timeout: 30000 }).catch(() => {})
+  await pagina.waitForTimeout(4000)
+  const vio = {
+    dijo: limpio(await neutro.textContent().catch(() => '')),
+    sigue: await neutro.isVisible().catch(() => false),
+    cursor: await neutro.evaluate((p) => document.activeElement === p).catch(() => false),
+    soloCerrar: (await d.getByRole('button', { name: 'Devolver' }).count()) === 0
+      && (await d.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).count()) === 1,
+  }
+  comprobar(vio.dijo.includes('Esa devolución ya quedó registrada la primera vez que la enviaste') && vio.sigue && vio.cursor && vio.soloCerrar,
+    `[Almacén 390] con otra cantidad, dice sin rojo que ya quedó, con el cursor en el aviso, solo ofrece «Cerrar» y sigue a la vista 4 s después (${JSON.stringify(vio)})`)
+  const filas = await consulta(`select cantidad::numeric as cantidad from movimientos_materiales where documento_referencia = $1`, [documento])
+  comprobar(filas.length === 1 && Number(filas[0].cantidad) === 0.5, `[Almacén 390] queda la devolución de la primera vez, 0.5 M, una vez (${filas.map((f) => Number(f.cantidad)).join(', ')})`)
+  await pagina.screenshot({ path: join(CAPTURAS, '5-ya-quedo.png'), fullPage: true })
+  await d.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+  await d.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  d = pagina.getByRole('dialog')
+  await d.waitFor()
+  const id2 = await d.locator('input[name="id"]').inputValue()
+  const limpia = (await d.locator('[role="alert"]').count()) === 0 && (await d.getByRole('button', { name: 'Devolver' }).count()) === 1
+  comprobar(limpia && id2 && id2 !== id1, `[Almacén 390] al volver a abrir, la ventana llega sin el aviso y con un id nuevo (${id1 !== id2})`)
+  await llenar(d, '0.1', `${documento}-B`)
+  await d.getByRole('button', { name: 'Devolver' }).click()
+  await pagina.getByText('Devuelto al proveedor: la OC vuelve a esperar').waitFor({ timeout: 30000 }).catch(() => {})
+  const [otra] = await consulta(`select count(*)::int as n from movimientos_materiales where id = $1 and documento_referencia = $2`, [id2, `${documento}-B`])
+  comprobar(otra.n === 1, '[Almacén 390] y la devolución siguiente entra con ese id')
+
+  // 6. La nota llega con lo escrito ya en la ventana: la respuesta se pierde, «Cancelar», y al volver a abrir
+  //    se escribe el motivo antes de que la base conteste. La nota nombra la cantidad, la unidad, el material y la
+  //    guía; el motivo escrito se queda y el cursor no se va; el ingreso elegido para aquella se suelta
+  //    (decimoséptima pasada: el formulario se rehacía y borraba lo escrito, y la nota decía «1, con GR-…»).
+  const documentoC = `GR-NOTA-${SUFIJO}`
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  d = pagina.getByRole('dialog')
+  await d.waitFor()
+  await llenar(d, '0.2', documentoC)
+  corte.armado = documentoC
+  await d.getByRole('button', { name: 'Devolver' }).click()
+  await d.locator('[role="alert"]', { hasText: 'No llegó la respuesta' }).waitFor({ timeout: 30000 }).catch(() => {})
+  await d.getByRole('button', { name: 'Cancelar' }).click()
+  await d.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+  corte.retener = true
+  await pagina.getByRole('button', { name: 'Devolver al proveedor' }).click()
+  d = pagina.getByRole('dialog')
+  await d.waitFor()
+  const retenida = await hasta(() => corte.retenida, (r) => Boolean(r), 15000)
+  comprobar(Boolean(retenida), '[Almacén 390] la pregunta de la ventana se detiene hasta escribir el motivo')
+  const motivo = 'Llegó con la rosca dañada (banco, nota)'
+  await d.locator('#dev-motivo').fill(motivo)
+  corte.retener = false
+  await corte.soltar()
+  const nota = limpio(await hasta(() => d.locator('[data-envio-anterior]').textContent({ timeout: 500 }).catch(() => ''), (t) => /sí quedó/.test(t ?? ''), 15000))
+  const tras = {
+    motivo: await d.locator('#dev-motivo').inputValue(),
+    cursor: await d.locator('#dev-motivo').evaluate((c) => document.activeElement === c),
+    ingreso: await d.locator('#dev-ingreso').inputValue(),
+  }
+  comprobar(nota.startsWith(`La devolución que enviaste antes sí quedó: 0.2 M de ${MATERIAL}, con ${documentoC}.`),
+    `[Almacén 390] la nota nombra la cantidad, la unidad, el material y la guía: «${nota}»`)
+  comprobar(tras.motivo === motivo && tras.cursor && tras.ingreso === '',
+    `[Almacén 390] el motivo escrito se queda con el cursor, y el ingreso elegido para aquella se suelta (${JSON.stringify(tras)})`)
+  await pagina.screenshot({ path: join(CAPTURAS, '6-nota-con-lo-escrito.png'), fullPage: true })
+  await d.getByRole('button', { name: 'Cancelar' }).click()
+  const deC = await consulta(`select count(*)::int as n from movimientos_materiales where documento_referencia = $1`, [documentoC])
+  comprobar(deC[0].n === 1, `[Almacén 390] la devolución de la nota queda una vez (${deC[0].n})`)
+  await contexto.close()
+}
+
 const [aviso] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and titulo = $2`,
   [ids[CUENTAS.contabilidad], `Espera la nota de crédito: ${ocNumero}`])
 comprobar(aviso.n >= 1, 'Contabilidad recibe el aviso de la nota de crédito')

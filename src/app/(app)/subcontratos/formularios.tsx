@@ -8,9 +8,11 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { CampoContrato, sacarContrato } from '@/components/estructura/contrato-adjunto'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import type { ResultadoAccion } from '@/lib/acciones'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
 import type { Subcontratista } from '@/lib/datos/subcontratos'
 import { problemaDeContrato } from '@/lib/dominio/contratos'
@@ -18,7 +20,7 @@ import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { AREAS_SUBCONTRATO, AYUDA_AREA_SUBCONTRATO, BUCKET_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
 import { BANCOS_SUGERIDOS, rucEsValido } from '@/lib/dominio/proveedores'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, pasoTrasLoQueQuedo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { adjuntarContratoSubcontrato, guardarSubcontratista, registrarSubcontrato } from './acciones'
 
@@ -60,11 +62,20 @@ export function CampoAreaSubcontrato({ id, valor, opcional = false }: { id: stri
 export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas: Subcontratista[]; codigos: CodigoParaElegir[] | null }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // Los ids del subcontrato y de su contrato viven aquí, fuera del formulario que
+  // se rehace al abrir: tras «No llegó la respuesta», cancelar y volver a abrir
+  // lleva los mismos, y la base no registra otro SC numerado con lo mismo
+  // (decimoquinta pasada). Se renuevan con el ok, cuando la base dice que ya quedó
+  // o cuando, al volver a abrir, la base dice que aquel subcontrato entró.
+  const contrato = useIdDelEnvio(undefined, undefined, 'contrato-del-subcontrato')
+  const subcontrato = useIdDelEnvio('subcontrato', (cuentas) => contrato.otro(cuentas))
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
+          subcontrato.abrir()
+          contrato.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -80,25 +91,51 @@ export function NuevoSubcontrato({ subcontratistas, codigos }: { subcontratistas
         descripcion="Un trabajo que se le encarga a una persona de fuera y que cobra con recibos por honorarios. El número SC-… lo pone el sistema."
         ancho="lg"
       >
-        <FormularioSubcontrato key={vez} subcontratistas={subcontratistas.filter((s) => s.activo)} codigos={codigos} alCancelar={() => setAbierta(false)} />
+        <EnvioAnterior texto={subcontrato.anterior} />
+        {subcontrato.id && contrato.id && (
+          <FormularioSubcontrato
+            key={vez}
+            id={subcontrato.id}
+            idContrato={contrato.id}
+            alSalir={() => {
+              subcontrato.salio()
+              contrato.salio()
+            }}
+            alTerminar={() => {
+              subcontrato.otro()
+              contrato.otro()
+            }}
+            subcontratistas={subcontratistas.filter((s) => s.activo)}
+            codigos={codigos}
+            alCancelar={() => setAbierta(false)}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioSubcontrato({
+  id,
+  idContrato,
+  alSalir,
+  alTerminar,
   subcontratistas,
   codigos,
   alCancelar,
 }: {
+  /** Un reintento manda el mismo y la base no registra otro. */
+  id: string
+  idContrato: string
+  /** Al enviar: los ids salieron con este envío. */
+  alSalir: () => void
+  /** Con el ok, o cuando la base dice que ya quedó: el próximo es otro. */
+  alTerminar: () => void
   subcontratistas: Subcontratista[]
   codigos: CodigoParaElegir[] | null
   alCancelar: () => void
 }) {
   const router = useRouter()
-  // Decidido aquí: un reintento manda el mismo y la base no registra otro.
-  const [id] = useState(() => crypto.randomUUID())
-  const [idContrato] = useState(() => crypto.randomUUID())
   const [subcontratistaId, setSubcontratistaId] = useState('')
 
   // El contrato es opcional y sube después de registrar: su carpeta es el subcontrato,
@@ -108,21 +145,37 @@ function FormularioSubcontrato({
     const contrato = sacarContrato(datos)
     const problema = contrato && problemaDeContrato(contrato)
     if (problema) return { ok: false, error: problema }
+    alSalir()
     const r = await registrarSubcontrato(previo, datos)
+    // Con «ya quedó» el subcontrato es el de la primera vez y el contrato no sube:
+    // se dice dónde adjuntarlo (decimosexta pasada).
+    if (!r.ok && contrato && yaEntroLaPrimeraVez(r.error)) {
+      return { ok: false, error: `${yaEntroEnLaVentana(r.error)} El contrato que elegiste no se adjuntó: adjúntalo desde el subcontrato, con «Adjuntar contrato».` }
+    }
     if (!r.ok || !contrato) return r.ok ? { ...r, datos: { id, contratoPendiente: false } } : r
-    const c = await subirContrato({
-      bucket: BUCKET_SUBCONTRATOS,
-      carpeta: id,
-      id: idContrato,
-      archivo: contrato,
-      adjuntar: (d) => adjuntarContratoSubcontrato(id, d),
-    })
+    // Si entró otra cuenta a media subida, el contrato no sale a su nombre: queda pendiente.
+    const c = await pasoTrasLoQueQuedo(() =>
+      subirContrato({
+        bucket: BUCKET_SUBCONTRATOS,
+        carpeta: id,
+        id: idContrato,
+        archivo: contrato,
+        adjuntar: (d) => adjuntarContratoSubcontrato(id, d),
+      }),
+    )
     return { ...r, datos: { id, contratoPendiente: !c.ok } }
   }
   const { alEnviar, enviando, error } = useEnvio(
     registrar,
-    (r) => router.push(`/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`),
-    { refrescar: false },
+    (r) => {
+      alTerminar()
+      navegarSiEsDeLaPestana(router, `/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`)
+    },
+    // Sin `refrescar: false` aunque el ok navegue: tras «ya quedó» o sin respuesta
+    // no se navega, y al cerrar la lista tiene que mostrar el subcontrato que
+    // entró. Sin refrescar, «la pantalla muestra lo que quedó» no mostraba nada
+    // (decimosexta pasada).
+    { alYaEntrar: alTerminar },
   )
 
   if (subcontratistas.length === 0) {
@@ -184,20 +237,8 @@ function FormularioSubcontrato({
           <Entrada id="sc-fin" name="fecha_fin" type="date" />
         </Campo>
       </div>
-      <CampoContrato id="sc-contrato" />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={!subcontratistaId}>
-          Registrar subcontrato
-        </Boton>
-      </div>
+      <CampoContrato id="sc-contrato" disabled={enviando} />
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar subcontrato" disabled={!subcontratistaId} />
     </form>
   )
 }
