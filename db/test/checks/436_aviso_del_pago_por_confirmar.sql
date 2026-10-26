@@ -116,8 +116,12 @@ insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('comprobantes-financieros', 'adquisiciones/' || pg_temp.id('fa') || '/comprobante.pdf', auth.uid()::text,
         '{"mimetype": "application/pdf", "size": 2048}');
 select test.afirmar(pg_temp.avisos('contabilidad', 'oca', false) = 0, 'el borrador no avisa');
+-- Este paso, como en la vida real: el aviso sale al confirmar, no antes.
+set constraints trg_avisar_pago_por_confirmar_adquisicion deferred;
 update public.adquisiciones set ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf', estado = 'REGISTRADA'
  where id = pg_temp.id('fa');
+select test.afirmar(pg_temp.avisos('contabilidad', 'oca', false) = 0, 'el aviso no sale a medio camino');
+set constraints all immediate;
 reset role;
 
 select test.afirmar(pg_temp.avisos('contabilidad', 'oca') = 1 and pg_temp.avisos('contabilidad2', 'oca') = 1,
@@ -137,9 +141,16 @@ select test.afirmar((select count(*) from public.notificaciones where origen_id 
   'cada cuenta lee solo su aviso');
 reset role;
 
--- La misma OC no avisa dos veces mientras no se lea.
+-- La misma OC no avisa dos veces, ni después de leído: volver a correr la migración no repite nada.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.notificaciones set leida_en = now() where origen_id = pg_temp.id('oca');
+reset role;
 select public.avisar_pago_por_confirmar(array[pg_temp.id('oca'), pg_temp.id('oca')]);
-select test.afirmar(pg_temp.avisos('contabilidad', 'oca', false) = 1, 'la OC que sigue esperando no repite el aviso');
+select public.avisar_pago_por_confirmar(array(select id from public.ordenes_compra_materiales));
+select test.afirmar(pg_temp.avisos('contabilidad', 'oca', false) = 1 and pg_temp.avisos('contabilidad', 'oca') = 0
+                    and pg_temp.avisos('contabilidad2', 'oca', false) = 1,
+  'la OC que sigue esperando no repite el aviso, aunque ya se haya leído');
 
 -- La segunda OC: Logística le anexa la misma factura y alcanza (la factura es por las dos).
 select pg_temp.como('comprador');
@@ -150,18 +161,10 @@ values (pg_temp.id('db'), pg_temp.id('ocb'), 'FACTURA', 'factura.pdf',
         'compra/' || pg_temp.id('ocb') || '/' || pg_temp.id('db') || '.pdf', 'application/pdf', 2048, pg_temp.id('comprador'),
         'F001-4361', current_setting('prueba.hoy')::date);
 reset role;
-select test.afirmar(pg_temp.avisos('contabilidad', 'ocb') = 1,
-  'el anexo de Logística que hace suya una factura ya registrada avisa por esa OC');
-
--- Si la factura deja de ser de la OC, el aviso sin leer se da por leído.
-savepoint sin_el_anexo;
-select pg_temp.como('comprador');
-set local role authenticated;
-select public.anular_documento_compra(pg_temp.id('db'), 'Era la factura de otra compra');
-reset role;
-select test.afirmar(pg_temp.avisos('contabilidad', 'ocb') = 0 and pg_temp.avisos('contabilidad', 'ocb', false) = 1,
-  'anulado el anexo, la OC ya no espera y su aviso queda leído');
-rollback to savepoint sin_el_anexo;
+select test.afirmar(pg_temp.avisos('contabilidad', 'ocb', false) = 0
+                    and (select compra from public.facturas_en_espera(array[pg_temp.id('fa')]))
+                        = (select numero from public.ordenes_compra_materiales where id = pg_temp.id('oca')),
+  'la factura pregunta por una OC a la vez, como la pestaña: la segunda espera su turno sin aviso');
 
 -- ============================================ 3. Contabilidad lo dice, y el aviso queda leído
 select pg_temp.como('contabilidad');
@@ -173,7 +176,8 @@ select test.afirmar(pg_temp.avisos('contabilidad', 'oca') = 0 and pg_temp.avisos
                     and pg_temp.avisos('contabilidad', 'oca', false) = 1,
   '«Ya se pagó»: el aviso de esa OC queda leído para las dos cuentas');
 select test.afirmar(pg_temp.avisos('contabilidad', 'ocb') = 1 and pg_temp.avisos('contabilidad2', 'ocb') = 1,
-  'el de la otra OC sigue esperando');
+  'respondida la primera, la factura pregunta por la otra OC y llega su aviso');
+
 select pg_temp.como('contabilidad2');
 set local role authenticated;
 select public.confirmar_pago_de_la_boleta(pg_temp.id('ocb'), false, null, null, 'El proveedor dice que nunca le pagaron');
