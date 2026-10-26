@@ -248,12 +248,17 @@ export function etiquetasDePuesto<T extends { id: string; puesto?: string | null
  * de noche ya es la de mañana.
  */
 export function hoyLima(): string {
+  return diaLima(new Date())
+}
+
+/** El día en el taller (America/Lima) de un instante, como YYYY-MM-DD. */
+export function diaLima(valor: string | Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: ZONA,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date())
+  }).format(new Date(valor))
 }
 
 /** El tamaño de un archivo para leerlo de un vistazo: «2.4 MB», «350 KB». */
