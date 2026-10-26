@@ -365,7 +365,7 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           )
         })}
       </ol>
-      {/* El porcentaje sale de la etapa del insumo más atrasado, no de lo recibido (lo dice la «i» de la página).
+      {/* El porcentaje es el promedio de las etapas de los insumos, no lo recibido (lo dice la «i» de la página).
           Con todo en almacén ya lo dicen los pasos, y un 85 % al lado parecía contradecirlos. */}
       {rq.avance && actual !== 'ENTREGADO' && !llegoTodo(rq) && (
         <p className="mt-1.5 text-xs text-texto-suave">

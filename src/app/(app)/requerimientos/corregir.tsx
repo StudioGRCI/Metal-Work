@@ -35,9 +35,20 @@ export function CorregirRequerimiento({
   codigos: CodigoParaElegir[] | null
 }) {
   const [abierta, setAbierta] = useState(false)
+  // Lo que respondió la base al corregir, con a quién le llegó el aviso: la ventana se cierra y queda dicho aquí.
+  const [aviso, setAviso] = useState<string | null>(null)
   return (
     <>
-      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Corregir el requerimiento ${rq.numero}`}>
+      <Boton
+        type="button"
+        variante="fantasma"
+        tamano="sm"
+        onClick={() => {
+          setAviso(null)
+          setAbierta(true)
+        }}
+        aria-label={`Corregir el requerimiento ${rq.numero}`}
+      >
         <Pencil aria-hidden className="size-4" />
         Corregir
       </Boton>
@@ -48,8 +59,24 @@ export function CorregirRequerimiento({
         descripcion="Cambia solo lo que estaba mal. Queda en su historial con el motivo, quién, cuándo y el justificante."
         ancho="lg"
       >
-        {abierta && <Formulario rq={rq} materiales={materiales} codigos={codigos} alTerminar={() => setAbierta(false)} />}
+        {abierta && (
+          <Formulario
+            rq={rq}
+            materiales={materiales}
+            codigos={codigos}
+            alTerminar={(mensaje) => {
+              setAbierta(false)
+              setAviso(mensaje)
+            }}
+          />
+        )}
       </Ventana>
+      {/* Al final, para no meterse entre Corregir y Anular, y angosto, para no correr la cabecera de la tarjeta. */}
+      {aviso && (
+        <p role="status" className="order-last basis-full text-sm text-exito sm:max-w-80 sm:text-right">
+          {aviso}
+        </p>
+      )}
     </>
   )
 }
@@ -63,7 +90,7 @@ function Formulario({
   rq: RequerimientoListado
   materiales: MaterialParaRequerimiento[]
   codigos: CodigoParaElegir[] | null
-  alTerminar: () => void
+  alTerminar: (mensaje: string | null) => void
 }) {
   const [codigo, setCodigo] = useState(rq.codigo_interno)
   const [justificacion, setJustificacion] = useState(rq.justificacion)
@@ -72,9 +99,9 @@ function Formulario({
     rq.lineas.map((l) => ({ item: l.item, cantidad: String(l.cantidad), material_id: l.material_id ?? '' })),
   )
   const { corregir, otra } = useCorreccion(rq.id, corregirRequerimiento)
-  const { alEnviar, enviando, error } = useEnvio(corregir, () => {
+  const { alEnviar, enviando, error } = useEnvio(corregir, (r) => {
     otra()
-    alTerminar()
+    alTerminar(r.mensaje ?? null)
   })
   const opciones = useMemo(
     () =>
@@ -211,7 +238,7 @@ function Formulario({
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
         {sinCambios && <p className="mr-auto text-xs text-texto-suave">Todavía no cambiaste nada.</p>}
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
+        <Boton type="button" variante="contorno" onClick={() => alTerminar(null)}>
           Cancelar
         </Boton>
         <Boton type="submit" cargando={enviando} disabled={sinCambios}>

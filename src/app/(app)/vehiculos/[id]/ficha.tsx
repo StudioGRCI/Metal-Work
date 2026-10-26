@@ -41,11 +41,14 @@ export function FichaDelVehiculo({
   ficha,
   puntos,
   editable,
+  salio = false,
 }: {
   registro: string
   ficha: FichaDeVehiculo | null
   puntos: PuntoDeFicha[]
   editable: boolean
+  /** El vehículo ya dejó la planta: la ficha queda como estaba (la base tampoco la deja cambiar). */
+  salio?: boolean
 }) {
   const ingresoCerrado = Boolean(ficha?.ingreso_cerrado_en)
   const salidaCerrada = Boolean(ficha?.salida_cerrada_en)
@@ -72,18 +75,33 @@ export function FichaDelVehiculo({
   }
 
   const bloqueado = !editable || salidaCerrada || enviando
+  const salidaAnotada = Boolean(
+    ficha &&
+      (ficha.conductor_salida ||
+        ficha.dni_salida ||
+        ficha.fecha_salida ||
+        ficha.combustible_salida ||
+        ficha.trabajos ||
+        ficha.adicionales ||
+        ficha.observacion_salida ||
+        faltanSalida < codigos.length),
+  )
   return (
     <form onSubmit={enviar} className="space-y-5">
       <input type="hidden" name="registro" value={registro} />
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Insignia tono={ingresoCerrado ? 'exito' : 'aviso'}>
-          Ingreso {ingresoCerrado ? `cerrado el ${fechaHora(ficha?.ingreso_cerrado_en ?? '')}` : 'por cerrar'}
+        <Insignia tono={ingresoCerrado ? 'exito' : salio ? 'neutro' : 'aviso'}>
+          Ingreso {ingresoCerrado ? `cerrado el ${fechaHora(ficha?.ingreso_cerrado_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
         <Insignia tono={salidaCerrada ? 'exito' : 'neutro'}>
-          Salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : 'por cerrar'}
+          Salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
       </div>
 
+      {/* Arriba, junto a las insignias: que no parezca que todavía falta cerrarla. */}
+      {salio && !salidaCerrada && (
+        <p className="text-sm text-texto-suave">El vehículo ya salió de la planta: la ficha queda como estaba.</p>
+      )}
       <fieldset disabled={bloqueado} className="space-y-4">
         <legend className="sr-only">Datos de la ficha</legend>
         <section aria-label="Al entrar" className="space-y-3">
@@ -92,13 +110,13 @@ export function FichaDelVehiculo({
             <Campo etiqueta="Marca" htmlFor="fv-marca">
               <Entrada id="fv-marca" name="marca" maxLength={80} defaultValue={ficha?.marca ?? ''} readOnly={ingresoCerrado} />
             </Campo>
-            <Campo etiqueta="Conductor" htmlFor="fv-ci" requerido>
+            <Campo etiqueta="Conductor" htmlFor="fv-ci" requerido={!bloqueado}>
               <Entrada id="fv-ci" name="conductor_ingreso" maxLength={120} defaultValue={ficha?.conductor_ingreso ?? ''} readOnly={ingresoCerrado} />
             </Campo>
             <Campo etiqueta="DNI del conductor" htmlFor="fv-di">
               <Entrada id="fv-di" name="dni_ingreso" maxLength={20} inputMode="numeric" defaultValue={ficha?.dni_ingreso ?? ''} readOnly={ingresoCerrado} />
             </Campo>
-            <Campo etiqueta="Fecha" htmlFor="fv-fi" requerido>
+            <Campo etiqueta="Fecha" htmlFor="fv-fi" requerido={!bloqueado}>
               <Entrada id="fv-fi" name="fecha_ingreso" type="date" defaultValue={ficha?.fecha_ingreso ?? ''} readOnly={ingresoCerrado} />
             </Campo>
             <Campo etiqueta="Combustible" htmlFor="fv-combi" ayuda="Como marca el tablero: 1/4, 1/2…">
@@ -112,42 +130,49 @@ export function FichaDelVehiculo({
 
         <section aria-label="Al salir" className="space-y-3">
           <h3 className="text-sm font-semibold text-texto">Al salir</h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Campo etiqueta="Conductor" htmlFor="fv-cs">
-              <Entrada id="fv-cs" name="conductor_salida" maxLength={120} defaultValue={ficha?.conductor_salida ?? ''} />
-            </Campo>
-            <Campo etiqueta="DNI del conductor" htmlFor="fv-ds">
-              <Entrada id="fv-ds" name="dni_salida" maxLength={20} inputMode="numeric" defaultValue={ficha?.dni_salida ?? ''} />
-            </Campo>
-            <Campo etiqueta="Fecha" htmlFor="fv-fs">
-              <Entrada id="fv-fs" name="fecha_salida" type="date" defaultValue={ficha?.fecha_salida ?? ''} />
-            </Campo>
-            <Campo etiqueta="Combustible" htmlFor="fv-combs">
-              <Entrada id="fv-combs" name="combustible_salida" maxLength={40} defaultValue={ficha?.combustible_salida ?? ''} />
-            </Campo>
-            <Campo etiqueta="Trabajos realizados" htmlFor="fv-tr" className="sm:col-span-2">
-              <AreaTexto id="fv-tr" name="trabajos" rows={2} maxLength={2000} defaultValue={ficha?.trabajos ?? ''} />
-            </Campo>
-            <Campo etiqueta="Accesorios adicionales" htmlFor="fv-ad" className="sm:col-span-2">
-              <AreaTexto id="fv-ad" name="adicionales" rows={2} maxLength={2000} defaultValue={ficha?.adicionales ?? ''} />
-            </Campo>
-            <Campo etiqueta="Observación al salir" htmlFor="fv-os" className="sm:col-span-2 lg:col-span-4">
-              <AreaTexto id="fv-os" name="observacion_salida" rows={2} maxLength={2000} defaultValue={ficha?.observacion_salida ?? ''} />
-            </Campo>
-          </div>
+          {/* El vehículo se fue sin anotar su salida: no se pintan cajas vacías que ya no se llenan. */}
+          {salio && !salidaCerrada && !salidaAnotada ? (
+            <p className="text-sm text-texto-suave">No se anotó la salida en la ficha.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Campo etiqueta="Conductor" htmlFor="fv-cs">
+                <Entrada id="fv-cs" name="conductor_salida" maxLength={120} defaultValue={ficha?.conductor_salida ?? ''} />
+              </Campo>
+              <Campo etiqueta="DNI del conductor" htmlFor="fv-ds">
+                <Entrada id="fv-ds" name="dni_salida" maxLength={20} inputMode="numeric" defaultValue={ficha?.dni_salida ?? ''} />
+              </Campo>
+              <Campo etiqueta="Fecha" htmlFor="fv-fs">
+                <Entrada id="fv-fs" name="fecha_salida" type="date" defaultValue={ficha?.fecha_salida ?? ''} />
+              </Campo>
+              <Campo etiqueta="Combustible" htmlFor="fv-combs">
+                <Entrada id="fv-combs" name="combustible_salida" maxLength={40} defaultValue={ficha?.combustible_salida ?? ''} />
+              </Campo>
+              <Campo etiqueta="Trabajos realizados" htmlFor="fv-tr" className="sm:col-span-2">
+                <AreaTexto id="fv-tr" name="trabajos" rows={2} maxLength={2000} defaultValue={ficha?.trabajos ?? ''} />
+              </Campo>
+              <Campo etiqueta="Accesorios adicionales" htmlFor="fv-ad" className="sm:col-span-2">
+                <AreaTexto id="fv-ad" name="adicionales" rows={2} maxLength={2000} defaultValue={ficha?.adicionales ?? ''} />
+              </Campo>
+              <Campo etiqueta="Observación al salir" htmlFor="fv-os" className="sm:col-span-2 lg:col-span-4">
+                <AreaTexto id="fv-os" name="observacion_salida" rows={2} maxLength={2000} defaultValue={ficha?.observacion_salida ?? ''} />
+              </Campo>
+            </div>
+          )}
         </section>
 
         <section aria-label="Puntos de inspección" className="space-y-2">
           <h3 className="text-sm font-semibold text-texto">
             Puntos de inspección
             <span className="ml-2 text-xs font-normal text-texto-suave">
-              {ingresoCerrado
-                ? faltanSalida > 0
-                  ? `faltan ${faltanSalida} de la salida`
-                  : 'todos marcados'
-                : faltanIngreso > 0
-                  ? `faltan ${faltanIngreso} del ingreso`
-                  : 'ingreso completo'}
+              {salio && !salidaCerrada
+                ? `${puntos.length - faltanIngreso} de ${puntos.length} marcados al entrar`
+                : ingresoCerrado
+                  ? faltanSalida > 0
+                    ? `faltan ${faltanSalida} de la salida`
+                    : 'todos marcados'
+                  : faltanIngreso > 0
+                    ? `faltan ${faltanIngreso} del ingreso`
+                    : 'ingreso completo'}
             </span>
           </h3>
           {CATEGORIAS_FICHA.map((categoria) => {

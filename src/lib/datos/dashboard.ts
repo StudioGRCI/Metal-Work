@@ -234,7 +234,9 @@ const CIFRAS = {
       const codigos = await c.una('gasto', () => listarGastoPorCodigo())
       const pen = codigos.reduce((n, g) => n + g.materiales_pen, 0)
       const usd = codigos.reduce((n, g) => n + g.materiales_usd, 0)
-      return { titulo: 'Salido del almacén por código', ...soles(pen, usd, `en ${plural(codigos.length, 'código', 'códigos')}`), icono: Hash }
+      // Cuenta los códigos de los que salió algo; la lista trae también los que solo tienen un RQ o una compra.
+      const conSalidas = codigos.filter((g) => g.salidas > 0 || g.materiales_pen !== 0 || g.materiales_usd !== 0).length
+      return { titulo: 'Salido del almacén por código', ...soles(pen, usd, `en ${plural(conSalidas, 'código', 'códigos')}`), icono: Hash }
     },
   },
 
