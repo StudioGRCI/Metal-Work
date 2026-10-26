@@ -34,6 +34,8 @@ export default async function PaginaPorCobrar() {
   // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const cobra = puede(perfil, 'tesoreria.registrar_cobros') && puede(perfil, 'tesoreria.caja')
   const responde = puede(perfil, 'tesoreria.liberar')
+  // El aviso de cada factura y de cada salida por revisar va a quien cobra (tesoreria.registrar_cobros), no a quien solo mira.
+  const avisado = puede(perfil, 'tesoreria.registrar_cobros')
   const [facturas, cotizaciones, solicitudes, salidas, cuentasCaja] = await Promise.all([
     facturasDeVenta(),
     cotizacionesAprobadas(),
@@ -57,10 +59,12 @@ export default async function PaginaPorCobrar() {
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
         descripcion={resumen && `Por cobrar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'una vencida' : `${vencidas} vencidas`}` : ''}.`}
-        ayuda="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
+        ayuda={`Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. ${
+          avisado ? 'Registra cada cobro con su voucher.' : 'Los cobros los registra Tesorería, con su voucher.'
+        }`}
       />
 
-      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} />}
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
@@ -73,7 +77,7 @@ export default async function PaginaPorCobrar() {
               </span>
               <p className="mt-3 text-sm font-semibold text-texto">No hay facturas por cobrar</p>
               <p className="mt-1 max-w-lg text-sm text-texto-suave">
-                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada. Te llega un aviso con cada una.
+                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada.{avisado && ' Te llega un aviso con cada una.'}
               </p>
             </div>
           ) : (
