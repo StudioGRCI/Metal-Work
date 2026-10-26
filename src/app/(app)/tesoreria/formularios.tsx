@@ -237,6 +237,7 @@ export function PagarServicio({
   codigoMoneda,
   cuentas,
   paraPagar,
+  paraLaDetraccion,
 }: {
   ordenServicioId: string
   numero: string
@@ -247,12 +248,15 @@ export function PagarServicio({
   cuentas: CuentaParaPagar[]
   /** Los documentos de la OS y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
+  /** Lo mismo con su cuenta del Banco de la Nación, cuando se deposita la detracción. */
+  paraLaDetraccion?: ReactNode
 }) {
   const conDetraccion = saldo.detraccion > 0
   // Primero lo que falta al proveedor; si ya se le pagó, la detracción.
   const destinoInicial: DestinoPagoServicio = saldo.saldoProveedor > 0 || saldo.saldoDetraccion <= 0 ? 'PROVEEDOR' : 'DETRACCION'
   const [pagoId, setPagoId] = useState<string | null>(null)
   const [destino, setDestino] = useState<DestinoPagoServicio>(destinoInicial)
+  const [cancela, setCancela] = useState<'si' | 'no'>('no')
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
@@ -279,8 +283,10 @@ export function PagarServicio({
   const monedaDelPago: CodigoMoneda = aLaDetraccion ? 'PEN' : codigoMoneda
   const propuesto = aLaDetraccion ? saldo.saldoDetraccion : saldo.saldoProveedor
   // Cancela si con este pago no queda nada de la otra parte.
-  const quedaDeLaOtra = aLaDetraccion ? saldo.saldoProveedor : saldo.saldoDetraccion
-  const cancelaPorDefecto = quedaDeLaOtra > 0 ? 'no' : 'si'
+  const cancelaPorDefecto = (d: DestinoPagoServicio) =>
+    (d === 'DETRACCION' ? saldo.saldoProveedor : saldo.saldoDetraccion) > 0 ? 'no' : 'si'
+  // Cancelar con la detracción sin depositar no entra: se avisa antes de enviar.
+  const detraccionPendiente = !aLaDetraccion && saldo.saldoDetraccion > 0 && cancela === 'si'
   const falta = [
     saldo.saldoProveedor > 0 && `${montoEntero(saldo.saldoProveedor, codigoMoneda)} al proveedor`,
     saldo.saldoDetraccion > 0 && `${montoEntero(saldo.saldoDetraccion, 'PEN')} de detracción`,
@@ -298,6 +304,7 @@ export function PagarServicio({
           avisar(null)
           setDia(hoy)
           setDestino(destinoInicial)
+          setCancela(cancelaPorDefecto(destinoInicial))
           setPagoId(crypto.randomUUID())
         }}
         data-pagar-servicio={numero}
@@ -308,14 +315,14 @@ export function PagarServicio({
       <Ventana abierta={pagoId !== null} alCerrar={() => setPagoId(null)} titulo={`Pago de la ${numero}`} descripcion={descripcion} ancho="md">
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
-          {paraPagar}
+          {aLaDetraccion && paraLaDetraccion ? paraLaDetraccion : paraPagar}
           <input type="hidden" name="id" value={pagoId ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
           {!conDetraccion && <input type="hidden" name="destino" value="PROVEEDOR" />}
           <div className="grid gap-4 sm:grid-cols-2">
             {conDetraccion && (
               <Campo
-                etiqueta="¿A quién le pagas?"
+                etiqueta="¿Qué pagas?"
                 htmlFor={campo('destino')}
                 requerido
                 className="sm:col-span-2"
@@ -325,11 +332,17 @@ export function PagarServicio({
                   id={campo('destino')}
                   name="destino"
                   value={destino}
-                  onChange={(e) => setDestino(e.target.value === 'DETRACCION' ? 'DETRACCION' : 'PROVEEDOR')}
+                  onChange={(e) => {
+                    const elegido = e.target.value === 'DETRACCION' ? 'DETRACCION' : 'PROVEEDOR'
+                    setDestino(elegido)
+                    setCancela(cancelaPorDefecto(elegido))
+                  }}
                 >
-                  <option value="PROVEEDOR">Al proveedor{saldo.saldoProveedor > 0 ? `, falta ${montoEntero(saldo.saldoProveedor, codigoMoneda)}` : ', ya está pagado'}</option>
+                  <option value="PROVEEDOR">
+                    Al proveedor ({saldo.saldoProveedor > 0 ? `falta ${montoEntero(saldo.saldoProveedor, codigoMoneda)}` : 'ya está pagado'})
+                  </option>
                   <option value="DETRACCION">
-                    La detracción, en el Banco de la Nación{saldo.saldoDetraccion > 0 ? `, falta ${montoEntero(saldo.saldoDetraccion, 'PEN')}` : ', ya está depositada'}
+                    La detracción en el Banco de la Nación ({saldo.saldoDetraccion > 0 ? `falta ${montoEntero(saldo.saldoDetraccion, 'PEN')}` : 'ya está depositada'})
                   </option>
                 </Seleccion>
               </Campo>
@@ -362,10 +375,15 @@ export function PagarServicio({
                   : '«A cuenta» si todavía falta pagarle al proveedor.'
               }
             >
-              <Seleccion key={destino} id={campo('cancela')} name="cancela" defaultValue={cancelaPorDefecto}>
+              <Seleccion id={campo('cancela')} name="cancela" value={cancela} onChange={(e) => setCancela(e.target.value === 'si' ? 'si' : 'no')}>
                 <option value="si">Sí, queda pagada</option>
                 <option value="no">No, es a cuenta</option>
               </Seleccion>
+              {detraccionPendiente && (
+                <p className="mt-1 text-xs text-aviso">
+                  Falta depositar {montoEntero(saldo.saldoDetraccion, 'PEN')} de detracción: regístrala antes de cancelar, o deja este pago a cuenta.
+                </p>
+              )}
             </Campo>
             <Campo
               etiqueta={aLaDetraccion ? 'N.º de la constancia o de operación' : 'N.º de operación'}

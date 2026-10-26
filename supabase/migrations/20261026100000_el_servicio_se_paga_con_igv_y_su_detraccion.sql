@@ -20,7 +20,8 @@
 --     depositar, y solo la tiene una OS afecta.
 --   · `cancela` sigue diciendo que con ese pago la orden queda pagada entera.
 --     Mientras falte depositar la detracción, la orden no se cancela: quedaría
---     cerrada y la detracción ya no tendría dónde registrarse.
+--     cerrada y la detracción ya no tendría dónde registrarse. Tampoco la OS
+--     afecta en dólares sin su tipo de cambio, cuya detracción no se sabe.
 --   · `saldos_de_servicios` da, para cada OS, el total con IGV, la detracción,
 --     lo que va al proveedor y lo que falta de cada parte: la pantalla, el
 --     Dashboard y la ventana del pago leen de aquí, no lo recalculan.
@@ -145,6 +146,11 @@ begin
     raise exception 'El número de la factura o recibo del proveedor va de 3 a 30 caracteres.' using errcode = 'check_violation';
   end if;
 
+  -- Afecta, en dólares y sin su cambio: su detracción todavía no se sabe.
+  if v_os.detraccion_afecta and v_os.detraccion_monto is null and v_os.monto_pen is null and (v_detr or v_cancela) then
+    raise exception 'La % todavía no tiene el tipo de cambio con que se calcula su detracción: deja este pago a cuenta hasta que lo tenga.', v_os.numero
+      using errcode = 'check_violation';
+  end if;
   select * into v_saldo from public.saldos_de_servicios(array[p_orden_servicio]);
   if v_detr then
     if v_saldo.detraccion <= 0 then

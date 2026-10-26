@@ -11,8 +11,8 @@
 --   2. Los pagos a cada parte, la detracción que no pasa de lo que falta, la
 --      orden que no se cancela sin la detracción, y la que sí se cancela.
 --   3. La OS en dólares: la detracción en soles y su parte en dólares.
---   4. La OS sin detracción no recibe una, y la versión de 10 parámetros paga
---      al proveedor.
+--   4. La OS en dólares sin su cambio no se cancela; la OS sin detracción no
+--      recibe una, y la versión de 10 parámetros paga al proveedor.
 --   5. Quién lee los saldos.
 --   6. El cliente de la cotización aprobada, para Tesorería y Contabilidad, y
 --      el de la que no está aprobada, no.
@@ -40,7 +40,7 @@ begin
    where public.ruc_es_valido('2060000436' || d) limit 1
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
-  foreach v in array array['os', 'usd', 'sin', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'cot', 'cot2', 'cli'] loop
+  foreach v in array array['os', 'usd', 'sin', 'scambio', 'p8', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'cot', 'cot2', 'cli'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
@@ -55,6 +55,9 @@ begin
           current_setting('prueba.comprador')::uuid, true, '020', 12, 700, null),
          (current_setting('prueba.usd')::uuid, 'QA-OS-436-USD', current_setting('prueba.proveedor')::uuid, 'Proveedor de prueba 436',
           'Servicio en dólares del check 436', 1000, 3750, 'USD', 'QA436-OS', 'APROBADA', current_setting('prueba.gerente')::uuid, now(),
+          current_setting('prueba.comprador')::uuid, true, '020', 12, 700, null),
+         (current_setting('prueba.scambio')::uuid, 'QA-OS-436-SCAMBIO', current_setting('prueba.proveedor')::uuid, 'Proveedor de prueba 436',
+          'Servicio en dólares sin su cambio del check 436', 1000, null, 'USD', 'QA436-OS', 'APROBADA', current_setting('prueba.gerente')::uuid, now(),
           current_setting('prueba.comprador')::uuid, true, '020', 12, 700, null),
          (current_setting('prueba.sin')::uuid, 'QA-OS-436-SIN', current_setting('prueba.proveedor')::uuid, 'Proveedor de prueba 436',
           'Servicio sin detracción del check 436', 500, 500, 'PEN', 'QA436-OS', 'APROBADA', current_setting('prueba.gerente')::uuid, now(),
@@ -161,6 +164,12 @@ select test.afirmar((select moneda from public.pagos_orden_servicio where id = p
   'en la OS en dólares la detracción va en soles y el pago al proveedor en dólares');
 select test.afirmar((select saldo_proveedor = 0 and saldo_detraccion = 0 and cancelada from public.saldos_de_servicios(array[pg_temp.id('usd')])),
   'la OS en dólares queda pagada entera');
+
+-- La OS afecta en dólares sin su tipo de cambio: su detracción no se sabe, y no se cancela ni se deposita.
+select test.debe_fallar($$ select pg_temp.pagar('scambio', 'p8', 1180, true, 'PROVEEDOR') $$,
+  'la OS afecta en dólares sin su cambio no se cancela', 'todavía no tiene el tipo de cambio');
+select test.debe_fallar($$ select pg_temp.pagar('scambio', 'p8', 100, false, 'DETRACCION') $$,
+  'ni recibe su detracción', 'todavía no tiene el tipo de cambio');
 
 -- ============================================ 4. Sin detracción, y la versión vieja
 select test.debe_fallar($$ select pg_temp.pagar('sin', 'p6', 50, false, 'DETRACCION') $$,

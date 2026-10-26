@@ -294,7 +294,7 @@ export default async function PaginaPorPagar() {
               >
                 <span>
                   <span className="text-texto">
-                    {textoDeCodigos((c.orden_compra_id && codigosCredito.get(c.orden_compra_id)) || [])} · {c.proveedor} · {nombreDeOc(c)}
+                    <CodigosInternos codigos={(c.orden_compra_id && codigosCredito.get(c.orden_compra_id)) || []} alInicio /> · {c.proveedor} · {nombreDeOc(c)}
                   </span>
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
@@ -906,13 +906,27 @@ function textoDeLaToma(t: CompraConBoleta['pagos'][number]['tomas'][number], m: 
   return `descontado en ${t.factura}: ${enLaFactura}${deLaBoleta}`
 }
 
-/** Una factura de compra: sus OC, el aviso de monto, lo pagado con cada voucher y el botón para pagar. */
-/** El código interno de un documento, como lo nombran las demás pantallas: uno o varios, o que no tiene. */
-function textoDeCodigos(codigos: string[]) {
-  if (codigos.length === 0) return 'sin código interno'
-  return codigos.length === 1 ? `código ${codigos[0]}` : `códigos ${codigos.join(', ')}`
+/**
+ * El código interno de un documento, como lo nombran las demás pantallas: uno o
+ * varios, o que no tiene. Cada código entero en su línea: en el teléfono no se parte.
+ */
+function CodigosInternos({ codigos, alInicio = false }: { codigos: string[]; alInicio?: boolean }) {
+  const palabra = (texto: string) => (alInicio ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto)
+  if (codigos.length === 0) return <>{palabra('sin código interno')}</>
+  return (
+    <>
+      {palabra(codigos.length === 1 ? 'código' : 'códigos')}{' '}
+      {codigos.map((codigo, i) => (
+        <span key={codigo}>
+          {i > 0 && ', '}
+          <span className="tabular whitespace-nowrap">{codigo}</span>
+        </span>
+      ))}
+    </>
+  )
 }
 
+/** Una factura de compra: sus OC, el aviso de monto, lo pagado con cada voucher y el botón para pagar. */
 function Factura({
   cuenta: c,
   paga,
@@ -1021,7 +1035,7 @@ function Factura({
           </p>
           <p className="text-xs text-texto-suave">
             {definir(TIPO_COMPROBANTE, c.tipo ?? '').etiqueta} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'} ·{' '}
-            {textoDeCodigos(c.codigos)} ·{' '}
+            <CodigosInternos codigos={c.codigos} /> ·{' '}
             {/* Puede que ya se haya pagado fuera: no vence hasta que Contabilidad lo diga. */}
             {c.enEspera && saldo > 0 ? 'sin vencimiento hasta que Contabilidad diga si se pagó' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
           </p>

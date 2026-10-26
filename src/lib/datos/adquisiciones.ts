@@ -567,7 +567,8 @@ async function codigoYRqDeOcs(idsOc: string[]) {
     }),
     idsOc.length ? supabase.rpc('insumos_de_compras', { p_ids: idsOc }) : Promise.resolve({ data: [], error: null }),
   ])
-  if (insumos.error) throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${insumos.error.message}`)
+  // Quien abre Cuentas por pagar sin leer las compras se queda sin los RQ, no sin la pantalla.
+  if (insumos.error && insumos.error.code !== '42501') throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${insumos.error.message}`)
   const codigoDe = new Map(codigos.map((c) => [c.id, c.codigo_interno]))
   const rqDe = new Map<string, Map<string, RqDeCompra>>()
   for (const l of insumos.data ?? []) {
@@ -646,15 +647,19 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
   // El proveedor de la factura es el de sus OC: la factura solo guarda su nombre.
   const idsOc = [...new Set([...controles.values()].flatMap((c) => c.ordenes.map((o) => o.id)))]
   const proveedorDeOc = new Map<string, string>()
-  if (verCuentas && idsOc.length > 0) {
-    const ocs = await enTandas(idsOc, async (tanda) => {
-      const r = await supabase.from('ordenes_compra_materiales').select('id, proveedor_id').in('id', tanda)
-      if (r.error) throw new Error(`No se pudo leer el proveedor de las OC: ${r.error.message}`)
-      return r.data ?? []
-    })
-    for (const o of ocs) if (o.proveedor_id) proveedorDeOc.set(o.id, o.proveedor_id)
-  }
-  const [cuentas, codigosDe] = await Promise.all([cuentasDeProveedores([...proveedorDeOc.values()], verCuentas), codigosDeOcs(idsOc)])
+  // Los códigos internos de las OC van a la par del proveedor de cada una.
+  const [ocs, codigosDe] = await Promise.all([
+    verCuentas && idsOc.length > 0
+      ? enTandas(idsOc, async (tanda) => {
+          const r = await supabase.from('ordenes_compra_materiales').select('id, proveedor_id').in('id', tanda)
+          if (r.error) throw new Error(`No se pudo leer el proveedor de las OC: ${r.error.message}`)
+          return r.data ?? []
+        })
+      : Promise.resolve([]),
+    codigosDeOcs(idsOc),
+  ])
+  for (const o of ocs) if (o.proveedor_id) proveedorDeOc.set(o.id, o.proveedor_id)
+  const cuentas = await cuentasDeProveedores([...proveedorDeOc.values()], verCuentas)
   return filas.map((f) => {
     const control = (f.id && controles.get(f.id)) || null
     const proveedores = [...new Set((control?.ordenes ?? []).flatMap((o) => proveedorDeOc.get(o.id) ?? []))]

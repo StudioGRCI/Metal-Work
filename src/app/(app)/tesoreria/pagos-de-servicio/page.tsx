@@ -15,7 +15,7 @@ import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
-import { fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { fecha, hoyLima, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPagoServicio, PagarServicio } from '../formularios'
@@ -98,15 +98,6 @@ export default async function PaginaPagosDeServicio() {
   )
 }
 
-/** Lo que falta de una orden pagada en parte, en una frase. */
-function loQueFalta(saldo: ServicioPorPagar['saldo'], m: CodigoMoneda) {
-  const partes = [
-    saldo.saldoProveedor > 0 ? `${moneda(saldo.saldoProveedor, m)} al proveedor` : null,
-    saldo.saldoDetraccion > 0 ? `${moneda(saldo.saldoDetraccion)} de detracción` : null,
-  ].filter(Boolean)
-  return partes.length > 0 ? `Falta ${partes.join(' y ')}.` : 'Ya se pagó todo, pero ningún pago dice que la cancela.'
-}
-
 function Servicio({
   servicio: s,
   paga,
@@ -128,12 +119,17 @@ function Servicio({
   const saldo = s.saldo
   const pagado = saldo.pagadoProveedor > 0 || saldo.pagadoDetraccion > 0
   const conDetraccion = saldo.detraccion > 0
+  // Pagada entera a cuenta: un pago más no la cancela, se rehace el último.
+  const todoPagado = !s.cancelada && pagado && saldo.saldoProveedor <= 0 && saldo.saldoDetraccion <= 0
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
   const documentos = s.documentos.map((d) => ({ clave: d.id, etiqueta: etiquetaDocumentoServicio(d), url: d.url }))
   const comprobante = s.documentos.some((d) => d.tipo === 'FACTURA' || d.tipo === 'BOLETA' || d.tipo === 'RECIBO')
   const sinCuentas = verCuentas ? 'El proveedor no tiene cuentas activas en Proveedores: pídeselas a Logística.' : null
+  // La detracción va a su cuenta del Banco de la Nación: al elegirla, solo esa.
+  const cuentasDetraccion = s.cuentas.filter((c) => /naci[oó]n/i.test(c.banco))
+  const sinCuentaDetraccion = verCuentas ? 'El proveedor no tiene su cuenta del Banco de la Nación en Proveedores: pídesela a Logística.' : null
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -158,15 +154,33 @@ function Servicio({
           </p>
           {conDetraccion && !s.cancelada && (
             <p className="text-xs text-texto-suave">
-              {detraccion.detalle}. Al proveedor se le pagan {moneda(saldo.alProveedor, m)}; la detracción va a su cuenta del Banco de la Nación.
+              Detracción {detraccion.detalle}. Al proveedor se le pagan {moneda(saldo.alProveedor, m)}; la detracción va a su cuenta del Banco de la
+              Nación.
             </p>
           )}
-          {!s.cancelada && pagado && <p className="text-xs text-texto-suave">{loQueFalta(saldo, m)}</p>}
+          {todoPagado && (
+            <p className="text-xs text-aviso">
+              Ya se pagó todo, pero ningún pago la canceló: anula el último pago y regístralo otra vez con «Sí, queda pagada».
+            </p>
+          )}
         </div>
         {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
         <div className="shrink-0 sm:text-right">
-          <p className="tabular text-sm font-semibold text-texto">{moneda(saldo.total, m)}</p>
-          <p className="text-xs text-texto-suave">con IGV</p>
+          {/* Primero lo que falta, que es lo que se paga; el total con IGV, debajo. */}
+          {!s.cancelada && saldo.saldoProveedor > 0 && (
+            <p className="text-sm font-semibold text-texto">
+              Falta <span className="tabular">{moneda(saldo.saldoProveedor, m)}</span> <span className="font-normal">al proveedor</span>
+            </p>
+          )}
+          {!s.cancelada && saldo.saldoDetraccion > 0 && (
+            <p className="text-sm text-texto">
+              {saldo.saldoProveedor > 0 ? 'y ' : 'Falta '}
+              <span className="tabular font-semibold">{moneda(saldo.saldoDetraccion)}</span> de detracción
+            </p>
+          )}
+          <p className="text-xs text-texto-suave">
+            Total <span className="tabular">{moneda(saldo.total, m)}</span> con IGV
+          </p>
           {saldo.pagadoProveedor > 0 && <p className="tabular text-xs text-texto-suave">Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}</p>}
           {saldo.pagadoDetraccion > 0 && <p className="tabular text-xs text-texto-suave">Detracción depositada {moneda(saldo.pagadoDetraccion)}</p>}
         </div>
@@ -180,9 +194,9 @@ function Servicio({
           </p>
         )}
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
-        {s.id && !s.cancelada && (paga || adjunta) && (
+        {s.id && !s.cancelada && ((paga && !todoPagado) || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">
-            {paga && (
+            {paga && !todoPagado && (
               <PagarServicio
                 ordenServicioId={s.id}
                 numero={s.numero ?? 'orden de servicio'}
@@ -192,6 +206,11 @@ function Servicio({
                 codigoMoneda={m}
                 cuentas={cuentasCaja}
                 paraPagar={<ParaPagar documentos={documentos} cuentas={s.cuentas} monedaDocumento={m} sinCuentas={sinCuentas} />}
+                paraLaDetraccion={
+                  conDetraccion ? (
+                    <ParaPagar documentos={documentos} cuentas={cuentasDetraccion} monedaDocumento="PEN" sinCuentas={sinCuentaDetraccion} />
+                  ) : undefined
+                }
               />
             )}
             {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
