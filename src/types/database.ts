@@ -13011,6 +13011,12 @@ export type Database = {
           alcanza: boolean | null
         }[]
       }
+      con_punto_final: {
+        Args: {
+          p_texto: string | null
+        }
+        Returns: string
+      }
       conciliar_pago_directo: {
         Args: {
           p_compras: string[] | null
