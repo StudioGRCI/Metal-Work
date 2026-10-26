@@ -13114,6 +13114,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      cotizaciones_con_factura: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+        }[]
+      }
       cotizaciones_para_facturar: {
         Args: Record<PropertyKey, never>
         Returns: {

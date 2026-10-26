@@ -9,7 +9,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { listarUnidades } from '@/lib/datos/comercial'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
@@ -118,7 +118,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
 
                 // Lo que en el monitor son cuatro columnas, en el teléfono es esta
                 // línea: sin ella el listado móvil solo diría placa y dueño.
-                const detalle = [u.tipo_vehiculo, carroceria?.nombre, capacidad]
+                const detalle = [tipoDeVehiculo(u.tipo_vehiculo), carroceria?.nombre, capacidad]
                   .filter(Boolean)
                   .join(' · ')
 
@@ -175,7 +175,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                       )}
                     </TD>
                     <TD className="hidden sm:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">{u.tipo_vehiculo}</TD>
+                    <TD className="hidden text-texto-suave sm:table-cell">{tipoDeVehiculo(u.tipo_vehiculo)}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {carroceria?.nombre ?? '—'}
                     </TD>
@@ -187,7 +187,10 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     {puedeEditar && (
                       <TD>
-                        <div className="flex flex-col items-start gap-2 min-[1440px]:flex-row min-[1440px]:items-center">
+                        {/* Una debajo de la otra hasta las pantallas muy anchas: a
+                            1440 px, con el menú a la izquierda, lado a lado
+                            cortaban «Desactivar» y la tabla se corría de costado. */}
+                        <div className="flex flex-col items-start gap-2 min-[1800px]:flex-row min-[1800px]:items-center">
                           {/* Una unidad del taller todavía no tiene cliente: se edita
                               desde su orden, cuando Administración le pone uno. */}
                           {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}

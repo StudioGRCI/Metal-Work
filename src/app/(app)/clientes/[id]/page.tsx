@@ -9,7 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
 import {
@@ -138,7 +138,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || 'Sin datos'}
                       </p>
                       <p className="text-[11px] text-texto-suave">
-                        {u.tipo_vehiculo}
+                        {tipoDeVehiculo(u.tipo_vehiculo)}
                         {u.numero_chasis ? ` · chasis ${u.numero_chasis}` : ''}
                         {u.capacidad_m3 ? ` · ${u.capacidad_m3} m³` : ''}
                       </p>

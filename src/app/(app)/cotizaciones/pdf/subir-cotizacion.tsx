@@ -486,7 +486,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             <fieldset className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3">
               <legend className="px-1 text-sm font-medium text-texto">Carrocería nueva</legend>
               <p className="-mt-1 text-xs text-texto-suave">
-                Se agrega al catálogo al subir la cotización. Sus horas y precios de referencia se ponen después, en Configuración.
+                Se agrega al catálogo de carrocerías al subir la cotización. Su ficha técnica la completa Diseño después.
               </p>
               <Campo etiqueta="Nombre" htmlFor="cot-carroceria-nueva" requerido>
                 <Entrada

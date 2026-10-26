@@ -299,7 +299,9 @@ export function CorregirCotizacion({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* Uno debajo del otro: lado a lado, en esta ventana la razón social
+              se cortaba («TRANSPORTES SAN RO…») y no se sabía qué cliente era. */}
+          <div className="grid gap-3">
             <Campo etiqueta="Cliente" htmlFor={`corregir-cliente-${id}`} requerido>
               <Seleccion id={`corregir-cliente-${id}`} value={cliente} onChange={e => setCliente(e.target.value)} required>
                 <option value="" disabled>Elige el cliente</option>

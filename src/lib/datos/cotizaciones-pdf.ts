@@ -22,6 +22,11 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
    * (migración 20261015124000). Las ve quien ve facturas; los demás, ninguna.
    */
   facturas: FacturaDeCotizacion[]
+  /**
+   * Tiene una factura vigente, la vea o no quien mira: así Ventas sabe que ya no
+   * se corrige (migración 20261026100000), sin ver la factura.
+   */
+  facturada: boolean
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
   tipo_unidad: string | null
 }
@@ -90,6 +95,9 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
     .in('cotizacion_pdf_id', cotizacionIds)
     .order('creado_en')
   if (facturas.error) throw new Error(`No se pudieron leer las facturas de las cotizaciones: ${facturas.error.message}`)
+  const conFactura = await supabase.rpc('cotizaciones_con_factura', { p_ids: cotizacionIds })
+  if (conFactura.error) throw new Error(`No se pudo saber qué cotizaciones ya están facturadas: ${conFactura.error.message}`)
+  const facturadas = new Set((conFactura.data ?? []).map((x) => x.cotizacion))
 
   // Solo las que tuvieron más de una versión tienen historial que leer.
   const conHistorial = filas.filter((f) => (f.version ?? 1) > 1 && f.id).map((f) => f.id as string)
@@ -121,6 +129,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
       ...f,
       cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
+      facturada: facturadas.has(f.id),
       tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
       url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
       urlAprobada: f.estado === 'APROBADA'
