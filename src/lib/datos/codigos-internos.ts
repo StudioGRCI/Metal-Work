@@ -562,7 +562,18 @@ export const ORDEN_DE_LAS_LINEAS = [
   'moneda', 'unidad', 'cantidad', 'horas', 'precio_unitario', 'monto', 'sin_precio',
 ]
 
-export async function costeoDelCodigo(codigo: string): Promise<LineaCosteo[]> {
+/**
+ * El ajuste de la planilla de taller (migración 20261026210000) va como mano de
+ * obra sin horas, con este concepto: el resumen del código lo dice aparte.
+ */
+export const CONCEPTO_AJUSTE_PLANILLA = 'Ajuste de la planilla de taller'
+
+export function ajusteDePlanilla(lineas: LineaCosteo[]): number {
+  return lineas.reduce((n, l) => n + (l.fuente === 'MANO_OBRA' && l.concepto.startsWith(CONCEPTO_AJUSTE_PLANILLA) && l.moneda === 'PEN' ? (l.monto ?? 0) : 0), 0)
+}
+
+/** Con `cache`: el resumen del código y su vista de costeo lo leen en la misma página una sola vez. */
+export const costeoDelCodigo = cache(async (codigo: string): Promise<LineaCosteo[]> => {
   const supabase = await createClient()
   // Una unidad grande pasa de mil líneas: se lee entera, o su costo sumaba de menos.
   const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_costeo', { p_codigo: codigo }), ORDEN_DE_LAS_LINEAS)
@@ -582,7 +593,7 @@ export async function costeoDelCodigo(codigo: string): Promise<LineaCosteo[]> {
     documento: f.documento,
     referencia_id: f.referencia_id,
   }))
-}
+})
 
 /** Lo que le tocó a cada código de lo cargado a TODOS LOS ACTIVOS, por mes. */
 export type RepartoATodos = {

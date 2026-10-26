@@ -91,7 +91,12 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 /** Elige a una persona en el `SeleccionBuscable` cuyo nombre accesible se da. */
 async function elegirPersona(pagina, etiqueta, texto) {
   await pagina.getByRole('combobox', { name: etiqueta }).click()
-  await pagina.keyboard.type(texto)
+  // Se escribe cuando la caja de búsqueda ya tiene el foco (como en
+  // probar-reporte-diario.mjs): si no, las primeras letras se pierden en el botón
+  // y la persona no aparece en la lista.
+  const caja = pagina.locator('input[type="search"]:focus')
+  await caja.waitFor({ timeout: 10000 })
+  await caja.fill(texto)
   await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
 }
 

@@ -363,7 +363,10 @@ export default async function PaginaPorPagar() {
 
       {planillasPorOt.length > 0 && (
         <Tarjeta className="mt-5">
-          <TarjetaCabecera titulo="Planillas distribuidas por OT" ayuda="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
+          <TarjetaCabecera
+            titulo="Planillas de antes, repartidas por OT"
+            ayuda="Para consultar: las planillas que RR. HH. cerró cuando todavía se repartían entre las OT. Desde octubre de 2026 ya no se reparten: la de taller entra al costo de cada código interno por sus horas. Los nombres del personal se quedan en RR. HH."
+          />
           <TarjetaCuerpo className="space-y-2">
             {planillasPorOt.map((p, i) => (
               <p

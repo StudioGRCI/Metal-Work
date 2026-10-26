@@ -61,7 +61,7 @@ export async function darDeAltaPersona(
     p_cargo: omitible(v.cargo),
     p_telefono: omitible(v.telefono),
     p_es_operario: v.es_operario,
-    // El DNI y el costo por hora los pone Recursos Humanos (migración 20261020165000).
+    // El DNI lo pone Recursos Humanos en «DNI de las cuentas» (migración 20261020165000); el costo por hora ya no se pide.
   })
 
   if (error) return { ok: false, error: mensajeDeError(error) }

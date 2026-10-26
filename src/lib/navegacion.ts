@@ -488,10 +488,10 @@ export const NAVEGACION = [
     titulo: 'Recursos Humanos',
     items: [
       { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
-      { titulo: 'DNI y costo de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI y el costo por hora de cada cuenta del sistema', disponible: true },
+      { titulo: 'DNI de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI de cada cuenta del sistema', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
-      { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona, justificadas con sus horas extras', disponible: true },
+      { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona: se justifican con sus horas extras, o se descuentan o reportan', disponible: true },
       { titulo: 'Horas extras', ruta: '/rrhh/horas-extras', icono: ClockAlert, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Lo que pasa de 8 horas al día: pagarlo o reservarlo', disponible: true },
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Las horas validadas que se pagan, enviadas a Tesorería', disponible: true },
       { titulo: 'Costeo por código', ruta: '/rrhh/costeo', icono: Calculator, permiso: 'rrhh.personal', descripcion: 'Horas de cada persona por código interno y lo que cuestan', disponible: true },

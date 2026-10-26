@@ -6,7 +6,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { horasEsperandoCosto } from '@/lib/datos/reportes-diarios'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
-import { listarTrabajadores, tareosDelMes, type Tareo } from '@/lib/datos/rrhh'
+import { listarTrabajadores, recargoExtrasDelMes, tareosDelMes, type RecargoExtras, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaLarga, hoyLima, mesLargo, moneda, porcentaje } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
@@ -37,6 +37,19 @@ function agrupar(tareos: Tareo[]): PorCodigo[] {
   return [...codigos.values()].sort((a, b) => b.costo - a.costo || a.codigo.localeCompare(b.codigo))
 }
 
+/** El recargo del mes por código, con cada planilla que lo pagó. */
+function recargoPorCodigo(recargo: RecargoExtras[]) {
+  const codigos = new Map<string, { codigo: string; horas: number; monto: number; lineas: RecargoExtras[] }>()
+  for (const r of recargo) {
+    const c = codigos.get(r.codigo) ?? { codigo: r.codigo, horas: 0, monto: 0, lineas: [] }
+    c.horas += r.horas
+    c.monto += r.monto
+    c.lineas.push(r)
+    codigos.set(r.codigo, c)
+  }
+  return [...codigos.values()].sort((a, b) => b.monto - a.monto || a.codigo.localeCompare(b.codigo))
+}
+
 export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/costeo'>) {
   const perfil = await exigirPermiso('rrhh.personal')
   // Carga y anula solo RR. HH.; el administrador lo ve (migración 20261020167000).
@@ -46,14 +59,18 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   const mesActual = mesDeLima(hoy)
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
-  const [tareos, personal, codigos, esperando] = await Promise.all([
+  const [tareos, personal, codigos, esperando, recargo] = await Promise.all([
     tareosDelMes(mes),
     listarTrabajadores('activos'),
     // La lista es para cargar horas: quien solo mira no la necesita.
     edita ? codigosParaElegir() : Promise.resolve(null),
     horasEsperandoCosto(),
+    // Lo que la planilla diaria pagó de más por las horas extras (migración 20261026200000).
+    recargoExtrasDelMes(mes),
   ])
   const grupos = agrupar(tareos)
+  const recargos = recargoPorCodigo(recargo)
+  const totalRecargo = recargos.reduce((n, r) => n + r.monto, 0)
   // El detalle va por día, como llega el parte: por defecto, el último día con horas cargadas.
   const dias = [...new Set(tareos.map((t) => t.fecha))].sort()
   const dia = fechaValida(params.dia) && dias.includes(params.dia) ? params.dia : dias.at(-1)
@@ -191,6 +208,57 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                       </tbody>
                     </Tabla>
                   </div>
+                </details>
+              ))
+            )}
+          </TarjetaCuerpo>
+        </Tarjeta>
+
+        <Tarjeta data-recargo-extras>
+          <TarjetaCabecera
+            titulo="Recargo de las horas extras"
+            descripcion={recargos.length > 0 ? `${moneda(totalRecargo)} en ${recargos.length} ${recargos.length === 1 ? 'código' : 'códigos'}` : undefined}
+            ayuda="Lo que la planilla diaria pagó de más por cada hora extra (el recargo de la regla sobre la hora de la persona), repartido entre los códigos que esa persona trabajó ese día por sus horas validadas. Las horas de arriba van a su costo; el recargo se suma aparte a la mano de obra de cada código. Las extras que se reservan no llevan recargo hasta que se pagan."
+          />
+          <TarjetaCuerpo className="space-y-2">
+            {recargos.length === 0 ? (
+              <p className="text-sm text-texto-suave">Ninguna planilla diaria pagó horas extras este mes.</p>
+            ) : (
+              recargos.map((r) => (
+                <details key={r.codigo} className="rounded-lg border border-borde" data-recargo={r.codigo}>
+                  <summary className="cursor-pointer px-4 py-3 text-texto">
+                    <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-center justify-between gap-2 align-middle">
+                      <span className="min-w-0">
+                        <strong className="block font-mono text-sm">{r.codigo}</strong>
+                        <span className="text-xs text-texto-suave">
+                          <span className="tabular">{horasCortas(r.horas)}</span> extras en {r.lineas.length}{' '}
+                          {r.lineas.length === 1 ? 'día' : 'días'}
+                        </span>
+                      </span>
+                      <strong className="tabular text-sm">{moneda(r.monto)}</strong>
+                    </span>
+                  </summary>
+                  <ul className="divide-y divide-borde border-t border-borde text-sm">
+                    {r.lineas.map((l) => (
+                      <li key={`${l.fecha}-${l.documento}`} className="flex flex-wrap justify-between gap-2 px-4 py-2">
+                        <span className="text-texto">
+                          <span className="tabular">{fecha(l.fecha)}</span> ·{' '}
+                          {l.planilla_id ? (
+                            <Link href={`/planilla-diaria/${l.planilla_id}`} className="font-mono text-acento hover:underline">
+                              {l.documento}
+                            </Link>
+                          ) : (
+                            <span className="font-mono">{l.documento}</span>
+                          )}
+                          <span className="text-xs text-texto-suave">
+                            {' '}
+                            · {l.personas} {l.personas === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(l.horas)}</span>
+                          </span>
+                        </span>
+                        <span className="tabular text-texto">{moneda(l.monto)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </details>
               ))
             )}

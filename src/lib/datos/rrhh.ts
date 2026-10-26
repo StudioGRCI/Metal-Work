@@ -249,6 +249,103 @@ export async function tareosDelMes(mes: string): Promise<Tareo[]> {
   })
 }
 
+/** El recargo de las horas extras que pagó una planilla diaria, en un código y un día. */
+export type RecargoExtras = {
+  codigo: string
+  fecha: string
+  /** El número de la planilla diaria que lo pagó. */
+  documento: string
+  planilla_id: string | null
+  personas: number
+  horas: number
+  monto: number
+}
+
+/**
+ * El recargo de las horas extras del mes (`YYYY-MM`) por código, lo mismo que
+ * suma el costeo de cada código (`rrhh_recargo_extras_del_mes`). Exige `rrhh.personal`.
+ */
+export async function recargoExtrasDelMes(mes: string): Promise<RecargoExtras[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_recargo_extras_del_mes', { p_mes: `${mes}-01` })
+  if (error) throw new Error(`No se pudo leer el recargo de las horas extras: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.codigo && f.fecha
+      ? [
+          {
+            codigo: f.codigo,
+            fecha: f.fecha,
+            documento: f.documento ?? '',
+            planilla_id: f.planilla_id,
+            personas: f.personas ?? 0,
+            horas: Number(f.horas ?? 0),
+            monto: Number(f.monto ?? 0),
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * Cómo entra cada persona de la planilla de taller al costo de los códigos:
+ * `HORAS`, por sus horas del mes más el ajuste a su costo real; `SIN_COSTO`,
+ * tiene horas en el reporte pero su ficha no tiene costo mensual, y su costo va
+ * por esas horas; `SIN_FICHA` o `SIN_HORAS`, su costo entero por las horas de
+ * todos; `OFICINA`, no entra (va por los pagos de la oficina); `ANTES`, de antes
+ * de octubre de 2026, cuando no había reporte diario.
+ */
+export type PersonaAlCosto = {
+  persona_id: string
+  trabajador_id: string | null
+  trabajador: string | null
+  como: 'HORAS' | 'SIN_COSTO' | 'SIN_FICHA' | 'SIN_HORAS' | 'OFICINA' | 'ANTES'
+  costo: number
+  horas: number
+  costo_horas: number
+  /** El recargo de sus horas extras que la planilla diaria pagó y ya entró a los códigos. */
+  recargo: number
+  ajuste: number
+  /** Lo que de verdad llega a los códigos: 0 si no hay adónde (un mes sin horas en ningún código). */
+  entra: number
+  codigos: number
+  /** El mes tiene horas en algún código. */
+  mes_con_horas: boolean
+}
+
+/** Las personas de una planilla de taller y cómo entran al costo (`rrhh_planilla_al_costo`), por persona. */
+export async function planillaAlCosto(planillaId: string): Promise<Map<string, PersonaAlCosto>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_planilla_al_costo', { p_planilla: planillaId })
+  if (error) throw new Error(`No se pudo leer cómo entra la planilla al costo: ${error.message}`)
+  const comoDe = (v: string | null): PersonaAlCosto['como'] =>
+    v === 'SIN_COSTO' || v === 'SIN_FICHA' || v === 'SIN_HORAS' || v === 'OFICINA' || v === 'ANTES' ? v : 'HORAS'
+  return new Map(
+    (data ?? []).flatMap((f) =>
+      f.persona_id
+        ? [
+            [
+              f.persona_id,
+              {
+                persona_id: f.persona_id,
+                trabajador_id: f.trabajador_id,
+                trabajador: f.trabajador,
+                como: comoDe(f.como),
+                costo: Number(f.costo ?? 0),
+                horas: Number(f.horas ?? 0),
+                costo_horas: Number(f.costo_horas ?? 0),
+                recargo: Number(f.recargo ?? 0),
+                ajuste: Number(f.ajuste ?? 0),
+                entra: Number(f.entra ?? 0),
+                codigos: f.codigos ?? 0,
+                mes_con_horas: f.mes_con_horas ?? false,
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  )
+}
+
 /** Los códigos internos que ya usa la empresa, para elegir en vez de escribir. */
 export async function codigosInternos(): Promise<string[]> {
   const supabase = await createClient()
@@ -297,20 +394,39 @@ export async function listarObservaciones(filtro: { mes: string } | { trabajador
   return ((data ?? []) as unknown as FilaObservacion[]).map((o) => ({ ...o, trabajador: unico(o.trabajador) }))
 }
 
-/** Un permiso que pidió una persona, con lo que ya justificó con sus horas extras. */
+/** Un permiso que pidió una persona, con lo que ya justificó con sus horas extras o se le descontó. */
 export type Permiso = {
   id: string
   trabajador_id: string
   nombre: string
   cargo: string | null
   activo: boolean
+  /** De taller (se le paga por las horas del reporte) o administrativa (por su sueldo). */
+  planilla: 'TALLER' | 'ADMINISTRATIVA'
   fecha: string
   horas: number
   motivo: string
   justificadas: number
+  /** Las horas que RR. HH. decidió descontar porque no se justificaron. */
+  descontadas: number
   por_justificar: number
   /** Las horas extras que hoy tiene reservadas la persona. */
   saldo: number
+  /** Quedó en las observaciones de la persona como permiso sin justificar. */
+  reportado: boolean
+  /** Lo que marcó en portería ese día. */
+  ingreso: string | null
+  salida: string | null
+  /** Las horas que el supervisor le puso ese día en sus reportes. */
+  horas_reporte: number | null
+  /** Las horas del permiso que la planilla diaria ya pagó (justificadas con extras). */
+  horas_pagadas: number
+  /** Lo restado del pago por ese día; `null` para quien no ve el sueldo. */
+  descontado: number | null
+  /** La hora de su remuneración (entre 240); `null` para quien no ve el sueldo o sin remuneración. */
+  valor_hora: number | null
+  /** Lo que el próximo pago va a restar (o devolver, en negativo) por ese día; `null` para quien no ve el sueldo. */
+  por_restar: number | null
   creado_en: string
   anulado_en: string | null
   motivo_anulacion: string | null
@@ -319,11 +435,12 @@ export type Permiso = {
 /**
  * Con `mes` (`YYYY-MM`), los permisos de ese mes, incluidos los anulados; sin
  * él, los que todavía deben horas, de cualquier mes. Lo calcula la base
- * (`rrhh_permisos_personal`): quien solo consulta no lee el uso del saldo.
+ * (`rrhh_permisos_con_estado`): quien solo consulta no lee el uso del saldo ni
+ * lo restado en soles.
  */
 export async function listarPermisos(mes?: string): Promise<Permiso[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('rrhh_permisos_personal', mes ? { p_mes: `${mes}-01` } : {})
+  const { data, error } = await supabase.rpc('rrhh_permisos_con_estado', mes ? { p_mes: `${mes}-01` } : {})
   if (error) throw new Error(`No se pudieron leer los permisos: ${error.message}`)
   return (data ?? []).flatMap((f) =>
     f.id && f.trabajador_id && f.fecha && f.creado_en
@@ -334,12 +451,22 @@ export async function listarPermisos(mes?: string): Promise<Permiso[]> {
             nombre: f.nombre ?? '',
             cargo: f.cargo,
             activo: f.activo ?? true,
+            planilla: f.planilla === 'ADMINISTRATIVA' ? 'ADMINISTRATIVA' : 'TALLER',
             fecha: f.fecha,
             horas: Number(f.horas ?? 0),
             motivo: f.motivo ?? '',
             justificadas: Number(f.justificadas ?? 0),
+            descontadas: Number(f.descontadas ?? 0),
             por_justificar: Number(f.por_justificar ?? 0),
             saldo: Number(f.saldo ?? 0),
+            reportado: f.reportado ?? false,
+            ingreso: f.ingreso,
+            salida: f.salida,
+            horas_reporte: f.horas_reporte === null ? null : Number(f.horas_reporte),
+            horas_pagadas: Number(f.horas_pagadas ?? 0),
+            descontado: f.descontado === null ? null : Number(f.descontado),
+            valor_hora: f.valor_hora === null ? null : Number(f.valor_hora),
+            por_restar: f.por_restar === null ? null : Number(f.por_restar),
             creado_en: f.creado_en,
             anulado_en: f.anulado_en,
             motivo_anulacion: f.motivo_anulacion,
@@ -347,6 +474,91 @@ export async function listarPermisos(mes?: string): Promise<Permiso[]> {
         ]
       : [],
   )
+}
+
+/** Lo que el próximo pago de una persona le va a restar (monto positivo) o devolver (negativo). */
+export type DescuentoPorAplicar = {
+  trabajador_id: string
+  nombre: string
+  planilla: 'TALLER' | 'ADMINISTRATIVA'
+  /** De baja ya no tiene próximo pago: lo que le falta no se le va a restar. */
+  activo: boolean
+  concepto: 'TARDANZAS' | 'PERMISO'
+  /** El mes de las tardanzas (su primer día) o el día del permiso. */
+  fecha: string
+  horas: number | null
+  monto: number
+  detalle: string
+}
+
+/**
+ * Lo que falta restar o devolver a cada persona por tardanzas y permisos
+ * descontados, hasta `hasta` (hoy, sin ella). Lo mismo que aplican la planilla
+ * diaria y el pago de la oficina. Solo RR. HH.
+ */
+export async function descuentosPorAplicar(hasta?: string): Promise<DescuentoPorAplicar[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_descuentos_por_aplicar', hasta ? { p_hasta: hasta } : {})
+  if (error) throw new Error(`No se pudo leer lo que hay por descontar: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.trabajador_id && f.fecha && f.concepto && f.monto !== null
+      ? [
+          {
+            trabajador_id: f.trabajador_id,
+            nombre: f.nombre ?? 'Persona',
+            planilla: f.planilla === 'ADMINISTRATIVA' ? 'ADMINISTRATIVA' : 'TALLER',
+            activo: f.activo ?? true,
+            concepto: f.concepto === 'PERMISO' ? 'PERMISO' : 'TARDANZAS',
+            fecha: f.fecha,
+            horas: f.horas === null ? null : Number(f.horas),
+            monto: Number(f.monto),
+            detalle: f.detalle ?? '',
+          },
+        ]
+      : [],
+  )
+}
+
+/** Lo restado a cada persona por las tardanzas de un mes, lo que falta y en qué pago se restó. */
+export type TardanzasRestadas = { descontado: number; por_descontar: number; documentos: string | null }
+
+export async function tardanzasRestadas(mes: string): Promise<Map<string, TardanzasRestadas>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_descuentos_de_tardanzas', { p_mes: `${mes}-01` })
+  if (error) throw new Error(`No se pudo leer lo restado por tardanzas: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) =>
+      f.trabajador_id
+        ? [
+            [
+              f.trabajador_id,
+              { descontado: Number(f.descontado ?? 0), por_descontar: Number(f.por_descontar ?? 0), documentos: f.documentos },
+            ] as const,
+          ]
+        : [],
+    ),
+  )
+}
+
+/**
+ * Lo que el sistema ya le restó a cada persona en un mes `YYYY-MM` (neto de lo
+ * devuelto): por las tardanzas del mes y por los permisos descontados de sus
+ * días. Para comparar con los descuentos que trae el Excel de la planilla del mes.
+ * Pide `rrhh.personal` o `planilla_diaria.preparar`.
+ */
+export async function restadoDelMes(mes: string): Promise<Map<string, { tardanzas: number; permisos: number }>> {
+  const [tardanzas, permisos] = await Promise.all([tardanzasRestadas(mes), listarPermisos(mes)])
+  const restado = new Map<string, { tardanzas: number; permisos: number }>()
+  for (const [id, t] of tardanzas) restado.set(id, { tardanzas: t.descontado, permisos: 0 })
+  // Lo restado va por día: dos permisos del mismo día (uno anulado) lo traen dos veces.
+  const dias = new Set<string>()
+  for (const p of permisos) {
+    if (!p.descontado || dias.has(`${p.trabajador_id}|${p.fecha}`)) continue
+    dias.add(`${p.trabajador_id}|${p.fecha}`)
+    const v = restado.get(p.trabajador_id) ?? { tardanzas: 0, permisos: 0 }
+    restado.set(p.trabajador_id, { ...v, permisos: v.permisos + p.descontado })
+  }
+  return restado
 }
 
 /** Un pago a una persona de la oficina, con el tramo de días que paga. Solo lo lee RR. HH. */
@@ -362,6 +574,8 @@ export type PagoOficina = {
   motivo_anulacion: string | null
   trabajador: { nombres: string; apellidos: string; cargo: string | null } | null
   anulador: { nombres: string; apellidos: string } | null
+  /** Lo que el pago restó (o devolvió, en negativo) por tardanzas y permisos: `monto` ya va sin ello. */
+  descuentos: { concepto: string; monto: number; detalle: string }[]
 }
 
 /** Los pagos de la oficina que tocan algún día del mes `YYYY-MM`, anulados incluidos. */
@@ -370,14 +584,19 @@ export async function pagosOficinaDelMes(mes: string, finDelMes: string): Promis
   const { data, error } = await supabase
     .from('oficina_pagos')
     .select(
-      'id, trabajador_id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, trabajador:trabajadores(nombres, apellidos, cargo), anulador:usuarios!oficina_pagos_anulado_por_fkey(nombres, apellidos)',
+      'id, trabajador_id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, trabajador:trabajadores(nombres, apellidos, cargo), anulador:usuarios!oficina_pagos_anulado_por_fkey(nombres, apellidos), descuentos:descuentos_del_pago!descuentos_del_pago_oficina_pago_id_fkey(concepto, monto, detalle)',
     )
     .lte('desde', finDelMes)
     .gte('hasta', `${mes}-01`)
     .order('desde')
     .order('creado_en')
   if (error) throw new Error(`No se pudieron leer los pagos de la oficina: ${error.message}`)
-  return (data ?? []).map((p) => ({ ...p, monto: Number(p.monto), aportes: Number(p.aportes) }))
+  return (data ?? []).map((p) => ({
+    ...p,
+    monto: Number(p.monto),
+    aportes: Number(p.aportes),
+    descuentos: (p.descuentos ?? []).map((d) => ({ concepto: d.concepto, monto: Number(d.monto), detalle: d.detalle })),
+  }))
 }
 
 /**

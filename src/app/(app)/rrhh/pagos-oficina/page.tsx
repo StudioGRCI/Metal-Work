@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, periodosAnteriores } from '@/lib/datos/rrhh'
+import { descuentosPorAplicar, inicioDelRegistroDePagos, listarTrabajadores, pagosOficinaDelMes, periodosAnteriores } from '@/lib/datos/rrhh'
 import { diasEntre, diasSinPago, finDeMes, parteDelMes } from '@/lib/dominio/pagos-oficina'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda, sumarDias } from '@/lib/format'
@@ -33,11 +33,13 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
   const inicio = `${mes}-01`
   const fin = finDeMes(mes)
 
-  const [pagos, personal, registro, periodos] = await Promise.all([
+  const [pagos, personal, registro, periodos, descuentos] = await Promise.all([
     pagosOficinaDelMes(mes, fin),
     listarTrabajadores('todos'),
     inicioDelRegistroDePagos(),
     periodosAnteriores(),
+    // Lo que el próximo pago de cada uno le va a restar o devolver (migración 20261026200000).
+    edita ? descuentosPorAplicar() : Promise.resolve([]),
   ])
   const vigentes = pagos.filter((p) => !p.anulado_en)
   const totalDelMes = vigentes.reduce((n, p) => n + parteDelMes(p, mes), 0)
@@ -68,7 +70,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Pagos de la oficina"
-        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
+        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Se escribe su sueldo de esos días, antes de descuentos, y el sistema le resta solo lo que tiene por tardanzas y por permisos descontados; queda lo que se le pagó. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           edita && (
@@ -76,7 +78,15 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
             inicio={inicio}
             personal={deOficina
               .filter((t) => t.activo || (t.fecha_baja !== null && t.fecha_baja >= inicio))
-              .map((t) => ({ id: t.id, nombre: nombre(t), cargo: t.cargo, inicio: primerDiaLibre(t.id) }))}
+              .map((t) => ({
+                id: t.id,
+                nombre: nombre(t),
+                cargo: t.cargo,
+                inicio: primerDiaLibre(t.id),
+                descuentos: descuentos
+                  .filter((d) => d.trabajador_id === t.id)
+                  .map((d) => ({ fecha: d.fecha, monto: d.monto, detalle: d.detalle })),
+              }))}
           />
           )
         }
@@ -170,6 +180,19 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                       <TD className="align-top">
                         <p className={`font-medium text-texto ${anulado ? 'line-through' : ''}`}>{quien}</p>
                         {p.nota && <p className="text-xs text-texto-suave">{p.nota}</p>}
+                        {p.descuentos.length > 0 && (
+                          <ul className={`mt-1 space-y-0.5 text-xs ${anulado ? 'line-through opacity-70' : ''}`} data-descuentos>
+                            {p.descuentos.map((d, i) => (
+                              <li key={i} className={d.monto > 0 ? 'text-peligro' : 'text-exito'}>
+                                <span className="tabular">
+                                  {d.monto > 0 ? '− ' : '+ '}
+                                  {moneda(Math.abs(d.monto))}
+                                </span>{' '}
+                                · {d.detalle}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                         {anulado && (
                           <>
                             <Insignia tono="peligro" className="mt-1">
@@ -186,13 +209,18 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                         <p className="tabular text-sm text-texto">
                           {fecha(p.desde)} al {fecha(p.hasta)}
                         </p>
-                        <p className="tabular text-[11px] text-texto-suave">
+                        <p className="tabular text-xs text-texto-suave">
                           {dias} {dias === 1 ? 'día' : 'días'}
                         </p>
                       </TD>
                       <TD className={`tabular hidden text-right align-top whitespace-nowrap sm:table-cell ${anulado ? 'line-through' : ''}`}>
                         {moneda(p.monto + p.aportes)}
-                        {p.aportes > 0 && <p className="text-[11px] text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
+                        {p.aportes > 0 && <p className="text-xs text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
+                        {p.descuentos.length > 0 && (
+                          <p className="text-xs text-texto-suave">
+                            de {moneda(p.monto + p.descuentos.reduce((n, d) => n + d.monto, 0))} de sueldo
+                          </p>
+                        )}
                       </TD>
                       <TD className={`tabular text-right align-top font-semibold whitespace-nowrap ${anulado ? 'line-through' : ''}`}>
                         {moneda(parteDelMes(p, mes))}

@@ -541,7 +541,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               {expediente.costo.lineas.length > 0 && (
                 <SeccionDesplegable
                   titulo="Lo cargado solo a esta OT"
-                  descripcion="Como se costeaba la OT antes del código: despachos de su requerimiento, la planilla del mes que RR. HH. repartió a la OT y los gastos de las áreas. No es el costo de la unidad, que es el de su código: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona."
+                  descripcion="Como se costeaba la OT antes del código: despachos de su requerimiento, la planilla del mes que RR. HH. repartía a la OT (hasta octubre de 2026) y los gastos de las áreas. No es el costo de la unidad, que es el de su código: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona y el ajuste de la planilla de taller."
                 >
                   <div className="space-y-5">
                     {composicion.monedas.length > 0 && (
