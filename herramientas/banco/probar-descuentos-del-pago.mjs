@@ -16,10 +16,14 @@
  *      que se le resta y cuánto se le paga, y la base guarda eso mismo.
  *   5. Tardanzas dice ahora dónde se restó; Costeo por código muestra el recargo
  *      de la hora extra pagada en el código que se trabajó.
- *   6. Planillas: el globo cuenta la planilla de taller del mes pasado que sigue
- *      en preparación. En la de este mes, Juan agregado a mano por su DNI dice
- *      sus horas y su ajuste; alguien sin ficha lo dice; al cerrarla, Gerencia ve
- *      el ajuste en la mano de obra del código.
+ *   6. Planillas: el ajuste empieza en noviembre de 2026 (migración
+ *      20261026230000). Antes de esa fecha, la de este mes dice que queda como
+ *      registro y el globo no cuenta la del mes pasado. Después la prueba mueve
+ *      el inicio al mes pasado (lo restaura al terminar): el globo cuenta la
+ *      planilla de taller del mes pasado que sigue en preparación; en la de este
+ *      mes, Juan agregado a mano por su DNI dice sus horas y su ajuste; alguien
+ *      sin ficha lo dice; al cerrarla, Gerencia ve el ajuste en la mano de obra
+ *      del código.
  *
  * Necesita las cuentas `*.local@metalwork.test` de RR. HH., Supervisión de
  * Maestranza, Gerencia y Tesorería. Las personas, sus reportes, marcas y
@@ -121,6 +125,8 @@ if (yaEste) throw new Error(`El banco ya tiene la planilla de taller de ${mes}: 
 const planillaEste = crypto.randomUUID()
 const planillaPasado = yaPasado ? null : crypto.randomUUID()
 let planillaDiaria = null
+// La definición de `planilla_ajuste_desde()` antes de moverla, para restaurarla al terminar.
+let ajusteOriginal = null
 
 // RR. HH.: Juan de taller (la hora a S/ 10) y Lucía de la oficina (la hora a S/ 12,50).
 await comoPuesto(
@@ -232,6 +238,14 @@ const tarjetaPlanilla = (pagina, periodo) =>
     .locator('xpath=ancestor::div[contains(@class, "shadow-")][1]')
 const globoPlanillas = async (pagina) =>
   (await pagina.locator('aside nav[aria-label="Menú principal"] a[href="/rrhh"]').getAttribute('aria-label').catch(() => null)) ?? ''
+/** Lo que el globo de Planillas tiene que decir: las de taller de un mes pasado, en preparación, desde que empieza el ajuste. */
+async function globoEsperado() {
+  const [{ n }] = await consulta(
+    `select count(*)::int as n from planillas where tipo = 'TALLER' and moneda = 'PEN' and estado = 'BORRADOR'
+        and periodo >= public.planilla_ajuste_desde() and periodo < date_trunc('month', (now() at time zone 'America/Lima')::date)`,
+  )
+  return { n, texto: n > 0 ? `Planillas, ${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : '' }
+}
 
 try {
   const rrhh = await entrar(CUENTAS.rrhh)
@@ -413,19 +427,8 @@ try {
       `${mes}-01`,
       rrhhId,
     ])
-    const [{ n }] = await consulta(
-      `select count(*)::int as n from planillas where tipo = 'TALLER' and moneda = 'PEN' and estado = 'BORRADOR'
-          and periodo < date_trunc('month', (now() at time zone 'America/Lima')::date)`,
-    )
-    await pagina.reload({ waitUntil: 'networkidle' })
-    const conPasada = await globoPlanillas(pagina)
-    comprobar(
-      conPasada === `Planillas, ${n} ${n === 1 ? 'pendiente' : 'pendientes'}`,
-      `el globo de Planillas cuenta la del mes pasado en preparación y no la de este mes («${sinPasada}» → «${conPasada}», base ${n})`,
-    )
-
-    await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
     const tarjeta = tarjetaPlanilla(pagina, `${mes}-01`)
+    const enPlanilla = `${juan.apellidos.toUpperCase()} ${juan.nombres.toUpperCase()}`
     async function agregar(nombrePlanilla, documento, monto) {
       // El pliegue queda abierto tras agregar a alguien: se abre solo si está cerrado.
       const pliegue = tarjeta.locator('details', { has: pagina.locator(`#pl-nom-${planillaEste}`) })
@@ -436,8 +439,59 @@ try {
       await tarjeta.getByRole('button', { name: 'Agregar', exact: true }).click()
       await esperar(tarjeta.locator('summary'), nombrePlanilla)
     }
-    const enPlanilla = `${juan.apellidos.toUpperCase()} ${juan.nombres.toUpperCase()}`
-    await agregar(enPlanilla, juan.dni, 1000)
+
+    // Con la fecha real: antes de noviembre de 2026, la de este mes queda como registro.
+    const [{ desde: ajusteReal }] = await consulta(`select to_char(public.planilla_ajuste_desde(), 'YYYY-MM-DD') as desde`)
+    comprobar(ajusteReal === '2026-11-01', `el ajuste de la planilla de taller empieza en noviembre de 2026 (base ${ajusteReal})`)
+    if (`${mes}-01` < ajusteReal) {
+      await pagina.reload({ waitUntil: 'networkidle' })
+      const real = await globoEsperado()
+      const sinAjuste = await globoPlanillas(pagina)
+      comprobar(
+        sinAjuste === real.texto && sinAjuste === sinPasada,
+        `el globo no cuenta la planilla de taller del mes pasado, que queda como registro («${sinPasada}» → «${sinAjuste}», base ${real.n})`,
+      )
+      await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
+      await agregar(enPlanilla, juan.dni, 1000)
+      const cabecera = await texto(tarjeta.locator('h2 + p'))
+      const registro = await texto(tarjeta.locator('[data-solo-registro]'))
+      const resumen = await texto(tarjeta.locator('details', { hasText: enPlanilla }).locator('summary'))
+      comprobar(
+        cabecera.includes('queda como registro') && !cabecera.includes('ajuste') && registro.includes('empieza en noviembre de 2026'),
+        `la de este mes dice que queda como registro: «${cabecera}» · «${registro}»`,
+      )
+      comprobar(resumen.includes('de antes de noviembre de 2026: queda como registro'), `la fila de Juan lo dice: «${resumen}»`)
+      comprobar((await tarjeta.locator('[data-espera-cierre]').count()) === 0, 'no pide cerrarla para ajustar nada')
+      await tarjeta.getByRole('button', { name: 'Cerrar planilla' }).click()
+      const ventana = pagina.locator('[role="dialog"]')
+      await ventana.waitFor({ timeout: 10000 })
+      const aviso = await texto(ventana)
+      comprobar(
+        aviso.includes('Queda como registro: el ajuste de la planilla de taller empieza en noviembre de 2026.') &&
+          !aviso.includes('de ajuste entran') &&
+          !aviso.includes('El mes todavía no termina'),
+        `la ventana de cierre no promete ajuste: «${aviso.slice(0, 300)}»`,
+      )
+      await pagina.screenshot({ path: `${CAPTURAS}/descuentos-planilla-solo-registro.png`, fullPage: true })
+      await ventana.getByRole('button', { name: 'Cancelar' }).click()
+      await ventana.waitFor({ state: 'hidden', timeout: 10000 })
+    }
+
+    // Desde aquí el ajuste empieza en el mes pasado, para probarlo antes de noviembre (se restaura al terminar).
+    ;[{ def: ajusteOriginal }] = await consulta(`select pg_get_functiondef('public.planilla_ajuste_desde()'::regprocedure) as def`)
+    await consulta(
+      `create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select '${mesPasado}-01'::date $f$`,
+    )
+    await pagina.goto(`${BASE}/rrhh/permisos`, { waitUntil: 'networkidle' })
+    const esperado = await globoEsperado()
+    const conPasada = await globoPlanillas(pagina)
+    comprobar(
+      conPasada === esperado.texto && esperado.n > 0,
+      `el globo de Planillas cuenta la del mes pasado en preparación y no la de este mes («${sinPasada}» → «${conPasada}», base ${esperado.n})`,
+    )
+
+    await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
+    if ((await tarjeta.locator('details', { hasText: enPlanilla }).count()) === 0) await agregar(enPlanilla, juan.dni, 1000)
     await agregar(`Pedro Sinficha ${sello}`, '', 500)
     const [costo] = await consulta(
       `select como, horas::float as horas, ajuste::float as ajuste, codigos from planilla_al_costo($1) where trabajador_id = $2`,
@@ -588,6 +642,10 @@ try {
     `update trabajadores set activo = false, fecha_baja = greatest(fecha_ingreso, (now() at time zone 'America/Lima')::date) where id = any($1::uuid[])`,
     [[juan.id, lucia.id]],
   ).catch((e) => fallas.push(`no se pudo dar de baja a las personas de la prueba: ${e}`))
+  // El inicio del ajuste vuelve a ser el de la migración (create or replace conserva los permisos).
+  if (ajusteOriginal) {
+    await consulta(ajusteOriginal).catch((e) => fallas.push(`no se pudo restaurar planilla_ajuste_desde(): ${e}`))
+  }
   await navegador.close()
   await base.end()
 }

@@ -13,6 +13,9 @@
  *      alguien que solo comparte «DE LA» con la quitada. La ventana avisa que
  *      las de antes ya están y no figuran en el Excel; la del nombre corregido
  *      lo dice en su fila y «Elegir las N» no la mete; la nueva no se marca.
+ *   3b. Un libro que le resta tardanzas y permisos a alguien: la ventana avisa
+ *      que el sistema ya los resta del pago (DKS, 2026-10-26: RR. HH. deja de
+ *      ponerlos en el Excel), arriba y en su fila. No se importa.
  *   4. En la planilla administrativa del mismo mes, «Agregar persona … a mano»
  *      con el nombre de una que ya está en la de taller no entra.
  *   5. En la planilla quedan las cuatro, cada una con la hoja y fila de su carga.
@@ -96,17 +99,19 @@ const ANA_CORREGIDA = `QUISPE ROJAS ANA LUCIA ${sello}`
 const MARIA = `PEREZ DE LA TORRE MARIA ${sello}`
 const PEDRO = `GARCIA DE LA CRUZ PEDRO ${sello}`
 
-/** Una boleta de quince filas, con la forma de la del Excel de RR. HH. */
-function boleta(nombre, sueldo) {
-  const descuentos = Math.round(sueldo * 0.13 * 100) / 100
+/** Una boleta de quince filas, con la forma de la del Excel de RR. HH. `otros`: descuentos más, como [['TARDANZAS', 50]]. */
+function boleta(nombre, sueldo, otros = []) {
+  const aporte = Math.round(sueldo * 0.13 * 100) / 100
+  const descuentos = Math.round((aporte + otros.reduce((n, [, importe]) => n + importe, 0)) * 100) / 100
+  const libres = [0, 1, 2, 3].map((i) => (otros[i] ? [null, null, null, otros[i][0], otros[i][1]] : []))
   return [
     [null, 'NOMBRES Y APELLIDOS', nombre],
     [null, 'PUESTO DE TRABAJO :', 'SOLDADOR'],
     [null, 'N° DE DÍAS TRABAJADOS', 'N° DE HORAS TRABAJADAS', null, 'N° DE HORAS EXTRAS '],
     [null, 30, 240, null, 0],
     [null, 'INGRESOS', null, 'DESCUENTOS'],
-    [null, 'SUELDO SIN BONOS', sueldo, 'APORTE  10.00%', descuentos],
-    [], [], [], [],
+    [null, 'SUELDO SIN BONOS', sueldo, 'APORTE  10.00%', aporte],
+    ...libres,
     [null, 'TOTAL', sueldo, 'TOTAL', descuentos],
     [],
     [null, 'ESSALUD ', 0.09, null, Math.round(sueldo * 9) / 100],
@@ -118,7 +123,7 @@ function boleta(nombre, sueldo) {
 async function libro(archivo, personas) {
   const l = new ExcelJS.Workbook()
   const h = l.addWorksheet(hoja)
-  for (const [nombre, sueldo] of personas) for (const fila of boleta(nombre, sueldo)) h.addRow(fila.length ? fila : [null])
+  for (const [nombre, sueldo, otros] of personas) for (const fila of boleta(nombre, sueldo, otros)) h.addRow(fila.length ? fila : [null])
   const ruta = join(CAPTURAS, archivo)
   await l.xlsx.writeFile(ruta)
   return ruta
@@ -126,6 +131,8 @@ async function libro(archivo, personas) {
 const primero = await libro(`planilla-${sello}-primera.xlsx`, [[ANA, 2000], [JORGE, 2400], [MARIA, 1500]])
 const corregido = await libro(`planilla-${sello}-corregida.xlsx`, [[NUEVA, 1800], [ANA, 2000], [JORGE, 2400], [MARIA, 1500]])
 const renombrado = await libro(`planilla-${sello}-nombre-corregido.xlsx`, [[NUEVA, 1800], [ANA_CORREGIDA, 2000], [JORGE, 2400], [PEDRO, 1500]])
+const CARLOS = `VEGA SOTO CARLOS ${sello}`
+const conTardanzas = await libro(`planilla-${sello}-con-tardanzas.xlsx`, [[NUEVA, 1800], [ANA, 2000], [JORGE, 2400], [MARIA, 1500], [CARLOS, 2100, [['TARDANZAS', 50], ['PERMISOS', 20]]]])
 
 // ------------------------------------------------- RR. HH. con clic real
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -204,6 +211,25 @@ try {
   comprobar(!filaPedro.includes('¿Es'), 'quien solo comparte «DE LA» con otra no sale como nombre corregido')
   comprobar((await v.getByRole('button', { name: 'Elegir las 1' }).count()) === 1, '«Elegir las N» cuenta a la persona nueva y no a la del nombre corregido')
   await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-nombre-corregido-aviso.png`, fullPage: false, caret: 'initial' })
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+
+  // 3b. Tardanzas y permisos en el Excel: el sistema ya los resta del pago.
+  v = await cargar(conTardanzas, [])
+  const avisoDoble = limpio(await v.locator('[data-doble-resta]').textContent({ timeout: 10000 }).catch(() => ''))
+  comprobar(
+    avisoDoble.includes('1 persona trae tardanzas o permisos') && avisoDoble.includes('quítalos del Excel para no restarlos dos veces'),
+    `la ventana avisa que el Excel trae tardanzas o permisos (${avisoDoble.slice(0, 160)})`,
+  )
+  const filaCarlos = limpio(await v.locator('label', { hasText: CARLOS }).textContent())
+  comprobar(
+    filaCarlos.includes('El Excel le resta tardanzas S/ 50.00 y permisos S/ 20.00: el sistema ya los resta del pago.') ||
+      filaCarlos.includes('El Excel le resta tardanzas S/ 50,00 y permisos S/ 20,00: el sistema ya los resta del pago.'),
+    `su fila dice cuánto le resta el Excel (${filaCarlos.slice(0, 260)})`,
+  )
+  const filaJorge = limpio(await v.locator('label', { hasText: JORGE }).textContent())
+  comprobar(!filaJorge.includes('El Excel le resta'), 'quien no trae tardanzas ni permisos no lleva ese aviso')
+  await v.locator('[data-doble-resta]').scrollIntoViewIfNeeded().catch(() => {})
+  await pagina.screenshot({ path: `${CAPTURAS}/rrhh-excel-con-tardanzas-aviso.png`, fullPage: false, caret: 'initial' })
   await v.getByRole('button', { name: 'Cancelar' }).click()
 
   // 4. A mano, en la planilla administrativa del mismo mes, la misma persona

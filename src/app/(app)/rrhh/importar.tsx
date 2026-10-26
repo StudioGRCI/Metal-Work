@@ -16,13 +16,30 @@ const id = (l: LineaPlanilla) => `${l.hoja}#${l.fila}`
 const PARTICULAS = new Set(['DEL', 'LAS', 'LOS'])
 const palabras = (nombre: string) => claveNombre(nombre).split(' ').filter((p) => p.length > 2 && !PARTICULAS.has(p))
 const costo = (l: LineaPlanilla) => l.detalle.ingresos + l.detalle.aporte_empleador
+// Las tardanzas y los permisos que el Excel le resta: desde octubre de 2026 los
+// resta el sistema del pago (migración 20261026200000), así que en el Excel se
+// restarían dos veces. RR. HH. deja de ponerlos ahí (DKS, 2026-10-26).
+function yaLosRestaElSistema(l: LineaPlanilla): string[] {
+  const suma = (clave: string) =>
+    l.detalle.conceptos.filter((c) => c.tipo === 'DESCUENTO' && c.clave === clave).reduce((s, c) => s + c.importe, 0)
+  const tardanzas = suma('TARDANZAS')
+  const permisos = suma('PERMISOS')
+  return [tardanzas > 0 && `tardanzas ${moneda(tardanzas)}`, permisos > 0 && `permisos ${moneda(permisos)}`].filter((x): x is string => Boolean(x))
+}
 
 /**
  * Importar la planilla desde el Excel de Recursos Humanos: se lee el libro
  * entero, se ven las personas por empresa —como en la hoja PAGOS— con lo que
  * no cuadra, y se eligen las que van a esta planilla.
  */
-export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
+export function ImportarPlanilla({
+  planillaId,
+  restaSola,
+}: {
+  planillaId: string
+  /** El mes de la planilla es de octubre de 2026 o después: el sistema ya resta las tardanzas y los permisos del pago. */
+  restaSola: boolean
+}) {
   const [abierta, setAbierta] = useState(false)
   const [lectura, setLectura] = useState<LecturaPlanilla | null>(null)
   const [seleccion, setSeleccion] = useState<string[]>([])
@@ -32,6 +49,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
 
   const todas = useMemo(() => lectura?.empresas.flatMap((g) => g.lineas) ?? [], [lectura])
   const elegidas = todas.filter((l) => seleccion.includes(id(l)))
+  const conDobleResta = restaSola ? todas.filter((l) => yaLosRestaElSistema(l).length > 0).length : 0
   const yaEsta = (l: LineaPlanilla) => lectura?.yaEn[claveNombre(l.nombre)]
   // Quien ya entró a esta planilla y no figura en el libro: si es que se le
   // corrigió el nombre, la versión corregida sale para elegir y entraría dos veces.
@@ -91,6 +109,15 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
               </p>
             </div>
           )}
+          {conDobleResta > 0 && (
+            <div role="note" data-doble-resta className="flex items-start gap-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-3 text-sm text-texto">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
+              <p>
+                {conDobleResta === 1 ? '1 persona trae' : `${conDobleResta} personas traen`} tardanzas o permisos en los descuentos del Excel. Desde octubre de 2026
+                el sistema ya los resta del pago, en la planilla diaria y en los pagos de la oficina: quítalos del Excel para no restarlos dos veces.
+              </p>
+            </div>
+          )}
           {lectura.errores.length > 0 && (
             <div role="alert" className="rounded-[var(--radius-base)] border border-peligro/40 bg-peligro-suave p-3 text-sm">
               <p className="font-medium text-peligro">No se pueden importar ({lectura.errores.length})</p>
@@ -122,8 +149,12 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
                   {g.lineas.map((l) => {
                     const ya = yaEsta(l)
                     const parecida = !ya && pareceA(l)
+                    const restados = restaSola ? yaLosRestaElSistema(l) : []
                     const avisos = [
                       ...(parecida ? [`¿Es ${parecida} con el nombre corregido? Ya está en esta planilla: si es la misma, no la elijas.`] : []),
+                      ...(restados.length > 0
+                        ? [`El Excel le resta ${restados.join(' y ')}: el sistema ya los resta del pago.`]
+                        : []),
                       ...(l.detalle.avisos ?? []),
                     ]
                     return (

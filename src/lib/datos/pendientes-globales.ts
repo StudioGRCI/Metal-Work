@@ -423,7 +423,9 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   // por sus horas se reparte entre los códigos (migración 20261026210000).
   // Mientras siga en preparación, la mano de obra de esos códigos sale corta.
   // No cuenta la que todavía no se crea: la de un mes sin planilla no tiene
-  // nada que cerrar hasta que RR. HH. la importe.
+  // nada que cerrar hasta que RR. HH. la importe. Tampoco la de antes de
+  // noviembre de 2026, que queda como registro (`planilla_ajuste_desde()`,
+  // migración 20261026230000).
   if (puede(perfil, 'rrhh.gestionar_planillas')) {
     const esteMes = `${hoy.slice(0, 7)}-01`
     tareas.push({
@@ -433,12 +435,15 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       texto: (n) =>
         plural(n, 'planilla de taller por cerrar: su ajuste no entra a los códigos', 'planillas de taller por cerrar: su ajuste no entra a los códigos'),
       contar: async () => {
+        const desde = await supabase.rpc('planilla_ajuste_desde')
+        if (desde.error || !desde.data) throw new Error('No se pudo leer desde cuándo se ajusta la planilla.')
         const { count, error } = await supabase
           .from('planillas')
           .select('id', { count: 'exact', head: true })
           .eq('tipo', 'TALLER')
           .eq('moneda', 'PEN')
           .eq('estado', 'BORRADOR')
+          .gte('periodo', desde.data)
           .lt('periodo', esteMes)
         if (error) throw new Error('No se pudo leer la planilla.')
         return count ?? 0
