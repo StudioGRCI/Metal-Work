@@ -442,16 +442,6 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   }))
 }
 
-export type OtParaLogistica = { id: string; numero: string; unidad: string | null }
-
-/** Las OT vigentes, con su unidad, para referir un servicio. */
-export async function otsParaLogistica(): Promise<OtParaLogistica[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ots_para_logistica')
-  if (error) throw new Error(`No se pudieron leer las órdenes de trabajo: ${error.message}`)
-  return (data ?? []).map((o) => ({ id: o.id ?? '', numero: o.numero ?? '', unidad: o.unidad }))
-}
-
 export type AreaSolicitante = { id: string; codigo: string; nombre: string }
 
 /** Las áreas que piden servicios afuera. */

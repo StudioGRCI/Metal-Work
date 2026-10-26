@@ -10,7 +10,8 @@
  *   3. En «Esperan reposición» recibe 1 que llegó.
  *   4. Logística, en el teléfono, ve la devolución en Órdenes de compra y dice
  *      que el que falta ya no viene: el RQ se parte y el nuevo insumo sale en
- *      su lista «por comprar», con «Se compra otra vez».
+ *      su lista «por comprar», con «Se compra otra vez»; el aviso de la nota de
+ *      crédito se lee con su unidad y el motivo aparte.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * CAPTURAS y el correo de cada cuenta si no es la `<puesto>.local@metalwork.test`
@@ -253,6 +254,11 @@ const pendienteDeLaOc = async () =>
 const [aviso] = await consulta(`select count(*)::int as n from notificaciones where usuario_id = $1 and titulo = $2`,
   [ids[CUENTAS.contabilidad], `Espera la nota de crédito: ${ocNumero}`])
 comprobar(aviso.n >= 1, 'Contabilidad recibe el aviso de la nota de crédito')
+// El aviso se lee con su unidad y el motivo como frase aparte (migración 20261026130000).
+const [cuerpo] = await consulta(`select cuerpo from notificaciones where usuario_id = $1 and titulo = $2 order by creado_en desc limit 1`,
+  [ids[CUENTAS.contabilidad], `Espera la nota de crédito: ${ocNumero}`])
+comprobar(/^El proveedor ya no repone 3\.2 M de .+\. Motivo: El proveedor ya no tiene ese disco y emite nota de crédito\. Registra su nota/.test(cuerpo?.cuerpo ?? ''),
+  `el aviso dice «El proveedor ya no repone 3.2 M de …» y el motivo como su propia frase (${cuerpo?.cuerpo})`)
 
 await navegador.close()
 await base.end()

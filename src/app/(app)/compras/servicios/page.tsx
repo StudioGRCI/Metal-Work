@@ -9,7 +9,6 @@ import {
   areasSolicitantes,
   cargarOrdenesServicio,
   cargarTiposDetraccion,
-  otsParaLogistica,
   type OrdenServicioListada,
 } from '@/lib/datos/logistica'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
@@ -35,11 +34,10 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   const adjunta = puede(perfil, ['compras.crear', 'tesoreria.pagar_servicios'])
   const { codigo = '' } = await searchParams
   const buscado = codigo.trim()
-  const [servicios, tipos, proveedores, ordenes, areas, codigos] = await Promise.all([
+  const [servicios, tipos, proveedores, areas, codigos] = await Promise.all([
     cargarOrdenesServicio(),
     cargarTiposDetraccion(),
     emite ? proveedoresParaCompra() : Promise.resolve([]),
-    emite ? otsParaLogistica() : Promise.resolve([]),
     emite ? areasSolicitantes() : Promise.resolve([]),
     emite ? codigosParaElegir() : Promise.resolve(null),
   ])
@@ -57,7 +55,6 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           emite && (
             <NuevaOrdenServicio
               proveedores={proveedores}
-              ordenes={ordenes}
               areas={areas}
               tipos={tipos}
               codigos={codigos}
@@ -123,7 +120,7 @@ function FilaServicio({
   tipos: TipoDetraccion[]
   codigos: CodigoParaElegir[] | null
 }) {
-  const para = [s.orden ? `OT ${s.orden}` : null, s.unidad, s.area].filter(Boolean).join(' · ')
+  const para = [s.unidad, s.area].filter(Boolean).join(' · ')
   const abierta = s.estado === 'EMITIDA' || s.estado === 'EN_EJECUCION'
   const vigente = s.estado !== 'ANULADA' && s.aprobacion !== 'RECHAZADA'
   return (

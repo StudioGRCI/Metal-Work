@@ -4,7 +4,7 @@ type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
 /** De dónde nace la orden de compra. */
 export const ORIGEN_COMPRA: Record<string, Def> = {
-  REQUERIMIENTO: { etiqueta: 'Requerimiento', tono: 'neutro', descripcion: 'Nace de la solicitud de materiales de una OT.' },
+  REQUERIMIENTO: { etiqueta: 'Requerimiento', tono: 'neutro', descripcion: 'Nace de una solicitud de materiales de antes de los RQ.' },
   DIRECTA: { etiqueta: 'Directa', tono: 'info', descripcion: 'Logística compra para el almacén, sin requerimiento.' },
   // En la base va como directa (sin la solicitud de una OT), pero compra insumos de uno o varios RQ.
   RQ: { etiqueta: 'De RQ', tono: 'neutro', descripcion: 'Compra insumos de uno o varios requerimientos, cada uno con su código interno.' },
