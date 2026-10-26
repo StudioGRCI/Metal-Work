@@ -5,19 +5,10 @@ import { useRouter } from 'next/navigation'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { TIPOS_VEHICULO } from '@/lib/dominio/unidades'
 import { useEnvio } from '@/lib/envio'
 
 import { abrirOrdenDelTaller } from './acciones'
-
-const TIPOS_VEHICULO = [
-  ['VOLQUETE', 'Volquete'],
-  ['TRACTO', 'Tracto'],
-  ['SEMIRREMOLQUE', 'Semirremolque'],
-  ['CAMION', 'Camión'],
-  ['REMOLQUE', 'Remolque'],
-  ['FURGON', 'Furgón'],
-  ['OTRO', 'Otro'],
-] as const
 
 const TIPOS_TRABAJO = [
   ['REPARACION', 'Reparación'],

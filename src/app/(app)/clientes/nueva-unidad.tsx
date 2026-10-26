@@ -6,20 +6,11 @@ import { Pencil, Plus } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { TIPOS_VEHICULO } from '@/lib/dominio/unidades'
 import { useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
-
-const TIPOS_VEHICULO = [
-  ['VOLQUETE', 'Volquete'],
-  ['TRACTO', 'Tracto'],
-  ['SEMIRREMOLQUE', 'Semirremolque'],
-  ['CAMION', 'Camión'],
-  ['REMOLQUE', 'Remolque'],
-  ['FURGON', 'Furgón'],
-  ['OTRO', 'Otro'],
-] as const
 
 type UnidadEditable = Pick<Tablas<'unidades'>, 'id' | 'cliente_id' | 'tipo_vehiculo' | 'marca' | 'modelo' | 'anio' | 'placa' | 'numero_chasis' | 'numero_motor' | 'color' | 'capacidad_m3' | 'capacidad_toneladas' | 'observaciones'>
 

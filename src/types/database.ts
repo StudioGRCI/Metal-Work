@@ -13011,6 +13011,12 @@ export type Database = {
           alcanza: boolean | null
         }[]
       }
+      con_punto_final: {
+        Args: {
+          p_texto: string | null
+        }
+        Returns: string
+      }
       conciliar_pago_directo: {
         Args: {
           p_compras: string[] | null
@@ -13113,6 +13119,14 @@ export type Database = {
           p_cotizacion: string | null
         }
         Returns: boolean
+      }
+      cotizaciones_con_factura: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+        }[]
       }
       cotizaciones_para_facturar: {
         Args: Record<PropertyKey, never>

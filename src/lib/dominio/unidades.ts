@@ -71,3 +71,25 @@ export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: str
 export function todaviaSinPlaca(unidad: UnidadNombrable | null | undefined): boolean {
   return Boolean(unidad) && !limpio(unidad?.placa)
 }
+
+/**
+ * Los tipos de vehículo como los dice la gente. La base guarda el código sin
+ * tilde («CAMION»); la pantalla escribe «Camión», igual que el formulario.
+ */
+export const TIPOS_VEHICULO = [
+  ['VOLQUETE', 'Volquete'],
+  ['TRACTO', 'Tracto'],
+  ['SEMIRREMOLQUE', 'Semirremolque'],
+  ['CAMION', 'Camión'],
+  ['REMOLQUE', 'Remolque'],
+  ['FURGON', 'Furgón'],
+  ['OTRO', 'Otro'],
+] as const
+
+const NOMBRE_DE_TIPO: Record<string, string> = Object.fromEntries(TIPOS_VEHICULO)
+
+/** «Camión» para «CAMION»; un código que no está en la lista sale tal cual. */
+export function tipoDeVehiculo(codigo: string | null | undefined): string | null {
+  if (!codigo) return null
+  return NOMBRE_DE_TIPO[codigo] ?? codigo
+}

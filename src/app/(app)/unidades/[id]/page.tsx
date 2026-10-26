@@ -11,7 +11,7 @@ import { historiaDeUnidad, obtenerUnidad, type HistoriaDeUnidad } from '@/lib/da
 import { TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { dias, diasEntre } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { nombreDeUnidad } from '@/lib/dominio/unidades'
+import { nombreDeUnidad, tipoDeVehiculo } from '@/lib/dominio/unidades'
 import { fecha, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
@@ -105,7 +105,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
             <Dato etiqueta="N.º de chasis" valor={unidad.numero_chasis} />
             <Dato etiqueta="N.º de motor" valor={unidad.numero_motor} />
             <Dato etiqueta="Vehículo" valor={vehiculo} />
-            <Dato etiqueta="Tipo" valor={unidad.tipo_vehiculo} />
+            <Dato etiqueta="Tipo" valor={tipoDeVehiculo(unidad.tipo_vehiculo)} />
             <Dato etiqueta="Carrocería" valor={carroceria?.nombre} />
             <Dato etiqueta="Capacidad" valor={capacidad} />
             <Dato etiqueta="Color" valor={unidad.color} />

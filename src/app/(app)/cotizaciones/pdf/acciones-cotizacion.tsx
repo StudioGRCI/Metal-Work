@@ -121,6 +121,7 @@ export function CorregirCotizacion({
   numero,
   observacion,
   rechazada = false,
+  aprobada = false,
   version,
   clienteId,
   carroceriaId,
@@ -132,6 +133,8 @@ export function CorregirCotizacion({
   observacion: string | null
   /** La rechazada solo se corrige —no se quita—, y el botón lo dice así. */
   rechazada?: boolean
+  /** La aprobada que se corrige vuelve a Gerencia y no se factura hasta que apruebe esta versión. */
+  aprobada?: boolean
   version: number
   clienteId: string
   carroceriaId: string
@@ -286,7 +289,11 @@ export function CorregirCotizacion({
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo={`Corregir la cotización ${numero}`}
-        descripcion="Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión."
+        descripcion={
+          aprobada
+            ? 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura hasta que Gerencia apruebe esta versión.'
+            : 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión.'
+        }
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
@@ -299,7 +306,9 @@ export function CorregirCotizacion({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* Uno debajo del otro: lado a lado, en esta ventana la razón social
+              se cortaba («TRANSPORTES SAN RO…») y no se sabía qué cliente era. */}
+          <div className="grid gap-3">
             <Campo etiqueta="Cliente" htmlFor={`corregir-cliente-${id}`} requerido>
               <Seleccion id={`corregir-cliente-${id}`} value={cliente} onChange={e => setCliente(e.target.value)} required>
                 <option value="" disabled>Elige el cliente</option>

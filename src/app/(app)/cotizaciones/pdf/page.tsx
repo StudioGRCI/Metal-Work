@@ -86,10 +86,15 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const revisa = puede(perfil, 'cotizaciones.revisar')
   const veCodigos = puede(perfil, 'codigos_internos.ver')
 
-  const [cotizaciones, catalogos] = await Promise.all([
+  const [todas, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
     puedeSubir ? catalogosDeCotizacion() : Promise.resolve({ clientes: [], carrocerias: [] }),
   ])
+
+  // «Las tuyas»: Ventas recorta la lista a lo que subió. Es el recorte con que
+  // el Dashboard cuenta sus cifras, y su enlace llega con `de=mias`.
+  const soloMias = puedeSubir && params.de === 'mias'
+  const cotizaciones = soloMias ? todas.filter((c) => c.registrado_por === perfil.id) : todas
 
   const porRevisar = cotizaciones.filter((c) => c.estado === 'POR_REVISAR').length
   const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
@@ -109,7 +114,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   // Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
-    puedeCorregirCotizacion(perfil, c)
+    (puedeCorregirCotizacion(perfil, c) && !c.facturada)
   const visibles = cotizaciones
     .filter((c) => enFiltro(c, filtro) && buscada(c))
     .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
@@ -131,7 +136,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
-      {cotizaciones.length > 0 && (
+      {todas.length > 0 && (
         <>
           <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente o carrocería" />
           <PastillaFiltro
@@ -141,8 +146,22 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             params={params}
             activo={filtro}
             etiqueta="Filtrar por estado"
-            className="mt-4 mb-4"
+            className={puedeSubir ? 'mt-4 mb-2' : 'mt-4 mb-4'}
           />
+          {puedeSubir && (
+            <PastillaFiltro
+              ruta="/cotizaciones/pdf"
+              clave="de"
+              opciones={[
+                { valor: null, etiqueta: 'De todos' },
+                { valor: 'mias', etiqueta: `Las que subiste (${todas.filter((c) => c.registrado_por === perfil.id).length})` },
+              ]}
+              params={params}
+              activo={soloMias ? 'mias' : null}
+              etiqueta="Filtrar por quién la subió"
+              className="mb-4"
+            />
+          )}
         </>
       )}
 
@@ -163,11 +182,23 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
       {cotizaciones.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">Todavía no hay cotizaciones subidas</p>
+            <p className="text-sm font-medium text-texto">
+              {soloMias && todas.length > 0 ? 'Todavía no subiste ninguna cotización' : 'Todavía no hay cotizaciones subidas'}
+            </p>
             <p className="mt-1 text-sm text-texto-suave">
-              {puedeSubir
-                ? 'Sube la primera con «Subir cotización», arriba: el PDF o el Word que se le mandó al cliente.'
-                : 'Las sube el vendedor cuando se la manda al cliente.'}
+              {soloMias && todas.length > 0 ? (
+                <>
+                  Las demás están en{' '}
+                  <Link href="/cotizaciones/pdf" className="text-acento hover:underline">
+                    De todos
+                  </Link>
+                  .
+                </>
+              ) : puedeSubir ? (
+                'Sube la primera con «Subir cotización», arriba: el PDF o el Word que se le mandó al cliente.'
+              ) : (
+                'Las sube el vendedor cuando se la manda al cliente.'
+              )}
             </p>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -176,7 +207,10 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
           {visibles.map((c) => {
             const estado = ESTADOS[c.estado ?? ''] ?? { etiqueta: c.estado ?? '—', tono: 'neutro' as const }
             const quitable = puedeQuitarCotizacion(perfil, c)
-            const corrige = puedeCorregirCotizacion(perfil, c)
+            // La facturada ya no se corrige (la base lo impide): sin el botón,
+            // y con la razón a la vista para quien lo habría tenido.
+            const corregiria = puedeCorregirCotizacion(perfil, c)
+            const corrige = corregiria && !c.facturada
             const version = c.version ?? 1
             const versionAnterior = c.versiones[0]
 
@@ -324,6 +358,11 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         </Insignia>
                       </p>
                     )}
+                    {corregiria && c.facturada && (
+                      <p className="text-xs text-texto-suave">
+                        Ya está facturada: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura.
+                      </p>
+                    )}
                     {(revisa && c.estado === 'POR_REVISAR' || revisa && c.estado === 'APROBADA' && !c.orden_id || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
@@ -334,7 +373,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
-                            rechazada={c.estado === 'RECHAZADA'}
+                            rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
@@ -349,7 +388,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         </ul>
       )}
 
-      <AvisoTope mostradas={cotizaciones.length} tope={200} />
+      <AvisoTope mostradas={todas.length} tope={200} />
     </>
   )
 }

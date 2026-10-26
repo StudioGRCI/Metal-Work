@@ -720,21 +720,29 @@ const CIFRAS = {
   },
 
   // Ventas
+  // Las dos cifras de Ventas cuentan las cotizaciones que subió quien mira: con
+  // más de un vendedor, la de la empresa entera no le decía nada de lo suyo. El
+  // enlace abre la lista con el mismo recorte («de=mias»).
   cotizaciones_en_gerencia: {
-    ruta: '/cotizaciones/pdf?estado=POR_REVISAR',
+    ruta: '/cotizaciones/pdf?estado=POR_REVISAR&de=mias',
     calcular: async (c) => {
-      const r = await c.supabase.from('v_cotizaciones_pdf').select('id', { count: 'exact', head: true }).eq('estado', 'POR_REVISAR')
+      const r = await c.supabase
+        .from('v_cotizaciones_pdf')
+        .select('id', { count: 'exact', head: true })
+        .eq('estado', 'POR_REVISAR')
+        .eq('registrado_por', c.perfil.id)
       fallo(r)
-      return { titulo: 'En revisión de Gerencia', valor: String(r.count ?? 0), pie: 'esperan su visto', icono: Clock }
+      return { titulo: 'En revisión de Gerencia', valor: String(r.count ?? 0), pie: 'de las que subiste', icono: Clock }
     },
   },
   aprobadas_del_mes: {
-    ruta: '/cotizaciones/pdf',
+    ruta: '/cotizaciones/pdf?de=mias',
     calcular: async (c) => {
       const r = await c.supabase
         .from('v_cotizaciones_pdf')
         .select('moneda, monto_venta')
         .eq('estado', 'APROBADA')
+        .eq('registrado_por', c.perfil.id)
         .gte('revisado_en', c.mes)
         .limit(500)
       fallo(r)
@@ -742,7 +750,7 @@ const CIFRAS = {
       return {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
-        pie: filas.length > 0 ? `por ${moneda(filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0))}` : undefined,
+        pie: filas.length > 0 ? `de las que subiste, por ${moneda(filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0))}` : 'de las que subiste',
         icono: FileText,
         tono: filas.length > 0 ? 'exito' : 'neutro',
       }
