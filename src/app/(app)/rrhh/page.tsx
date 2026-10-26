@@ -5,12 +5,12 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { planillaAlCosto, type PersonaAlCosto } from '@/lib/datos/rrhh'
+import { planillaAlCosto, restadoDelMes, type PersonaAlCosto } from '@/lib/datos/rrhh'
 import { TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { detallePlanilla } from '@/lib/dominio/planilla-excel'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { moneda, periodo } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
+import { hoyLima, moneda, periodo } from '@/lib/format'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { CrearPlanilla } from './crear-planilla'
@@ -52,13 +52,22 @@ export default async function PaginaRRHH() {
   // planillas de la historia, del más viejo al más nuevo y con el tope de 1000
   // filas del servicio: pasados unos meses las planillas nuevas salían con 0
   // personas y S/ 0.00.
-  const [personas, alCosto] = await Promise.all([
+  const esteMes = `${hoyLima().slice(0, 7)}-01`
+  // Lo que el sistema ya restó en cada mes de las de taller en preparación, para
+  // compararlo con los descuentos del Excel: no se vuelve a restar.
+  const veRestado = puede(perfil, ['rrhh.personal', 'planilla_diaria.preparar'])
+  const mesesAbiertos = [
+    ...new Set((planillas.data ?? []).filter((p) => p.tipo === 'TALLER' && p.estado === 'BORRADOR').map((p) => p.periodo.slice(0, 7))),
+  ]
+  const [personas, alCosto, restados] = await Promise.all([
     enTandas((planillas.data ?? []).map((p) => p.id), (tanda, desde) =>
       db.from('planilla_personas').select('id,planilla_id,nombre,documento,monto,detalle,origen_hoja,fila_origen')
         .in('planilla_id', tanda).order('creado_en').order('id').range(desde, desde + POR_PAGINA - 1)),
     // Cómo entra al costo cada persona de las de taller (migración 20261026210000): por sus horas y el ajuste al cerrar.
     Promise.all((planillas.data ?? []).filter((p) => p.tipo === 'TALLER' && p.moneda === 'PEN').map((p) => planillaAlCosto(p.id))),
+    veRestado ? Promise.all(mesesAbiertos.map(async (m) => [m, await restadoDelMes(m)] as const)) : Promise.resolve([]),
   ])
+  const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
   const sinPlanillas = (planillas.data ?? []).length === 0
 
@@ -66,7 +75,7 @@ export default async function PaginaRRHH() {
     <>
       <EncabezadoPagina
         titulo="Planillas"
-        ayuda="Tres planillas por mes: taller, administrativa y subcontratos. Se importan del Excel de la planilla. La de taller completa la mano de obra de cada código: por las horas de los reportes ya entró el costo mensual de cada persona entre 240, y al cerrar, la diferencia con su costo real del Excel se reparte entre los códigos que trabajó, por esas mismas horas. Quien no tiene ficha en Personal o no cargó horas reparte su costo por las horas de todos. La administrativa y la de subcontratos quedan como registro: la oficina entra por Pagos de la oficina y los subcontratos por Subcontratos."
+        ayuda="Tres planillas por mes: taller, administrativa y subcontratos. Se importan del Excel de la planilla. La de taller completa la mano de obra de cada código: por las horas de los reportes ya entró el costo mensual de cada persona entre 240 (y el recargo de sus horas extras), y al cerrar, la diferencia con su costo real del Excel se reparte entre los códigos que trabajó, por esas mismas horas. Quien no tiene ficha en Personal o no cargó horas reparte su costo por las horas de todos. Va desde octubre de 2026, y el costeo de una unidad se cierra cuando está cerrada la planilla de taller de cada mes en que trabajó. La administrativa y la de subcontratos quedan como registro: la oficina entra por Pagos de la oficina y los subcontratos por Subcontratos."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Planillas' }]}
       />
 
@@ -99,8 +108,14 @@ export default async function PaginaRRHH() {
             })
           const total = deEsta.reduce((n, x) => n + x.monto, 0)
           const deTaller = p.tipo === 'TALLER' && p.moneda === 'PEN'
-          const ajuste = deEsta.reduce((n, x) => n + (x.costo?.ajuste ?? 0), 0)
+          // Lo que de verdad llega a los códigos, no el ajuste teórico: un mes sin horas no tiene adónde.
+          const ajuste = deEsta.reduce((n, x) => n + (x.costo?.entra ?? 0), 0)
           const sinFicha = deEsta.filter((x) => x.costo?.como === 'SIN_FICHA').length
+          // Quien tiene costo y no lo lleva a ningún código: el mes sin horas, o una planilla de antes de octubre de 2026.
+          const sinDestino = deEsta.filter(
+            (x) => x.costo && (x.costo.como === 'ANTES' ? x.costo.costo !== 0 : x.costo.ajuste !== 0 && x.costo.entra === 0),
+          ).length
+          const restadoDelMes = restadoDe.get(p.periodo.slice(0, 7))
           const porEmpresa = new Map<string, { n: number; monto: number }>()
           for (const x of deEsta) {
             const e = x.detalle ? (x.detalle.empresa ?? 'Sin empresa') : 'Registro manual'
@@ -108,6 +123,9 @@ export default async function PaginaRRHH() {
             porEmpresa.set(e, { n: v.n + 1, monto: v.monto + x.monto })
           }
           const abierta = p.estado === 'BORRADOR'
+          const mesTerminado = p.periodo < esteMes
+          // La planilla de taller de un mes que ya pasó, sin cerrar: es la que cuenta el globo de Planillas.
+          const esperaCierre = deTaller && abierta && mesTerminado
 
           return (
             <Tarjeta key={p.id}>
@@ -119,6 +137,14 @@ export default async function PaginaRRHH() {
                 acciones={gestiona && abierta && p.moneda === 'PEN' ? <ImportarPlanilla planillaId={p.id} /> : undefined}
               />
               <TarjetaCuerpo className="space-y-4">
+                {esperaCierre && (
+                  <p className="text-xs text-texto-suave" data-espera-cierre>
+                    <Insignia tono="aviso">Mes terminado, sin cerrar</Insignia>{' '}
+                    {deEsta.length > 0
+                      ? 'Mientras siga en preparación, su ajuste no entra a la mano de obra de los códigos.'
+                      : 'Se cierra cuando tenga a su gente: su ajuste completa la mano de obra de los códigos del mes.'}
+                  </p>
+                )}
                 {porEmpresa.size > 0 && (
                   <ul className="flex flex-wrap gap-2 text-xs" aria-label="Costo por empresa">
                     {[...porEmpresa].map(([empresa, v]) => (
@@ -227,6 +253,7 @@ export default async function PaginaRRHH() {
                           </>
                         )}
                         {x.costo && <p className="text-xs text-texto-suave" data-al-costo>{explicacionAlCosto(x.costo, abierta)}</p>}
+                        {x.costo?.trabajador_id && restadoDelMes && <YaRestado restado={restadoDelMes.get(x.costo.trabajador_id)} mes={periodo(p.periodo)} />}
                         {gestiona && abierta && (
                           <div className="flex justify-end border-t border-borde pt-3">
                             <QuitarPersona personaId={x.id} nombre={x.nombre} />
@@ -244,7 +271,14 @@ export default async function PaginaRRHH() {
                     <Pliegue titulo="Agregar persona o subcontrato a mano" enCaja>
                       <AgregarPersona planillaId={p.id} tipo={p.tipo} />
                     </Pliegue>
-                    <CerrarPlanilla id={p.id} />
+                    <CerrarPlanilla
+                      id={p.id}
+                      titulo={`${definir(TIPO_PLANILLA, p.tipo).etiqueta.toLowerCase()} de ${periodo(p.periodo)}`}
+                      deTaller={deTaller}
+                      entra={ajuste}
+                      sinDestino={sinDestino}
+                      mesTerminado={mesTerminado}
+                    />
                   </>
                 )}
               </TarjetaCuerpo>
@@ -256,31 +290,62 @@ export default async function PaginaRRHH() {
   )
 }
 
+const SIN_HORAS_EN_EL_MES = 'ese mes no tiene horas en ningún código: su costo no llega a ninguna unidad'
+
 /** «41 h en 2 códigos · ajuste S/ 590,00», en la fila de la persona. */
 function resumenAlCosto(c: PersonaAlCosto) {
   switch (c.como) {
     case 'HORAS':
       return `${horasCortas(c.horas)} en ${c.codigos} ${c.codigos === 1 ? 'código' : 'códigos'} · ajuste ${moneda(c.ajuste)}`
+    case 'SIN_COSTO':
+      return `${horasCortas(c.horas)} en el reporte, sin costo mensual en su ficha · ajuste ${moneda(c.ajuste)}`
     case 'SIN_FICHA':
-      return 'sin ficha en Personal: va por las horas de todos'
+      return c.mes_con_horas ? 'sin ficha en Personal: su costo se reparte entre todos los códigos del mes' : `sin ficha en Personal: ${SIN_HORAS_EN_EL_MES}`
     case 'SIN_HORAS':
-      return 'sin horas en el mes: va por las horas de todos'
+      return c.mes_con_horas ? 'sin horas en el mes: su costo se reparte entre todos los códigos del mes' : `sin horas: ${SIN_HORAS_EN_EL_MES}`
     case 'OFICINA':
       return 'de planilla administrativa: no entra por aquí'
+    case 'ANTES':
+      return 'de antes de octubre de 2026: no entra a los códigos'
   }
 }
 
 /** Lo mismo, con las cuentas, al abrir la fila. */
 function explicacionAlCosto(c: PersonaAlCosto, abierta: boolean) {
   const cuando = abierta ? 'Al cerrar la planilla' : 'Con la planilla cerrada'
+  const reparte = abierta ? 'se reparte' : 'se repartió'
+  const recargo = c.recargo !== 0 ? `, y ${moneda(c.recargo)} del recargo de sus horas extras que pagó la planilla diaria` : ''
+  const deTodos = c.mes_con_horas
+    ? `${cuando}, su costo (${moneda(c.costo)}) ${reparte} entre los códigos del mes por las horas de todos.`
+    : `Ese mes no tiene horas en ningún código: su costo (${moneda(c.costo)}) no llega a ninguna unidad.`
   switch (c.como) {
     case 'HORAS':
-      return `Por sus ${horasCortas(c.horas)} de los reportes del mes ya entraron ${moneda(c.costo_horas)} a ${c.codigos === 1 ? 'su código' : `sus ${c.codigos} códigos`}. ${cuando}, la diferencia con su costo real (${moneda(c.costo)}), ${moneda(c.ajuste)}, se reparte entre esos códigos por las mismas horas.`
+      return `Por sus ${horasCortas(c.horas)} de los reportes del mes ya entraron ${moneda(c.costo_horas)} a ${c.codigos === 1 ? 'su código' : `sus ${c.codigos} códigos`}${recargo}. ${cuando}, la diferencia con su costo real (${moneda(c.costo)}), ${moneda(c.ajuste)}, ${reparte} entre esos códigos por las mismas horas.`
+    case 'SIN_COSTO':
+      return `${c.trabajador ?? 'Esta persona'} tiene ${horasCortas(c.horas)} en los reportes del mes, pero su ficha no tiene costo mensual: esas horas todavía no suman${recargo}. ${cuando}, ${moneda(c.ajuste)} de su costo real (${moneda(c.costo)}) ${reparte} entre ${c.codigos === 1 ? 'su código' : `sus ${c.codigos} códigos`} por esas horas. Cuando su ficha tenga el costo mensual, sus horas entran por él y el ajuste se rehace solo.`
     case 'SIN_FICHA':
-      return `No se encontró su ficha en Personal por su DNI ni por su nombre. ${cuando}, su costo (${moneda(c.costo)}) se reparte entre los códigos del mes por las horas de todos. Si es de la empresa, revisa que su nombre o su DNI sean los de su ficha.`
+      return `No se encontró su ficha en Personal por su DNI ni por su nombre. ${deTodos} Si es de la empresa, puede que su nombre o su DNI no sean los de su ficha.`
     case 'SIN_HORAS':
-      return `${c.trabajador ?? 'Esta persona'} no tiene horas en los reportes del mes. ${cuando}, su costo (${moneda(c.costo)}) se reparte entre los códigos del mes por las horas de todos.`
+      return `${c.trabajador ?? 'Esta persona'} no tiene horas en los reportes del mes. ${deTodos}`
     case 'OFICINA':
       return `${c.trabajador ?? 'Esta persona'} es de planilla administrativa en Personal: su costo entra por Pagos de la oficina, no por esta planilla.`
+    case 'ANTES':
+      return 'Es de antes de octubre de 2026: entonces no había reporte diario por código, así que su costo no entra a los códigos (esas planillas se repartían por OT).'
   }
+}
+
+/** Lo que el sistema ya le restó en el mes: si el Excel también lo trae en sus descuentos, es el mismo. */
+function YaRestado({ restado, mes }: { restado: { tardanzas: number; permisos: number } | undefined; mes: string }) {
+  if (!restado || (restado.tardanzas === 0 && restado.permisos === 0)) return null
+  const partes = [
+    restado.tardanzas !== 0 && `tardanzas ${moneda(restado.tardanzas)}`,
+    restado.permisos !== 0 && `permisos ${moneda(restado.permisos)}`,
+  ].filter(Boolean)
+  return (
+    <p className="text-xs text-texto-suave" data-ya-restado>
+      En {mes} el sistema ya le restó de su pago{' '}
+      <span className="tabular whitespace-nowrap text-texto">{moneda(restado.tardanzas + restado.permisos)}</span> ({partes.join(', ')}). Si el Excel
+      trae tardanzas o permisos en sus descuentos, es el mismo descuento.
+    </p>
+  )
 }

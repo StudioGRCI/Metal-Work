@@ -44,6 +44,20 @@ export function minutosLargos(minutos: number): string {
   return `${h} h ${String(m).padStart(2, '0')} min`
 }
 
+/**
+ * Los minutos entre la entrada y la salida de portería (`08:20:00` y `15:05:00`),
+ * o `null` si falta una marca o la salida no es después de la entrada.
+ */
+export function minutosEntre(ingreso: string | null | undefined, salida: string | null | undefined): number | null {
+  const minutos = (v: string) => {
+    const [h, m] = v.split(':').map(Number)
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN
+  }
+  if (!ingreso || !salida) return null
+  const total = minutos(salida) - minutos(ingreso)
+  return Number.isFinite(total) && total > 0 ? total : null
+}
+
 /** El mes de la URL es válido si tiene la forma `2026-10` y un mes de 01 a 12. */
 export function mesValido(valor: unknown): valor is string {
   return typeof valor === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(valor)

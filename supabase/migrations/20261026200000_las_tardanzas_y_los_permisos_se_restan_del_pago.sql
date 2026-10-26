@@ -126,6 +126,10 @@ create table if not exists public.descuentos_del_pago (
   -- TARDANZAS: cuántas había en el mes y qué porcentaje tocaba al restarlo.
   tardanzas            smallint,
   porcentaje           numeric(5, 2),
+  -- TARDANZAS: la regla con que se restó («cada 3, el 5 %»). La primera vez se
+  -- congela para ese mes: cambiar la regla después no vuelve a cobrar un mes ya restado.
+  regla_cada           smallint,
+  regla_porcentaje     numeric(5, 2),
   -- La remuneración con que se calculó: la primera vez se congela.
   base                 numeric(10, 2) not null,
   -- Positivo se resta del pago; negativo se le devuelve.
@@ -142,6 +146,9 @@ create table if not exists public.descuentos_del_pago (
     and (planilla_persona_id is null) <> (oficina_pago_id is null)
     and (concepto <> 'TARDANZAS' or fecha = date_trunc('month', fecha)::date))
 );
+alter table public.descuentos_del_pago
+  add column if not exists regla_cada smallint,
+  add column if not exists regla_porcentaje numeric(5, 2);
 comment on table public.descuentos_del_pago is
   'Lo que la planilla diaria (gente de taller) o un pago de la oficina restó por tardanzas o por un permiso descontado, o devolvió. Vale mientras su planilla o su pago no esté anulado. No se cambia ni se borra.';
 -- Lo ya restado de cada persona por mes o por día (b; sirve también a la llave
@@ -264,8 +271,17 @@ language sql stable set search_path to 'public' as $$
     select j.trabajador_id, j.fecha, j.ordinarias
       from public.jornadas_validadas() j
      where exists (select 1 from dia d where d.trabajador_id = j.trabajador_id and d.fecha = j.fecha)
+  ), donde as (
+    -- Dónde se restó ya ese día: en la planilla diaria (taller) o en un pago de la oficina.
+    select v.trabajador_id, v.fecha, bool_or(v.planilla_persona_id is not null) as taller
+      from public.descuentos_vigentes() v
+     where v.concepto = 'PERMISO'
+     group by v.trabajador_id, v.fecha
   ), base as (
-    select d.trabajador_id, d.fecha, w.planilla = 'TALLER' as taller,
+    -- Un día ya restado o pagado se sigue contando con la planilla de entonces:
+    -- pasar a alguien de taller a la oficina (o al revés) no recalcula lo ya pagado.
+    select d.trabajador_id, d.fecha,
+           coalesce(o.taller, case when g.horas > 0 then true end, w.planilla = 'TALLER') as taller,
            coalesce(x.horas, 0) as horas_permiso, coalesce(x.justificadas, 0) as justificadas,
            coalesce(x.descontadas, 0) as descontadas, coalesce(j.ordinarias, 0) as ordinarias,
            coalesce(g.horas, 0) as pagadas
@@ -274,6 +290,7 @@ language sql stable set search_path to 'public' as $$
       left join perm x on x.trabajador_id = d.trabajador_id and x.fecha = d.fecha
       left join pagado g on g.trabajador_id = d.trabajador_id and g.fecha = d.fecha
       left join jornada j on j.trabajador_id = d.trabajador_id and j.fecha = d.fecha
+      left join donde o on o.trabajador_id = d.trabajador_id and o.fecha = d.fecha
   ), cuenta as (
     select b.*, greatest(b.ordinarias + b.horas_permiso - 8, 0) as solape,
            case when b.taller then greatest(b.justificadas - greatest(b.ordinarias + b.horas_permiso - 8, 0), 0) else 0 end as a_pagar
@@ -293,9 +310,10 @@ revoke all on function public.permisos_por_dia() from public, anon, authenticate
 -- Lo que falta restar (positivo) o devolver (negativo) a cada persona, hasta
 -- p_hasta (hoy, si va vacío): las tardanzas de cada mes hasta el de p_hasta y
 -- los permisos descontados de cada día hasta p_hasta.
+drop function if exists public.descuentos_pendientes(date);
 create or replace function public.descuentos_pendientes(p_hasta date default null)
 returns table (trabajador_id uuid, concepto text, fecha date, horas numeric, tardanzas integer, porcentaje numeric,
-               base numeric, monto numeric, detalle text)
+               base numeric, monto numeric, detalle text, regla_cada integer, regla_porcentaje numeric)
 language sql stable set search_path to 'public' as $$
   with lim as (
     select public.rrhh_descuentos_desde() as desde,
@@ -306,7 +324,9 @@ language sql stable set search_path to 'public' as $$
            coalesce((select g.porcentaje_descuento from public.rrhh_regla_tardanza g where g.id), 5)::numeric as pct
   ), aplicado as (
     select v.trabajador_id, v.concepto, v.fecha, sum(v.monto) as monto, sum(coalesce(v.horas, 0)) as horas,
-           (array_agg(v.base order by v.creado_en, v.id))[1] as base
+           (array_agg(v.base order by v.creado_en, v.id))[1] as base,
+           (array_agg(v.regla_cada order by v.creado_en, v.id) filter (where v.regla_cada is not null))[1] as regla_cada,
+           (array_agg(v.regla_porcentaje order by v.creado_en, v.id) filter (where v.regla_porcentaje is not null))[1] as regla_porcentaje
       from public.descuentos_vigentes() v
      group by v.trabajador_id, v.concepto, v.fecha
   ), marcas as (
@@ -322,13 +342,17 @@ language sql stable set search_path to 'public' as $$
      group by a.trabajador_id, date_trunc('month', a.fecha)
   ), mes as (
     select coalesce(m.trabajador_id, ap.trabajador_id) as trabajador_id, coalesce(m.mes, ap.fecha) as mes,
-           coalesce(m.veces, 0) as veces, coalesce(ap.monto, 0) as aplicado, ap.base as base_aplicada
+           coalesce(m.veces, 0) as veces, coalesce(ap.monto, 0) as aplicado, ap.base as base_aplicada,
+           ap.regla_cada, ap.regla_porcentaje
       from marcas m
       full join (select x.* from aplicado x cross join lim where x.concepto = 'TARDANZAS' and x.fecha <= lim.hasta) ap
         on ap.trabajador_id = m.trabajador_id and ap.fecha = m.mes
   ), tardanza as (
-    select t.trabajador_id, t.mes, t.veces, least((t.veces / r.por) * r.pct, 100) as pct,
-           coalesce(t.base_aplicada, w.remuneracion_mensual) as base, t.aplicado
+    -- La regla de un mes es la de la primera vez que se restó; si nunca se restó, la de hoy.
+    select t.trabajador_id, t.mes, t.veces,
+           least((t.veces / coalesce(t.regla_cada, r.por)) * coalesce(t.regla_porcentaje, r.pct), 100) as pct,
+           coalesce(t.base_aplicada, w.remuneracion_mensual) as base, t.aplicado,
+           coalesce(t.regla_cada, r.por) as regla_cada, coalesce(t.regla_porcentaje, r.pct) as regla_porcentaje
       from mes t
       cross join regla r
       left join public.trabajador_remuneraciones w on w.trabajador_id = t.trabajador_id
@@ -351,21 +375,23 @@ language sql stable set search_path to 'public' as $$
                    || ': ' || rtrim(rtrim(to_char(t.pct, 'FM990.00'), '0'), '.') || ' % de la remuneración'
                    || case when t.aplicado > 0 then ' (ya se restaron S/ ' || to_char(t.aplicado, 'FM999G999G990D00') || ')' else '' end
               else 'Se devuelve lo restado de más por las tardanzas de ' || public.mes_en_texto(t.mes) || ': ahora son ' || t.veces
-         end
+         end,
+         t.regla_cada, t.regla_porcentaje
     from tardanza_monto t
    where t.falta <> 0
   union all
   select p.trabajador_id, 'PERMISO'::text, p.fecha, p.a_descontar - p.horas_aplicadas, null::integer, null::numeric, p.base, p.falta,
          case when p.falta > 0
               then 'Permiso del ' || to_char(p.fecha, 'DD/MM/YYYY') || ': ' || public.horas_en_texto(p.a_descontar - p.horas_aplicadas)
-                   || case when p.taller then ' que se pagaron y no se trabajaron' else ' sin justificar' end
+                   || case when p.taller then ' de permiso que el reporte contó como trabajadas' else ' sin justificar' end
               else 'Se devuelve lo descontado por el permiso del ' || to_char(p.fecha, 'DD/MM/YYYY')
-         end
+         end,
+         null::integer, null::numeric
     from permiso_monto p
    where p.falta <> 0
 $$;
 comment on function public.descuentos_pendientes(date) is
-  'Lo que falta restar (monto positivo) o devolver (negativo) a cada persona por tardanzas (por mes, el 5 % de la regla por cada tres) y por permisos descontados (por día, a la remuneración entre 240), hasta p_hasta. La base es la remuneración de la primera vez que se restó, o la de hoy. No pide permiso.';
+  'Lo que falta restar (monto positivo) o devolver (negativo) a cada persona por tardanzas (por mes, el 5 % de la regla por cada tres) y por permisos descontados (por día, a la remuneración entre 240), hasta p_hasta. La base y la regla de tardanzas son las de la primera vez que se restó ese mes o ese día, o las de hoy. No pide permiso.';
 revoke all on function public.descuentos_pendientes(date) from public, anon, authenticated;
 
 -- 6. Lo que falta pagar en la planilla diaria: también el permiso justificado ------------------------------
@@ -498,6 +524,7 @@ begin
       v_aplicados := v_aplicados || jsonb_build_object(
         'concepto', v_d->>'concepto', 'fecha', v_d->>'fecha', 'tardanzas', v_d->'tardanzas', 'porcentaje', v_d->'porcentaje',
         'base', v_d->'base', 'monto', v_aplica, 'detalle', v_d->>'detalle',
+        'regla_cada', v_d->'regla_cada', 'regla_porcentaje', v_d->'regla_porcentaje',
         'horas', case when v_d->>'horas' is not null
                       then round((v_d->>'horas')::numeric * v_aplica / (v_d->>'monto')::numeric, 2) end);
     end loop;
@@ -545,10 +572,10 @@ begin
 
     for v_d in select e from jsonb_array_elements(v_p->'descuentos') e loop
       insert into public.descuentos_del_pago (trabajador_id, concepto, fecha, horas, tardanzas, porcentaje, base, monto, detalle,
-                                              planilla_persona_id)
+                                              planilla_persona_id, regla_cada, regla_porcentaje)
       values ((v_p->>'trabajador_id')::uuid, v_d->>'concepto', (v_d->>'fecha')::date, (v_d->>'horas')::numeric,
               (v_d->>'tardanzas')::smallint, (v_d->>'porcentaje')::numeric, (v_d->>'base')::numeric, (v_d->>'monto')::numeric,
-              left(v_d->>'detalle', 300), v_pid);
+              left(v_d->>'detalle', 300), v_pid, (v_d->>'regla_cada')::smallint, (v_d->>'regla_porcentaje')::numeric);
     end loop;
   end loop;
 
@@ -671,6 +698,7 @@ begin
     v_filas := v_filas || jsonb_build_object(
       'concepto', v_d.concepto, 'fecha', v_d.fecha, 'tardanzas', v_d.tardanzas, 'porcentaje', v_d.porcentaje,
       'base', v_d.base, 'monto', v_aplica, 'detalle', v_d.detalle,
+      'regla_cada', v_d.regla_cada, 'regla_porcentaje', v_d.regla_porcentaje,
       'horas', case when v_d.horas is not null then round(v_d.horas * v_aplica / v_d.monto, 2) end);
   end loop;
 
@@ -678,9 +706,10 @@ begin
   values (p_id, p_trabajador_id, p_desde, p_hasta, round(p_monto, 2) - v_desc, round(coalesce(p_aportes, 0), 2), v_nota);
   for v_f in select e from jsonb_array_elements(v_filas) e loop
     insert into public.descuentos_del_pago (trabajador_id, concepto, fecha, horas, tardanzas, porcentaje, base, monto, detalle,
-                                            oficina_pago_id)
+                                            oficina_pago_id, regla_cada, regla_porcentaje)
     values (p_trabajador_id, v_f->>'concepto', (v_f->>'fecha')::date, (v_f->>'horas')::numeric, (v_f->>'tardanzas')::smallint,
-            (v_f->>'porcentaje')::numeric, (v_f->>'base')::numeric, (v_f->>'monto')::numeric, left(v_f->>'detalle', 300), p_id);
+            (v_f->>'porcentaje')::numeric, (v_f->>'base')::numeric, (v_f->>'monto')::numeric, left(v_f->>'detalle', 300), p_id,
+            (v_f->>'regla_cada')::smallint, (v_f->>'regla_porcentaje')::numeric);
   end loop;
   return p_id;
 end;
@@ -940,10 +969,13 @@ $$;
 -- marcas de portería y las horas del reporte de ese día, y lo que la planilla
 -- pagó o restó por él. Lo que se pagó o restó en soles, solo para quien ve el
 -- sueldo (como en Tardanzas).
+-- Cambió de columnas mientras se probaba: se vuelve a crear entera.
+drop function if exists public.rrhh_permisos_con_estado(date);
 create or replace function public.rrhh_permisos_con_estado(p_mes date default null)
 returns table (id uuid, trabajador_id uuid, nombre text, cargo text, activo boolean, planilla text, fecha date, horas numeric,
                motivo text, justificadas numeric, descontadas numeric, por_justificar numeric, saldo numeric, reportado boolean,
                ingreso time, salida time, horas_reporte numeric, horas_pagadas numeric, descontado numeric,
+               valor_hora numeric, por_restar numeric,
                creado_en timestamptz, anulado_en timestamptz, motivo_anulacion text)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
@@ -970,6 +1002,12 @@ begin
         from public.descuentos_vigentes() v
        where v.concepto = 'PERMISO'
        group by v.trabajador_id, v.fecha
+    ), falta as (
+      -- Lo que el próximo pago va a restar (o devolver) por el permiso de ese día.
+      select f.trabajador_id, f.fecha, sum(f.monto) as monto
+        from public.descuentos_pendientes(null) f
+       where v_ve_sueldo and f.concepto = 'PERMISO'
+       group by f.trabajador_id, f.fecha
     )
     select p.id, p.trabajador_id, t.nombres || ' ' || t.apellidos, t.cargo, t.activo, t.planilla, p.fecha, p.horas, p.motivo,
            p.hechas, p.descontadas,
@@ -987,25 +1025,31 @@ begin
              where l.trabajador_id = p.trabajador_id and l.fecha = p.fecha and r.anulado_en is null and r.observado_en is null),
            coalesce(d.pagadas, 0),
            case when v_ve_sueldo then coalesce(rs.monto, 0) end,
+           case when v_ve_sueldo then round(w.remuneracion_mensual / 240, 4) end,
+           case when v_ve_sueldo then coalesce(fa.monto, 0) end,
            p.creado_en, p.anulado_en, p.motivo_anulacion
       from p
       join public.trabajadores t on t.id = p.trabajador_id
+      left join public.trabajador_remuneraciones w on w.trabajador_id = p.trabajador_id
       left join dia d on d.trabajador_id = p.trabajador_id and d.fecha = p.fecha
       left join restado rs on rs.trabajador_id = p.trabajador_id and rs.fecha = p.fecha
+      left join falta fa on fa.trabajador_id = p.trabajador_id and fa.fecha = p.fecha
      where p_mes is not null or p.horas - p.hechas - p.descontadas > 0
      order by p.fecha desc, p.creado_en desc;
 end;
 $$;
 comment on function public.rrhh_permisos_con_estado(date) is
-  'Los permisos del mes (o los vigentes por justificar, sin p_mes) con lo justificado, lo descontado, si se reportó, la marca de ingreso y salida de portería y las horas del reporte de ese día, las horas de permiso que la planilla diaria pagó ese día y lo restado en soles ese día (solo para quien ve el sueldo). Lo ven RR. HH., Gerencia y Administración.';
+  'Los permisos del mes (o los vigentes por justificar, sin p_mes) con lo justificado, lo descontado, si se reportó, la marca de ingreso y salida de portería y las horas del reporte de ese día, las horas de permiso que la planilla diaria pagó ese día, y para quien ve el sueldo: lo restado en soles ese día, la hora de su remuneración (entre 240) y lo que falta restar o devolver por ese día. Lo ven RR. HH., Gerencia y Administración.';
 revoke all on function public.rrhh_permisos_con_estado(date) from public, anon;
 grant execute on function public.rrhh_permisos_con_estado(date) to authenticated;
 
 -- 10. Lo que RR. HH. lee ---------------------------------------------------------------------------------------------
 -- Lo que hay por restar o devolver a cada persona: lo que la próxima planilla
 -- diaria o el próximo pago de la oficina va a aplicar.
+drop function if exists public.rrhh_descuentos_por_aplicar(date);
 create or replace function public.rrhh_descuentos_por_aplicar(p_hasta date default null)
-returns table (trabajador_id uuid, nombre text, planilla text, concepto text, fecha date, horas numeric, monto numeric, detalle text)
+returns table (trabajador_id uuid, nombre text, planilla text, activo boolean, concepto text, fecha date, horas numeric, monto numeric,
+               detalle text)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -1013,14 +1057,14 @@ begin
     raise exception 'No tienes permiso para consultar los descuentos del personal.' using errcode = 'insufficient_privilege';
   end if;
   return query
-    select d.trabajador_id, t.nombres || ' ' || t.apellidos, t.planilla, d.concepto, d.fecha, d.horas, d.monto, d.detalle
+    select d.trabajador_id, t.nombres || ' ' || t.apellidos, t.planilla, t.activo, d.concepto, d.fecha, d.horas, d.monto, d.detalle
       from public.descuentos_pendientes(p_hasta) d
       join public.trabajadores t on t.id = d.trabajador_id
      order by t.apellidos, t.nombres, d.monto > 0, d.fecha, d.concepto;
 end;
 $$;
 comment on function public.rrhh_descuentos_por_aplicar(date) is
-  'Lo que falta restar (positivo) o devolver (negativo) a cada persona por tardanzas y permisos descontados, hasta p_hasta (hoy, sin él). Lo ven RR. HH. (rrhh.personal o planilla_diaria.preparar) y el administrador.';
+  'Lo que falta restar (positivo) o devolver (negativo) a cada persona por tardanzas y permisos descontados, hasta p_hasta (hoy, sin él), y si la persona sigue activa. Lo ven RR. HH. (rrhh.personal o planilla_diaria.preparar) y el administrador.';
 revoke all on function public.rrhh_descuentos_por_aplicar(date) from public, anon;
 grant execute on function public.rrhh_descuentos_por_aplicar(date) to authenticated;
 

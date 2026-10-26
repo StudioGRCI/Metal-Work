@@ -6,7 +6,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarPermisos, listarTrabajadores, type Permiso } from '@/lib/datos/rrhh'
-import { DESCUENTOS_DESDE, horaCorta, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
+import { DESCUENTOS_DESDE, horaCorta, horasCortas, mesDeLima, mesValido, mesVecino, minutosEntre, minutosLargos } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
@@ -35,7 +35,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
     <>
       <EncabezadoPagina
         titulo="Permisos"
-        ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes, y entonces se pagan. Lo que no se justifica, cuando ya pasó el día, se descuenta (no se paga, o se resta de su próximo pago) o se reporta en sus observaciones. Al lado de cada permiso ves lo que marcó en portería ese día y las horas que le puso el supervisor."
+        ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes, y entonces se pagan. Lo que no se justifica, desde el día del permiso, se descuenta (no se paga, o se resta de su próximo pago) o se reporta en sus observaciones. Al lado de cada permiso ves lo que marcó en portería ese día y las horas que le puso el supervisor."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Permisos' }]}
         acciones={
           gestiona && (
@@ -53,7 +53,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                 ? `${horasCortas(horasPendientes)} de permiso en ${pendientes.length} ${pendientes.length === 1 ? 'permiso' : 'permisos'}, de cualquier mes`
                 : 'Nadie debe horas de permiso.'
             }
-            ayuda="Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras». Si no las tiene o no las va a usar, descuéntalo o repórtalo cuando haya pasado el día."
+            ayuda="Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras». Si no las tiene o no las va a usar, desde el día del permiso se puede descontar o reportar."
           />
           <Tabla>
             <TablaCabecera>
@@ -61,7 +61,6 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                 <TH>Persona y día</TH>
                 <TH className="text-right">Falta</TH>
                 <TH className="hidden text-right sm:table-cell">Horas extras reservadas</TH>
-                {gestiona && <TH className="text-right">Acción</TH>}
               </tr>
             </TablaCabecera>
             <tbody>
@@ -84,15 +83,9 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                           <Insignia tono="aviso">Reportado</Insignia>
                         </p>
                       )}
-                    </TD>
-                    <TD className="text-right">
-                      <p className="tabular font-semibold text-aviso">{horasCortas(p.por_justificar)}</p>
-                      {p.justificadas > 0 && <p className="text-xs text-texto-suave">ya justificó {horasCortas(p.justificadas)}</p>}
-                    </TD>
-                    <TD className="tabular hidden text-right sm:table-cell">{p.saldo > 0 ? horasCortas(p.saldo) : '—'}</TD>
-                    {gestiona && (
-                      <TD className="text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
+                      {/* Las acciones van debajo de la persona: en el teléfono, una columna aparte la dejaba en 110 px. */}
+                      {gestiona && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           {p.saldo > 0 ? (
                             <JustificarPermiso permisoId={p.id} nombre={p.nombre} porJustificar={p.por_justificar} saldo={p.saldo} />
                           ) : (
@@ -101,24 +94,36 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                             </Link>
                           )}
                           {p.fecha > hoy ? (
-                            <span className="inline-flex min-h-9 items-center text-xs text-texto-suave">Se descuenta o reporta cuando pase el día</span>
+                            <span className="text-xs text-texto-suave">Se descuenta o se reporta desde el día del permiso</span>
                           ) : (
                             <>
-                              {p.fecha >= `${DESCUENTOS_DESDE}-01` && (
+                              {p.fecha >= `${DESCUENTOS_DESDE}-01` ? (
                                 <DescontarPermiso
                                   permisoId={p.id}
                                   nombre={p.nombre}
                                   dia={fecha(p.fecha)}
+                                  horas={p.horas}
                                   porJustificar={p.por_justificar}
+                                  justificadas={p.justificadas}
+                                  descontadas={p.descontadas}
+                                  horasReporte={p.horas_reporte}
+                                  valorHora={p.valor_hora}
                                   oficina={p.planilla === 'ADMINISTRATIVA'}
                                 />
+                              ) : (
+                                <span className="text-xs text-texto-suave">De antes de octubre de 2026: se reporta, no se descuenta</span>
                               )}
                               {!p.reportado && <ReportarPermiso permisoId={p.id} nombre={p.nombre} dia={fecha(p.fecha)} />}
                             </>
                           )}
                         </div>
-                      </TD>
-                    )}
+                      )}
+                    </TD>
+                    <TD className="text-right align-top">
+                      <p className="tabular font-semibold whitespace-nowrap text-aviso">{horasCortas(p.por_justificar)}</p>
+                      {p.justificadas > 0 && <p className="text-xs text-texto-suave">ya justificó {horasCortas(p.justificadas)}</p>}
+                    </TD>
+                    <TD className="tabular hidden text-right align-top sm:table-cell">{p.saldo > 0 ? horasCortas(p.saldo) : '—'}</TD>
                   </TR>
                 ))
               )}
@@ -176,9 +181,9 @@ function Registro({ permiso: p, gestiona, hoy }: { permiso: Permiso; gestiona: b
           ) : p.por_justificar > 0 ? (
             <Insignia tono="aviso">Falta {horasCortas(p.por_justificar)}</Insignia>
           ) : p.descontadas > 0 && p.justificadas === 0 ? (
-            <Insignia tono="peligro">Descontado</Insignia>
+            <Insignia tono="neutro">Descontado</Insignia>
           ) : p.descontadas > 0 ? (
-            <Insignia tono="aviso">Justificado en parte</Insignia>
+            <Insignia tono="neutro">Justificado y descontado</Insignia>
           ) : (
             <Insignia tono="exito">Justificado</Insignia>
           )}
@@ -201,14 +206,7 @@ function Registro({ permiso: p, gestiona, hoy }: { permiso: Permiso; gestiona: b
             {p.descontadas > 0 && (
               <p className="text-xs text-texto-suave" data-descontado>
                 Descontado: {horasCortas(p.descontadas)}
-                {p.descontado !== null && p.descontado !== 0 && (
-                  <>
-                    {' · '}
-                    <span className="tabular">{moneda(p.descontado)}</span> restados de su pago
-                  </>
-                )}
-                {p.descontado === 0 && p.planilla === 'ADMINISTRATIVA' && ' · se resta en su próximo pago'}
-                {p.descontado === 0 && p.planilla === 'TALLER' && ' · no se pagan'}.
+                <LoDescontado permiso={p} />.
               </p>
             )}
           </>
@@ -220,10 +218,49 @@ function Registro({ permiso: p, gestiona, hoy }: { permiso: Permiso; gestiona: b
   )
 }
 
+/** En soles, lo que el permiso descontado ya restó y lo que falta (solo para quien ve el sueldo). */
+function LoDescontado({ permiso: p }: { permiso: Permiso }) {
+  // Quien no ve el sueldo solo ve las horas.
+  if (p.descontado === null || p.por_restar === null) return null
+  const partes: React.ReactNode[] = []
+  if (p.descontado !== 0) {
+    partes.push(
+      <span key="restado">
+        <span className="tabular whitespace-nowrap">{moneda(p.descontado)}</span> {p.descontado > 0 ? 'restados de su pago' : 'devueltos'}
+      </span>,
+    )
+  }
+  if (p.por_restar !== 0) {
+    const cuanto = <span className="tabular whitespace-nowrap">{moneda(Math.abs(p.por_restar))}</span>
+    partes.push(
+      <span key="falta">
+        {cuanto} {p.por_restar > 0 ? 'por restar' : 'por devolver'}
+        {p.activo ? ' en su próximo pago' : ': está de baja, ya no tiene próximo pago'}
+      </span>,
+    )
+  }
+  if (partes.length === 0) {
+    partes.push(
+      <span key="nada">
+        {p.planilla === 'TALLER'
+          ? 'el reporte de ese día no se las contó como trabajadas: no se pagan y no hay nada que restar'
+          : 'se resta cuando su ficha tenga la remuneración'}
+      </span>,
+    )
+  }
+  return partes.map((x, i) => (
+    <span key={i}>
+      {' · '}
+      {x}
+    </span>
+  ))
+}
+
 /** Lo que marcó en portería el día del permiso y las horas que le puso el supervisor, para decidir. */
 function Porteria({ permiso: p, hoy }: { permiso: Permiso; hoy: string }) {
   if (p.fecha > hoy) return null
   const marcas = p.ingreso || p.salida
+  const enPlanta = minutosEntre(p.ingreso, p.salida)
   return (
     <p className="mt-0.5 text-xs text-texto-suave" data-porteria>
       Portería:{' '}
@@ -243,6 +280,12 @@ function Porteria({ permiso: p, hoy }: { permiso: Permiso; hoy: string }) {
             </>
           ) : (
             'sin salida'
+          )}
+          {enPlanta !== null && (
+            <>
+              {' · '}
+              <span className="tabular text-texto">{minutosLargos(enPlanta)}</span> en planta
+            </>
           )}
         </>
       ) : (

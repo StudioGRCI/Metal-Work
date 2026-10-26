@@ -288,20 +288,28 @@ export async function recargoExtrasDelMes(mes: string): Promise<RecargoExtras[]>
 
 /**
  * Cómo entra cada persona de la planilla de taller al costo de los códigos:
- * `HORAS`, por sus horas del mes más el ajuste a su costo real; `SIN_FICHA` o
- * `SIN_HORAS`, su costo entero por las horas de todos; `OFICINA`, no entra
- * (va por los pagos de la oficina).
+ * `HORAS`, por sus horas del mes más el ajuste a su costo real; `SIN_COSTO`,
+ * tiene horas en el reporte pero su ficha no tiene costo mensual, y su costo va
+ * por esas horas; `SIN_FICHA` o `SIN_HORAS`, su costo entero por las horas de
+ * todos; `OFICINA`, no entra (va por los pagos de la oficina); `ANTES`, de antes
+ * de octubre de 2026, cuando no había reporte diario.
  */
 export type PersonaAlCosto = {
   persona_id: string
   trabajador_id: string | null
   trabajador: string | null
-  como: 'HORAS' | 'SIN_FICHA' | 'SIN_HORAS' | 'OFICINA'
+  como: 'HORAS' | 'SIN_COSTO' | 'SIN_FICHA' | 'SIN_HORAS' | 'OFICINA' | 'ANTES'
   costo: number
   horas: number
   costo_horas: number
+  /** El recargo de sus horas extras que la planilla diaria pagó y ya entró a los códigos. */
+  recargo: number
   ajuste: number
+  /** Lo que de verdad llega a los códigos: 0 si no hay adónde (un mes sin horas en ningún código). */
+  entra: number
   codigos: number
+  /** El mes tiene horas en algún código. */
+  mes_con_horas: boolean
 }
 
 /** Las personas de una planilla de taller y cómo entran al costo (`rrhh_planilla_al_costo`), por persona. */
@@ -309,7 +317,8 @@ export async function planillaAlCosto(planillaId: string): Promise<Map<string, P
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('rrhh_planilla_al_costo', { p_planilla: planillaId })
   if (error) throw new Error(`No se pudo leer cómo entra la planilla al costo: ${error.message}`)
-  const comoDe = (v: string | null): PersonaAlCosto['como'] => (v === 'SIN_FICHA' || v === 'SIN_HORAS' || v === 'OFICINA' ? v : 'HORAS')
+  const comoDe = (v: string | null): PersonaAlCosto['como'] =>
+    v === 'SIN_COSTO' || v === 'SIN_FICHA' || v === 'SIN_HORAS' || v === 'OFICINA' || v === 'ANTES' ? v : 'HORAS'
   return new Map(
     (data ?? []).flatMap((f) =>
       f.persona_id
@@ -324,8 +333,11 @@ export async function planillaAlCosto(planillaId: string): Promise<Map<string, P
                 costo: Number(f.costo ?? 0),
                 horas: Number(f.horas ?? 0),
                 costo_horas: Number(f.costo_horas ?? 0),
+                recargo: Number(f.recargo ?? 0),
                 ajuste: Number(f.ajuste ?? 0),
+                entra: Number(f.entra ?? 0),
                 codigos: f.codigos ?? 0,
+                mes_con_horas: f.mes_con_horas ?? false,
               },
             ] as const,
           ]
@@ -411,6 +423,10 @@ export type Permiso = {
   horas_pagadas: number
   /** Lo restado del pago por ese día; `null` para quien no ve el sueldo. */
   descontado: number | null
+  /** La hora de su remuneración (entre 240); `null` para quien no ve el sueldo o sin remuneración. */
+  valor_hora: number | null
+  /** Lo que el próximo pago va a restar (o devolver, en negativo) por ese día; `null` para quien no ve el sueldo. */
+  por_restar: number | null
   creado_en: string
   anulado_en: string | null
   motivo_anulacion: string | null
@@ -449,6 +465,8 @@ export async function listarPermisos(mes?: string): Promise<Permiso[]> {
             horas_reporte: f.horas_reporte === null ? null : Number(f.horas_reporte),
             horas_pagadas: Number(f.horas_pagadas ?? 0),
             descontado: f.descontado === null ? null : Number(f.descontado),
+            valor_hora: f.valor_hora === null ? null : Number(f.valor_hora),
+            por_restar: f.por_restar === null ? null : Number(f.por_restar),
             creado_en: f.creado_en,
             anulado_en: f.anulado_en,
             motivo_anulacion: f.motivo_anulacion,
@@ -463,6 +481,8 @@ export type DescuentoPorAplicar = {
   trabajador_id: string
   nombre: string
   planilla: 'TALLER' | 'ADMINISTRATIVA'
+  /** De baja ya no tiene próximo pago: lo que le falta no se le va a restar. */
+  activo: boolean
   concepto: 'TARDANZAS' | 'PERMISO'
   /** El mes de las tardanzas (su primer día) o el día del permiso. */
   fecha: string
@@ -487,6 +507,7 @@ export async function descuentosPorAplicar(hasta?: string): Promise<DescuentoPor
             trabajador_id: f.trabajador_id,
             nombre: f.nombre ?? 'Persona',
             planilla: f.planilla === 'ADMINISTRATIVA' ? 'ADMINISTRATIVA' : 'TALLER',
+            activo: f.activo ?? true,
             concepto: f.concepto === 'PERMISO' ? 'PERMISO' : 'TARDANZAS',
             fecha: f.fecha,
             horas: f.horas === null ? null : Number(f.horas),
@@ -517,6 +538,27 @@ export async function tardanzasRestadas(mes: string): Promise<Map<string, Tardan
         : [],
     ),
   )
+}
+
+/**
+ * Lo que el sistema ya le restó a cada persona en un mes `YYYY-MM` (neto de lo
+ * devuelto): por las tardanzas del mes y por los permisos descontados de sus
+ * días. Para comparar con los descuentos que trae el Excel de la planilla del mes.
+ * Pide `rrhh.personal` o `planilla_diaria.preparar`.
+ */
+export async function restadoDelMes(mes: string): Promise<Map<string, { tardanzas: number; permisos: number }>> {
+  const [tardanzas, permisos] = await Promise.all([tardanzasRestadas(mes), listarPermisos(mes)])
+  const restado = new Map<string, { tardanzas: number; permisos: number }>()
+  for (const [id, t] of tardanzas) restado.set(id, { tardanzas: t.descontado, permisos: 0 })
+  // Lo restado va por día: dos permisos del mismo día (uno anulado) lo traen dos veces.
+  const dias = new Set<string>()
+  for (const p of permisos) {
+    if (!p.descontado || dias.has(`${p.trabajador_id}|${p.fecha}`)) continue
+    dias.add(`${p.trabajador_id}|${p.fecha}`)
+    const v = restado.get(p.trabajador_id) ?? { tardanzas: 0, permisos: 0 }
+    restado.set(p.trabajador_id, { ...v, permisos: v.permisos + p.descontado })
+  }
+  return restado
 }
 
 /** Un pago a una persona de la oficina, con el tramo de días que paga. Solo lo lee RR. HH. */

@@ -63,7 +63,7 @@ export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Pago a una persona de la oficina"
-        descripcion="Su sueldo de esos días: la base le resta lo que tiene por tardanzas y permisos descontados. Entra al costeo de cada mes por los días que caen en él."
+        descripcion="Su sueldo de esos días, con sueldo, asignación y bonos, antes de descuentos: el sistema le resta solo lo que tiene por tardanzas y permisos descontados. Entra al costeo de cada mes por los días que caen en él."
         ancho="lg"
       >
         <FormularioPago
@@ -177,10 +177,11 @@ function FormularioPago({
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo
-          etiqueta="Su sueldo de esos días (S/)"
+          etiqueta="Su sueldo de esos días, antes de descuentos (S/)"
           htmlFor={`pago-monto-${id}`}
           requerido
-          ayuda="Sueldo, asignación y bonos de esos días, sin restar tardanzas ni permisos: eso lo resta la base."
+          ayuda="Las tardanzas y los permisos se restan solos."
+          ayudaEnIcono={false}
         >
           <Entrada
             id={`pago-monto-${id}`}
@@ -207,16 +208,21 @@ function FormularioPago({
             {descuentos.map((d, i) => {
               const aplica = vista ? vista.aplicados[i] : d.monto
               return (
-                <li key={`${d.fecha}-${i}`} className={d.monto > 0 ? 'text-peligro' : 'text-exito'}>
-                  <span className="tabular">
-                    {d.monto > 0 ? '− ' : '+ '}
-                    {moneda(Math.abs(aplica))}
-                  </span>{' '}
-                  · {d.detalle}
+                <li key={`${d.fecha}-${i}`} className={aplica === 0 ? 'text-texto-suave' : d.monto > 0 ? 'text-peligro' : 'text-exito'}>
+                  {aplica !== 0 && (
+                    <>
+                      <span className="tabular whitespace-nowrap">
+                        {d.monto > 0 ? '− ' : '+ '}
+                        {moneda(Math.abs(aplica))}
+                      </span>{' '}
+                      ·{' '}
+                    </>
+                  )}
+                  {d.detalle}
                   {vista && d.monto > 0 && aplica < d.monto && (
                     <span className="text-texto-suave">
                       {' '}
-                      (<span className="tabular">{moneda(d.monto - aplica)}</span> quedan para el siguiente pago)
+                      (<span className="tabular whitespace-nowrap">{moneda(d.monto - aplica)}</span> quedan para el siguiente pago)
                     </span>
                   )}
                 </li>
@@ -225,7 +231,12 @@ function FormularioPago({
           </ul>
           {vista && (
             <p className="mt-1 text-texto">
-              Se le paga <span className="tabular font-semibold">{moneda(vista.neto)}</span>
+              Se le paga <span className="tabular whitespace-nowrap font-semibold">{moneda(vista.neto)}</span>
+              {vista.neto === 0 && (
+                <span className="block text-xs text-texto-suave">
+                  Los descuentos se llevan todo el sueldo de esos días: lo que no alcanzó queda para el siguiente pago. Un pago nunca queda en negativo.
+                </span>
+              )}
             </p>
           )}
         </div>

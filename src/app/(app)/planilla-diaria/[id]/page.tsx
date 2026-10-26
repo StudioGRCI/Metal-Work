@@ -198,7 +198,7 @@ function Persona({
             {g.horas_permiso > 0 && (
               <>
                 {' · '}
-                <span className="tabular">{horasCortas(g.horas_permiso)}</span> de permiso · <span className="tabular">{moneda(g.monto_permiso)}</span>
+                <span className="tabular">{horasCortas(g.horas_permiso)}</span> de permiso justificado · <span className="tabular whitespace-nowrap">{moneda(g.monto_permiso)}</span>
               </>
             )}
           </p>

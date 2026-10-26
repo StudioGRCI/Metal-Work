@@ -70,7 +70,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Pagos de la oficina"
-        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Escribes su sueldo de esos días y la base le resta lo que tiene por tardanzas y por permisos descontados; queda lo que se le pagó. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
+        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Se escribe su sueldo de esos días, antes de descuentos, y el sistema le resta solo lo que tiene por tardanzas y por permisos descontados; queda lo que se le pagó. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           edita && (
@@ -209,15 +209,15 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
                         <p className="tabular text-sm text-texto">
                           {fecha(p.desde)} al {fecha(p.hasta)}
                         </p>
-                        <p className="tabular text-[11px] text-texto-suave">
+                        <p className="tabular text-xs text-texto-suave">
                           {dias} {dias === 1 ? 'día' : 'días'}
                         </p>
                       </TD>
                       <TD className={`tabular hidden text-right align-top whitespace-nowrap sm:table-cell ${anulado ? 'line-through' : ''}`}>
                         {moneda(p.monto + p.aportes)}
-                        {p.aportes > 0 && <p className="text-[11px] text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
+                        {p.aportes > 0 && <p className="text-xs text-texto-suave">con {moneda(p.aportes)} de aportes</p>}
                         {p.descuentos.length > 0 && (
-                          <p className="text-[11px] text-texto-suave">
+                          <p className="text-xs text-texto-suave">
                             de {moneda(p.monto + p.descuentos.reduce((n, d) => n + d.monto, 0))} de sueldo
                           </p>
                         )}

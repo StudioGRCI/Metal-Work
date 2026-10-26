@@ -9,6 +9,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { TIPOS_REPORTE_PERMISO, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
+import { moneda } from '@/lib/format'
 
 import { anularPermiso, descontarPermiso, justificarPermiso, registrarPermiso, reportarPermiso } from './acciones'
 
@@ -219,17 +220,33 @@ export function DescontarPermiso({
   permisoId,
   nombre,
   dia,
+  horas,
   porJustificar,
+  justificadas,
+  descontadas,
+  horasReporte,
+  valorHora,
   oficina,
 }: {
   permisoId: string
   nombre: string
   dia: string
+  /** Las horas del permiso. */
+  horas: number
   porJustificar: number
+  justificadas: number
+  descontadas: number
+  /** Las horas que el supervisor le puso ese día; `null` si todavía no hay reporte. */
+  horasReporte: number | null
+  /** La hora de su remuneración; `null` para quien no ve el sueldo o sin remuneración. */
+  valorHora: number | null
   oficina: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  const descripcion = oficina
+    ? queRestaLaOficina(porJustificar, dia, valorHora)
+    : queRestaElTaller({ horas, porJustificar, justificadas, descontadas, horasReporte, valorHora, dia })
   return (
     <>
       <Boton
@@ -249,17 +266,63 @@ export function DescontarPermiso({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Descontar el permiso de ${nombre}`}
-        descripcion={
-          oficina
-            ? `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar se restan de su próximo pago, a su remuneración entre 240.`
-            : `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar no se pagan: si el reporte de ese día las trae, la próxima planilla diaria las resta a la hora de su remuneración.`
-        }
+        descripcion={descripcion}
         ancho="sm"
       >
         <FormularioDescontar key={vez} permisoId={permisoId} alTerminar={() => setAbierta(false)} />
       </Ventana>
     </>
   )
+}
+
+/** «S/ 37.50 (3 h a S/ 12.50 la hora)», o nada sin el valor de la hora. */
+function enSoles(horas: number, valorHora: number | null): string {
+  if (valorHora === null) return ''
+  return ` ${moneda(Math.round(horas * valorHora * 100) / 100)} (${horasEnTexto(horas)} h a ${moneda(valorHora)} la hora)`
+}
+
+/** En la oficina se le paga el sueldo: lo descontado se resta del próximo pago. */
+function queRestaLaOficina(porJustificar: number, dia: string, valorHora: number | null): string {
+  const cuanto = enSoles(porJustificar, valorHora)
+  return cuanto
+    ? `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar se restan de su próximo pago:${cuanto}.`
+    : `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar se restan de su próximo pago, a su remuneración entre 240.`
+}
+
+/**
+ * En taller se le paga por las horas del reporte. La misma cuenta que la base
+ * (`descuentos_pendientes`): el reporte le pone a lo más 8 h ordinarias; las del
+ * permiso que no caben con ellas en la jornada son las que el reporte contó como
+ * trabajadas, y de esas se resta lo descontado que no se justificó.
+ */
+function queRestaElTaller({
+  horas,
+  porJustificar,
+  justificadas,
+  descontadas,
+  horasReporte,
+  valorHora,
+  dia,
+}: {
+  horas: number
+  porJustificar: number
+  justificadas: number
+  descontadas: number
+  horasReporte: number | null
+  valorHora: number | null
+  dia: string
+}): string {
+  const deLasHoras = `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar no se pagan`
+  if (horasReporte === null) {
+    return `${deLasHoras}: si el reporte de ese día se las cuenta como trabajadas, la próxima planilla diaria se las resta.`
+  }
+  const solape = Math.max(Math.min(horasReporte, 8) + horas - 8, 0)
+  const restable = (d: number) => Math.max(Math.min(d, solape - justificadas), 0)
+  const nuevas = restable(descontadas + porJustificar) - restable(descontadas)
+  if (nuevas <= 0) {
+    return `${deLasHoras}. El reporte de ese día no se las cuenta como trabajadas, así que no hay nada que restar.`
+  }
+  return `${deLasHoras}. El reporte de ese día le cuenta ${horasEnTexto(nuevas)} h de ellas como trabajadas: la próxima planilla diaria se las resta${enSoles(nuevas, valorHora) ? `,${enSoles(nuevas, valorHora)}` : ''}.`
 }
 
 function FormularioDescontar({ permisoId, alTerminar }: { permisoId: string; alTerminar: () => void }) {
@@ -269,7 +332,10 @@ function FormularioDescontar({ permisoId, alTerminar }: { permisoId: string; alT
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="permiso_id" value={permisoId} />
-      <p className="text-sm text-texto-suave">Si después lo justifica o se anula el permiso, lo restado se devuelve en el pago siguiente.</p>
+      <p className="text-sm text-texto-suave">
+        Ya descontado, no se justifica con horas extras. Si fue un error, se anula el permiso y se vuelve a registrar: lo restado se devuelve en
+        el pago siguiente.
+      </p>
       {error && (
         <p role="alert" className="text-sm text-peligro">
           {error}
@@ -336,7 +402,7 @@ function FormularioReportar({ permisoId, alTerminar }: { permisoId: string; alTe
         </Seleccion>
       </Campo>
       <Campo etiqueta="Nota" htmlFor={`reportar-nota-${id}`} ayuda="Opcional: lo que conversaron o por qué no lo justificó.">
-        <AreaTexto id={`reportar-nota-${id}`} name="nota" maxLength={500} rows={3} />
+        <AreaTexto id={`reportar-nota-${id}`} name="nota" minLength={2} maxLength={500} rows={3} />
       </Campo>
       {error && (
         <p role="alert" className="text-sm text-peligro">

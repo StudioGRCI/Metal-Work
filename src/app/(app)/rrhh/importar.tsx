@@ -159,7 +159,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-borde pt-3">
             <p className="text-sm text-texto">
               {elegidas.length} {elegidas.length === 1 ? 'persona elegida' : 'personas elegidas'} ·
-              <span className="tabular font-semibold"> {moneda(elegidas.reduce((s, l) => s + costo(l), 0))}</span> para repartir entre las OT
+              <span className="tabular font-semibold"> {moneda(elegidas.reduce((s, l) => s + costo(l), 0))}</span> de costo del mes
             </p>
             <div className="flex flex-wrap gap-2">
               <Boton type="button" variante="fantasma" onClick={cerrar}>Cancelar</Boton>

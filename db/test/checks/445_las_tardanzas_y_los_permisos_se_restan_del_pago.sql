@@ -57,6 +57,8 @@ select set_config('prueba.pd3', gen_random_uuid()::text, true);
 select set_config('prueba.pago1', gen_random_uuid()::text, true);
 select set_config('prueba.pago2', gen_random_uuid()::text, true);
 select set_config('prueba.planilla', gen_random_uuid()::text, true);
+select set_config('prueba.planilla_vieja', gen_random_uuid()::text, true);
+select set_config('prueba.bruno', gen_random_uuid()::text, true);
 -- Cinco días seguidos del mismo mes, ya pasados: los de esta semana o, en los
 -- primeros días del mes, los del mes anterior.
 select set_config('prueba.base', (case when extract(day from (now() at time zone 'America/Lima')::date) >= 7
@@ -243,6 +245,14 @@ begin
   perform test.afirmar((select count(*) from public.rrhh_descuentos_por_aplicar(null) d
                          where d.trabajador_id in (current_setting('prueba.juan')::uuid, current_setting('prueba.lucia')::uuid)) = 4,
     'RR. HH. ve los cuatro descuentos por aplicar');
+  perform test.afirmar((select bool_and(d.activo) from public.rrhh_descuentos_por_aplicar(null) d
+                         where d.trabajador_id = current_setting('prueba.juan')::uuid),
+    'y si la persona sigue activa');
+  perform test.afirmar((select valor_hora = 10 and por_restar = 20 from public.rrhh_permisos_con_estado(current_setting('prueba.mes')::date)
+                         where id = current_setting('prueba.p2')::uuid)
+                       and (select valor_hora = 12.5 and por_restar = 50 from public.rrhh_permisos_con_estado(current_setting('prueba.mes')::date)
+                             where id = current_setting('prueba.p3')::uuid),
+    'en Permisos, RR. HH. ve la hora de cada uno y lo que falta restar por el permiso descontado');
   perform test.afirmar((select detalle from public.rrhh_descuentos_por_aplicar(null) d
                          where d.trabajador_id = current_setting('prueba.juan')::uuid and d.concepto = 'TARDANZAS')
                        = '3 tardanzas en ' || v_mes || ': 5 % de la remuneración',
@@ -366,6 +376,19 @@ begin
     'los dos descuentos quedan con su pago');
   perform test.afirmar(pg_temp.falta('lucia', 'TARDANZAS') = 0 and pg_temp.falta('lucia', 'PERMISO') = 0,
     'y no queda nada por restar a Lucía');
+  perform test.afirmar((select regla_cada = 3 and regla_porcentaje = 5 from public.descuentos_del_pago
+                         where oficina_pago_id = current_setting('prueba.pago2')::uuid and concepto = 'TARDANZAS'),
+    'lo restado por tardanzas guarda la regla con que se restó');
+  -- Cambiar la regla no vuelve a cobrar un mes ya restado.
+  perform public.rrhh_guardar_regla_tardanza(5, 3, 10);
+  perform test.afirmar(pg_temp.falta('lucia', 'TARDANZAS') = 0,
+    'con la regla en 10 %, el mes ya restado con el 5 % no se vuelve a cobrar');
+  perform public.rrhh_guardar_regla_tardanza(5, 3, 5);
+  -- Pasarla a taller no recalcula lo que ya se le restó en la oficina.
+  v := public.rrhh_guardar_planilla_trabajador(current_setting('prueba.lucia')::uuid, 'TALLER');
+  perform test.afirmar(pg_temp.falta('lucia', 'PERMISO') = 0,
+    'al pasar a taller, el permiso ya restado en su pago de la oficina no se devuelve');
+  v := public.rrhh_guardar_planilla_trabajador(current_setting('prueba.lucia')::uuid, 'ADMINISTRATIVA');
   perform test.afirmar((select descontado = 50 from public.rrhh_permisos_con_estado(current_setting('prueba.mes')::date)
                          where id = current_setting('prueba.p3')::uuid),
     'RR. HH. ve lo restado por el permiso');
@@ -386,7 +409,8 @@ begin
   perform test.debe_fallar(format('select public.rrhh_registrar_pago_oficina(gen_random_uuid(), %L, %L, %L, 100, 0, null)',
                                   current_setting('prueba.lucia'), current_setting('prueba.d1'), current_setting('prueba.d1')),
     'ni registra pagos de la oficina', 'rrhh.personal');
-  perform test.afirmar((select reportado and descontado is null from public.rrhh_permisos_con_estado(current_setting('prueba.mes')::date)
+  perform test.afirmar((select reportado and descontado is null and valor_hora is null and por_restar is null
+                          from public.rrhh_permisos_con_estado(current_setting('prueba.mes')::date)
                          where id = current_setting('prueba.p4')::uuid),
     'Gerencia ve el permiso y si se reportó, sin lo restado en soles');
   perform test.afirmar((select count(*) from public.descuentos_del_pago where oficina_pago_id is not null) = 0,
@@ -452,9 +476,29 @@ begin
 end $$;
 
 -- --------------------------------------------------- La planilla del mes ajusta la mano de obra
--- Juan cargó 41 h en el mes (31 en A y 10 en B) a S/ 10: S/ 410 por horas. Su
--- costo real es S/ 1,000: el ajuste de S/ 590 va por sus horas. Pedro no tiene
--- ficha: sus S/ 500 van por las horas de todos (las mismas, aquí). Lucía es de
+-- Bruno es de taller y todavía no tiene costo mensual: sus 8 h del reporte de B
+-- no hacen tareo.
+do $$
+declare v uuid;
+begin
+  perform pg_temp.como('rrhh');
+  set local role authenticated;
+  v := public.rrhh_guardar_trabajador(current_setting('prueba.bruno')::uuid, 'Bruno', 'Pintor', '70000447', 'Pintor',
+         (select id from public.areas where codigo = 'MTZ'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-38', null);
+  reset role;
+  perform pg_temp.como('sup');
+  set local role authenticated;
+  v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.d3')::date, 'CHK445_B', 'Bastidor de la unidad B',
+         'Pintura del bastidor.',
+         format('[{"descripcion": "Pintura", "avance": 30, "personal": [{"trabajador_id": "%s", "horas": 8}]}]', current_setting('prueba.bruno'))::jsonb, null, null);
+  reset role;
+end $$;
+
+-- Juan cargó 41 h en el mes (31 en A y 10 en B) a S/ 10: S/ 410 por horas, y la
+-- planilla diaria le pagó S/ 2,50 de recargo por su hora extra en A. Su costo
+-- real es S/ 1,000 (ya trae la extra): el ajuste de S/ 587,50 va por sus horas.
+-- Pedro no tiene ficha: sus S/ 500 van por las horas de todos (31 en A y 18 en
+-- B). Bruno no tiene costo mensual: sus S/ 600 van por sus 8 h, a B. Lucía es de
 -- la oficina: no entra.
 do $$
 declare v_a numeric; v_b numeric;
@@ -465,13 +509,18 @@ begin
   insert into public.planilla_personas (planilla_id, nombre, monto) values
     (current_setting('prueba.planilla')::uuid, 'SOLDADOR JUAN', 1000),
     (current_setting('prueba.planilla')::uuid, 'Pedro Sinficha', 500),
+    (current_setting('prueba.planilla')::uuid, 'Pintor Bruno', 600),
     (current_setting('prueba.planilla')::uuid, 'CONTABLE LUCIA', 800);
-  perform test.afirmar((select string_agg(como || ':' || trim_scale(ajuste)::text, ' ' order by como)
-                          from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid)) = 'HORAS:590 OFICINA:0 SIN_FICHA:500',
-    'antes de cerrar, RR. HH. ve cómo entra cada persona');
-  perform test.afirmar((select trabajador = 'Juan Soldador' and horas = 41 and costo_horas = 410
+  perform test.afirmar((select string_agg(como || ':' || trim_scale(ajuste)::text || ':' || trim_scale(entra)::text, ' ' order by como)
+                          from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid))
+                       = 'HORAS:587.5:587.5 OFICINA:0:0 SIN_COSTO:600:600 SIN_FICHA:500:500',
+    'antes de cerrar, RR. HH. ve cómo entra cada persona y cuánto llega a los códigos');
+  perform test.afirmar((select trabajador = 'Juan Soldador' and horas = 41 and costo_horas = 410 and recargo = 2.5 and mes_con_horas
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid) where como = 'HORAS'),
-    'la ficha se encuentra por el nombre, en cualquier orden y sin tildes');
+    'la ficha se encuentra por el nombre, en cualquier orden y sin tildes, y lo que ya entró trae el recargo de la extra');
+  perform test.afirmar((select horas = 8 and codigos = 1 and costo_horas = 0
+                          from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid) where como = 'SIN_COSTO'),
+    'quien tiene horas en el reporte pero no costo mensual no sale como «sin horas»');
   perform public.cerrar_planilla(current_setting('prueba.planilla')::uuid);
   perform test.afirmar((select estado = 'CERRADA' from public.planillas where id = current_setting('prueba.planilla')::uuid),
     'se cierra sin repartir entre las OT');
@@ -481,13 +530,13 @@ begin
   set local role authenticated;
   select sum(l.monto) into v_a from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
   select sum(l.monto) into v_b from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
-  perform test.afirmar(v_a = 824.15 and v_b = 265.85,
-    format('el ajuste (S/ 590 + S/ 500) va por horas: 31/41 a A y 10/41 a B (salió A %s, B %s)', v_a, v_b));
-  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA')
-                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA') = 1500,
-    'la mano de obra de las dos unidades suma el costo real de la planilla: S/ 1,000 + S/ 500');
-  perform test.afirmar(((select to_jsonb(k) from public.codigos_internos_costo('CHK445_A') k where k.codigo = 'CHK445_A')->>'mano_obra')::numeric = 1134.15,
-    'el costo del código lo suma en su mano de obra: S/ 310 por horas y S/ 824,15 de ajuste');
+  perform test.afirmar(v_a = 760.53 and v_b = 926.97,
+    format('el ajuste va por horas: Juan 31/41 a A y 10/41 a B, Pedro 31/49 y 18/49, Bruno todo a B (salió A %s, B %s)', v_a, v_b));
+  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS'))
+                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS')) = 2100,
+    'la mano de obra y el recargo de las dos unidades suman el costo real de la planilla: S/ 1,000 + S/ 500 + S/ 600, sin contar dos veces la extra');
+  perform test.afirmar(((select to_jsonb(k) from public.codigos_internos_costo('CHK445_A') k where k.codigo = 'CHK445_A')->>'mano_obra')::numeric = 1070.53,
+    'el costo del código lo suma en su mano de obra: S/ 310 por horas y S/ 760,53 de ajuste');
   reset role;
 
   -- Una hora que llega después de cerrar: el ajuste se rehace y el total sigue siendo el real.
@@ -498,9 +547,43 @@ begin
   reset role;
   perform pg_temp.como('gerente');
   set local role authenticated;
-  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA')
-                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA') = 1500,
+  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS'))
+                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS')) = 2100,
     'con una hora más, las dos unidades siguen sumando el costo real');
+  reset role;
+end $$;
+
+-- Una planilla de antes de octubre de 2026 no entra: entonces no había reporte
+-- diario. Un mes sin horas en ningún código no tiene adónde llevar su costo, y la
+-- pantalla no promete el ajuste.
+do $$
+declare v_mes date := date_trunc('month', current_setting('prueba.mes')::date - 1)::date;
+begin
+  perform pg_temp.como('rrhh');
+  set local role authenticated;
+  insert into public.planillas (id, tipo, periodo, moneda) values (current_setting('prueba.planilla_vieja')::uuid, 'TALLER', date '1999-01-01', 'PEN');
+  insert into public.planilla_personas (planilla_id, nombre, monto) values (current_setting('prueba.planilla_vieja')::uuid, 'Pedro Sinficha', 300);
+  perform test.afirmar((select como = 'ANTES' and ajuste = 0 and entra = 0
+                          from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
+    'una planilla de antes de octubre de 2026 no ajusta nada');
+  reset role;
+
+  -- El check mueve el inicio para probar lo que pasará desde noviembre (se deshace al final).
+  create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select date '1999-01-01' $f$;
+  perform pg_temp.como('rrhh');
+  set local role authenticated;
+  perform test.afirmar((select como = 'SIN_FICHA' and ajuste = 300 and entra = 0 and not mes_con_horas
+                          from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
+    'en un mes sin horas en ningún código, la pantalla sabe que el costo no llega a ninguna unidad');
+  -- Juan trabajó en A el mes pasado y la planilla de taller de ese mes no está cerrada.
+  perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, v_mes + 9, 'CHK445_A', 4, 'Soldadura de la tolva');
+  reset role;
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  perform test.afirmar((select array_agg(m.periodo) = array[v_mes] from public.meses_sin_planilla_taller('CHK445_A') m),
+    'el código sabe qué mes espera su planilla de taller');
+  perform test.debe_fallar('select public.cerrar_costeo_codigo(''CHK445_A'', ''Se entregó la unidad al cliente en planta.'')',
+    'el costeo no se cierra sin la planilla de taller de un mes en que trabajó', 'cerrar la planilla de taller de ' || to_char(v_mes, 'MM/YYYY'));
   reset role;
 end $$;
 
@@ -513,6 +596,7 @@ select test.afirmar(not has_function_privilege('authenticated', 'public.descuent
                     and not has_function_privilege('authenticated', 'public.trabajador_de_planilla(text, text)', 'execute')
                     and not has_function_privilege('authenticated', 'public.planilla_al_costo(uuid)', 'execute')
                     and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_planilla(text)', 'execute')
+                    and not has_function_privilege('authenticated', 'public.planilla_ajuste_desde()', 'execute')
                     and not has_function_privilege('authenticated', 'public.fn_descuento_del_pago_guardia()', 'execute'),
   'los cálculos internos no los llama la gente: solo las funciones que piden permiso');
 select test.afirmar(not has_function_privilege('anon', 'public.rrhh_descontar_permiso(uuid, uuid)', 'execute')
@@ -521,7 +605,8 @@ select test.afirmar(not has_function_privilege('anon', 'public.rrhh_descontar_pe
                     and not has_function_privilege('anon', 'public.rrhh_descuentos_por_aplicar(date)', 'execute')
                     and not has_function_privilege('anon', 'public.rrhh_descuentos_de_tardanzas(date)', 'execute')
                     and not has_function_privilege('anon', 'public.rrhh_recargo_extras_del_mes(date)', 'execute')
-                    and not has_function_privilege('anon', 'public.rrhh_planilla_al_costo(uuid)', 'execute'),
+                    and not has_function_privilege('anon', 'public.rrhh_planilla_al_costo(uuid)', 'execute')
+                    and not has_function_privilege('anon', 'public.meses_sin_planilla_taller(text)', 'execute'),
   'nada de esto se llama sin sesión');
 
 rollback;

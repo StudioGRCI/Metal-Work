@@ -184,7 +184,7 @@ export function editaComoRrhh(perfil: PerfilSesion | null, permiso: string): boo
   return Boolean(perfil?.permisos.includes(permiso))
 }
 
-/** Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos (migración 20261020165000). */
+/** Si cambia el DNI de las cuentas: solo Recursos Humanos (migración 20261020165000; el costo por hora ya no se pide). */
 export function cambiaDatosReservados(perfil: PerfilSesion | null): boolean {
   return editaComoRrhh(perfil, 'rrhh.personal')
 }

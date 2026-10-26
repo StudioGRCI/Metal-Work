@@ -422,7 +422,8 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   // cerrarla, la diferencia entre el costo real de cada persona y lo que entró
   // por sus horas se reparte entre los códigos (migración 20261026210000).
   // Mientras siga en preparación, la mano de obra de esos códigos sale corta.
-  // No cuenta la que todavía no se crea: eso lo dice la pantalla.
+  // No cuenta la que todavía no se crea: la de un mes sin planilla no tiene
+  // nada que cerrar hasta que RR. HH. la importe.
   if (puede(perfil, 'rrhh.gestionar_planillas')) {
     const esteMes = `${hoy.slice(0, 7)}-01`
     tareas.push({
@@ -441,6 +442,24 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
           .lt('periodo', esteMes)
         if (error) throw new Error('No se pudo leer la planilla.')
         return count ?? 0
+      },
+    })
+  }
+
+  // Un permiso de un día que ya pasó, sin justificar, descontar ni reportar, no
+  // tiene ninguna consecuencia hasta que RR. HH. decida (migración 20261026200000).
+  // Los de antes de octubre de 2026 solo se reportan: también cuentan.
+  if (puede(perfil, 'rrhh.permisos')) {
+    tareas.push({
+      clave: 'permisos_sin_decidir',
+      ruta: '/rrhh/permisos',
+      tono: 'aviso',
+      texto: (n) =>
+        plural(n, 'permiso de un día pasado sin justificar, descontar ni reportar', 'permisos de días pasados sin justificar, descontar ni reportar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('rrhh_permisos_con_estado', {})
+        if (error) throw new Error('No se pudieron leer los permisos.')
+        return (data ?? []).filter((p) => p.fecha && p.fecha < hoy && Number(p.por_justificar ?? 0) > 0 && !p.reportado && !p.anulado_en).length
       },
     })
   }

@@ -65,10 +65,11 @@ export default async function PaginaPlanillaDiaria() {
   const sinRemuneracion = porEnviar.filter((p) => p.remuneracion === null)
   const total = regla ? conRemuneracion.reduce((n, p) => n + (estimado(p, regla, descuentosDe(p.trabajador_id))?.neto ?? 0), 0) : 0
   // La gente de taller con algo por restar o devolver y sin horas por pagar: espera su próxima planilla.
+  // Quien está de baja ya no tiene próxima planilla: lo dicen Tardanzas y Permisos.
   const enEspera = [
     ...new Map(
       descuentos
-        .filter((d) => d.planilla === 'TALLER' && !porEnviar.some((p) => p.trabajador_id === d.trabajador_id))
+        .filter((d) => d.planilla === 'TALLER' && d.activo && !porEnviar.some((p) => p.trabajador_id === d.trabajador_id))
         .map((d) => [d.trabajador_id, d.nombre]),
     ).values(),
   ]
@@ -179,24 +180,38 @@ export default async function PaginaPlanillaDiaria() {
                                 )}
                               </li>
                             ))}
-                            {suyos.map((d, i) => (
-                              <li key={`${d.concepto}-${d.fecha}`} className={d.monto > 0 ? 'text-peligro' : 'text-exito'} data-descuento={d.concepto}>
-                                <span className="tabular">
-                                  {d.monto > 0 ? '− ' : '+ '}
-                                  {moneda(Math.abs(monto ? monto.aplicados[i] : d.monto))}
-                                </span>{' '}
-                                · {d.detalle}
-                                {monto && d.monto > 0 && monto.aplicados[i] < d.monto && (
-                                  <span className="text-texto-suave">
-                                    {' '}
-                                    (<span className="tabular">{moneda(d.monto - monto.aplicados[i])}</span> quedan para la siguiente)
-                                  </span>
-                                )}
-                              </li>
-                            ))}
+                            {suyos.map((d, i) => {
+                              // Lo que esta planilla resta o devuelve; lo que no alcanza espera a la siguiente.
+                              const aplica = monto ? monto.aplicados[i] : d.monto
+                              const queda = monto && d.monto > 0 ? d.monto - monto.aplicados[i] : 0
+                              return (
+                                <li
+                                  key={`${d.concepto}-${d.fecha}`}
+                                  className={aplica === 0 ? 'text-texto-suave' : d.monto > 0 ? 'text-peligro' : 'text-exito'}
+                                  data-descuento={d.concepto}
+                                >
+                                  {aplica !== 0 && (
+                                    <>
+                                      <span className="tabular whitespace-nowrap">
+                                        {d.monto > 0 ? '− ' : '+ '}
+                                        {moneda(Math.abs(aplica))}
+                                      </span>{' '}
+                                      ·{' '}
+                                    </>
+                                  )}
+                                  {d.detalle}
+                                  {queda > 0 && (
+                                    <span className="text-texto-suave">
+                                      {' '}
+                                      (<span className="tabular whitespace-nowrap">{moneda(queda)}</span> quedan para la siguiente)
+                                    </span>
+                                  )}
+                                </li>
+                              )
+                            })}
                           </ul>
                         </TD>
-                        <TD className="tabular text-right align-top">
+                        <TD className="tabular text-right align-top whitespace-nowrap">
                           {monto === null ? (
                             'Sin remuneración'
                           ) : (

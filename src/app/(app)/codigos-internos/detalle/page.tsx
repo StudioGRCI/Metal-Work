@@ -14,6 +14,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   actividadesDelCodigo,
+  ajusteDePlanilla,
   aporteDeLosPlanos,
   avanceDelCodigo,
   comprasDelCodigo,
@@ -30,7 +31,7 @@ import {
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
-import { mesesSinPagosDeOficina, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import {
   CODIGO_SIN_AVANCE,
@@ -91,14 +92,19 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas] = await Promise.all([
     leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
     // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPagosDeOficina(codigo) : Promise.resolve<string[]>([]),
+    // Y los que esperan la planilla de taller cerrada: su ajuste es parte de la mano de obra.
+    cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
+    // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
+    aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
   ])
+  const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
@@ -175,6 +181,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                 cierra={cierra}
                 esperaElMes={esperaElMes}
                 faltaOficina={faltaOficina}
+                faltaPlanilla={faltaPlanilla}
+                ajuste={ajuste}
               />
               <LineaDeDiseno d={diseno} />
             </>
@@ -213,6 +221,8 @@ function ComoVa({
   cierra,
   esperaElMes,
   faltaOficina,
+  faltaPlanilla,
+  ajuste,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
@@ -226,6 +236,10 @@ function ComoVa({
   esperaElMes: boolean
   /** Los meses con horas de la unidad a los que les faltan pagos de la oficina. */
   faltaOficina: string[]
+  /** Los meses terminados con horas de la unidad cuya planilla de taller sigue sin cerrar. */
+  faltaPlanilla: string[]
+  /** Lo que la mano de obra trae del ajuste de la planilla de taller (ya va en `c.mano_obra`). */
+  ajuste: number
 }) {
   const costo = costoDelCodigo(c)
   const manoObra = c.mano_obra + c.recargo_extras
@@ -282,6 +296,7 @@ function ComoVa({
             `${horasCortas(c.horas)} de personal`,
             c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} sin costo`,
             c.recargo_extras > 0 && `${moneda(c.recargo_extras)} de recargo de extras`,
+            ajuste !== 0 && `${moneda(ajuste)} de ajuste de la planilla de taller`,
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -362,7 +377,17 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} faltaOficina={faltaOficina} />}
+      {!noEsUnidad(codigo) && (
+        <LineaCierre
+          c={c}
+          codigo={codigo}
+          verPrecio={verPrecio}
+          cierra={cierra}
+          esperaElMes={esperaElMes}
+          faltaOficina={faltaOficina}
+          faltaPlanilla={faltaPlanilla}
+        />
+      )}
     </div>
   )
 }
@@ -546,6 +571,7 @@ function LineaCierre({
   cierra,
   esperaElMes,
   faltaOficina,
+  faltaPlanilla,
 }: {
   c: ResumenCodigo
   codigo: string
@@ -553,6 +579,7 @@ function LineaCierre({
   cierra: boolean
   esperaElMes: boolean
   faltaOficina: string[]
+  faltaPlanilla: string[]
 }) {
   const z = c.cierre
   if (!z) {
@@ -568,6 +595,8 @@ function LineaCierre({
       esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
       faltaOficina.length > 0 &&
         `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
+      faltaPlanilla.length > 0 &&
+        `cerrar la planilla de taller de ${faltaPlanilla.map((m) => periodo(m)).join(', ')} (RR. HH., en Planillas: al cerrarla entra el ajuste de la mano de obra)`,
     ].filter(Boolean)
     if (falta.length > 0) {
       return (

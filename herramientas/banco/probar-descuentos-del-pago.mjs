@@ -445,15 +445,25 @@ try {
     )
     const cabecera = await texto(tarjeta.locator('h2 + p'))
     comprobar(
-      costo?.como === 'HORAS' && costo.horas === 33 && costo.ajuste === 670 && cabecera.includes(`ajuste ${soles(1170)} al cerrar`) && cabecera.includes('1 sin ficha'),
+      // Su costo real (S/ 1,000) ya trae la extra: se descuentan sus horas (S/ 330) y el recargo que ya entró (S/ 2.50).
+      costo?.como === 'HORAS' && costo.horas === 33 && costo.ajuste === 667.5 && cabecera.includes(`ajuste ${soles(1167.5)} al cerrar`) && cabecera.includes('1 sin ficha'),
       `la cabecera dice el ajuste que va a entrar y quién no tiene ficha: «${cabecera}» (base ${JSON.stringify(costo)})`,
     )
     const filaJuan = tarjeta.locator('details', { hasText: enPlanilla })
     const resumen = await texto(filaJuan.locator('summary'))
-    comprobar(resumen.includes(`33 h en 2 códigos · ajuste ${soles(670)}`), `la fila de Juan: «${resumen}»`)
+    comprobar(resumen.includes(`33 h en 2 códigos · ajuste ${soles(667.5)}`), `la fila de Juan: «${resumen}»`)
     await filaJuan.locator('summary').click()
     const explicacion = await texto(filaJuan.locator('[data-al-costo]'))
-    comprobar(explicacion.includes(`ya entraron ${soles(330)}`) && explicacion.includes('Al cerrar la planilla'), `al abrirla, la cuenta: «${explicacion}»`)
+    comprobar(
+      explicacion.includes(`ya entraron ${soles(330)}`) && explicacion.includes(`${soles(2.5)} del recargo`) && explicacion.includes('Al cerrar la planilla'),
+      `al abrirla, la cuenta, con el recargo que ya entró: «${explicacion}»`,
+    )
+    // Para comparar con los descuentos del Excel: lo que el sistema ya le restó en el mes.
+    const yaRestado = await texto(filaJuan.locator('[data-ya-restado]'))
+    comprobar(
+      yaRestado.includes(soles(140)) && yaRestado.includes(`tardanzas ${soles(120)}`) && yaRestado.includes(`permisos ${soles(20)}`),
+      `la fila dice lo que el sistema ya le restó en el mes: «${yaRestado}»`,
+    )
     const filaSinFicha = tarjeta.locator('details', { hasText: `Pedro Sinficha ${sello}` })
     comprobar((await texto(filaSinFicha.locator('summary'))).includes('sin ficha en Personal'), 'quien no tiene ficha lo dice')
 
@@ -465,6 +475,19 @@ try {
     comprobar(errorQuitar === '', `quitar a quien no tiene ficha no dio error${errorQuitar ? `: ${errorQuitar}` : ''}`)
     await tarjeta.locator('details', { hasText: `Pedro Sinficha ${sello}` }).waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
     await tarjeta.getByRole('button', { name: 'Cerrar planilla' }).click()
+    // No se cierra de un toque: la ventana dice cuánto entra a los códigos.
+    const ventana = pagina.locator('[role="dialog"]')
+    await ventana.waitFor({ timeout: 10000 })
+    const avisoCierre = await texto(ventana)
+    comprobar(
+      avisoCierre.includes(`${soles(667.5)} de ajuste entran`) && avisoCierre.includes('no se vuelve a abrir') && avisoCierre.includes('El mes todavía no termina'),
+      `la ventana de cierre dice el ajuste y que el mes no terminó: «${avisoCierre.slice(0, 300)}»`,
+    )
+    comprobar(
+      (await consulta(`select estado from planillas where id = $1`, [planillaEste]))[0]?.estado === 'BORRADOR',
+      'abrir la ventana todavía no cierra la planilla',
+    )
+    await ventana.getByRole('button', { name: 'Cerrar planilla' }).click()
     // Al cerrarse, la tarjeta se repinta sin el formulario y su aviso: se espera a la base.
     let cerrada = null
     for (let i = 0; i < 30 && cerrada?.estado !== 'CERRADA'; i++) {
@@ -486,7 +509,15 @@ try {
       ajusteA?.monto > 0 && linea.includes(soles(ajusteA.monto)),
       `Gerencia ve el ajuste de la planilla en la mano de obra del código A: «${linea.slice(0, 200)}» (base ${ajusteA?.monto})`,
     )
+    comprobar(linea.includes('Por ahora: el mes no termina'), `el ajuste del mes en curso dice que es provisional: «${linea.slice(0, 200)}»`)
     await ger.pagina.screenshot({ path: `${CAPTURAS}/descuentos-ajuste-en-el-codigo.png`, fullPage: true })
+    // El resumen del código dice cuánto de la mano de obra es el ajuste.
+    await ger.pagina.goto(`${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO_A })}`, { waitUntil: 'networkidle' })
+    const manoDeObra = await texto(ger.pagina.getByText(/de personal · /).first()).catch(() => '')
+    comprobar(
+      manoDeObra.includes(`${soles(ajusteA?.monto ?? 0)} de ajuste de la planilla de taller`),
+      `el resumen de la mano de obra dice el ajuste: «${manoDeObra.slice(0, 220)}»`,
+    )
     comprobar(ger.errores.length === 0, `Gerencia sin errores de consola${ger.errores.length ? `: ${ger.errores[0]}` : ''}`)
     await ger.contexto.close()
   }
@@ -512,6 +543,16 @@ try {
   for (const p of await consulta(`select id from permisos_personal where trabajador_id = any($1::uuid[]) and anulado_en is null`, [[juan.id, lucia.id]])) {
     await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_permiso($1, 'Prueba del banco: se deja anulado al terminar')`, [p.id]).catch((e) =>
       fallas.push(`no se pudo anular un permiso al terminar: ${e}`),
+    )
+  }
+  // Las tardanzas también: si no, quien queda de baja seguiría con descuentos que esperan.
+  // Primero las salidas: la base no deja anular un ingreso con su salida vigente.
+  for (const a of await consulta(
+    `select id from asistencias where trabajador_id = any($1::uuid[]) and anulado_en is null order by tipo = 'INGRESO'`,
+    [[juan.id, lucia.id]],
+  )) {
+    await comoPuesto(CUENTAS.rrhh, `select public.anular_asistencia($1, 'Prueba del banco: se deja anulada al terminar')`, [a.id]).catch((e) =>
+      fallas.push(`no se pudo anular una marca al terminar: ${e}`),
     )
   }
   // Con la planilla diaria anulada, sus horas volverían a «Por enviar»: se anulan

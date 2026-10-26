@@ -1874,6 +1874,8 @@ export type Database = {
           registrado_por: string
           creado_en: string
           actualizado_en: string
+          regla_cada: number | null
+          regla_porcentaje: number | null
         }
         Insert: {
           id?: string
@@ -1891,6 +1893,8 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
         }
         Update: {
           id?: string
@@ -1908,6 +1912,8 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
         }
         Relationships: [
           {
@@ -13501,6 +13507,8 @@ export type Database = {
           base: number | null
           monto: number | null
           detalle: string | null
+          regla_cada: number | null
+          regla_porcentaje: number | null
         }[]
       }
       descuentos_vigentes: {
@@ -14474,6 +14482,14 @@ export type Database = {
           periodo: string | null
         }[]
       }
+      meses_sin_planilla_taller: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          periodo: string | null
+        }[]
+      }
       mi_rol: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -14886,6 +14902,10 @@ export type Database = {
           a_descontar: number | null
         }[]
       }
+      planilla_ajuste_desde: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       planilla_al_costo: {
         Args: {
           p_planilla?: string | null
@@ -14900,8 +14920,10 @@ export type Database = {
           costo: number | null
           horas: number | null
           costo_horas: number | null
+          recargo: number | null
           ajuste: number | null
           codigos: number | null
+          mes_con_horas: boolean | null
         }[]
       }
       planilla_diaria_archivo: {
@@ -16063,6 +16085,7 @@ export type Database = {
           trabajador_id: string | null
           nombre: string | null
           planilla: string | null
+          activo: boolean | null
           concepto: string | null
           fecha: string | null
           horas: number | null
@@ -16194,6 +16217,8 @@ export type Database = {
           horas_reporte: number | null
           horas_pagadas: number | null
           descontado: number | null
+          valor_hora: number | null
+          por_restar: number | null
           creado_en: string | null
           anulado_en: string | null
           motivo_anulacion: string | null
@@ -16232,8 +16257,11 @@ export type Database = {
           costo: number | null
           horas: number | null
           costo_horas: number | null
+          recargo: number | null
           ajuste: number | null
+          entra: number | null
           codigos: number | null
+          mes_con_horas: boolean | null
         }[]
       }
       rrhh_recargo_extras_del_mes: {

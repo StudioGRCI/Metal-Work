@@ -7,6 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import { moneda } from '@/lib/format'
 import { crearPlanilla, agregarPersona, cerrarPlanilla, quitarPersona } from './acciones'
 
 export function NuevaPlanilla() {
@@ -34,12 +35,58 @@ export function AgregarPersona({planillaId,tipo}:{planillaId:string;tipo:string}
   </form>
 }
 
-export function CerrarPlanilla({id}:{id:string}) {
-  const {alEnviar,enviando,error,resultado}=useEnvio(cerrarPlanilla)
-  return <form onSubmit={alEnviar} className="space-y-2"><input type="hidden" name="planilla_id" value={id} />
-    <Boton type="submit" tamano="sm" cargando={enviando}>Cerrar planilla</Boton>
-    {error&&<p role="alert" className="text-xs text-peligro">{error}</p>}{resultado?.ok&&<p role="status" className="text-xs text-exito">{resultado.mensaje}</p>}
-  </form>
+/**
+ * Cerrar la planilla del mes no tiene vuelta: se confirma en una ventana que
+ * dice qué pasa con el costo. La de taller reparte su ajuste entre los códigos.
+ */
+export function CerrarPlanilla({
+  id,
+  titulo,
+  deTaller,
+  entra,
+  sinDestino,
+  mesTerminado,
+}: {
+  id: string
+  /** «planilla de taller de 10/2026». */
+  titulo: string
+  deTaller: boolean
+  /** Lo que el ajuste lleva a los códigos al cerrar (taller). */
+  entra: number
+  /** Personas cuyo costo no llega a ningún código (un mes sin horas, o de antes de octubre de 2026). */
+  sinDestino: number
+  /** El mes de la planilla ya terminó: si no, llegan horas después y el ajuste se rehace. */
+  mesTerminado: boolean
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const {alEnviar,enviando,error,resultado}=useEnvio(cerrarPlanilla, () => setAbierta(false))
+  const queHace = deTaller
+    ? `Al cerrarla, ${moneda(entra)} de ajuste entran a la mano de obra de los códigos del mes, por sus horas.`
+    : 'Queda como registro: su costo no entra por aquí a los códigos.'
+  return <div className="space-y-2">
+    <Boton type="button" tamano="sm" onClick={() => setAbierta(true)}>Cerrar planilla</Boton>
+    {resultado?.ok&&<p role="status" className="text-xs text-exito">{resultado.mensaje}</p>}
+    <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Cerrar la ${titulo}`}
+      descripcion={`${queHace} Una planilla cerrada no se vuelve a abrir.`} ancho="sm">
+      <form onSubmit={alEnviar} className="space-y-4">
+        <input type="hidden" name="planilla_id" value={id} />
+        {deTaller && !mesTerminado && (
+          <p className="text-sm text-aviso">El mes todavía no termina: las horas que lleguen después rehacen el ajuste solas.</p>
+        )}
+        {deTaller && sinDestino > 0 && (
+          <p className="text-sm text-aviso">
+            {sinDestino === 1 ? 'El costo de 1 persona no llega' : `El costo de ${sinDestino} personas no llega`} a ningún código: ese mes no tiene horas en
+            los reportes, o es de antes de octubre de 2026.
+          </p>
+        )}
+        {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Boton type="button" variante="secundario" onClick={() => setAbierta(false)}>Cancelar</Boton>
+          <Boton type="submit" cargando={enviando}>Cerrar planilla</Boton>
+        </div>
+      </form>
+    </Ventana>
+  </div>
 }
 
 /**

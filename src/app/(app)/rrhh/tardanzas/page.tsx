@@ -125,12 +125,12 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                                 {r.descuento === null ? 'Falta su remuneración' : <span className="tabular">{moneda(r.descuento)}</span>}
                               </p>
                             )}
-                            <Restado r={restadas?.get(r.trabajador.id)} />
+                            <Restado r={restadas?.get(r.trabajador.id)} activo={r.trabajador.activo} />
                           </>
                         ) : (
                           <>
                             —
-                            <Restado r={restadas?.get(r.trabajador.id)} />
+                            <Restado r={restadas?.get(r.trabajador.id)} activo={r.trabajador.activo} />
                           </>
                         )}
                       </TD>
@@ -150,7 +150,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                 ? `Hoy: ${regla.tolerancia_minutos} ${regla.tolerancia_minutos === 1 ? 'minuto' : 'minutos'} de tolerancia · cada ${cada} tardanzas del mes, ${porcentajeCorto(pct)} de descuento`
                 : 'Todavía no hay regla: se usa la de la base.'
             }
-            ayuda="Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy. Las tardanzas no se compensan con horas extras: eso es para los permisos."
+            ayuda="Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy, y un mes que ya se empezó a restar se queda con la regla con que se restó. Las tardanzas no se compensan con horas extras: eso es para los permisos."
           />
           {ajusta && (
             <TarjetaCuerpo>
@@ -164,24 +164,34 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
 }
 
 /** Lo que ya se restó del pago por las tardanzas del mes, y lo que falta restar o devolver. */
-function Restado({ r }: { r: { descontado: number; por_descontar: number; documentos: string | null } | undefined }) {
+function Restado({
+  r,
+  activo,
+}: {
+  r: { descontado: number; por_descontar: number; documentos: string | null } | undefined
+  /** De baja ya no tiene próximo pago: lo que falta no se va a restar solo. */
+  activo: boolean
+}) {
   if (!r || (r.descontado === 0 && r.por_descontar === 0)) return null
+  const cuando = activo ? ' en su próximo pago' : ': está de baja, ya no tiene próximo pago'
   return (
     <div className="text-xs" data-restado>
       {r.descontado !== 0 && (
         <p className="text-texto-suave">
-          Restado <span className="tabular text-texto">{moneda(r.descontado)}</span>
+          Restado <span className="tabular whitespace-nowrap text-texto">{moneda(r.descontado)}</span>
           {r.documentos && ` en ${r.documentos}`}
         </p>
       )}
       {r.por_descontar > 0 && (
         <p className="text-aviso">
-          Por restar <span className="tabular">{moneda(r.por_descontar)}</span> en su próximo pago
+          Por restar <span className="tabular whitespace-nowrap">{moneda(r.por_descontar)}</span>
+          {cuando}
         </p>
       )}
       {r.por_descontar < 0 && (
         <p className="text-exito">
-          Se le devuelven <span className="tabular">{moneda(-r.por_descontar)}</span> en su próximo pago
+          {activo ? 'Se le devuelven' : 'Por devolver'} <span className="tabular whitespace-nowrap">{moneda(-r.por_descontar)}</span>
+          {cuando}
         </p>
       )}
     </div>
