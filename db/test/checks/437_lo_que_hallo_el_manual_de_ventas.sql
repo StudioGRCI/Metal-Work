@@ -136,7 +136,8 @@ end $$;
 insert into storage.objects (bucket_id, name, owner_id, metadata) values
   ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-437-1.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}'),
   ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-437-1-v2.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}'),
-  ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-437-1-v3.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}');
+  ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-437-1-v3.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}'),
+  ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-437-1-v4.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}');
 
 -- ============================================ 1. El aviso del rechazo
 do $$
@@ -226,6 +227,22 @@ begin
   perform test.debe_fallar(format('select public.registrar_factura_venta(%L, %L, ''E001-437'', %L::date, %L::date, ''PEN'', 26000, null, %L, ''f.pdf'')',
       current_setting('prueba.f2'), current_setting('prueba.cot1'), current_setting('prueba.hoy'), current_setting('prueba.hoy'), current_setting('prueba.f2_ruta')),
     'la cotización con una corrección sin aprobar no se factura', 'todavía no aprueba');
+
+  -- Si Gerencia rechaza la corrección, el mensaje lo dice así; Ventas sube otra.
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  update public.cotizaciones_pdf set estado = 'RECHAZADA', observacion = 'El monto no es el acordado.'
+   where id = current_setting('prueba.cot1')::uuid;
+  perform test.como_usuario(current_setting('prueba.conta')::uuid);
+  perform test.debe_fallar(format('select public.registrar_factura_venta(%L, %L, ''E001-437'', %L::date, %L::date, ''PEN'', 26000, null, %L, ''f.pdf'')',
+      current_setting('prueba.f2'), current_setting('prueba.cot1'), current_setting('prueba.hoy'), current_setting('prueba.hoy'), current_setting('prueba.f2_ruta')),
+    'la cotización con la corrección rechazada no se factura', 'Gerencia rechazó la corrección');
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  update public.cotizaciones_pdf
+     set ruta_storage = 'cot/' || current_setting('prueba.cot1') || '/qa-437-1-v4.pdf', nombre_archivo = 'qa-437-1-v4.pdf',
+         motivo_correccion = 'El monto acordado.', monto_venta = 52000
+   where id = current_setting('prueba.cot1')::uuid;
+  get diagnostics v = row_count;
+  perform test.afirmar(v = 1, 'Ventas sube la corrección de la rechazada');
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   update public.cotizaciones_pdf set estado = 'APROBADA' where id = current_setting('prueba.cot1')::uuid;

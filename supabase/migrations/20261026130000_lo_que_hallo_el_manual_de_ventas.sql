@@ -122,7 +122,7 @@ update public.notificaciones
    and cuerpo ~ '[.!?…]\. Corrígela y sube la corrección\.$';
 
 update public.notificaciones
-   set cuerpo = regexp_replace(cuerpo, '\.\.( |$)', '.\1', 'g')
+   set cuerpo = regexp_replace(cuerpo, '([^.])\.\.( |$)', '\1.\2', 'g')
  where titulo in ('Cotización por revisar', 'Gerencia aprobó tu cotización', 'Código nuevo con su OT')
    and cuerpo ~ '[^.]\.\.( |$)';
 
@@ -181,6 +181,11 @@ begin
    where c.id = new.cotizacion_pdf_id;
   -- registrar_factura_venta ya exige que la cotización haya sido aprobada
   -- alguna vez; aquí, además, que la versión de hoy sea la aprobada.
+  if v_estado = 'RECHAZADA' then
+    raise exception 'Gerencia rechazó la corrección de la cotización %: se factura cuando Ventas suba otra y Gerencia la apruebe.',
+      coalesce(v_numero, '')
+      using errcode = 'check_violation';
+  end if;
   if v_estado is distinct from 'APROBADA' then
     raise exception 'La cotización % tiene una corrección que Gerencia todavía no aprueba: se factura cuando la apruebe.',
       coalesce(v_numero, '')
