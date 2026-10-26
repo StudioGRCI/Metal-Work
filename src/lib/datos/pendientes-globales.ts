@@ -407,7 +407,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   }
 
   // La evaluación de desempeño que Diseño envió y Administración todavía no
-  // recibe ni devuelve (la base además le avisa al enviarla, migración 20261026130000).
+  // recibe ni devuelve (la base además le avisa al enviarla, migración 20261026160000).
   if (puede(perfil, 'administracion.recibir_evaluacion')) {
     tareas.push({
       clave: 'evaluaciones_por_recibir',

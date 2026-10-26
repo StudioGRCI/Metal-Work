@@ -47,7 +47,7 @@ export const ORDENES_POR_PAGINA = 25
  * El avance que se muestra en cada OT. Desde el 2026-10-15 el avance se lleva
  * por código interno (Diseño marca las etapas, el supervisor reporta por
  * código) y las etapas de la OT ya no las mueve nadie: la OT 2935-2026 decía
- * 0 % con su código en 40 %. `avance_de_ordenes` (migración 20261026130000) da
+ * 0 % con su código en 40 %. `avance_de_ordenes` (migración 20261026160000) da
  * el del código a la OT que nació de una cotización, y el suyo a la orden sin
  * cotización. Se pide aparte porque el cálculo del código no cabe en una vista
  * que se lea fila por fila.

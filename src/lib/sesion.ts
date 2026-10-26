@@ -154,7 +154,7 @@ export function puedeCorregirReporte(
 /**
  * Si compra como Logística: emite la OC directa y la orden de servicio, y lleva
  * las OC que no nacen de un RQA. Administración tiene `compras.crear` solo para
- * la OC de su RQA (migraciones 20261015162000 y 20261026130000); la base le
+ * la OC de su RQA (migraciones 20261015162000 y 20261026160000); la base le
  * rechaza lo demás con `compra_solo_su_rqa()`, y esta es su gemela en la pantalla.
  */
 export function compraComoLogistica(perfil: PerfilSesion | null): boolean {

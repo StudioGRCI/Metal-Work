@@ -45,7 +45,7 @@ export function seccionesDeOrden(
   // En la OT de una cotización, Administración lleva la ficha de taller y ve
   // las etapas desde el código interno (Códigos internos › Ficha de taller y
   // Etapas), y los reportes del taller ya los aprueba Gerencia en Supervisión
-  // (decisión de DKS, 2026-10-26; migración 20261026130000). La orden sin
+  // (decisión de DKS, 2026-10-26; migración 20261026160000). La orden sin
   // cotización (garantía, trabajo directo) no tiene esa vista por código:
   // ahí conserva sus pestañas.
   const porCodigo = perfil.rol.codigo === 'ADMINISTRACION' && Boolean(orden?.avance_del_codigo)

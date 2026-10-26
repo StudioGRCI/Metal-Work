@@ -27,7 +27,7 @@ select test.crear_usuario('Olo', 'Operario', 'operario403@demo.pe', 'OPERARIO', 
 select set_config('prueba.operario', :'operario_id', true);
 
 -- =========================================== trabajos sin OT: quién aprueba
--- Desde la 20261026130000 Administración aprueba, como Gerencia, solo los de
+-- Desde la 20261026160000 Administración aprueba, como Gerencia, solo los de
 -- los trabajos sin orden: los reportes del taller ya van por Supervisión.
 select test.afirmar(exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
                              where r.codigo = 'ADMINISTRACION' and rp.permiso_codigo = 'produccion.aprobar_sin_orden'),

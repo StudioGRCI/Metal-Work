@@ -265,7 +265,7 @@ end $$;
 
 do $$
 begin
-  -- Desde la 20261026130000 lo registran Contabilidad o Administración (DKS, 2026-10-26).
+  -- Desde la 20261026160000 lo registran Contabilidad o Administración (DKS, 2026-10-26).
   perform test.afirmar((select bool_and(prosrc not like '%lo carga Tesorería%' and prosrc like '%lo registran Contabilidad o Administración%')
                           from pg_proc where proname = 'cerrar_costeo_codigo' and pronamespace = 'public'::regnamespace),
                        'el cierre del costeo, si falta el cambio, manda a Contabilidad o Administración y no a Tesorería');
