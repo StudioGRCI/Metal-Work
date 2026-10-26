@@ -68,7 +68,7 @@ export async function mesesSinPagosDeOficina(codigo: string): Promise<string[]> 
 }
 
 /**
- * Los meses ya terminados (`YYYY-MM-01`, desde octubre de 2026) en que el código
+ * Los meses ya terminados (`YYYY-MM-01`, desde noviembre de 2026) en que el código
  * tuvo horas y la planilla de taller sigue sin cerrar: su ajuste no entró y el
  * cierre del costeo los espera (`cerrar_costeo_codigo`).
  */

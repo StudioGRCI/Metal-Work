@@ -7,7 +7,7 @@ import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
-import { claveNombre, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
+import { avisoDobleResta, claveNombre, tardanzasYPermisosDelExcel, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
 import { leerExcelPlanilla, confirmarImportacion, type LecturaPlanilla } from './importacion-acciones'
 
 const id = (l: LineaPlanilla) => `${l.hoja}#${l.fila}`
@@ -22,7 +22,14 @@ const costo = (l: LineaPlanilla) => l.detalle.ingresos + l.detalle.aporte_emplea
  * entero, se ven las personas por empresa —como en la hoja PAGOS— con lo que
  * no cuadra, y se eligen las que van a esta planilla.
  */
-export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
+export function ImportarPlanilla({
+  planillaId,
+  restaSola,
+}: {
+  planillaId: string
+  /** Planilla de taller o administrativa de octubre de 2026 o después: el sistema ya resta del pago las tardanzas y los permisos descontados. */
+  restaSola: boolean
+}) {
   const [abierta, setAbierta] = useState(false)
   const [lectura, setLectura] = useState<LecturaPlanilla | null>(null)
   const [seleccion, setSeleccion] = useState<string[]>([])
@@ -32,6 +39,7 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
 
   const todas = useMemo(() => lectura?.empresas.flatMap((g) => g.lineas) ?? [], [lectura])
   const elegidas = todas.filter((l) => seleccion.includes(id(l)))
+  const conDobleResta = restaSola ? todas.filter((l) => tardanzasYPermisosDelExcel(l.detalle.conceptos)).length : 0
   const yaEsta = (l: LineaPlanilla) => lectura?.yaEn[claveNombre(l.nombre)]
   // Quien ya entró a esta planilla y no figura en el libro: si es que se le
   // corrigió el nombre, la versión corregida sale para elegir y entraría dos veces.
@@ -91,6 +99,16 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
               </p>
             </div>
           )}
+          {conDobleResta > 0 && (
+            <div role="note" data-doble-resta className="flex items-start gap-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-3 text-sm text-texto">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
+              <p>
+                {conDobleResta === 1 ? '1 persona trae' : `${conDobleResta} personas traen`} tardanzas o permisos en los descuentos del Excel. Desde octubre de 2026
+                el sistema ya resta del pago, a quien tiene ficha en Personal, las tardanzas y los permisos descontados, en la planilla diaria y en los pagos de
+                la oficina: si también van en el Excel, se restan dos veces. Si corriges el Excel, vuelve a leerlo con «Otro Excel».
+              </p>
+            </div>
+          )}
           {lectura.errores.length > 0 && (
             <div role="alert" className="rounded-[var(--radius-base)] border border-peligro/40 bg-peligro-suave p-3 text-sm">
               <p className="font-medium text-peligro">No se pueden importar ({lectura.errores.length})</p>
@@ -122,8 +140,10 @@ export function ImportarPlanilla({ planillaId }: { planillaId: string }) {
                   {g.lineas.map((l) => {
                     const ya = yaEsta(l)
                     const parecida = !ya && pareceA(l)
+                    const enElExcel = restaSola ? tardanzasYPermisosDelExcel(l.detalle.conceptos) : null
                     const avisos = [
                       ...(parecida ? [`¿Es ${parecida} con el nombre corregido? Ya está en esta planilla: si es la misma, no la elijas.`] : []),
+                      ...(enElExcel ? [avisoDobleResta(enElExcel)] : []),
                       ...(l.detalle.avisos ?? []),
                     ]
                     return (

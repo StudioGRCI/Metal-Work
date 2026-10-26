@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
@@ -292,7 +294,7 @@ export async function recargoExtrasDelMes(mes: string): Promise<RecargoExtras[]>
  * tiene horas en el reporte pero su ficha no tiene costo mensual, y su costo va
  * por esas horas; `SIN_FICHA` o `SIN_HORAS`, su costo entero por las horas de
  * todos; `OFICINA`, no entra (va por los pagos de la oficina); `ANTES`, de antes
- * de octubre de 2026, cuando no había reporte diario.
+ * de noviembre de 2026, cuando empezó el ajuste: queda como registro.
  */
 export type PersonaAlCosto = {
   persona_id: string
@@ -311,6 +313,19 @@ export type PersonaAlCosto = {
   /** El mes tiene horas en algún código. */
   mes_con_horas: boolean
 }
+
+/**
+ * El primer mes (`YYYY-MM-01`) cuya planilla de taller ajusta la mano de obra de
+ * los códigos al cerrarse (`planilla_ajuste_desde()`): noviembre de 2026. Las de
+ * antes quedan como registro. Es una fecha fija: no pide permiso. Una vez por
+ * petición: la leen la pantalla de Planillas y el globo del menú.
+ */
+export const planillaAjusteDesde = cache(async (): Promise<string> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('planilla_ajuste_desde')
+  if (error || !data) throw new Error(`No se pudo leer desde cuándo se ajusta la planilla: ${error?.message ?? 'sin fecha'}`)
+  return data
+})
 
 /** Las personas de una planilla de taller y cómo entran al costo (`rrhh_planilla_al_costo`), por persona. */
 export async function planillaAlCosto(planillaId: string): Promise<Map<string, PersonaAlCosto>> {

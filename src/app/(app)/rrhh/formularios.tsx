@@ -43,6 +43,8 @@ export function CerrarPlanilla({
   id,
   titulo,
   deTaller,
+  soloRegistro,
+  ajusteDesde,
   entra,
   sinDestino,
   mesTerminado,
@@ -51,18 +53,25 @@ export function CerrarPlanilla({
   /** «planilla de taller de 10/2026». */
   titulo: string
   deTaller: boolean
+  /** La de taller de antes de noviembre de 2026: queda como registro, sin ajuste. */
+  soloRegistro: boolean
+  /** «noviembre de 2026»: el mes en que empieza el ajuste, leído de la base. */
+  ajusteDesde: string
   /** Lo que el ajuste lleva a los códigos al cerrar (taller). */
   entra: number
-  /** Personas cuyo costo no llega a ningún código (un mes sin horas, o de antes de octubre de 2026). */
+  /** Personas cuyo ajuste no llega a ningún código: el mes no tiene horas en los reportes. */
   sinDestino: number
   /** El mes de la planilla ya terminó: si no, llegan horas después y el ajuste se rehace. */
   mesTerminado: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const {alEnviar,enviando,error,resultado}=useEnvio(cerrarPlanilla, () => setAbierta(false))
-  const queHace = deTaller
+  const ajusta = deTaller && !soloRegistro
+  const queHace = ajusta
     ? `Al cerrarla, ${moneda(entra)} de ajuste entran a la mano de obra de los códigos del mes, por sus horas.`
-    : 'Queda como registro: su costo no entra por aquí a los códigos.'
+    : soloRegistro
+      ? `Queda como registro: el ajuste de la planilla de taller empieza en ${ajusteDesde}.`
+      : 'Queda como registro: su costo no entra por aquí a los códigos.'
   return <div className="space-y-2">
     <Boton type="button" tamano="sm" onClick={() => setAbierta(true)}>Cerrar planilla</Boton>
     {resultado?.ok&&<p role="status" className="text-xs text-exito">{resultado.mensaje}</p>}
@@ -70,13 +79,13 @@ export function CerrarPlanilla({
       descripcion={`${queHace} Una planilla cerrada no se vuelve a abrir.`} ancho="sm">
       <form onSubmit={alEnviar} className="space-y-4">
         <input type="hidden" name="planilla_id" value={id} />
-        {deTaller && !mesTerminado && (
+        {ajusta && !mesTerminado && (
           <p className="text-sm text-aviso">El mes todavía no termina: las horas que lleguen después rehacen el ajuste solas.</p>
         )}
-        {deTaller && sinDestino > 0 && (
+        {ajusta && sinDestino > 0 && (
           <p className="text-sm text-aviso">
             {sinDestino === 1 ? 'El costo de 1 persona no llega' : `El costo de ${sinDestino} personas no llega`} a ningún código: ese mes no tiene horas en
-            los reportes, o es de antes de octubre de 2026.
+            los reportes.
           </p>
         )}
         {error && <p role="alert" className="text-sm text-peligro">{error}</p>}

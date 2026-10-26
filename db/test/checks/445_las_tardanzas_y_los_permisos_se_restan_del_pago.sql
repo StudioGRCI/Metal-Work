@@ -1,6 +1,6 @@
 -- Las tardanzas y los permisos se restan del pago, y la planilla del mes ajusta
--- la mano de obra de cada código por sus horas (migraciones 20261026200000 y
--- 20261026210000; DKS, 2026-10-26).
+-- la mano de obra de cada código por sus horas (migraciones 20261026200000,
+-- 20261026210000 y 20261026230000; DKS, 2026-10-26).
 --
 --   1. Cada tres tardanzas del mes, el 5 % de la remuneración se resta solo: de
 --      la planilla diaria (taller) y del pago de la oficina. Si se anula una
@@ -13,7 +13,9 @@
 --   3. El descuento no deja un pago en negativo: lo que no alcanza espera.
 --   4. Al cerrar la planilla de taller, la diferencia con lo que entró por horas
 --      se reparte entre los códigos por las horas de cada persona; quien no tiene
---      ficha, por las horas de todos; quien es de la oficina, no entra.
+--      ficha, por las horas de todos; quien es de la oficina, no entra. Empieza
+--      en noviembre de 2026: las de antes quedan como registro. Para probarlo en
+--      el mes de la prueba, el check mueve ese inicio (se deshace al final).
 --   5. RR. HH. ve el recargo de las horas extras por código.
 --   6. Quién ve y quién no: Gerencia y Administración consultan sin sueldo ni
 --      escritura; el administrador lo ve y no lo cambia; Tesorería ve lo de la
@@ -547,6 +549,23 @@ begin
     (current_setting('prueba.planilla')::uuid, 'Pedro Sinficha', 500),
     (current_setting('prueba.planilla')::uuid, 'Pintor Bruno', 600),
     (current_setting('prueba.planilla')::uuid, 'CONTABLE LUCIA', 800);
+  -- Con la fecha real, la planilla de taller de octubre de 2026 queda como registro.
+  if current_setting('prueba.mes')::date < date '2026-11-01' then
+    perform test.afirmar((select bool_and(como = 'ANTES' and ajuste = 0 and entra = 0)
+                            from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid)),
+      'la planilla de taller de octubre de 2026 queda como registro: no ajusta nada');
+  end if;
+  reset role;
+  perform pg_temp.como('rrhh');
+  set local role authenticated;
+  perform test.afirmar(public.planilla_ajuste_desde() = date '2026-11-01',
+    'el ajuste de la planilla de taller empieza en noviembre de 2026 (DKS, 2026-10-26), y la pantalla lo lee');
+  reset role;
+  -- Desde aquí el ajuste empieza en el mes de la prueba, para probarlo aunque sea octubre (se deshace al final).
+  execute format('create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to ''public'' as $f$ select %L::date $f$',
+                 current_setting('prueba.mes'));
+  perform pg_temp.como('rrhh');
+  set local role authenticated;
   perform test.afirmar((select string_agg(como || ':' || trim_scale(ajuste)::text || ':' || trim_scale(entra)::text, ' ' order by como)
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla')::uuid))
                        = 'HORAS:587.5:587.5 OFICINA:0:0 SIN_COSTO:600:600 SIN_FICHA:500:500',
@@ -589,9 +608,9 @@ begin
   reset role;
 end $$;
 
--- Una planilla de antes de octubre de 2026 no entra: entonces no había reporte
--- diario. Un mes sin horas en ningún código no tiene adónde llevar su costo, y la
--- pantalla no promete el ajuste.
+-- Una planilla de antes del inicio del ajuste queda como registro. Un mes sin
+-- horas en ningún código no tiene adónde llevar su costo, y la pantalla no
+-- promete el ajuste.
 do $$
 declare v_mes date := date_trunc('month', current_setting('prueba.mes')::date - 1)::date;
 begin
@@ -601,18 +620,28 @@ begin
   insert into public.planilla_personas (planilla_id, nombre, monto) values (current_setting('prueba.planilla_vieja')::uuid, 'Pedro Sinficha', 300);
   perform test.afirmar((select como = 'ANTES' and ajuste = 0 and entra = 0
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
-    'una planilla de antes de octubre de 2026 no ajusta nada');
+    'una planilla de antes del inicio del ajuste no ajusta nada');
+  -- Juan trabajó en A el mes pasado y la planilla de taller de ese mes no está cerrada.
+  perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, v_mes + 9, 'CHK445_A', 4, 'Soldadura de la tolva');
   reset role;
 
-  -- El check mueve el inicio para probar lo que pasará desde noviembre (se deshace al final).
+  -- Con el inicio real (noviembre de 2026), un mes de antes no hace esperar el cierre del costeo.
+  create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select date '2026-11-01' $f$;
+  if v_mes < date '2026-11-01' then
+    perform pg_temp.como('gerente');
+    set local role authenticated;
+    perform test.afirmar(not exists (select 1 from public.meses_sin_planilla_taller('CHK445_A')),
+      'un mes de antes de noviembre de 2026 no hace esperar el cierre del costeo, aunque su planilla de taller siga abierta');
+    reset role;
+  end if;
+
+  -- El check vuelve a mover el inicio, ahora a 1999, para probar un mes sin horas (se deshace al final).
   create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select date '1999-01-01' $f$;
   perform pg_temp.como('rrhh');
   set local role authenticated;
   perform test.afirmar((select como = 'SIN_FICHA' and ajuste = 300 and entra = 0 and not mes_con_horas
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
     'en un mes sin horas en ningún código, la pantalla sabe que el costo no llega a ninguna unidad');
-  -- Juan trabajó en A el mes pasado y la planilla de taller de ese mes no está cerrada.
-  perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, v_mes + 9, 'CHK445_A', 4, 'Soldadura de la tolva');
   reset role;
   perform pg_temp.como('gerente');
   set local role authenticated;
@@ -632,7 +661,6 @@ select test.afirmar(not has_function_privilege('authenticated', 'public.descuent
                     and not has_function_privilege('authenticated', 'public.trabajador_de_planilla(text, text)', 'execute')
                     and not has_function_privilege('authenticated', 'public.planilla_al_costo(uuid)', 'execute')
                     and not has_function_privilege('authenticated', 'public.codigo_interno_lineas_planilla(text)', 'execute')
-                    and not has_function_privilege('authenticated', 'public.planilla_ajuste_desde()', 'execute')
                     and not has_function_privilege('authenticated', 'public.fn_descuento_del_pago_guardia()', 'execute'),
   'los cálculos internos no los llama la gente: solo las funciones que piden permiso');
 select test.afirmar(not has_function_privilege('anon', 'public.rrhh_descontar_permiso(uuid, uuid)', 'execute')
@@ -642,7 +670,8 @@ select test.afirmar(not has_function_privilege('anon', 'public.rrhh_descontar_pe
                     and not has_function_privilege('anon', 'public.rrhh_descuentos_de_tardanzas(date)', 'execute')
                     and not has_function_privilege('anon', 'public.rrhh_recargo_extras_del_mes(date)', 'execute')
                     and not has_function_privilege('anon', 'public.rrhh_planilla_al_costo(uuid)', 'execute')
-                    and not has_function_privilege('anon', 'public.meses_sin_planilla_taller(text)', 'execute'),
+                    and not has_function_privilege('anon', 'public.meses_sin_planilla_taller(text)', 'execute')
+                    and not has_function_privilege('anon', 'public.planilla_ajuste_desde()', 'execute'),
   'nada de esto se llama sin sesión');
 
 rollback;
