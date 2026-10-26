@@ -215,9 +215,9 @@ select test.afirmar(not has_function_privilege('anon', 'public.codigos_internos_
   'el anónimo no ejecuta la lista de códigos');
 select test.afirmar(not has_function_privilege('anon', 'public.codigo_interno_costeo(text)', 'execute'),
   'el anónimo no ejecuta el costeo de un código');
--- Desde la 20261026100000 normalizar el código sí lo ejecuta `authenticated`:
+-- Desde la 20261026130000 normalizar el código sí lo ejecuta `authenticated`:
 -- solo pone mayúsculas, y los disparadores de unidades, requerimientos, salidas,
--- cierres y OT la llaman con el rol de quien escribe (check 436).
+-- cierres y OT la llaman con el rol de quien escribe (check 437).
 select test.afirmar(has_function_privilege('authenticated', 'public.normalizar_codigo_interno(text)', 'execute')
                 and not has_function_privilege('anon', 'public.normalizar_codigo_interno(text)', 'execute'),
   'normalizar el código lo ejecuta quien escribe, no el anónimo');

@@ -24,7 +24,7 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
   facturas: FacturaDeCotizacion[]
   /**
    * Tiene una factura vigente, la vea o no quien mira: así Ventas sabe que ya no
-   * se corrige (migración 20261026100000), sin ver la factura.
+   * se corrige (migración 20261026130000), sin ver la factura.
    */
   facturada: boolean
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
@@ -89,13 +89,15 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
 
   const cotizacionIds = filas.flatMap((f) => f.id ? [f.id] : [])
   // El RLS decide: a quien no ve facturas le llegan cero filas, no un error.
-  const facturas = await supabase
-    .from('v_facturas_venta')
-    .select('id, cotizacion_pdf_id, numero, total, moneda, cobrado, cancelada, anulada_en')
-    .in('cotizacion_pdf_id', cotizacionIds)
-    .order('creado_en')
+  const [facturas, conFactura] = await Promise.all([
+    supabase
+      .from('v_facturas_venta')
+      .select('id, cotizacion_pdf_id, numero, total, moneda, cobrado, cancelada, anulada_en')
+      .in('cotizacion_pdf_id', cotizacionIds)
+      .order('creado_en'),
+    supabase.rpc('cotizaciones_con_factura', { p_ids: cotizacionIds }),
+  ])
   if (facturas.error) throw new Error(`No se pudieron leer las facturas de las cotizaciones: ${facturas.error.message}`)
-  const conFactura = await supabase.rpc('cotizaciones_con_factura', { p_ids: cotizacionIds })
   if (conFactura.error) throw new Error(`No se pudo saber qué cotizaciones ya están facturadas: ${conFactura.error.message}`)
   const facturadas = new Set((conFactura.data ?? []).map((x) => x.cotizacion))
 

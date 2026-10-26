@@ -114,7 +114,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   // Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
-    puedeCorregirCotizacion(perfil, c)
+    (puedeCorregirCotizacion(perfil, c) && !c.facturada)
   const visibles = cotizaciones
     .filter((c) => enFiltro(c, filtro) && buscada(c))
     .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
@@ -373,7 +373,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
-                            rechazada={c.estado === 'RECHAZADA'}
+                            rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
@@ -388,7 +388,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         </ul>
       )}
 
-      <AvisoTope mostradas={cotizaciones.length} tope={200} />
+      <AvisoTope mostradas={todas.length} tope={200} />
     </>
   )
 }

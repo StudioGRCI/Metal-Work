@@ -12,7 +12,6 @@ import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
 
-
 type UnidadEditable = Pick<Tablas<'unidades'>, 'id' | 'cliente_id' | 'tipo_vehiculo' | 'marca' | 'modelo' | 'anio' | 'placa' | 'numero_chasis' | 'numero_motor' | 'color' | 'capacidad_m3' | 'capacidad_toneladas' | 'observaciones'>
 
 export function NuevaUnidad({

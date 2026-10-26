@@ -76,9 +76,9 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                   esconden y su contenido baja a la celda de la unidad en letra
                   chica: se pierde la rejilla, no el dato. */}
               <TH className="hidden sm:table-cell">Tipo</TH>
-              <TH className="hidden sm:table-cell">Carrocería</TH>
-              <TH className="hidden text-right sm:table-cell">Capacidad</TH>
-              <TH className="hidden sm:table-cell">N.º de chasis</TH>
+              <TH className="hidden min-[1200px]:table-cell">Carrocería</TH>
+              <TH className="hidden text-right min-[1200px]:table-cell">Capacidad</TH>
+              <TH className="hidden min-[1400px]:table-cell">N.º de chasis</TH>
               {puedeEditar && <TH>Acciones</TH>}
             </tr>
           </TablaCabecera>
@@ -176,13 +176,15 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     <TD className="hidden sm:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{tipoDeVehiculo(u.tipo_vehiculo)}</TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">
+                    {/* Carrocería, capacidad y chasis están en la ficha: se esconden
+                        antes que dejar las acciones fuera de la pantalla. */}
+                    <TD className="hidden text-texto-suave min-[1200px]:table-cell">
                       {carroceria?.nombre ?? '—'}
                     </TD>
-                    <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">
+                    <TD className="tabular hidden text-right whitespace-nowrap min-[1200px]:table-cell">
                       {capacidad || '—'}
                     </TD>
-                    <TD className="hidden font-mono text-xs text-texto-suave sm:table-cell">
+                    <TD className="hidden font-mono text-xs text-texto-suave min-[1400px]:table-cell">
                       {u.numero_chasis ?? '—'}
                     </TD>
                     {puedeEditar && (

@@ -122,7 +122,7 @@ export default async function PaginaFacturacion() {
                     {c.en_correccion && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-                        <span>Ventas subió una corrección que Gerencia aún no aprueba: el archivo de arriba es el aprobado, y el total puede cambiar.</span>
+                        <span>Ventas subió una corrección que Gerencia aún no aprueba: se factura cuando la apruebe, porque el total puede cambiar.</span>
                       </p>
                     )}
 
@@ -149,7 +149,8 @@ export default async function PaginaFacturacion() {
                       </div>
                     )}
 
-                    {factura && c.cotizacion_id && c.codigo_interno && (
+                    {/* La base no deja facturar mientras la corrección espera a Gerencia (migración 20261026130000). */}
+                    {factura && c.cotizacion_id && c.codigo_interno && !c.en_correccion && (
                       <RegistrarFactura
                         cotizacionId={c.cotizacion_id}
                         numeroCotizacion={c.numero ?? ''}

@@ -28,26 +28,87 @@
 --      directo en su tabla.
 -- =============================================================================
 
--- 1. El aviso del rechazo, sin doble punto ---------------------------------------
--- Se reemplaza solo la frase dentro de la función tal como está en la base, para
--- no pisar lo que otra migración le haya cambiado. Si la observación ya termina
--- en punto, signo o puntos suspensivos, no se le agrega otro.
+-- 1. Los avisos de la cotización, sin doble punto -------------------------------
+-- La observación de Gerencia casi siempre termina en punto, y la razón social
+-- casi siempre también («… S.A.C.»): el aviso que les ponía otro punto detrás
+-- se leía «…volver a subir.. Corrígela…» o «…DEMO S.A.C..». `con_punto_final`
+-- cierra la frase solo si no viene ya cerrada.
+create or replace function public.con_punto_final(p_texto text)
+returns text
+language sql
+immutable
+set search_path to 'public'
+as $function$
+  select case
+    when btrim(coalesce(p_texto, '')) = '' then p_texto
+    when btrim(p_texto) ~ '[.!?…]$' then btrim(p_texto)
+    else btrim(p_texto) || '.'
+  end;
+$function$;
+
+-- No lee ninguna tabla: la puede llamar cualquier disparador, sea del rol que sea.
+revoke all on function public.con_punto_final(text) from public, anon;
+grant execute on function public.con_punto_final(text) to authenticated;
+
+-- Se reemplaza solo cada frase dentro de la función tal como está en la base,
+-- para no pisar lo que otra migración le haya cambiado. Si la frase nueva ya
+-- está, no se toca; si no está ni la vieja ni la nueva, se detiene todo.
 do $migracion$
 declare
-  v_def   text := pg_get_functiondef('public.fn_cotizacion_pdf_avisa()'::regprocedure);
-  v_viejo constant text := $v$format('La %s: %s. Corrígela y sube la corrección.', new.numero, coalesce(new.observacion, 'sin motivo'))$v$;
-  v_nuevo constant text := $v$format('La %s: %s Corrígela y sube la corrección.', new.numero,
-                case when btrim(coalesce(new.observacion, '')) = '' then 'Sin motivo.'
-                     when btrim(new.observacion) ~ '[.!?…]$' then btrim(new.observacion)
-                     else btrim(new.observacion) || '.' end)$v$;
+  v_funcion regprocedure;
+  v_def     text;
+  v_par     text[];
+  v_pares   text[][];
 begin
-  if position(v_nuevo in v_def) > 0 then
-    return;
-  end if;
-  if position(v_viejo in v_def) = 0 then
-    raise exception 'fn_cotizacion_pdf_avisa no tiene el texto que esta migración corrige: revisar a mano.';
-  end if;
-  execute replace(v_def, v_viejo, v_nuevo);
+  -- fn_cotizacion_pdf_avisa: «por revisar», «aprobó» y «rechazó»
+  v_funcion := 'public.fn_cotizacion_pdf_avisa()'::regprocedure;
+  v_pares := array[
+    array[
+      $v$format('%s subió la %s de %s.', coalesce(v_quien, 'Ventas'), new.numero, coalesce(v_cliente, 'un cliente'))$v$,
+      $v$format('%s subió la %s de %s', coalesce(v_quien, 'Ventas'), new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')))$v$],
+    array[
+      $v$then format('La %s de %s%s.', new.numero, coalesce(v_cliente, 'un cliente'),$v$,
+      $v$then public.con_punto_final(format('La %s de %s%s', new.numero, coalesce(v_cliente, 'un cliente'),$v$],
+    array[
+      $v$case when v_codigo is not null then ', con el código interno ' || v_codigo else '' end)$v$ || chr(10),
+      $v$case when v_codigo is not null then ', con el código interno ' || v_codigo else '' end))$v$ || chr(10)],
+    array[
+      $v$format('La %s: %s. Corrígela y sube la corrección.', new.numero, coalesce(new.observacion, 'sin motivo'))$v$,
+      $v$format('La %s: %s Corrígela y sube la corrección.', new.numero, public.con_punto_final(coalesce(nullif(btrim(new.observacion), ''), 'Sin motivo')))$v$]
+  ];
+  v_def := pg_get_functiondef(v_funcion);
+  foreach v_par slice 1 in array v_pares loop
+    if position(v_par[2] in v_def) > 0 then
+      continue;
+    end if;
+    if position(v_par[1] in v_def) = 0 then
+      raise exception 'fn_cotizacion_pdf_avisa no tiene el texto que esta migración corrige (%): revisar a mano.', left(v_par[1], 60);
+    end if;
+    v_def := replace(v_def, v_par[1], v_par[2]);
+  end loop;
+  execute v_def;
+
+  -- aprobar_cotizacion_con_ot: «Código nuevo con su OT», que le llega a Diseño
+  v_funcion := 'public.aprobar_cotizacion_con_ot(uuid,uuid,text,text,tipo_unidad_carroceria,date,text,text,bigint,text,text)'::regprocedure;
+  v_pares := array[
+    array[
+      $v$'%s: OT %s, %s (%s) de %s. Entrega prometida: %s. Carga sus planos, materiales y etapas.',$v$,
+      $v$'%s: OT %s, %s (%s) de %s Entrega prometida: %s. Carga sus planos, materiales y etapas.',$v$],
+    array[
+      $v$lower(v_tipo), coalesce(v_cot.cliente, 'un cliente'),$v$,
+      $v$lower(v_tipo), public.con_punto_final(coalesce(v_cot.cliente, 'un cliente')),$v$]
+  ];
+  v_def := pg_get_functiondef(v_funcion);
+  foreach v_par slice 1 in array v_pares loop
+    if position(v_par[2] in v_def) > 0 then
+      continue;
+    end if;
+    if position(v_par[1] in v_def) = 0 then
+      raise exception 'aprobar_cotizacion_con_ot no tiene el texto que esta migración corrige (%): revisar a mano.', left(v_par[1], 60);
+    end if;
+    v_def := replace(v_def, v_par[1], v_par[2]);
+  end loop;
+  execute v_def;
 end
 $migracion$;
 
@@ -59,6 +120,11 @@ update public.notificaciones
    set cuerpo = regexp_replace(cuerpo, '([.!?…])\. Corrígela y sube la corrección\.$', '\1 Corrígela y sube la corrección.')
  where titulo = 'Gerencia rechazó tu cotización'
    and cuerpo ~ '[.!?…]\. Corrígela y sube la corrección\.$';
+
+update public.notificaciones
+   set cuerpo = regexp_replace(cuerpo, '\.\.( |$)', '.\1', 'g')
+ where titulo in ('Cotización por revisar', 'Gerencia aprobó tu cotización', 'Código nuevo con su OT')
+   and cuerpo ~ '[^.]\.\.( |$)';
 
 -- 2. La cotización facturada no se corrige, y la que espera corrección no se factura
 -- Disparadores propios, sin redefinir la revisión de la cotización ni la guardia
@@ -84,8 +150,9 @@ begin
    order by f.creado_en
    limit 1;
   if v_factura is not null then
-    raise exception 'La cotización % ya tiene la factura %: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura con su motivo.',
-      old.numero, v_factura
+    -- Sin el número de la factura: quien corrige (Ventas) no ve las facturas.
+    raise exception 'La cotización % ya está facturada: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura con su motivo.',
+      old.numero
       using errcode = 'check_violation';
   end if;
   return new;

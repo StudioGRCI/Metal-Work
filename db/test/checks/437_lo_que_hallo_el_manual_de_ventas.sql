@@ -22,8 +22,10 @@ select test.crear_usuario('Gema', 'Gerente', 'gerencia437@demo.pe', 'GERENTE', (
 select test.crear_usuario('Vico', 'Ventas', 'ventas437@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA437')) as vendedor_id \gset
 select test.crear_usuario('Vera', 'Ventas', 'ventas437b@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA437')) as vendedor2_id \gset
 select test.crear_usuario('Coni', 'Contable', 'contabilidad437@demo.pe', 'CONTABILIDAD', (select id from public.sedes where codigo = 'QA437')) as conta_id \gset
+select test.crear_usuario('Dino', 'Diseño', 'diseno437@demo.pe', 'DISENO', (select id from public.sedes where codigo = 'QA437')) as disenador_id \gset
 
 select set_config('prueba.gerente', :'gerente_id', true);
+select set_config('prueba.disenador', :'disenador_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.vendedor2', :'vendedor2_id', true);
 select set_config('prueba.conta', :'conta_id', true);
@@ -89,7 +91,7 @@ begin
   -- Un cliente que no dio de alta Ventas: lo toma quien le sube la primera
   -- cotización, y la segunda vendedora no se lo quita.
   insert into public.clientes (tipo_documento, numero_documento, razon_social)
-  values ('RUC', '20990001437', 'QA CLIENTE SIN VENDEDOR') returning id into v_otro;
+  values ('RUC', '20990001437', 'QA CLIENTE SIN VENDEDOR S.A.C.') returning id into v_otro;
   perform test.afirmar((select vendedor_id from public.clientes where id = v_otro) is null, 'el cliente que da de alta otro puesto queda sin vendedor');
   perform set_config('prueba.cliente', v_cliente::text, true);
   perform set_config('prueba.otro', v_otro::text, true);
@@ -123,6 +125,12 @@ begin
   reset role;
   perform test.afirmar((select vendedor_id from public.clientes where id = current_setting('prueba.otro')::uuid) = current_setting('prueba.vendedor2')::uuid,
     'la cotización de otra vendedora no le cambia el vendedor');
+  -- La razón social termina en punto: el aviso a Gerencia no le pone otro.
+  perform test.afirmar((select bool_and(cuerpo like '%QA CLIENTE SIN VENDEDOR S.A.C.' and cuerpo not like '%..')
+                          from public.notificaciones
+                         where usuario_id = current_setting('prueba.gerente')::uuid and titulo = 'Cotización por revisar'
+                           and cuerpo like '%QA-437-%'),
+    'el aviso de la cotización por revisar no sale con doble punto');
 end $$;
 
 insert into storage.objects (bucket_id, name, owner_id, metadata) values
@@ -166,6 +174,14 @@ begin
   reset role;
   perform test.afirmar((select estado::text from public.cotizaciones_pdf where id = current_setting('prueba.cot1')::uuid) = 'APROBADA',
     'la cotización queda aprobada');
+  perform test.afirmar((select cuerpo from public.notificaciones
+                         where usuario_id = current_setting('prueba.vendedor')::uuid and titulo = 'Gerencia aprobó tu cotización')
+                       = 'La QA-437-1 de QA CLIENTE SIN VENDEDOR S.A.C., con el código interno QA-CI 437.',
+    'el aviso de la aprobación no sale con doble punto');
+  perform test.afirmar((select bool_and(cuerpo like '%de QA CLIENTE SIN VENDEDOR S.A.C. Entrega prometida:%')
+                          from public.notificaciones where titulo = 'Código nuevo con su OT' and cuerpo like 'QA-CI 437:%'
+                           and usuario_id = current_setting('prueba.disenador')::uuid),
+    'el aviso a Diseño del código nuevo tampoco');
 end $$;
 
 select set_config('prueba.f1', gen_random_uuid()::text, true);
@@ -192,7 +208,7 @@ begin
   perform test.debe_fallar(format(
       'update public.cotizaciones_pdf set ruta_storage = %L, nombre_archivo = ''qa-437-1-v3.pdf'', motivo_correccion = ''Otro monto.'' where id = %L',
       'cot/' || current_setting('prueba.cot1') || '/qa-437-1-v3.pdf', current_setting('prueba.cot1')),
-    'la cotización facturada no se corrige', 'ya tiene la factura E001-437');
+    'la cotización facturada no se corrige', 'ya está facturada: no se corrige');
 
   -- Contabilidad anula la factura: entonces sí se corrige.
   perform test.como_usuario(current_setting('prueba.conta')::uuid);

@@ -10,7 +10,6 @@ import { useEnvio } from '@/lib/envio'
 
 import { abrirOrdenDelTaller } from './acciones'
 
-
 const TIPOS_TRABAJO = [
   ['REPARACION', 'Reparación'],
   ['MANTENIMIENTO', 'Mantenimiento'],

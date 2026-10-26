@@ -750,7 +750,7 @@ const CIFRAS = {
       return {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
-        pie: filas.length > 0 ? `de las tuyas, por ${moneda(filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0))}` : 'de las que subiste',
+        pie: filas.length > 0 ? `de las que subiste, por ${moneda(filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0))}` : 'de las que subiste',
         icono: FileText,
         tono: filas.length > 0 ? 'exito' : 'neutro',
       }
