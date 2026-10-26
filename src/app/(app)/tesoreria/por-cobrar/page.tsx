@@ -57,7 +57,9 @@ export default async function PaginaPorCobrar() {
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
         descripcion={resumen && `Por cobrar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'una vencida' : `${vencidas} vencidas`}` : ''}.`}
-        ayuda="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
+        ayuda={`Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. ${
+          cobra ? 'Registra cada cobro con su voucher.' : 'Tesorería registra cada cobro con su voucher; aquí lo ves.'
+        }`}
       />
 
       {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} />}
@@ -73,7 +75,7 @@ export default async function PaginaPorCobrar() {
               </span>
               <p className="mt-3 text-sm font-semibold text-texto">No hay facturas por cobrar</p>
               <p className="mt-1 max-w-lg text-sm text-texto-suave">
-                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada. Te llega un aviso con cada una.
+                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada.{cobra && ' Te llega un aviso con cada una.'}
               </p>
             </div>
           ) : (

@@ -65,7 +65,7 @@ function RevisionPorResponder({ revision: v }: { revision: RevisionPendiente }) 
       <p className="mt-1 text-xs text-texto-suave">
         {fechaHora(v.creado_en)} · {v.solicitante ?? 'Requerimientos'}
       </p>
-      <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-[12rem_1fr_auto] sm:items-end">
+      <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-[15rem_1fr_auto] sm:items-end">
         <input type="hidden" name="id" value={v.id} />
         <Campo etiqueta="Resultado" htmlFor={`salida-estado-${v.id}`}>
           <Seleccion id={`salida-estado-${v.id}`} name="estado" defaultValue="ATENDIDA">
