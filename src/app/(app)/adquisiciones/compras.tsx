@@ -84,7 +84,6 @@ function camposDeBusqueda(f: CompraTrazada): (string | null)[] {
     f.descripcion,
     f.emitido_por,
     ...f.requerimientos.map((r) => r.numero),
-    ...f.ordenes,
     ...f.codigos,
     ...f.areas,
     ...f.facturas.map((x) => x.numero),
@@ -333,10 +332,10 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   )
 }
 
-/** De dónde sale: los RQ que atiende, la OT, el código interno y el área. */
+/** De dónde sale: los RQ que atiende, el código interno y el área. */
 function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   const sinRq =
-    f.tipo === 'OS' ? 'Sin RQ: servicio' : f.origen === 'REQUERIMIENTO' ? 'Requerimiento de la OT' : 'Compra directa'
+    f.tipo === 'OS' ? 'Sin RQ: servicio' : f.origen === 'REQUERIMIENTO' ? 'Requerimiento del código interno' : 'Compra directa'
   return (
     <div className="space-y-0.5 text-xs">
       {f.requerimientos.length > 0 ? (
@@ -356,7 +355,6 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
       ) : (
         <p className="text-texto-suave">{sinRq}</p>
       )}
-      {f.ordenes.length > 0 && <p className="tabular text-texto">OT {f.ordenes.join(', ')}</p>}
       {f.codigos.length > 0 && (
         <p className="flex flex-wrap gap-x-2">
           {f.codigos.map((c) =>

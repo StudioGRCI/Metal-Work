@@ -45,7 +45,6 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
     .object({
       operacion_id: z.guid(),
       proveedor_id: z.guid('Elige el proveedor del padrón. Si es nuevo, regístralo con «Nuevo».'),
-      orden_id: z.guid().optional(),
       area_id: z.guid().optional(),
       codigo_interno: z.string().trim().min(2, FALTA_CODIGO_INTERNO).max(60, CODIGO_INTERNO_LARGO),
       descripcion: z
@@ -70,7 +69,6 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
     .safeParse({
       operacion_id: dato(formulario, 'operacion_id'),
       proveedor_id: dato(formulario, 'proveedor_id'),
-      orden_id: dato(formulario, 'orden_id') || undefined,
       area_id: dato(formulario, 'area_id') || undefined,
       codigo_interno: dato(formulario, 'codigo_interno'),
       descripcion: dato(formulario, 'descripcion'),
@@ -102,7 +100,8 @@ export async function emitirOrdenServicio(_previo: unknown, formulario: FormData
   const { data, error } = await supabase.rpc('emitir_orden_servicio', {
     p_id: d.operacion_id,
     p_proveedor_id: d.proveedor_id,
-    p_orden_id: d.orden_id ?? null,
+    // La OS va por código interno: ya no se refiere a una OT.
+    p_orden_id: null,
     p_area_id: d.area_id ?? null,
     p_codigo_interno: d.codigo_interno,
     p_descripcion: d.descripcion,

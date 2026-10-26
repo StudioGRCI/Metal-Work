@@ -291,6 +291,14 @@ begin
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
                                   and titulo like 'Espera la nota de crédito:%'),
     'Contabilidad recibe el aviso de que viene una nota de crédito');
+  -- Se lee con su unidad y el motivo como frase aparte (migración 20261026100000).
+  perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
+                                  and titulo like 'Espera la nota de crédito:%'
+                                  and cuerpo = format('1 %s de %s ya no se reponen. Motivo: El proveedor ya no tiene ese disco: emite nota de crédito. Registra su nota de crédito contra la factura.',
+                                    (select um.codigo from public.materiales mt join public.unidades_medida um on um.id = mt.unidad_medida_id
+                                      where mt.id = current_setting('prueba.m1')::uuid),
+                                    (select descripcion from public.materiales where id = current_setting('prueba.m1')::uuid))),
+    'el aviso dice la cantidad con su unidad y el motivo como su propia frase');
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.requerimientos')::uuid
                                   and titulo like 'Por comprar otra vez:%'),
     'quien pidió el RQ sabe que se compra otra vez');
