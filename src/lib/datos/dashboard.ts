@@ -749,10 +749,15 @@ const CIFRAS = {
         .limit(500)
       fallo(r)
       const filas = r.data ?? []
+      // Cada moneda con su total: sumar solo los soles decía «por S/ 0.00» en
+      // un mes de cotizaciones en dólares.
+      const soles = filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0)
+      const dolares = filas.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.monto_venta), 0)
+      const montos = [soles > 0 ? moneda(soles) : null, dolares > 0 ? moneda(dolares, 'USD') : null].filter(Boolean)
       return {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
-        pie: filas.length > 0 ? `de las que subiste, por ${moneda(filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0))}` : 'de las que subiste',
+        pie: montos.length > 0 ? `de las que subiste, por ${montos.join(' y ')}` : 'de las que subiste',
         icono: FileText,
         tono: filas.length > 0 ? 'exito' : 'neutro',
       }
