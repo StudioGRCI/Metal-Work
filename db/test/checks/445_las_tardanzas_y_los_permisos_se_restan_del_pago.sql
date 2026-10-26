@@ -59,6 +59,10 @@ select set_config('prueba.pago2', gen_random_uuid()::text, true);
 select set_config('prueba.planilla', gen_random_uuid()::text, true);
 select set_config('prueba.planilla_vieja', gen_random_uuid()::text, true);
 select set_config('prueba.bruno', gen_random_uuid()::text, true);
+-- Los envíos de justificar, descontar y reportar, con su id para probar el reenvío.
+select set_config('prueba.j1', gen_random_uuid()::text, true);
+select set_config('prueba.x2', gen_random_uuid()::text, true);
+select set_config('prueba.r4', gen_random_uuid()::text, true);
 -- Cinco días seguidos del mismo mes, ya pasados: los de esta semana o, en los
 -- primeros días del mes, los del mes anterior.
 select set_config('prueba.base', (case when extract(day from (now() at time zone 'America/Lima')::date) >= 7
@@ -182,10 +186,39 @@ begin
   v := public.rrhh_registrar_permiso(current_setting('prueba.p4')::uuid, current_setting('prueba.lucia')::uuid,
          current_setting('prueba.d2')::date, 1, 'Salió una hora antes sin decir por qué.');
   -- p1 con las 2 h reservadas; p2 y p3 se descuentan; p4 se reporta.
-  v := public.rrhh_justificar_permiso(gen_random_uuid(), current_setting('prueba.p1')::uuid, null);
-  v := public.rrhh_descontar_permiso(gen_random_uuid(), current_setting('prueba.p2')::uuid);
+  v := public.rrhh_justificar_permiso(current_setting('prueba.j1')::uuid, current_setting('prueba.p1')::uuid, null);
+  v := public.rrhh_descontar_permiso(current_setting('prueba.x2')::uuid, current_setting('prueba.p2')::uuid);
   v := public.rrhh_descontar_permiso(gen_random_uuid(), current_setting('prueba.p3')::uuid);
-  v := public.rrhh_reportar_permiso(gen_random_uuid(), current_setting('prueba.p4')::uuid, 'AMONESTACION_VERBAL', 'Se le explicó la regla.');
+  v := public.rrhh_reportar_permiso(current_setting('prueba.r4')::uuid, current_setting('prueba.p4')::uuid, 'AMONESTACION_VERBAL', 'Se le explicó la regla.');
+
+  -- El reenvío (la regla de la 20261023200000): el mismo envío devuelve lo
+  -- mismo; con algo cambiado dice que el primero ya quedó, y no guarda nada.
+  perform test.afirmar(public.rrhh_justificar_permiso(current_setting('prueba.j1')::uuid, current_setting('prueba.p1')::uuid, null)
+                         = current_setting('prueba.j1')::uuid
+                       and public.rrhh_justificar_permiso(current_setting('prueba.j1')::uuid, current_setting('prueba.p1')::uuid, 2)
+                         = current_setting('prueba.j1')::uuid,
+    'la misma justificación reenviada devuelve la primera');
+  perform test.debe_fallar(format('select public.rrhh_justificar_permiso(%L, %L, 1.5)', current_setting('prueba.j1'), current_setting('prueba.p1')),
+    'la justificación reenviada con otras horas dice que ya quedó', 'ya quedó registrada la primera vez');
+  perform test.afirmar(public.rrhh_descontar_permiso(current_setting('prueba.x2')::uuid, current_setting('prueba.p2')::uuid)
+                         = current_setting('prueba.x2')::uuid,
+    'el mismo descuento reenviado devuelve el primero');
+  perform test.debe_fallar(format('select public.rrhh_descontar_permiso(%L, %L)', current_setting('prueba.x2'), current_setting('prueba.p3')),
+    'el descuento reenviado con otro permiso dice que ya quedó', 'ya quedó registrado la primera vez');
+  perform test.afirmar(public.rrhh_reportar_permiso(current_setting('prueba.r4')::uuid, current_setting('prueba.p4')::uuid,
+                                                    'AMONESTACION_VERBAL', 'Se le explicó la regla.')
+                         = current_setting('prueba.r4')::uuid,
+    'el mismo reporte reenviado devuelve el primero');
+  perform test.debe_fallar(format('select public.rrhh_reportar_permiso(%L, %L, ''AMONESTACION_ESCRITA'', ''Se le explicó la regla.'')',
+                                  current_setting('prueba.r4'), current_setting('prueba.p4')),
+    'el reporte reenviado como otro tipo dice que ya quedó', 'ya quedó registrado la primera vez');
+  perform test.debe_fallar(format('select public.rrhh_reportar_permiso(%L, %L, ''AMONESTACION_VERBAL'', ''Otra nota distinta.'')',
+                                  current_setting('prueba.r4'), current_setting('prueba.p4')),
+    'el reporte reenviado con otra nota dice que ya quedó', 'ya quedó registrado la primera vez');
+  perform test.afirmar((select count(*) = 1 from public.horas_compensadas where permiso_id = current_setting('prueba.p1')::uuid)
+                       and (select count(*) = 1 from public.permisos_descontados where permiso_id = current_setting('prueba.p2')::uuid)
+                       and (select count(*) = 1 from public.observaciones_personal where permiso_id = current_setting('prueba.p4')::uuid),
+    'los reenvíos no guardan nada de más');
 
   perform test.debe_fallar(format('select public.rrhh_descontar_permiso(gen_random_uuid(), %L)', current_setting('prueba.p1')),
     'lo justificado no se descuenta', 'justificado o descontado');
@@ -272,6 +305,9 @@ begin
   perform pg_temp.como('rrhh');
   set local role authenticated;
   v := public.enviar_planilla_diaria(current_setting('prueba.pd1')::uuid);
+  perform test.afirmar(public.enviar_planilla_diaria(current_setting('prueba.pd1')::uuid) = current_setting('prueba.pd1')::uuid
+                       and (select count(*) = 1 from public.planillas_diarias where id = current_setting('prueba.pd1')::uuid),
+    'la misma planilla diaria reenviada devuelve la primera, sin otra');
   select * into v_p from public.planilla_diaria_personas
    where planilla_id = current_setting('prueba.pd1')::uuid and trabajador_id = current_setting('prueba.juan')::uuid;
   perform test.afirmar(v_p.horas_ordinarias = 30 and v_p.monto_ordinarias = 300 and v_p.monto_extras = 12.5

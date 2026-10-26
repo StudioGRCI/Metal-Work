@@ -41,6 +41,13 @@
 --    del código, que ve Gerencia.
 --
 -- Lo de antes de octubre de 2026 no se toca: ya se pagó como se pagó.
+--
+-- El reenvío sigue la regla de la 20261023200000, que está en producción aunque
+-- no en main: `enviar_planilla_diaria` y `rrhh_justificar_permiso` conservan su
+-- guarda tal cual, y las nuevas `rrhh_descontar_permiso` y `rrhh_reportar_permiso`
+-- la siguen. El mismo envío repetido devuelve lo mismo; otro envío de la misma
+-- cuenta con el mismo id dice que el primero ya quedó; el de otra cuenta, que ya
+-- existe con otros datos.
 -- =============================================================================
 
 -- 0. Ayudantes ---------------------------------------------------------------------------------
@@ -425,6 +432,7 @@ $$;
 create or replace function public.enviar_planilla_diaria(p_id uuid)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
+  v_previo    public.planillas_diarias%rowtype;
   v_yo        uuid := public.usuario_actual();
   v_hoy       date := (now() at time zone 'America/Lima')::date;
   v_regla     public.rrhh_regla_horas_extras%rowtype;
@@ -457,11 +465,17 @@ begin
   if p_id is null then
     raise exception 'Vuelve a cargar la pantalla de la planilla diaria.' using errcode = 'check_violation';
   end if;
-  if exists (select 1 from public.planillas_diarias where id = p_id) then return p_id; end if;
-
   -- Dos envíos a la vez no se llevan las mismas horas ni los mismos descuentos.
+  -- El repetido espera al primero y lo encuentra; si la envió otra cuenta, no es
+  -- el mismo envío (la regla de la 20261023200000, que está en producción).
   perform pg_advisory_xact_lock(hashtextextended('planilla_diaria', 0));
-  if exists (select 1 from public.planillas_diarias where id = p_id) then return p_id; end if;
+  select * into v_previo from public.planillas_diarias where id = p_id;
+  if found then
+    if v_previo.enviada_por is distinct from public.usuario_actual() then
+      raise exception 'Esta planilla ya existe. Recarga antes de intentar de nuevo.';
+    end if;
+    return p_id;
+  end if;
   select * into v_regla from public.rrhh_regla_horas_extras where id;
   select coalesce(jsonb_agg(to_jsonb(p)), '[]'::jsonb) into v_pend
     from public.planilla_diaria_pendiente() p
@@ -724,6 +738,7 @@ grant execute on function public.rrhh_registrar_pago_oficina(uuid, uuid, date, d
 create or replace function public.rrhh_justificar_permiso(p_id uuid, p_permiso_id uuid, p_horas numeric default null)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
+  v_previo  public.horas_compensadas%rowtype;
   v_perm    public.permisos_personal%rowtype;
   v_nombre  text;
   v_hechas  numeric;
@@ -735,7 +750,26 @@ begin
   if p_id is null then
     raise exception 'Vuelve a cargar la pantalla de permisos.' using errcode = 'check_violation';
   end if;
-  if exists (select 1 from public.horas_compensadas where id = p_id) then return p_id; end if;
+  -- El reenvío, como en la 20261023200000 (en producción): sin horas escritas se
+  -- justificaba lo que alcanzaba, así que cualquier cantidad es la de aquel envío.
+  perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));
+  select * into v_previo from public.horas_compensadas where id = p_id;
+  if found then
+    if v_previo.registrado_por is distinct from public.usuario_actual() then
+      raise exception 'Esta justificación ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    -- Anulado después, lo repetido no lo revive ni dice que quedó como está.
+    if v_previo.anulado_en is not null then
+      raise exception 'Esta justificación ya quedó registrada la primera vez que la enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
+    end if;
+    -- El mismo envío repetido devuelve lo que ya quedó. Con algo cambiado ya no
+    -- es el mismo: el primero quedó y lo nuevo no se guarda.
+    if v_previo.permiso_id is not distinct from p_permiso_id
+       and (p_horas is null or v_previo.horas = round(p_horas, 2)) then
+      return p_id;
+    end if;
+    raise exception 'Esta justificación ya quedó registrada la primera vez que la enviaste: recarga la pantalla para ver cómo quedó.';
+  end if;
   select * into v_perm from public.permisos_personal where id = p_permiso_id;
   if not found then
     raise exception 'Ese permiso no existe.' using errcode = 'check_violation';
@@ -781,11 +815,12 @@ $$;
 revoke all on function public.rrhh_justificar_permiso(uuid, uuid, numeric) from public, anon;
 grant execute on function public.rrhh_justificar_permiso(uuid, uuid, numeric) to authenticated;
 
--- Descontar lo que falta justificar, de una vez. Un reintento con el mismo p_id
+-- Descontar lo que falta justificar, de una vez. El mismo envío repetido
 -- devuelve el descuento ya registrado.
 create or replace function public.rrhh_descontar_permiso(p_id uuid, p_permiso_id uuid)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
+  v_previo public.permisos_descontados%rowtype;
   v_perm   public.permisos_personal%rowtype;
   v_falta  numeric;
   v_hoy    date := (now() at time zone 'America/Lima')::date;
@@ -794,7 +829,22 @@ begin
   if p_id is null then
     raise exception 'Vuelve a cargar la pantalla de permisos.' using errcode = 'check_violation';
   end if;
-  if exists (select 1 from public.permisos_descontados where id = p_id) then return p_id; end if;
+  -- El reenvío, con la regla de la 20261023200000: el mismo envío devuelve lo
+  -- mismo; el de otra cuenta, o el de un descuento que se anuló después, no.
+  perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));
+  select * into v_previo from public.permisos_descontados where id = p_id;
+  if found then
+    if v_previo.registrado_por is distinct from public.usuario_actual() then
+      raise exception 'Este descuento ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    if v_previo.anulado_en is not null then
+      raise exception 'Este descuento ya quedó registrado la primera vez que lo enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
+    end if;
+    if v_previo.permiso_id is not distinct from p_permiso_id then
+      return p_id;
+    end if;
+    raise exception 'Este descuento ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.';
+  end if;
   select * into v_perm from public.permisos_personal where id = p_permiso_id;
   if not found then
     raise exception 'Ese permiso no existe.' using errcode = 'check_violation';
@@ -832,10 +882,11 @@ revoke all on function public.rrhh_descontar_permiso(uuid, uuid) from public, an
 grant execute on function public.rrhh_descontar_permiso(uuid, uuid) to authenticated;
 
 -- Reportar el permiso sin justificar: una observación en su legajo y el aviso a
--- quien consulta la asistencia. Un reintento con el mismo p_id devuelve la misma.
+-- quien consulta la asistencia. El mismo envío repetido devuelve la misma.
 create or replace function public.rrhh_reportar_permiso(p_id uuid, p_permiso_id uuid, p_tipo text, p_nota text default null)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
+  v_previo  public.observaciones_personal%rowtype;
   v_perm    public.permisos_personal%rowtype;
   v_nombre  text;
   v_nota    text := nullif(btrim(coalesce(p_nota, '')), '');
@@ -847,7 +898,25 @@ begin
   if p_id is null then
     raise exception 'Vuelve a cargar la pantalla de permisos.' using errcode = 'check_violation';
   end if;
-  if exists (select 1 from public.observaciones_personal where id = p_id) then return p_id; end if;
+  -- El reenvío, con la regla de la 20261023200000: el mismo envío devuelve lo
+  -- mismo; el de otra cuenta, el anulado después o el que trae otro tipo u otra
+  -- nota, no.
+  perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));
+  select * into v_previo from public.observaciones_personal where id = p_id;
+  if found then
+    if v_previo.registrado_por is distinct from v_yo then
+      raise exception 'Este reporte ya existe con otros datos. Recarga antes de intentar de nuevo.';
+    end if;
+    if v_previo.anulado_en is not null then
+      raise exception 'Este reporte ya quedó registrado la primera vez que lo enviaste, y después se anuló: recarga la pantalla para ver cómo quedó.';
+    end if;
+    if v_previo.permiso_id is not distinct from p_permiso_id and v_previo.tipo is not distinct from p_tipo
+       and v_previo.motivo = 'PERMISO_SIN_JUSTIFICAR'
+       and (v_nota is null or right(v_previo.detalle, char_length(v_nota)) = v_nota) then
+      return p_id;
+    end if;
+    raise exception 'Este reporte ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.';
+  end if;
   select * into v_perm from public.permisos_personal where id = p_permiso_id;
   if not found then
     raise exception 'Ese permiso no existe.' using errcode = 'check_violation';
