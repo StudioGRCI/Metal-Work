@@ -426,24 +426,7 @@ export async function tablaDeAdquisiciones(sinFactura: CompraSinFactura[]): Prom
   const idsOc = [
     ...new Set([...[...controles.values()].flatMap((c) => c.ordenes.map((o) => o.id)), ...sinFactura.map((c) => c.orden_compra_id)]),
   ]
-  const [codigos, insumos] = await Promise.all([
-    enTandas(idsOc, async (tanda) => {
-      const r = await supabase.from('ordenes_compra_materiales').select('id, codigo_interno').in('id', tanda)
-      if (r.error) throw new Error(`No se pudo leer el código interno de las OC: ${r.error.message}`)
-      return r.data ?? []
-    }),
-    // Los RQ de cada OC con su código, también para quien no lee los requerimientos.
-    idsOc.length ? supabase.rpc('insumos_de_compras', { p_ids: idsOc }) : Promise.resolve({ data: [], error: null }),
-  ])
-  if (insumos.error) throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${insumos.error.message}`)
-  const codigoDe = new Map(codigos.map((c) => [c.id, c.codigo_interno]))
-  const rqDe = new Map<string, Map<string, RqDeCompra>>()
-  for (const l of insumos.data ?? []) {
-    if (!l.orden_compra_id || !l.requerimiento_id || !l.requerimiento) continue
-    const deLaOc = rqDe.get(l.orden_compra_id) ?? new Map<string, RqDeCompra>()
-    deLaOc.set(l.requerimiento_id, { id: l.requerimiento_id, numero: l.requerimiento, codigo_interno: l.codigo_interno ?? '' })
-    rqDe.set(l.orden_compra_id, deLaOc)
-  }
+  const { codigoDe, rqDe } = await codigoYRqDeOcs(idsOc)
   const oc = (o: { id: string; numero: string | null; referencia: string; moneda: string; total: number; sin_precio: boolean; numero_ot: string | null }): OcEnTabla => {
     const requerimientos = [...(rqDe.get(o.id)?.values() ?? [])].sort((a, b) => a.numero.localeCompare(b.numero))
     const propio = codigoDe.get(o.id)
@@ -545,6 +528,9 @@ export type CuentaPorPagar = CuentaPagarFila & {
   cuentasProveedor: CuentaDelProveedor[]
   /** Espera que Contabilidad diga si su OC con boleta ya se pagó fuera: mientras, no se paga. */
   enEspera: EsperaDeLaFactura | null
+  /** Los códigos internos de la factura, los de sus OC, y los de cada OC por su id. */
+  codigos: string[]
+  codigosPorOc: Map<string, string[]>
 }
 
 /** Las cuentas activas de esos proveedores, por proveedor. Sin `proveedores.ver_cuentas` no se piden. */
@@ -565,6 +551,50 @@ async function cuentasDeProveedores(proveedores: string[], verCuentas: boolean):
   })
   for (const { proveedor_id, ...c } of filas) mapa.set(proveedor_id, [...(mapa.get(proveedor_id) ?? []), c])
   return mapa
+}
+
+/**
+ * El código interno propio de cada OC y los RQ que atiende, con el suyo: también
+ * para quien no lee los requerimientos (`insumos_de_compras`).
+ */
+async function codigoYRqDeOcs(idsOc: string[]) {
+  const supabase = await createClient()
+  const [codigos, insumos] = await Promise.all([
+    enTandas(idsOc, async (tanda) => {
+      const r = await supabase.from('ordenes_compra_materiales').select('id, codigo_interno').in('id', tanda)
+      if (r.error) throw new Error(`No se pudo leer el código interno de las OC: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    idsOc.length ? supabase.rpc('insumos_de_compras', { p_ids: idsOc }) : Promise.resolve({ data: [], error: null }),
+  ])
+  // Quien abre Cuentas por pagar sin leer las compras se queda sin los RQ, no sin la pantalla.
+  if (insumos.error && insumos.error.code !== '42501') throw new Error(`No se pudo leer qué requerimiento atiende cada OC: ${insumos.error.message}`)
+  const codigoDe = new Map(codigos.map((c) => [c.id, c.codigo_interno]))
+  const rqDe = new Map<string, Map<string, RqDeCompra>>()
+  for (const l of insumos.data ?? []) {
+    if (!l.orden_compra_id || !l.requerimiento_id || !l.requerimiento) continue
+    const deLaOc = rqDe.get(l.orden_compra_id) ?? new Map<string, RqDeCompra>()
+    deLaOc.set(l.requerimiento_id, { id: l.requerimiento_id, numero: l.requerimiento, codigo_interno: l.codigo_interno ?? '' })
+    rqDe.set(l.orden_compra_id, deLaOc)
+  }
+  return { codigoDe, rqDe }
+}
+
+/**
+ * Los códigos internos de cada OC, como los muestra Adquisiciones: el suyo, o
+ * los de los RQ que atiende. Vacío si no tiene ninguno.
+ */
+export async function codigosDeOcs(idsOc: string[]): Promise<Map<string, string[]>> {
+  const unicos = [...new Set(idsOc)]
+  if (unicos.length === 0) return new Map()
+  const { codigoDe, rqDe } = await codigoYRqDeOcs(unicos)
+  return new Map(
+    unicos.map((id) => {
+      const propio = codigoDe.get(id)
+      const deLosRq = [...(rqDe.get(id)?.values() ?? [])].map((r) => r.codigo_interno).filter(Boolean)
+      return [id, propio ? [propio] : [...new Set(deLosRq)].sort()]
+    }),
+  )
 }
 
 /** Cuántas facturas ya pagadas se muestran, de la más reciente a la más vieja. */
@@ -617,19 +647,26 @@ export async function cuentasPorPagar(verCuentas = false): Promise<CuentaPorPaga
   // El proveedor de la factura es el de sus OC: la factura solo guarda su nombre.
   const idsOc = [...new Set([...controles.values()].flatMap((c) => c.ordenes.map((o) => o.id)))]
   const proveedorDeOc = new Map<string, string>()
-  if (verCuentas && idsOc.length > 0) {
-    const ocs = await enTandas(idsOc, async (tanda) => {
-      const r = await supabase.from('ordenes_compra_materiales').select('id, proveedor_id').in('id', tanda)
-      if (r.error) throw new Error(`No se pudo leer el proveedor de las OC: ${r.error.message}`)
-      return r.data ?? []
-    })
-    for (const o of ocs) if (o.proveedor_id) proveedorDeOc.set(o.id, o.proveedor_id)
-  }
+  // Los códigos internos de las OC van a la par del proveedor de cada una.
+  const [ocs, codigosDe] = await Promise.all([
+    verCuentas && idsOc.length > 0
+      ? enTandas(idsOc, async (tanda) => {
+          const r = await supabase.from('ordenes_compra_materiales').select('id, proveedor_id').in('id', tanda)
+          if (r.error) throw new Error(`No se pudo leer el proveedor de las OC: ${r.error.message}`)
+          return r.data ?? []
+        })
+      : Promise.resolve([]),
+    codigosDeOcs(idsOc),
+  ])
+  for (const o of ocs) if (o.proveedor_id) proveedorDeOc.set(o.id, o.proveedor_id)
   const cuentas = await cuentasDeProveedores([...proveedorDeOc.values()], verCuentas)
   return filas.map((f) => {
     const control = (f.id && controles.get(f.id)) || null
     const proveedores = [...new Set((control?.ordenes ?? []).flatMap((o) => proveedorDeOc.get(o.id) ?? []))]
+    const codigosPorOc = new Map((control?.ordenes ?? []).map((o) => [o.id, codigosDe.get(o.id) ?? []]))
     return {
+      codigos: [...new Set([...codigosPorOc.values()].flat())].sort(),
+      codigosPorOc,
       ...f,
       url: (f.id && pdfs.get(f.id)) || null,
       control,

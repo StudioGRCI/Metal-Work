@@ -6933,6 +6933,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          destino: string
         }
         Insert: {
           id?: string
@@ -6952,6 +6953,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          destino?: string
         }
         Update: {
           id?: string
@@ -6971,6 +6973,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          destino?: string
         }
         Relationships: [
           {
@@ -12015,6 +12018,15 @@ export type Database = {
         }
         Returns: string
       }
+      clientes_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cliente: string | null
+        }[]
+      }
       codigo_interno_actividades: {
         Args: {
           p_codigo: string | null
@@ -15267,6 +15279,7 @@ export type Database = {
           p_ruta: string | null
           p_caja: string | null
           p_monto_cuenta: number | null
+          p_destino: string | null
         }
         Returns: string
       }
@@ -15997,6 +16010,24 @@ export type Database = {
           p_material: string | null
         }
         Returns: number
+      }
+      saldos_de_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          moneda: string | null
+          total: number | null
+          detraccion: number | null
+          detraccion_en_moneda: number | null
+          al_proveedor: number | null
+          pagado_proveedor: number | null
+          pagado_detraccion: number | null
+          saldo_proveedor: number | null
+          saldo_detraccion: number | null
+          cancelada: boolean | null
+        }[]
       }
       salidas_a_recojo: {
         Args: Record<PropertyKey, never>

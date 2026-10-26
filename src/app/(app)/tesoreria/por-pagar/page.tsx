@@ -11,6 +11,7 @@ import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import {
+  codigosDeOcs,
   comprasConBoletaPorPagar,
   cuentasPorPagar,
   PAGADAS_A_LA_VISTA,
@@ -73,7 +74,7 @@ export default async function PaginaPorPagar() {
     comprasConBoletaPorPagar(verCuentas),
     // Las boletas de una parte de la OC que llega en partes (migración 20261022200000).
     partesConBoletaPorPagar(verCuentas),
-    db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
+    db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
@@ -85,13 +86,15 @@ export default async function PaginaPorPagar() {
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
   // Y, para quien lleva la caja, de qué cuenta salió cada pago.
   const verCaja = puede(perfil, 'tesoreria.caja')
-  const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas] = await Promise.all([
+  const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas, codigosCredito] = await Promise.all([
     correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
     verCaja ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('PAGO_ORDEN_COMPRA', boletas.flatMap((b) => b.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('DEVOLUCION_ORDEN_COMPRA', boletas.flatMap((b) => b.devoluciones.map((d) => d.id))) : undefined,
     verCaja ? cajaDeLosPagos('PAGO_PARTE_BOLETA', partes.flatMap((x) => x.pagosDeLaParte.map((p) => p.id))) : undefined,
     pasa ? paraLasVentanasDeLaBoleta(db, boletas) : { descontables: new Map<string, FacturaParaDescontar[]>(), cambios: new Map<string, number | null>() },
+    // El código interno de cada compra a crédito sin comprobante, como en Adquisiciones.
+    codigosDeOcs((pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))),
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
@@ -291,7 +294,7 @@ export default async function PaginaPorPagar() {
               >
                 <span>
                   <span className="text-texto">
-                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {nombreDeOc(c)}
+                    <CodigosInternos codigos={(c.orden_compra_id && codigosCredito.get(c.orden_compra_id)) || []} alInicio /> · {c.proveedor} · {nombreDeOc(c)}
                   </span>
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
@@ -903,6 +906,26 @@ function textoDeLaToma(t: CompraConBoleta['pagos'][number]['tomas'][number], m: 
   return `descontado en ${t.factura}: ${enLaFactura}${deLaBoleta}`
 }
 
+/**
+ * El código interno de un documento, como lo nombran las demás pantallas: uno o
+ * varios, o que no tiene. Cada código entero en su línea: en el teléfono no se parte.
+ */
+function CodigosInternos({ codigos, alInicio = false }: { codigos: string[]; alInicio?: boolean }) {
+  const palabra = (texto: string) => (alInicio ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto)
+  if (codigos.length === 0) return <>{palabra('sin código interno')}</>
+  return (
+    <>
+      {palabra(codigos.length === 1 ? 'código' : 'códigos')}{' '}
+      {codigos.map((codigo, i) => (
+        <span key={codigo}>
+          {i > 0 && ', '}
+          <span className="tabular whitespace-nowrap">{codigo}</span>
+        </span>
+      ))}
+    </>
+  )
+}
+
 /** Una factura de compra: sus OC, el aviso de monto, lo pagado con cada voucher y el botón para pagar. */
 function Factura({
   cuenta: c,
@@ -1012,7 +1035,7 @@ function Factura({
           </p>
           <p className="text-xs text-texto-suave">
             {definir(TIPO_COMPROBANTE, c.tipo ?? '').etiqueta} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'} ·{' '}
-            {c.numero_ot ? `OT ${c.numero_ot}` : 'sin OT'} ·{' '}
+            <CodigosInternos codigos={c.codigos} /> ·{' '}
             {/* Puede que ya se haya pagado fuera: no vence hasta que Contabilidad lo diga. */}
             {c.enEspera && saldo > 0 ? 'sin vencimiento hasta que Contabilidad diga si se pagó' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
           </p>
@@ -1024,7 +1047,7 @@ function Factura({
                 <span key={o.id}>
                   {i > 0 && ' · '}
                   <span className={`tabular text-texto ${o.numero ? 'whitespace-nowrap' : ''}`}>{nombreDeOc(o)}</span>
-                  {o.numero_ot && ` (OT ${o.numero_ot})`}
+                  {ordenes.length > 1 && (c.codigosPorOc.get(o.id) ?? []).length > 0 && ` (${c.codigosPorOc.get(o.id)?.join(', ')})`}
                 </span>
               ))}
             </p>

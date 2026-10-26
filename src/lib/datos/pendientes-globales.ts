@@ -792,6 +792,17 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       },
     })
   }
+  // Las cuentas con un día anterior a hoy sin cerrar, como la cifra «Caja de hoy»
+  // del Dashboard y el aviso «Días sin cerrar» de la caja: de todas las cuentas.
+  if (puede(perfil, 'tesoreria.caja')) tareas.push({
+    clave: 'cajas_sin_cerrar', ruta: '/tesoreria/caja-diaria', tono: 'aviso',
+    texto: n => plural(n, 'cuenta con días sin cerrar', 'cuentas con días sin cerrar'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('caja_del_dia', { p_fecha: hoy })
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((k) => k.caja_id && k.primer_dia_sin_cerrar && k.primer_dia_sin_cerrar < hoy).length
+    },
+  })
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({
     clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',
     texto: n => plural(n, 'recibo por honorarios por pagar', 'recibos por honorarios por pagar'),

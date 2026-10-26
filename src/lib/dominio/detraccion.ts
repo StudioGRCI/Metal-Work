@@ -63,3 +63,28 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
     tono: 'info',
   }
 }
+
+/**
+ * Lo que se debe de una orden de servicio, como lo da `saldos_de_servicios()`
+ * (migración 20261026100000): el total con IGV, la detracción en soles y en la
+ * moneda de la orden, lo que va al proveedor (el total menos la detracción) y lo
+ * que falta de cada parte. Lo de la detracción, en soles.
+ */
+export type SaldoDeServicio = {
+  total: number
+  detraccion: number
+  detraccionEnMoneda: number
+  alProveedor: number
+  pagadoProveedor: number
+  pagadoDetraccion: number
+  saldoProveedor: number
+  saldoDetraccion: number
+}
+
+export type DestinoPagoServicio = 'PROVEEDOR' | 'DETRACCION'
+
+/** Lo que falta de la orden entera, en su moneda: al proveedor, más la detracción que falta pasada a esa moneda. */
+export function faltaDelServicio(s: SaldoDeServicio): number {
+  const detraccion = s.detraccion > 0 ? (s.saldoDetraccion * s.detraccionEnMoneda) / s.detraccion : 0
+  return Math.round((s.saldoProveedor + detraccion) * 100) / 100
+}
