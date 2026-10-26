@@ -6,7 +6,7 @@ import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
-import { hoyLima, mesLargo } from '@/lib/format'
+import { hoyLima } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -418,24 +418,29 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // La mano de obra de cada carrocería entra cuando RR. HH. cierra la planilla
-  // del mes y la reparte: mientras tanto, el costo de todas las OT sale corto.
+  // La planilla de taller de un mes que ya pasó, creada y sin cerrar: al
+  // cerrarla, la diferencia entre el costo real de cada persona y lo que entró
+  // por sus horas se reparte entre los códigos (migración 20261026110000).
+  // Mientras siga en preparación, la mano de obra de esos códigos sale corta.
+  // No cuenta la que todavía no se crea: eso lo dice la pantalla.
   if (puede(perfil, 'rrhh.gestionar_planillas')) {
-    const mesAnterior = primerDiaDelMesAnterior(hoy)
+    const esteMes = `${hoy.slice(0, 7)}-01`
     tareas.push({
       clave: 'planilla_por_cerrar',
       ruta: '/rrhh',
       tono: 'aviso',
-      texto: (n) => `${n} planilla de taller de ${mesLargo(mesAnterior)} por cerrar y repartir`,
+      texto: (n) =>
+        plural(n, 'planilla de taller por cerrar: su ajuste no entra a los códigos', 'planillas de taller por cerrar: su ajuste no entra a los códigos'),
       contar: async () => {
         const { count, error } = await supabase
           .from('planillas')
           .select('id', { count: 'exact', head: true })
           .eq('tipo', 'TALLER')
-          .eq('periodo', mesAnterior)
-          .eq('estado', 'CERRADA')
+          .eq('moneda', 'PEN')
+          .eq('estado', 'BORRADOR')
+          .lt('periodo', esteMes)
         if (error) throw new Error('No se pudo leer la planilla.')
-        return (count ?? 0) > 0 ? 0 : 1
+        return count ?? 0
       },
     })
   }
@@ -919,11 +924,4 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
   })
 
   return { porRuta, sinComprobar: [...sinComprobar] }
-}
-
-/** El día 1 del mes anterior a `dia` (YYYY-MM-DD), que es como la base guarda el periodo de una planilla. */
-function primerDiaDelMesAnterior(dia: string) {
-  const [anio, mes] = dia.split('-').map(Number)
-  const previo = mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 }
-  return `${previo.anio}-${String(previo.mes).padStart(2, '0')}-01`
 }

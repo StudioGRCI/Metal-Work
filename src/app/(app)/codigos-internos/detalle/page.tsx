@@ -1058,7 +1058,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Mano de obra"
-          ayuda="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona, y el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
+          ayuda="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona; el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día; y, cuando Recursos Humanos cierra la planilla de taller del mes, el ajuste: la diferencia entre el costo real de cada persona y lo que entró por sus horas, repartida por esas mismas horas. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
         />
         <Tabla>
           <TablaCabecera>
@@ -1087,7 +1087,8 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </p>
                     </TD>
                     <TD className="tabular text-right align-top whitespace-nowrap">
-                      {l.fuente === 'RECARGO_EXTRAS' ? <span className="text-texto-tenue">—</span> : horasCortas(l.horas ?? 0)}
+                      {/* El recargo y el ajuste de la planilla del mes no traen horas propias. */}
+                      {l.fuente === 'RECARGO_EXTRAS' || l.horas === null ? <span className="text-texto-tenue">—</span> : horasCortas(l.horas)}
                     </TD>
                     <TD
                       className="tabular text-right align-top whitespace-nowrap"

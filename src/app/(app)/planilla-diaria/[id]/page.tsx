@@ -195,7 +195,26 @@ function Persona({
                 </span>
               </>
             )}
+            {g.horas_permiso > 0 && (
+              <>
+                {' · '}
+                <span className="tabular">{horasCortas(g.horas_permiso)}</span> de permiso · <span className="tabular">{moneda(g.monto_permiso)}</span>
+              </>
+            )}
           </p>
+          {g.descuentos.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs" data-descuentos>
+              {g.descuentos.map((d) => (
+                <li key={`${d.concepto}-${d.fecha}-${d.monto}`} className={d.monto > 0 ? 'text-peligro' : 'text-exito'}>
+                  <span className="tabular">
+                    {d.monto > 0 ? '− ' : '+ '}
+                    {moneda(Math.abs(d.monto))}
+                  </span>{' '}
+                  · {d.detalle}
+                </li>
+              ))}
+            </ul>
+          )}
           {conCuenta && (
             <p className="mt-1 text-xs text-texto-suave" data-cuenta>
               {g.cuenta?.numero_cuenta ? (
@@ -256,6 +275,10 @@ function Persona({
                   {d.concepto === 'ORDINARIAS' ? (
                     <>
                       <span className="tabular">{horasCortas(d.horas)}</span> ordinarias
+                    </>
+                  ) : d.concepto === 'PERMISO' ? (
+                    <>
+                      <span className="tabular">{horasCortas(d.horas)}</span> de permiso justificado con extras
                     </>
                   ) : (
                     <>

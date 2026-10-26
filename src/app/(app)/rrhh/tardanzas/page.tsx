@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
-import { mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
+import { reglaTardanza, resumenTardanzas, tardanzasRestadas } from '@/lib/datos/rrhh'
+import { DESCUENTOS_DESDE, mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
 import { hoyLima, mesLargo, moneda } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
@@ -23,7 +23,13 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
-  const [resumen, regla] = await Promise.all([resumenTardanzas(mes), reglaTardanza()])
+  // Desde octubre de 2026 el descuento se resta solo del pago (migración 20261026100000).
+  const seResta = mes >= DESCUENTOS_DESDE
+  const [resumen, regla, restadas] = await Promise.all([
+    resumenTardanzas(mes),
+    reglaTardanza(),
+    veSueldo && seResta ? tardanzasRestadas(mes) : Promise.resolve(null),
+  ])
   const cada = regla?.tardanzas_por_descuento ?? 3
   const pct = regla?.porcentaje_descuento ?? 5
   const conDescuento = resumen.filter((r) => r.porcentaje > 0)
@@ -35,7 +41,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
       <EncabezadoPagina
         titulo="Tardanzas"
         descripcion={`Cada ${cada} tardanzas del mes se descuenta el ${porcentajeCorto(pct)} de la remuneración mensual`}
-        ayuda="Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. El mes siguiente empieza de cero."
+        ayuda="Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. El mes siguiente empieza de cero. El descuento se resta solo del pago: a la gente de taller, en la planilla diaria; a la de la oficina, en su pago. Si se anula una tardanza después, la siguiente planilla o el siguiente pago devuelve lo restado de más."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tardanzas' }]}
       />
 
@@ -119,9 +125,13 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                                 {r.descuento === null ? 'Falta su remuneración' : <span className="tabular">{moneda(r.descuento)}</span>}
                               </p>
                             )}
+                            <Restado r={restadas?.get(r.trabajador.id)} />
                           </>
                         ) : (
-                          '—'
+                          <>
+                            —
+                            <Restado r={restadas?.get(r.trabajador.id)} />
+                          </>
                         )}
                       </TD>
                     </TR>
@@ -150,5 +160,30 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
         </Tarjeta>
       </div>
     </>
+  )
+}
+
+/** Lo que ya se restó del pago por las tardanzas del mes, y lo que falta restar o devolver. */
+function Restado({ r }: { r: { descontado: number; por_descontar: number; documentos: string | null } | undefined }) {
+  if (!r || (r.descontado === 0 && r.por_descontar === 0)) return null
+  return (
+    <div className="text-xs" data-restado>
+      {r.descontado !== 0 && (
+        <p className="text-texto-suave">
+          Restado <span className="tabular text-texto">{moneda(r.descontado)}</span>
+          {r.documentos && ` en ${r.documentos}`}
+        </p>
+      )}
+      {r.por_descontar > 0 && (
+        <p className="text-aviso">
+          Por restar <span className="tabular">{moneda(r.por_descontar)}</span> en su próximo pago
+        </p>
+      )}
+      {r.por_descontar < 0 && (
+        <p className="text-exito">
+          Se le devuelven <span className="tabular">{moneda(-r.por_descontar)}</span> en su próximo pago
+        </p>
+      )}
+    </div>
   )
 }

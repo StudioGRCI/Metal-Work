@@ -1,15 +1,16 @@
 'use client'
 
-import { Ban, CalendarPlus, PiggyBank } from 'lucide-react'
+import { Ban, CalendarPlus, Flag, MinusCircle, PiggyBank } from 'lucide-react'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { TIPOS_REPORTE_PERMISO, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
 import { useEnvio } from '@/lib/envio'
 
-import { anularPermiso, justificarPermiso, registrarPermiso } from './acciones'
+import { anularPermiso, descontarPermiso, justificarPermiso, registrarPermiso, reportarPermiso } from './acciones'
 
 type Persona = { id: string; nombre: string; cargo: string | null }
 
@@ -210,6 +211,150 @@ function FormularioJustificar({ permisoId, tope, alTerminar }: { permisoId: stri
   )
 }
 
+/**
+ * Descontar lo que falta justificar: en taller esas horas no se pagan, en la
+ * oficina se restan de su próximo pago. Se confirma en una ventana.
+ */
+export function DescontarPermiso({
+  permisoId,
+  nombre,
+  dia,
+  porJustificar,
+  oficina,
+}: {
+  permisoId: string
+  nombre: string
+  dia: string
+  porJustificar: number
+  oficina: boolean
+}) {
+  const [abierta, setAbierta] = useState(false)
+  const [vez, setVez] = useState(0)
+  return (
+    <>
+      <Boton
+        type="button"
+        variante="secundario"
+        tamano="sm"
+        onClick={() => {
+          setVez((v) => v + 1)
+          setAbierta(true)
+        }}
+        data-descontar={permisoId}
+      >
+        <MinusCircle aria-hidden className="size-4" />
+        Descontar
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Descontar el permiso de ${nombre}`}
+        descripcion={
+          oficina
+            ? `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar se restan de su próximo pago, a su remuneración entre 240.`
+            : `Las ${horasEnTexto(porJustificar)} h del ${dia} que faltan justificar no se pagan: si el reporte de ese día las trae, la próxima planilla diaria las resta a la hora de su remuneración.`
+        }
+        ancho="sm"
+      >
+        <FormularioDescontar key={vez} permisoId={permisoId} alTerminar={() => setAbierta(false)} />
+      </Ventana>
+    </>
+  )
+}
+
+function FormularioDescontar({ permisoId, alTerminar }: { permisoId: string; alTerminar: () => void }) {
+  const [id] = useState(() => crypto.randomUUID())
+  const { alEnviar, enviando, error } = useEnvio(descontarPermiso, alTerminar)
+  return (
+    <form onSubmit={alEnviar} className="space-y-4">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="permiso_id" value={permisoId} />
+      <p className="text-sm text-texto-suave">Si después lo justifica o se anula el permiso, lo restado se devuelve en el pago siguiente.</p>
+      {error && (
+        <p role="alert" className="text-sm text-peligro">
+          {error}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Boton type="button" variante="contorno" onClick={alTerminar}>
+          Cancelar
+        </Boton>
+        <Boton type="submit" cargando={enviando}>
+          Descontar
+        </Boton>
+      </div>
+    </form>
+  )
+}
+
+/** Reportar el permiso sin justificar: queda en sus observaciones, como observación o amonestación. */
+export function ReportarPermiso({ permisoId, nombre, dia }: { permisoId: string; nombre: string; dia: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const [vez, setVez] = useState(0)
+  return (
+    <>
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          setVez((v) => v + 1)
+          setAbierta(true)
+        }}
+        data-reportar={permisoId}
+      >
+        <Flag aria-hidden className="size-4" />
+        Reportar
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Reportar el permiso de ${nombre}`}
+        descripcion={`El permiso del ${dia} queda en sus observaciones como «Permiso sin justificar», y se avisa a quienes revisan la asistencia del personal.`}
+        ancho="sm"
+      >
+        <FormularioReportar key={vez} permisoId={permisoId} alTerminar={() => setAbierta(false)} />
+      </Ventana>
+    </>
+  )
+}
+
+function FormularioReportar({ permisoId, alTerminar }: { permisoId: string; alTerminar: () => void }) {
+  const [id] = useState(() => crypto.randomUUID())
+  const { alEnviar, enviando, error } = useEnvio(reportarPermiso, alTerminar)
+  return (
+    <form onSubmit={alEnviar} className="space-y-4">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="permiso_id" value={permisoId} />
+      <Campo etiqueta="Cómo queda" htmlFor={`reportar-tipo-${id}`} requerido>
+        <Seleccion id={`reportar-tipo-${id}`} name="tipo" required defaultValue="OBSERVACION">
+          {TIPOS_REPORTE_PERMISO.map((t) => (
+            <option key={t} value={t}>
+              {TIPO_OBSERVACION[t].etiqueta}
+            </option>
+          ))}
+        </Seleccion>
+      </Campo>
+      <Campo etiqueta="Nota" htmlFor={`reportar-nota-${id}`} ayuda="Opcional: lo que conversaron o por qué no lo justificó.">
+        <AreaTexto id={`reportar-nota-${id}`} name="nota" maxLength={500} rows={3} />
+      </Campo>
+      {error && (
+        <p role="alert" className="text-sm text-peligro">
+          {error}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Boton type="button" variante="contorno" onClick={alTerminar}>
+          Cancelar
+        </Boton>
+        <Boton type="submit" cargando={enviando}>
+          Reportar
+        </Boton>
+      </div>
+    </form>
+  )
+}
+
 /** Anular un permiso con su motivo: lo justificado vuelve a su saldo. */
 export function AnularPermiso({ id, descripcion }: { id: string; descripcion: string }) {
   const [abierta, setAbierta] = useState(false)
@@ -223,7 +368,7 @@ export function AnularPermiso({ id, descripcion }: { id: string; descripcion: st
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Anular este permiso"
-        descripcion={`${descripcion}. No se borra: queda con su motivo, y lo que ya se justificó vuelve a su saldo de horas extras.`}
+        descripcion={`${descripcion}. No se borra: queda con su motivo; lo que ya se justificó vuelve a su saldo de horas extras, lo descontado se devuelve en su próximo pago y su reporte se anula.`}
         ancho="sm"
       >
         <form onSubmit={envio.alEnviar} className="space-y-4">

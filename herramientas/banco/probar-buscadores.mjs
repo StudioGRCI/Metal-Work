@@ -11,9 +11,10 @@
  *      El filtro del Kardex sí espera «Ver», porque combina cinco filtros.
  *   5. «Limpiar» quita el término y deja los demás filtros puestos.
  *   6. Lo que la pantalla muestra es lo que la base tiene: se cuenta en SQL.
- *   7. El desplegable con buscador (`SeleccionBuscable`), el buscador de la
- *      asistencia y el de las OT del reparto de RRHH, que filtran en el
- *      navegador, buscan igual.
+ *   7. El desplegable con buscador (`SeleccionBuscable`) y el buscador de la
+ *      asistencia, que filtran en el navegador, buscan igual. (El de las OT del
+ *      reparto de la planilla del mes se fue con el reparto, migración
+ *      20261026110000: aquí se mira que no vuelva.)
  *   8. Una sigla o un código se encuentran con o sin sus signos: «sac» a
  *      «S.A.C.», una placa sin el guion.
  *
@@ -174,7 +175,7 @@ const TRABAJADOR = `ZÚÑIGA PEÑA ${sello}, ÁNGEL`
 const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
 await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
   [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, logistico])
-// Una planilla en preparación con alguien, para que salga el reparto entre OT.
+// Una planilla en preparación con alguien que no tiene ficha: ya no sale el reparto entre OT.
 const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
                             on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [logistico])
 await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, logistico])
@@ -669,22 +670,15 @@ for (const ancho of [390, 1280]) {
     }
   }
 
-  // …el reparto entre OT de una planilla en preparación (RRHH), con el número
-  // escrito sin guion…
+  // …la planilla del mes en preparación (RRHH) ya no reparte entre las OT:
+  // dice cómo entra cada persona al costo (aquí, sin ficha en Personal)…
   {
     const { pagina } = await sesion('rrhh')
     await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
-    const tarjeta = pagina.locator('details', { hasText: 'Repartir en partes iguales' }).filter({ hasText: `PERSONA BANCO ${sello}` })
-    const texto = ot.numero.replace('-', '')
-    if (await tarjeta.count()) {
-      await tarjeta.first().locator('summary').click()
-      await tarjeta.first().getByLabel('Buscar OT por número o unidad').pressSequentially(texto, { delay: 15 })
-      const leer = () => tarjeta.first().locator('label:visible', { has: pagina.locator('input[name="orden_id"]') }).allInnerTexts()
-      const visibles = await hasta(leer, (v) => v.length === 1)
-      comprobar(visibles.length === 1 && visibles[0].includes(ot.numero), `Planillas (RRHH): «${texto}» deja solo la OT ${ot.numero} (${visibles.length} a la vista)`)
-    } else {
-      comprobar(false, `Planillas (RRHH): no salió el reparto de la planilla en preparación (estado ${planilla.estado})`)
-    }
+    const fila = pagina.locator('details', { hasText: `PERSONA BANCO ${sello}` })
+    const texto = (await fila.first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    comprobar(texto.includes('sin ficha en Personal'), `Planillas (RRHH): la persona sin ficha dice cómo entra al costo («${texto.slice(0, 120)}», estado ${planilla.estado})`)
+    comprobar((await pagina.getByText('Repartir en partes iguales').count()) === 0 && !texto.includes('Repartido'), 'Planillas (RRHH): sin reparto entre las OT')
   }
 
   // …y el desplegable con buscador, aquí el del cliente de una orden nueva.

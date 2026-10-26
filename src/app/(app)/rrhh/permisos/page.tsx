@@ -6,11 +6,11 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarPermisos, listarTrabajadores, type Permiso } from '@/lib/datos/rrhh'
-import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
-import { fecha, hoyLima, mesLargo } from '@/lib/format'
+import { DESCUENTOS_DESDE, horaCorta, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
+import { fecha, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
-import { AnularPermiso, JustificarPermiso, RegistrarPermiso } from './controles'
+import { AnularPermiso, DescontarPermiso, JustificarPermiso, RegistrarPermiso, ReportarPermiso } from './controles'
 
 export const metadata = { title: 'Permisos del personal' }
 
@@ -35,7 +35,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
     <>
       <EncabezadoPagina
         titulo="Permisos"
-        ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes. Mientras le falten horas, el permiso queda por justificar."
+        ayuda="Las horas de permiso que pide cada persona y cómo las devuelve: se justifican con sus horas extras reservadas, de una vez o por partes, y entonces se pagan. Lo que no se justifica, cuando ya pasó el día, se descuenta (no se paga, o se resta de su próximo pago) o se reporta en sus observaciones. Al lado de cada permiso ves lo que marcó en portería ese día y las horas que le puso el supervisor."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Permisos' }]}
         acciones={
           gestiona && (
@@ -53,7 +53,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                 ? `${horasCortas(horasPendientes)} de permiso en ${pendientes.length} ${pendientes.length === 1 ? 'permiso' : 'permisos'}, de cualquier mes`
                 : 'Nadie debe horas de permiso.'
             }
-            ayuda="Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras»."
+            ayuda="Se justifican con las horas extras que Recursos Humanos reservó en «Horas extras». Si no las tiene o no las va a usar, descuéntalo o repórtalo cuando haya pasado el día."
           />
           <Tabla>
             <TablaCabecera>
@@ -78,6 +78,12 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                       <p className="text-xs text-texto-suave">
                         <span className="tabular">{fecha(p.fecha)}</span> · pidió <span className="tabular">{horasCortas(p.horas)}</span> · {p.motivo}
                       </p>
+                      <Porteria permiso={p} hoy={hoy} />
+                      {p.reportado && (
+                        <p className="mt-1">
+                          <Insignia tono="aviso">Reportado</Insignia>
+                        </p>
+                      )}
                     </TD>
                     <TD className="text-right">
                       <p className="tabular font-semibold text-aviso">{horasCortas(p.por_justificar)}</p>
@@ -86,13 +92,31 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                     <TD className="tabular hidden text-right sm:table-cell">{p.saldo > 0 ? horasCortas(p.saldo) : '—'}</TD>
                     {gestiona && (
                       <TD className="text-right">
-                        {p.saldo > 0 ? (
-                          <JustificarPermiso permisoId={p.id} nombre={p.nombre} porJustificar={p.por_justificar} saldo={p.saldo} />
-                        ) : (
-                          <Link href="/rrhh/horas-extras" className="text-xs font-medium text-acento hover:underline">
-                            Sin horas reservadas
-                          </Link>
-                        )}
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {p.saldo > 0 ? (
+                            <JustificarPermiso permisoId={p.id} nombre={p.nombre} porJustificar={p.por_justificar} saldo={p.saldo} />
+                          ) : (
+                            <Link href="/rrhh/horas-extras" className="inline-flex min-h-9 items-center text-xs font-medium text-acento hover:underline">
+                              Sin horas reservadas
+                            </Link>
+                          )}
+                          {p.fecha > hoy ? (
+                            <span className="inline-flex min-h-9 items-center text-xs text-texto-suave">Se descuenta o reporta cuando pase el día</span>
+                          ) : (
+                            <>
+                              {p.fecha >= `${DESCUENTOS_DESDE}-01` && (
+                                <DescontarPermiso
+                                  permisoId={p.id}
+                                  nombre={p.nombre}
+                                  dia={fecha(p.fecha)}
+                                  porJustificar={p.por_justificar}
+                                  oficina={p.planilla === 'ADMINISTRATIVA'}
+                                />
+                              )}
+                              {!p.reportado && <ReportarPermiso permisoId={p.id} nombre={p.nombre} dia={fecha(p.fecha)} />}
+                            </>
+                          )}
+                        </div>
                       </TD>
                     )}
                   </TR>
@@ -132,7 +156,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
             {delMes.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-texto-suave">No hay permisos registrados este mes.</li>
             ) : (
-              delMes.map((p) => <Registro key={p.id} permiso={p} gestiona={gestiona} />)
+              delMes.map((p) => <Registro key={p.id} permiso={p} gestiona={gestiona} hoy={hoy} />)
             )}
           </ul>
         </Tarjeta>
@@ -141,7 +165,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
   )
 }
 
-function Registro({ permiso: p, gestiona }: { permiso: Permiso; gestiona: boolean }) {
+function Registro({ permiso: p, gestiona, hoy }: { permiso: Permiso; gestiona: boolean; hoy: string }) {
   const anulado = p.anulado_en !== null
   return (
     <li className={`flex items-start justify-between gap-3 px-4 py-3 ${anulado ? 'opacity-60' : ''}`} data-registro-permiso={p.nombre}>
@@ -151,9 +175,14 @@ function Registro({ permiso: p, gestiona }: { permiso: Permiso; gestiona: boolea
             <Insignia tono="neutro">Anulado</Insignia>
           ) : p.por_justificar > 0 ? (
             <Insignia tono="aviso">Falta {horasCortas(p.por_justificar)}</Insignia>
+          ) : p.descontadas > 0 && p.justificadas === 0 ? (
+            <Insignia tono="peligro">Descontado</Insignia>
+          ) : p.descontadas > 0 ? (
+            <Insignia tono="aviso">Justificado en parte</Insignia>
           ) : (
             <Insignia tono="exito">Justificado</Insignia>
           )}
+          {!anulado && p.reportado && <Insignia tono="aviso">Reportado</Insignia>}
           <span className="tabular text-xs text-texto-suave">{fecha(p.fecha)}</span>
           <span className="tabular text-xs font-medium text-texto">{horasCortas(p.horas)}</span>
         </div>
@@ -162,10 +191,75 @@ function Registro({ permiso: p, gestiona }: { permiso: Permiso; gestiona: boolea
         {anulado ? (
           <p className="text-xs text-texto-suave">Anulado: {p.motivo_anulacion}</p>
         ) : (
-          p.justificadas > 0 && <p className="text-xs text-texto-suave">Justificado con {horasCortas(p.justificadas)} de horas extras.</p>
+          <>
+            {p.justificadas > 0 && (
+              <p className="text-xs text-texto-suave">
+                Justificado con {horasCortas(p.justificadas)} de horas extras
+                {p.horas_pagadas > 0 && <>; la planilla diaria pagó {horasCortas(p.horas_pagadas)}</>}.
+              </p>
+            )}
+            {p.descontadas > 0 && (
+              <p className="text-xs text-texto-suave" data-descontado>
+                Descontado: {horasCortas(p.descontadas)}
+                {p.descontado !== null && p.descontado !== 0 && (
+                  <>
+                    {' · '}
+                    <span className="tabular">{moneda(p.descontado)}</span> restados de su pago
+                  </>
+                )}
+                {p.descontado === 0 && p.planilla === 'ADMINISTRATIVA' && ' · se resta en su próximo pago'}
+                {p.descontado === 0 && p.planilla === 'TALLER' && ' · no se pagan'}.
+              </p>
+            )}
+          </>
         )}
+        <Porteria permiso={p} hoy={hoy} />
       </div>
       {gestiona && !anulado && <AnularPermiso id={p.id} descripcion={`El permiso de ${p.nombre} del ${fecha(p.fecha)}`} />}
     </li>
+  )
+}
+
+/** Lo que marcó en portería el día del permiso y las horas que le puso el supervisor, para decidir. */
+function Porteria({ permiso: p, hoy }: { permiso: Permiso; hoy: string }) {
+  if (p.fecha > hoy) return null
+  const marcas = p.ingreso || p.salida
+  return (
+    <p className="mt-0.5 text-xs text-texto-suave" data-porteria>
+      Portería:{' '}
+      {marcas ? (
+        <>
+          {p.ingreso ? (
+            <>
+              entró <span className="tabular text-texto">{horaCorta(p.ingreso)}</span>
+            </>
+          ) : (
+            'sin ingreso'
+          )}
+          {' · '}
+          {p.salida ? (
+            <>
+              salió <span className="tabular text-texto">{horaCorta(p.salida)}</span>
+            </>
+          ) : (
+            'sin salida'
+          )}
+        </>
+      ) : (
+        'sin marcas ese día'
+      )}
+      {p.planilla === 'TALLER' && (
+        <>
+          {' · '}
+          {p.horas_reporte === null ? (
+            'sin horas en el reporte'
+          ) : (
+            <>
+              <span className="tabular text-texto">{horasCortas(p.horas_reporte)}</span> en el reporte
+            </>
+          )}
+        </>
+      )}
+    </p>
   )
 }

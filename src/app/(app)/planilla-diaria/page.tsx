@@ -5,6 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { descuentosPorAplicar, type DescuentoPorAplicar } from '@/lib/datos/rrhh'
 import {
   horasExtrasPorDecidir,
   listarPlanillasDiarias,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/datos/planilla-diaria'
 import {
   ESTADO_PLANILLA,
+  aplicarDescuentos,
   estadoDePlanilla,
   montoExtras,
   montoOrdinarias,
@@ -29,14 +31,18 @@ import { EnviarPlanilla } from './enviar'
 
 export const metadata = { title: 'Planilla diaria' }
 
-/** Lo que se le pagaría a una persona con lo que está por enviar, igual que lo calcula la base. */
-function estimado(p: PersonaPorEnviar, regla: ReglaHorasExtras) {
+/**
+ * Lo que se le pagaría a una persona con lo que está por enviar, igual que lo
+ * calcula la base: sus horas, y lo que hay por restarle o devolverle.
+ */
+function estimado(p: PersonaPorEnviar, regla: ReglaHorasExtras, descuentos: DescuentoPorAplicar[]) {
   if (p.remuneracion === null) return null
   const hora = valorHora(p.remuneracion)
-  return p.dias.reduce(
-    (n, d) => n + (d.concepto === 'ORDINARIAS' ? montoOrdinarias(hora, d.horas) : montoExtras(hora, d.tramo1, d.tramo2, regla)),
+  const bruto = p.dias.reduce(
+    (n, d) => n + (d.concepto === 'EXTRAS' ? montoExtras(hora, d.tramo1, d.tramo2, regla) : montoOrdinarias(hora, d.horas)),
     0,
   )
+  return { bruto, ...aplicarDescuentos(bruto, descuentos) }
 }
 
 export default async function PaginaPlanillaDiaria() {
@@ -46,15 +52,26 @@ export default async function PaginaPlanillaDiaria() {
   const envia = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
 
-  const [planillas, porEnviar, porDecidir, regla] = await Promise.all([
+  const [planillas, porEnviar, porDecidir, regla, descuentos] = await Promise.all([
     listarPlanillasDiarias(),
     arma ? planillaPorEnviar() : Promise.resolve([]),
     arma ? horasExtrasPorDecidir() : Promise.resolve([]),
     arma ? reglaHorasExtras() : Promise.resolve(null),
+    // Lo que la planilla le va a restar o devolver a cada persona (migración 20261026100000).
+    arma ? descuentosPorAplicar() : Promise.resolve([]),
   ])
+  const descuentosDe = (id: string) => descuentos.filter((d) => d.trabajador_id === id)
   const conRemuneracion = porEnviar.filter((p) => p.remuneracion !== null)
   const sinRemuneracion = porEnviar.filter((p) => p.remuneracion === null)
-  const total = regla ? conRemuneracion.reduce((n, p) => n + (estimado(p, regla) ?? 0), 0) : 0
+  const total = regla ? conRemuneracion.reduce((n, p) => n + (estimado(p, regla, descuentosDe(p.trabajador_id))?.neto ?? 0), 0) : 0
+  // La gente de taller con algo por restar o devolver y sin horas por pagar: espera su próxima planilla.
+  const enEspera = [
+    ...new Map(
+      descuentos
+        .filter((d) => d.planilla === 'TALLER' && !porEnviar.some((p) => p.trabajador_id === d.trabajador_id))
+        .map((d) => [d.trabajador_id, d.nombre]),
+    ).values(),
+  ]
   const porPagar = planillas.filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente)))
 
   return (
@@ -77,7 +94,7 @@ export default async function PaginaPlanillaDiaria() {
             <TarjetaCabecera
               titulo="Por enviar a Tesorería"
               descripcion={conRemuneracion.length > 0 ? `${personasTexto(conRemuneracion.length)} · ${moneda(total)}` : undefined}
-              ayuda="Sale de los reportes con los dos vistos buenos de Gerencia y Recursos Humanos que todavía no están en una planilla."
+              ayuda="Sale de los reportes con los dos vistos buenos de Gerencia y Recursos Humanos que todavía no están en una planilla, y de los permisos justificados con horas extras reservadas, que se pagan a la hora ordinaria. A cada persona se le resta lo que tiene por tardanzas (cada tres en el mes, el porcentaje de la regla de su remuneración) y por los permisos que decidiste descontar; lo que no alcanza queda para la siguiente planilla."
               acciones={
                 envia &&
                 conRemuneracion.length > 0 && (
@@ -104,6 +121,19 @@ export default async function PaginaPlanillaDiaria() {
                 .
               </p>
             )}
+            {enEspera.length > 0 && (
+              <p className="border-b border-borde bg-superficie-2 px-4 py-2 text-sm text-texto-suave">
+                Con descuentos que esperan su próxima planilla: {enEspera.join(', ')}. Se restan cuando tengan horas por pagar; los ves en{' '}
+                <Link href="/rrhh/tardanzas" className="font-medium text-acento underline">
+                  Tardanzas
+                </Link>{' '}
+                y{' '}
+                <Link href="/rrhh/permisos" className="font-medium text-acento underline">
+                  Permisos
+                </Link>
+                .
+              </p>
+            )}
             <Tabla>
               <TablaCabecera>
                 <tr>
@@ -120,7 +150,8 @@ export default async function PaginaPlanillaDiaria() {
                   />
                 ) : (
                   porEnviar.map((p) => {
-                    const monto = regla ? estimado(p, regla) : null
+                    const suyos = descuentosDe(p.trabajador_id)
+                    const monto = regla ? estimado(p, regla, suyos) : null
                     return (
                       <TR key={p.trabajador_id} className={p.remuneracion === null ? 'opacity-60' : undefined}>
                         <TD className="align-top">
@@ -136,6 +167,10 @@ export default async function PaginaPlanillaDiaria() {
                                   <>
                                     <span className="tabular">{horasCortas(d.horas)}</span> ordinarias
                                   </>
+                                ) : d.concepto === 'PERMISO' ? (
+                                  <>
+                                    <span className="tabular">{horasCortas(d.horas)}</span> de permiso justificado con extras
+                                  </>
                                 ) : (
                                   <span className="font-medium text-acento">
                                     <span className="tabular">{horasCortas(d.horas)}</span> extras
@@ -144,9 +179,33 @@ export default async function PaginaPlanillaDiaria() {
                                 )}
                               </li>
                             ))}
+                            {suyos.map((d, i) => (
+                              <li key={`${d.concepto}-${d.fecha}`} className={d.monto > 0 ? 'text-peligro' : 'text-exito'} data-descuento={d.concepto}>
+                                <span className="tabular">
+                                  {d.monto > 0 ? '− ' : '+ '}
+                                  {moneda(Math.abs(monto ? monto.aplicados[i] : d.monto))}
+                                </span>{' '}
+                                · {d.detalle}
+                                {monto && d.monto > 0 && monto.aplicados[i] < d.monto && (
+                                  <span className="text-texto-suave">
+                                    {' '}
+                                    (<span className="tabular">{moneda(d.monto - monto.aplicados[i])}</span> quedan para la siguiente)
+                                  </span>
+                                )}
+                              </li>
+                            ))}
                           </ul>
                         </TD>
-                        <TD className="tabular text-right align-top">{monto === null ? 'Sin remuneración' : moneda(monto)}</TD>
+                        <TD className="tabular text-right align-top">
+                          {monto === null ? (
+                            'Sin remuneración'
+                          ) : (
+                            <>
+                              {moneda(monto.neto)}
+                              {monto.restado !== 0 && <p className="text-xs text-texto-suave">de {moneda(monto.bruto)}</p>}
+                            </>
+                          )}
+                        </TD>
                       </TR>
                     )
                   })

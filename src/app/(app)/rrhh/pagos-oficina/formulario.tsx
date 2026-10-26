@@ -7,12 +7,25 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { FRECUENCIAS, type Frecuencia, diasEntre, tramoSugerido } from '@/lib/dominio/pagos-oficina'
+import { aplicarDescuentos } from '@/lib/dominio/planilla-diaria'
 import { useEnvio } from '@/lib/envio'
+import { moneda } from '@/lib/format'
 
 import { anularPagoOficina, registrarPagoOficina } from './acciones'
 
-/** `inicio`: su primer día sin pago en el mes, con el que se llena «Desde» al elegirla. */
-export type PersonaOficina = { id: string; nombre: string; cargo: string | null; inicio: string }
+/**
+ * `inicio`: su primer día sin pago en el mes, con el que se llena «Desde» al
+ * elegirla. `descuentos`: lo que tiene por restar (o devolver, en negativo)
+ * hasta hoy, en el orden en que la base lo aplica; `fecha` es el mes de las
+ * tardanzas (su día 1) o el día del permiso.
+ */
+export type PersonaOficina = {
+  id: string
+  nombre: string
+  cargo: string | null
+  inicio: string
+  descuentos: { fecha: string; monto: number; detalle: string }[]
+}
 
 /** «Registrar pago»: lo que se le pagó a una persona de la oficina y qué días paga. */
 export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]; inicio: string }) {
@@ -50,7 +63,7 @@ export function RegistrarPago({ personal, inicio }: { personal: PersonaOficina[]
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Pago a una persona de la oficina"
-        descripcion="Lo que se le pagó y qué días paga. Entra al costeo de cada mes por los días que caen en él."
+        descripcion="Su sueldo de esos días: la base le resta lo que tiene por tardanzas y permisos descontados. Entra al costeo de cada mes por los días que caen en él."
         ancho="lg"
       >
         <FormularioPago
@@ -81,8 +94,14 @@ function FormularioPago({
   const [frecuencia, setFrecuencia] = useState<Frecuencia>('QUINCENA')
   const [desde, setDesde] = useState(inicio)
   const [hasta, setHasta] = useState(() => tramoSugerido('QUINCENA', inicio) ?? inicio)
+  const [personaId, setPersonaId] = useState('')
+  const [monto, setMonto] = useState('')
   const { alEnviar, enviando, error } = useEnvio(registrarPagoOficina, (r) => alTerminar(r.mensaje ?? 'Pago registrado.'))
   const dias = desde && hasta ? diasEntre(desde, hasta) : 0
+  // Lo mismo que va a restar la base: lo que hay hasta el último día que paga.
+  const descuentos = (personal.find((p) => p.id === personaId)?.descuentos ?? []).filter((d) => hasta && d.fecha <= hasta)
+  const sueldo = Number(monto.replace(/[\s,]/g, ''))
+  const vista = descuentos.length > 0 && sueldo > 0 ? aplicarDescuentos(sueldo, descuentos) : null
 
   function cambiarTramo(f: Frecuencia, d: string) {
     setFrecuencia(f)
@@ -102,6 +121,7 @@ function FormularioPago({
           defaultValue=""
           onChange={(e) => {
             const persona = personal.find((p) => p.id === e.target.value)
+            setPersonaId(e.target.value)
             if (persona) cambiarTramo(frecuencia, persona.inicio)
           }}
         >
@@ -156,13 +176,60 @@ function FormularioPago({
         </Campo>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Lo que se le pagó (S/)" htmlFor={`pago-monto-${id}`} requerido ayuda="Sueldo, asignación y bonos de esos días.">
-          <Entrada id={`pago-monto-${id}`} name="monto" type="number" required min={0.01} max={100000} step={0.01} inputMode="decimal" className="tabular" />
+        <Campo
+          etiqueta="Su sueldo de esos días (S/)"
+          htmlFor={`pago-monto-${id}`}
+          requerido
+          ayuda="Sueldo, asignación y bonos de esos días, sin restar tardanzas ni permisos: eso lo resta la base."
+        >
+          <Entrada
+            id={`pago-monto-${id}`}
+            name="monto"
+            type="number"
+            required
+            min={0.01}
+            max={100000}
+            step={0.01}
+            inputMode="decimal"
+            className="tabular"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+          />
         </Campo>
         <Campo etiqueta="Aportes de la empresa (S/)" htmlFor={`pago-aportes-${id}`} ayuda="EsSalud y otros por ese pago. También es costo.">
           <Entrada id={`pago-aportes-${id}`} name="aportes" type="number" min={0} max={100000} step={0.01} inputMode="decimal" defaultValue="0" className="tabular" />
         </Campo>
       </div>
+      {descuentos.length > 0 && (
+        <div className="rounded-lg border border-borde bg-superficie-2 px-3 py-2 text-sm" data-vista-descuentos>
+          <p className="font-medium text-texto">Lo que el pago le resta o devuelve</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {descuentos.map((d, i) => {
+              const aplica = vista ? vista.aplicados[i] : d.monto
+              return (
+                <li key={`${d.fecha}-${i}`} className={d.monto > 0 ? 'text-peligro' : 'text-exito'}>
+                  <span className="tabular">
+                    {d.monto > 0 ? '− ' : '+ '}
+                    {moneda(Math.abs(aplica))}
+                  </span>{' '}
+                  · {d.detalle}
+                  {vista && d.monto > 0 && aplica < d.monto && (
+                    <span className="text-texto-suave">
+                      {' '}
+                      (<span className="tabular">{moneda(d.monto - aplica)}</span> quedan para el siguiente pago)
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          {vista && (
+            <p className="mt-1 text-texto">
+              Se le paga <span className="tabular font-semibold">{moneda(vista.neto)}</span>
+            </p>
+          )}
+        </div>
+      )}
       <Campo etiqueta="Nota" htmlFor={`pago-nota-${id}`}>
         <Entrada id={`pago-nota-${id}`} name="nota" maxLength={200} placeholder="Por ejemplo: incluye un bono por cierre de mes." />
       </Campo>

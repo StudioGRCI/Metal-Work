@@ -73,6 +73,12 @@ export function diaVecino(dia: string, paso: -1 | 1): string {
 /** Las horas de un mes con que se divide el costo mensual: 30 días de 8 horas. */
 export const HORAS_DEL_MES = 240
 
+/**
+ * El primer mes (`YYYY-MM`) en que las tardanzas y los permisos descontados se
+ * restan solos del pago: el mismo de `rrhh_descuentos_desde()` en la base.
+ */
+export const DESCUENTOS_DESDE = '2026-10'
+
 /** «5 %» o «2,5 %» para el descuento por tardanzas. */
 export function porcentajeCorto(porcentaje: number): string {
   return `${Number(porcentaje.toFixed(2)).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
@@ -92,6 +98,9 @@ export const TIPO_OBSERVACION: Record<string, Def> = {
 }
 export const TIPOS_OBSERVACION = ['OBSERVACION', 'AMONESTACION_VERBAL', 'AMONESTACION_ESCRITA', 'SUSPENSION'] as const
 
+/** Cómo queda un permiso que se reporta por no justificarse: la suspensión va por Observaciones, con sus días. */
+export const TIPOS_REPORTE_PERMISO = ['OBSERVACION', 'AMONESTACION_VERBAL', 'AMONESTACION_ESCRITA'] as const
+
 /** Por qué: los del cuadro de penalidades de RR. HH. y lo que más se reclama en planta. */
 export const MOTIVO_OBSERVACION: Record<string, Def> = {
   TARDANZAS: { etiqueta: 'Tardanzas', tono: 'neutro' },
@@ -101,5 +110,7 @@ export const MOTIVO_OBSERVACION: Record<string, Def> = {
   CALIDAD: { etiqueta: 'Calidad del trabajo', tono: 'neutro' },
   CONDUCTA: { etiqueta: 'Conducta', tono: 'neutro' },
   OTRO: { etiqueta: 'Otro', tono: 'neutro' },
+  // Lo pone la base al reportar un permiso desde Permisos; no se elige en el formulario.
+  PERMISO_SIN_JUSTIFICAR: { etiqueta: 'Permiso sin justificar', tono: 'neutro' },
 }
 export const MOTIVOS_OBSERVACION = ['TARDANZAS', 'FALTA_INJUSTIFICADA', 'EPP', 'SEGURIDAD', 'CALIDAD', 'CONDUCTA', 'OTRO'] as const
