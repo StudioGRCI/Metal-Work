@@ -20,7 +20,7 @@
 \set ON_ERROR_STOP on
 begin;
 
--- La unidad y el nombre del material de la prueba, para leer los avisos (migración 20261026100000).
+-- La unidad y el nombre del material de la prueba, para leer los avisos (migración 20261026130000).
 create function pg_temp.unidad_m1() returns text language sql as $$
   select um.codigo::text from public.materiales mt join public.unidades_medida um on um.id = mt.unidad_medida_id
    where mt.id = current_setting('prueba.m1')::uuid $$;
@@ -207,7 +207,7 @@ begin
                                     and requerimiento_id = current_setting('prueba.rq_b')::uuid),
     'con reposición no se recompra nada');
 end $$;
--- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026100000).
+-- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026130000).
 reset role;
 do $$
 begin
@@ -309,7 +309,7 @@ begin
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
                                   and titulo like 'Espera la nota de crédito:%'),
     'Contabilidad recibe el aviso de que viene una nota de crédito');
-  -- Se lee con su unidad y el motivo como frase aparte (migración 20261026100000).
+  -- Se lee con su unidad y el motivo como frase aparte (migración 20261026130000).
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
                                   and titulo like 'Espera la nota de crédito:%'
                                   and cuerpo = format('El proveedor ya no repone 1 %s de %s. Motivo: El proveedor ya no tiene ese disco: emite nota de crédito. Registra su nota de crédito contra la factura.',
@@ -358,7 +358,7 @@ begin
                                jsonb_array_elements(a.lineas) l where (l->>'item')::int = 1) = 'POR_COMPRAR',
     'el insumo suelto vuelve a «por comprar»');
 end $$;
--- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026100000).
+-- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026130000).
 reset role;
 do $$
 begin
