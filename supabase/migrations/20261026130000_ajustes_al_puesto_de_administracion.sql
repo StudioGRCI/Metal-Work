@@ -43,6 +43,23 @@ update public.permisos
    set descripcion = 'Registrar y corregir el tipo de cambio del día (lo registran Contabilidad o Administración)'
  where codigo = 'tesoreria.tipo_cambio';
 
+-- Y el cierre del costeo, que lo pedía solo a Contabilidad. Como en la
+-- 20261020174600: se cambia la frase sobre la definición vigente, sin copiar
+-- la función. Correrlo otra vez no hace nada.
+do $$
+declare v_def text;
+begin
+  for v_def in
+    select pg_get_functiondef(p.oid)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'cerrar_costeo_codigo'
+  loop
+    if v_def like '%(lo registra Contabilidad)%' then
+      execute replace(v_def, '(lo registra Contabilidad)', '(lo registran Contabilidad o Administración)');
+    end if;
+  end loop;
+end $$;
+
 -- 2. Administración compra solo lo de su RQA --------------------------------------------------
 -- La administradora: tiene `requerimientos.administracion` y no es ADMIN. Es
 -- la misma regla con que `rq_exigir` le niega el RQ de operación.
@@ -59,6 +76,24 @@ comment on function public.compra_solo_su_rqa() is
   'La cuenta de la sesión es la de Administración: compra solo lo de su RQA (no OC directas ni de operación, ni órdenes de servicio).';
 revoke all on function public.compra_solo_su_rqa() from public, anon;
 grant execute on function public.compra_solo_su_rqa() to authenticated;
+
+-- La OC nace de un RQA si alguno de sus insumos es de un requerimiento de
+-- Administración.
+create or replace function public.oc_nace_de_un_rqa(p_orden_compra uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select exists (select 1
+                   from public.requerimiento_lineas l
+                   join public.requerimientos r on r.id = l.requerimiento_id
+                  where l.orden_compra_id = p_orden_compra
+                    and r.tipo = 'ADMINISTRACION');
+$$;
+revoke all on function public.oc_nace_de_un_rqa(uuid) from public, anon;
+grant execute on function public.oc_nace_de_un_rqa(uuid) to authenticated;
 
 -- La OC se mira al cerrar la transacción: la que nace de un RQA se crea primero
 -- y sus insumos se le enlazan después, en la misma llamada.
@@ -77,19 +112,15 @@ begin
   if not exists (select 1 from public.ordenes_compra_materiales where id = new.id) then
     return null;
   end if;
-  if exists (select 1
-               from public.requerimiento_lineas l
-               join public.requerimientos r on r.id = l.requerimiento_id
-              where l.orden_compra_id = new.id
-                and r.tipo = 'ADMINISTRACION') then
+  if public.oc_nace_de_un_rqa(new.id) then
     return null;
   end if;
   v_nombre := public.nombre_de_oc(new.numero, new.referencia);
   if tg_op = 'INSERT' then
-    raise exception 'Administración hace solo la orden de compra de su RQA. Las OC directas y las de los requerimientos de operación las emite Logística.'
+    raise exception 'No tienes permiso para emitir esta orden de compra: tu puesto hace solo la orden de compra de su RQA.'
       using errcode = 'insufficient_privilege';
   end if;
-  raise exception 'La % no nace de un RQA: la lleva Logística.', v_nombre
+  raise exception 'No tienes permiso para cambiar la %: no nace de un RQA.', v_nombre
     using errcode = 'insufficient_privilege';
 end;
 $$;
@@ -110,7 +141,7 @@ set search_path to 'public'
 as $$
 begin
   if public.compra_solo_su_rqa() then
-    raise exception 'Las órdenes de servicio las lleva Logística.'
+    raise exception 'No tienes permiso para emitir ni cambiar órdenes de servicio.'
       using errcode = 'insufficient_privilege';
   end if;
   return new;
@@ -123,7 +154,62 @@ create trigger trg_servicio_no_es_de_administracion
   before insert or update on public.ordenes_servicio
   for each row execute function public.fn_servicio_no_es_de_administracion();
 
--- Ni le adjunta documentos.
+-- Los documentos de una OC (comprobante, factura, guía) y lo devuelto al
+-- proveedor siguen a su OC: con `compras.crear` Administración los podía
+-- anexar, anular o dar por no repuestos en las OC de Logística.
+create or replace function public.fn_documento_de_compra_de_su_rqa()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if public.compra_solo_su_rqa() and not public.oc_nace_de_un_rqa(new.orden_compra_id) then
+    raise exception 'No tienes permiso para los documentos de la %: no nace de un RQA.',
+      (select public.nombre_de_oc(c.numero, c.referencia) from public.ordenes_compra_materiales c where c.id = new.orden_compra_id)
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_documento_de_compra_de_su_rqa() from public, anon, authenticated;
+
+-- El nombre la hace correr antes que `trg_comprobar_archivo_compra`: primero
+-- se dice que no puede, después cómo va el PDF.
+drop trigger if exists trg_administracion_documento_de_su_rqa on public.documentos_compra_material;
+create trigger trg_administracion_documento_de_su_rqa
+  before insert or update on public.documentos_compra_material
+  for each row execute function public.fn_documento_de_compra_de_su_rqa();
+
+create or replace function public.fn_devolucion_de_compra_de_su_rqa()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  v_oc uuid;
+begin
+  if new.orden_compra_detalle_id is null or not public.compra_solo_su_rqa() then
+    return new;
+  end if;
+  select d.orden_compra_id into v_oc from public.orden_compra_material_detalles d where d.id = new.orden_compra_detalle_id;
+  if v_oc is not null and not public.oc_nace_de_un_rqa(v_oc) then
+    raise exception 'No tienes permiso para cambiar lo recibido de la %: no nace de un RQA.',
+      (select public.nombre_de_oc(c.numero, c.referencia) from public.ordenes_compra_materiales c where c.id = v_oc)
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_devolucion_de_compra_de_su_rqa() from public, anon, authenticated;
+
+drop trigger if exists trg_devolucion_de_compra_de_su_rqa on public.movimientos_materiales;
+create trigger trg_devolucion_de_compra_de_su_rqa
+  before update on public.movimientos_materiales
+  for each row execute function public.fn_devolucion_de_compra_de_su_rqa();
+
+-- Ni le adjunta documentos a una orden de servicio.
 create or replace function public.puede_adjuntar_documento_servicio()
 returns boolean
 language sql
@@ -136,10 +222,14 @@ as $$
 $$;
 
 -- 3. Los avisos de compras son de Logística ----------------------------------------------------
--- Los únicos avisos que van a `compras.crear` son los de los pagos de una OS,
--- de una OC y de la boleta de una parte: son de quien compra para el taller.
--- `compras.crear` de Administración es solo para la OC de su RQA, así que no
--- los recibe. Un aviso nuevo que sí deba llegarle va a `requerimientos.administracion`.
+-- Los avisos que `notificar_a_permiso` manda a `compras.crear` son los de los
+-- pagos de una OS, de una OC y de la boleta de una parte: son de quien compra
+-- para el taller. `compras.crear` de Administración es solo para la OC de su
+-- RQA, así que no los recibe. Tampoco los que se mandan por `avisar_a_permiso`
+-- (lo devuelto al proveedor y lo que no repone) ni el de stock bajo, que se
+-- inserta aparte (`fn_avisar_stock_minimo`): reponer el almacén y seguir al
+-- proveedor es de Logística. Un aviso nuevo que sí deba llegarle va a
+-- `requerimientos.administracion`.
 create or replace function public.notificar_a_permiso(p_permiso text, p_titulo text, p_cuerpo text, p_ruta text, p_tabla text, p_id uuid, p_excepto uuid default null::uuid)
 returns integer
 language plpgsql
@@ -176,6 +266,96 @@ begin
   return v_filas;
 end;
 $$;
+
+create or replace function public.avisar_a_permiso(p_permiso text, p_titulo text, p_cuerpo text, p_ruta text, p_tabla text, p_id uuid)
+returns void
+language sql
+security definer
+set search_path to 'public'
+as $function$
+  insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+  select u.id, left(p_titulo, 200), left(p_cuerpo, 500), p_ruta, p_tabla, p_id
+    from public.usuarios u
+   where u.activo
+     and u.id is distinct from public.usuario_actual()
+     and exists (select 1 from public.roles_permisos rp where rp.rol_id = u.rol_id and rp.permiso_codigo = p_permiso)
+     and not (p_permiso = 'compras.crear'
+              and exists (select 1 from public.roles_permisos rp
+                           where rp.rol_id = u.rol_id and rp.permiso_codigo = 'requerimientos.administracion'))
+$function$;
+revoke all on function public.avisar_a_permiso(text, text, text, text, text, uuid) from public, anon, authenticated;
+
+-- El de stock bajo, igual: a Almacén y a Logística, no a Administración.
+create or replace function public.fn_avisar_stock_minimo()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_material uuid;
+  v_baja     numeric;
+  v_saldo    numeric;
+  v_mat      public.materiales%rowtype;
+  v_titulo   text;
+  v_cuerpo   text;
+begin
+  if tg_table_name = 'conteos_inventario' then
+    v_material := new.material_id;
+    v_baja := -new.ajuste;
+  else
+    if new.tipo not in ('DESPACHO', 'SALIDA') then
+      return null;
+    end if;
+    v_material := coalesce(new.material_id, (
+      select om.material_id from public.requerimiento_material_detalles d
+        join public.ot_materiales om on om.id = d.ot_material_id
+       where d.id = new.requerimiento_detalle_id));
+    v_baja := new.cantidad;
+  end if;
+  if v_material is null or v_baja <= 0 then
+    return null;
+  end if;
+  select * into v_mat from public.materiales where id = v_material;
+  if v_mat.stock_minimo is null then
+    return null;
+  end if;
+  v_saldo := public.saldo_material_interno(v_material);
+  -- Solo al cruzar la línea: antes de este movimiento estaba en el mínimo o
+  -- por encima, y ahora quedó por debajo.
+  if v_saldo >= v_mat.stock_minimo or v_saldo + v_baja < v_mat.stock_minimo then
+    return null;
+  end if;
+  v_titulo := 'Stock bajo: ' || v_mat.codigo;
+  -- 12.500 se lee 12.5 y 3.000 se lee 3: sin ceros que no dicen nada.
+  v_cuerpo := v_mat.descripcion || '. Quedan '
+              || rtrim(rtrim(to_char(v_saldo, 'FM99999999990.000'), '0'), '.')
+              || '; el mínimo es '
+              || rtrim(rtrim(to_char(v_mat.stock_minimo, 'FM99999999990.000'), '0'), '.') || '.';
+  -- Un solo aviso por persona aunque tenga los dos permisos, y con un enlace que
+  -- pueda abrir: Logística no entra al kardex (`almacen.ver`), así que el suyo
+  -- lleva a Compras, donde hace el pedido.
+  insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+  select u.id, v_titulo, v_cuerpo,
+         case when r.codigo = 'ADMIN' or exists (
+                     select 1 from public.roles_permisos rp
+                      where rp.rol_id = r.id and rp.permiso_codigo = 'almacen.ver')
+              then '/almacen/kardex?material=' || v_material
+              else '/compras' end,
+         'materiales', v_material
+    from public.usuarios u
+    join public.roles r on r.id = u.rol_id
+   where u.activo
+     and (r.codigo = 'ADMIN' or exists (
+            select 1 from public.roles_permisos rp
+             where rp.rol_id = r.id
+               and (rp.permiso_codigo = 'almacen.recibir'
+                    or (rp.permiso_codigo = 'compras.crear'
+                        and not exists (select 1 from public.roles_permisos x
+                                         where x.rol_id = r.id and x.permiso_codigo = 'requerimientos.administracion')))));
+  return null;
+end;
+$function$;
 
 -- 5 y 9. Los permisos del puesto ---------------------------------------------------------------
 do $$
@@ -223,6 +403,28 @@ create policy crear_unidades on public.unidades for insert to authenticated
 drop policy if exists crear_contactos_cliente on public.contactos_cliente;
 create policy crear_contactos_cliente on public.contactos_cliente for insert to authenticated
   with check ((select public.es_admin()) or (select public.tiene_permiso('clientes.crear')) or (select public.tiene_permiso('clientes.editar')));
+
+-- Y la unidad, que la orden sin cotización necesita: el disparador que impide
+-- llamarla «TODOS LOS ACTIVOS» (20261017401000) corría con los permisos de quien
+-- la registra y llamaba a `normalizar_codigo_interno`, que es interno y
+-- `authenticated` no ejecuta (20261014220000). Toda alta de una unidad desde la
+-- pantalla caía con «permission denied»; solo pasaba la que crea la aprobación
+-- de la cotización (security definer). Corre ahora como dueño.
+create or replace function public.fn_unidad_no_es_todos_los_activos()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  if public.normalizar_codigo_interno(new.codigo_interno) = 'TODOS LOS ACTIVOS' then
+    raise exception 'TODOS LOS ACTIVOS no es el código de una unidad: es el del requerimiento de Administración que va para todas. Escribe el código interno de la unidad.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$function$;
+revoke all on function public.fn_unidad_no_es_todos_los_activos() from public, anon, authenticated;
 
 -- 6. La evaluación enviada le avisa a Administración ------------------------------------------
 create or replace function public.fn_evaluacion_diseno_avisa()
@@ -278,7 +480,8 @@ begin
   return query
   with ots as (
     select o.id, o.avance_porcentaje,
-           case when o.cotizacion_pdf_id is not null then nullif(btrim(u.codigo_interno), '') end as codigo
+           case when o.cotizacion_pdf_id is not null and upper(btrim(u.codigo_interno)) <> 'PLANTA'
+                then nullif(btrim(u.codigo_interno), '') end as codigo
       from public.ordenes_trabajo o
       left join public.unidades u on u.id = o.unidad_id
      where o.id = any (p_ordenes)
@@ -288,10 +491,15 @@ begin
       cross join lateral public.codigo_interno_avance_calculado(c.codigo) k
      where k.codigo = c.codigo
   )
+  -- La OT de una cotización lleva el avance de su código desde que nace, aunque
+  -- Diseño todavía no cargue nada (0 %, como en Códigos internos): si no, sus
+  -- pestañas cambiarían cuando Diseño carga la primera etapa.
   select ots.id,
-         coalesce(round(k.de_planos + (100 - k.peso) / 100 * k.resto, 0), ots.avance_porcentaje),
+         case when ots.codigo is not null
+              then coalesce(round(k.de_planos + (100 - k.peso) / 100 * k.resto, 0), 0)
+              else ots.avance_porcentaje end,
          ots.codigo,
-         k.codigo is not null
+         ots.codigo is not null
     from ots
     left join codigos k on k.codigo = ots.codigo;
 end;

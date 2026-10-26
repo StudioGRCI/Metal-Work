@@ -39,7 +39,7 @@ function motivoDeNoSujeta(tipo: string, motivo: string) {
  */
 export async function emitirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!compraComoLogistica(perfil)) return { ok: false, error: 'Tu perfil no puede emitir órdenes de servicio: las lleva Logística.' }
+  if (!compraComoLogistica(perfil)) return { ok: false, error: 'No tienes permiso para emitir órdenes de servicio.' }
 
   const analisis = z
     .object({

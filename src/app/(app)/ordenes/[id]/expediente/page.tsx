@@ -584,7 +584,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               {enSoles.sinCambio > 0 && (
                 <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
                   {enSoles.sinCambio === 1 ? 'Una línea en dólares no tiene' : `${enSoles.sinCambio} líneas en dólares no tienen`}{' '}
-                  tipo de cambio de su fecha: Contabilidad lo registra en Tipo de cambio, y hasta entonces no suma al total en soles.
+                  tipo de cambio de su fecha: Contabilidad o Administración lo registran en Tipo de cambio, y hasta entonces no suma al total en soles.
                 </p>
               )}
               {composicion.monedas.length === 0 ? (

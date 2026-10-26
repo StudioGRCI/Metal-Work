@@ -134,7 +134,7 @@ async function numeroEmitido(supabase: Awaited<ReturnType<typeof createClient>>,
 export async function emitirCompraDirecta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!compraComoLogistica(perfil)) {
-    return { ok: false, error: puede(perfil, 'compras.crear') ? 'La OC directa la emite Logística: Administración hace la de su RQA desde Atención de requerimiento.' : 'Tu perfil no puede emitir órdenes de compra.' }
+    return { ok: false, error: puede(perfil, 'compras.crear') ? 'No tienes permiso para emitir una OC directa: tu puesto hace la de su RQA desde Atención de requerimiento.' : 'Tu perfil no puede emitir órdenes de compra.' }
   }
   const leido = leerFormularioDeCompra(formulario, false)
   if (!leido.ok) return leido

@@ -98,7 +98,7 @@ select test.debe_fallar(pg_temp.directa('ocd'), 'Administración no emite una OC
 select test.debe_fallar(
   format($q$select public.emitir_orden_servicio(gen_random_uuid(), '%s', null, null, 'PLANTA', 'Arenado del chasis', null,
             null, null, 'PEN', 800, 'CONTADO', 0, '025', null)$q$, current_setting('prueba.prov')),
-  'Administración no emite una orden de servicio', 'lleva Logística');
+  'Administración no emite una orden de servicio', 'emitir ni cambiar órdenes de servicio');
 select test.debe_fallar(
   format($q$select public.emitir_compra_de_requerimientos(gen_random_uuid(), '[{"material_id": "%s", "cantidad": 1, "precio": 80, "insumos": ["%s"]}]'::jsonb,
             '%s', null, null, 'CONTADO', 0, 'PEN', true)$q$, current_setting('prueba.m1'), pg_temp.insumo('rqo'), current_setting('prueba.prov')),
@@ -136,6 +136,39 @@ select test.afirmar((select recojo_pedido_por from public.ordenes_compra_materia
                       is distinct from current_setting('prueba.administracion')::uuid,
   'la OC de Logística quedó como estaba');
 
+-- Ni le anexa documentos: la política pide `compras.crear`, la base mira la OC.
+-- El PDF va en Storage antes, subido por quien lo anexa (migración 20260930090000):
+-- se siembra como dueño de las tablas, como lo dejaría la pantalla.
+create or replace function pg_temp.sembrar_pdf(p_oc text, p_quien text, p_clave text) returns void language plpgsql as $$
+begin
+  perform set_config('prueba.' || p_clave, gen_random_uuid()::text, true);
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('documentos-compras', 'compra/' || current_setting('prueba.' || p_oc) || '/' || current_setting('prueba.' || p_clave) || '.pdf',
+          current_setting('prueba.' || p_quien), '{"mimetype":"application/pdf","size":5}');
+end $$;
+create or replace function pg_temp.anexar(p_oc text, p_clave text) returns text language sql as $$
+  select format($q$insert into public.documentos_compra_material
+      (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+    values ('%1$s', '%2$s', 'OTRO', 'guia.pdf', 'compra/%2$s/%1$s.pdf', 'application/pdf', 5, public.usuario_actual())$q$,
+    current_setting('prueba.' || p_clave), current_setting('prueba.' || p_oc));
+$$;
+select pg_temp.sembrar_pdf('ocd', 'administracion', 'doc_adm_ocd');
+select pg_temp.sembrar_pdf('oca', 'administracion', 'doc_adm_oca');
+select pg_temp.sembrar_pdf('ocd', 'comprador', 'doc_log_ocd');
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.debe_fallar(pg_temp.anexar('ocd', 'doc_adm_ocd'), 'Administración no anexa documentos a la OC de Logística', 'no nace de un RQA');
+do $$ begin execute pg_temp.anexar('oca', 'doc_adm_oca'); end $$;
+reset role;
+select test.afirmar(exists (select 1 from public.documentos_compra_material where id = current_setting('prueba.doc_adm_oca')::uuid),
+  'Administración anexa documentos a la OC de su RQA');
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$ begin execute pg_temp.anexar('ocd', 'doc_log_ocd'); end $$;
+reset role;
+select test.afirmar(exists (select 1 from public.documentos_compra_material where id = current_setting('prueba.doc_log_ocd')::uuid),
+  'Logística sigue anexando documentos a su OC');
+
 -- ============================================ 4. Los avisos de pago de compras
 select public.notificar_a_permiso('compras.crear', 'OC pagada: prueba 437', 'Proveedor de prueba 437 · S/ 80.00',
   '/compras/ordenes', 'ordenes_compra_materiales', current_setting('prueba.ocd')::uuid, null);
@@ -146,12 +179,40 @@ select test.afirmar((select count(*) from public.notificaciones
                       where titulo = 'OC pagada: prueba 437' and usuario_id = current_setting('prueba.administracion')::uuid) = 0,
   'el aviso de pago no le llega a Administración');
 
+-- Los de lo devuelto al proveedor (`avisar_a_permiso`), igual.
+-- Lo manda otro puesto: quien lo provoca no se avisa a sí mismo.
+select pg_temp.como('almacenero');
+select public.avisar_a_permiso('compras.crear', 'Devuelto al proveedor: prueba 437', 'Prueba 437', '/compras/ordenes',
+  'ordenes_compra_materiales', current_setting('prueba.ocd')::uuid);
+select test.afirmar((select count(*) from public.notificaciones
+                      where titulo = 'Devuelto al proveedor: prueba 437' and usuario_id = current_setting('prueba.comprador')::uuid) = 1,
+  'el aviso de lo devuelto le llega a Logística');
+select test.afirmar((select count(*) from public.notificaciones
+                      where titulo = 'Devuelto al proveedor: prueba 437' and usuario_id = current_setting('prueba.administracion')::uuid) = 0,
+  'el aviso de lo devuelto no le llega a Administración');
+
+-- El de stock bajo, igual: a Logística sí, a Administración no.
+update public.materiales set stock_minimo = 5 where id = current_setting('prueba.m1')::uuid;
+insert into public.conteos_inventario (id, material_id, cantidad_fisica, ajuste, motivo, registrado_por)
+values (gen_random_uuid(), current_setting('prueba.m1')::uuid, 10, 10, 'Conteo de prueba 437', current_setting('prueba.comprador')::uuid),
+       (gen_random_uuid(), current_setting('prueba.m1')::uuid, 2, -8, 'Conteo de prueba 437, baja', current_setting('prueba.comprador')::uuid);
+select test.afirmar((select count(*) from public.notificaciones
+                      where titulo = 'Stock bajo: CHK437-1' and usuario_id = current_setting('prueba.comprador')::uuid) = 1,
+  'el aviso de stock bajo le llega a Logística');
+select test.afirmar((select count(*) from public.notificaciones
+                      where titulo = 'Stock bajo: CHK437-1' and usuario_id = current_setting('prueba.administracion')::uuid) = 0,
+  'el aviso de stock bajo no le llega a Administración');
+
 -- ============================================ 5. Clientes y reportes
 select pg_temp.como('administracion');
 set local role authenticated;
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
 values ('RUC', '20999436014', 'CLIENTE DE PRUEBA 437 S.A.C.');
+-- Y la unidad del cliente nuevo, que la orden sin cotización necesita.
+insert into public.unidades (cliente_id, tipo_vehiculo, marca, modelo, anio)
+select id, 'CAMION', 'Volvo', 'FH 540 (prueba 437)', 2024 from public.clientes where numero_documento = '20999436014';
 reset role;
+select test.afirmar(exists (select 1 from public.unidades where modelo = 'FH 540 (prueba 437)'), 'Administración registra la unidad del cliente nuevo');
 select test.afirmar(exists (select 1 from public.clientes where numero_documento = '20999436014'), 'Administración registra un cliente');
 select test.afirmar(
   exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id

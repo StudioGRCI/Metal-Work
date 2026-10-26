@@ -14378,6 +14378,12 @@ export type Database = {
         }
         Returns: string
       }
+      oc_nace_de_un_rqa: {
+        Args: {
+          p_orden_compra: string | null
+        }
+        Returns: boolean
+      }
       orden_compra_de_ruta: {
         Args: {
           p_ruta: string | null
