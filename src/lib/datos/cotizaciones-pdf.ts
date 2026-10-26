@@ -24,7 +24,7 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
   facturas: FacturaDeCotizacion[]
   /**
    * Tiene una factura vigente, la vea o no quien mira: así Ventas sabe que ya no
-   * se corrige (migración 20261026130000), sin ver la factura.
+   * se corrige (migración 20261026140000), sin ver la factura.
    */
   facturada: boolean
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */

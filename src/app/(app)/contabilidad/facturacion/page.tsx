@@ -149,7 +149,7 @@ export default async function PaginaFacturacion() {
                       </div>
                     )}
 
-                    {/* La base no deja facturar mientras la corrección espera a Gerencia (migración 20261026130000). */}
+                    {/* La base no deja facturar mientras la corrección espera a Gerencia (migración 20261026140000). */}
                     {factura && c.cotizacion_id && c.codigo_interno && !c.en_correccion && (
                       <RegistrarFactura
                         cotizacionId={c.cotizacion_id}
