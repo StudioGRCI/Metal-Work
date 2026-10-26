@@ -1,4 +1,4 @@
--- Los ajustes al puesto de Administración (migración 20261026100000), cada uno
+-- Los ajustes al puesto de Administración (migración 20261026130000), cada uno
 -- con el rol que lo vive y `set local role authenticated`, nunca ADMIN:
 --   * Administración hace la OC de su RQA, y nada más: ni la directa, ni la
 --     de un RQ de operación, ni una orden de servicio, ni mover la OC de
@@ -21,9 +21,9 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['ADMINISTRACION:ADM', 'ALMACENERO:ALM', 'COMPRADOR:LOG', 'GERENTE:GGE', 'DISENO:DIS', 'REQUERIMIENTOS:REQ'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.436@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.437@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 436', lower(replace(v, ':', '.')) || '.436@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 437', lower(replace(v, ':', '.')) || '.437@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
@@ -36,12 +36,12 @@ begin
 
   perform set_config('request.jwt.claim.sub', '', true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK436-1', 'Tóner de impresora (prueba 436)',
+  values ('CHK437-1', 'Tóner de impresora (prueba 437)',
           (select id from public.categorias_material where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
           (select id from public.unidades_medida where codigo = 'UND'));
-  perform set_config('prueba.m1', (select id::text from public.materiales where codigo = 'CHK436-1'), true);
+  perform set_config('prueba.m1', (select id::text from public.materiales where codigo = 'CHK437-1'), true);
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  values ('20999436006', 'Proveedor de prueba 436', 'Av. Argentina 436, Lima', '999 436 436');
+  values ('20999436006', 'Proveedor de prueba 437', 'Av. Argentina 437, Lima', '999 436 436');
   perform set_config('prueba.prov', (select id::text from public.proveedores where numero_documento = '20999436006'), true);
   update public.regla_aprobacion_compras set activa = true, monto_desde = 0,
          rol_aprobador_id = (select id from public.roles where codigo = 'GERENTE') where unica;
@@ -76,13 +76,13 @@ $$;
 select pg_temp.como('administracion');
 set local role authenticated;
 select public.emitir_requerimiento(current_setting('prueba.rqa')::uuid, 'ADMINISTRACION', current_setting('prueba.area_rrh')::uuid,
-  'OFICINA', 'Tóner para la impresora de la oficina (prueba 436)', null,
+  'OFICINA', 'Tóner para la impresora de la oficina (prueba 437)', null,
   format('[{"material_id": "%s", "cantidad": 1}]', current_setting('prueba.m1'))::jsonb);
 reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select public.emitir_requerimiento(current_setting('prueba.rqo')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
-  'PLANTA', 'Tóner para la impresora de planta (prueba 436)', null,
+  'PLANTA', 'Tóner para la impresora de planta (prueba 437)', null,
   format('[{"material_id": "%s", "cantidad": 1}]', current_setting('prueba.m1'))::jsonb);
 reset role;
 select pg_temp.como('almacenero');
@@ -137,20 +137,20 @@ select test.afirmar((select recojo_pedido_por from public.ordenes_compra_materia
   'la OC de Logística quedó como estaba');
 
 -- ============================================ 4. Los avisos de pago de compras
-select public.notificar_a_permiso('compras.crear', 'OC pagada: prueba 436', 'Proveedor de prueba 436 · S/ 80.00',
+select public.notificar_a_permiso('compras.crear', 'OC pagada: prueba 437', 'Proveedor de prueba 437 · S/ 80.00',
   '/compras/ordenes', 'ordenes_compra_materiales', current_setting('prueba.ocd')::uuid, null);
 select test.afirmar((select count(*) from public.notificaciones
-                      where titulo = 'OC pagada: prueba 436' and usuario_id = current_setting('prueba.comprador')::uuid) = 1,
+                      where titulo = 'OC pagada: prueba 437' and usuario_id = current_setting('prueba.comprador')::uuid) = 1,
   'el aviso de pago le llega a Logística');
 select test.afirmar((select count(*) from public.notificaciones
-                      where titulo = 'OC pagada: prueba 436' and usuario_id = current_setting('prueba.administracion')::uuid) = 0,
+                      where titulo = 'OC pagada: prueba 437' and usuario_id = current_setting('prueba.administracion')::uuid) = 0,
   'el aviso de pago no le llega a Administración');
 
 -- ============================================ 5. Clientes y reportes
 select pg_temp.como('administracion');
 set local role authenticated;
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
-values ('RUC', '20999436014', 'CLIENTE DE PRUEBA 436 S.A.C.');
+values ('RUC', '20999436014', 'CLIENTE DE PRUEBA 437 S.A.C.');
 reset role;
 select test.afirmar(exists (select 1 from public.clientes where numero_documento = '20999436014'), 'Administración registra un cliente');
 select test.afirmar(
@@ -164,7 +164,7 @@ select test.afirmar(
 select pg_temp.como('diseno');
 set local role authenticated;
 insert into public.diseno_evaluaciones (id, evaluado_nombre, puesto, area_servicio, fecha_evaluacion, respuestas)
-values (current_setting('prueba.eva')::uuid, 'Persona de prueba 436', 'Proyectista', 'Ingeniería', current_date,
+values (current_setting('prueba.eva')::uuid, 'Persona de prueba 437', 'Proyectista', 'Ingeniería', current_date,
         array_fill(4::smallint, array[20]));
 reset role;
 select test.afirmar((select count(*) from public.notificaciones where origen_id = current_setting('prueba.eva')::uuid) = 0,
@@ -192,7 +192,7 @@ begin
   perform set_config('request.jwt.claims', '', true);
   insert into public.clientes (tipo_documento, numero_documento, razon_social)
   values ('RUC', '20999436022', 'CLIENTE DE AVANCE 436 S.A.C.') returning id into v_cli;
-  insert into public.unidades (cliente_id, codigo_interno, marca) values (v_cli, 'CHK436_AV', 'Prueba') returning id into v_uni;
+  insert into public.unidades (cliente_id, codigo_interno, marca) values (v_cli, 'CHK437_AV', 'Prueba') returning id into v_uni;
   insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion)
   values (v_cli, v_uni, true, (select id from public.sedes order by creado_en limit 1), 'Sin cotización · check 436')
   returning id into v_sin;

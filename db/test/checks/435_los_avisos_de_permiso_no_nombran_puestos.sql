@@ -496,7 +496,7 @@ select test.debe_fallar(format($q$select public.resolver_observacion_ot(%L, 'Ya 
 select test.afirmar(pg_temp.codigo(format($q$select public.resolver_observacion_ot(%L, 'Ya se soldó')$q$, pg_temp.id('observacion'))) = '23514',
   'esa sigue siendo check_violation (23514)');
 reset role;
--- Desde la 20261026100000 Administración ya no aprueba los reportes del taller:
+-- Desde la 20261026130000 Administración ya no aprueba los reportes del taller:
 -- tampoco resuelve la observación. La resuelve quien la anotó.
 select pg_temp.como('administracion');
 set local role authenticated;

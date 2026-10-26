@@ -180,7 +180,7 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
               <Progreso valor={orden.avance_porcentaje} etiqueta="Avance de la orden de trabajo" alto={esResumen?'md':'sm'}/>
               {/* Desde el 2026-10-15 el avance es el del código interno: las
                   etapas que marca Diseño y lo que reporta Supervisión por código
-                  (migración 20261026100000). La orden sin cotización sigue con
+                  (migración 20261026130000). La orden sin cotización sigue con
                   el de sus etapas. */}
               {esResumen&&<p className="mt-2 text-xs text-texto-suave">{orden.avance_del_codigo?<>El del código <span className="font-mono">{orden.avance_del_codigo}</span>: etapas de Diseño y reportes de Supervisión</>:'Según lo que reportan las áreas'} · {tipoCarroceria?.nombre??definir(TIPO_TRABAJO,orden.tipo_trabajo).etiqueta} · <Link href={`/ordenes/${orden.id}/expediente`} className="font-medium text-acento hover:underline">Ver expediente</Link></p>}
             </div>

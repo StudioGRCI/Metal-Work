@@ -42,7 +42,7 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
   // Administración lleva la ficha de taller y ve las etapas desde el código
   // interno (Códigos internos › Ficha de taller y Etapas), y los reportes del
   // taller ya los aprueba Gerencia en Supervisión (decisión de DKS, 2026-10-26;
-  // migración 20261026100000). En la OT ya no tiene esas pestañas.
+  // migración 20261026130000). En la OT ya no tiene esas pestañas.
   const porCodigo = perfil.rol.codigo === 'ADMINISTRACION'
   return [
     'resumen',
