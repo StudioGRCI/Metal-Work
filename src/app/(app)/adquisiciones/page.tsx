@@ -27,7 +27,7 @@ export default async function PaginaAdquisiciones({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo="Adquisiciones"
-        ayuda="Cada orden de compra y de servicio, de su RQ o su OT hasta su pago, con la cotización, la factura, la guía y el voucher. En Facturas, Contabilidad registra cada factura con las OC que cubre y ve si su total calza con el de sus OC; Tesorería la paga en Cuentas por pagar."
+        ayuda="Cada orden de compra y de servicio, de su RQ o su código interno hasta su pago, con la cotización, la factura, la guía y el voucher. En Facturas, Contabilidad registra cada factura con las OC que cubre y ve si su total calza con el de sus OC; Tesorería la paga en Cuentas por pagar."
         acciones={
           registra && !enFacturas ? (
             <EnlaceBoton href="/adquisiciones?vista=facturas#nuevo-comprobante" variante="secundario">

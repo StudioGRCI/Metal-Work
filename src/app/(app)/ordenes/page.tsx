@@ -177,7 +177,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                   <div className="min-w-0 flex-1">
                     <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                     <p className="mt-1 text-[11px] text-texto-suave">
-                      {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                      {orden.avance_del_codigo
+                        ? `Avance del código ${orden.avance_del_codigo}`
+                        : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
                     </p>
                   </div>
                   {/* Ancho fijo: si la columna medía lo que su texto, cada
@@ -287,7 +289,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     <TD>
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                       <p className="mt-1 text-[11px] text-texto-suave">
-                        {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                        {orden.avance_del_codigo
+                          ? `Avance del código ${orden.avance_del_codigo}`
+                          : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
                       </p>
                     </TD>
 

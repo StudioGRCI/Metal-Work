@@ -17,12 +17,16 @@ import { responderRevisionSalida } from '../vehiculos/acciones-ficha'
  * escaneo firmado de la ficha de salida. Reemplaza, para los vehículos, la
  * revisión de salida que se pedía desde la OT (migración 20261016110000).
  */
-export function RevisionesDeSalida({ revisiones }: { revisiones: RevisionPendiente[] }) {
+export function RevisionesDeSalida({ revisiones, paraTi }: { revisiones: RevisionPendiente[]; paraTi: boolean }) {
   return (
     <Tarjeta className="mb-5" id="salidas-por-revisar">
       <TarjetaCabecera
         titulo="Salidas de vehículos por revisar"
-        ayuda="Requerimientos pide tu revisión antes de entregar un vehículo. Si queda revisada, puede salir; si la observas, Requerimientos ve tu respuesta y vuelve a pedirla."
+        ayuda={
+          paraTi
+            ? 'Requerimientos pide tu revisión antes de entregar un vehículo. Si queda revisada, puede salir; si la observas, Requerimientos ve tu respuesta y vuelve a pedirla.'
+            : 'Requerimientos le pide a Tesorería la revisión antes de entregar un vehículo; el aviso le llega a Tesorería. Si queda revisada, puede salir; si se observa, Requerimientos ve la respuesta y vuelve a pedirla.'
+        }
       />
       <TarjetaCuerpo className="space-y-3">
         {revisiones.map((v) => (
@@ -65,7 +69,7 @@ function RevisionPorResponder({ revision: v }: { revision: RevisionPendiente }) 
       <p className="mt-1 text-xs text-texto-suave">
         {fechaHora(v.creado_en)} · {v.solicitante ?? 'Requerimientos'}
       </p>
-      <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-[12rem_1fr_auto] sm:items-end">
+      <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
         <input type="hidden" name="id" value={v.id} />
         <Campo etiqueta="Resultado" htmlFor={`salida-estado-${v.id}`}>
           <Seleccion id={`salida-estado-${v.id}`} name="estado" defaultValue="ATENDIDA">

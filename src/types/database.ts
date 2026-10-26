@@ -11689,6 +11689,17 @@ export type Database = {
         }
         Returns: string
       }
+      avance_de_ordenes: {
+        Args: {
+          p_ordenes: string[] | null
+        }
+        Returns: {
+          orden_id: string | null
+          avance: number | null
+          codigo_interno: string | null
+          del_codigo: boolean | null
+        }[]
+      }
       avance_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -11759,6 +11770,12 @@ export type Database = {
         Returns: null
       }
       avisar_pago_directo: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
+      }
+      avisar_pago_por_confirmar: {
         Args: {
           p_compras: string[] | null
         }
@@ -12768,6 +12785,10 @@ export type Database = {
           total: number | null
           moneda: string | null
         }[]
+      }
+      compra_solo_su_rqa: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
       compra_tiene_comprobante: {
         Args: {
@@ -14356,6 +14377,12 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: string
+      }
+      oc_nace_de_un_rqa: {
+        Args: {
+          p_orden_compra: string | null
+        }
+        Returns: boolean
       }
       orden_compra_de_ruta: {
         Args: {

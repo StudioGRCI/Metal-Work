@@ -42,6 +42,7 @@ import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, 
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn, esUuid } from '@/lib/utils'
 
+import { VistaEtapas } from '../../../codigos-internos/detalle/vistas-diseno'
 import { Pestanas } from '../pestanas'
 import { queMeToca } from '../te-toca'
 import { CerrarCosto, ConfirmarIgv, FijarPresupuesto } from './acciones-costo'
@@ -114,6 +115,10 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     }),
   ])
   if (!orden) notFound()
+  // Las pestañas dependen de la orden: la de una cotización lleva su ficha y
+  // sus etapas por el código interno.
+  const pestanas = seccionesDeOrden(perfil, orden)
+  const veEtapasDelCodigo = puede(perfil, ['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
 
   const hoy = hoyLima()
   const viva = !ESTADOS_CERRADOS.includes(orden.estado)
@@ -173,7 +178,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
       />
 
       <div className="mb-4">
-        <Pestanas ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={secciones} />
+        <Pestanas ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={pestanas} />
       </div>
 
       {/* Lo que la hoja impresa necesita y la pantalla ya dice arriba. */}
@@ -218,7 +223,13 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 <Progreso valor={orden.avance_porcentaje} alto="sm" className="mt-2" etiqueta="Avance de la unidad" />
               </div>
             }
-            pie={expediente.etapas.length > 0 ? `${terminadas} de ${expediente.etapas.length} etapas terminadas` : 'Sin etapas definidas'}
+            pie={
+              orden.avance_del_codigo
+                ? `Avance del código ${orden.avance_del_codigo}`
+                : expediente.etapas.length > 0
+                  ? `${terminadas} de ${expediente.etapas.length} etapas terminadas`
+                  : 'Sin etapas definidas'
+            }
           />
           <Indicador
             titulo="Tiempo en taller"
@@ -328,13 +339,27 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         </Tarjeta>
 
         {/* ----------------------------------------- el plan contra lo real */}
+        {orden.avance_del_codigo && veEtapasDelCodigo ? (
+          // Desde el 2026-10-15 las etapas son del código interno: las de la OT
+          // ya no las mueve nadie. Van aquí mismo, para que el expediente
+          // impreso o en PDF las lleve.
+          <div id="plan" className="scroll-mt-20">
+            <VistaEtapas codigo={orden.avance_del_codigo} />
+          </div>
+        ) : (
         <Tarjeta id="plan" className="scroll-mt-20">
           <TarjetaCabecera
             titulo="Plan contra real"
             ayuda="Lo que Administración programó para cada etapa y lo que de verdad tomó"
           />
           <TarjetaCuerpo className="space-y-5">
-            {expediente.etapas.length === 0 ? (
+            {orden.avance_del_codigo ? (
+              // Desde el 2026-10-15 las etapas son del código interno: las de la OT ya no las mueve nadie.
+              <p className="text-sm text-texto-suave">
+                Las etapas se llevan por el código interno <span className="font-mono">{orden.avance_del_codigo}</span>: Diseño
+                las marca y Supervisión reporta por código.
+              </p>
+            ) : expediente.etapas.length === 0 ? (
               <p className="text-sm text-texto-suave">
                 Diseño todavía no definió las etapas de esta orden. Se definen en la pestaña Etapas.
               </p>
@@ -386,6 +411,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             )}
           </TarjetaCuerpo>
         </Tarjeta>
+        )}
 
         {/* El avance de cada área y las observaciones son cortos: lado a lado en
             el monitor, uno sobre otro en el teléfono y en la hoja impresa. */}
@@ -395,7 +421,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <TarjetaCabecera titulo="Avance por área" ayuda="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
             <TarjetaCuerpo className="space-y-4">
               {expediente.areas.length === 0 ? (
-                <p className="text-sm text-texto-suave">Ninguna área armó todavía su hoja de actividades para esta orden.</p>
+                <p className="text-sm text-texto-suave">
+                  {orden.avance_del_codigo
+                    ? `Las áreas reportan por el código interno ${orden.avance_del_codigo}: lo que lleva cada una está en sus etapas.`
+                    : 'Ninguna área armó todavía su hoja de actividades para esta orden.'}
+                </p>
               ) : (
                 <ul className="space-y-3">
                   {expediente.areas.map((a) => (
@@ -554,7 +584,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               {enSoles.sinCambio > 0 && (
                 <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
                   {enSoles.sinCambio === 1 ? 'Una línea en dólares no tiene' : `${enSoles.sinCambio} líneas en dólares no tienen`}{' '}
-                  tipo de cambio de su fecha: Contabilidad lo registra en Tipo de cambio, y hasta entonces no suma al total en soles.
+                  tipo de cambio de su fecha: Contabilidad o Administración lo registran en Tipo de cambio, y hasta entonces no suma al total en soles.
                 </p>
               )}
               {composicion.monedas.length === 0 ? (

@@ -135,7 +135,7 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
           c.numero ? null : `Ref. del proveedor: ${c.referencia}`,
           c.proveedor_documento ? `RUC ${c.proveedor_documento}` : null,
           c.codigo_interno ? `Para ${c.codigo_interno}` : c.codigos.length ? `Para ${c.codigos.join(', ')}` : null,
-          c.requerimientos.length ? c.requerimientos.join(', ') : c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null,
+          c.requerimientos.length ? c.requerimientos.join(', ') : c.ordenes.length ? 'Solicitud de antes de los RQ' : null,
           c.pedido_en ? `Aprobada ${fecha(c.pedido_en)}` : null,
         ]
           .filter(Boolean)

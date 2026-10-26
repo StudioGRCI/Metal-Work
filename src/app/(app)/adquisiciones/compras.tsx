@@ -84,7 +84,6 @@ function camposDeBusqueda(f: CompraTrazada): (string | null)[] {
     f.descripcion,
     f.emitido_por,
     ...f.requerimientos.map((r) => r.numero),
-    ...f.ordenes,
     ...f.codigos,
     ...f.areas,
     ...f.facturas.map((x) => x.numero),
@@ -96,7 +95,7 @@ function camposDeBusqueda(f: CompraTrazada): (string | null)[] {
 
 /**
  * Cada OC y cada OS en una fila, de izquierda a derecha como se vive la compra:
- * de qué RQ u OT salió, el proveedor, el total, la aprobación y en qué va, sus
+ * de qué RQ o código interno salió, el proveedor, el total, la aprobación y en qué va, sus
  * documentos (cotización, factura, boleta, guía…) y si se pagó, con el voucher.
  * Se lee de `trazabilidad_de_compras()` (migración 20261020170000); los enlaces
  * se firman solo para la página que se muestra.
@@ -179,7 +178,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
             </Link>
           </p>
         )}
-        <BuscadorSimple ruta={RUTA} etiqueta="Buscar orden" marcador="OC, OS, RQ, OT, código, proveedor o factura" />
+        <BuscadorSimple ruta={RUTA} etiqueta="Buscar orden" marcador="OC, OS, RQ, código, proveedor o factura" />
         <PastillaFiltro
           ruta={RUTA}
           clave="tipo"
@@ -333,10 +332,17 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   )
 }
 
-/** De dónde sale: los RQ que atiende, la OT, el código interno y el área. */
+/** De dónde sale: los RQ que atiende, el código interno y el área. */
 function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   const sinRq =
-    f.tipo === 'OS' ? 'Sin RQ: servicio' : f.origen === 'REQUERIMIENTO' ? 'Requerimiento de la OT' : 'Compra directa'
+    f.tipo === 'OS'
+      ? 'Sin RQ: servicio'
+      : f.origen !== 'REQUERIMIENTO'
+        ? 'Compra directa'
+        : // Las compras de antes de los RQ no siempre tienen código: no se promete uno que no está.
+          f.codigos.length > 0
+          ? 'Requerimiento del código interno'
+          : 'Solicitud de antes de los RQ'
   return (
     <div className="space-y-0.5 text-xs">
       {f.requerimientos.length > 0 ? (
@@ -356,7 +362,6 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
       ) : (
         <p className="text-texto-suave">{sinRq}</p>
       )}
-      {f.ordenes.length > 0 && <p className="tabular text-texto">OT {f.ordenes.join(', ')}</p>}
       {f.codigos.length > 0 && (
         <p className="flex flex-wrap gap-x-2">
           {f.codigos.map((c) =>

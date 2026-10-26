@@ -63,6 +63,7 @@ import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
 import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
+import { VistaFicha } from './vista-ficha'
 
 export const metadata = { title: 'Código interno' }
 
@@ -76,8 +77,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   // TODOS LOS ACTIVOS no es una unidad: no tiene etapas, planos, materiales, costeo propio, personal ni factura.
   // Solo a dónde fue lo que se le cargó y sus requerimientos.
   const aTodos = codigo === CODIGO_TODOS_LOS_ACTIVOS
+  // La ficha de taller la ve quien la veía en la OT (`seccionesDeOrden`) y es solo de una unidad.
+  const veFicha = !noEsUnidad(codigo) && puede(perfil, ['ordenes.editar', 'produccion.ver', 'diseno.planos'])
   const vistas = VISTAS_CODIGO.filter((v) =>
-    aTodos ? v.valor === 'avance' || v.valor === 'documentos' : v.valor !== 'facturacion' || veFacturas,
+    aTodos
+      ? v.valor === 'avance' || v.valor === 'documentos'
+      : (v.valor !== 'facturacion' || veFacturas) && (v.valor !== 'ficha' || veFicha),
   )
   // Quien cierra el costeo sabe antes de intentarlo si la unidad espera a que termine el mes
   // (cerrar_costeo_codigo lo exige: sus gastos del mes se reparten por las horas del mes entero).
@@ -559,7 +564,7 @@ function LineaCierre({
       // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
       c.venta && c.venta.sin_igv > 0 &&
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registra Contabilidad)',
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registran Contabilidad o Administración)',
       esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
       faltaOficina.length > 0 &&
         `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
@@ -719,6 +724,7 @@ async function Vista({
   avance: AvanceDeCodigo | undefined
 }) {
   if (vista === 'etapas') return <VistaEtapas codigo={codigo} />
+  if (vista === 'ficha') return <VistaFicha codigo={codigo} perfil={perfil} />
   if (vista === 'planos') return <VistaPlanos codigo={codigo} />
   if (vista === 'materiales') return <VistaMateriales codigo={codigo} />
   if (vista === 'costeo') return <VistaCosteo codigo={codigo} perfil={perfil} />

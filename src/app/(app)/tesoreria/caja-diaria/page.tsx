@@ -148,7 +148,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                 </span>
               ) : (
                 // Lo registra Contabilidad (migración 20261020174600): Tesorería ya no abre esa pantalla.
-                <span className="text-aviso">Falta el tipo de cambio del {fecha(dia)} para pasar los dólares a soles: lo registra Contabilidad.</span>
+                <span className="text-aviso">Falta el tipo de cambio del {fecha(dia)} para pasar los dólares a soles: lo registran Contabilidad o Administración.</span>
               )}
             </TarjetaCuerpo>
           </Tarjeta>

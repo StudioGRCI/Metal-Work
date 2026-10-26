@@ -127,8 +127,13 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
             órdenes de servicio, subcontratos, unidades e ingresos a la planta.
           </p>
           <p>
-            <strong className="text-texto">El avance</strong> es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que
-            no, lo que su área reporta en el reporte diario. Sin etapas, sale del reporte diario.
+            <strong className="text-texto">El avance</strong> sale de lo que arma Diseño. Si puso a cada plano el porcentaje de la unidad que
+            representa, cada plano aporta ese porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya
+            terminó. Lo que no se repartió en planos se mide por el promedio de las etapas, donde la terminada vale 100 % y la que no, el
+            promedio de las actividades de su área que no son de un plano (el plano ya contó por su lado); si no hay etapas, por el promedio
+            de las actividades del reporte diario que no son de un plano. Sin planos con porcentaje, el avance es el promedio de las etapas,
+            con lo que su área reporta en el reporte diario; sin etapas, el promedio del último avance de cada trabajo del reporte diario,
+            área por área. En el detalle de cada código, la pestaña Avance muestra cómo sale el suyo.
           </p>
           <p>
             <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
