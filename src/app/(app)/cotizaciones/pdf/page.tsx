@@ -12,7 +12,7 @@ import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotiza
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
-import { fecha as fmtFecha, hora, moneda as formatoMoneda } from '@/lib/format'
+import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { AprobarConOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
@@ -58,13 +58,25 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
  * observó Gerencia en cada vuelta, quién la aprobó, qué orden salió— y el papel.
  */
-const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
+const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_MES', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
 type FiltroEstado = (typeof FILTROS_ESTADO)[number]
 
-function enFiltro(c: { estado: string | null; orden_id: string | null }, filtro: FiltroEstado | null) {
+// «Aprobadas del mes»: las que Gerencia aprobó desde el día 1 del mes en el
+// taller. Es la cifra «Aprobadas este mes» del Dashboard, y su enlace llega aquí.
+function aprobadaEsteMes(c: { estado: string | null; revisado_en: string | null }, mes: string) {
+  return c.estado === 'APROBADA' && !!c.revisado_en && diaLima(c.revisado_en).slice(0, 7) === mes
+}
+
+function enFiltro(
+  c: { estado: string | null; orden_id: string | null; revisado_en: string | null },
+  filtro: FiltroEstado | null,
+  mes: string,
+) {
   switch (filtro) {
     case 'POR_REVISAR':
       return c.estado === 'POR_REVISAR'
+    case 'APROBADA_MES':
+      return aprobadaEsteMes(c, mes)
     case 'APROBADA_SIN_OT':
       return c.estado === 'APROBADA' && !c.orden_id
     case 'RECHAZADA':
@@ -96,7 +108,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const soloMias = puedeSubir && params.de === 'mias'
   const cotizaciones = soloMias ? todas.filter((c) => c.registrado_por === perfil.id) : todas
 
+  const mes = hoyLima().slice(0, 7)
   const porRevisar = cotizaciones.filter((c) => c.estado === 'POR_REVISAR').length
+  const delMes = cotizaciones.filter((c) => aprobadaEsteMes(c, mes)).length
   const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
   const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
   const conOrden = cotizaciones.filter((c) => Boolean(c.orden_id)).length
@@ -116,12 +130,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
     (puedeCorregirCotizacion(perfil, c) && !c.facturada)
   const visibles = cotizaciones
-    .filter((c) => enFiltro(c, filtro) && buscada(c))
+    .filter((c) => enFiltro(c, filtro, mes) && buscada(c))
     .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
+    { valor: 'APROBADA_MES', etiqueta: `Aprobadas del mes (${delMes})` },
     { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin código (${sinOrden})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
     { valor: 'CON_OT', etiqueta: `Con código y OT (${conOrden})` },

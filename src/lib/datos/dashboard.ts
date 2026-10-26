@@ -738,14 +738,14 @@ const CIFRAS = {
     },
   },
   aprobadas_del_mes: {
-    ruta: '/cotizaciones/pdf?de=mias',
+    ruta: '/cotizaciones/pdf?estado=APROBADA_MES&de=mias',
     calcular: async (c) => {
       const r = await c.supabase
         .from('v_cotizaciones_pdf')
         .select('moneda, monto_venta')
         .eq('estado', 'APROBADA')
         .eq('registrado_por', c.perfil.id)
-        .gte('revisado_en', c.mes)
+        .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
         .limit(500)
       fallo(r)
       const filas = r.data ?? []
