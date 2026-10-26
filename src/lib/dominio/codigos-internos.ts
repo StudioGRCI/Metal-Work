@@ -251,6 +251,8 @@ export const VISTAS_CODIGO = [
   { valor: 'avance', etiqueta: 'Avance' },
   // Lo que carga Diseño por código (migración 20261015200000).
   { valor: 'etapas', etiqueta: 'Etapas' },
+  // La ficha de taller de la unidad se llena desde el código (2026-10-26); se guarda en su OT.
+  { valor: 'ficha', etiqueta: 'Ficha de taller' },
   { valor: 'planos', etiqueta: 'Planos' },
   { valor: 'materiales', etiqueta: 'Materiales' },
   { valor: 'costeo', etiqueta: 'Costeo' },

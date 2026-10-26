@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { conAvanceDelCodigo } from '@/lib/datos/ordenes'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -68,7 +69,7 @@ export async function historiaDeUnidad(unidad: Pick<Unidad, 'id' | 'placa' | 'co
   if (ordenes.error) throw new Error(`No se pudieron leer las órdenes de la unidad: ${ordenes.error.message}`)
   if (gemelas.error) throw new Error(`No se pudieron buscar otras fichas del vehículo: ${gemelas.error.message}`)
 
-  const filas = (ordenes.data ?? []).filter((o): o is typeof o & { id: string; numero: string } => Boolean(o.id && o.numero))
+  const filas = (await conAvanceDelCodigo(ordenes.data ?? [])).filter((o): o is typeof o & { id: string; numero: string } => Boolean(o.id && o.numero))
   const ids = filas.map((o) => o.id)
   const actas = ids.length
     ? await supabase

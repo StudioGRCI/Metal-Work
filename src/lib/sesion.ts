@@ -152,6 +152,18 @@ export function puedeCorregirReporte(
 }
 
 /**
+ * Si compra como Logística: emite la OC directa y la orden de servicio, y lleva
+ * las OC que no nacen de un RQA. Administración tiene `compras.crear` solo para
+ * la OC de su RQA (migraciones 20261015162000 y 20261026160000); la base le
+ * rechaza lo demás con `compra_solo_su_rqa()`, y esta es su gemela en la pantalla.
+ */
+export function compraComoLogistica(perfil: PerfilSesion | null): boolean {
+  if (!perfil) return false
+  if (perfil.rol.codigo === 'ADMIN') return true
+  return perfil.permisos.includes('compras.crear') && !perfil.permisos.includes('requerimientos.administracion')
+}
+
+/**
  * Si aprueba u observa los reportes de los trabajos sin orden: quien aprueba
  * todos los del taller, y Gerencia, que solo aprueba esos (migración
  * 20261020160000, `produccion.aprobar_sin_orden`).

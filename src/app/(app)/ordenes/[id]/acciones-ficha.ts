@@ -135,6 +135,7 @@ export async function guardarFichaFisica(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: 'Ficha de la unidad actualizada.' }
 }
 
@@ -178,6 +179,7 @@ export async function agregarAccesorioOT(
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: 'Accesorio agregado.' }
 }
 
@@ -216,6 +218,7 @@ export async function marcarAccesorio(_previo: unknown, datos: FormData): Promis
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true }
 }
 
@@ -245,6 +248,7 @@ export async function quitarAccesorioOT(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true }
 }
 
@@ -285,6 +289,7 @@ export async function agregarRepuesto(_previo: unknown, datos: FormData): Promis
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: 'Repuesto agregado.' }
 }
 
@@ -311,6 +316,7 @@ export async function quitarRepuesto(_previo: unknown, datos: FormData): Promise
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true }
 }
 
@@ -342,6 +348,8 @@ export async function agregarVerificacion(
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  // La ficha también se llena desde el código interno.
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: `Paso ${numeroPaso} agregado.` }
 }
 
@@ -390,6 +398,7 @@ export async function marcarVerificacion(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true }
 }
 
@@ -426,5 +435,6 @@ export async function anotarVerificacion(
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
+  revalidatePath('/codigos-internos/detalle')
   return { ok: true, mensaje: 'Observación guardada.' }
 }

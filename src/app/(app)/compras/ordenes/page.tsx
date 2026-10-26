@@ -16,7 +16,7 @@ import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
@@ -31,7 +31,10 @@ function divisa(codigo: string) {
 
 export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
-  const emite = puede(perfil, 'compras.crear')
+  // Emite la OC directa y lleva todas las OC quien compra como Logística. Administración
+  // tiene `compras.crear` solo para la OC de su RQA: aquí lleva esa y mira las demás.
+  const emite = compraComoLogistica(perfil)
+  const llevaSuRqa = !emite && puede(perfil, 'compras.crear')
   const verAdquisiciones = puede(perfil, 'adquisiciones.ver')
   const [compras, proveedores, materiales, codigos, porReponer] = await Promise.all([
     cargarOrdenesCompra(),
@@ -112,13 +115,18 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
             )}
           </tbody>
         </Tabla>
       </Tarjeta>
     </>
   )
+}
+
+/** La OC compra solo insumos de un RQA (RQA-0001-2026…): la que Administración lleva. */
+function esDeUnRqa(c: OrdenCompraListada) {
+  return c.requerimientos.length > 0 && c.requerimientos.every((rq) => rq.startsWith('RQA-'))
 }
 
 function FilaCompra({
