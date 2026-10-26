@@ -11764,6 +11764,12 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_pago_por_confirmar: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
+      }
       bloquear_cierre: {
         Args: {
           p_compras: string[] | null
