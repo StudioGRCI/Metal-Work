@@ -14,7 +14,7 @@
  *   7. El desplegable con buscador (`SeleccionBuscable`) y el buscador de la
  *      asistencia, que filtran en el navegador, buscan igual. (El de las OT del
  *      reparto de la planilla del mes se fue con el reparto, migración
- *      20261026110000: aquí se mira que no vuelva.)
+ *      20261026210000: aquí se mira que no vuelva.)
  *   8. Una sigla o un código se encuentran con o sin sus signos: «sac» a
  *      «S.A.C.», una placa sin el guion.
  *

@@ -65,7 +65,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
     // La lista es para cargar horas: quien solo mira no la necesita.
     edita ? codigosParaElegir() : Promise.resolve(null),
     horasEsperandoCosto(),
-    // Lo que la planilla diaria pagó de más por las horas extras (migración 20261026100000).
+    // Lo que la planilla diaria pagó de más por las horas extras (migración 20261026200000).
     recargoExtrasDelMes(mes),
   ])
   const grupos = agrupar(tareos)

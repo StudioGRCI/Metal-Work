@@ -420,7 +420,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   // La planilla de taller de un mes que ya pasó, creada y sin cerrar: al
   // cerrarla, la diferencia entre el costo real de cada persona y lo que entró
-  // por sus horas se reparte entre los códigos (migración 20261026110000).
+  // por sus horas se reparte entre los códigos (migración 20261026210000).
   // Mientras siga en preparación, la mano de obra de esos códigos sale corta.
   // No cuenta la que todavía no se crea: eso lo dice la pantalla.
   if (puede(perfil, 'rrhh.gestionar_planillas')) {

@@ -1,7 +1,7 @@
 /**
  * Recorre con clic real lo que las tardanzas y los permisos restan del pago, y
- * el ajuste de la planilla del mes (migraciones 20261026100000 y
- * 20261026110000), con la cuenta de cada puesto (nunca ADMIN):
+ * el ajuste de la planilla del mes (migraciones 20261026200000 y
+ * 20261026210000), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. RR. HH., en Permisos: el permiso justificado muestra lo que marcó en
  *      portería y las horas del reporte. Descuenta el permiso de Juan (taller) y
@@ -97,7 +97,7 @@ const permiso = { p1: crypto.randomUUID(), p2: crypto.randomUUID(), p3: crypto.r
 
 const [{ hoy, dia }] = await consulta(`select to_char((now() at time zone 'America/Lima')::date, 'YYYY-MM-DD') as hoy,
                                               extract(day from (now() at time zone 'America/Lima')::date)::int as dia`)
-// Cuatro días seguidos del mismo mes, ya pasados (como el check 436).
+// Cuatro días seguidos del mismo mes, ya pasados (como el check 445).
 const desde = dia >= 7 ? hoy : `${hoy.slice(0, 7)}-01`
 const antes = (n) => {
   const d = new Date(`${desde}T12:00:00Z`)

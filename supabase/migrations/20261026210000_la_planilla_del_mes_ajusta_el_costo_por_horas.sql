@@ -473,7 +473,7 @@ begin
   union all
   select * from public.codigo_interno_lineas_gastos_ot(v_codigo) where p_mano_obra
   union all
-  -- El ajuste de la planilla de taller del mes (20261026110000).
+  -- El ajuste de la planilla de taller del mes (20261026210000).
   select * from public.codigo_interno_lineas_planilla(v_codigo) where p_mano_obra
    order by 1, 3 desc, 2, 4;
 end;

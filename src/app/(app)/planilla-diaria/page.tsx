@@ -57,7 +57,7 @@ export default async function PaginaPlanillaDiaria() {
     arma ? planillaPorEnviar() : Promise.resolve([]),
     arma ? horasExtrasPorDecidir() : Promise.resolve([]),
     arma ? reglaHorasExtras() : Promise.resolve(null),
-    // Lo que la planilla le va a restar o devolver a cada persona (migración 20261026100000).
+    // Lo que la planilla le va a restar o devolver a cada persona (migración 20261026200000).
     arma ? descuentosPorAplicar() : Promise.resolve([]),
   ])
   const descuentosDe = (id: string) => descuentos.filter((d) => d.trabajador_id === id)

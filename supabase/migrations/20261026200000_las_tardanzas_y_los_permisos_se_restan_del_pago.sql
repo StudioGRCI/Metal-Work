@@ -49,7 +49,7 @@ returns date language sql immutable set search_path to 'public' as $$
   select date '2026-10-01'
 $$;
 comment on function public.rrhh_descuentos_desde() is
-  'Desde qué día las tardanzas y los permisos se restan del pago (migración 20261026100000): lo de antes ya se pagó como se pagó.';
+  'Desde qué día las tardanzas y los permisos se restan del pago (migración 20261026200000): lo de antes ya se pagó como se pagó.';
 revoke all on function public.rrhh_descuentos_desde() from public, anon, authenticated;
 
 -- «octubre de 2026», con «setiembre» como se escribe en el Perú.

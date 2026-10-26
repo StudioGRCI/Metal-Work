@@ -38,7 +38,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     listarTrabajadores('todos'),
     inicioDelRegistroDePagos(),
     periodosAnteriores(),
-    // Lo que el próximo pago de cada uno le va a restar o devolver (migración 20261026100000).
+    // Lo que el próximo pago de cada uno le va a restar o devolver (migración 20261026200000).
     edita ? descuentosPorAplicar() : Promise.resolve([]),
   ])
   const vigentes = pagos.filter((p) => !p.anulado_en)

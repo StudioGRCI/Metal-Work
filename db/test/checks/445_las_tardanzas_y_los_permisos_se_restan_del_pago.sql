@@ -1,6 +1,6 @@
 -- Las tardanzas y los permisos se restan del pago, y la planilla del mes ajusta
--- la mano de obra de cada código por sus horas (migraciones 20261026100000 y
--- 20261026110000; DKS, 2026-10-26).
+-- la mano de obra de cada código por sus horas (migraciones 20261026200000 y
+-- 20261026210000; DKS, 2026-10-26).
 --
 --   1. Cada tres tardanzas del mes, el 5 % de la remuneración se resta solo: de
 --      la planilla diaria (taller) y del pago de la oficina. Si se anula una
@@ -24,16 +24,16 @@
 begin;
 
 insert into public.empresa (ruc, razon_social)
-select '20100000436', 'PRUEBAS DESCUENTOS S.A.C.' where not exists (select 1 from public.empresa);
+select '20100000445', 'PRUEBAS DESCUENTOS S.A.C.' where not exists (select 1 from public.empresa);
 insert into public.sedes (codigo, nombre) values ('QA36', 'Taller prueba de descuentos') on conflict (codigo) do nothing;
 
-select test.crear_usuario('Rosa', 'Humanos', 'rrhh436@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA36')) as rrhh_id \gset
-select test.crear_usuario('Gema', 'Gerente', 'gerencia436@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA36')) as gerente_id \gset
-select test.crear_usuario('Teo', 'Tesoro', 'tesoreria436@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA36')) as tesoreria_id \gset
-select test.crear_usuario('Olga', 'Oficina', 'oficina436@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA36')) as oficina_id \gset
-select test.crear_usuario('Mario', 'Maestranza', 'sup.mtz436@demo.pe', 'SUPERVISOR', (select id from public.sedes where codigo = 'QA36')) as sup_id \gset
-select test.crear_usuario('Omar', 'Obrero', 'operario436@demo.pe', 'OPERARIO', (select id from public.sedes where codigo = 'QA36'), true, 14) as operario_id \gset
-select test.crear_usuario('Ada', 'Admin', 'admin436@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA36')) as admin_id \gset
+select test.crear_usuario('Rosa', 'Humanos', 'rrhh445@demo.pe', 'RECURSOS_HUMANOS', (select id from public.sedes where codigo = 'QA36')) as rrhh_id \gset
+select test.crear_usuario('Gema', 'Gerente', 'gerencia445@demo.pe', 'GERENTE', (select id from public.sedes where codigo = 'QA36')) as gerente_id \gset
+select test.crear_usuario('Teo', 'Tesoro', 'tesoreria445@demo.pe', 'TESORERIA', (select id from public.sedes where codigo = 'QA36')) as tesoreria_id \gset
+select test.crear_usuario('Olga', 'Oficina', 'oficina445@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA36')) as oficina_id \gset
+select test.crear_usuario('Mario', 'Maestranza', 'sup.mtz445@demo.pe', 'SUPERVISOR', (select id from public.sedes where codigo = 'QA36')) as sup_id \gset
+select test.crear_usuario('Omar', 'Obrero', 'operario445@demo.pe', 'OPERARIO', (select id from public.sedes where codigo = 'QA36'), true, 14) as operario_id \gset
+select test.crear_usuario('Ada', 'Admin', 'admin445@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA36')) as admin_id \gset
 
 select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = (select id from public.areas where codigo = 'MTZ') where id = :'sup_id';
@@ -91,11 +91,11 @@ declare v uuid;
 begin
   perform pg_temp.como('rrhh');
   set local role authenticated;
-  v := public.rrhh_guardar_trabajador(current_setting('prueba.juan')::uuid, 'Juan', 'Soldador', '70000436', 'Soldador',
+  v := public.rrhh_guardar_trabajador(current_setting('prueba.juan')::uuid, 'Juan', 'Soldador', '70000445', 'Soldador',
          (select id from public.areas where codigo = 'MTZ'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-36', null);
   v := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.juan')::uuid, 2400);
   perform public.rrhh_guardar_costo_trabajador(current_setting('prueba.juan')::uuid, 2400);
-  v := public.rrhh_guardar_trabajador(current_setting('prueba.lucia')::uuid, 'Lucía', 'Contable', '70000437', 'Asistente contable',
+  v := public.rrhh_guardar_trabajador(current_setting('prueba.lucia')::uuid, 'Lucía', 'Contable', '70000446', 'Asistente contable',
          (select id from public.areas where codigo = 'CON'), '08:00', '17:00', 'Banco de Pruebas', 'AHORROS', '191-0000000-0-37', null);
   v := public.rrhh_guardar_remuneracion_trabajador(current_setting('prueba.lucia')::uuid, 3000);
   v := public.rrhh_guardar_planilla_trabajador(current_setting('prueba.lucia')::uuid, 'ADMINISTRATIVA');
@@ -118,15 +118,15 @@ begin
     ('d3', format('[{"descripcion": "Armado", "avance": 30, "personal": [{"trabajador_id": "%s", "horas": 6}]}]', current_setting('prueba.juan'))::jsonb),
     ('d1', format('[{"descripcion": "Pintura", "avance": 40, "personal": [{"trabajador_id": "%s", "horas": 8}]}]', current_setting('prueba.juan'))::jsonb)
   loop
-    v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.' || d)::date, 'CHK436_A', 'Tolva de la unidad A',
+    v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.' || d)::date, 'CHK445_A', 'Tolva de la unidad A',
            'Trabajo del día en la tolva.', r, null, null);
     perform set_config('prueba.r_a_' || d, v::text, true);
   end loop;
-  v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.d4')::date, 'CHK436_B', 'Bastidor de la unidad B',
+  v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.d4')::date, 'CHK445_B', 'Bastidor de la unidad B',
          'Armado del bastidor.',
          format('[{"descripcion": "Armado", "avance": 10, "personal": [{"trabajador_id": "%s", "horas": 2}]}]', current_setting('prueba.juan'))::jsonb, null, null);
   perform set_config('prueba.r_b_d4', v::text, true);
-  v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.d2')::date, 'CHK436_B', 'Bastidor de la unidad B',
+  v := public.registrar_reporte_diario(gen_random_uuid(), current_setting('prueba.d2')::date, 'CHK445_B', 'Bastidor de la unidad B',
          'Armado del bastidor.',
          format('[{"descripcion": "Montaje del piso", "avance": 20, "personal": [{"trabajador_id": "%s", "horas": 8}]}]', current_setting('prueba.juan'))::jsonb, null, null);
   perform set_config('prueba.r_b_d2', v::text, true);
@@ -444,9 +444,9 @@ do $$
 begin
   perform pg_temp.como('rrhh');
   set local role authenticated;
-  perform test.afirmar((select count(*) = 1 and sum(monto) = 2.5 and min(codigo) = 'CHK436_A'
+  perform test.afirmar((select count(*) = 1 and sum(monto) = 2.5 and min(codigo) = 'CHK445_A'
                           from public.rrhh_recargo_extras_del_mes(current_setting('prueba.mes')::date)
-                         where codigo like 'CHK436%'),
+                         where codigo like 'CHK445%'),
     'RR. HH. ve el recargo de la hora extra pagada (25 % de S/ 10) en el código que se trabajó');
   reset role;
 end $$;
@@ -479,14 +479,14 @@ begin
 
   perform pg_temp.como('gerente');
   set local role authenticated;
-  select sum(l.monto) into v_a from public.codigo_interno_costeo('CHK436_A') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
-  select sum(l.monto) into v_b from public.codigo_interno_costeo('CHK436_B') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
+  select sum(l.monto) into v_a from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
+  select sum(l.monto) into v_b from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA' and l.concepto like 'Ajuste de la planilla%';
   perform test.afirmar(v_a = 824.15 and v_b = 265.85,
     format('el ajuste (S/ 590 + S/ 500) va por horas: 31/41 a A y 10/41 a B (salió A %s, B %s)', v_a, v_b));
-  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK436_A') l where l.fuente = 'MANO_OBRA')
-                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK436_B') l where l.fuente = 'MANO_OBRA') = 1500,
+  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA')
+                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA') = 1500,
     'la mano de obra de las dos unidades suma el costo real de la planilla: S/ 1,000 + S/ 500');
-  perform test.afirmar(((select to_jsonb(k) from public.codigos_internos_costo('CHK436_A') k where k.codigo = 'CHK436_A')->>'mano_obra')::numeric = 1134.15,
+  perform test.afirmar(((select to_jsonb(k) from public.codigos_internos_costo('CHK445_A') k where k.codigo = 'CHK445_A')->>'mano_obra')::numeric = 1134.15,
     'el costo del código lo suma en su mano de obra: S/ 310 por horas y S/ 824,15 de ajuste');
   reset role;
 
@@ -494,12 +494,12 @@ begin
   perform pg_temp.como('rrhh');
   set local role authenticated;
   perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, current_setting('prueba.d1')::date,
-                                      'CHK436_B', 1, 'Ajuste del bastidor');
+                                      'CHK445_B', 1, 'Ajuste del bastidor');
   reset role;
   perform pg_temp.como('gerente');
   set local role authenticated;
-  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK436_A') l where l.fuente = 'MANO_OBRA')
-                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK436_B') l where l.fuente = 'MANO_OBRA') = 1500,
+  perform test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK445_A') l where l.fuente = 'MANO_OBRA')
+                       + (select sum(l.monto) from public.codigo_interno_costeo('CHK445_B') l where l.fuente = 'MANO_OBRA') = 1500,
     'con una hora más, las dos unidades siguen sumando el costo real');
   reset role;
 end $$;

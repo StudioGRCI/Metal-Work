@@ -23,7 +23,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
-  // Desde octubre de 2026 el descuento se resta solo del pago (migración 20261026100000).
+  // Desde octubre de 2026 el descuento se resta solo del pago (migración 20261026200000).
   const seResta = mes >= DESCUENTOS_DESDE
   const [resumen, regla, restadas] = await Promise.all([
     resumenTardanzas(mes),

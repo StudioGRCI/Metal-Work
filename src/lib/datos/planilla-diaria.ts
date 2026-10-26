@@ -29,7 +29,7 @@ export async function reglaHorasExtras(): Promise<ReglaHorasExtras & { actualiza
 /**
  * Un día de una persona que va a entrar a la próxima planilla. `PERMISO`: las
  * horas de un permiso que se justificó con extras reservadas, que se pagan a la
- * hora ordinaria (migración 20261026100000).
+ * hora ordinaria (migración 20261026200000).
  */
 export type DiaPorEnviar = { fecha: string; concepto: ConceptoPlanilla; horas: number; tramo1: number; tramo2: number }
 

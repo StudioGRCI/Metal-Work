@@ -56,7 +56,7 @@ export default async function PaginaRRHH() {
     enTandas((planillas.data ?? []).map((p) => p.id), (tanda, desde) =>
       db.from('planilla_personas').select('id,planilla_id,nombre,documento,monto,detalle,origen_hoja,fila_origen')
         .in('planilla_id', tanda).order('creado_en').order('id').range(desde, desde + POR_PAGINA - 1)),
-    // Cómo entra al costo cada persona de las de taller (migración 20261026110000): por sus horas y el ajuste al cerrar.
+    // Cómo entra al costo cada persona de las de taller (migración 20261026210000): por sus horas y el ajuste al cerrar.
     Promise.all((planillas.data ?? []).filter((p) => p.tipo === 'TALLER' && p.moneda === 'PEN').map((p) => planillaAlCosto(p.id))),
   ])
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
