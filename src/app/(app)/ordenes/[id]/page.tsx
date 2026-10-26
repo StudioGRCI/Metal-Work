@@ -100,12 +100,6 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   if (!esUuid(id)) notFound()
   const query = await searchParams
   if (query.vista === 'cumplimiento') redirect(`/ordenes/${id}/planos`)
-  const secciones = seccionesDeOrden(perfil)
-  // Sin pestaña pedida se abre el resumen, o la primera que la persona ve.
-  const vista: Vista = VISTAS.includes(query.vista as Vista)
-    ? (query.vista as Vista)
-    : secciones.includes('resumen') ? 'resumen' : ((secciones[0] ?? 'resumen') as Vista)
-  if (!secciones.includes(vista)) redirect('/sin-permiso')
 
   const puedeVerCotizacionEnOt = veCotizacionEnOt(perfil)
   const [orden, cotizacionPdf, pendientes] = await Promise.all([
@@ -117,6 +111,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     pendientesDeOrden(id),
   ])
   if (!orden) notFound()
+  // Las pestañas dependen de la orden: la de una cotización lleva su ficha y
+  // sus etapas por el código interno (`seccionesDeOrden`).
+  const secciones = seccionesDeOrden(perfil, orden)
+  // Sin pestaña pedida se abre el resumen, o la primera que la persona ve.
+  const vista: Vista = VISTAS.includes(query.vista as Vista)
+    ? (query.vista as Vista)
+    : secciones.includes('resumen') ? 'resumen' : ((secciones[0] ?? 'resumen') as Vista)
+  if (!secciones.includes(vista)) redirect('/sin-permiso')
   if (orden.plan_etapas_manual && vista === 'avance') redirect(`/ordenes/${id}?vista=actividades`)
 
   // Por qué la hoja de Diseño no acepta planos: en borrador falta quien la
@@ -551,7 +553,25 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
         />
       )}
 
-      {vista === 'etapas' && (
+      {vista === 'etapas' && orden.avance_del_codigo && etapas.length === 0 && (
+        // La OT de una cotización no lleva etapas propias: son las de su código
+        // interno (2026-10-15). Ofrecer «Agregar etapa» aquí las duplicaba.
+        veEtapasDelCodigo ? (
+          <VistaEtapas codigo={orden.avance_del_codigo} />
+        ) : (
+          <Tarjeta>
+            <TarjetaCabecera titulo="Etapas de producción" />
+            <TarjetaCuerpo>
+              <p className="text-sm text-texto-suave">
+                Se llevan por el código interno <span className="font-mono">{orden.avance_del_codigo}</span>: Diseño las
+                marca y Supervisión reporta por código.
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )
+      )}
+
+      {vista === 'etapas' && !(orden.avance_del_codigo && etapas.length === 0) && (
         <Etapas
           ordenId={orden.id}
           etapas={etapas}

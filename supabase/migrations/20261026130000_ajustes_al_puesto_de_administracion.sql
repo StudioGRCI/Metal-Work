@@ -40,7 +40,7 @@
 
 -- 1. El tipo de cambio, de los dos ----------------------------------------------------------
 update public.permisos
-   set descripcion = 'Registrar y corregir el tipo de cambio del día (lo lleva Contabilidad; Administración también, si falta)'
+   set descripcion = 'Registrar y corregir el tipo de cambio del día (lo registran Contabilidad o Administración)'
  where codigo = 'tesoreria.tipo_cambio';
 
 -- 2. Administración compra solo lo de su RQA --------------------------------------------------

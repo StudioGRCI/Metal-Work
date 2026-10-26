@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
+import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   accesoriosDeOrden,
   ordenDelCodigo,
@@ -20,18 +21,19 @@ import { FichaTaller } from '../../ordenes/[id]/ficha-taller'
  * el 2026-10-26 que la ficha también se lleve por código. Se guarda en la OT
  * que nació de la cotización del código (`ordenDelCodigo`), con las mismas
  * acciones y permisos que la pestaña de la OT: la llena quien tiene
- * `ordenes.editar` (Administración), y la ven Diseño y el taller.
+ * `ordenes.editar` (Administración). Aquí la ve quien abre Códigos internos
+ * (`codigos_internos.ver`); Diseño la sigue viendo en la OT.
  */
 export async function VistaFicha({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
   const deLaOrden = await ordenDelCodigo(codigo)
   if (!deLaOrden) {
     return (
       <Tarjeta>
-        <TarjetaCuerpo>
-          <p className="text-sm text-texto-suave">
-            Este código todavía no tiene su OT: la ficha de taller se llena cuando Gerencia aprueba la cotización con su código y su OT.
-          </p>
-        </TarjetaCuerpo>
+        <SinDatos
+          enTabla={false}
+          titulo="Este código todavía no tiene su OT"
+          descripcion="La ficha de taller se llena cuando Gerencia aprueba la cotización con su código y su OT."
+        />
       </Tarjeta>
     )
   }
@@ -46,9 +48,11 @@ export async function VistaFicha({ codigo, perfil }: { codigo: string; perfil: P
   if (!orden) {
     return (
       <Tarjeta>
-        <TarjetaCuerpo>
-          <p className="text-sm text-texto-suave">No se pudo abrir la OT {deLaOrden.numero} de este código.</p>
-        </TarjetaCuerpo>
+        <SinDatos
+          enTabla={false}
+          titulo={`No se pudo abrir la OT ${deLaOrden.numero} de este código`}
+          descripcion="Vuelve a cargar la página o ábrela desde Órdenes de trabajo."
+        />
       </Tarjeta>
     )
   }
@@ -60,7 +64,7 @@ export async function VistaFicha({ codigo, perfil }: { codigo: string; perfil: P
       <p className="text-sm text-texto-suave">
         La ficha de la unidad, de su OT{' '}
         {puede(perfil, 'ordenes.ver') ? (
-          <Link href={`/ordenes/${orden.id}`} className="font-medium text-acento hover:underline">
+          <Link href={`/ordenes/${orden.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
             {orden.numero}
           </Link>
         ) : (

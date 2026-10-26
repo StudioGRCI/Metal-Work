@@ -33,17 +33,22 @@ export function reemplazoDeLaOrden(perfil: Pick<PerfilSesion, 'rol'>): string {
 /** Un mismo criterio para los enlaces de la OT y la entrada por URL.
  * La lectura de filas y archivos continúa sometida a RLS y al área asignada.
  */
-export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): string[] {
+export function seccionesDeOrden(
+  perfil: Pick<PerfilSesion, 'permisos' | 'rol'>,
+  orden?: { avance_del_codigo?: string | null } | null,
+): string[] {
   const tiene = (...permisos: string[]) =>
     perfil.rol.codigo === 'ADMIN' || permisos.some(p => perfil.permisos.includes(p))
   if (!tiene('ordenes.ver') || trabajaPorCodigo(perfil)) return []
   const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area', 'supervision.general')
     || ['COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
-  // Administración lleva la ficha de taller y ve las etapas desde el código
-  // interno (Códigos internos › Ficha de taller y Etapas), y los reportes del
-  // taller ya los aprueba Gerencia en Supervisión (decisión de DKS, 2026-10-26;
-  // migración 20261026130000). En la OT ya no tiene esas pestañas.
-  const porCodigo = perfil.rol.codigo === 'ADMINISTRACION'
+  // En la OT de una cotización, Administración lleva la ficha de taller y ve
+  // las etapas desde el código interno (Códigos internos › Ficha de taller y
+  // Etapas), y los reportes del taller ya los aprueba Gerencia en Supervisión
+  // (decisión de DKS, 2026-10-26; migración 20261026130000). La orden sin
+  // cotización (garantía, trabajo directo) no tiene esa vista por código:
+  // ahí conserva sus pestañas.
+  const porCodigo = perfil.rol.codigo === 'ADMINISTRACION' && Boolean(orden?.avance_del_codigo)
   return [
     'resumen',
     // El expediente lo ve quien ve la orden: cada bloque se lee con su propio
