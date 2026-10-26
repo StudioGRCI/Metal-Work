@@ -12,10 +12,10 @@ import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacio
 import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { resumenDetraccion } from '@/lib/dominio/detraccion'
+import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPagoServicio, PagarServicio } from '../formularios'
@@ -27,8 +27,10 @@ export const metadata = { title: 'Pagos de servicio' }
  * Los trabajos de terceros —arenado, torno, pintura— que Logística encargó con
  * su orden de servicio y Gerencia aprobó (migración 20261015120000). Tesorería
  * los paga contra la factura del proveedor, con el voucher; primero los que ya
- * volvieron conformes. Si la OS lleva detracción, esa parte se deposita en el
- * Banco de la Nación y al proveedor se le paga el resto (20261015141000).
+ * volvieron conformes. Lo que se debe es el total con IGV; si la OS lleva
+ * detracción, esa parte se deposita en el Banco de la Nación y al proveedor se le
+ * paga el resto (20261015141000). Cuánto falta de cada parte lo da la base
+ * (`saldos_de_servicios`, migración 20261026100000).
  * Al pagar se ven la factura y el contrato que adjuntó Logística a la OS y las
  * cuentas del proveedor; si la factura llega a Tesorería, la adjunta aquí
  * (migración 20261020210000).
@@ -54,7 +56,7 @@ export default async function PaginaPagosDeServicio() {
     .sort((a, b) => Number(b.estado === 'CONFORME') - Number(a.estado === 'CONFORME'))
   const pagados = servicios.filter((s) => s.cancelada)
   const conformes = porPagar.filter((s) => s.estado === 'CONFORME').length
-  const resumen = resumenPorMoneda(porPagar.map((s) => ({ moneda: s.moneda, monto: saldoDe(s) })), ['orden', 'órdenes'])
+  const resumen = resumenPorMoneda(porPagar.map((s) => ({ moneda: s.moneda, monto: faltaDelServicio(s.saldo) })), ['orden', 'órdenes'])
 
   return (
     <AvisoDeLaCaja>
@@ -96,7 +98,14 @@ export default async function PaginaPagosDeServicio() {
   )
 }
 
-const saldoDe = (s: ServicioPorPagar) => Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
+/** Lo que falta de una orden pagada en parte, en una frase. */
+function loQueFalta(saldo: ServicioPorPagar['saldo'], m: CodigoMoneda) {
+  const partes = [
+    saldo.saldoProveedor > 0 ? `${moneda(saldo.saldoProveedor, m)} al proveedor` : null,
+    saldo.saldoDetraccion > 0 ? `${moneda(saldo.saldoDetraccion)} de detracción` : null,
+  ].filter(Boolean)
+  return partes.length > 0 ? `Falta ${partes.join(' y ')}.` : 'Ya se pagó todo, pero ningún pago dice que la cancela.'
+}
 
 function Servicio({
   servicio: s,
@@ -116,7 +125,9 @@ function Servicio({
   cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(s.moneda)
-  const saldo = saldoDe(s)
+  const saldo = s.saldo
+  const pagado = saldo.pagadoProveedor > 0 || saldo.pagadoDetraccion > 0
+  const conDetraccion = saldo.detraccion > 0
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
@@ -126,11 +137,12 @@ function Servicio({
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div>
+        {/* Con un texto largo, el total sigue en su columna de la derecha. */}
+        <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium tabular text-texto">{s.numero}</span>
             <Insignia tono={s.cancelada ? 'exito' : estado.tono}>{s.cancelada ? 'Pagada' : estado.etiqueta}</Insignia>
-            {!s.cancelada && Number(s.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
+            {!s.cancelada && pagado && <Insignia tono="aviso">Pagada en parte</Insignia>}
             <Insignia tono={detraccion.tono}>{detraccion.texto}</Insignia>
           </p>
           <p className="mt-0.5 text-sm text-texto">
@@ -144,16 +156,19 @@ function Servicio({
             {s.conformidad_en && ` · conforme el ${fecha(s.conformidad_en)}`}
             {s.codigo_interno && ` · código ${s.codigo_interno}`}
           </p>
-          {s.detraccion.afecta && s.detraccion.monto !== null && !s.cancelada && (
+          {conDetraccion && !s.cancelada && (
             <p className="text-xs text-texto-suave">
-              {detraccion.detalle}: la detracción va a la cuenta del proveedor en el Banco de la Nación y a él se le paga el resto.
+              {detraccion.detalle}. Al proveedor se le pagan {moneda(saldo.alProveedor, m)}; la detracción va a su cuenta del Banco de la Nación.
             </p>
           )}
+          {!s.cancelada && pagado && <p className="text-xs text-texto-suave">{loQueFalta(saldo, m)}</p>}
         </div>
         {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
-        <div className="sm:text-right">
-          <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, m)}</p>
-          {Number(s.pagado) > 0 && <p className="tabular text-xs text-texto-suave">Pagado {moneda(s.pagado, m)}</p>}
+        <div className="shrink-0 sm:text-right">
+          <p className="tabular text-sm font-semibold text-texto">{moneda(saldo.total, m)}</p>
+          <p className="text-xs text-texto-suave">con IGV</p>
+          {saldo.pagadoProveedor > 0 && <p className="tabular text-xs text-texto-suave">Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}</p>}
+          {saldo.pagadoDetraccion > 0 && <p className="tabular text-xs text-texto-suave">Detracción depositada {moneda(saldo.pagadoDetraccion)}</p>}
         </div>
       </div>
 
@@ -189,7 +204,8 @@ function Servicio({
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
               <span className="text-texto-suave">
                 <span className={p.anulado_en ? 'line-through' : undefined}>
-                  Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
+                  {p.destino === 'DETRACCION' ? 'Detracción del' : 'Pago del'} {fecha(p.fecha_pago)} ·{' '}
+                  <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
                   {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
                   {p.operacion && ` · op. ${p.operacion}`}
                   {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}

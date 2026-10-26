@@ -12,6 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
+import type { DestinoPagoServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useEnvio } from '@/lib/envio'
 import { moneda, type CodigoMoneda } from '@/lib/format'
@@ -218,10 +219,13 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
 
 
 /**
- * Tesorería paga una orden de servicio: el día, lo pagado, si cancela la orden
- * o es a cuenta, el número de operación, el comprobante del proveedor, la cuenta
- * de la caja de la que salió —la caja diaria se mueve sola— y el voucher. El
- * voucher sube primero a Storage y, si el pago no entra, se retira.
+ * Tesorería paga una orden de servicio: a quién (al proveedor o la detracción),
+ * el día, lo pagado, si cancela la orden o es a cuenta, el número de operación,
+ * el comprobante del proveedor, la cuenta de la caja de la que salió —la caja
+ * diaria se mueve sola— y el voucher. Lo que propone sale de la base, con IGV
+ * (migración 20261026100000): al proveedor, el total con IGV menos la detracción;
+ * la detracción, en soles, a su cuenta del Banco de la Nación. El voucher sube
+ * primero a Storage y, si el pago no entra, se retira.
  * El id del pago se decide al abrir la ventana: un reintento no registra otro.
  */
 export function PagarServicio({
@@ -238,13 +242,17 @@ export function PagarServicio({
   numero: string
   proveedor: string
   hoy: string
-  saldo: number
+  saldo: SaldoDeServicio
   codigoMoneda: CodigoMoneda
   cuentas: CuentaParaPagar[]
   /** Los documentos de la OS y las cuentas del proveedor, a la vista mientras se paga. */
   paraPagar?: ReactNode
 }) {
+  const conDetraccion = saldo.detraccion > 0
+  // Primero lo que falta al proveedor; si ya se le pagó, la detracción.
+  const destinoInicial: DestinoPagoServicio = saldo.saldoProveedor > 0 || saldo.saldoDetraccion <= 0 ? 'PROVEEDOR' : 'DETRACCION'
   const [pagoId, setPagoId] = useState<string | null>(null)
+  const [destino, setDestino] = useState<DestinoPagoServicio>(destinoInicial)
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque este botón desaparece si el pago cancela el documento.
@@ -266,6 +274,21 @@ export function PagarServicio({
   })
   const campo = (nombre: string) => `${nombre}-${ordenServicioId}`
 
+  // La detracción va siempre en soles, aunque la orden sea en dólares.
+  const aLaDetraccion = destino === 'DETRACCION'
+  const monedaDelPago: CodigoMoneda = aLaDetraccion ? 'PEN' : codigoMoneda
+  const propuesto = aLaDetraccion ? saldo.saldoDetraccion : saldo.saldoProveedor
+  // Cancela si con este pago no queda nada de la otra parte.
+  const quedaDeLaOtra = aLaDetraccion ? saldo.saldoProveedor : saldo.saldoDetraccion
+  const cancelaPorDefecto = quedaDeLaOtra > 0 ? 'no' : 'si'
+  const falta = [
+    saldo.saldoProveedor > 0 && `${montoEntero(saldo.saldoProveedor, codigoMoneda)} al proveedor`,
+    saldo.saldoDetraccion > 0 && `${montoEntero(saldo.saldoDetraccion, 'PEN')} de detracción`,
+  ].filter(Boolean)
+  const descripcion = falta.length > 0
+    ? `${conPunto(proveedor)} Falta pagar ${falta.join(' y ')}, del total de ${montoEntero(saldo.total, codigoMoneda)} con IGV.`
+    : `${conPunto(proveedor)} Ya se pagó el total de ${montoEntero(saldo.total, codigoMoneda)} con IGV.`
+
   return (
     <>
       <Boton
@@ -274,6 +297,7 @@ export function PagarServicio({
         onClick={() => {
           avisar(null)
           setDia(hoy)
+          setDestino(destinoInicial)
           setPagoId(crypto.randomUUID())
         }}
         data-pagar-servicio={numero}
@@ -281,24 +305,42 @@ export function PagarServicio({
         <Wallet aria-hidden className="size-4" />
         Registrar pago
       </Boton>
-      <Ventana
-        abierta={pagoId !== null}
-        alCerrar={() => setPagoId(null)}
-        titulo={`Pago de la ${numero}`}
-        descripcion={`${conPunto(proveedor)} Falta pagar ${montoEntero(saldo, codigoMoneda)} del monto aprobado.`}
-        ancho="md"
-      >
+      <Ventana abierta={pagoId !== null} alCerrar={() => setPagoId(null)} titulo={`Pago de la ${numero}`} descripcion={descripcion} ancho="md">
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="pago" />
           {paraPagar}
           <input type="hidden" name="id" value={pagoId ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
+          {!conDetraccion && <input type="hidden" name="destino" value="PROVEEDOR" />}
           <div className="grid gap-4 sm:grid-cols-2">
+            {conDetraccion && (
+              <Campo
+                etiqueta="¿A quién le pagas?"
+                htmlFor={campo('destino')}
+                requerido
+                className="sm:col-span-2"
+                ayuda={`Al proveedor se le paga el total con IGV menos la detracción (${montoEntero(saldo.alProveedor, codigoMoneda)}). La detracción (${montoEntero(saldo.detraccion, 'PEN')}) se deposita en soles en su cuenta del Banco de la Nación.`}
+              >
+                <Seleccion
+                  id={campo('destino')}
+                  name="destino"
+                  value={destino}
+                  onChange={(e) => setDestino(e.target.value === 'DETRACCION' ? 'DETRACCION' : 'PROVEEDOR')}
+                >
+                  <option value="PROVEEDOR">Al proveedor{saldo.saldoProveedor > 0 ? `, falta ${montoEntero(saldo.saldoProveedor, codigoMoneda)}` : ', ya está pagado'}</option>
+                  <option value="DETRACCION">
+                    La detracción, en el Banco de la Nación{saldo.saldoDetraccion > 0 ? `, falta ${montoEntero(saldo.saldoDetraccion, 'PEN')}` : ', ya está depositada'}
+                  </option>
+                </Seleccion>
+              </Campo>
+            )}
             <Campo etiqueta="Día del pago" htmlFor={campo('fecha')} requerido>
               <Entrada id={campo('fecha')} name="fecha_pago" type="date" required value={dia} onChange={(e) => setDia(e.target.value)} max={hoy} />
             </Campo>
-            <Campo etiqueta={`Importe pagado (${codigoMoneda === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
+            <Campo etiqueta={`Importe pagado (${monedaDelPago === 'USD' ? 'dólares' : 'soles'})`} htmlFor={campo('monto')} requerido>
+              {/* Con otra parte elegida, el importe propuesto es el de esa parte: el campo se vuelve a armar. */}
               <Entrada
+                key={destino}
                 id={campo('monto')}
                 name="monto"
                 type="number"
@@ -306,25 +348,38 @@ export function PagarServicio({
                 min="0.01"
                 step="0.01"
                 required
-                defaultValue={saldo > 0 ? saldo.toFixed(2) : undefined}
+                defaultValue={propuesto > 0 ? propuesto.toFixed(2) : undefined}
                 className="tabular"
               />
             </Campo>
-            <Campo etiqueta="¿Cancela la orden de servicio?" htmlFor={campo('cancela')} requerido ayuda="«A cuenta» si todavía falta pagarle al proveedor.">
-              <Seleccion id={campo('cancela')} name="cancela" defaultValue="si">
+            <Campo
+              etiqueta="¿Cancela la orden de servicio?"
+              htmlFor={campo('cancela')}
+              requerido
+              ayuda={
+                conDetraccion
+                  ? '«Sí» solo con el último pago, cuando ya no falta nada al proveedor ni de la detracción.'
+                  : '«A cuenta» si todavía falta pagarle al proveedor.'
+              }
+            >
+              <Seleccion key={destino} id={campo('cancela')} name="cancela" defaultValue={cancelaPorDefecto}>
                 <option value="si">Sí, queda pagada</option>
                 <option value="no">No, es a cuenta</option>
               </Seleccion>
             </Campo>
-            <Campo etiqueta="N.º de operación" htmlFor={campo('operacion')} ayuda="El que da el banco, si lo hay.">
+            <Campo
+              etiqueta={aLaDetraccion ? 'N.º de la constancia o de operación' : 'N.º de operación'}
+              htmlFor={campo('operacion')}
+              ayuda={aLaDetraccion ? 'El de la constancia de depósito de la detracción.' : 'El que da el banco, si lo hay.'}
+            >
               <Entrada id={campo('operacion')} name="operacion" maxLength={60} autoComplete="off" className="tabular" />
             </Campo>
             <Campo etiqueta="Factura o recibo del proveedor" htmlFor={campo('comprobante')} ayuda="Su número, si ya lo entregó: E001-45.">
               <Entrada id={campo('comprobante')} name="comprobante" maxLength={30} autoComplete="off" className="tabular uppercase" />
             </Campo>
-            <CuentaDeLaCaja cuentas={cuentas} monedaDocumento={codigoMoneda} tipo="pago" dia={dia} prefijo={`servicio-${ordenServicioId}`} />
+            <CuentaDeLaCaja key={destino} cuentas={cuentas} monedaDocumento={monedaDelPago} tipo="pago" dia={dia} prefijo={`servicio-${ordenServicioId}`} />
           </div>
-          <Campo etiqueta="Voucher o constancia del pago" htmlFor={campo('archivo')} requerido>
+          <Campo etiqueta={aLaDetraccion ? 'Constancia del depósito' : 'Voucher o constancia del pago'} htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
           {error && (

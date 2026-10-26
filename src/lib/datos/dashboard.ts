@@ -35,6 +35,7 @@ import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/dis
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
+import { faltaDelServicio } from '@/lib/dominio/detraccion'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima, moneda, numero, porcentaje, sumarDias } from '@/lib/format'
@@ -486,7 +487,18 @@ const CIFRAS = {
       const r = await c.supabase.rpc('servicios_por_pagar')
       fallo(r)
       const pendientes = (r.data ?? []).filter((s) => !s.cancelada)
-      const saldo = (m: string) => pendientes.filter((s) => (s.moneda === 'USD') === (m === 'USD')).reduce((n, s) => n + num(s.monto) - num(s.pagado), 0)
+      // Lo que falta de cada una, con IGV y con su detracción (migración 20261026100000).
+      const ids = pendientes.flatMap((s) => (s.id ? [s.id] : []))
+      const saldos = ids.length ? await c.supabase.rpc('saldos_de_servicios', { p_ids: ids }) : { data: [], error: null }
+      fallo(saldos)
+      const falta = (s: NonNullable<typeof saldos.data>[number]) =>
+        faltaDelServicio({
+          total: num(s.total), detraccion: num(s.detraccion), detraccionEnMoneda: num(s.detraccion_en_moneda), alProveedor: num(s.al_proveedor),
+          pagadoProveedor: num(s.pagado_proveedor), pagadoDetraccion: num(s.pagado_detraccion),
+          saldoProveedor: num(s.saldo_proveedor), saldoDetraccion: num(s.saldo_detraccion),
+        })
+      const filas = saldos.data ?? []
+      const saldo = (m: string) => filas.filter((s) => (s.moneda === 'USD') === (m === 'USD')).reduce((n, s) => n + falta(s), 0)
       return { titulo: 'Servicios por pagar', ...soles(saldo('PEN'), saldo('USD'), plural(pendientes.length, 'orden de servicio', 'órdenes de servicio')), icono: Wrench }
     },
   },
