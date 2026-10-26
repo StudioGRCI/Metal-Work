@@ -131,10 +131,18 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             }
           />
           <TarjetaCuerpo className="space-y-4">
-            {!ficha && !registra ? (
+            {!ficha && r.salida_en ? (
+              <p className="text-sm text-texto-suave">El vehículo salió de la planta sin que se llenara su ficha.</p>
+            ) : !ficha && !registra ? (
               <p className="text-sm text-texto-suave">Requerimientos todavía no llenó la ficha de este ingreso.</p>
             ) : (
-              <FichaDelVehiculo registro={r.id} ficha={ficha} puntos={puntos} editable={registra && !anulado} />
+              <FichaDelVehiculo
+                registro={r.id}
+                ficha={ficha}
+                puntos={puntos}
+                editable={registra && !anulado && !r.salida_en}
+                salio={Boolean(r.salida_en)}
+              />
             )}
             {registra && !anulado && ficha?.salida_cerrada_en && !ficha.escaneo_ruta && <AdjuntarEscaneo registro={r.id} />}
           </TarjetaCuerpo>

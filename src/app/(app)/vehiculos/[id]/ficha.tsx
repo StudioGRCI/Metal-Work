@@ -41,11 +41,14 @@ export function FichaDelVehiculo({
   ficha,
   puntos,
   editable,
+  salio = false,
 }: {
   registro: string
   ficha: FichaDeVehiculo | null
   puntos: PuntoDeFicha[]
   editable: boolean
+  /** El vehículo ya dejó la planta: la ficha queda como estaba (la base tampoco la deja cambiar). */
+  salio?: boolean
 }) {
   const ingresoCerrado = Boolean(ficha?.ingreso_cerrado_en)
   const salidaCerrada = Boolean(ficha?.salida_cerrada_en)
@@ -76,14 +79,18 @@ export function FichaDelVehiculo({
     <form onSubmit={enviar} className="space-y-5">
       <input type="hidden" name="registro" value={registro} />
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Insignia tono={ingresoCerrado ? 'exito' : 'aviso'}>
-          Ingreso {ingresoCerrado ? `cerrado el ${fechaHora(ficha?.ingreso_cerrado_en ?? '')}` : 'por cerrar'}
+        <Insignia tono={ingresoCerrado ? 'exito' : salio ? 'neutro' : 'aviso'}>
+          Ingreso {ingresoCerrado ? `cerrado el ${fechaHora(ficha?.ingreso_cerrado_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
         <Insignia tono={salidaCerrada ? 'exito' : 'neutro'}>
-          Salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : 'por cerrar'}
+          Salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
       </div>
 
+      {/* Arriba, junto a las insignias: que no parezca que todavía falta cerrarla. */}
+      {salio && !salidaCerrada && (
+        <p className="text-sm text-texto-suave">El vehículo ya salió de la planta: la ficha queda como estaba.</p>
+      )}
       <fieldset disabled={bloqueado} className="space-y-4">
         <legend className="sr-only">Datos de la ficha</legend>
         <section aria-label="Al entrar" className="space-y-3">
