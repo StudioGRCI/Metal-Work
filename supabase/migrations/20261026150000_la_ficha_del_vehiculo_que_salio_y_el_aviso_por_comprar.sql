@@ -91,12 +91,19 @@ comment on function public.fn_rq_avisar_por_comprar() is
   'Disparador: cuando Almacén revisa un RQ de operación y le falta algo (POR_ATENDER → SIN_STOCK), avisa a quien lo registró qué compra Logística.';
 revoke all on function public.fn_rq_avisar_por_comprar() from public, anon, authenticated;
 
-drop trigger if exists trg_rq_avisar_por_comprar on public.requerimientos;
-create trigger trg_rq_avisar_por_comprar
-  after update of estado on public.requerimientos
-  for each row
-  when (old.estado = 'POR_ATENDER' and new.estado = 'SIN_STOCK' and new.tipo is distinct from 'ADMINISTRACION')
-  execute function public.fn_rq_avisar_por_comprar();
+-- Sin `drop`: el conector de Supabase pide confirmar cualquier `drop` y, sin ella,
+-- la migración no entra. Se crea solo si no está.
+do $$
+begin
+  if not exists (select 1 from pg_trigger
+                  where tgname = 'trg_rq_avisar_por_comprar' and tgrelid = 'public.requerimientos'::regclass) then
+    create trigger trg_rq_avisar_por_comprar
+      after update of estado on public.requerimientos
+      for each row
+      when (old.estado = 'POR_ATENDER' and new.estado = 'SIN_STOCK' and new.tipo is distinct from 'ADMINISTRACION')
+      execute function public.fn_rq_avisar_por_comprar();
+  end if;
+end $$;
 
 -- ======================================= 3. «No tiene nada», solo si no tiene nada
 do $$
