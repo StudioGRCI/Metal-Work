@@ -1866,6 +1866,8 @@ export type Database = {
           horas: number | null
           tardanzas: number | null
           porcentaje: number | null
+          regla_cada: number | null
+          regla_porcentaje: number | null
           base: number
           monto: number
           detalle: string
@@ -1874,8 +1876,6 @@ export type Database = {
           registrado_por: string
           creado_en: string
           actualizado_en: string
-          regla_cada: number | null
-          regla_porcentaje: number | null
         }
         Insert: {
           id?: string
@@ -1885,6 +1885,8 @@ export type Database = {
           horas?: number | null
           tardanzas?: number | null
           porcentaje?: number | null
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
           base: number
           monto: number
           detalle: string
@@ -1893,8 +1895,6 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
-          regla_cada?: number | null
-          regla_porcentaje?: number | null
         }
         Update: {
           id?: string
@@ -1904,6 +1904,8 @@ export type Database = {
           horas?: number | null
           tardanzas?: number | null
           porcentaje?: number | null
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
           base?: number
           monto?: number
           detalle?: string
@@ -1912,8 +1914,6 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
-          regla_cada?: number | null
-          regla_porcentaje?: number | null
         }
         Relationships: [
           {
