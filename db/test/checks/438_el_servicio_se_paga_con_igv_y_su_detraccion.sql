@@ -16,6 +16,7 @@
 --   5. Quién lee los saldos.
 --   6. El cliente de la cotización aprobada, para Tesorería y Contabilidad, y
 --      el de la que no está aprobada, no.
+--   7. El envío repetido: el mismo devuelve su id; otro con el mismo id, no.
 -- Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -133,6 +134,18 @@ select test.afirmar((select moneda = 'PEN' and destino = 'DETRACCION' from publi
 select test.afirmar((select saldo_proveedor = 869 and saldo_detraccion = 0 and pagado_detraccion = 255
                        from public.saldos_de_servicios(array[pg_temp.id('os')])),
   'depositada la detracción, solo faltan S/ 869 al proveedor');
+-- El mismo envío repetido (la respuesta se perdió) devuelve su id sin duplicar; otro
+-- envío con el mismo id, con otro archivo o a otro destino, dice que ya quedó (PR #161).
+select set_config('prueba.ruta_p2', (select archivo_ruta from public.pagos_orden_servicio where id = pg_temp.id('p2')), true);
+select test.afirmar(public.registrar_pago_servicio(pg_temp.id('p2'), pg_temp.id('os'), current_setting('prueba.hoy')::date, 255, false,
+    'OP-436-p2', null, current_setting('prueba.ruta_p2'), pg_temp.id('caja'), null, 'DETRACCION') = pg_temp.id('p2')
+  and (select count(*) from public.pagos_orden_servicio where orden_servicio_id = pg_temp.id('os')) = 2,
+  'el mismo envío repetido devuelve su id y no duplica el pago');
+select test.debe_fallar($$ select pg_temp.pagar('os', 'p2', 255, false, 'DETRACCION') $$,
+  'el mismo id con otro archivo dice que ya quedó registrado', 'la primera vez que lo enviaste');
+select test.debe_fallar($$ select public.registrar_pago_servicio(pg_temp.id('p2'), pg_temp.id('os'), current_setting('prueba.hoy')::date, 255, false,
+    'OP-436-p2', null, current_setting('prueba.ruta_p2'), pg_temp.id('caja'), null) $$,
+  'el mismo id y archivo, pero al proveedor, dice que ya quedó registrado', 'la primera vez que lo enviaste');
 select pg_temp.pagar('os', 'p3', 869, true, 'PROVEEDOR');
 select test.afirmar((select saldo_proveedor = 0 and saldo_detraccion = 0 and cancelada from public.saldos_de_servicios(array[pg_temp.id('os')])),
   'con los S/ 869 que la cancelan, la orden queda pagada entera');

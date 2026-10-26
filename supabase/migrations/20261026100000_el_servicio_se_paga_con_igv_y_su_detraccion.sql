@@ -28,6 +28,10 @@
 --
 -- Los pagos que ya existen quedan como pagos al proveedor (el `default`).
 --
+-- El envío repetido sigue la regla del PR #161 (aplicada en producción): el
+-- mismo envío devuelve su id; otro con el mismo id dice que ya quedó la primera
+-- vez. La de 10 parámetros, que ahora envuelve a esta, la conserva.
+--
 -- Idempotente. Sin `drop`: la versión de 10 parámetros de
 -- `registrar_pago_servicio` se queda con su nombre y paga al proveedor.
 -- =============================================================================
@@ -119,7 +123,17 @@ declare
 begin
   perform public.exigir_permiso('tesoreria.pagar_servicios');
   if p_id is null then raise exception 'Vuelve a abrir el formulario del pago.' using errcode = 'check_violation'; end if;
-  if exists (select 1 from public.pagos_orden_servicio where id = p_id) then return p_id; end if;
+  -- El mismo envío repetido (la respuesta se perdió) se reconoce por su
+  -- archivo, por quién lo anotó y por a quién se pagó; otro envío con el mismo
+  -- id, no. Es la guarda de la 20261022160000 con el texto de la 20261022195000
+  -- (PR #161), que producción ya tiene en la versión de 10 parámetros.
+  if exists (select 1 from public.pagos_orden_servicio where id = p_id) then
+    if exists (select 1 from public.pagos_orden_servicio
+                where id = p_id and archivo_ruta = p_ruta and registrado_por = v_yo and destino = v_destino) then
+      return p_id;
+    end if;
+    raise exception 'Este pago ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' using errcode = 'check_violation';
+  end if;
   if v_destino not in ('PROVEEDOR', 'DETRACCION') then
     raise exception 'Elige a quién le pagas: al proveedor o la detracción.' using errcode = 'check_violation';
   end if;
