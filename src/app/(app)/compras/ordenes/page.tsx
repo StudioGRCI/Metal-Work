@@ -147,7 +147,7 @@ function FilaCompra({
     c.codigo_interno ?? (c.codigos.length ? c.codigos.join(', ') : null),
     ...(c.origen === 'DIRECTA'
       ? [c.requerimientos.length ? null : 'Almacén']
-      : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
+      : [c.codigo_interno || c.codigos.length ? null : 'Solicitud de antes de los RQ', ...c.unidades]),
     // Qué requerimiento (RQ-0001-2026…) atiende esta compra, si nació de uno.
     c.requerimientos.length ? c.requerimientos.join(', ') : null,
   ]

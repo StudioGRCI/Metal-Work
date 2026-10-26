@@ -257,8 +257,8 @@ comprobar(aviso.n >= 1, 'Contabilidad recibe el aviso de la nota de crédito')
 // El aviso se lee con su unidad y el motivo como frase aparte (migración 20261026100000).
 const [cuerpo] = await consulta(`select cuerpo from notificaciones where usuario_id = $1 and titulo = $2 order by creado_en desc limit 1`,
   [ids[CUENTAS.contabilidad], `Espera la nota de crédito: ${ocNumero}`])
-comprobar(/^3\.2 M de .+ ya no se reponen\. Motivo: El proveedor ya no tiene ese disco y emite nota de crédito\. Registra su nota/.test(cuerpo?.cuerpo ?? ''),
-  `el aviso dice «3.2 M de …» y el motivo como su propia frase (${cuerpo?.cuerpo})`)
+comprobar(/^El proveedor ya no repone 3\.2 M de .+\. Motivo: El proveedor ya no tiene ese disco y emite nota de crédito\. Registra su nota/.test(cuerpo?.cuerpo ?? ''),
+  `el aviso dice «El proveedor ya no repone 3.2 M de …» y el motivo como su propia frase (${cuerpo?.cuerpo})`)
 
 await navegador.close()
 await base.end()

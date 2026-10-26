@@ -563,7 +563,7 @@ function EnElSistema({ sistema, codigo }: { sistema: InsumoPorRevisar['sistema']
           {reservado > 0 && (
             <span className="text-texto-suave">
               {' · '}
-              {formatoCantidad(reservado)} en pedidos de OT
+              {formatoCantidad(reservado)} en pedidos de antes de los RQ
             </span>
           )}
         </p>
