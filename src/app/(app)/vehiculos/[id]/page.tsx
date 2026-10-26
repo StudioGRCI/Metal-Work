@@ -121,7 +121,8 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             ayuda="El formato de inspección vehicular de Metal Work (SIG-FCLIV-001). Se llena al entrar, se completa al salir y se adjunta firmado."
             acciones={
               <span className="flex flex-wrap gap-2">
-                <DescargarFicha registro={r.id} />
+                {/* Salió sin ficha: no se ofrece bajar una en blanco. */}
+                {(ficha || !r.salida_en) && <DescargarFicha registro={r.id} />}
                 {escaneo && (
                   <a href={escaneo} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0">
                     Ver escaneo firmado

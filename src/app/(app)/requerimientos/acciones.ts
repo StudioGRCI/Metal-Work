@@ -225,10 +225,11 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
 
   revalidatePath('/requerimientos')
   revalidatePath('/requerimientos/atencion')
-  // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar. El
-  // RQA ya revisado avisa a quien lo compra, que es quien lo corrige: no se dice.
+  // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar
+  // (corregir_requerimiento: por revisar o listo, Almacén; si no, quien compra).
+  // El RQA en compra avisa a la administradora, que es quien lo corrige: no se dice.
   const { data: rq } = await supabase.from('requerimientos').select('estado, tipo').eq('id', id.data).maybeSingle()
   const aviso =
-    rq?.estado === 'POR_ATENDER' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
+    rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
   return { ok: true, mensaje: `Requerimiento corregido, con su justificante.${aviso}` }
 }

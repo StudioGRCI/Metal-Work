@@ -22,6 +22,18 @@
 --    disparador propio, sin copiar rq_revisar_stock. El RQ de Administración
 --    no lo lleva: quien lo registra es la administradora, que ya recibe el
 --    aviso para comprarlo.
+--
+-- 3. «Almacén no tiene nada» solo cuando de verdad no tiene nada. El aviso a
+--    Logística lo decía cuando todos los insumos tenían faltante, aunque
+--    Almacén tuviera una parte de alguno (3 faros pedidos y 2 en stock: «no
+--    tiene nada»). Lo vio el auditor de este cambio. Se corrige igual que el 1,
+--    sobre el fragmento; los avisos ya enviados no se reescriben.
+--
+-- 4. La corrección de un RQ listo en almacén le avisa a Almacén. DKS dejó a
+--    criterio el aviso de la corrección: iba a Almacén solo si el RQ seguía
+--    por revisar y, si no, a Logística. Con el RQ listo, quien tiene separado
+--    el material y lo entrega es Almacén, y Logística no tiene nada que
+--    comprar: el aviso va a Almacén. La pantalla dice lo mismo.
 
 -- =============================================== 1. La ficha del que salió
 do $$
@@ -53,21 +65,22 @@ comment on function public.guardar_ficha_vehiculo(uuid, text, jsonb) is
 create or replace function public.fn_rq_avisar_por_comprar()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare
-  v_total  integer;
-  v_faltan integer;
-  v_detalle text;
+  v_total     integer;
+  v_faltan    integer;
+  v_con_stock integer;
+  v_detalle   text;
 begin
-  select count(*), count(*) filter (where l.cantidad_en_stock < l.cantidad),
+  select count(*), count(*) filter (where l.cantidad_en_stock < l.cantidad), count(*) filter (where l.cantidad_en_stock > 0),
          string_agg(case when l.cantidad_en_stock < l.cantidad then
                       rtrim(to_char(l.cantidad - l.cantidad_en_stock, 'FM999999990.999'), '.') || ' ' || coalesce(um.codigo, '') || ' ' || l.descripcion
                     end, '; ' order by l.item)
-    into v_total, v_faltan, v_detalle
+    into v_total, v_faltan, v_con_stock, v_detalle
     from public.requerimiento_lineas l
     left join public.unidades_medida um on um.id = l.unidad_medida_id
    where l.requerimiento_id = new.id;
 
   perform public.fn_rq_avisar(new, 'Por comprar: ' || new.numero,
-    left(case when v_faltan = v_total then 'Almacén no tiene nada' else 'Almacén tiene parte' end
+    left(case when v_con_stock = 0 then 'Almacén no tiene nada' else 'Almacén tiene parte' end
          || '; Logística compra ' || v_faltan || ' de ' || v_total || case when v_total = 1 then ' insumo' else ' insumos' end
          || coalesce(' · ' || new.codigo_interno, '') || coalesce(': ' || v_detalle, ''), 500),
     'EMISOR');
@@ -84,3 +97,35 @@ create trigger trg_rq_avisar_por_comprar
   for each row
   when (old.estado = 'POR_ATENDER' and new.estado = 'SIN_STOCK' and new.tipo is distinct from 'ADMINISTRACION')
   execute function public.fn_rq_avisar_por_comprar();
+
+-- ======================================= 3. «No tiene nada», solo si no tiene nada
+do $$
+declare
+  v_def   text;
+  v_viejo text := $v$case when v_faltan = v_total then 'Almacén no tiene nada. ' else 'Almacén tiene parte. ' end$v$;
+  v_nuevo text := $v$case when not exists (select 1 from public.requerimiento_lineas x
+                                     where x.requerimiento_id = p_id and x.cantidad_en_stock > 0)
+                then 'Almacén no tiene nada. ' else 'Almacén tiene parte. ' end$v$;
+begin
+  v_def := replace(pg_get_functiondef('public.rq_revisar_stock(uuid, jsonb, text)'::regprocedure), E'\r', '');
+  if position(v_viejo in v_def) > 0 then
+    execute replace(v_def, v_viejo, v_nuevo);
+  elsif position(v_nuevo in v_def) = 0 then
+    raise exception 'rq_revisar_stock cambió: no tiene el aviso a Logística como lo conoce el repositorio. Revisarla a mano antes de seguir.';
+  end if;
+end $$;
+
+-- ======================================= 4. Corregir un RQ listo avisa a Almacén
+do $$
+declare
+  v_def   text;
+  v_viejo text := $v$case when v_rq.estado = 'POR_ATENDER' then 'ALMACEN' else 'LOGISTICA' end$v$;
+  v_nuevo text := $v$case when v_rq.estado in ('POR_ATENDER', 'LISTO_EN_ALMACEN') then 'ALMACEN' else 'LOGISTICA' end$v$;
+begin
+  v_def := replace(pg_get_functiondef('public.corregir_requerimiento(uuid, uuid, text, text, text, jsonb)'::regprocedure), E'\r', '');
+  if position(v_viejo in v_def) > 0 then
+    execute replace(v_def, v_viejo, v_nuevo);
+  elsif position(v_nuevo in v_def) = 0 then
+    raise exception 'corregir_requerimiento cambió: no tiene el aviso de la corrección como lo conoce el repositorio. Revisarla a mano antes de seguir.';
+  end if;
+end $$;

@@ -10,6 +10,10 @@
 --      registró le llega «Por comprar: RQ-…» con lo que compra Logística; a
 --      Logística le sigue llegando el suyo. Si está todo, no llega. El RQ de
 --      Administración no lo lleva: la administradora ya recibe su aviso.
+--   3. «Almacén no tiene nada» solo si no tiene nada: con 5 discos pedidos y 2
+--      en stock, los dos avisos dicen «tiene parte».
+--   4. Corregir un RQ listo en almacén le avisa a Almacén, que lo tiene
+--      separado; uno por comprar, a Logística.
 --
 -- Cada paso con el puesto que lo hace —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -36,7 +40,7 @@ begin
   end loop;
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.area_rrh', (select id::text from public.areas where codigo = 'RRH'), true);
-  foreach v in array array['v1', 'v2', 'v3', 'pdf', 'rq1', 'rq2', 'rq3', 'rqa'] loop
+  foreach v in array array['v1', 'v2', 'v3', 'pdf', 'rq1', 'rq2', 'rq3', 'rq4', 'rqa', 'c1', 'c2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.todo_ingreso', (select jsonb_object_agg(codigo, jsonb_build_object('ingreso', 'CONFORME'))::text
@@ -44,7 +48,7 @@ begin
   perform set_config('prueba.todo_salida', (select jsonb_object_agg(codigo, jsonb_build_object('salida', 'CONFORME'))::text
                                               from public.control_vehicular_items), true);
 
-  -- Dos materiales del catálogo: 10 discos en el almacén y ningún faro.
+  -- Dos materiales del catálogo: 12 discos en el almacén y ningún faro.
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id) values
     ('CHK437-DIS', 'Disco de corte (prueba 437)',
      (select id from public.categorias_material where activo and almacen = 'CONSUMIBLES' order by codigo limit 1),
@@ -55,7 +59,7 @@ begin
   perform set_config('prueba.dis', (select id::text from public.materiales where codigo = 'CHK437-DIS'), true);
   perform set_config('prueba.far', (select id::text from public.materiales where codigo = 'CHK437-FAR'), true);
   insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, codigo_interno)
-  values (gen_random_uuid(), 'INGRESO', current_setting('prueba.dis')::uuid, 10, 'INGRESO_GENERAL', 'GR 437-1',
+  values (gen_random_uuid(), 'INGRESO', current_setting('prueba.dis')::uuid, 12, 'INGRESO_GENERAL', 'GR 437-1',
           current_setting('prueba.almacenero')::uuid, null);
 end $$;
 
@@ -149,13 +153,16 @@ select test.afirmar((select escaneo_ruta is not null from public.registro_vehicu
 -- ===================================================== 2. «Por comprar» a quien lo pidió
 select pg_temp.como('requerimientos');
 set local role authenticated;
--- rq1 pide 4 discos (hay 10); rq2, 6 discos y 2 faros (no hay faros); rq3, 3 faros.
+-- rq1 pide 4 discos (hay 12); rq2, 6 discos y 2 faros (no hay faros); rq3, 3 faros.
 select public.emitir_requerimiento(pg_temp.id('rq1'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK437-A',
   'Discos para la prueba 437', null, pg_temp.lineas('dis', 4));
 select public.emitir_requerimiento(pg_temp.id('rq2'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK437-A', 'Discos y faros de la prueba 437',
   null, pg_temp.lineas('dis', 6) || pg_temp.lineas('far', 2));
 select public.emitir_requerimiento(pg_temp.id('rq3'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK437-A',
   'Faros para la prueba 437', null, pg_temp.lineas('far', 3));
+-- rq4 pide 5 discos y Almacén anota 2: tiene parte del único insumo.
+select public.emitir_requerimiento(pg_temp.id('rq4'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK437-A',
+  'Más discos para la prueba 437', null, pg_temp.lineas('dis', 5));
 reset role;
 
 select pg_temp.como('administracion');
@@ -169,6 +176,7 @@ set local role authenticated;
 select public.rq_revisar_stock(pg_temp.id('rq1'), '[{"item": 1, "en_stock": 4}]', null);
 select public.rq_revisar_stock(pg_temp.id('rq2'), '[{"item": 1, "en_stock": 6}, {"item": 2, "en_stock": 0}]', null);
 select public.rq_revisar_stock(pg_temp.id('rq3'), '[{"item": 1, "en_stock": 0}]', null);
+select public.rq_revisar_stock(pg_temp.id('rq4'), '[{"item": 1, "en_stock": 2}]', null);
 select public.rq_revisar_stock(pg_temp.id('rqa'), '[{"item": 1, "en_stock": 0}]', null);
 reset role;
 
@@ -191,6 +199,32 @@ select test.afirmar(pg_temp.avisos('rq2', 'almacenero', 'Por comprar') = 0,
 select test.afirmar(pg_temp.avisos('rqa', 'administracion', 'Requerimiento por comprar') = 1
                     and pg_temp.avisos('rqa', 'administracion', 'Por comprar') = 0,
   'el RQ de Administración no repite el aviso a la administradora');
+
+select test.afirmar(pg_temp.cuerpo('rq4', 'requerimientos', 'Por comprar') like 'Almacén tiene parte; Logística compra 1 de 1 insumo%',
+  'con parte del único insumo en stock, a Requerimientos le dice «tiene parte»: ' || coalesce(pg_temp.cuerpo('rq4', 'requerimientos', 'Por comprar'), '(sin aviso)'));
+select test.afirmar(pg_temp.cuerpo('rq4', 'comprador', 'Requerimiento por comprar') like 'Almacén tiene parte. %',
+  'y a Logística también: ' || coalesce(pg_temp.cuerpo('rq4', 'comprador', 'Requerimiento por comprar'), '(sin aviso)'));
+select test.afirmar(pg_temp.cuerpo('rq3', 'comprador', 'Requerimiento por comprar') like 'Almacén no tiene nada. %',
+  'sin nada en stock, Logística sigue leyendo «no tiene nada»');
+
+-- ===================================================== 4. A quién avisa la corrección
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+select 'justificantes-correccion', pg_temp.txt(r) || '/' || pg_temp.txt(c) || '.pdf', pg_temp.txt('requerimientos'),
+       '{"mimetype": "application/pdf", "size": 3072}'
+  from (values ('rq1', 'c1'), ('rq2', 'c2')) v(r, c);
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select public.corregir_requerimiento(pg_temp.id('c1'), pg_temp.id('rq1'), 'Maestranza solo necesita tres discos',
+  pg_temp.txt('rq1') || '/' || pg_temp.txt('c1') || '.pdf', 'correo.pdf', '{"lineas": [{"item": 1, "cantidad": 3}]}'::jsonb);
+select public.corregir_requerimiento(pg_temp.id('c2'), pg_temp.id('rq2'), 'Basta con un faro',
+  pg_temp.txt('rq2') || '/' || pg_temp.txt('c2') || '.pdf', 'correo.pdf', '{"lineas": [{"item": 2, "cantidad": 1}]}'::jsonb);
+reset role;
+select test.afirmar(pg_temp.avisos('rq1', 'almacenero', 'Requerimiento corregido') = 1
+                    and pg_temp.avisos('rq1', 'comprador', 'Requerimiento corregido') = 0,
+  'corregir el RQ listo en almacén le avisa a Almacén, no a Logística');
+select test.afirmar(pg_temp.avisos('rq2', 'comprador', 'Requerimiento corregido') = 1
+                    and pg_temp.avisos('rq2', 'almacenero', 'Requerimiento corregido') = 0,
+  'corregir el RQ por comprar le avisa a Logística');
 
 -- Volver a dejar un RQ en SIN_STOCK por otro camino no repite el aviso.
 update public.requerimientos set estado = 'EN_ATENCION' where id = pg_temp.id('rq3');

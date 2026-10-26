@@ -71,8 +71,9 @@ export function CorregirRequerimiento({
           />
         )}
       </Ventana>
+      {/* Al final, para no meterse entre Corregir y Anular, y angosto, para no correr la cabecera de la tarjeta. */}
       {aviso && (
-        <p role="status" className="basis-full text-sm text-exito">
+        <p role="status" className="order-last basis-full text-sm text-exito sm:max-w-80 sm:text-right">
           {aviso}
         </p>
       )}
