@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -133,7 +133,9 @@ async function numeroEmitido(supabase: Awaited<ReturnType<typeof createClient>>,
  */
 export async function emitirCompraDirecta(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede emitir órdenes de compra.' }
+  if (!compraComoLogistica(perfil)) {
+    return { ok: false, error: puede(perfil, 'compras.crear') ? 'La OC directa la emite Logística: Administración hace la de su RQA desde Atención de requerimiento.' : 'Tu perfil no puede emitir órdenes de compra.' }
+  }
   const leido = leerFormularioDeCompra(formulario, false)
   if (!leido.ok) return leido
   const d = leido.datos

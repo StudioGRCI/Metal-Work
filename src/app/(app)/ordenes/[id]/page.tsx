@@ -64,6 +64,7 @@ import { MermaDeOrden } from './merma'
 import { CostosYControles, ControlDeSalida, type CostoDelCodigoEnOt } from './costos-y-controles'
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
+import { VistaEtapas } from '../../codigos-internos/detalle/vistas-diseno'
 import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
 import { queMeToca } from './te-toca'
 import { esUuid } from '@/lib/utils'
@@ -305,6 +306,8 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   // Diseño guarda las etapas por partes: lo que aún no reparte se avisa en el resumen.
   const faltaContemplar = Math.max(0, 100 - etapas.reduce((suma, e) => suma + Number(e.peso_pct ?? 0), 0))
+  // Las etapas del código las ve quien ve lo que Diseño carga por código (`puede_ver_codigos_de_diseno`).
+  const veEtapasDelCodigo = puede(perfil, ['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
   const areaSupervisor = vista === 'ficha' && perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id
     ? (await areasDelTaller()).find((a) => a.id === perfil.area_id)?.codigo
     : null
@@ -353,70 +356,91 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
               )}
             </div>
 
-            <Tarjeta className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
-              <TarjetaCabecera
-                titulo="Etapas de producción"
-                descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`
-                  + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${fmtNumero(faltaContemplar, 0)} %` : '') : undefined}
-                acciones={
-                  etapas.length > 0 && (
-                    <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
-                      Ver etapas
-                    </EnlaceBoton>
-                  )
-                }
-              />
-              <TarjetaCuerpo>
-                {etapas.length === 0 ? (
-                  <div className="py-4 text-center">
-                    <p className="text-sm text-texto-suave">
-                      {orden.estado === 'BORRADOR'
-                        ? 'Cuando la orden sea aprobada, Diseño definirá las etapas.'
-                        : 'Diseño aún no definió las etapas de esta orden.'}
-                    </p>
-                    {orden.estado !== 'BORRADOR' && orden.plan_etapas_manual && puede(perfil, 'diseno.planos')
-                      && !ESTADOS_CERRADOS.includes(orden.estado) && (
-                      <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} tamano="sm" className="mt-3">
-                        Definir etapas
-                      </EnlaceBoton>
-                    )}
-                  </div>
+            {orden.avance_del_codigo ? (
+              // Desde el 2026-10-15 las etapas son del código interno: Diseño las
+              // marca y Supervisión reporta por código. Las de la OT ya no las
+              // mueve nadie, y mostrarlas en 0 % contradecía el avance de arriba.
+              <div className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
+                {veEtapasDelCodigo ? (
+                  <VistaEtapas codigo={orden.avance_del_codigo} />
                 ) : (
-                  <ol className="divide-y divide-borde">
-                    {etapas.map((etapa) => {
-                      const estadoEtapa = definir(ESTADO_ETAPA, etapa.estado)
-                      const programa = programaDeEtapa(etapa, hoyLima())
-                      return (
-                        <li key={etapa.etapa_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                          <span className="tabular grid size-6 shrink-0 place-items-center rounded-full bg-superficie-2 text-[11px] font-semibold text-texto-suave">
-                            {etapa.orden_secuencia}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
-                              {etapa.etapa}
-                              {/* Una etapa que pasó su fecha programada, con su nombre. */}
-                              {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
-                              {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
-                            </p>
-                            {(etapa.estado !== 'PENDIENTE' || programa.fin) && (
-                              <p className="text-[11px] text-texto-suave">
-                                {[etapa.estado !== 'PENDIENTE' ? estadoEtapa.etiqueta : null, programa.fin ? `hasta el ${fecha(programa.fin)}` : null]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </p>
-                            )}
-                          </div>
-                          <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-32" />
-                          <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
-                            {fmtNumero(etapa.avance_porcentaje, 0)}%
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ol>
+                  <Tarjeta>
+                    <TarjetaCabecera titulo="Etapas de producción" />
+                    <TarjetaCuerpo>
+                      <p className="text-sm text-texto-suave">
+                        Se llevan por el código interno <span className="font-mono">{orden.avance_del_codigo}</span>: Diseño las
+                        marca y Supervisión reporta por código.
+                      </p>
+                    </TarjetaCuerpo>
+                  </Tarjeta>
                 )}
-              </TarjetaCuerpo>
-            </Tarjeta>
+              </div>
+            ) : (
+              <Tarjeta className="lg:col-span-2 lg:col-start-1 lg:row-start-1">
+                <TarjetaCabecera
+                  titulo="Etapas de producción"
+                  descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`
+                    + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${fmtNumero(faltaContemplar, 0)} %` : '') : undefined}
+                  acciones={
+                    etapas.length > 0 && (
+                      <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
+                        Ver etapas
+                      </EnlaceBoton>
+                    )
+                  }
+                />
+                <TarjetaCuerpo>
+                  {etapas.length === 0 ? (
+                    <div className="py-4 text-center">
+                      <p className="text-sm text-texto-suave">
+                        {orden.estado === 'BORRADOR'
+                          ? 'Cuando la orden sea aprobada, Diseño definirá las etapas.'
+                          : 'Diseño aún no definió las etapas de esta orden.'}
+                      </p>
+                      {orden.estado !== 'BORRADOR' && orden.plan_etapas_manual && puede(perfil, 'diseno.planos')
+                        && !ESTADOS_CERRADOS.includes(orden.estado) && (
+                        <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} tamano="sm" className="mt-3">
+                          Definir etapas
+                        </EnlaceBoton>
+                      )}
+                    </div>
+                  ) : (
+                    <ol className="divide-y divide-borde">
+                      {etapas.map((etapa) => {
+                        const estadoEtapa = definir(ESTADO_ETAPA, etapa.estado)
+                        const programa = programaDeEtapa(etapa, hoyLima())
+                        return (
+                          <li key={etapa.etapa_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                            <span className="tabular grid size-6 shrink-0 place-items-center rounded-full bg-superficie-2 text-[11px] font-semibold text-texto-suave">
+                              {etapa.orden_secuencia}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
+                                {etapa.etapa}
+                                {/* Una etapa que pasó su fecha programada, con su nombre. */}
+                                {programa.vencida && <Insignia tono="peligro">Vencida</Insignia>}
+                                {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
+                              </p>
+                              {(etapa.estado !== 'PENDIENTE' || programa.fin) && (
+                                <p className="text-[11px] text-texto-suave">
+                                  {[etapa.estado !== 'PENDIENTE' ? estadoEtapa.etiqueta : null, programa.fin ? `hasta el ${fecha(programa.fin)}` : null]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </p>
+                              )}
+                            </div>
+                            <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-32" />
+                            <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
+                              {fmtNumero(etapa.avance_porcentaje, 0)}%
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  )}
+                </TarjetaCuerpo>
+              </Tarjeta>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2 *:min-w-0">

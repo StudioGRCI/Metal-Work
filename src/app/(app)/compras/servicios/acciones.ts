@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { NO_SUJETA } from '@/lib/dominio/detraccion'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 function dato(formulario: FormData, nombre: string) {
@@ -39,7 +39,7 @@ function motivoDeNoSujeta(tipo: string, motivo: string) {
  */
 export async function emitirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'Tu perfil no puede emitir órdenes de servicio.' }
+  if (!compraComoLogistica(perfil)) return { ok: false, error: 'Tu perfil no puede emitir órdenes de servicio: las lleva Logística.' }
 
   const analisis = z
     .object({
@@ -134,7 +134,7 @@ const PASOS = {
 /** En ejecución, conforme o anulada. Mismo permiso que `avanzar_orden_servicio`. */
 export async function avanzarOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'compras.crear')) return { ok: false, error: 'No tienes permiso para llevar las órdenes de servicio.' }
+  if (!compraComoLogistica(perfil)) return { ok: false, error: 'No tienes permiso para llevar las órdenes de servicio.' }
 
   const analisis = z
     .object({
@@ -168,7 +168,7 @@ export async function avanzarOrdenServicio(_previo: unknown, formulario: FormDat
  */
 export async function corregirOrdenServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['compras.crear', 'compras.detraccion'])) {
+  if (!compraComoLogistica(perfil) && !puede(perfil, 'compras.detraccion')) {
     return { ok: false, error: 'No tienes permiso para corregir la orden de servicio.' }
   }
 
@@ -206,7 +206,7 @@ export async function corregirOrdenServicio(_previo: unknown, formulario: FormDa
 }
 
 /** Adjuntan y anulan los documentos de una OS los mismos que la base: `puede_adjuntar_documento_servicio`. */
-const ADJUNTAN = ['compras.crear', 'tesoreria.pagar_servicios']
+const adjuntaAServicios = (perfil: PerfilSesion) => compraComoLogistica(perfil) || puede(perfil, 'tesoreria.pagar_servicios')
 const NO_ADJUNTA = 'No tienes permiso para adjuntar documentos a la orden de servicio.'
 const NO_ANULA = 'No tienes permiso para anular documentos de la orden de servicio.'
 
@@ -224,7 +224,7 @@ function repintarDocumentos() {
  */
 export async function adjuntarDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ADJUNTA }
+  if (!adjuntaAServicios(perfil)) return { ok: false, error: NO_ADJUNTA }
   const analisis = z
     .object({
       id: z.guid(),
@@ -265,7 +265,7 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
 /** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */
 export async function anularDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ADJUNTAN)) return { ok: false, error: NO_ANULA }
+  if (!adjuntaAServicios(perfil)) return { ok: false, error: NO_ANULA }
   const analisis = z
     .object({ id: z.guid(), motivo: z.string().trim().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.') })
     .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })

@@ -406,6 +406,18 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
+  // La evaluación de desempeño que Diseño envió y Administración todavía no
+  // recibe ni devuelve (la base además le avisa al enviarla, migración 20261026100000).
+  if (puede(perfil, 'administracion.recibir_evaluacion')) {
+    tareas.push({
+      clave: 'evaluaciones_por_recibir',
+      ruta: '/diseno/evaluaciones',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'evaluación de desempeño por recibir', 'evaluaciones de desempeño por recibir'),
+      contar: () => cabeza(supabase.from('diseno_evaluaciones').select('id', { count: 'exact', head: true }).eq('estado', 'ENVIADA')),
+    })
+  }
+
   // La mano de obra de cada carrocería entra cuando RR. HH. cierra la planilla
   // del mes y la reparte: mientras tanto, el costo de todas las OT sale corto.
   if (puede(perfil, 'rrhh.gestionar_planillas')) {

@@ -39,20 +39,25 @@ export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>)
   if (!tiene('ordenes.ver') || trabajaPorCodigo(perfil)) return []
   const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area', 'supervision.general')
     || ['COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
+  // Administración lleva la ficha de taller y ve las etapas desde el código
+  // interno (Códigos internos › Ficha de taller y Etapas), y los reportes del
+  // taller ya los aprueba Gerencia en Supervisión (decisión de DKS, 2026-10-26;
+  // migración 20261026100000). En la OT ya no tiene esas pestañas.
+  const porCodigo = perfil.rol.codigo === 'ADMINISTRACION'
   return [
     'resumen',
     // El expediente lo ve quien ve la orden: cada bloque se lee con su propio
     // RLS, y el costo solo se pide con `costos.ver`.
     'expediente',
-    ...(tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
-    ...(tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
+    ...(!porCodigo && tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
+    ...(!porCodigo && tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
     ...(tecnico ? ['planos'] : []),
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver', 'requerimientos.ver') || tecnico ? ['materiales'] : []),
     ...(tiene('costos.ver', 'costos.registrar_gasto') ? ['costos'] : []),
-    // Administración revisa los reportes del taller (`produccion.aprobar_reportes`)
-    // y los revisa aquí: sin la pestaña, el aviso de «reportes por aprobar» no
-    // tenía adónde llevarla.
-    ...(tiene('produccion.ver', 'diseno.planos', 'produccion.aprobar_reportes') ? ['actividades'] : []),
+    // Quien aprueba los reportes del taller (`produccion.aprobar_reportes`) los
+    // revisa aquí: sin la pestaña, el aviso de «reportes por aprobar» no tenía
+    // adónde llevarlo. Administración ya no los aprueba (2026-10-26).
+    ...(!porCodigo && tiene('produccion.ver', 'diseno.planos', 'produccion.aprobar_reportes') ? ['actividades'] : []),
     'entrega',
     ...(tiene('produccion.ver') ? ['avance'] : []),
     'bitacora',

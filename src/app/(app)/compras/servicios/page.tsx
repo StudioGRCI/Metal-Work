@@ -19,7 +19,7 @@ import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion
 import { ESTADO_SERVICIO, servicioSinPapel } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceServicio, CorregirServicio } from './controles'
 import { AdjuntarDocumentoServicio, ListaDocumentosServicio } from './documentos-servicio'
@@ -29,10 +29,11 @@ export const metadata = { title: 'Órdenes de servicio' }
 
 export default async function PaginaOrdenesServicio({ searchParams }: { searchParams: Promise<{ codigo?: string }> }) {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver', 'compras.detraccion'])
-  const emite = puede(perfil, 'compras.crear')
-  const corrigeDetraccion = puede(perfil, ['compras.crear', 'compras.detraccion'])
+  // La OS la lleva Logística: Administración tiene `compras.crear` solo para la OC de su RQA.
+  const emite = compraComoLogistica(perfil)
+  const corrigeDetraccion = emite || puede(perfil, 'compras.detraccion')
   // La factura y el contrato de la OS los adjunta quien pasa `puede_adjuntar_documento_servicio`.
-  const adjunta = puede(perfil, ['compras.crear', 'tesoreria.pagar_servicios'])
+  const adjunta = emite || puede(perfil, 'tesoreria.pagar_servicios')
   const { codigo = '' } = await searchParams
   const buscado = codigo.trim()
   const [servicios, tipos, proveedores, ordenes, areas, codigos] = await Promise.all([

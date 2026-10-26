@@ -43,6 +43,48 @@ export function comoPrioridad(valor: unknown): PrioridadOrden | undefined {
 
 export const ORDENES_POR_PAGINA = 25
 
+/**
+ * El avance que se muestra en cada OT. Desde el 2026-10-15 el avance se lleva
+ * por código interno (Diseño marca las etapas, el supervisor reporta por
+ * código) y las etapas de la OT ya no las mueve nadie: la OT 2935-2026 decía
+ * 0 % con su código en 40 %. `avance_de_ordenes` (migración 20261026100000) da
+ * el del código a la OT que nació de una cotización, y el suyo a la orden sin
+ * cotización. Se pide aparte porque el cálculo del código no cabe en una vista
+ * que se lea fila por fila.
+ */
+export async function avanceDeOrdenes(ids: readonly (string | null)[]): Promise<Map<string, AvanceDeOrden>> {
+  const unicos = [...new Set(ids.filter((id): id is string => Boolean(id)))]
+  const avances = new Map<string, AvanceDeOrden>()
+  if (unicos.length === 0) return avances
+  const supabase = await createClient()
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('avance_de_ordenes', { p_ordenes: unicos.slice(i, i + 500) })
+    if (error) throw new Error(`No se pudo leer el avance de las órdenes: ${error.message}`)
+    for (const fila of data ?? []) {
+      if (!fila.orden_id) continue
+      avances.set(fila.orden_id, { avance: Number(fila.avance ?? 0), codigo: fila.del_codigo ? fila.codigo_interno : null })
+    }
+  }
+  return avances
+}
+
+export type AvanceDeOrden = {
+  avance: number
+  /** El código interno del que sale el avance; null si es el de las etapas de la propia OT. */
+  codigo: string | null
+}
+
+/** Las mismas filas con el avance de su código interno (`avanceDeOrdenes`) y de qué código sale. */
+export async function conAvanceDelCodigo<T extends { id: string | null; avance_porcentaje: number | null }>(
+  filas: T[],
+): Promise<(T & { avance_del_codigo: string | null })[]> {
+  const avances = await avanceDeOrdenes(filas.map((f) => f.id))
+  return filas.map((f) => {
+    const a = f.id ? avances.get(f.id) : undefined
+    return a ? { ...f, avance_porcentaje: a.avance, avance_del_codigo: a.codigo } : { ...f, avance_del_codigo: null }
+  })
+}
+
 /** Estados en los que la orden sigue viva en el taller. */
 const ESTADOS_ABIERTOS: Enums<'estado_ot'>[] = [
   'APROBADA',
@@ -88,7 +130,7 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   if (error) throw new Error(`No se pudieron listar las órdenes: ${error.message}`)
 
   return {
-    ordenes: data ?? [],
+    ordenes: await conAvanceDelCodigo(data ?? []),
     total: count ?? 0,
     pagina,
     paginas: Math.max(1, Math.ceil((count ?? 0) / ORDENES_POR_PAGINA)),
@@ -142,7 +184,9 @@ export async function obtenerOrden(id: string) {
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo cargar la orden: ${error.message}`)
-  return data
+  if (!data) return data
+  const [conAvance] = await conAvanceDelCodigo([data])
+  return conAvance
 }
 
 export async function listarEtapas(ordenId: string) {
@@ -336,7 +380,7 @@ export async function ordenesPorEntrega(limite = 8) {
 
   if (error) throw new Error(`No se pudieron cargar las órdenes en taller: ${error.message}`)
   // La vista declara anulable cada columna; una orden siempre tiene id.
-  const ordenes = (data ?? []).flatMap((o) => (o.id ? [{ ...o, id: o.id }] : []))
+  const ordenes = await conAvanceDelCodigo((data ?? []).flatMap((o) => (o.id ? [{ ...o, id: o.id }] : [])))
   return { ordenes, total: count ?? 0 }
 }
 

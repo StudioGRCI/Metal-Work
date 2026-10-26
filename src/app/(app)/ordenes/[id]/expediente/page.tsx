@@ -218,7 +218,13 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 <Progreso valor={orden.avance_porcentaje} alto="sm" className="mt-2" etiqueta="Avance de la unidad" />
               </div>
             }
-            pie={expediente.etapas.length > 0 ? `${terminadas} de ${expediente.etapas.length} etapas terminadas` : 'Sin etapas definidas'}
+            pie={
+              orden.avance_del_codigo
+                ? `El del código ${orden.avance_del_codigo}`
+                : expediente.etapas.length > 0
+                  ? `${terminadas} de ${expediente.etapas.length} etapas terminadas`
+                  : 'Sin etapas definidas'
+            }
           />
           <Indicador
             titulo="Tiempo en taller"
@@ -334,7 +340,20 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             ayuda="Lo que Administración programó para cada etapa y lo que de verdad tomó"
           />
           <TarjetaCuerpo className="space-y-5">
-            {expediente.etapas.length === 0 ? (
+            {orden.avance_del_codigo ? (
+              // Desde el 2026-10-15 las etapas son del código interno: las de la OT ya no las mueve nadie.
+              <p className="text-sm text-texto-suave">
+                Las etapas se llevan por el código interno: Diseño las marca y Supervisión reporta por código.{' '}
+                {puede(perfil, 'codigos_internos.ver') && (
+                  <Link
+                    href={enlaceCodigo(orden.avance_del_codigo, 'etapas')}
+                    className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
+                  >
+                    Ver las etapas de {orden.avance_del_codigo}
+                  </Link>
+                )}
+              </p>
+            ) : expediente.etapas.length === 0 ? (
               <p className="text-sm text-texto-suave">
                 Diseño todavía no definió las etapas de esta orden. Se definen en la pestaña Etapas.
               </p>

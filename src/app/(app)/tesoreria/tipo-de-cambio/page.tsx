@@ -32,7 +32,7 @@ export default async function PaginaTipoDeCambio() {
     <>
       <EncabezadoPagina
         titulo="Tipo de cambio"
-        ayuda="El cambio del dólar de cada día, que registra Contabilidad. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha, y la caja diaria de Tesorería suma con él sus cuentas en dólares."
+        ayuda="El cambio del dólar de cada día, que registra Contabilidad o, si falta, Administración. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha, y la caja diaria de Tesorería suma con él sus cuentas en dólares."
       />
 
       <Tarjeta className="mb-5">
