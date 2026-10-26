@@ -42,7 +42,8 @@ export async function cerrarPlanilla(_previo:unknown,datos:FormData):Promise<Res
   if(error) return {ok:false,error:mensajeDeError(error)}
   if(data!==id.data) return {ok:false,error:NO_TOCO_NADA}
   volver(); revalidatePath('/codigos-internos/detalle')
-  return {ok:true,mensaje:'Planilla cerrada. Si es de taller, el ajuste a su costo real ya entra a los códigos por las horas de cada persona.'}
+  // Qué pasa con su costo (el ajuste, o que queda como registro) lo dice la ventana antes de confirmar.
+  return {ok:true,mensaje:'Planilla cerrada.'}
 }
 
 /**

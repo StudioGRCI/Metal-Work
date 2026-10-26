@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
@@ -435,15 +436,14 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       texto: (n) =>
         plural(n, 'planilla de taller por cerrar: su ajuste no entra a los códigos', 'planillas de taller por cerrar: su ajuste no entra a los códigos'),
       contar: async () => {
-        const desde = await supabase.rpc('planilla_ajuste_desde')
-        if (desde.error || !desde.data) throw new Error('No se pudo leer desde cuándo se ajusta la planilla.')
+        const desde = await planillaAjusteDesde()
         const { count, error } = await supabase
           .from('planillas')
           .select('id', { count: 'exact', head: true })
           .eq('tipo', 'TALLER')
           .eq('moneda', 'PEN')
           .eq('estado', 'BORRADOR')
-          .gte('periodo', desde.data)
+          .gte('periodo', desde)
           .lt('periodo', esteMes)
         if (error) throw new Error('No se pudo leer la planilla.')
         return count ?? 0

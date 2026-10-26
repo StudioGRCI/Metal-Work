@@ -621,7 +621,19 @@ begin
   perform test.afirmar((select como = 'ANTES' and ajuste = 0 and entra = 0
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
     'una planilla de antes del inicio del ajuste no ajusta nada');
+  -- Juan trabajó en A el mes pasado y la planilla de taller de ese mes no está cerrada.
+  perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, v_mes + 9, 'CHK445_A', 4, 'Soldadura de la tolva');
   reset role;
+
+  -- Con el inicio real (noviembre de 2026), un mes de antes no hace esperar el cierre del costeo.
+  create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select date '2026-11-01' $f$;
+  if v_mes < date '2026-11-01' then
+    perform pg_temp.como('gerente');
+    set local role authenticated;
+    perform test.afirmar(not exists (select 1 from public.meses_sin_planilla_taller('CHK445_A')),
+      'un mes de antes de noviembre de 2026 no hace esperar el cierre del costeo, aunque su planilla de taller siga abierta');
+    reset role;
+  end if;
 
   -- El check vuelve a mover el inicio, ahora a 1999, para probar un mes sin horas (se deshace al final).
   create or replace function public.planilla_ajuste_desde() returns date language sql stable set search_path to 'public' as $f$ select date '1999-01-01' $f$;
@@ -630,8 +642,6 @@ begin
   perform test.afirmar((select como = 'SIN_FICHA' and ajuste = 300 and entra = 0 and not mes_con_horas
                           from public.rrhh_planilla_al_costo(current_setting('prueba.planilla_vieja')::uuid)),
     'en un mes sin horas en ningún código, la pantalla sabe que el costo no llega a ninguna unidad');
-  -- Juan trabajó en A el mes pasado y la planilla de taller de ese mes no está cerrada.
-  perform public.rrhh_registrar_tareo(gen_random_uuid(), current_setting('prueba.juan')::uuid, v_mes + 9, 'CHK445_A', 4, 'Soldadura de la tolva');
   reset role;
   perform pg_temp.como('gerente');
   set local role authenticated;

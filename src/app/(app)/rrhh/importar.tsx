@@ -7,7 +7,7 @@ import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { useEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
-import { claveNombre, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
+import { avisoDobleResta, claveNombre, tardanzasYPermisosDelExcel, type LineaPlanilla } from '@/lib/dominio/planilla-excel'
 import { leerExcelPlanilla, confirmarImportacion, type LecturaPlanilla } from './importacion-acciones'
 
 const id = (l: LineaPlanilla) => `${l.hoja}#${l.fila}`
@@ -16,16 +16,6 @@ const id = (l: LineaPlanilla) => `${l.hoja}#${l.fila}`
 const PARTICULAS = new Set(['DEL', 'LAS', 'LOS'])
 const palabras = (nombre: string) => claveNombre(nombre).split(' ').filter((p) => p.length > 2 && !PARTICULAS.has(p))
 const costo = (l: LineaPlanilla) => l.detalle.ingresos + l.detalle.aporte_empleador
-// Las tardanzas y los permisos que el Excel le resta: desde octubre de 2026 los
-// resta el sistema del pago (migración 20261026200000), así que en el Excel se
-// restarían dos veces. RR. HH. deja de ponerlos ahí (DKS, 2026-10-26).
-function yaLosRestaElSistema(l: LineaPlanilla): string[] {
-  const suma = (clave: string) =>
-    l.detalle.conceptos.filter((c) => c.tipo === 'DESCUENTO' && c.clave === clave).reduce((s, c) => s + c.importe, 0)
-  const tardanzas = suma('TARDANZAS')
-  const permisos = suma('PERMISOS')
-  return [tardanzas > 0 && `tardanzas ${moneda(tardanzas)}`, permisos > 0 && `permisos ${moneda(permisos)}`].filter((x): x is string => Boolean(x))
-}
 
 /**
  * Importar la planilla desde el Excel de Recursos Humanos: se lee el libro
@@ -37,7 +27,7 @@ export function ImportarPlanilla({
   restaSola,
 }: {
   planillaId: string
-  /** El mes de la planilla es de octubre de 2026 o después: el sistema ya resta las tardanzas y los permisos del pago. */
+  /** Planilla de taller o administrativa de octubre de 2026 o después: el sistema ya resta del pago las tardanzas y los permisos descontados. */
   restaSola: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -49,7 +39,7 @@ export function ImportarPlanilla({
 
   const todas = useMemo(() => lectura?.empresas.flatMap((g) => g.lineas) ?? [], [lectura])
   const elegidas = todas.filter((l) => seleccion.includes(id(l)))
-  const conDobleResta = restaSola ? todas.filter((l) => yaLosRestaElSistema(l).length > 0).length : 0
+  const conDobleResta = restaSola ? todas.filter((l) => tardanzasYPermisosDelExcel(l.detalle.conceptos)).length : 0
   const yaEsta = (l: LineaPlanilla) => lectura?.yaEn[claveNombre(l.nombre)]
   // Quien ya entró a esta planilla y no figura en el libro: si es que se le
   // corrigió el nombre, la versión corregida sale para elegir y entraría dos veces.
@@ -114,7 +104,8 @@ export function ImportarPlanilla({
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
               <p>
                 {conDobleResta === 1 ? '1 persona trae' : `${conDobleResta} personas traen`} tardanzas o permisos en los descuentos del Excel. Desde octubre de 2026
-                el sistema ya los resta del pago, en la planilla diaria y en los pagos de la oficina: quítalos del Excel para no restarlos dos veces.
+                el sistema ya resta del pago, a quien tiene ficha en Personal, las tardanzas y los permisos descontados, en la planilla diaria y en los pagos de
+                la oficina: si también van en el Excel, se restan dos veces. Si corriges el Excel, vuelve a leerlo con «Otro Excel».
               </p>
             </div>
           )}
@@ -149,12 +140,10 @@ export function ImportarPlanilla({
                   {g.lineas.map((l) => {
                     const ya = yaEsta(l)
                     const parecida = !ya && pareceA(l)
-                    const restados = restaSola ? yaLosRestaElSistema(l) : []
+                    const enElExcel = restaSola ? tardanzasYPermisosDelExcel(l.detalle.conceptos) : null
                     const avisos = [
                       ...(parecida ? [`¿Es ${parecida} con el nombre corregido? Ya está en esta planilla: si es la misma, no la elijas.`] : []),
-                      ...(restados.length > 0
-                        ? [`El Excel le resta ${restados.join(' y ')}: el sistema ya los resta del pago.`]
-                        : []),
+                      ...(enElExcel ? [avisoDobleResta(enElExcel)] : []),
                       ...(l.detalle.avisos ?? []),
                     ]
                     return (

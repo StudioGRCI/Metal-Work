@@ -217,13 +217,13 @@ try {
   v = await cargar(conTardanzas, [])
   const avisoDoble = limpio(await v.locator('[data-doble-resta]').textContent({ timeout: 10000 }).catch(() => ''))
   comprobar(
-    avisoDoble.includes('1 persona trae tardanzas o permisos') && avisoDoble.includes('quítalos del Excel para no restarlos dos veces'),
+    avisoDoble.includes('1 persona trae tardanzas o permisos') && avisoDoble.includes('si también van en el Excel, se restan dos veces') &&
+      avisoDoble.includes('vuelve a leerlo con «Otro Excel»'),
     `la ventana avisa que el Excel trae tardanzas o permisos (${avisoDoble.slice(0, 160)})`,
   )
   const filaCarlos = limpio(await v.locator('label', { hasText: CARLOS }).textContent())
   comprobar(
-    filaCarlos.includes('El Excel le resta tardanzas S/ 50.00 y permisos S/ 20.00: el sistema ya los resta del pago.') ||
-      filaCarlos.includes('El Excel le resta tardanzas S/ 50,00 y permisos S/ 20,00: el sistema ya los resta del pago.'),
+    /El Excel le resta tardanzas S\/ 50[.,]00 y permisos S\/ 20[.,]00: con ficha en Personal, el sistema ya resta eso del pago\./.test(filaCarlos),
     `su fila dice cuánto le resta el Excel (${filaCarlos.slice(0, 260)})`,
   )
   const filaJorge = limpio(await v.locator('label', { hasText: JORGE }).textContent())

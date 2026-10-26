@@ -460,7 +460,11 @@ try {
         cabecera.includes('queda como registro') && !cabecera.includes('ajuste') && registro.includes('empieza en noviembre de 2026'),
         `la de este mes dice que queda como registro: «${cabecera}» · «${registro}»`,
       )
-      comprobar(resumen.includes('de antes de noviembre de 2026: queda como registro'), `la fila de Juan lo dice: «${resumen}»`)
+      comprobar(!resumen.includes('ajuste') && !resumen.includes('queda como registro'), `la fila de Juan no repite lo de la cabecera: «${resumen}»`)
+      await tarjeta.locator('details', { hasText: enPlanilla }).locator('summary').click()
+      const porQue = await texto(tarjeta.locator('details', { hasText: enPlanilla }).locator('[data-al-costo]'))
+      comprobar(porQue.includes('Es de antes de noviembre de 2026') && porQue.includes('queda como registro'), `al abrirla, dice por qué: «${porQue}»`)
+      await tarjeta.locator('details', { hasText: enPlanilla }).locator('summary').click()
       comprobar((await tarjeta.locator('[data-espera-cierre]').count()) === 0, 'no pide cerrarla para ajustar nada')
       await tarjeta.getByRole('button', { name: 'Cerrar planilla' }).click()
       const ventana = pagina.locator('[role="dialog"]')

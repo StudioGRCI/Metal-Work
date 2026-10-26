@@ -44,6 +44,7 @@ export function CerrarPlanilla({
   titulo,
   deTaller,
   soloRegistro,
+  ajusteDesde,
   entra,
   sinDestino,
   mesTerminado,
@@ -54,6 +55,8 @@ export function CerrarPlanilla({
   deTaller: boolean
   /** La de taller de antes de noviembre de 2026: queda como registro, sin ajuste. */
   soloRegistro: boolean
+  /** «noviembre de 2026»: el mes en que empieza el ajuste, leído de la base. */
+  ajusteDesde: string
   /** Lo que el ajuste lleva a los códigos al cerrar (taller). */
   entra: number
   /** Personas cuyo ajuste no llega a ningún código: el mes no tiene horas en los reportes. */
@@ -67,7 +70,7 @@ export function CerrarPlanilla({
   const queHace = ajusta
     ? `Al cerrarla, ${moneda(entra)} de ajuste entran a la mano de obra de los códigos del mes, por sus horas.`
     : soloRegistro
-      ? 'Queda como registro: el ajuste de la planilla de taller empieza en noviembre de 2026.'
+      ? `Queda como registro: el ajuste de la planilla de taller empieza en ${ajusteDesde}.`
       : 'Queda como registro: su costo no entra por aquí a los códigos.'
   return <div className="space-y-2">
     <Boton type="button" tamano="sm" onClick={() => setAbierta(true)}>Cerrar planilla</Boton>
