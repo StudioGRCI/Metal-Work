@@ -98,7 +98,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales del almacén"
-          ayuda="El costeo del código interno usa el precio congelado en la salida; si no lo hay, la última compra; y si el material nunca se compró, el precio que fija Logística."
+          ayuda="El costeo del código interno y el de la OT usan el mismo precio: el congelado en la salida; si no lo hay, el de la última compra que entró al almacén; y si el material nunca se compró, el precio que fija Logística."
         />
         <Tabla>
           <TablaCabecera>

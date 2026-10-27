@@ -11,9 +11,9 @@
 --   1. el precio congelado en la salida;
 --   2. si no hay, el del último ingreso con precio hasta ese día (lo comprado por
 --      el sistema entra al almacén con el precio de su OC);
---   3. si no entró con precio y la salida entrega una línea de RQ comprada, el
---      de la OC de esa misma línea (no anulada ni rechazada): lo que se entrega
---      directo de la compra;
+--   3. si no entró con precio y la salida entrega una línea de RQ comprada (del
+--      RQ de la OT o del RQ por código), el de la OC de esa misma línea, si
+--      Gerencia la aprobó o no lo requería: lo que se entrega directo de la compra;
 --   4. si nunca se compró, el que fijó Logística: el vigente ese día o, si lo
 --      fijó después, el primero.
 -- El costeo del código ya usaba 1, 2 y 4, así que lo que tenía precio no cambia:
@@ -21,14 +21,15 @@
 -- Valorización y el costeo de la OT pasan a decir lo mismo que el código.
 
 -- 1. El precio de una salida ----------------------------------------------------------------------------------------
--- La primera versión de este archivo tenía cuatro argumentos: no se deja al lado otra.
+-- Las versiones de prueba de este archivo: no se deja otra al lado.
 drop function if exists public.precio_de_salida(uuid, timestamptz, numeric, text);
+drop function if exists public.precio_de_salida(uuid, timestamptz, numeric, text, uuid);
 create or replace function public.precio_de_salida(
   p_material uuid,
   p_en timestamptz,
   p_precio numeric default null,
   p_moneda text default null,
-  p_requerimiento_detalle uuid default null
+  p_salida uuid default null
 )
 returns table (precio numeric, moneda text, origen text)
 language sql
@@ -52,13 +53,17 @@ as $$
        order by i.registrado_en desc, i.id
        limit 1) ing on true
     left join lateral (
-      -- Solo la OC de la misma línea del RQ: otra OC del material puede no haber llegado nunca.
+      -- Solo la OC de la línea de RQ que esta salida entrega: otra OC del material
+      -- puede no haber llegado nunca.
       select cd.precio_unitario, c.moneda
-        from public.orden_compra_material_detalles cd
+        from public.movimientos_materiales m
+        left join public.requerimiento_lineas rl on rl.id = m.requerimiento_linea_id
+        join public.orden_compra_material_detalles cd
+          on cd.requerimiento_detalle_id = m.requerimiento_detalle_id or cd.id = rl.orden_compra_detalle_id
         join public.ordenes_compra_materiales c on c.id = cd.orden_compra_id
-       where p_requerimiento_detalle is not null and cd.requerimiento_detalle_id = p_requerimiento_detalle
+       where m.id = p_salida
          and cd.precio_unitario >= 0 and c.moneda in ('PEN', 'USD') and c.creado_en <= p_en
-         and coalesce(c.aprobacion, '') not in ('RECHAZADA', 'ANULADA')
+         and c.aprobacion in ('APROBADA', 'NO_REQUERIDA')
        order by c.creado_en desc, cd.id
        limit 1) oc on true
     left join lateral (
@@ -112,7 +117,6 @@ begin
     select 'MANO_OBRA_SIN_COSTO', e.codigo, e.fecha, e.horas, null::numeric, e.trabajador_id, e.reporte_id, e.trabajo_id, e.labor from espera e
   ), salida_base as (
     select m.id, m.registrado_en, m.material_id, m.precio_unitario, m.moneda, m.documento_referencia, rq.numero as rq_numero,
-           m.requerimiento_detalle_id as rq_detalle,
            public.normalizar_codigo_interno(coalesce(m.codigo_interno, rq.codigo_interno, u.codigo_interno, uo.codigo_interno,
                                                      case when m.unidad_id is null then m.codigo_unidad end)) as codigo,
            greatest(m.cantidad - coalesce((select sum(x.cantidad) from public.movimientos_materiales x
@@ -160,14 +164,14 @@ begin
      where t.codigo is not null and t.codigo not in ('PLANTA', 'TODOS LOS ACTIVOS')
   ), salida as (
     select s.id, s.registrado_en, s.material_id, s.precio_unitario, s.moneda, s.documento_referencia, s.rq_numero,
-           s.codigo, s.cantidad, null::bigint as entre, false as a_todos, s.rq_detalle
+           s.codigo, s.cantidad, null::bigint as entre, false as a_todos
       from salida_base s
      where s.codigo is distinct from 'TODOS LOS ACTIVOS'
     union all
     -- Lo cargado a todos: una parte igual para cada código que trabajó el mes de
     -- la salida. Sin ninguno, la salida entera queda en TODOS LOS ACTIVOS.
     select s.id, s.registrado_en, s.material_id, s.precio_unitario, s.moneda, s.documento_referencia, s.rq_numero,
-           coalesce(a.codigo, s.codigo), case when a.n is null then s.cantidad else s.cantidad / a.n end, a.n, true, s.rq_detalle
+           coalesce(a.codigo, s.codigo), case when a.n is null then s.cantidad else s.cantidad / a.n end, a.n, true
       from salida_base s
       left join activo a on a.periodo = s.periodo
      where s.codigo = 'TODOS LOS ACTIVOS'
@@ -176,7 +180,7 @@ begin
     -- costeo de la OT y la Valorización de Logística (20261027110000).
     select s.*, p.precio, p.moneda as moneda_val
       from salida s
-      left join lateral public.precio_de_salida(s.material_id, s.registrado_en, s.precio_unitario, s.moneda, s.rq_detalle) p on true
+      left join lateral public.precio_de_salida(s.material_id, s.registrado_en, s.precio_unitario, s.moneda, s.id) p on true
      where s.codigo is not null and s.cantidad > 0
        and (v_codigo is null or s.codigo = v_codigo)
   ), porcion as (
@@ -403,7 +407,7 @@ begin
     -- costeo del código interno y la Valorización de Logística (20261027110000).
     select e.*, p.precio, p.moneda as moneda_val
       from entregas e
-      left join lateral public.precio_de_salida(e.material_id, e.registrado_en, e.precio_registrado, e.moneda_registrada, e.detalle_id) p on true
+      left join lateral public.precio_de_salida(e.material_id, e.registrado_en, e.precio_registrado, e.moneda_registrada, e.id) p on true
      where e.cantidad > 0
   ), materiales as (
     select case when v.precio is null then 'MATERIALES_SIN_PRECIO' else 'MATERIALES' end as fuente,

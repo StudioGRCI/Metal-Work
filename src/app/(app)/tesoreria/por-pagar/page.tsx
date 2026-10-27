@@ -86,6 +86,8 @@ export default async function PaginaPorPagar() {
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
   // Y, para quien lleva la caja, de qué cuenta salió cada pago.
   const verCaja = puede(perfil, 'tesoreria.caja')
+  // Gerencia, que aprueba, salta desde la factura en espera a Aprobación de compras.
+  const apruebaCompras = puede(perfil, 'compras.configurar_aprobacion')
   const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas, codigosCredito] = await Promise.all([
     correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
     verCaja ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
@@ -117,7 +119,9 @@ export default async function PaginaPorPagar() {
   const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
-  const exigibles = porPagar.filter((c) => !c.enEspera)
+  // La que espera a Gerencia tampoco: no se puede pagar todavía.
+  const esperanGerencia = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length > 0)
+  const exigibles = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length === 0)
   const vencidas =
     exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
     pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length +
@@ -134,7 +138,7 @@ export default async function PaginaPorPagar() {
   const planillasPorOt = planillas.data ?? []
   // La que espera no le pide nada a Tesorería: va en el tono de aviso y lleva a la primera.
   const primeraEnEspera = porPagar.find((c) => c.enEspera)
-  const enEspera = porPagar.length - exigibles.length
+  const enEspera = porPagar.filter((c) => c.enEspera).length
   const conSaldo = notas.filter((n) => n.aFavor > 0).length
   // De qué notas a favor puede descontarse cada factura: se dice en ella, para no pagarla entera sin saberlo.
   const aFavorDe = new Map<string, NotaQueDescuenta[]>()
@@ -145,6 +149,13 @@ export default async function PaginaPorPagar() {
   const avisos = [
     conSaldo > 0
       ? { texto: conSaldo === 1 ? 'una nota de crédito a favor' : `${conSaldo} notas de crédito a favor`, href: '#notas-credito', tono: 'text-aviso' }
+      : null,
+    esperanGerencia.length > 0
+      ? {
+          texto: esperanGerencia.length === 1 ? 'una espera a Gerencia' : `${esperanGerencia.length} esperan a Gerencia`,
+          href: `#factura-${esperanGerencia[0].id}`,
+          tono: 'text-aviso',
+        }
       : null,
     primeraEnEspera
       ? {
@@ -206,6 +217,7 @@ export default async function PaginaPorPagar() {
                 pasa={pasa}
                 verOc={verOc}
                 verCuentas={verCuentas}
+                apruebaCompras={apruebaCompras}
                 hoy={hoy}
                 correcciones={correcciones.get(c.id ?? '')}
                 cuentasCaja={cuentasCaja}
@@ -323,6 +335,7 @@ export default async function PaginaPorPagar() {
                 pasa={pasa}
                 verOc={verOc}
                 verCuentas={verCuentas}
+                apruebaCompras={apruebaCompras}
                 hoy={hoy}
                 correcciones={correcciones.get(c.id ?? '')}
                 cuentasCaja={cuentasCaja}
@@ -851,6 +864,14 @@ function queQuedaAlAnular(b: CompraConBoleta, pagoId: string, m: CodigoMoneda): 
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
+/**
+ * Las OC de la factura que todavía no dejan pagarla: la base rechaza el pago de
+ * la factura de una OC por aprobar, rechazada o anulada (migración 20261027100000).
+ */
+function ocsSinAprobar(c: CuentaPorPagar) {
+  return Number(c.saldo) > 0 ? (c.control?.ordenes ?? []).filter((o) => o.aprobacion !== null && o.aprobacion !== 'APROBADA' && o.aprobacion !== 'NO_REQUERIDA') : []
+}
+
 /** Lo que le pide a Tesorería algo que no es pagar: lo pagado de más, o la factura en otra moneda que espera lo pagado por la boleta. */
 function pideAlgo(b: CompraConBoleta) {
   return Number(b.de_mas ?? 0) > 0 || Boolean(b.otra_moneda)
@@ -944,9 +965,12 @@ function Factura({
   esperaBoleta,
   nombresOc,
   aFavor = [],
+  apruebaCompras = false,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
+  /** Gerencia: la factura en espera lleva a Aprobación de compras. */
+  apruebaCompras?: boolean
   /** Puede pasar a una factura lo pagado por la boleta, o deshacerlo. */
   pasa: boolean
   verOc: boolean
@@ -969,8 +993,8 @@ function Factura({
   const ordenes = control?.ordenes ?? []
   // La base no deja pagar la factura de una OC que Gerencia no aprobó (migración 20261027100000):
   // en vez del botón, la factura dice a quién espera.
-  const sinAprobar = saldo > 0 ? ordenes.filter((o) => o.aprobacion === 'POR_APROBAR' || o.aprobacion === 'RECHAZADA') : []
-  const rechazada = sinAprobar.find((o) => o.aprobacion === 'RECHAZADA')
+  const sinAprobar = ocsSinAprobar(c)
+  const rechazada = sinAprobar.find((o) => o.aprobacion === 'RECHAZADA' || o.aprobacion === 'ANULADA')
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
@@ -1038,7 +1062,12 @@ function Factura({
             {saldo <= 0 && <Insignia tono="exito">Pagada</Insignia>}
             {saldo > 0 && Number(c.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {c.enEspera && saldo > 0 && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
-            {sinAprobar.length > 0 && (rechazada ? <Insignia tono="peligro">OC rechazada</Insignia> : <Insignia tono="aviso">Espera a Gerencia</Insignia>)}
+            {sinAprobar.length > 0 &&
+              (rechazada ? (
+                <Insignia tono="peligro">{rechazada.aprobacion === 'ANULADA' ? 'OC anulada' : 'OC rechazada'}</Insignia>
+              ) : (
+                <Insignia tono="aviso">Espera a Gerencia</Insignia>
+              ))}
             {aviso && <Insignia tono={aviso.tono}>{aviso.etiqueta}</Insignia>}
             <InsigniaDelDetector avisos={avisos} />
           </p>
@@ -1086,9 +1115,9 @@ function Factura({
       <div className="mt-2 space-y-2">
         <ParaPagar
           documentos={documentos}
-          cuentas={saldo > 0 && !espera && !c.enEspera ? c.cuentasProveedor : []}
+          cuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? c.cuentasProveedor : []}
           monedaDocumento={m}
-          sinCuentas={saldo > 0 && !espera && !c.enEspera ? sinCuentas(verCuentas, ordenes.length > 0) : null}
+          sinCuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? sinCuentas(verCuentas, ordenes.length > 0) : null}
         />
         {paga &&
           faltaDeAnulados > 0.005 && (
@@ -1131,8 +1160,9 @@ function Factura({
           <p className={`text-xs ${rechazada ? 'text-peligro' : 'text-aviso'}`}>
             {rechazada ? (
               <>
-                Gerencia rechazó la <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>: esta factura
-                no se paga. Contabilidad ve con el proveedor qué pasa con ella.
+                {rechazada.aprobacion === 'ANULADA' ? 'La ' : 'Gerencia rechazó la '}
+                <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>
+                {rechazada.aprobacion === 'ANULADA' ? ' está anulada' : ''}: esta factura no se paga. Contabilidad ve con el proveedor qué pasa con ella.
               </>
             ) : (
               <>
@@ -1145,6 +1175,14 @@ function Factura({
                 ))}{' '}
                 {sinAprobar.length === 1 ? 'todavía espera' : 'todavía esperan'} la aprobación de Gerencia: la factura se paga cuando Gerencia{' '}
                 {sinAprobar.length === 1 ? 'la apruebe' : 'las apruebe'}.
+                {apruebaCompras && (
+                  <>
+                    {' '}
+                    <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
+                      Ir a Aprobación de compras
+                    </a>
+                  </>
+                )}
               </>
             )}
           </p>

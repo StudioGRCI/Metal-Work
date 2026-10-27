@@ -14997,6 +14997,7 @@ export type Database = {
           p_en: string | null
           p_precio?: number | null
           p_moneda?: string | null
+          p_salida?: string | null
         }
         Returns: {
           precio: number | null
