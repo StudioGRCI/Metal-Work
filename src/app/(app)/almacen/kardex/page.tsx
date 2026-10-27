@@ -467,7 +467,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 <>
                   {/* La columna dice «Código interno»: el código, y si la salida no lo tiene, el nombre de la unidad. */}
                   {f.codigo_interno
-                    ? <span className="block font-mono text-sm font-medium break-words">{f.codigo_interno}</span>
+                    ? <span className="block font-mono text-sm font-medium [overflow-wrap:anywhere]">{f.codigo_interno}</span>
                     : f.codigo_unidad
                       ? <span className="block text-sm break-words">{f.codigo_unidad}</span>
                       : <span className="text-xs text-texto-tenue">—</span>}
@@ -538,7 +538,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   <TD className="tabular px-2 text-right sm:px-3 text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
                   <TD className="tabular px-2 text-right sm:px-3 font-semibold">
                     {cantidad(f.saldo)}
-                    {!elegido && f.unidad_medida && <span className="ml-1 text-xs font-normal text-texto-tenue">{f.unidad_medida}</span>}
+                    {!elegido && f.unidad_medida && <span className="block text-xs font-normal text-texto-tenue sm:ml-1 sm:inline">{f.unidad_medida}</span>}
                   </TD>
                 </TR>
               )
