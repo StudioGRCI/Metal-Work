@@ -161,7 +161,7 @@ function Fila({
             {r.retencion_porcentaje > 0 ? (
               <>
                 {' '}
-                − retención <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
+                − retención del {r.retencion_porcentaje} % <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
               </>
             ) : (
               ' · sin retención'

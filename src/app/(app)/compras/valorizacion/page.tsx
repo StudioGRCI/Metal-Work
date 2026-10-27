@@ -6,7 +6,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { materialesParaValorizar, precioDeCosteo } from '@/lib/datos/valorizacion'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { cantidad, fecha, moneda } from '@/lib/format'
+import { cantidad, fecha, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { FijarPrecio } from './fijar-precio'
@@ -72,8 +72,18 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
 
       <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Cifra etiqueta="Materiales con saldo" valor={cantidad(enAlmacen.length)} />
-        <Cifra etiqueta="Con saldo y sin precio" valor={cantidad(sinPrecio.length)} aviso={sinPrecio.length > 0} />
-        <Cifra etiqueta="Valor en almacén (soles)" valor={moneda(valor.PEN, 'PEN')} />
+        <Cifra
+          etiqueta="Con saldo y sin precio"
+          valor={cantidad(sinPrecio.length)}
+          pie={sinPrecio.length > 0 ? `${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))} de los que tienen saldo` : undefined}
+          aviso={sinPrecio.length > 0}
+        />
+        {/* Un S/ 0.00 con todo sin precio se leía como almacén vacío (auditoría del 27/10/2026). */}
+        <Cifra
+          etiqueta="Valor en almacén (soles)"
+          valor={sinPrecio.length > 0 && sinPrecio.length === enAlmacen.length ? 'Sin calcular' : moneda(valor.PEN, 'PEN')}
+          pie={sinPrecio.length > 0 ? `sin ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}) que no tienen precio` : undefined}
+        />
         <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
       </dl>
 
@@ -172,11 +182,14 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   )
 }
 
-function Cifra({ etiqueta, valor, aviso }: { etiqueta: string; valor: string; aviso?: boolean }) {
+function Cifra({ etiqueta, valor, pie, aviso }: { etiqueta: string; valor: string; pie?: string; aviso?: boolean }) {
   return (
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
-      <dt className="text-[11px] text-texto-suave">{etiqueta}</dt>
-      <dd className={`tabular mt-1 text-lg font-semibold ${aviso ? 'text-aviso' : 'text-texto'}`}>{valor}</dd>
+      <dt className="text-xs text-texto-suave">{etiqueta}</dt>
+      <dd className={`tabular mt-1 text-lg font-semibold ${aviso ? 'text-aviso' : 'text-texto'}`}>
+        {valor}
+        {pie && <span className="block text-xs font-normal text-texto-suave">{pie}</span>}
+      </dd>
     </div>
   )
 }

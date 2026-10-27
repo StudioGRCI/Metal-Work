@@ -68,6 +68,10 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     totales.set(clave, previo)
   }
 
+  // Lo que se reparte por horas este mes, por moneda: los gastos vigentes y el sueldo de la oficina (en soles).
+  const aRepartirPen = [...totales.values()].filter((t) => t.moneda === 'PEN').reduce((n, t) => n + t.monto, 0) + (reparto.length > 0 ? oficina.monto : 0)
+  const aRepartirUsd = [...totales.values()].filter((t) => t.moneda === 'USD').reduce((n, t) => n + t.monto, 0)
+
   return (
     <>
       <EncabezadoPagina
@@ -84,7 +88,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           className="inline-flex size-11 items-center justify-center rounded-[var(--radius-base)] border border-borde text-texto hover:bg-superficie-2 sm:size-9">
           <ChevronLeft aria-hidden className="size-4" />
         </Link>
-        <span className="min-w-40 text-center text-base font-semibold capitalize text-texto">{mesLargo(`${mes}-01`)}</span>
+        <span className="min-w-40 text-center text-base font-semibold text-texto first-letter:uppercase">{mesLargo(`${mes}-01`)}</span>
         <Link href={`/costos/gastos-generales?mes=${otroMes(mes, 1)}`} aria-label="Mes siguiente"
           className="inline-flex size-11 items-center justify-center rounded-[var(--radius-base)] border border-borde text-texto hover:bg-superficie-2 sm:size-9">
           <ChevronRight aria-hidden className="size-4" />
@@ -207,11 +211,13 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
               <TH>Unidad</TH>
               <TH className="text-right">Horas</TH>
               <TH className="text-right">Parte de cada gasto</TH>
+              {/* Lo que esa parte vale en plata este mes: los gastos en soles y el sueldo de la oficina (DKS, 27/10/2026: porcentaje y costo). */}
+              <TH className="text-right">Carga del mes</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {reparto.length === 0 ? (
-              <SinDatos colSpan={3} titulo="Sin horas en este mes"
+              <SinDatos colSpan={4} titulo="Sin horas en este mes"
                 descripcion="Los gastos se reparten cuando los supervisores reporten horas en una unidad o RR. HH. las cargue en su tareo." />
             ) : reparto.map((r) => (
               <TR key={r.codigo}>
@@ -223,6 +229,10 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                 </TD>
                 <TD className="tabular text-right">{cantidad(r.horas)}</TD>
                 <TD className="tabular text-right">{porcentaje(r.parte, 2)}</TD>
+                <TD className="tabular text-right whitespace-nowrap">
+                  {moneda((aRepartirPen * Number(r.parte)) / 100)}
+                  {aRepartirUsd > 0 && <span className="block text-xs text-texto-suave">+ {moneda((aRepartirUsd * Number(r.parte)) / 100, 'USD')}</span>}
+                </TD>
               </TR>
             ))}
           </tbody>

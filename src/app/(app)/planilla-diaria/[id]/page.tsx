@@ -11,7 +11,7 @@ import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { planillaDiaria, type PagoPlanilla, type PersonaPlanilla } from '@/lib/datos/planilla-diaria'
 import { ESTADO_PLANILLA, estadoDePlanilla, personasTexto } from '@/lib/dominio/planilla-diaria'
 import { TIPO_CUENTA, horasCortas } from '@/lib/dominio/rrhh'
-import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularConMotivo, EntregarBoleta, RegistrarPago, SubirBoleta } from './acciones-planilla'
@@ -193,6 +193,13 @@ function Persona({
                 <span className="font-medium text-acento">
                   <span className="tabular">{horasCortas(g.horas_extras)}</span> extras · <span className="tabular">{moneda(g.monto_extras)}</span>
                 </span>
+                {/* Cuánto de eso es recargo: el detalle de abajo lo trae día por día (DKS, 27/10/2026: porcentaje y costo). */}
+                {recargoDe(g) > 0 && (
+                  <span className="text-texto-suave">
+                    {' '}
+                    (recargo <span className="tabular">{moneda(recargoDe(g))}</span> · {porcentaje(parteDe(recargoDe(g), g.monto_extras))})
+                  </span>
+                )}
               </>
             )}
             {g.horas_permiso > 0 && (
@@ -320,4 +327,16 @@ function EnlaceArchivo({ enlace, texto }: { enlace: string | null; texto: string
       {texto}
     </a>
   )
+}
+
+/**
+ * El recargo de las extras de una persona: lo que sus días de extras pagan por
+ * encima de la hora normal (`valor_hora × horas × recargo`), sumado de su detalle.
+ */
+function recargoDe(g: PersonaPlanilla): number {
+  return Math.round(
+    g.detalle
+      .filter((d) => d.concepto === 'EXTRAS')
+      .reduce((n, d) => n + d.valor_hora * ((d.horas_tramo1 * d.recargo_tramo1 + d.horas_tramo2 * d.recargo_tramo2) / 100), 0) * 100,
+  ) / 100
 }

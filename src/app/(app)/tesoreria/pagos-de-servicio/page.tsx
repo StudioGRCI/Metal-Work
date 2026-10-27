@@ -15,7 +15,7 @@ import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPagoServicio, PagarServicio } from '../formularios'
@@ -170,6 +170,9 @@ function Servicio({
           {!s.cancelada && saldo.saldoProveedor > 0 && (
             <p className="text-sm font-semibold text-texto">
               Falta <span className="tabular">{moneda(saldo.saldoProveedor, m)}</span> <span className="font-normal">al proveedor</span>
+              {saldo.pagadoProveedor > 0 && (
+                <span className="tabular font-normal text-texto-suave"> · {porcentaje(parteDe(saldo.saldoProveedor, saldo.alProveedor))}</span>
+              )}
             </p>
           )}
           {!s.cancelada && saldo.saldoDetraccion > 0 && (
@@ -181,7 +184,11 @@ function Servicio({
           <p className="text-xs text-texto-suave">
             Total <span className="tabular">{moneda(saldo.total, m)}</span> con IGV
           </p>
-          {saldo.pagadoProveedor > 0 && <p className="tabular text-xs text-texto-suave">Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}</p>}
+          {saldo.pagadoProveedor > 0 && (
+            <p className="tabular text-xs text-texto-suave">
+              Pagado al proveedor {moneda(saldo.pagadoProveedor, m)} · {porcentaje(parteDe(saldo.pagadoProveedor, saldo.alProveedor))} de lo que va a él
+            </p>
+          )}
           {saldo.pagadoDetraccion > 0 && <p className="tabular text-xs text-texto-suave">Detracción depositada {moneda(saldo.pagadoDetraccion)}</p>}
         </div>
       </div>

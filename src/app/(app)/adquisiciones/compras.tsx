@@ -33,7 +33,7 @@ import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, compraConPdf, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
-import { cantidad, fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
@@ -669,6 +669,14 @@ function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso:
             {x.saldo > 0 && (
               <p className="tabular whitespace-nowrap text-texto">
                 {x.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(x.saldo, m)}
+                {/* Lo pagado como parte de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+                {(x.pagado ?? 0) > 0 && <span className="text-texto-suave"> · pagado {porcentaje(parteDe(x.pagado, x.total))}</span>}
+              </p>
+            )}
+            {/* La factura que pasa el total de su OC sin que nadie lo diga: el aviso de Contabilidad va en su pestaña, y aquí no se veía (27/10/2026). */}
+            {f.tipo === 'OC' && registradas.length === 1 && x.moneda === f.moneda && f.total !== null && x.total > f.total + 0.005 && (
+              <p className="text-aviso">
+                La factura pasa la OC en <span className="tabular whitespace-nowrap">{moneda(x.total - (f.total ?? 0), m)}</span> ({porcentaje(parteDe(x.total - (f.total ?? 0), f.total))})
               </p>
             )}
             {tomado > 0 && (

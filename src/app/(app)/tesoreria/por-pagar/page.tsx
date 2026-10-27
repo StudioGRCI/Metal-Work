@@ -28,7 +28,7 @@ import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
-import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -461,6 +461,7 @@ function ParteConBoletaFila({
               <>
                 {'pagado '}
                 <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                {` (${porcentaje(parteDe(pagado, x.monto))})`}
                 {' · '}
               </>
             )}

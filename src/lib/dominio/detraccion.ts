@@ -1,5 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { moneda } from '@/lib/format'
+import { moneda, parteDe, porcentaje as pct } from '@/lib/format'
 
 /**
  * La detracción (SPOT) de una orden de servicio: quien contrata deposita un
@@ -50,16 +50,19 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   if (d.total_con_igv_pen === null) {
     return { texto: `Detracción ${porcentaje}: falta el tipo de cambio`, detalle: tipo, tono: 'aviso' }
   }
+  // El IGV que va dentro del total: lo que se lee en la factura (DKS, 27/10/2026: porcentaje y costo).
+  const igv = Math.round((d.total_con_igv_pen - d.total_con_igv_pen / (1 + IGV)) * 100) / 100
   if (d.monto === null) {
     return {
       texto: `Sin detracción: no pasa de ${moneda(d.minimo ?? 0)}`,
-      detalle: `${tipo} · ${porcentaje} · con IGV suma ${moneda(d.total_con_igv_pen)}`,
+      detalle: `${tipo} · ${porcentaje} · con IGV suma ${moneda(d.total_con_igv_pen)} (IGV ${moneda(igv)})`,
       tono: 'neutro',
     }
   }
+  const alProveedor = Math.round((d.total_con_igv_pen - d.monto) * 100) / 100
   return {
     texto: `Detracción ${porcentaje}: ${moneda(d.monto)}`,
-    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV`,
+    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV (IGV ${moneda(igv)}) · al proveedor ${moneda(alProveedor)} · ${pct(parteDe(alProveedor, d.total_con_igv_pen))}`,
     tono: 'info',
   }
 }

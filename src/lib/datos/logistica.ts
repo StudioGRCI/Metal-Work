@@ -46,6 +46,8 @@ export type OrdenCompraListada = {
   codigo_por_insumo: boolean
   /** Las facturas que Logística le anexó, con su número y su fecha; una OC puede ir en varias. */
   facturas: { id: string; numero: string; fecha: string | null }[]
+  /** Las facturas que Contabilidad registró en Adquisiciones con esta OC y no están anexadas aquí: registradas, sin su PDF en la OC. */
+  registradas: string[]
   /** Lo que hizo Almacén con lo que dejó el conductor; null mientras no lo deja. */
   validacion: ValidacionIngreso
 }
@@ -91,8 +93,9 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
   const ids = (data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id))
   const datosCompra = new Map<string, { con_factura: boolean; codigo_interno: string | null }>()
   const facturasDe = new Map<string, { id: string; numero: string; fecha: string | null }[]>()
+  const registradasDe = new Map<string, string[]>()
   for (let i = 0; i < ids.length; i += 150) {
-    const [tanda, facturas] = await Promise.all([
+    const [tanda, facturas, registradas] = await Promise.all([
       supabase.from('ordenes_compra_materiales').select('id, con_factura, codigo_interno').in('id', ids.slice(i, i + 150)),
       supabase
         .from('documentos_compra_material')
@@ -102,9 +105,21 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
         .is('anulado_en', null)
         .in('orden_compra_id', ids.slice(i, i + 150))
         .order('fecha_emision'),
+      // La factura que Contabilidad registró en Adquisiciones: en la OC salía «Factura pendiente» (27/10/2026).
+      supabase
+        .from('adquisiciones_ordenes_compra')
+        .select('orden_compra_id, adquisicion:adquisiciones!inner(numero_documento, estado)')
+        .is('quitada_en', null)
+        .eq('adquisicion.estado', 'REGISTRADA')
+        .in('orden_compra_id', ids.slice(i, i + 150)),
     ])
     if (tanda.error) throw new Error(`No se pudo leer el comprobante de las compras: ${tanda.error.message}`)
     if (facturas.error) throw new Error(`No se pudieron leer las facturas anexadas a las compras: ${facturas.error.message}`)
+    if (registradas.error) throw new Error(`No se pudieron leer las facturas registradas de las compras: ${registradas.error.message}`)
+    for (const r of registradas.data ?? []) {
+      const numero = (r.adquisicion as { numero_documento: string } | null)?.numero_documento
+      if (numero) registradasDe.set(r.orden_compra_id, [...(registradasDe.get(r.orden_compra_id) ?? []), numero])
+    }
     for (const fila of tanda.data ?? []) datosCompra.set(fila.id, fila)
     for (const f of facturas.data ?? []) {
       if (!f.numero_documento) continue
@@ -148,6 +163,7 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
     codigos: insumos.get(c.id ?? '')?.codigos ?? [],
     codigo_por_insumo: insumos.get(c.id ?? '')?.porInsumo ?? false,
     facturas: facturasDe.get(c.id ?? '') ?? [],
+    registradas: (registradasDe.get(c.id ?? '') ?? []).filter((n) => !(facturasDe.get(c.id ?? '') ?? []).some((f) => f.numero === n)),
     validacion: validacionDeCompra(estadosPorCompra.get(c.id ?? '') ?? []),
   }))
 }
