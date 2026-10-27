@@ -391,8 +391,9 @@ export type OrdenDelCodigo = {
 }
 
 /**
- * Las OT de un código interno (migración 20261016900000): Gerencia las carga al
- * aprobar la cotización y Diseño las ve dentro del código. Corre con los
+ * Las OT de un código interno (migración 20261016900000): Administración las
+ * carga con el código interno, sobre la cotización que Gerencia aprobó (migración
+ * 20261027200000), y Diseño las ve dentro del código. Corre con los
  * permisos de quien mira: el PDF solo le llega a Diseño (`puede_ver_pdf_ot`).
  */
 export async function ordenesDelCodigo(codigo: string): Promise<OrdenDelCodigo[]> {
