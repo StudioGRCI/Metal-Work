@@ -6,6 +6,7 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
@@ -555,10 +556,18 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       contar: async () => {
         // La cuenta es la de la base; lo que vale sale de la misma bandeja que
         // Facturación: las aprobadas con código y sin factura vigente.
+        // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
         const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
-        if (bandeja.error) throw new Error('No se pudo consultar el pendiente.')
+        const cantidad = cuenta.por_facturar ?? 0
+        // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
+        if (bandeja.error) return cantidad
         const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
-        return { cantidad: cuenta.por_facturar ?? 0, monto: enMonedas(sinFactura, (c) => c.moneda, (c) => Number(c.monto_venta ?? 0)) }
+        // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
+        if (sinFactura.length !== cantidad) return cantidad
+        return {
+          cantidad,
+          monto: enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+        }
       },
     })
   }

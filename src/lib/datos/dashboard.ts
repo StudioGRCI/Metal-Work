@@ -152,7 +152,7 @@ function loQueEspera(titulo: string, claves: string[], ruta: string, icono: Luci
       // Cada cuenta con lo que vale al lado; la que no es dinero, solo su texto.
       const textos = mias.map((t) =>
         !opciones.enSoles && t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
-          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')})`
+          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')} sin IGV)`
           : t.texto,
       )
       const pie = [sinLeer ? 'una cuenta no se pudo leer' : null, ...(mias.length > 0 ? textos : sinLeer ? [] : ['nada por ahora'])]

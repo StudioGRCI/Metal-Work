@@ -492,7 +492,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               return (
                 <TR key={f.id}>
                   <TD className="text-xs text-texto-suave">
-                    <span className="whitespace-nowrap">{fechaHora(f.fecha)}</span>
+                    {/* En el teléfono, la fecha sobre la hora: en una línea ensanchaba la tabla 14 px (auditoría del 27/10/2026). */}
+                    {fechaHora(f.fecha).split(', ').map((parte, i, partes) => (
+                      <span key={i} className="block whitespace-nowrap sm:inline">
+                        {parte}
+                        {i < partes.length - 1 && <span className="hidden sm:inline">, </span>}
+                      </span>
+                    ))}
                     <div className="mt-1 min-w-32 space-y-1 text-texto sm:hidden">
                       {!elegido && <div>{material}</div>}
                       <div className="flex flex-wrap items-center gap-1">

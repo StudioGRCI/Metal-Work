@@ -244,7 +244,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                       </p>
                       <p className="mt-1 text-sm font-medium text-texto">
                         {f.cantidad === null ? 'Sin cantidad' : `${cantidad(f.cantidad)} ${f.unidadMedida ?? ''}`} · {f.descripcion ?? (f.descripcionEscrita || f.codigo)}
-                        {f.materialId && <span className="ml-1 font-mono text-[11px] font-normal text-texto-tenue">{f.codigo}</span>}
+                        {f.materialId && <span className="ml-1 font-mono text-xs font-normal text-texto-tenue">{f.codigo}</span>}
                       </p>
                       {f.descripcionEscrita && f.descripcion && normalizarNombre(f.descripcion) !== normalizarNombre(f.descripcionEscrita) && (
                         <p className="text-xs text-texto-suave">Escrito en la planilla: {f.descripcionEscrita}</p>

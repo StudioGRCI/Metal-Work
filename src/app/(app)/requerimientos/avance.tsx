@@ -28,8 +28,8 @@ export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
   return (
     <div className="mt-2 w-48 max-w-full space-y-0.5">
       <Progreso valor={rq.avance.porcentaje} mostrarValor alto="sm" etiqueta={`Avance de ${rq.numero}`} />
-      {!repite && <p className={`text-[11px] font-medium ${COLOR[etapa?.tono ?? 'neutro']}`}>{etapa?.etiqueta ?? rq.avance.etapa}</p>}
-      {resumen && <p className="text-[11px] text-texto-suave">{resumen}</p>}
+      {!repite && <p className={`text-xs font-medium ${COLOR[etapa?.tono ?? 'neutro']}`}>{etapa?.etiqueta ?? rq.avance.etapa}</p>}
+      {resumen && <p className="text-xs text-texto-suave">{resumen}</p>}
     </div>
   )
 }
