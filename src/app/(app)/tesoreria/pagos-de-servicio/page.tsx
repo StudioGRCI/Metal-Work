@@ -15,7 +15,7 @@ import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPagoServicio, PagarServicio } from '../formularios'
@@ -154,8 +154,10 @@ function Servicio({
           </p>
           {conDetraccion && !s.cancelada && (
             <p className="text-xs text-texto-suave">
-              Detracción {detraccion.detalle}. Al proveedor se le pagan {moneda(saldo.alProveedor, m)}; la detracción va a su cuenta del Banco de la
-              Nación.
+              {/* El detalle ya dice cuánto va al proveedor y qué parte es, en soles; en dólares se repite en su moneda, que es la del voucher. */}
+              Detracción {detraccion.detalle}.
+              {m !== 'PEN' && saldo.alProveedor > 0 && ` Al proveedor se le pagan ${moneda(saldo.alProveedor, m)}.`}
+              {' '}La detracción va a la cuenta del proveedor en el Banco de la Nación.
             </p>
           )}
           {todoPagado && (
@@ -170,19 +172,35 @@ function Servicio({
           {!s.cancelada && saldo.saldoProveedor > 0 && (
             <p className="text-sm font-semibold text-texto">
               Falta <span className="tabular">{moneda(saldo.saldoProveedor, m)}</span> <span className="font-normal">al proveedor</span>
+              {saldo.pagadoProveedor > 0 && parteDe(saldo.saldoProveedor, saldo.alProveedor) !== null && (
+                <span className="tabular font-normal text-texto-suave"> · {porcentaje(parteDe(saldo.saldoProveedor, saldo.alProveedor))} de lo que va a él</span>
+              )}
             </p>
           )}
           {!s.cancelada && saldo.saldoDetraccion > 0 && (
             <p className="text-sm text-texto">
               {saldo.saldoProveedor > 0 ? 'y ' : 'Falta '}
               <span className="tabular font-semibold">{moneda(saldo.saldoDetraccion)}</span> de detracción
+              {saldo.pagadoDetraccion > 0 && parteDe(saldo.saldoDetraccion, saldo.detraccion) !== null && (
+                <span className="tabular text-texto-suave"> · {porcentaje(parteDe(saldo.saldoDetraccion, saldo.detraccion))} de ella</span>
+              )}
             </p>
           )}
           <p className="text-xs text-texto-suave">
             Total <span className="tabular">{moneda(saldo.total, m)}</span> con IGV
           </p>
-          {saldo.pagadoProveedor > 0 && <p className="tabular text-xs text-texto-suave">Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}</p>}
-          {saldo.pagadoDetraccion > 0 && <p className="tabular text-xs text-texto-suave">Detracción depositada {moneda(saldo.pagadoDetraccion)}</p>}
+          {saldo.pagadoProveedor > 0 && (
+            <p className="tabular text-xs text-texto-suave">
+              Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}
+              {parteDe(saldo.pagadoProveedor, saldo.alProveedor) !== null && ` · ${porcentaje(parteDe(saldo.pagadoProveedor, saldo.alProveedor))} de lo que va a él`}
+            </p>
+          )}
+          {saldo.pagadoDetraccion > 0 && (
+            <p className="tabular text-xs text-texto-suave">
+              Detracción depositada {moneda(saldo.pagadoDetraccion)}
+              {parteDe(saldo.pagadoDetraccion, saldo.detraccion) !== null && ` · ${porcentaje(parteDe(saldo.pagadoDetraccion, saldo.detraccion))} de ella`}
+            </p>
+          )}
         </div>
       </div>
 

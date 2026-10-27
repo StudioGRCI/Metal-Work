@@ -184,7 +184,7 @@ function FilaCompra({
           ) : sinCurso ? (
             <span className="text-[11px] text-texto-suave">No se paga</span>
           ) : (
-            <span className="text-[11px] text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+            <span className="text-[11px] text-texto-suave">{comprobantePendiente(c)}</span>
           )}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
@@ -221,7 +221,7 @@ function FilaCompra({
         ) : sinCurso ? (
           <span className="text-xs text-texto-suave">No se paga</span>
         ) : (
-          <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+          <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
         )}
         {!sinCurso && <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>}
         {c.facturas.length > 0 && (
@@ -269,4 +269,15 @@ function FilaCompra({
       </TD>
     </TR>
   )
+}
+
+/**
+ * Lo que falta del comprobante: la factura que Contabilidad ya registró en
+ * Adquisiciones no está «pendiente», solo le falta el PDF en la OC (en
+ * Adquisiciones la OC salía pagada y aquí «Factura pendiente», 27/10/2026).
+ */
+function comprobantePendiente(c: { con_factura: boolean | null; registradas: string[] }) {
+  if (c.registradas.length > 1) return `Facturas ${c.registradas.join(', ')} registradas por Contabilidad · falta anexarlas a la OC`
+  if (c.registradas.length === 1) return `Factura ${c.registradas[0]} registrada por Contabilidad · falta anexarla a la OC`
+  return c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'
 }

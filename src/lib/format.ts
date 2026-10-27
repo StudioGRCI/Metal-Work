@@ -49,7 +49,15 @@ export function cantidad(valor: number | string | null | undefined) {
  * porcentaje pasa por aquí.
  */
 export function porcentaje(valor: number | string | null | undefined, decimales = 0) {
-  return `${Number(valor ?? 0).toLocaleString('es-PE', {
+  const n = Number(valor ?? 0)
+  // Mientras quede algo, el redondeo no puede decir «0 %» ni «100 %»: en la
+  // revisión de salida un «100 % · falta S/ 400» deja salir el vehículo con
+  // deuda. Lo que no llega a la unidad que se muestra se dice como «< 1 %» y
+  // lo que ya casi llega, como «> 99 %» (auditoría del 27/10/2026).
+  const paso = 10 ** -decimales
+  if (n > 0 && n < paso / 2) return `< ${numero(paso, decimales)} %`
+  if (n < 100 && n > 100 - paso / 2) return `> ${numero(100 - paso, decimales)} %`
+  return `${n.toLocaleString('es-PE', {
     minimumFractionDigits: decimales,
     maximumFractionDigits: decimales,
   })} %`

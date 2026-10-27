@@ -11,11 +11,11 @@ import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
-import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularCobro, CobrarFactura } from '../formularios'
-import { RevisionesDeSalida } from '../revisiones-de-salida'
+import { RevisionesDeSalida, type CobroDelCodigo } from '../revisiones-de-salida'
 import { SolicitudesOT } from '../solicitudes-ot'
 
 export const metadata = { title: 'Cuentas por cobrar' }
@@ -53,6 +53,27 @@ export default async function PaginaPorCobrar() {
   const cobradas = facturas.filter((f) => !pendientes.includes(f))
   const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < hoy).length
   const resumen = resumenPorMoneda(pendientes.map((f) => ({ moneda: f.moneda, monto: Number(f.saldo) })), ['factura', 'facturas'])
+  // Lo cobrado de cada código que pide salir: el mismo dato de «Cotizaciones
+  // aprobadas», junto a la revisión. Un código con dos cotizaciones las suma
+  // (antes quedaba solo la más vieja); en monedas distintas no se suman y se dice.
+  const cobrosPorCodigo: Record<string, CobroDelCodigo> = {}
+  for (const c of cotizaciones) {
+    if (!c.codigo_interno) continue
+    const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+    const previo = cobrosPorCodigo[c.codigo_interno]
+    if (!previo) {
+      cobrosPorCodigo[c.codigo_interno] = { total, facturado: Number(c.facturado ?? 0), cobrado: Number(c.cobrado ?? 0), moneda: codigo(c.moneda), cotizaciones: 1, monedasDistintas: false }
+    } else if (previo.moneda !== codigo(c.moneda)) {
+      previo.monedasDistintas = true
+      previo.cotizaciones += 1
+    } else {
+      previo.total = previo.total === null || total === null ? null : previo.total + total
+      previo.facturado += Number(c.facturado ?? 0)
+      previo.cobrado += Number(c.cobrado ?? 0)
+      previo.cotizaciones += 1
+    }
+  }
+  const abreVehiculos = puede(perfil, 'vehiculos.ver') || puede(perfil, 'vehiculos.registrar')
 
   return (
     <AvisoDeLaCaja>
@@ -64,7 +85,7 @@ export default async function PaginaPorCobrar() {
         }`}
       />
 
-      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} />}
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={cobrosPorCodigo} abreVehiculos={abreVehiculos} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
@@ -154,7 +175,9 @@ export default async function PaginaPorCobrar() {
                         <Insignia tono="neutro">{c.codigo_interno ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
                       ) : (
                         <span className="tabular">
-                          Facturado {moneda(c.facturado, m)} · cobrado {moneda(c.cobrado, m)}
+                          Facturado {moneda(c.facturado, m)}
+                          {parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado {moneda(c.cobrado, m)}
+                          {parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
                         </span>
                       )}
                       {c.url && (

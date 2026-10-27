@@ -83,7 +83,7 @@ export type PlanillaListada = {
   creado_en: string
   anulado_en: string | null
   motivo_anulacion: string | null
-  gente: { pago_id: string | null; boleta_ruta: string | null; boleta_entregada_en: string | null }[]
+  gente: { pago_id: string | null; boleta_ruta: string | null; boleta_entregada_en: string | null; total: number }[]
 }
 
 /** Las planillas diarias, de la más reciente a la más vieja. Las ven RR. HH., Tesorería y Gerencia. */
@@ -93,13 +93,18 @@ export async function listarPlanillasDiarias(): Promise<PlanillaListada[]> {
     .from('planillas_diarias')
     .select(
       'id, numero, fecha, personas, total, creado_en, anulado_en, motivo_anulacion,' +
-        ' gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_ruta, boleta_entregada_en)',
+        ' gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_ruta, boleta_entregada_en, total)',
     )
     .order('creado_en', { ascending: false })
     .limit(100)
   if (error) throw new Error(`No se pudieron leer las planillas diarias: ${error.message}`)
-  type Fila = Omit<PlanillaListada, 'total' | 'gente'> & { total: number | string; gente: PlanillaListada['gente'] | null }
-  return ((data ?? []) as unknown as Fila[]).map((p) => ({ ...p, total: Number(p.total), gente: p.gente ?? [] }))
+  type Persona = Omit<PlanillaListada['gente'][number], 'total'> & { total: number | string }
+  type Fila = Omit<PlanillaListada, 'total' | 'gente'> & { total: number | string; gente: Persona[] | null }
+  return ((data ?? []) as unknown as Fila[]).map((p) => ({
+    ...p,
+    total: Number(p.total),
+    gente: (p.gente ?? []).map((g) => ({ ...g, total: Number(g.total ?? 0) })),
+  }))
 }
 
 /** Un día de una persona en la planilla, con la hora y el recargo de ese momento. */

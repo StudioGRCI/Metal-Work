@@ -6,7 +6,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { bandejaDeFacturacion, type CotizacionParaFacturar } from '@/lib/datos/facturacion'
 import { totalConIgv } from '@/lib/dominio/finanzas'
-import { fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularFactura, RegistrarFactura } from './acciones-factura'
@@ -15,10 +15,28 @@ export const metadata = { title: 'Facturación' }
 
 const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
 
-/** En qué va la cotización para Contabilidad, por su código y sus facturas vigentes. */
+/** Lo facturado vigente de la cotización, en su moneda. */
+function facturadoDe(c: CotizacionParaFacturar) {
+  return c.facturas.filter((f) => !f.anulada_en && f.moneda === c.moneda).reduce((n, f) => n + Number(f.total), 0)
+}
+
+/** Alguna factura vigente va en otra moneda que la cotización: no se puede decir qué parte cubre. */
+function enOtraMoneda(c: CotizacionParaFacturar) {
+  return c.facturas.some((f) => !f.anulada_en && f.moneda !== c.moneda)
+}
+
+/**
+ * En qué va la cotización para Contabilidad, por su código y sus facturas
+ * vigentes. Con la mitad facturada decía «Facturada» en verde y Contabilidad
+ * leía que no le quedaba nada por facturar (auditoría del 27/10/2026).
+ */
 function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' | 'exito' | 'neutro' } {
   if (!c.codigo_interno) return { etiqueta: 'Sin código interno', tono: 'neutro' }
   if (!c.facturas.some((f) => !f.anulada_en)) return { etiqueta: 'Por facturar', tono: 'aviso' }
+  const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+  // Facturada en dólares una cotización en soles (o al revés): no se compara, pero tampoco se la da por entera o por parte.
+  if (enOtraMoneda(c)) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
+  if (total !== null && facturadoDe(c) < total - 0.005) return { etiqueta: 'Facturada en parte', tono: 'aviso' }
   return { etiqueta: 'Facturada', tono: 'exito' }
 }
 
@@ -67,7 +85,9 @@ export default async function PaginaFacturacion() {
             const estado = estadoDe(c)
             const m = codigo(c.moneda)
             const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
-            const facturado = c.facturas.filter((f) => !f.anulada_en && f.moneda === c.moneda).reduce((n, f) => n + Number(f.total), 0)
+            const facturado = facturadoDe(c)
+            const facturadoPct = total === null || enOtraMoneda(c) ? null : parteDe(facturado, total)
+            const falta = total === null || enOtraMoneda(c) ? 0 : Math.max(0, total - facturado)
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
               <li key={c.cotizacion_id} id={c.cotizacion_id ?? undefined} className="scroll-mt-20" data-cotizacion={c.numero ?? undefined}>
@@ -103,7 +123,18 @@ export default async function PaginaFacturacion() {
                           ? 'Total de venta sin registrar'
                           : `Total de venta: ${moneda(total, m)}${c.incluye_igv === null ? ' (falta confirmar si incluye IGV)' : ' con IGV'}`}
                       </span>
-                      {facturado > 0 && <span className="tabular text-texto-suave">Facturado: {moneda(facturado, m)}</span>}
+                      {facturado > 0 && (
+                        <span className="tabular text-texto-suave">
+                          Facturado: <span className="text-texto">{moneda(facturado, m)}</span>
+                          {facturadoPct !== null && ` · ${porcentaje(facturadoPct)}`}
+                          {falta > 0.005 && (
+                            <>
+                              {' '}
+                              · falta <span className="text-aviso">{moneda(falta, m)}</span>
+                            </>
+                          )}
+                        </span>
+                      )}
                       {c.url ? (
                         <a
                           href={c.url}

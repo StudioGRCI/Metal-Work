@@ -28,7 +28,7 @@ import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
-import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -461,6 +461,7 @@ function ParteConBoletaFila({
               <>
                 {'pagado '}
                 <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                {parteDe(pagado, x.monto) !== null && ` (${porcentaje(parteDe(pagado, x.monto))})`}
                 {' · '}
               </>
             )}
@@ -1070,7 +1071,8 @@ function Factura({
           </p>
           <p className="tabular text-xs text-texto-suave">
             Total {moneda(c.total, m)}
-            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}`}
+            {/* Lo pagado también como parte del total de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}${parteDe(c.pagado, c.total) === null ? '' : ` · ${porcentaje(parteDe(c.pagado, c.total))}`}`}
           </p>
         </div>
       </div>
@@ -1456,6 +1458,7 @@ function CompraConBoletaFila({
                   <>
                     {' · pagado '}
                     <span className="whitespace-nowrap">{moneda(neto, m)}</span>
+                    {parteDe(neto, b.total) !== null && ` · ${porcentaje(parteDe(neto, b.total))}`}
                   </>
                 )}
                 {devuelto > 0 && (

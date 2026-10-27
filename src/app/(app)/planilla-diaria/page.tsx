@@ -24,7 +24,7 @@ import {
   type ReglaHorasExtras,
 } from '@/lib/dominio/planilla-diaria'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { fecha, moneda } from '@/lib/format'
+import { fecha, moneda, parteDe, porcentaje } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EnviarPlanilla } from './enviar'
@@ -247,6 +247,8 @@ export default async function PaginaPlanillaDiaria() {
               {planillas.map((p) => {
                 const estado = estadoDePlanilla(p.anulado_en, p.gente)
                 const pagadas = p.gente.filter((g) => g.pago_id).length
+                // Lo pagado en plata, no solo en personas (DKS, 27/10/2026: porcentaje y costo).
+                const pagadoPen = p.gente.filter((g) => g.pago_id).reduce((n, g) => n + g.total, 0)
                 const boletas = p.gente.filter((g) => g.boleta_ruta).length
                 const entregadas = p.gente.filter((g) => g.boleta_entregada_en).length
                 return (
@@ -263,7 +265,14 @@ export default async function PaginaPlanillaDiaria() {
                         </p>
                         {!p.anulado_en && (
                           <p className="text-xs text-texto-suave">
-                            Pagadas {pagadas} de {p.personas} · boletas {boletas} · entregadas {entregadas}
+                            Pagadas {pagadas} de {p.personas}
+                            {pagadas > 0 && pagadas < p.personas && (
+                              <>
+                                {' '}
+                                (<span className="tabular">{moneda(pagadoPen)}</span> · {porcentaje(parteDe(pagadoPen, p.total))})
+                              </>
+                            )}{' '}
+                            · boletas {boletas} · entregadas {entregadas}
                           </p>
                         )}
                       </div>
