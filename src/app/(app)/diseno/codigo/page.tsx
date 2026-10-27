@@ -48,8 +48,9 @@ import {
 export const metadata = { title: 'Código interno · Diseño' }
 
 /**
- * Un código interno visto por Diseño: su OT arriba —la que Gerencia cargó al
- * aprobar la cotización (migración 20261016900000)— y debajo sus planos, su
+ * Un código interno visto por Diseño: su OT arriba —la que Administración cargó
+ * con el código, sobre la cotización aprobada (migración 20261027200000)— y
+ * debajo sus planos, su
  * lista de materiales y sus etapas, cada uno en su pestaña. Lo que antes Diseño
  * cargaba en la OT, ahora va aquí, por el código de la unidad (migración
  * 20261015200000).
@@ -131,7 +132,7 @@ function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
     <Tarjeta>
       <TarjetaCabecera
         titulo={ordenes.length === 1 ? 'Orden de trabajo' : 'Órdenes de trabajo'}
-        ayuda="La que Gerencia cargó al aprobar la cotización. Es la guía para los planos, los materiales y las etapas."
+        ayuda="La que Administración cargó al darle su código interno. Es la guía para los planos, los materiales y las etapas."
       />
       <TarjetaCuerpo>
         <ul className="divide-y divide-borde">

@@ -9,6 +9,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
@@ -31,6 +32,7 @@ const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
  */
 export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
+  const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const cobra = puede(perfil, 'tesoreria.registrar_cobros') && puede(perfil, 'tesoreria.caja')
   const responde = puede(perfil, 'tesoreria.liberar')
@@ -189,6 +191,17 @@ export default async function PaginaPorCobrar() {
                         >
                           {c.archivo_mime === 'application/pdf' ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
                           {c.archivo_mime === 'application/pdf' ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                      {/* Guardado desde el visor, el PDF sale con el nombre interno del archivo. */}
+                      {c.url && c.archivo_mime === 'application/pdf' && c.cotizacion_id && puedeBajar && (
+                        <a
+                          href={rutaParaBajarCotizacion(c.cotizacion_id)}
+                          aria-label={`Descargar la cotización ${c.numero}`}
+                          className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0"
+                        >
+                          <Download aria-hidden className="size-3.5" />
+                          Descargar
                         </a>
                       )}
                     </span>

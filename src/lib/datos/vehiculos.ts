@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { bajarComo } from '@/lib/descarga'
 import { BUCKET_FICHAS_VEHICULO } from '@/lib/dominio/ficha-vehiculo'
 import { BUCKET_FOTOS_VEHICULO } from '@/lib/dominio/requerimientos'
 import { createClient } from '@/lib/supabase/server'
@@ -219,10 +220,8 @@ export async function cargarFichaDeVehiculo(registro: string): Promise<{ ficha: 
   const { data, error } = await supabase.from('registro_vehiculo_fichas').select(COLUMNAS_FICHA).eq('registro_id', registro).maybeSingle()
   if (error) throw new Error(`No se pudo leer la ficha del vehículo: ${error.message}`)
   if (!data?.escaneo_ruta) return { ficha: data, escaneo: null }
-  const { data: enlace } = await supabase.storage
-    .from(BUCKET_FICHAS_VEHICULO)
-    .createSignedUrl(data.escaneo_ruta, 3600, { download: data.escaneo_nombre ?? 'ficha-firmada.pdf' })
-  return { ficha: data, escaneo: enlace?.signedUrl ?? null }
+  const { data: enlace } = await supabase.storage.from(BUCKET_FICHAS_VEHICULO).createSignedUrl(data.escaneo_ruta, 3600)
+  return { ficha: data, escaneo: enlace?.signedUrl ? bajarComo(enlace.signedUrl, data.escaneo_nombre ?? 'ficha-firmada.pdf') : null }
 }
 
 /** Un pedido de revisión de la salida a Tesorería, con su respuesta. */

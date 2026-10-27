@@ -12103,6 +12103,22 @@ export type Database = {
         }
         Returns: string
       }
+      cargar_codigo_y_ot_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
+          p_codigo_interno: string | null
+          p_numero_ot: string | null
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          p_fecha_entrega: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf: number | null
+          p_marca?: string | null
+          p_modelo?: string | null
+        }
+        Returns: string
+      }
       cargar_cronograma: {
         Args: {
           p_orden: string | null

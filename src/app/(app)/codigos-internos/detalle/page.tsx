@@ -32,6 +32,7 @@ import {
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import {
   CODIGO_SIN_AVANCE,
@@ -787,7 +788,7 @@ async function Vista({
   if (vista === 'costeo') return <VistaCosteo codigo={codigo} perfil={perfil} />
   if (vista === 'personal') return <VistaPersonal codigo={codigo} />
   if (vista === 'documentos') return <VistaDocumentos codigo={codigo} perfil={perfil} />
-  if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} />
+  if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} perfil={perfil} />
   return <VistaAvance codigo={codigo} perfil={perfil} avance={avance} />
 }
 
@@ -1593,7 +1594,8 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
  * y su voucher (migración 20261015124000). Solo lectura: factura Contabilidad y
  * cobra Tesorería, cada una en su pantalla.
  */
-async function VistaFacturacion({ codigo }: { codigo: string }) {
+async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
+  const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const [cotizaciones, facturas] = await Promise.all([cotizacionesAprobadas(codigo), facturasDelCodigo(codigo)])
   const deMoneda = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
   return (
@@ -1631,6 +1633,17 @@ async function VistaFacturacion({ codigo }: { codigo: string }) {
                         >
                           {pdf ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
                           {pdf ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                      {/* Guardado desde el visor, el PDF sale con el nombre interno del archivo. */}
+                      {c.url && pdf && c.cotizacion_id && puedeBajar && (
+                        <a
+                          href={rutaParaBajarCotizacion(c.cotizacion_id)}
+                          aria-label={`Descargar la cotización ${c.numero}`}
+                          className="ml-4 inline-flex min-h-11 items-center gap-1 text-xs text-acento hover:underline sm:min-h-0"
+                        >
+                          <Download aria-hidden className="size-3.5" />
+                          Descargar
                         </a>
                       )}
                     </div>

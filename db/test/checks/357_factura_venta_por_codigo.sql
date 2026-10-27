@@ -47,12 +47,17 @@ insert into storage.objects (bucket_id, name, owner_id, metadata) values
   ('cotizaciones-pdf', 'cot/' || :'cot1' || '/qa-357-1.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}'),
   ('cotizaciones-pdf', 'cot/' || :'cot3' || '/qa-357-3.pdf', :'vendedor_id', '{"mimetype": "application/pdf", "size": 120}');
 
--- Gerencia aprueba la primera con el código interno de la unidad y su OT.
+-- Gerencia aprueba la primera y Administración le da el código interno de la
+-- unidad y sube su OT (migración 20261027200000).
 select test.como_usuario(:'gerente_id');
 set local role authenticated;
-select public.aprobar_cotizacion_con_ot(:'cot1', :'ot1', 'qa-ci 357', '9357', 'SEMIRREMOLQUE',
-                                        ((now() at time zone 'America/Lima')::date + 30),
-                                        'ot/' || :'ot1' || '/orden.pdf', 'orden.pdf', 100);
+update public.cotizaciones_pdf set estado = 'APROBADA' where id = :'cot1';
+reset role;
+select test.como_usuario(:'oficina_id');
+set local role authenticated;
+select public.cargar_codigo_y_ot_de_cotizacion(:'cot1', :'ot1', 'qa-ci 357', '9357', 'SEMIRREMOLQUE',
+                                               ((now() at time zone 'America/Lima')::date + 30),
+                                               'ot/' || :'ot1' || '/orden.pdf', 'orden.pdf', 100);
 reset role;
 
 select set_config('prueba.cot1', :'cot1', true);

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { archivoNoEncontrado, SIN_ENLACES } from '@/lib/datos/facturacion'
+import { bajarComo } from '@/lib/descarga'
 import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
@@ -8,9 +9,9 @@ import type { Vistas } from '@/types/database'
  * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
  * 103). El sistema guarda lo poco que necesita y la traza: quién la subió,
  * quién la aprobó, qué orden salió de ella y, si Gerencia la rechazó, cada
- * versión con la observación que le hizo. Desde la migración 20261016900000
- * Gerencia la aprueba con el código interno y la OT: `codigo_interno` es el de
- * la unidad de su OT.
+ * versión con la observación que le hizo. Desde la migración 20261027200000
+ * Gerencia la aprueba con un toque y Administración le da el código interno y
+ * sube la OT: `codigo_interno` es el de la unidad de su OT.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
@@ -63,11 +64,9 @@ async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
   const words = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) !== PDF)
   await Promise.all(
     words.map(async (f) => {
-      const { data, error } = await supabase.storage
-        .from('cotizaciones-pdf')
-        .createSignedUrl(f.ruta_storage as string, 600, { download: f.nombre_archivo ?? true })
+      const { data, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrl(f.ruta_storage as string, 600)
       if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
-      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, data.signedUrl)
+      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, bajarComo(data.signedUrl, f.nombre_archivo ?? true))
     }),
   )
   return enlaces

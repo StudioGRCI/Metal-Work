@@ -127,17 +127,17 @@ begin
     raise exception 'FALLO: el cambio de cliente no quedó coherente o alteró el FMI histórico';
   end if;
 
-  -- Desde la migración 20261016900000 Administración ya no emite la OT de la
-  -- cotización: la crea Gerencia al aprobarla, con su código interno
-  -- (`aprobar_cotizacion_con_ot`, que el check 391 prueba guardando el código
-  -- en su columna). La función vieja quedó cerrada a las cuentas.
+  -- Desde la migración 20261016900000 la OT de la cotización ya no sale de
+  -- `emitir_orden_de_cotizacion`, que quedó cerrada a las cuentas. Desde la
+  -- 20261027200000 Administración la sube con el código interno, después de que
+  -- Gerencia aprueba (`cargar_codigo_y_ot_de_cotizacion`, check 391).
   perform test.como_usuario(current_setting('prueba.oficina_id')::uuid);
   perform test.debe_fallar(format($q$select public.emitir_orden_de_cotizacion(
     %L, %L, '9901-2099', 'MW-EMISION-290', 'CARROCERIA_MONTADA'::public.tipo_unidad_carroceria,
     'Volvo', 'FMX 8x4', current_date + 30, %L, 'qa.pdf', 100)$q$,
     current_setting('prueba.cotizacion_emision'), current_setting('prueba.orden_emision_id'),
     'ot/'||current_setting('prueba.orden_emision_id')||'/qa.pdf'),
-    'Administración ya no emite la OT de la cotización: la crea Gerencia al aprobarla',
+    'La OT de la cotización ya no sale de la emisión vieja',
     'permission denied');
 
   -- Desde la migración 20261001222000 la ficha de taller la llena

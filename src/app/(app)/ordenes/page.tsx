@@ -120,9 +120,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
             <>
-              {/* La OT de una unidad la carga Gerencia al aprobar la
-                  cotización, con su código interno (migración 20261016900000):
-                  aquí ya no se emite. Queda la orden suelta —reparación,
+              {/* La OT de una unidad la carga Administración con su código
+                  interno, sobre la cotización que Gerencia aprobó (migración
+                  20261027200000): aquí ya no se emite. Queda la orden suelta —reparación,
                   garantía—, que nace en borrador y la aprueba Gerencia. */}
               {puedeCrear && (
                 <EnlaceBoton href="/ordenes/nueva" variante="contorno">

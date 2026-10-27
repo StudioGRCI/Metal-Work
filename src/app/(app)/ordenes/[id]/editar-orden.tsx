@@ -38,7 +38,7 @@ export function EditarOrden({ orden, cotizaciones }: {
             <option value="ALTA">Alta</option><option value="URGENTE">Urgente</option>
           </Seleccion>
         </Campo>
-        <Campo etiqueta="Fecha de entrega prometida" htmlFor="editar-fecha" requerido>
+        <Campo etiqueta="Fecha de entrega al cliente" htmlFor="editar-fecha" requerido>
           <Entrada id="editar-fecha" name="fecha_entrega_comprometida" type="date" required defaultValue={orden.fecha_entrega_comprometida ?? ''} />
         </Campo>
         <Campo etiqueta="Código interno" htmlFor="editar-codigo">

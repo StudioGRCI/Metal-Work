@@ -5,6 +5,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
@@ -15,7 +16,7 @@ import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
-import { AprobarConOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { CargarCodigoYOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -27,32 +28,52 @@ const ESTADOS: Record<string, { etiqueta: string; tono: 'aviso' | 'exito' | 'pel
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
 
-/** «Abrir el PDF» se ve en el navegador; el Word se baja. */
-function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null; nombre: string | null }) {
+/**
+ * «Abrir el PDF» se ve en el navegador; el Word se baja. El PDF lleva además
+ * «Descargar», que lo guarda con su nombre: guardado desde el visor salía con
+ * el nombre interno del archivo, una serie de letras y números (observación de
+ * Gerencia, 27/10). `descarga` es la ruta que lo pide en el momento del toque.
+ */
+function EnlaceArchivo({ url, mime, nombre, descarga }: { url: string; mime: string | null; nombre: string | null; descarga: string }) {
   const word = etiquetaDeMime(mime) === 'Word'
   const Icono = word ? Download : FileText
   return (
-    <a
-      href={url}
-      target={word ? undefined : '_blank'}
-      rel="noreferrer"
-      className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
-    >
-      <Icono aria-hidden className="size-4 shrink-0" />
-      <span className="break-words">
-        {word ? 'Bajar el Word' : 'Abrir el PDF'}
-        {nombre ? ` · ${nombre}` : ''}
-      </span>
-    </a>
+    <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <a
+        href={url}
+        target={word ? undefined : '_blank'}
+        rel="noreferrer"
+        className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
+      >
+        <Icono aria-hidden className="size-4 shrink-0" />
+        <span className="break-words">
+          {word ? 'Bajar el Word' : 'Abrir el PDF'}
+          {nombre ? ` · ${nombre}` : ''}
+        </span>
+      </a>
+      {/* Sin `download`: el nombre lo pone el almacenamiento, y si falla la ruta
+          vuelve a la lista con el motivo en vez de bajar un archivo de error. */}
+      {!word && (
+        <a
+          href={descarga}
+          aria-label={nombre ? `Descargar ${nombre}` : 'Descargar la cotización'}
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
+        >
+          <Download aria-hidden className="size-4 shrink-0" />
+          Descargar
+        </a>
+      )}
+    </span>
   )
 }
 
 /**
  * El camino corto de la cotización (migraciones 101 a 103): el vendedor sube la
  * que ya le mandó al cliente, en PDF o en Word; Gerencia la rechaza con su
- * observación —y el vendedor sube ahí mismo la corrección— o la aprueba dando
- * el código interno de la unidad y subiendo la OT, todo junto (migración
- * 20261016900000). Desde ahí el código interno es la referencia del trabajo.
+ * observación —y el vendedor sube ahí mismo la corrección— o la aprueba con un
+ * toque, y Administración le da el código interno de la unidad y sube la OT,
+ * todo junto (migración 20261027200000). Desde ahí el código interno es la
+ * referencia del trabajo.
  *
  * La cotización se arma en Word: rehacerla dentro del sistema era escribir dos
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
@@ -96,6 +117,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
   const puedeSubir = puede(perfil, 'cotizaciones.crear')
   const revisa = puede(perfil, 'cotizaciones.revisar')
+  // Quien da el código interno y sube la OT de la aprobada: Administración.
+  const cargaOt = puede(perfil, 'ordenes.crear')
   const veCodigos = puede(perfil, 'codigos_internos.ver')
 
   const [todas, catalogos] = await Promise.all([
@@ -122,16 +145,26 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     ? (params.estado as FiltroEstado)
     : null
   const palabras = palabrasDeBusqueda(typeof params.q === 'string' ? params.q : '')
-  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria])
+  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria, c.codigo_interno])
   // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
-  // que esperan su visto y las aprobadas de antes que quedaron sin código;
-  // Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
+  // que esperan su visto; Administración, las aprobadas que esperan su código y
+  // su OT; Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
+  const sinCodigo = (c: (typeof cotizaciones)[number]) => c.estado === 'APROBADA' && !c.orden_id
   const meToca = (c: (typeof cotizaciones)[number]) =>
-    (revisa && (c.estado === 'POR_REVISAR' || (c.estado === 'APROBADA' && !c.orden_id))) ||
+    (revisa && c.estado === 'POR_REVISAR') ||
+    (cargaOt && sinCodigo(c)) ||
     (puedeCorregirCotizacion(perfil, c) && !c.facturada)
+  // La que Gerencia acaba de revisar se queda donde estaba, ya aprobada o
+  // rechazada, también en «Por revisar»: si se iba al fondo, bajo el dedo
+  // quedaba el «Aprobar» de otra y un segundo toque aprobaba la equivocada.
+  const ahora = new Date().getTime()
+  const recienRevisada = (c: (typeof cotizaciones)[number]) =>
+    revisa && (c.estado === 'APROBADA' || c.estado === 'RECHAZADA') && c.revisado_en !== null
+    && ahora - new Date(c.revisado_en).getTime() < 15 * 60 * 1000
+  const arriba = (c: (typeof cotizaciones)[number]) => meToca(c) || recienRevisada(c)
   const visibles = cotizaciones
-    .filter((c) => enFiltro(c, filtro, mes) && buscada(c))
-    .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
+    .filter((c) => (enFiltro(c, filtro, mes) || (filtro === 'POR_REVISAR' && recienRevisada(c))) && buscada(c))
+    .sort((a, b) => Number(arriba(b)) - Number(arriba(a)))
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -147,13 +180,19 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     <>
       <EncabezadoPagina
         titulo="Cotización"
-        ayuda="Ventas sube la cotización y Gerencia la aprueba dando el código interno de la unidad y subiendo su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
+        ayuda="Ventas sube la cotización, Gerencia la aprueba y Administración le da el código interno de la unidad y sube su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
+      {params.descarga === 'fallo' && (
+        <AvisoEnfocado rol="alert" className="mb-4">
+          No se pudo bajar la cotización. Vuelve a intentarlo; si se repite, avisa al administrador.
+        </AvisoEnfocado>
+      )}
+
       {todas.length > 0 && (
         <>
-          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente o carrocería" />
+          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente, carrocería o código" />
           <PastillaFiltro
             ruta="/cotizaciones/pdf"
             clave="estado"
@@ -183,9 +222,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
       {cotizaciones.length > 0 && visibles.length === 0 && (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">Ninguna cotización con ese filtro</p>
+            <p className="text-sm font-medium text-texto">
+              {filtro === 'APROBADA_SIN_OT' && palabras.length === 0 ? 'Ninguna aprobada espera su código' : 'Ninguna cotización con ese filtro'}
+            </p>
             <p className="mt-1 text-sm text-texto-suave">
-              Prueba con otro estado o quita la búsqueda.{' '}
+              {filtro === 'APROBADA_SIN_OT' && palabras.length === 0
+                ? 'Todas las aprobadas ya tienen su código interno y su OT.'
+                : 'Prueba con otro estado o quita la búsqueda.'}{' '}
               <Link href="/cotizaciones/pdf" className="text-acento hover:underline">
                 Ver todas
               </Link>
@@ -258,7 +301,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         : 'Monto total pendiente de confirmar'}
                     </p>
 
-                    {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} /> : (
+                    {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
                       <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
                     )}
 
@@ -329,7 +372,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                                 </span>
                               </p>
                               <p className="text-texto-suave">«{v.observacion}»</p>
-                              {v.url ? <EnlaceArchivo url={v.url} mime={v.mime_type} nombre={v.nombre_archivo} /> : (
+                              {v.url ? <EnlaceArchivo url={v.url} mime={v.mime_type} nombre={v.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}?version=${v.id}`} /> : (
                                 <p className="text-aviso">Archivo no disponible. Recarga la página o avisa al administrador.</p>
                               )}
                             </li>
@@ -338,13 +381,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </details>
                     )}
 
-                    {/* Una aprobada de antes que quedó sin OT: quien no es Gerencia
-                        tiene que saber por qué no avanza y quién la destraba. */}
-                    {!revisa && c.estado === 'APROBADA' && !c.orden_id && (
+                    {/* Una aprobada que espera su código: quien no lo da tiene
+                        que saber por qué no avanza y quién la destraba. */}
+                    {!cargaOt && sinCodigo(c) && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
-                          <span className="font-medium">Falta que Gerencia le dé su código interno y cargue la OT.</span>{' '}
+                          <span className="font-medium">Falta que Administración le dé su código interno y suba la OT.</span>{' '}
                           Sin código no se factura ni Diseño empieza.
                         </span>
                       </p>
@@ -378,13 +421,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         Ya está facturada: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura.
                       </p>
                     )}
-                    {(revisa && c.estado === 'POR_REVISAR' || revisa && c.estado === 'APROBADA' && !c.orden_id || corrige || quitable) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
-                          <RevisarCotizacion id={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} conOrden={Boolean(c.orden_id)} />
+                          <RevisarCotizacion id={c.id} conOrden={Boolean(c.orden_id)} />
                         )}
-                        {!c.orden_id && revisa && c.estado === 'APROBADA' && c.id && (
-                          <AprobarConOt cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} yaAprobada />
+                        {cargaOt && sinCodigo(c) && c.id && (
+                          <CargarCodigoYOt cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
