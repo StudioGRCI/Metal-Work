@@ -411,12 +411,12 @@ export function ActividadesDeOrden({
                       <span className="ml-auto flex items-center gap-2">
                         <InsigniaRevision revision={r.revision} />
                         {r.reportado_por_nombre && (
-                          <span className="text-[11px] text-texto-tenue">{r.reportado_por_nombre}</span>
+                          <span className="text-xs text-texto-tenue">{r.reportado_por_nombre}</span>
                         )}
                       </span>
                     </div>
                     <NotaRevision r={r} />
-                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noopener noreferrer" className="inline-flex text-xs font-medium text-acento hover:underline">
+                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-xs font-medium text-acento hover:underline">
                       Ver foto del reporte
                     </a>}
                     {r.materiales_usados.length > 0 && <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-suave" aria-label="Materiales usados">

@@ -40,7 +40,8 @@ export function AccionesCatalogo({
     <div className="flex flex-wrap items-center gap-2">
       {!activo && <span className="rounded-full bg-superficie-2 px-2 py-1 text-xs text-texto-suave">Inactivo</span>}
       {puedeEditar && (
-        <Boton type="button" tamano="sm" variante="contorno" cargando={estado.enviando} onClick={() => estado.ejecutar(datos(true))}>
+        // Sin borde, como «Eliminar»: en listas de 34 filas pesaba igual que «Editar».
+        <Boton type="button" tamano="sm" variante="fantasma" cargando={estado.enviando} onClick={() => estado.ejecutar(datos(true))}>
           {activo ? <Archive aria-hidden className="size-3.5" /> : <RotateCcw aria-hidden className="size-3.5" />}
           {activo ? 'Desactivar' : 'Reactivar'}
         </Boton>

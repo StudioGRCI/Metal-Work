@@ -61,8 +61,9 @@ export function AvanceServicio({
         </Boton>
       )}
       {anular && (
-        <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setPaso('ANULADA')}>
-          <Ban aria-hidden className="size-4" />
+        // Sin borde: corrige un error y no pesa como el paso de la OS.
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setPaso('ANULADA')}>
+          <Ban aria-hidden className="size-4 text-peligro" />
           Anular
         </Boton>
       )}

@@ -403,7 +403,8 @@ const CIFRAS = {
     ruta: '/recojos',
     calcular: async (c) => {
       const n = (await enGestion(c)).filter((g) => g.dejado_en && g.dejado_en.slice(0, 10) >= c.mes).length
-      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén', icono: PackageCheck }
+      // Recojos lista las de la semana: el pie lo dice para que las dos cifras no parezcan contradecirse.
+      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén · en Recojos, las de esta semana', icono: PackageCheck }
     },
   },
 
