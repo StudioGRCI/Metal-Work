@@ -10,7 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
@@ -96,9 +96,9 @@ export function Etapas({
         {esNueva && etapas.length > 0 && !editando && (
           <div className="rounded-[var(--radius-base)] border border-borde p-3">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{cantidad(contemplado)} %</strong></span>
+              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{porcentajeCorto(contemplado)}</strong></span>
               <span className={faltaContemplar > 0 ? 'text-aviso' : 'text-exito'}>
-                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{cantidad(faltaContemplar)} %</strong></> : 'El 100 % está contemplado'}
+                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{porcentajeCorto(faltaContemplar)}</strong></> : 'El 100 % está contemplado'}
               </span>
             </div>
             <Progreso valor={contemplado} etiqueta="Porcentaje contemplado en etapas" alto="sm" />
@@ -142,7 +142,7 @@ export function Etapas({
                       <p className="mt-0.5 text-xs text-texto-suave">
                         {[
                           area,
-                          etapa.peso_pct !== null ? `${cantidad(etapa.peso_pct)} % del avance` : null,
+                          etapa.peso_pct !== null ? `${porcentajeCorto(etapa.peso_pct)} del avance` : null,
                           // Las horas solo pesan en el plan histórico; en las OT
                           // nuevas valen 0 y decirlo era ruido.
                           Number(etapa.horas_estimadas ?? 0) > 0 ? `${cantidad(etapa.horas_estimadas)} h estimadas` : null,
@@ -219,7 +219,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   const areaActividad = areas.find((area) => area.id === actividadExistente?.area_id)?.nombre ?? 'Producción'
   const bloqueos = [
     seleccion.length === 0 ? 'Agrega al menos una etapa.' : null,
-    total > 100 ? `Las etapas suman ${total} %: baja alguna, no pueden pasar de 100 %.` : null,
+    total > 100 ? `Las etapas suman ${porcentajeCorto(total)}: baja alguna, no pueden pasar de ${porcentaje(100)}.` : null,
     conversion && etapasDiseno.length !== 1 ? 'Incluye exactamente una etapa de Diseño para vincular el plano existente.' : null,
     conversion && actividadesPorVincular.length !== 1 ? 'No se pudo identificar la actividad histórica; recarga la orden.' : null,
     conversion && actividadExistente && etapasDeActividad.length === 0
@@ -287,7 +287,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
           ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0, avance: 0, iniciada: false },
         ])}>+ Agregar etapa</Boton>
         {seleccion.length > 0 && <p className={`text-sm font-medium tabular ${total === 100 ? 'text-exito' : total > 100 ? 'text-peligro' : 'text-texto-suave'}`} role="status">
-          Contemplado: {total} %{total < 100 ? ` · falta contemplar ${100 - total} %` : total === 100 ? ' · completo' : ''}
+          Contemplado: {porcentajeCorto(total)}{total < 100 ? ` · falta contemplar ${porcentajeCorto(100 - total)}` : total === 100 ? ' · completo' : ''}
         </p>}
       </div>
       {conversion && seleccion.length > 0 && actividadesPorVincular.map((actividad) => (

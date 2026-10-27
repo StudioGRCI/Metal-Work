@@ -6,7 +6,7 @@ import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { TrabajoSinOrden } from '@/lib/datos/flota'
 import { ESTADO_FLOTA, definir } from '@/lib/dominio/estados'
 import { nombreDeFlota } from '@/lib/dominio/unidades'
-import { fecha as formatearFecha, numero } from '@/lib/format'
+import { fecha as formatearFecha, numero, porcentaje } from '@/lib/format'
 
 /**
  * Un trabajo sin orden en una tarjeta: qué es, en qué va, qué lo traba y hace
@@ -48,7 +48,7 @@ export function TarjetaTrabajo({ trabajo: t, porAprobar = 0 }: { trabajo: Trabaj
         <div className="flex items-center justify-between text-xs">
           <span className="text-texto-suave">{t.area_actual ?? 'Sin reportes todavía'}</span>
           {t.avance_porcentaje !== null && (
-            <span className="tabular text-texto-suave">va en ~{numero(t.avance_porcentaje, 0)} %</span>
+            <span className="tabular text-texto-suave">va en ~{porcentaje(t.avance_porcentaje, 0)}</span>
           )}
         </div>
 

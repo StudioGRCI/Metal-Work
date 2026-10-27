@@ -10,7 +10,7 @@ import { areasDelTaller } from '@/lib/datos/actividades'
 import { obtenerFlota } from '@/lib/datos/flota'
 import { ESTADO_FLOTA, definir } from '@/lib/dominio/estados'
 import { nombreDeFlota } from '@/lib/dominio/unidades'
-import { fechaHora, numero } from '@/lib/format'
+import { fechaHora, numero, porcentaje } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
@@ -92,7 +92,7 @@ export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avan
               <p className="text-texto">
                 {trabajo.area_actual ?? 'Todavía nadie lo reportó'}
                 {trabajo.avance_porcentaje !== null && (
-                  <span className="ml-2 text-texto-suave">va en ~{numero(trabajo.avance_porcentaje, 0)} %</span>
+                  <span className="ml-2 text-texto-suave">va en ~{porcentaje(trabajo.avance_porcentaje, 0)}</span>
                 )}
               </p>
             </div>

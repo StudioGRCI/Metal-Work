@@ -7,7 +7,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { PlanContraReal } from '@/components/expediente/plan-contra-real'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
-import { Indicador } from '@/components/ui/indicador'
+import { Indicador, tramos } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
@@ -38,7 +38,7 @@ import {
 } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, enlaceCodigo, faltanteDelCosto, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
+import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, porcentajeYMonto, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn, esUuid } from '@/lib/utils'
 
@@ -219,7 +219,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             tono={Number(orden.avance_porcentaje) >= 100 ? 'exito' : 'acento'}
             valor={
               <div>
-                <span>{numero(orden.avance_porcentaje, 1)} %</span>
+                <span>{porcentaje(orden.avance_porcentaje, 1)}</span>
                 <Progreso valor={orden.avance_porcentaje} alto="sm" className="mt-2" etiqueta="Avance de la unidad" />
               </div>
             }
@@ -258,7 +258,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               pie={
                 faltanteDelCosto({ sinPrecio: delCodigo.sinPrecio, horasSinCosto: delCodigo.sinCosto, sinCambio: delCodigo.sinCambio })
                   ?? (delCodigo.margenPct !== null
-                    ? `Margen ${porcentaje(delCodigo.margenPct, 1)} · el costo del código ${delCodigo.codigo}`
+                    ? `Margen a hoy ${porcentajeYMonto(delCodigo.margenPct, delCodigo.margenPen, 'PEN', 1)} · el costo del código ${delCodigo.codigo}`
                     : `El costo del código ${delCodigo.codigo}`)
               }
               tono={delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0 ? 'aviso' : 'neutro'}
@@ -276,7 +276,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   : enSoles.sinCambio > 0
                     ? `${enSoles.sinCambio} línea(s) en dólares sin tipo de cambio`
                     : expediente.margen?.margen_pct != null
-                      ? `Margen ${porcentaje(expediente.margen.margen_pct, 1)} sobre la venta sin IGV`
+                      ? `Margen a hoy ${porcentajeYMonto(expediente.margen.margen_pct, expediente.margen.margen_pen, 'PEN', 1)} sobre la venta sin IGV`
                       : enSoles.totalUsd > 0
                         ? `Incluye ${moneda(enSoles.totalUsd, 'USD')} al cambio de su fecha`
                         : 'Material despachado, planilla cerrada y gastos aprobados'
@@ -1127,7 +1127,8 @@ function PresupuestoDeLaCarroceria({
           Sale solo de la cotización cuando se confirma si su monto incluye IGV: el precio sin IGV ÷ 1.15, la utilidad
           estándar de la casa.{puedeFijar ? ' Si la OT no tiene cotización, fíjalo a mano.' : ''}
         </p>
-        {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={false} />}
+        {/* Con `key`: al fijarlo la tarjeta cambia de forma y, sin ella, el formulario se volvía a montar y se perdía su «listo». */}
+        {puedeFijar && <FijarPresupuesto key="fijar" ordenId={ordenId} manual={false} />}
       </section>
     )
   }
@@ -1152,10 +1153,14 @@ function PresupuestoDeLaCarroceria({
         <CifraMargen
           etiqueta={cerrado ? 'Costo cerrado' : 'Gastado a la fecha'}
           valor={moneda(presupuesto.costo_pen)}
-          pie={`${porcentaje(consumido, 1)} del presupuesto`}
+          pie={`${porcentaje(consumido, 1)} del presupuesto · ${presupuesto.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto.presupuesto_pen - presupuesto.costo_pen))}`}
           tono={presupuesto.semaforo === 'EXCEDIDO' ? 'peligro' : undefined}
         />
-        <CifraMargen etiqueta="Avance de la unidad" valor={porcentaje(presupuesto.avance_pct, 0)} pie="Lo hecho, según los reportes" />
+        <CifraMargen
+          etiqueta="Avance de la unidad"
+          valor={porcentaje(presupuesto.avance_pct, 0)}
+          pie={`Lo hecho, según los reportes: vale ${moneda((presupuesto.presupuesto_pen * presupuesto.avance_pct) / 100)} del presupuesto`}
+        />
       </dl>
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
@@ -1170,12 +1175,12 @@ function PresupuestoDeLaCarroceria({
           >
             <div className={cn('h-full rounded-full', s.barra)} style={{ width: `${Math.min(100, Math.max(0, consumido))}%` }} />
           </div>
-          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(consumido)}%</span>
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{porcentaje(Math.round(consumido))}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-xs text-texto-suave">Avance</span>
           <Progreso valor={presupuesto.avance_pct} etiqueta="Avance de la unidad" className="w-full" />
-          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(presupuesto.avance_pct)}%</span>
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{porcentaje(Math.round(presupuesto.avance_pct))}</span>
         </div>
       </div>
       <p className="text-xs text-texto-suave">
@@ -1190,7 +1195,7 @@ function PresupuestoDeLaCarroceria({
       {presupuesto.costo_incompleto && (
         <p className="text-xs text-aviso">El costo todavía está incompleto: lo gastado de verdad puede ser más.</p>
       )}
-      {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
+      {puedeFijar && <FijarPresupuesto key="fijar" ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
     </section>
   )
 }
@@ -1207,9 +1212,13 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
       />
       {verMargen && (
         <CifraMargen
-          etiqueta="Margen"
+          etiqueta={costo.cierre ? 'Margen al cierre' : 'Margen a hoy'}
           valor={costo.margenPct === null ? '—' : porcentaje(costo.margenPct, 1)}
-          pie={costo.margenPct === null ? 'Sin cotización aprobada con precio, o sin costo todavía' : 'Sobre la cotización aprobada sin IGV'}
+          pie={
+            costo.margenPct === null
+              ? 'Sin cotización aprobada con precio, o sin costo todavía'
+              : `${costo.margenPen === null ? '' : `${moneda(costo.margenPen)} · `}sobre la cotización aprobada sin IGV`
+          }
           tono={costo.margenPct !== null && costo.margenPct < 0 ? 'peligro' : undefined}
         />
       )}
@@ -1218,7 +1227,10 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
           etiqueta="Presupuesto"
           valor={costo.consumidoPct === null ? '—' : `${porcentaje(costo.consumidoPct, 0)} gastado`}
           pie={[
-            costo.semaforo === 'EXCEDIDO' ? 'Pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'Ajustado, del 90 % en adelante' : null,
+            costo.presupuestoPen !== null
+              ? `${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))} de ${moneda(costo.presupuestoPen)}`
+              : null,
+            costo.semaforo === 'EXCEDIDO' ? 'pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'ajustado, del 90 % en adelante' : null,
             costo.presupuestoFijado ? 'el fijado a mano en la OT' : 'la venta sin IGV ÷ 1.15, la utilidad estándar',
           ]
             .filter(Boolean)
@@ -1247,7 +1259,7 @@ function CifraMargen({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: 
     <div className="min-w-0">
       <dt className="text-xs text-texto-suave">{etiqueta}</dt>
       <dd className={cn('tabular text-lg font-semibold', tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</dd>
-      <dd className="text-xs text-texto-tenue">{pie}</dd>
+      <dd className="text-xs text-texto-tenue">{tramos(pie)}</dd>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import type { FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -82,9 +82,13 @@ export function CerrarCosto({ ordenId }: { ordenId: string }) {
  * al presupuesto de la cotización. El botón tocado viaja como `accion`.
  */
 export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual: boolean }) {
-  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto)
+  // Al guardar, la tarjeta de arriba cambia sola; el mensaje dice que ya pasó
+  // (el auditor de funcionalidad halló el 27/10/2026 que no se veía nada).
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto, (r) => setMensaje(r.mensaje ?? 'Presupuesto guardado.'))
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
+    setMensaje(null)
     const boton = (evento.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
     alEnviar(evento, (datos) => {
       datos.set('accion', boton?.value === 'cotizacion' ? 'cotizacion' : 'fijar')
@@ -110,6 +114,11 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
         {error && (
           <p role="alert" className="text-sm text-peligro">
             {error}
+          </p>
+        )}
+        {mensaje && (
+          <p role="status" className="text-sm text-exito">
+            {mensaje} Arriba ya se ve el presupuesto nuevo.
           </p>
         )}
         <div className="flex flex-wrap gap-2">

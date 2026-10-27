@@ -25,7 +25,7 @@ import {
   type PartesDelInsumo,
   type PasoDelRq,
 } from '@/lib/dominio/requerimientos'
-import { cantidad, diasHasta, fecha, fechaHora } from '@/lib/format'
+import { cantidad, diasHasta, fecha, fechaHora, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { MaterialDelInsumo } from './avance'
@@ -369,7 +369,7 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           Con todo en almacén ya lo dicen los pasos, y un 85 % al lado parecía contradecirlos. */}
       {rq.avance && actual !== 'ENTREGADO' && !llegoTodo(rq) && (
         <p className="mt-1.5 text-xs text-texto-suave">
-          Avance <span className="tabular font-medium text-texto">{rq.avance.porcentaje} %</span>
+          Avance <span className="tabular font-medium text-texto">{porcentaje(rq.avance.porcentaje)}</span>
         </p>
       )}
     </div>

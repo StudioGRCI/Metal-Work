@@ -16,7 +16,7 @@ import {
 } from '@/lib/datos/vehiculos'
 import { definirRevisionSalida } from '@/lib/dominio/ficha-vehiculo'
 import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
-import { fechaHora } from '@/lib/format'
+import { fechaHora, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesVehiculo } from '../controles'
@@ -101,7 +101,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             )}
             {estado?.exige && !estado.garantia_ot && (
               <Dato titulo="Avance del código">
-                <span data-avance-salida={estado.avance ?? 0}>{estado.avance ?? 0} %</span>
+                <span data-avance-salida={estado.avance ?? 0}>{porcentaje(estado.avance ?? 0)}</span>
               </Dato>
             )}
             {estado?.exige && estado.falta_para_salir && (

@@ -9,7 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { ESTADO_ETAPA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
-import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto, porcentaje } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
@@ -382,7 +382,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 <TarjetaCabecera
                   titulo="Etapas de producción"
                   descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`
-                    + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${fmtNumero(faltaContemplar, 0)} %` : '') : undefined}
+                    + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${porcentaje(faltaContemplar)}` : '') : undefined}
                   acciones={
                     etapas.length > 0 && (
                       <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">
@@ -433,7 +433,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                             </div>
                             <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-32" />
                             <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
-                              {fmtNumero(etapa.avance_porcentaje, 0)}%
+                              {porcentaje(etapa.avance_porcentaje, 0)}
                             </span>
                           </li>
                         )

@@ -16,7 +16,7 @@ import type {
   PlanoCumplimiento,
   ResumenCumplimiento,
 } from '@/lib/datos/cumplimiento'
-import { cantidad as fmtCantidad, fecha, hoyLima, numero } from '@/lib/format'
+import { cantidad as fmtCantidad, fecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { CargarVersion, PdfPorArea, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
@@ -152,7 +152,7 @@ export function Cumplimiento({
             </Cifra>}
             <Cifra titulo="Peso repartido">
               <span className={cn('tabular text-lg font-semibold', pesoTotal === 100 ? 'text-texto' : 'text-aviso')}>
-                {numero(pesoTotal, 0)}%
+                {porcentaje(pesoTotal, 0)}
               </span>
               <span className="text-[11px] text-texto-suave">
                 {pesoTotal === 100
@@ -264,7 +264,7 @@ function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }
     <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-2 py-1">
       <input type="hidden" name="orden_id" value={ordenId} />
       <span className="text-xs text-texto">
-        ¿Poner {Math.floor((100 / cuantos) * 100) / 100} % a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
+        ¿Poner {porcentajeCorto(Math.floor((100 / cuantos) * 100) / 100)} a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
       </span>
       <Boton type="submit" tamano="sm" cargando={enviando}>
         Sí, repartir
@@ -474,7 +474,7 @@ function TarjetaPlano({
               Plano {plano.numero_plano}
             </span>
             {plano.nombre}
-            <Insignia tono="neutro">{numero(plano.peso_pct, 0)} %</Insignia>
+            <Insignia tono="neutro">{porcentaje(plano.peso_pct, 0)}</Insignia>
             {plano.etapa_id && <span className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === plano.etapa_id)?.nombre ?? 'Sin nombre'}</span>}
             {entregado ? (
               <span className="text-xs text-exito">Entregado el {fecha(plano.fecha_entrega)}</span>
@@ -961,7 +961,7 @@ function TarjetaPieza({
             {pieza.observacion ? ` · ${pieza.observacion}` : ''}
           </p>
         </div>
-        <span className="tabular shrink-0 text-sm font-medium text-texto">{numero(pieza.avance_pct, 0)} %</span>
+        <span className="tabular shrink-0 text-sm font-medium text-texto">{porcentaje(pieza.avance_pct, 0)}</span>
       </div>
 
       <ul className="flex flex-wrap gap-1.5" aria-label="Por dónde va la pieza">

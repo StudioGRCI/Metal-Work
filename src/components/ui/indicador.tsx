@@ -46,6 +46,27 @@ export interface IndicadorProps {
  * Tamaños: la clase base es la del teléfono —el taller lo mira de pie y a
  * veces con guante— y `sm:` devuelve el tamaño de escritorio de siempre.
  */
+/**
+ * Cada tramo de un pie («cobrado S/ 30,000.00 (51 %) · por cobrar S/ 29,000.00»)
+ * va entero en un renglón cuando cabe: con el espacio normal de `moneda()` y `porcentaje()`,
+ * en el teléfono quedaban «S/» y «78,893.04» en líneas distintas (auditoría 27/10/2026).
+ */
+export function tramos(texto: string) {
+  const partes = texto.split(' · ')
+  // `inline-block`, no `nowrap`: un tramo corto («S/ 78,893.04») no se parte, y uno largo
+  // («lo hecho vale S/ 34,782.61 de los S/ 86,956.52 del presupuesto») se envuelve dentro
+  // de la tarjeta en vez de salirse por la derecha. El «·» viaja con el tramo que abre.
+  return partes.map((p, i) => (
+    <React.Fragment key={i}>
+      {i > 0 && ' '}
+      <span className="inline-block">
+        {i > 0 && '· '}
+        {p}
+      </span>
+    </React.Fragment>
+  ))
+}
+
 export function Indicador({
   titulo,
   valor,
@@ -79,7 +100,7 @@ export function Indicador({
       <div className={cn('tabular mt-1.5 text-2xl leading-tight font-semibold sm:text-xl', color.valor)}>
         {valor}
       </div>
-      {pie && <p className="mt-0.5 text-xs text-texto-tenue">{pie}</p>}
+      {pie && <p className="mt-0.5 text-xs text-texto-tenue">{typeof pie === 'string' ? tramos(pie) : pie}</p>}
     </TarjetaCuerpo>
   )
 
