@@ -227,6 +227,17 @@ alter policy ver_audit_log on public.audit_log using (
          or (select public.tiene_permiso('almacen.ver')) or (select public.tiene_permiso('almacen.recibir')) or (select public.tiene_permiso('compras.ver')))
     and (tabla <> 'diseno_informes'
          or (select public.tiene_permiso('diseno.planos')) or (select public.tiene_permiso('diseno.subir_pdf')) or (select public.tiene_permiso('supervision.general')))
+    -- Las correcciones copian el documento entero (la factura con su total y su
+    -- RUC, la OC con sus precios): cada una con la llave de su documento, como
+    -- su tabla.
+    and (tabla <> 'correcciones'
+         or (coalesce(datos_despues ->> 'documento', datos_antes ->> 'documento') = 'REQUERIMIENTO'
+             and (select public.puede_ver_requerimientos()))
+         or (coalesce(datos_despues ->> 'documento', datos_antes ->> 'documento') = 'ORDEN_COMPRA'
+             and ((select public.tiene_permiso('compras.ver')) or (select public.tiene_permiso('compras.crear'))
+                  or (select public.tiene_permiso('tesoreria.ver_documentos'))))
+         or (coalesce(datos_despues ->> 'documento', datos_antes ->> 'documento') = 'FACTURA_COMPRA'
+             and (select public.tiene_permiso('adquisiciones.ver'))))
     -- Las tablas de la OT se abren además por OT (`puede_ver_orden`); eso no lo
     -- resuelve una llave por tabla: el historial las deja a quien tiene su llave.
   )

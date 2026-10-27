@@ -290,6 +290,10 @@ begin
     insert into public.audit_log (tabla, registro_id, accion, datos_despues)
     select t, gen_random_uuid(), 'INSERT', jsonb_build_object('monto', 999.99, 'prueba', 450)
       from unnest(array['subcontratos', 'recibos_honorarios', 'pagos_adquisicion', 'adquisiciones', 'permisos_personal', 'observaciones_personal']) t
+    union all
+    -- La corrección de una factura copia la factura entera.
+    select 'correcciones', gen_random_uuid(), 'INSERT'::public.accion_auditoria,
+           jsonb_build_object('documento', 'FACTURA_COMPRA', 'despues', jsonb_build_object('total', 999.99, 'ruc_proveedor', '20100450004'))
     returning id)
   select array_agg(id) into v_ids from nuevas;
   perform set_config('prueba.audit', v_ids::text, true);
@@ -298,12 +302,12 @@ begin
   set local role authenticated;
   perform test.afirmar(public.tiene_permiso('auditoria.ver'), 'Supervisión general abre el historial');
   perform test.afirmar((select count(*) from public.audit_log where id = any (current_setting('prueba.audit')::bigint[])) = 0,
-    'pero no lee ahí montos ni datos del personal que sus tablas le tapan');
+    'pero no lee ahí montos, facturas corregidas ni datos del personal que sus tablas le tapan');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.audit_log where id = any (current_setting('prueba.audit')::bigint[])) = 6,
+  perform test.afirmar((select count(*) from public.audit_log where id = any (current_setting('prueba.audit')::bigint[])) = 7,
     'Gerencia, que tiene la llave de cada tabla, los lee');
   reset role;
 end $$;
