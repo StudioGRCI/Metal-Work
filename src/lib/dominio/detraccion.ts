@@ -1,5 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { moneda, parteDe, porcentaje as pct } from '@/lib/format'
+import { moneda, parteDe, porcentaje as pct, porcentajeCorto } from '@/lib/format'
 
 /**
  * La detracción (SPOT) de una orden de servicio: quien contrata deposita un
@@ -46,7 +46,7 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   }
   if (!d.afecta) return { texto: 'No sujeta a detracción', detalle: d.motivo, tono: 'neutro' }
   const tipo = [d.codigo, d.descripcion].filter(Boolean).join(' · ')
-  const porcentaje = `${d.porcentaje ?? 0} %`
+  const porcentaje = porcentajeCorto(d.porcentaje)
   if (d.total_con_igv_pen === null) {
     return { texto: `Detracción ${porcentaje}: falta el tipo de cambio`, detalle: tipo, tono: 'aviso' }
   }

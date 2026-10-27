@@ -68,9 +68,25 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
     totales.set(clave, previo)
   }
 
-  // Lo que se reparte por horas este mes, por moneda: los gastos vigentes y el sueldo de la oficina (en soles).
-  const aRepartirPen = [...totales.values()].filter((t) => t.moneda === 'PEN').reduce((n, t) => n + t.monto, 0) + (reparto.length > 0 ? oficina.monto : 0)
-  const aRepartirUsd = [...totales.values()].filter((t) => t.moneda === 'USD').reduce((n, t) => n + t.monto, 0)
+  // Lo que se reparte por horas este mes, por moneda: los gastos vigentes que van
+  // por horas (los de antes, con tasa o en partes iguales, van por otra vía) y el
+  // sueldo de la oficina (en soles).
+  const porHoras = (moneda: 'PEN' | 'USD') =>
+    gastos.filter((g) => g.estado === 'ACTIVO' && g.reparto === 'HORAS' && g.moneda === moneda).reduce((n, g) => n + Number(g.monto), 0)
+  const aRepartirPen = porHoras('PEN') + (reparto.length > 0 ? oficina.monto : 0)
+  const aRepartirUsd = porHoras('USD')
+  // La carga de cada unidad como la calcula la base: monto × horas / horas del
+  // mes, al centavo, y el residuo del redondeo a la unidad con más horas, para
+  // que la suma dé el total exacto y cuadre con el costeo de cada código.
+  const cargaDe = (total: number) => {
+    const centavos = new Map(reparto.map((r) => [r.codigo, horasDelMes > 0 ? Math.round((total * r.horas * 100) / horasDelMes) : 0]))
+    const residuo = Math.round(total * 100) - [...centavos.values()].reduce((n, c) => n + c, 0)
+    const mayor = reparto.reduce<(typeof reparto)[number] | null>((m, r) => (m === null || r.horas > m.horas ? r : m), null)
+    if (mayor && residuo !== 0) centavos.set(mayor.codigo, (centavos.get(mayor.codigo) ?? 0) + residuo)
+    return (codigo: string) => (centavos.get(codigo) ?? 0) / 100
+  }
+  const cargaPen = cargaDe(aRepartirPen)
+  const cargaUsd = cargaDe(aRepartirUsd)
 
   return (
     <>
@@ -209,7 +225,8 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
           <TablaCabecera>
             <tr>
               <TH>Unidad</TH>
-              <TH className="text-right">Horas</TH>
+              {/* En el teléfono las horas sobran: la parte ya las resume y la carga es lo que DKS pidió ver. */}
+              <TH className="hidden text-right sm:table-cell">Horas</TH>
               <TH className="text-right">Parte de cada gasto</TH>
               {/* Lo que esa parte vale en plata este mes: los gastos en soles y el sueldo de la oficina (DKS, 27/10/2026: porcentaje y costo). */}
               <TH className="text-right">Carga del mes</TH>
@@ -227,11 +244,14 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                       className="text-acento hover:underline">{r.codigo}</Link>
                   ) : r.codigo}
                 </TD>
-                <TD className="tabular text-right">{cantidad(r.horas)}</TD>
-                <TD className="tabular text-right">{porcentaje(r.parte, 2)}</TD>
+                <TD className="hidden tabular text-right sm:table-cell">{cantidad(r.horas)}</TD>
                 <TD className="tabular text-right whitespace-nowrap">
-                  {moneda((aRepartirPen * Number(r.parte)) / 100)}
-                  {aRepartirUsd > 0 && <span className="block text-xs text-texto-suave">+ {moneda((aRepartirUsd * Number(r.parte)) / 100, 'USD')}</span>}
+                  {porcentaje(r.parte, 2)}
+                  <span className="block text-[11px] text-texto-suave sm:hidden">{cantidad(r.horas)} h</span>
+                </TD>
+                <TD className="tabular text-right whitespace-nowrap">
+                  {moneda(cargaPen(r.codigo))}
+                  {aRepartirUsd > 0 && <span className="block text-xs text-texto-suave">+ {moneda(cargaUsd(r.codigo), 'USD')}</span>}
                 </TD>
               </TR>
             ))}

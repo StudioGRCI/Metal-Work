@@ -18,7 +18,7 @@ import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { devolucionesSinNota, notasDeLasFacturas, type DevolucionSinNota, type NotaDeLaFactura } from '@/lib/datos/notas-credito'
 import { ESTADO_COMPROBANTE, TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl } from '@/lib/dominio/finanzas'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -907,6 +907,10 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
       ) : (
         <p className="tabular whitespace-nowrap text-texto">
           {f.enEspera ? 'Por confirmar' : f.pagado && f.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(f.saldo, m)}
+          {/* Lo pagado como parte de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+          {f.pagado !== null && f.pagado > 0 && parteDe(f.pagado, f.total) !== null && (
+            <span className="text-texto-suave"> · pagado {porcentaje(parteDe(f.pagado, f.total))}</span>
+          )}
         </p>
       )}
       {f.pagos.length > 0 && (

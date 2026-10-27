@@ -277,6 +277,7 @@ function FilaCompra({
  * Adquisiciones la OC salía pagada y aquí «Factura pendiente», 27/10/2026).
  */
 function comprobantePendiente(c: { con_factura: boolean | null; registradas: string[] }) {
-  if (c.registradas.length > 0) return `Factura ${c.registradas.join(', ')} registrada · falta su PDF`
+  if (c.registradas.length > 1) return `Facturas ${c.registradas.join(', ')} registradas por Contabilidad · falta anexarlas a la OC`
+  if (c.registradas.length === 1) return `Factura ${c.registradas[0]} registrada por Contabilidad · falta anexarla a la OC`
   return c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'
 }

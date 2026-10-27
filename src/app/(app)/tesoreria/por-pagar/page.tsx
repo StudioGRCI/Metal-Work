@@ -461,7 +461,7 @@ function ParteConBoletaFila({
               <>
                 {'pagado '}
                 <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
-                {` (${porcentaje(parteDe(pagado, x.monto))})`}
+                {parteDe(pagado, x.monto) !== null && ` (${porcentaje(parteDe(pagado, x.monto))})`}
                 {' · '}
               </>
             )}
@@ -1071,7 +1071,8 @@ function Factura({
           </p>
           <p className="tabular text-xs text-texto-suave">
             Total {moneda(c.total, m)}
-            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}`}
+            {/* Lo pagado también como parte del total de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}${parteDe(c.pagado, c.total) === null ? '' : ` · ${porcentaje(parteDe(c.pagado, c.total))}`}`}
           </p>
         </div>
       </div>
@@ -1457,6 +1458,7 @@ function CompraConBoletaFila({
                   <>
                     {' · pagado '}
                     <span className="whitespace-nowrap">{moneda(neto, m)}</span>
+                    {parteDe(neto, b.total) !== null && ` · ${porcentaje(parteDe(neto, b.total))}`}
                   </>
                 )}
                 {devuelto > 0 && (

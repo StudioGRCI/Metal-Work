@@ -71,7 +71,8 @@ export function FacturaDeVenta({
         {Number(f.cobrado) > 0 && (
           <>
             {' '}
-            · cobrado <span className="tabular">{moneda(f.cobrado, m)}</span> · {porcentaje(parteDe(f.cobrado, f.total))}
+            · cobrado <span className="tabular">{moneda(f.cobrado, m)}</span>
+            {parteDe(f.cobrado, f.total) !== null && ` · ${porcentaje(parteDe(f.cobrado, f.total))} de la factura`}
           </>
         )}{' '}
         · emitida el {fecha(f.fecha_emision)}

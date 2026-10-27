@@ -50,6 +50,8 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
 
   const enAlmacen = conCosteo.filter((m) => Number(m.existencia ?? 0) > 0)
   const sinPrecio = enAlmacen.filter((m) => m.costeo === null)
+  // Con todo sin precio, un S/ 0.00 se leía como almacén vacío: las dos monedas dicen «Sin calcular» (auditoría del 27/10/2026).
+  const todoSinPrecio = sinPrecio.length > 0 && sinPrecio.length === enAlmacen.length
   const valor = { PEN: 0, USD: 0 }
   for (const m of enAlmacen) {
     if (m.costeo) valor[m.costeo.moneda] += Number(m.existencia ?? 0) * m.costeo.precio
@@ -81,10 +83,10 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         {/* Un S/ 0.00 con todo sin precio se leía como almacén vacío (auditoría del 27/10/2026). */}
         <Cifra
           etiqueta="Valor en almacén (soles)"
-          valor={sinPrecio.length > 0 && sinPrecio.length === enAlmacen.length ? 'Sin calcular' : moneda(valor.PEN, 'PEN')}
-          pie={sinPrecio.length > 0 ? `no cuenta ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}): no tienen precio` : undefined}
+          valor={todoSinPrecio ? 'Sin calcular' : moneda(valor.PEN, 'PEN')}
+          pie={todoSinPrecio ? 'ninguno tiene precio' : sinPrecio.length > 0 ? `no cuenta ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}): no tienen precio` : undefined}
         />
-        <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
+        <Cifra etiqueta="Valor en almacén (dólares)" valor={todoSinPrecio ? 'Sin calcular' : moneda(valor.USD, 'USD')} />
       </dl>
 
       <div className="mb-4 space-y-3">

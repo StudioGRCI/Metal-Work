@@ -20,6 +20,11 @@ function facturadoDe(c: CotizacionParaFacturar) {
   return c.facturas.filter((f) => !f.anulada_en && f.moneda === c.moneda).reduce((n, f) => n + Number(f.total), 0)
 }
 
+/** Alguna factura vigente va en otra moneda que la cotización: no se puede decir qué parte cubre. */
+function enOtraMoneda(c: CotizacionParaFacturar) {
+  return c.facturas.some((f) => !f.anulada_en && f.moneda !== c.moneda)
+}
+
 /**
  * En qué va la cotización para Contabilidad, por su código y sus facturas
  * vigentes. Con la mitad facturada decía «Facturada» en verde y Contabilidad
@@ -29,6 +34,8 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
   if (!c.codigo_interno) return { etiqueta: 'Sin código interno', tono: 'neutro' }
   if (!c.facturas.some((f) => !f.anulada_en)) return { etiqueta: 'Por facturar', tono: 'aviso' }
   const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+  // Facturada en dólares una cotización en soles (o al revés): no se compara, pero tampoco se la da por entera o por parte.
+  if (enOtraMoneda(c)) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
   if (total !== null && facturadoDe(c) < total - 0.005) return { etiqueta: 'Facturada en parte', tono: 'aviso' }
   return { etiqueta: 'Facturada', tono: 'exito' }
 }
@@ -79,8 +86,8 @@ export default async function PaginaFacturacion() {
             const m = codigo(c.moneda)
             const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
             const facturado = facturadoDe(c)
-            const facturadoPct = total === null ? null : parteDe(facturado, total)
-            const falta = total === null ? 0 : Math.max(0, total - facturado)
+            const facturadoPct = total === null || enOtraMoneda(c) ? null : parteDe(facturado, total)
+            const falta = total === null || enOtraMoneda(c) ? 0 : Math.max(0, total - facturado)
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
               <li key={c.cotizacion_id} id={c.cotizacion_id ?? undefined} className="scroll-mt-20" data-cotizacion={c.numero ?? undefined}>

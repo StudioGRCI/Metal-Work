@@ -28,6 +28,7 @@ import {
   enSituacion,
   guiaPorCargar,
 } from '@/lib/dominio/adquisiciones'
+import { controlDeFacturas, type ControlDeFactura } from '@/lib/datos/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
@@ -148,6 +149,9 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   const devoluciones = await devolucionesDeCompras(deLaPagina.flatMap((f) => (f.tipo === 'OC' && f.con_factura === false ? [f.id] : [])))
   const visibles: Fila[] = deLaPagina.map((f) => ({ ...f, devoluciones: devoluciones.filter((d) => d.orden_compra_id === f.id) }))
   const { urls, sinFirmar } = await enlacesDeCompras(visibles, devoluciones)
+  // Las OC de cada factura registrada de la página: una factura puede llevar
+  // varias OC (decisión 16), y el aviso de que pasa su OC se mide contra todas.
+  const control = await controlDeFacturas([...new Set(visibles.flatMap((f) => f.facturas.filter((x) => x.estado === 'REGISTRADA').map((x) => x.id)))])
   const hayFiltros = Boolean(busqueda || tipo || situacion)
   const vacio =
     todas.length === 0
@@ -228,7 +232,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                   <Origen f={f} acceso={acceso} />
                   <EnQueVa f={f} />
                   <Documentos f={f} urls={urls} acceso={acceso} />
-                  <Pago f={f} urls={urls} acceso={acceso} />
+                  <Pago f={f} urls={urls} acceso={acceso} control={control} />
                 </li>
               ))}
             </ul>
@@ -277,7 +281,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                     <Documentos f={f} urls={urls} acceso={acceso} />
                   </TD>
                   <TD className="min-w-40 align-top">
-                    <Pago f={f} urls={urls} acceso={acceso} />
+                    <Pago f={f} urls={urls} acceso={acceso} control={control} />
                   </TD>
                 </TR>
               ))
@@ -636,7 +640,7 @@ function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso 
 }
 
 /** Si ya se pagó: el estado, lo que falta y cada voucher; Tesorería salta a pagarla. */
-function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
+function Pago({ f, urls, acceso, control }: { f: Fila; urls: Map<string, string>; acceso: Acceso; control: Map<string, ControlDeFactura> }) {
   const estado = definir(ESTADO_PAGO, f.pago)
   const enPartes = f.documentos.some((d) => d.monto_de_la_parte !== null && !d.anulado_en)
   const registradas = f.facturas.filter((x) => x.estado === 'REGISTRADA')
@@ -673,12 +677,20 @@ function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso:
                 {(x.pagado ?? 0) > 0 && <span className="text-texto-suave"> · pagado {porcentaje(parteDe(x.pagado, x.total))}</span>}
               </p>
             )}
-            {/* La factura que pasa el total de su OC sin que nadie lo diga: el aviso de Contabilidad va en su pestaña, y aquí no se veía (27/10/2026). */}
-            {f.tipo === 'OC' && registradas.length === 1 && x.moneda === f.moneda && f.total !== null && x.total > f.total + 0.005 && (
-              <p className="text-aviso">
-                La factura pasa la OC en <span className="tabular whitespace-nowrap">{moneda(x.total - (f.total ?? 0), m)}</span> ({porcentaje(parteDe(x.total - (f.total ?? 0), f.total))})
-              </p>
-            )}
+            {/* La factura que pasa el total de sus OC sin que nadie lo diga: el aviso de Contabilidad va en su pestaña, y aquí no se veía (27/10/2026).
+                Se mide contra todas sus OC (`adquisiciones_control`): con una factura de dos OC, compararla con una sola decía que la pasaba. */}
+            {f.tipo === 'OC' && (() => {
+              const c = control.get(x.id)
+              if (!c || c.control !== 'NO_CALZA' || c.diferencia === null || c.diferencia <= 0.005 || c.total_oc === null) return null
+              const parte = parteDe(c.diferencia, c.total_oc)
+              return (
+                <p className="text-aviso">
+                  La factura pasa {c.ordenes.length > 1 ? `sus ${c.ordenes.length} OC` : 'la OC'} en{' '}
+                  <span className="tabular whitespace-nowrap">{moneda(c.diferencia, m)}</span>
+                  {parte !== null && ` (${porcentaje(parte)})`}
+                </p>
+              )
+            })()}
             {tomado > 0 && (
               <p className="tabular text-texto-suave">
                 Tomó <span className="whitespace-nowrap">{moneda(tomado, m)}</span> del pago por la boleta

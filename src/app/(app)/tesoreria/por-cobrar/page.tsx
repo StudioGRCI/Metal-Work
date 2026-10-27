@@ -53,15 +53,24 @@ export default async function PaginaPorCobrar() {
   const cobradas = facturas.filter((f) => !pendientes.includes(f))
   const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < hoy).length
   const resumen = resumenPorMoneda(pendientes.map((f) => ({ moneda: f.moneda, monto: Number(f.saldo) })), ['factura', 'facturas'])
-  // Lo cobrado de cada código que pide salir: el mismo dato de «Cotizaciones aprobadas», junto a la revisión.
+  // Lo cobrado de cada código que pide salir: el mismo dato de «Cotizaciones
+  // aprobadas», junto a la revisión. Un código con dos cotizaciones las suma
+  // (antes quedaba solo la más vieja); en monedas distintas no se suman y se dice.
   const cobrosPorCodigo: Record<string, CobroDelCodigo> = {}
   for (const c of cotizaciones) {
     if (!c.codigo_interno) continue
-    cobrosPorCodigo[c.codigo_interno] = {
-      total: totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv),
-      facturado: Number(c.facturado ?? 0),
-      cobrado: Number(c.cobrado ?? 0),
-      moneda: codigo(c.moneda),
+    const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+    const previo = cobrosPorCodigo[c.codigo_interno]
+    if (!previo) {
+      cobrosPorCodigo[c.codigo_interno] = { total, facturado: Number(c.facturado ?? 0), cobrado: Number(c.cobrado ?? 0), moneda: codigo(c.moneda), cotizaciones: 1, monedasDistintas: false }
+    } else if (previo.moneda !== codigo(c.moneda)) {
+      previo.monedasDistintas = true
+      previo.cotizaciones += 1
+    } else {
+      previo.total = previo.total === null || total === null ? null : previo.total + total
+      previo.facturado += Number(c.facturado ?? 0)
+      previo.cobrado += Number(c.cobrado ?? 0)
+      previo.cotizaciones += 1
     }
   }
   const abreVehiculos = puede(perfil, 'vehiculos.ver') || puede(perfil, 'vehiculos.registrar')
@@ -167,8 +176,8 @@ export default async function PaginaPorCobrar() {
                       ) : (
                         <span className="tabular">
                           Facturado {moneda(c.facturado, m)}
-                          {total !== null && ` (${porcentaje(parteDe(c.facturado, total))})`} · cobrado {moneda(c.cobrado, m)}
-                          {total !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
+                          {parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado {moneda(c.cobrado, m)}
+                          {parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
                         </span>
                       )}
                       {c.url && (

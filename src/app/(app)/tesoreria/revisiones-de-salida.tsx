@@ -11,15 +11,24 @@ import { fechaHora, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib
 
 import { responderRevisionSalida } from '../vehiculos/acciones-ficha'
 
+/** Lo facturado y cobrado del código que sale: con eso se decide si puede salir. */
+export type CobroDelCodigo = {
+  total: number | null
+  facturado: number
+  cobrado: number
+  moneda: CodigoMoneda
+  /** Cuántas cotizaciones aprobadas suma el código. */
+  cotizaciones: number
+  /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
+  monedasDistintas: boolean
+}
+
 /**
  * Los vehículos que Requerimientos quiere entregar y esperan la revisión de
  * Tesorería: cada pedido trae el código interno, lo que hay que revisar y el
  * escaneo firmado de la ficha de salida. Reemplaza, para los vehículos, la
  * revisión de salida que se pedía desde la OT (migración 20261016110000).
  */
-/** Lo facturado y cobrado del código que sale: con eso se decide si puede salir. */
-export type CobroDelCodigo = { total: number | null; facturado: number; cobrado: number; moneda: CodigoMoneda }
-
 export function RevisionesDeSalida({
   revisiones,
   paraTi,
@@ -95,8 +104,11 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
             </>
           ) : (
             <>
-              Cobrado <span className="font-medium text-texto">{moneda(cobro.cobrado, cobro.moneda)}</span> · {porcentaje(parteDe(cobro.cobrado, cobro.total))} de la cotización de{' '}
+              Cobrado <span className="font-medium text-texto">{moneda(cobro.cobrado, cobro.moneda)}</span>
+              {parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
+              {cobro.cotizaciones > 1 ? ` de las ${cobro.cotizaciones} cotizaciones, que suman` : ' de la cotización de'}{' '}
               {moneda(cobro.total, cobro.moneda)}
+              {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}
               {porCobrar !== null && porCobrar > 0.005 && (
                 <>
                   {' '}
@@ -107,12 +119,17 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
           )}
         </p>
       )}
+      {!cobro && v.codigo_interno && (
+        <p className="mt-1 text-xs text-texto-suave" data-cobro-del-codigo>
+          Este código no tiene cotización aprobada: no hay cobro que revisar aquí.
+        </p>
+      )}
       <p className="mt-1 text-xs text-texto-suave">
         {fechaHora(v.creado_en)} · {v.solicitante ?? 'Requerimientos'}
       </p>
       <form onSubmit={alEnviar} className="mt-3 grid gap-3 border-t border-borde pt-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
         <input type="hidden" name="id" value={v.id} />
-        <Campo etiqueta="Resultado" htmlFor={`salida-estado-${v.id}`}>
+        <Campo etiqueta="Resultado" htmlFor={`salida-estado-${v.id}`} requerido>
           {/* Sin opción marcada: venía en «puede salir» y un toque sin leer dejaba salir el vehículo (27/10/2026). */}
           <Seleccion id={`salida-estado-${v.id}`} name="estado" defaultValue="" required>
             <option value="" disabled>

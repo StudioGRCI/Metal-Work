@@ -118,28 +118,22 @@ export default async function PaginaAprobacionCompras() {
           </section>
         )}
 
-        {/* La regla va al final: Gerencia viene a aprobar, no a configurar; en el teléfono el formulario tapaba «Por aprobar» (27/10/2026). */}
-        <Tarjeta>
-          <TarjetaCabecera
-            titulo="La regla"
-            descripcion={configura ? resumen : undefined}
-            ayuda={
-              configura
-                ? 'Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas.'
-                : undefined
-            }
-            acciones={regla && <Insignia tono={regla.activa ? 'exito' : 'neutro'}>{regla.activa ? 'Encendida' : 'Apagada'}</Insignia>}
-          />
-          <TarjetaCuerpo>
-            {configura ? (
+        {/* La regla va al final: Gerencia viene a aprobar, no a configurar; en el teléfono el formulario tapaba «Por aprobar» (27/10/2026).
+            El encabezado ya la cuenta, así que la tarjeta solo sale para quien puede cambiarla. */}
+        {configura && (
+          <Tarjeta>
+            <TarjetaCabecera
+              titulo="La regla"
+              ayuda="Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas."
+              acciones={regla && <Insignia tono={regla.activa ? 'exito' : 'neutro'}>{regla.activa ? 'Encendida' : 'Apagada'}</Insignia>}
+            />
+            <TarjetaCuerpo>
               <Pliegue titulo="Cambiar la regla">
                 <FormularioRegla regla={regla} puestos={puestos} />
               </Pliegue>
-            ) : (
-              <p className="text-sm text-texto-suave">{resumen}</p>
-            )}
-          </TarjetaCuerpo>
-        </Tarjeta>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
       </div>
     </>
   )
@@ -285,9 +279,11 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
             <dt className="text-xs text-texto-suave">Monto sin IGV</dt>
             <dd className="tabular text-lg font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</dd>
             {enDolares && c.monto_pen !== null && <dd className="tabular text-xs text-texto-suave">≈ {moneda(c.monto_pen)}</dd>}
-            {/* Lo que va a salir de la caja: el IGV del 18 % y el total, como en el PDF (DKS, 27/10/2026: porcentaje y costo). */}
+            {/* Lo que va a salir de la caja: el IGV del 18 % y el total, como en el PDF, que no lo suma a la compra con boleta (DKS, 27/10/2026: porcentaje y costo). */}
             <dd className="tabular text-xs text-texto-suave">
-              IGV {moneda(igvCompra(c.monto), divisa(c.moneda))} · total {moneda(c.monto + igvCompra(c.monto), divisa(c.moneda))}
+              {c.con_factura
+                ? `IGV ${moneda(igvCompra(c.monto), divisa(c.moneda))} · total ${moneda(c.monto + igvCompra(c.monto), divisa(c.moneda))}`
+                : 'Con boleta: sin IGV, el total es el mismo'}
             </dd>
           </div>
           <div>
