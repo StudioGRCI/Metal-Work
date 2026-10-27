@@ -240,7 +240,8 @@ export const ESTADO_DOCUMENTO_CODIGO: Record<string, Def> = {
 export const ESTADO_SERVICIO_CODIGO: Record<string, Def> = {
   POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
-  EMITIDA: { etiqueta: 'Aprobada', tono: 'neutro' },
+  // El mismo nombre que en Órdenes de servicio y Pagos de servicio: «Aprobada» aquí y «Emitida» allá era el mismo dato con dos nombres.
+  EMITIDA: { etiqueta: 'Emitida', tono: 'neutro' },
   EN_EJECUCION: { etiqueta: 'En ejecución', tono: 'info' },
   CONFORME: { etiqueta: 'Conforme', tono: 'exito' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },

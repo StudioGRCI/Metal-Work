@@ -902,9 +902,11 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
         <Tabla>
           <TablaCabecera>
             <TR>
+              {/* En el teléfono «% unidad» va bajo el plano y la barra se achica:
+                  con las cuatro columnas el nombre salía una palabra por línea. */}
               <TH>Plano</TH>
-              <TH className="text-right">% unidad</TH>
-              <TH className="w-40">Avance</TH>
+              <TH className="hidden text-right sm:table-cell">% unidad</TH>
+              <TH className="w-20 sm:w-40">Avance</TH>
               <TH className="text-right">Aporta</TH>
             </TR>
           </TablaCabecera>
@@ -914,6 +916,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                 <TD>
                   <span className="font-mono">{p.numero}</span> · {p.nombre}
                   <span className="block text-xs text-texto-suave">
+                    <span className="sm:hidden">{porcentajeCorto(p.peso)} de la unidad · </span>
                     {p.area} ·{' '}
                     {p.por_etapa
                       ? 'su etapa ya terminó'
@@ -922,7 +925,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                         : 'sin reporte todavía'}
                   </span>
                 </TD>
-                <TD className="tabular text-right">{porcentajeCorto(p.peso)}</TD>
+                <TD className="tabular hidden text-right sm:table-cell">{porcentajeCorto(p.peso)}</TD>
                 <TD>
                   <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
                 </TD>

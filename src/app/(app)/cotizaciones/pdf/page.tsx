@@ -39,7 +39,7 @@ function EnlaceArchivo({ url, mime, nombre }: { url: string; mime: string | null
       className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
     >
       <Icono aria-hidden className="size-4 shrink-0" />
-      <span className="break-all">
+      <span className="break-words">
         {word ? 'Bajar el Word' : 'Abrir el PDF'}
         {nombre ? ` · ${nombre}` : ''}
       </span>

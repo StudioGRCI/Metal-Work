@@ -33,6 +33,7 @@ import type { TonoIndicador } from '@/components/ui/indicador'
 import { leerListaDeCodigos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
+import { pendientesGlobales } from '@/lib/datos/pendientes-globales'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { faltaDelServicio } from '@/lib/dominio/detraccion'
@@ -128,6 +129,48 @@ async function todas<T>(
 
 // ── Las lecturas compartidas ────────────────────────────────────────────────
 
+/**
+ * Lo que espera por el puesto en sus pantallas, sumado de las cuentas de los
+ * globos del menú (`pendientesGlobales`, una sola lectura por carga): el
+ * Dashboard mostraba totales del mes y no las 2 compras o la cotización que
+ * Gerencia tenía por aprobar (auditoría del 27/10/2026). No le dice a nadie
+ * qué hacer: dice cuánto hay y en qué pantalla, como los globos.
+ */
+function loQueEspera(titulo: string, claves: string[], ruta: string, icono: LucideIcon, opciones: { enSoles?: boolean } = {}): Generador {
+  return {
+    ruta,
+    calcular: async (c) => {
+      const { tareas, clavesSinComprobar } = await c.una('pendientes', () => pendientesGlobales(c.perfil))
+      const mias = tareas.filter((t) => claves.includes(t.clave))
+      const total = mias.reduce((n, t) => n + t.cantidad, 0)
+      // Cualquiera de sus cuentas que falle: la cifra no puede decir «nada por ahora».
+      const sinLeer = claves.some((k) => clavesSinComprobar.includes(k))
+      // Lo que vale, para las cuentas que son dinero (DKS, 27/10/2026: porcentaje y costo).
+      const pen = mias.reduce((n, t) => n + (t.monto?.PEN ?? 0), 0)
+      const usd = mias.reduce((n, t) => n + (t.monto?.USD ?? 0), 0)
+      const conMonto = mias.some((t) => t.monto)
+      // Cada cuenta con lo que vale al lado; la que no es dinero, solo su texto.
+      const textos = mias.map((t) =>
+        !opciones.enSoles && t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
+          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')} sin IGV)`
+          : t.texto,
+      )
+      const pie = [sinLeer ? 'una cuenta no se pudo leer' : null, ...(mias.length > 0 ? textos : sinLeer ? [] : ['nada por ahora'])]
+        .filter(Boolean)
+        .join(' · ')
+      // Con todo en una sola pantalla, la tarjeta lleva ahí; si no, a la de la primera cuenta.
+      const rutas = [...new Set(mias.map((t) => t.ruta.split(/[?#]/)[0]))]
+      const href = mias.length === 0 ? ruta : rutas.length === 1 && mias.length === 1 ? mias[0].ruta : rutas.length === 1 ? rutas[0] : mias[0].ruta
+      const tono = sinLeer || total > 0 ? 'aviso' : 'neutro'
+      if (opciones.enSoles && conMonto) {
+        // El monto es la cifra y la cantidad va en el pie, como «Servicios por pagar».
+        return { titulo, ...soles(pen, usd, pie), href, icono, tono }
+      }
+      return { titulo, valor: sinLeer && total === 0 ? '—' : String(total), pie, href, icono, tono }
+    },
+  }
+}
+
 const rqAbiertos = (c: Contexto) =>
   c.una('rq', async () => {
     const r = await c.supabase.from('requerimientos').select('estado, tipo, area_id').in('estado', [...ESTADOS_RQ_ABIERTOS]).limit(1000)
@@ -196,6 +239,16 @@ const bajoMinimo = (c: Contexto) =>
 // ── El catálogo de cifras ───────────────────────────────────────────────────
 
 const CIFRAS = {
+  // Las mismas claves que cuentan los globos del grupo «Por aprobar» del menú de Gerencia,
+  // con el visto del reporte diario.
+  por_aprobar: loQueEspera(
+    'Por aprobar',
+    ['compras_por_aprobar', 'pdf_por_revisar', 'pdf_sin_ot', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar', 'reportes_visto_gerencia_en'],
+    '/compras/aprobacion',
+    ClipboardList,
+  ),
+  por_facturar: loQueEspera('Por facturar', ['por_facturar'], '/contabilidad/facturacion', ClipboardList, { enSoles: true }),
+  planillas_por_pagar: loQueEspera('Planillas por pagar', ['planillas_por_pagar'], '/planilla-diaria', ClipboardList, { enSoles: true }),
   // Requerimientos
   rq_abiertos: {
     ruta: '/requerimientos',
@@ -203,7 +256,8 @@ const CIFRAS = {
       const mios = rqDelPuesto(c, await rqAbiertos(c))
       const listos = mios.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
       return {
-        titulo: c.perfil.rol.codigo === 'SUPERVISOR' ? 'Requerimientos de tu área' : 'Requerimientos abiertos',
+        // La administradora lleva solo el RQA: que la cifra lo diga, o «0» con tres RQ en Atención se leía como un error.
+        titulo: c.perfil.rol.codigo === 'SUPERVISOR' ? 'Requerimientos de tu área' : c.perfil.rol.codigo === 'ADMINISTRACION' ? 'Requerimientos de Administración' : 'Requerimientos abiertos',
         valor: String(mios.length),
         pie: listos > 0 ? `${plural(listos, 'listo', 'listos')} en almacén` : 'ninguno listo en almacén',
         icono: ClipboardList,
@@ -371,7 +425,8 @@ const CIFRAS = {
     ruta: '/recojos',
     calcular: async (c) => {
       const n = (await enGestion(c)).filter((g) => g.dejado_en && g.dejado_en.slice(0, 10) >= c.mes).length
-      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén', icono: PackageCheck }
+      // Recojos lista las de la semana: el pie lo dice para que las dos cifras no parezcan contradecirse.
+      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén; Recojos muestra solo esta semana', icono: PackageCheck }
     },
   },
 
@@ -502,7 +557,7 @@ const CIFRAS = {
           pendientes.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(pendientes.length, 'factura', 'facturas'),
-            parte === null ? null : `falta cobrar el ${porcentaje(parte)} de esas facturas`,
+            parte === null ? null : `falta cobrar el ${porcentaje(parte)} de ${enSoles.length === 1 ? 'esa factura' : 'esas facturas'}`,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -535,7 +590,7 @@ const CIFRAS = {
           filas.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(filas.length, 'factura', 'facturas'),
-            parte === null ? null : `falta pagar el ${porcentaje(parte)} de esas facturas`,
+            parte === null ? null : `falta pagar el ${porcentaje(parte)} de ${enSoles.length === 1 ? 'esa factura' : 'esas facturas'}`,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -893,9 +948,9 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   ALMACENERO: { titulo: 'Almacén', cifras: ['rq_en_compra', 'bajo_minimo', 'materiales_con_saldo', 'salidas_del_mes'] },
   COMPRADOR: { titulo: 'Logística', cifras: ['oc_por_aprobar', 'en_recojo', 'os_abiertas', 'compras_del_mes'] },
   CONDUCTOR: { titulo: 'Tus recojos', cifras: ['por_recoger', 'en_camino', 'dejadas_del_mes'] },
-  GERENTE: { titulo: 'Códigos internos', cifras: ['codigos_en_trabajo', 'costo_de_codigos', 'facturado_y_cobrado', 'codigos_por_completar'] },
-  TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar'] },
-  CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
+  GERENTE: { titulo: 'Códigos internos', cifras: ['por_aprobar', 'codigos_en_trabajo', 'costo_de_codigos', 'facturado_y_cobrado', 'codigos_por_completar'] },
+  TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar', 'planillas_por_pagar'] },
+  CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['por_facturar', 'facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
   DISENO: { titulo: 'Por código interno', cifras: ['etapas_en_curso', 'codigos_sin_etapas', 'planos_sin_recibir', 'codigos_sin_materiales'] },
   ADMINISTRACION: { titulo: 'Administración', cifras: ['rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
   RECURSOS_HUMANOS: { titulo: 'Recursos Humanos', cifras: ['personal_activo', 'entraron_hoy', 'tardanzas_del_mes', 'reportes_del_mes'] },

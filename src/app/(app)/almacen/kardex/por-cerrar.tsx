@@ -92,7 +92,7 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
         <p className="text-sm font-medium">
           {salida.numero_salida && <span className="mr-2 font-mono text-texto">{salida.numero_salida}</span>}
           {salida.material ?? 'Material'}
-          <span className="ml-2 font-mono text-[11px] font-normal text-texto-tenue">{salida.material_codigo}</span>
+          <span className="ml-2 font-mono text-xs font-normal text-texto-tenue">{salida.material_codigo}</span>
         </p>
         <p className="tabular text-xs text-texto-suave">
           {cantidad(salida.salida)} {salida.unidad_medida ?? ''} · {salida.codigo_unidad ?? 'sin unidad'}

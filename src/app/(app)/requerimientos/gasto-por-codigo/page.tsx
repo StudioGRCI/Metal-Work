@@ -123,7 +123,8 @@ function FilaGasto({ codigo: c, parecidos, total }: { codigo: GastoDeCodigo; par
       className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 hover:border-acento"
       data-codigo={c.codigo}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      {/* Rejilla y no flex-wrap: según el largo del texto el monto saltaba abajo y a la izquierda (auditoría del 27/10/2026). */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className="min-w-0">
           <p className="font-mono font-semibold break-all text-texto">{c.codigo}</p>
           <p className="text-xs text-texto-suave">

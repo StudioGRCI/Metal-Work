@@ -39,8 +39,9 @@ export function ListaEtapas({
       {etapas.map((e, i) => {
         const estado = estadoEtapa(e)
         const plazo = plazoEtapa(e, hoy)
+        // En el teléfono los botones van debajo: al lado dejaban el nombre en 60 px (auditoría del 27/10/2026).
         return (
-          <li key={e.id} className="flex flex-wrap items-start justify-between gap-3 p-3" data-etapa={e.nombre}>
+          <li key={e.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between" data-etapa={e.nombre}>
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="tabular text-xs text-texto-suave">{i + 1}.</span>

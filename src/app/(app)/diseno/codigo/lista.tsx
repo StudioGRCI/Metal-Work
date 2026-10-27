@@ -61,7 +61,10 @@ export async function ListaDeCodigosDeDiseno({
   params: Record<string, string | string[] | undefined>
   seguimiento?: boolean
 }) {
-  const titulo = seguimiento ? 'Seguimiento por código' : (VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos')
+  // Almacén entra por «Materiales por código» del menú: el título dice lo mismo que el menú.
+  const titulo = seguimiento
+    ? vista === 'materiales' ? 'Materiales por código' : 'Seguimiento por código'
+    : (VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos')
   const ruta = seguimiento ? '/seguimiento' : `/diseno/${vista}`
   const enlace = seguimiento ? enlaceSeguimientoCodigo : enlaceDisenoCodigo
   const q = typeof params.q === 'string' ? params.q.trim() : ''

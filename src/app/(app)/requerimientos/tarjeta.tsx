@@ -277,7 +277,8 @@ export function TarjetaRequerimiento({
           {rq.entregado_en && (
             <p>
               Entregado {fechaHora(rq.entregado_en)}
-              {rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}
+              {/* La nota la escribe quien entrega («Lo recogió el supervisor»): con «a» delante no se leía. */}
+              {rq.nota_entrega ? ` · ${rq.nota_entrega}` : ''}
             </p>
           )}
           {/* Entregado con faltante: qué no salió del kardex y por qué, para quien lo pidió. */}
