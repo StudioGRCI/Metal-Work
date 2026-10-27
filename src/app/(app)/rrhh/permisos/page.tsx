@@ -123,7 +123,7 @@ export default async function PaginaPermisos({ searchParams }: PageProps<'/rrhh/
                       <p className="tabular font-semibold whitespace-nowrap text-aviso">{horasCortas(p.por_justificar)}</p>
                       {/* Lo que valen esas horas, a la hora de la persona (DKS, 27/10/2026: porcentaje y costo). */}
                       {p.valor_hora !== null && (
-                        <p className="tabular text-xs whitespace-nowrap text-texto-suave">{moneda(Math.round(p.por_justificar * p.valor_hora * 100) / 100)}</p>
+                        <p className="tabular text-xs whitespace-nowrap text-texto-suave">valen {moneda(Math.round(p.por_justificar * p.valor_hora * 100) / 100)}</p>
                       )}
                       {p.justificadas > 0 && <p className="text-xs text-texto-suave">ya justificó {horasCortas(p.justificadas)}</p>}
                     </TD>

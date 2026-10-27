@@ -39,7 +39,7 @@ import { faltaDelServicio } from '@/lib/dominio/detraccion'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
-import { hoyLima, moneda, numero, parteDe, porcentaje, sumarDias } from '@/lib/format'
+import { hoyLima, moneda, numero, parteDe, porcentaje, porcentajeCorto, sumarDias } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -286,10 +286,19 @@ const CIFRAS = {
       const oc = (await ordenesDeCompra(c)).filter((o) => o.aprobacion === 'POR_APROBAR')
       // Cuánto es lo que espera, sin IGV, como lo lleva la lista.
       const pen = oc.reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)
+      // La OC en dólares sin cambio no entra a los soles: se dice, para que la suma no parezca completa.
+      const sinCambio = oc.filter((o) => o.moneda === 'USD' && o.monto_pen === null).length
+      const espera = oc.length === 1 ? 'espera su aprobación' : 'esperan su aprobación'
       return {
         titulo: 'OC en Gerencia',
         valor: String(oc.length),
-        pie: oc.length > 0 && pen > 0 ? `esperan su aprobación · ${moneda(pen)} sin IGV` : 'esperan su aprobación',
+        pie: [
+          espera,
+          pen > 0 ? `${moneda(pen)} sin IGV` : null,
+          sinCambio > 0 ? `${sinCambio} en dólares sin cambio` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         icono: Clock,
         tono: oc.length > 0 ? 'aviso' : 'neutro',
       }
@@ -308,7 +317,7 @@ const CIFRAS = {
       const enGerencia = delMes.filter((o) => o.aprobacion === 'POR_APROBAR').reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)
       const parteEnGerencia = parteDe(enGerencia, pen)
       const pie = [
-        `${plural(delMes.length, 'orden de compra', 'órdenes de compra')} sin IGV`,
+        `${plural(delMes.length, 'orden de compra', 'órdenes de compra')}, sin IGV`,
         parteEnGerencia !== null && enGerencia > 0 ? `${porcentaje(parteEnGerencia)} espera a Gerencia` : null,
       ]
         .filter(Boolean)
@@ -776,8 +785,8 @@ const CIFRAS = {
       const pct = regla?.porcentaje_descuento ?? 5
       const pie =
         conDescuento.length === 0
-          ? `cada ${cada}, el ${porcentaje(pct)} del sueldo`
-          : `${plural(conDescuento.length, 'persona', 'personas')} con el ${porcentaje(pct)} por restar${veSueldo && porRestar > 0 ? ` · ${moneda(porRestar)}` : ''}`
+          ? `cada ${cada}, el ${porcentajeCorto(pct)} del sueldo`
+          : `${plural(conDescuento.length, 'persona', 'personas')} con descuento${veSueldo && porRestar > 0 ? ` · ${moneda(porRestar)}` : ` · ${porcentajeCorto(pct)} por cada ${cada}`}`
       return { titulo: 'Tardanzas del mes', valor: String(r.count ?? 0), pie, icono: AlertTriangle, tono: conDescuento.length > 0 ? 'aviso' : 'neutro' }
     },
   },
@@ -835,13 +844,15 @@ const CIFRAS = {
           .eq('registrado_por', c.perfil.id)
           .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
           .limit(500),
-        // Contra cuántas subió este mes, para leer la cuenta como parte (DKS, 27/10/2026: porcentaje y costo).
-        c.supabase.from('v_cotizaciones_pdf').select('id', { count: 'exact', head: true }).eq('registrado_por', c.perfil.id).gte('creado_en', `${c.mes}T00:00:00-05:00`),
+        // Las que subió este mes y cuántas de ellas ya se aprobaron (DKS, 27/10/2026: porcentaje y costo).
+        // Se cuenta dentro de las mismas: una subida en septiembre y aprobada ahora pasaba del 100 %.
+        c.supabase.from('v_cotizaciones_pdf').select('estado').eq('registrado_por', c.perfil.id).gte('creado_en', `${c.mes}T00:00:00-05:00`).limit(500),
       ])
       fallo(r)
       fallo(subidas)
       const filas = r.data ?? []
-      const parteAprobada = parteDe(filas.length, subidas.count ?? 0)
+      const delMes = subidas.data ?? []
+      const parteAprobada = parteDe(delMes.filter((f) => f.estado === 'APROBADA').length, delMes.length)
       // Cada moneda con su total: sumar solo los soles decía «por S/ 0.00» en
       // un mes de cotizaciones en dólares.
       const soles = filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0)
@@ -852,7 +863,7 @@ const CIFRAS = {
         valor: String(filas.length),
         pie: [
           montos.length > 0 ? `de las que subiste, por ${montos.join(' y ')}` : 'de las que subiste',
-          parteAprobada !== null ? `${porcentaje(parteAprobada)} de las ${subidas.count} subidas este mes` : null,
+          parteAprobada !== null ? `${porcentaje(parteAprobada)} de ${plural(delMes.length, 'subida', 'subidas')} este mes` : null,
         ]
           .filter(Boolean)
           .join(' · '),

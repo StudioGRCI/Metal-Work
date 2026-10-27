@@ -1,5 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
+import { enlaceCodigo } from '@/lib/dominio/codigos-internos'
+import { enlaceDisenoCodigo, enlaceSeguimientoCodigo } from '@/lib/dominio/diseno-codigos'
 import { catalogosDePlanos, equipoDisenoNominal, planosConAutor, versionesDePlanos } from '@/lib/datos/versiones-planos'
 import { cumplimientoDeOrden } from '@/lib/datos/cumplimiento'
 import { areasDelTaller } from '@/lib/datos/actividades'
@@ -50,13 +52,25 @@ export default async function PaginaPlanos({ params, searchParams }: {
     ? 'La orden aún no está aprobada'
     : abierta ? null : 'La orden ya se cerró'
   const toca = queMeToca(perfil, pendientes, orden, etapas.length)
+  // Los planos del código, en la pantalla que quien mira sí abre: Diseño en la
+  // suya, Gerencia y Administración en Códigos internos, el taller en Seguimiento.
+  const codigo = orden.avance_del_codigo ?? null
+  const enlaceDelCodigo = !codigo
+    ? null
+    : puede(perfil, 'diseno.codigos')
+      ? enlaceDisenoCodigo(codigo, 'planos')
+      : puede(perfil, 'codigos_internos.ver')
+        ? enlaceCodigo(codigo, 'planos')
+        : puede(perfil, ['codigos_internos.seguimiento', 'codigos_internos.area'])
+          ? enlaceSeguimientoCodigo(codigo, 'planos')
+          : null
   return <>
     <CabeceraDeOrden orden={orden} perfil={perfil} vista="planos" secciones={secciones}
       contadores={toca.contadores} cotizacionPdf={cotizacionPdf} />
     <div className="mt-5 space-y-5">
       <div className="min-w-0 space-y-4">
         <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
-          codigoInterno={orden.avance_del_codigo ?? null} avanceDelCodigo={orden.avance_porcentaje}
+          codigoInterno={codigo} enlaceDelCodigo={enlaceDelCodigo}
           versiones={versiones.map(v => ({ ...v,
             puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
             puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),

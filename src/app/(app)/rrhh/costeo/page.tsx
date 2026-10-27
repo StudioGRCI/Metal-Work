@@ -8,7 +8,7 @@ import { horasEsperandoCosto } from '@/lib/datos/reportes-diarios'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { listarTrabajadores, recargoExtrasDelMes, tareosDelMes, type RecargoExtras, type Tareo } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, fechaValida, horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
-import { fecha, fechaLarga, hoyLima, mesLargo, moneda, parteDe, porcentaje, porcentajeCorto } from '@/lib/format'
+import { fecha, fechaLarga, hoyLima, mesLargo, moneda, parteDe, porcentaje } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso } from '@/lib/sesion'
 
 import { AnularTareo, CargarHoras } from './formulario'
@@ -176,17 +176,17 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
               grupos.map((g) => (
                 <details key={g.codigo} className="rounded-lg border border-borde" data-codigo={g.codigo}>
                   <summary className="cursor-pointer px-4 py-3 text-texto">
-                    <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-center justify-between gap-2 align-middle">
-                      <span className="min-w-0">
+                    <span className="inline-flex w-[calc(100%-1.5rem)] items-center justify-between gap-3 align-middle">
+                      <span className="min-w-0 flex-1">
                         <strong className="block font-mono text-sm">{g.codigo}</strong>
                         <span className="text-xs text-texto-suave">
                           {g.personas.size} {g.personas.size === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(g.horas)}</span>
                         </span>
                       </span>
-                      <span className="text-right">
+                      <span className="shrink-0 text-right">
                         <strong className="tabular block text-sm">{moneda(g.costo)}</strong>
                         {/* «del costo del mes»: Gastos del mes reparte por horas y da otro %; aquí es por costo. */}
-                        <span className="tabular block text-xs text-texto-suave">{porcentaje(costo > 0 ? (g.costo / costo) * 100 : 0)} del costo del mes</span>
+                        <span className="tabular block text-xs text-texto-suave">{porcentaje(costo > 0 ? (g.costo / costo) * 100 : 0)} del costo<span className="hidden sm:inline"> del mes</span></span>
                         {(recargoDe.get(g.codigo) ?? 0) > 0 && (
                           <span className="tabular block text-xs whitespace-nowrap text-texto-suave">
                             con recargo {moneda(g.costo + (recargoDe.get(g.codigo) ?? 0))}
@@ -242,19 +242,19 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
               recargos.map((r) => (
                 <details key={r.codigo} className="rounded-lg border border-borde" data-recargo={r.codigo}>
                   <summary className="cursor-pointer px-4 py-3 text-texto">
-                    <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-center justify-between gap-2 align-middle">
-                      <span className="min-w-0">
+                    <span className="inline-flex w-[calc(100%-1.5rem)] items-center justify-between gap-3 align-middle">
+                      <span className="min-w-0 flex-1">
                         <strong className="block font-mono text-sm">{r.codigo}</strong>
                         <span className="text-xs text-texto-suave">
                           <span className="tabular">{horasCortas(r.horas)}</span> extras en {r.lineas.length}{' '}
                           {r.lineas.length === 1 ? 'día' : 'días'}
                         </span>
                       </span>
-                      <span className="text-right">
+                      <span className="shrink-0 text-right">
                         <strong className="tabular block text-sm">{moneda(r.monto)}</strong>
                         {parteDe(r.monto, manoDeObraDe.get(r.codigo) ?? 0) !== null && (
                           <span className="tabular block text-xs whitespace-nowrap text-texto-suave">
-                            {porcentajeCorto(parteDe(r.monto, manoDeObraDe.get(r.codigo) ?? 0))} de su mano de obra
+                            {porcentaje(parteDe(r.monto, manoDeObraDe.get(r.codigo) ?? 0))} de su mano de obra
                           </span>
                         )}
                       </span>
@@ -348,8 +348,9 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                       <TD className="hidden align-top font-mono text-xs md:table-cell">{t.codigo_interno}</TD>
                       <TD className={`tabular text-right align-top ${anulado ? 'line-through' : ''}`}>{horasCortas(t.horas)}</TD>
                       <TD className={`tabular text-right align-top ${anulado ? 'line-through' : ''}`}>
-                        {moneda(t.costo)}
-                        <p className="text-xs whitespace-nowrap text-texto-suave">{moneda(t.costo_hora)} la hora</p>
+                        {/* El nowrap solo en los montos: en toda la línea corría la tabla de costado en el teléfono. */}
+                        <span className="whitespace-nowrap">{moneda(t.costo)}</span>
+                        <p className="text-xs text-texto-suave"><span className="whitespace-nowrap">{moneda(t.costo_hora)}</span> la hora</p>
                       </TD>
                       <TD className="text-right align-top">
                         {edita && !anulado && (

@@ -178,7 +178,14 @@ function FilaDeStock({ material: m }: { material: MaterialEnStock }) {
         )}
         {m.existencia > 0 && ocupado && (
           <p className="tabular mt-0.5 text-xs text-texto-suave">
-            de {cantidad(m.existencia)} {m.unidad} en almacén · {porcentaje(parteDe(m.separado + m.reservado_ot, m.existencia))} separado
+            de {cantidad(m.existencia)} {m.unidad} en almacén
+          </p>
+        )}
+        {/* En su propia línea: pegado al de arriba, la celda no se partía y en el
+            teléfono cortaba la cifra de toda la columna (auditoría del 27/10/2026). */}
+        {m.existencia > 0 && ocupado && (
+          <p className="tabular text-xs text-texto-suave">
+            {porcentaje(parteDe(m.separado + m.reservado_ot, m.existencia))} separado
           </p>
         )}
         {bajoMinimo && m.existencia > 0 && (

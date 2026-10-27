@@ -5,7 +5,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
-import { fecha, hoyLima, moneda, parteDe, porcentajeCorto } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesTrabajador, NuevoTrabajador } from './formulario'
@@ -90,7 +90,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
 function sobreElSueldo(costo: number, sueldo: number) {
   const pct = parteDe(costo - sueldo, sueldo)
   if (pct === null) return ''
-  return `${pct >= 0 ? '+' : '−'}${porcentajeCorto(Math.abs(pct))} sobre el sueldo`
+  return `${pct >= 0 ? '+' : '−'}${porcentaje(Math.abs(pct))} sobre el sueldo`
 }
 
 function FilaTrabajador({
@@ -136,8 +136,8 @@ function FilaTrabajador({
             {t.remuneracion_mensual && t.costo_mensual && ' · '}
             {t.costo_mensual && (
               <>
+                {/* Sin el «+20 % sobre el sueldo»: en el teléfono sumaba cuatro líneas a cada fila; lo dice la columna en el monitor. */}
                 cuesta <span className="tabular whitespace-nowrap">{moneda(t.costo_mensual)}</span>
-                {t.remuneracion_mensual ? ` (${sobreElSueldo(t.costo_mensual, t.remuneracion_mensual)})` : ''}
               </>
             )}
           </p>
