@@ -535,7 +535,7 @@ const CIFRAS = {
           pendientes.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(pendientes.length, 'factura', 'facturas'),
-            parte === null ? null : `falta cobrar el ${porcentaje(parte)} de esas facturas`,
+            parte === null ? null : `falta cobrar el ${porcentaje(parte)} de ${enSoles.length === 1 ? 'esa factura' : 'esas facturas'}`,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -568,7 +568,7 @@ const CIFRAS = {
           filas.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(filas.length, 'factura', 'facturas'),
-            parte === null ? null : `falta pagar el ${porcentaje(parte)} de esas facturas`,
+            parte === null ? null : `falta pagar el ${porcentaje(parte)} de ${enSoles.length === 1 ? 'esa factura' : 'esas facturas'}`,
           ]
             .filter(Boolean)
             .join(' · '),
