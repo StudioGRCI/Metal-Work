@@ -120,13 +120,17 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     leyendoOrden.then(async (o) => {
       const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
       if (!o || codigo === '' || codigo === CODIGO_SIN_AVANCE) return null
-      try {
-        const [etapas, avance] = await Promise.all([etapasDeCodigo(codigo), avanceDelCodigo(codigo)])
-        const inicios = etapas.flatMap((e) => (e.inicio_real ? [e.inicio_real] : [])).sort()
-        return { inicio: inicios[0] ?? null, reportes: new Set(avance.filter((a) => a.estado !== 'ANULADO').map((a) => a.reporte_id)).size }
-      } catch {
-        // Quien no puede leer las etapas del código sigue con las fechas de la OT.
-        return null
+      // Cada lectura por su lado: Diseño lee las etapas pero no `codigo_interno_avance`
+      // (pide codigos_internos.ver), y con una sola captura se quedaba sin las dos.
+      const [etapas, avance] = await Promise.all([
+        etapasDeCodigo(codigo).catch(() => null),
+        avanceDelCodigo(codigo).catch(() => null),
+      ])
+      if (etapas === null && avance === null) return null
+      const inicios = (etapas ?? []).flatMap((e) => (e.inicio_real ? [e.inicio_real] : [])).sort()
+      return {
+        inicio: inicios[0] ?? null,
+        reportes: avance === null ? null : new Set(avance.filter((a) => a.estado !== 'ANULADO').map((a) => a.reporte_id)).size,
       }
     }),
   ])
@@ -303,8 +307,14 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <Indicador
               titulo="Reportes del taller"
               icono={FileText}
-              valor={tallerDelCodigo ? tallerDelCodigo.reportes : expediente.reportes.length}
-              pie={tallerDelCodigo ? `reportes diarios del código ${codigoDeLaUnidad}` : `${conFoto.length} con foto`}
+              valor={tallerDelCodigo?.reportes ?? expediente.reportes.length}
+              pie={
+                tallerDelCodigo?.reportes !== null && tallerDelCodigo?.reportes !== undefined
+                  ? `reportes diarios del código ${codigoDeLaUnidad}`
+                  : tallerDelCodigo
+                    ? `de esta OT · los del taller van por el código ${codigoDeLaUnidad}`
+                    : `${conFoto.length} con foto`
+              }
             />
           )}
         </section>

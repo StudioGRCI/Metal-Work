@@ -764,7 +764,8 @@ const CIFRAS = {
       // Los soles solo para quien ve el sueldo (RR. HH.); Gerencia y Administración ven el porcentaje.
       const [r, resumen, regla] = await Promise.all([
         c.supabase.from('asistencias').select('id', { count: 'exact', head: true }).eq('es_tardanza', true).gte('fecha', c.mes).is('anulado_en', null),
-        resumenTardanzas(c.mes),
+        // `c.mes` es el día 1 (YYYY-MM-DD); el resumen pide el mes (YYYY-MM), como la pantalla de Tardanzas.
+        resumenTardanzas(c.mes.slice(0, 7)),
         reglaTardanza(),
       ])
       fallo(r)
