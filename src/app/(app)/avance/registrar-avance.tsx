@@ -130,7 +130,7 @@ export function RegistrarAvance({
             etiqueta="Avance de la etapa"
             ayuda={
               etapa
-                ? `A cuánto quedó. Iba en ${etapa.avance} %.`
+                ? `A cuánto quedó. Iba en ${porcentaje(etapa.avance)}.`
                 : 'Elige primero la etapa para poder moverla.'
             }
             defaultValue={null}

@@ -15,7 +15,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, fechaLarga, hoyLima, moneda, montoYPorcentaje, porcentaje } from '@/lib/format'
+import { fecha, fechaLarga, hoyLima, moneda, porcentajeYMonto, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
@@ -303,7 +303,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                 </span>
                                 {costo.margenPct !== null && (
                                   <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                    Margen a hoy {montoYPorcentaje(costo.margenPen, costo.margenPct, 'PEN', 1)}
+                                    Margen a hoy {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                   </span>
                                 )}
                                 {costo.semaforo && costo.consumidoPct !== null && (
@@ -319,7 +319,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                   >
                                     {porcentaje(costo.consumidoPct, 0)} del presupuesto
                                     {costo.presupuestoPen !== null &&
-                                      ` · ${costo.semaforo === 'EXCEDIDO' ? 'pasó por' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.pen))}`}
+                                      ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`}
                                   </span>
                                 )}
                                 {costo.sinPrecio > 0 && (

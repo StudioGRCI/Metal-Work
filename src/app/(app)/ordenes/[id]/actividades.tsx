@@ -21,7 +21,7 @@ import type {
   AvanceDeArea,
   ReporteDiario,
 } from '@/lib/datos/actividades'
-import { fecha as fmtFecha, hoyLima, numero, porcentaje } from '@/lib/format'
+import { fecha as fmtFecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
@@ -175,7 +175,7 @@ export function ActividadesDeOrden({
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-texto">{a.area}</p>
                     <p className="text-lg font-semibold tabular text-texto">
-                      {numero(a.avance_pct, 1)} %
+                      {porcentaje(a.avance_pct, 1)}
                     </p>
                   </div>
                   <Progreso valor={Number(a.avance_pct)} />
@@ -184,7 +184,7 @@ export function ActividadesDeOrden({
                     {Number(a.peso_repartido) < 100 && (
                       <span className="text-aviso">
                         {' '}
-                        · le falta repartir {numero(100 - Number(a.peso_repartido), 0)} % de peso
+                        · le falta repartir {porcentaje(100 - Number(a.peso_repartido))} de peso
                       </span>
                     )}
                   </p>
@@ -287,7 +287,7 @@ export function ActividadesDeOrden({
                     <div className="flex items-center gap-2">
                       <Progreso valor={Number(act.avance_pct)} />
                       <span className={cn('tabular text-xs', act.terminada ? 'text-exito' : 'text-texto-suave')}>
-                        {numero(act.avance_pct, 0)} %
+                        {porcentaje(act.avance_pct)}
                       </span>
                     </div>
                     <p className="text-[11px] text-texto-tenue">
@@ -349,7 +349,7 @@ export function ActividadesDeOrden({
                             act.terminada ? 'text-exito' : 'text-texto-suave',
                           )}
                         >
-                          {numero(act.avance_pct, 0)} %
+                          {porcentaje(act.avance_pct)}
                         </span>
                       </div>
                     </TD>
@@ -802,7 +802,7 @@ function NuevaActividad({
           {!esNueva && <Campo
             etiqueta="Pesa"
             htmlFor="na-peso"
-            ayuda={propuesta.peso > 0 ? `Quedan ${propuesta.peso} % por repartir en el área` : 'El área ya repartió su 100 %'}
+            ayuda={propuesta.peso > 0 ? `Quedan ${porcentajeCorto(propuesta.peso)} por repartir en el área` : 'El área ya repartió su 100 %'}
           >
             <Entrada
               key={`peso-${area}`}

@@ -382,7 +382,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                 <TarjetaCabecera
                   titulo="Etapas de producción"
                   descripcion={etapas.length > 0 ? `${etapas.filter((e) => e.estado === 'TERMINADA').length} de ${etapas.length} terminadas`
-                    + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${fmtNumero(faltaContemplar, 0)} %` : '') : undefined}
+                    + (orden.plan_etapas_manual && faltaContemplar > 0 ? ` · falta contemplar ${porcentaje(faltaContemplar)}` : '') : undefined}
                   acciones={
                     etapas.length > 0 && (
                       <EnlaceBoton href={`/ordenes/${orden.id}?vista=etapas`} variante="fantasma" tamano="sm">

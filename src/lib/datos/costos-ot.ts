@@ -65,6 +65,8 @@ export type CostoDeOrden = {
   consumidoPct: number | null
   /** Lo que se podía gastar, en soles; con `consumidoPct` dice cuánto queda o cuánto se pasó. */
   presupuestoPen: number | null
+  /** El costo con que se midió el presupuesto y el margen: el vivo, o el cerrado si la OT cerró su costo. */
+  costoDelPresupuesto: number
   semaforo: 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null
   /** El presupuesto lo fijó Gerencia a mano en la OT; si no, es el de la hoja (la venta sin IGV ÷ 1.15). */
   presupuestoFijado: boolean
@@ -123,6 +125,7 @@ export async function costoDeOrdenes(
           margenPen: null,
           consumidoPct: null,
           presupuestoPen: null,
+          costoDelPresupuesto: 0,
           semaforo: null,
           presupuestoFijado: f?.presupuesto_fijado === true,
           codigo,
@@ -171,6 +174,7 @@ export async function costoDeOrdenes(
             margenPen: null,
             consumidoPct: null,
             presupuestoPen: null,
+          costoDelPresupuesto: 0,
             semaforo: null,
             presupuestoFijado: false,
             codigo: null,
@@ -190,13 +194,18 @@ export async function costoDeOrdenes(
             origen: string | null
             presupuesto_pen: number | null
             precio_neto_pen: number | null
+            costo_pen: number | null
           } | null
           if (p && total.pen > 0) {
+            // El costo con que la base sacó el porcentaje: el cerrado si la OT cerró su costo. Con el
+            // costo vivo, «S/ X · Y %» y «quedan S/ Z» no cuadraban con el % (auditoría del 27/10/2026).
+            const costoDelMargen = p.costo_pen === null ? total.pen : Number(p.costo_pen)
             total.margenPct = p.margen_pct === null ? null : Number(p.margen_pct)
-            // `presupuesto_ot` da el margen solo en porcentaje: en soles es la venta sin IGV menos el costo.
-            total.margenPen = p.margen_pct === null || p.precio_neto_pen === null ? null : Number(p.precio_neto_pen) - total.pen
+            // `presupuesto_ot` da el margen solo en porcentaje: en soles es la venta sin IGV menos ese costo.
+            total.margenPen = p.margen_pct === null || p.precio_neto_pen === null ? null : Number(p.precio_neto_pen) - costoDelMargen
             total.consumidoPct = p.consumido_pct === null ? null : Number(p.consumido_pct)
             total.presupuestoPen = p.presupuesto_pen === null ? null : Number(p.presupuesto_pen)
+            total.costoDelPresupuesto = costoDelMargen
             total.semaforo = (p.semaforo as typeof total.semaforo) ?? null
             total.presupuestoFijado = p.origen === 'MANUAL'
           }

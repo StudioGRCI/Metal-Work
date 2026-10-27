@@ -247,9 +247,10 @@ function ComoVa({
   const gastosUsd = c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd
   const presupuesto = c.venta?.presupuesto_pen ?? null
   // Cada parte del costo, con lo que pesa en el total en soles (DKS, 27/10/2026: porcentaje y costo).
-  const delCosto = (pen: number) => {
+  // Con dólares en la parte, su % contra el total al cambio saldría corto: no se dice.
+  const delCosto = (pen: number, usd = 0) => {
     const parte = parteDe(pen, costo.pen)
-    return parte === null || pen <= 0 ? null : `${porcentaje(parte)} del costo`
+    return parte === null || pen <= 0 || usd > 0 ? null : `${porcentaje(parte)} del costo`
   }
   return (
     <div className="space-y-3">
@@ -273,7 +274,7 @@ function ComoVa({
               </span>
             )
           }
-          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && `lo hecho vale eso del presupuesto de ${moneda(presupuesto)}`]
+          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && `lo hecho, en soles, es esa parte del presupuesto de ${moneda(presupuesto)}`]
             .filter(Boolean)
             .join(' · ')}
         />
@@ -298,7 +299,7 @@ function ComoVa({
                     c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad` : 'Todo en soles',
                     // Lo gastado contra lo que se podía gastar, en sus dos unidades.
                     verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
-                      ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'pasó por' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
+                      ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
                       : null,
                   ]
                     .filter(Boolean)
@@ -334,7 +335,7 @@ function ComoVa({
           }
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
           pie={[
-            delCosto(c.materiales_pen + c.merma_pen),
+            delCosto(c.materiales_pen + c.merma_pen, c.materiales_usd + c.merma_usd),
             `${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén`,
             c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} sin precio`,
             c.merma_pen + c.merma_usd > 0 && `${montoMixto(c.merma_pen, c.merma_usd)} de merma`,
@@ -350,7 +351,7 @@ function ComoVa({
               {c.servicios_usd > 0 && <span className="block text-sm">+ {moneda(c.servicios_usd, 'USD')}</span>}
             </>
           }
-          pie={[delCosto(c.servicios_pen), piesDeServicios(c)].filter(Boolean).join(' · ')}
+          pie={[delCosto(c.servicios_pen, c.servicios_usd), piesDeServicios(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           titulo="Subcontratos"
@@ -361,7 +362,7 @@ function ComoVa({
             </>
           }
           tono={c.subcontratos_por_pagar > 0 ? 'aviso' : 'neutro'}
-          pie={[delCosto(c.subcontratos_pen), piesDeSubcontratos(c)].filter(Boolean).join(' · ')}
+          pie={[delCosto(c.subcontratos_pen, c.subcontratos_usd), piesDeSubcontratos(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           className="col-span-2 lg:col-span-1"
@@ -573,7 +574,7 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
   return (
     <Indicador
       // «A hoy»: es la venta menos lo costado hasta ahora, no lo que va a dejar la unidad (auditoría 27/10/2026).
-      titulo="Margen a hoy"
+      titulo={c.cierre ? 'Margen al cierre' : 'Margen a hoy'}
       valor={<span data-margen={v.margen_pct}>{porcentaje(v.margen_pct, 1)}</span>}
       tono={tono}
       pie={[
@@ -1019,7 +1020,7 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
                 </div>
                 <p className="text-xs text-texto-suave">
                   {t.historial.length > 1
-                    ? t.historial.map((h) => `${h.avance} % el ${fecha(h.fecha)}`).join(' → ')
+                    ? t.historial.map((h) => `${porcentaje(h.avance)} el ${fecha(h.fecha)}`).join(' → ')
                     : `Reportado el ${fecha(t.ultima_fecha)}`}
                   {t.tipo === 'SUBCONTRATO' && t.avance === 100 && t.historial.at(-1)?.avance !== 100 && ' · terminado por Administración'}
                 </p>

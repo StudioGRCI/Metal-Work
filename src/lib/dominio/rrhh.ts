@@ -93,10 +93,8 @@ export const HORAS_DEL_MES = 240
  */
 export const DESCUENTOS_DESDE = '2026-10'
 
-/** «5 %» o «2,5 %» para el descuento por tardanzas. */
-export function porcentajeCorto(porcentaje: number): string {
-  return `${Number(porcentaje.toFixed(2)).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
-}
+/** «5 %» o «2.5 %» para el descuento por tardanzas: la misma de `format.ts`, desde el 27/10/2026. */
+export { porcentajeCorto } from '@/lib/format'
 
 /** «6,5 h» para las horas del tareo. */
 export function horasCortas(horas: number): string {

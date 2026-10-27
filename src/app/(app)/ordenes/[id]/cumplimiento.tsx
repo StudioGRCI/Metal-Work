@@ -16,7 +16,7 @@ import type {
   PlanoCumplimiento,
   ResumenCumplimiento,
 } from '@/lib/datos/cumplimiento'
-import { cantidad as fmtCantidad, fecha, hoyLima, numero, porcentaje } from '@/lib/format'
+import { cantidad as fmtCantidad, fecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { CargarVersion, PdfPorArea, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
@@ -264,7 +264,7 @@ function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }
     <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-2 py-1">
       <input type="hidden" name="orden_id" value={ordenId} />
       <span className="text-xs text-texto">
-        ¿Poner {Math.floor((100 / cuantos) * 100) / 100} % a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
+        ¿Poner {porcentajeCorto(Math.floor((100 / cuantos) * 100) / 100)} a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
       </span>
       <Boton type="submit" tamano="sm" cargando={enviando}>
         Sí, repartir

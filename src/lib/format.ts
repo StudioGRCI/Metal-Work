@@ -43,9 +43,10 @@ export function cantidad(valor: number | string | null | undefined) {
 
 /**
  * «40 %», con el espacio del castellano antes del signo. Es el mismo espacio
- * normal que llevan los textos escritos a mano («cada 3 tardanzas, 5 %») y el
- * que buscan las sondas del banco; donde no pueda partirse, la clase
- * `whitespace-nowrap`.
+ * normal que llevan los textos escritos a mano («cada 3 tardanzas, 5 %»);
+ * donde no pueda partirse, la clase `whitespace-nowrap`. Antes daba «40%»
+ * y había cuatro formas de escribirlo a mano: desde el 27/10/2026 todo
+ * porcentaje pasa por aquí.
  */
 export function porcentaje(valor: number | string | null | undefined, decimales = 0) {
   return `${Number(valor ?? 0).toLocaleString('es-PE', {
@@ -54,7 +55,7 @@ export function porcentaje(valor: number | string | null | undefined, decimales 
   })} %`
 }
 
-/** «12,5 %» o «33,33 %» sin ceros de relleno: para pesos y repartos que la gente escribió con decimales. */
+/** «12.5 %» o «33.33 %» sin ceros de relleno: para pesos y repartos que la gente escribió con decimales. */
 export function porcentajeCorto(valor: number | string | null | undefined) {
   return `${Number(valor ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
 }
@@ -71,19 +72,20 @@ export function parteDe(parte: number | string | null | undefined, total: number
 }
 
 /**
- * Toda cifra calculada se lee en las dos unidades a la vez (DKS, 27/10/2026):
- * «S/ 3,200.00 · 40 %». Sin porcentaje (sin total contra qué medir) sale solo
- * el monto; sin monto, solo el porcentaje.
+ * Toda cifra calculada se lee en las dos unidades a la vez (DKS, 27/10/2026),
+ * siempre en el mismo orden que `PorcentajeYCosto`: «40 % · S/ 3,200.00». Sin
+ * porcentaje (sin total contra qué medir) sale solo el monto; sin monto, solo
+ * el porcentaje. Para texto plano (pies, títulos); en JSX va la pieza.
  */
-export function montoYPorcentaje(
-  monto: number | string | null | undefined,
+export function porcentajeYMonto(
   pct: number | string | null | undefined,
+  monto: number | string | null | undefined,
   codigo: CodigoMoneda = 'PEN',
   decimales = 0,
 ) {
   const partes = [
-    monto === null || monto === undefined ? null : moneda(monto, codigo),
     pct === null || pct === undefined ? null : porcentaje(pct, decimales),
+    monto === null || monto === undefined ? null : moneda(monto, codigo),
   ].filter((p): p is string => p !== null)
   return partes.length ? partes.join(' · ') : '—'
 }

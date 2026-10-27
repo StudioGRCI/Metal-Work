@@ -12,7 +12,7 @@ import { TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { dias, diasEntre } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad, tipoDeVehiculo } from '@/lib/dominio/unidades'
-import { fecha, hoyLima, moneda, numero, porcentaje, montoYPorcentaje } from '@/lib/format'
+import { fecha, hoyLima, moneda, numero, porcentaje, porcentajeYMonto } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 import { esUuid } from '@/lib/utils'
@@ -231,7 +231,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                                   <span className={costo.pen > 0 ? 'text-texto' : 'text-texto-tenue'}>{moneda(costo.pen)}</span>
                                   {costo.margenPct !== null && (
                                     <span className={cn('block text-[11px]', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                      Margen {montoYPorcentaje(costo.margenPen, costo.margenPct, 'PEN', 1)}
+                                      Margen {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                     </span>
                                   )}
                                 </>

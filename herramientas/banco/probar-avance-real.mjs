@@ -321,7 +321,7 @@ let idSubcontrato = null
   // 20 del cajón + 30 % de (0 + 10 + 26 + 0 + 0 + 0) / 6 = 20 + 1,8: el cajón no vuelve a contar en su etapa.
   comprobar(texto.includes('Cómo sale el 22 %'), `la unidad va en 22 % (${texto.slice(0, 120)})`)
   comprobar((await como.locator('[data-plano]').count()) === 3, 'con sus tres planos, cada uno con lo que aporta')
-  comprobar(limpio(await como.locator('[data-plano="001"]').innerText()).includes('50%'), 'el cajón va en 50 %')
+  comprobar(limpio(await como.locator('[data-plano="001"]').innerText()).includes('50 %'), 'el cajón va en 50 %')
   comprobar((await como.locator('[data-resto="30"]').count()) === 1, 'y el 30 % restante por las etapas')
   comprobar(
     (await como.locator('[data-etapa="Habilitado"][data-vale="10"]').count()) === 1,

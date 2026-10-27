@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
  *
  *   <PorcentajeYCosto porcentaje={40} costo={3200} />          → **40 %** · S/ 3,200.00
  *   <PorcentajeYCosto porcentaje={12.5} costo={1234} primero="costo" decimales={1} />
- *                                                               → **S/ 1,234.00** · 12,5 %
+ *                                                               → **S/ 1,234.00** · 12.5 %
  *
  * Sin porcentaje (no hay total contra qué medir) o sin costo (no hay monto)
  * sale solo lo que hay, y con los dos en nulo, «—». El formateo es el de

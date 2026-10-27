@@ -300,7 +300,7 @@ function FilaCodigo({
           </dd>
           {margen !== null && (
             <>
-              <dt className="text-texto-suave">Margen a hoy</dt>
+              <dt className="text-texto-suave">{c.cierre ? 'Margen al cierre' : 'Margen a hoy'}</dt>
               <dd data-margen={margen}>
                 <PorcentajeYCosto porcentaje={margen} costo={c.venta?.margen_pen} decimales={1} tono={margen < 0 ? 'text-peligro' : 'text-texto'} />
                 <span className="sr-only">, sobre la venta sin IGV</span>
@@ -361,7 +361,8 @@ function FilaCodigo({
 
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
         {partes.map((p) => {
-          const parte = p.texto === null ? parteDe(p.pen, costo.pen) : null
+          // Con dólares en la parte, su % contra el total al cambio saldría corto: no se dice.
+          const parte = p.texto === null && p.usd <= 0 ? parteDe(p.pen, costo.pen) : null
           return (
             <span key={p.clave} data-costo-parte={p.clave}>
               {p.etiqueta}{' '}
