@@ -9,7 +9,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { ESTADO_ETAPA, TIPO_TRABAJO, definir } from '@/lib/dominio/estados'
-import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, numero as fmtNumero, puesto, porcentaje } from '@/lib/format'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import {
@@ -433,7 +433,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                             </div>
                             <Progreso valor={etapa.avance_porcentaje} alto="sm" className="w-20 shrink-0 sm:w-32" />
                             <span className="tabular w-10 shrink-0 text-right text-xs text-texto-suave">
-                              {fmtNumero(etapa.avance_porcentaje, 0)}%
+                              {porcentaje(etapa.avance_porcentaje, 0)}
                             </span>
                           </li>
                         )

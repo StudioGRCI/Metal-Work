@@ -7,7 +7,7 @@ import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
-import { cantidad, fechaHora } from '@/lib/format'
+import { cantidad, fechaHora, porcentajeCorto } from '@/lib/format'
 
 import { fijarMermaOrden } from './acciones-merma'
 
@@ -47,7 +47,7 @@ export function MermaDeOrden({ ordenId, merma, puedeFijar, ordenViva }: {
       <TarjetaCuerpo>
         {merma ? (
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="tabular text-2xl font-semibold text-texto">{cantidad(merma.porcentaje)} %</span>
+            <span className="tabular text-2xl font-semibold text-texto">{porcentajeCorto(merma.porcentaje)}</span>
             <span className="min-w-0 flex-1 text-sm text-texto">{merma.motivo}</span>
             <span className="basis-full text-[11px] text-texto-suave">
               {merma.registradoPor ? `${merma.registradoPor} · ` : ''}{fechaHora(merma.registradoEn)}

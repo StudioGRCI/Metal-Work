@@ -12,7 +12,7 @@ import { TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { dias, diasEntre } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad, tipoDeVehiculo } from '@/lib/dominio/unidades'
-import { fecha, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
+import { fecha, hoyLima, moneda, numero, porcentaje, montoYPorcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 import { esUuid } from '@/lib/utils'
@@ -135,7 +135,11 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                 <Cifra
                   etiqueta="Margen"
                   valor={delCodigo?.margenPct != null ? porcentaje(delCodigo.margenPct, 1) : '—'}
-                  pie={delCodigo?.margenPct != null ? 'Sobre la cotización aprobada sin IGV' : 'Sin cotización aprobada con precio, o sin costo todavía'}
+                  pie={
+                    delCodigo?.margenPct != null
+                      ? `${delCodigo.margenPen != null ? `${moneda(delCodigo.margenPen)} · ` : ''}sobre la cotización aprobada sin IGV`
+                      : 'Sin cotización aprobada con precio, o sin costo todavía'
+                  }
                   tono={delCodigo?.margenPct != null && delCodigo.margenPct < 0 ? 'peligro' : undefined}
                 />
               )}
@@ -227,7 +231,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                                   <span className={costo.pen > 0 ? 'text-texto' : 'text-texto-tenue'}>{moneda(costo.pen)}</span>
                                   {costo.margenPct !== null && (
                                     <span className={cn('block text-[11px]', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                      Margen {porcentaje(costo.margenPct, 1)}
+                                      Margen {montoYPorcentaje(costo.margenPen, costo.margenPct, 'PEN', 1)}
                                     </span>
                                   )}
                                 </>

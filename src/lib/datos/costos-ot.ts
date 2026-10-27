@@ -60,7 +60,11 @@ export type CostoDeOrden = {
   /** Horas del reporte de quien todavía no tiene costo: solo en el costo del código. */
   sinCosto: number
   margenPct: number | null
+  /** El margen en soles: la venta sin IGV menos el costo. Va con `margenPct`, para leerlo en las dos unidades. */
+  margenPen: number | null
   consumidoPct: number | null
+  /** Lo que se podía gastar, en soles; con `consumidoPct` dice cuánto queda o cuánto se pasó. */
+  presupuestoPen: number | null
   semaforo: 'EN_RANGO' | 'AJUSTADO' | 'EXCEDIDO' | null
   /** El presupuesto lo fijó Gerencia a mano en la OT; si no, es el de la hoja (la venta sin IGV ÷ 1.15). */
   presupuestoFijado: boolean
@@ -116,7 +120,9 @@ export async function costoDeOrdenes(
           sinCambio: Number(f?.lineas_sin_cambio ?? 0),
           sinCosto: Number(f?.horas_sin_costo ?? 0),
           margenPct: null,
+          margenPen: null,
           consumidoPct: null,
+          presupuestoPen: null,
           semaforo: null,
           presupuestoFijado: f?.presupuesto_fijado === true,
           codigo,
@@ -129,7 +135,9 @@ export async function costoDeOrdenes(
         // Sin costo cargado la base no da margen (saldría 100 %).
         if (opciones.conMargen && f && total.pen > 0) {
           total.margenPct = f.margen_pct === null ? null : Number(f.margen_pct)
+          total.margenPen = f.margen_pen === null ? null : Number(f.margen_pen)
           total.consumidoPct = f.consumido_pct === null ? null : Number(f.consumido_pct)
+          total.presupuestoPen = f.presupuesto_pen === null ? null : Number(f.presupuesto_pen)
           total.semaforo = f.semaforo === 'EN_RANGO' || f.semaforo === 'AJUSTADO' || f.semaforo === 'EXCEDIDO' ? f.semaforo : null
         }
         return [codigo, total] as const
@@ -160,7 +168,9 @@ export async function costoDeOrdenes(
             sinCambio: 0,
             sinCosto: 0,
             margenPct: null,
+            margenPen: null,
             consumidoPct: null,
+            presupuestoPen: null,
             semaforo: null,
             presupuestoFijado: false,
             codigo: null,
@@ -173,10 +183,20 @@ export async function costoDeOrdenes(
             else total.pen += Number(l.monto_pen ?? 0)
           }
           // Sin costo cargado el margen saldría 100 %: no se muestra hasta que haya costo.
-          const p = presupuesto.data as { margen_pct: number | null; consumido_pct: number | null; semaforo: string | null; origen: string | null } | null
+          const p = presupuesto.data as {
+            margen_pct: number | null
+            consumido_pct: number | null
+            semaforo: string | null
+            origen: string | null
+            presupuesto_pen: number | null
+            precio_neto_pen: number | null
+          } | null
           if (p && total.pen > 0) {
             total.margenPct = p.margen_pct === null ? null : Number(p.margen_pct)
+            // `presupuesto_ot` da el margen solo en porcentaje: en soles es la venta sin IGV menos el costo.
+            total.margenPen = p.margen_pct === null || p.precio_neto_pen === null ? null : Number(p.precio_neto_pen) - total.pen
             total.consumidoPct = p.consumido_pct === null ? null : Number(p.consumido_pct)
+            total.presupuestoPen = p.presupuesto_pen === null ? null : Number(p.presupuesto_pen)
             total.semaforo = (p.semaforo as typeof total.semaforo) ?? null
             total.presupuestoFijado = p.origen === 'MANUAL'
           }

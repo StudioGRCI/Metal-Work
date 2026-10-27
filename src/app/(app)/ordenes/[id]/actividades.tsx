@@ -21,7 +21,7 @@ import type {
   AvanceDeArea,
   ReporteDiario,
 } from '@/lib/datos/actividades'
-import { fecha as fmtFecha, hoyLima, numero } from '@/lib/format'
+import { fecha as fmtFecha, hoyLima, numero, porcentaje } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
@@ -130,7 +130,7 @@ export function ActividadesDeOrden({
             {observadosMios.map((r) => (
               <li key={r.id} className="text-xs text-texto">
                 <a href={`#${r.id}`} className="font-medium hover:underline">
-                  {fmtFecha(r.fecha)} · {r.actividad} · +{numero(r.avance_pct, 0)} %
+                  {fmtFecha(r.fecha)} · {r.actividad} · +{porcentaje(r.avance_pct, 0)}
                 </a>
                 {r.observacion && <span className="text-texto-suave"> — {r.observacion}</span>}
               </li>
@@ -282,7 +282,7 @@ export function ActividadesDeOrden({
                         {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                         <PlanDeActividad actividad={act} hoy={hoy} />
                       </div>
-                      <span className="tabular shrink-0 text-xs text-texto-suave">pesa {numero(act.peso_pct, 0)} %</span>
+                      <span className="tabular shrink-0 text-xs text-texto-suave">pesa {porcentaje(act.peso_pct, 0)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Progreso valor={Number(act.avance_pct)} />
@@ -339,7 +339,7 @@ export function ActividadesDeOrden({
                       {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                       <PlanDeActividad actividad={act} hoy={hoy} />
                     </TD>
-                    <TD className="text-right tabular text-sm">{numero(act.peso_pct, 0)} %</TD>
+                    <TD className="text-right tabular text-sm">{porcentaje(act.peso_pct, 0)}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
                         <Progreso valor={Number(act.avance_pct)} />
@@ -406,7 +406,7 @@ export function ActividadesDeOrden({
                       <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-tenue" />
                       <span className="tabular text-xs text-texto-suave">{fmtFecha(r.fecha)}</span>
                       <span className="text-sm font-medium text-texto">{r.actividad}</span>
-                      <span className="tabular text-sm text-exito">+{numero(r.avance_pct, 0)} %</span>
+                      <span className="tabular text-sm text-exito">+{porcentaje(r.avance_pct, 0)}</span>
                       {r.nota && <span className="text-xs text-texto-suave">· {r.nota}</span>}
                       <span className="ml-auto flex items-center gap-2">
                         <InsigniaRevision revision={r.revision} />
@@ -677,7 +677,7 @@ function AccionesActividad({
               destacado={deHoy.revision === 'OBSERVADO'}
             />
           ) : (
-            <span className="px-1 text-xs text-exito">Reportado hoy: +{numero(deHoy.avance_pct, 0)} %</span>
+            <span className="px-1 text-xs text-exito">Reportado hoy: +{porcentaje(deHoy.avance_pct, 0)}</span>
           )}
           {!actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} deOtroDia esNueva={esNueva} despachos={despachos.filter(d => d.area === actividad.area_codigo)} />}
         </>

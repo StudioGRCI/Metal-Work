@@ -59,7 +59,7 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, parteDe, periodo, porcentaje, porcentajeCorto, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
@@ -245,6 +245,12 @@ function ComoVa({
   const manoObra = c.mano_obra + c.recargo_extras
   const gastosPen = c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen
   const gastosUsd = c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd
+  const presupuesto = c.venta?.presupuesto_pen ?? null
+  // Cada parte del costo, con lo que pesa en el total en soles (DKS, 27/10/2026: porcentaje y costo).
+  const delCosto = (pen: number) => {
+    const parte = parteDe(pen, costo.pen)
+    return parte === null || pen <= 0 ? null : `${porcentaje(parte)} del costo`
+  }
   return (
     <div className="space-y-3">
       {/* Primero cómo va y cuánto deja; debajo, de qué está hecho el costo. */}
@@ -257,11 +263,19 @@ function ComoVa({
               'No aplica'
             ) : (
               <span data-avance={avance?.avance ?? 0}>
-                <Progreso valor={avance?.avance ?? 0} mostrarValor etiqueta="Avance del código" />
+                {/* Con presupuesto, lo hecho se lee también en plata: lo que vale ese avance del presupuesto. */}
+                <Progreso
+                  valor={avance?.avance ?? 0}
+                  mostrarValor
+                  costo={presupuesto !== null && verPrecio ? (presupuesto * (avance?.avance ?? 0)) / 100 : undefined}
+                  etiqueta="Avance del código"
+                />
               </span>
             )
           }
-          pie={origenDelAvance(codigo, avance)}
+          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && `lo hecho vale eso del presupuesto de ${moneda(presupuesto)}`]
+            .filter(Boolean)
+            .join(' · ')}
         />
         <Indicador
           className={verPrecio ? undefined : 'col-span-2 lg:col-span-1'}
@@ -280,9 +294,15 @@ function ComoVa({
               ? 'Falta el tipo de cambio de Contabilidad para pasar los dólares a soles'
               : costo.pen === 0
                 ? 'Todavía nada costeado'
-                : c.usd_al_cambio > 0
-                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad`
-                  : 'Todo en soles'
+                : [
+                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad` : 'Todo en soles',
+                    // Lo gastado contra lo que se podía gastar, en sus dos unidades.
+                    verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
+                      ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'pasó por' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
           }
         />
         {verPrecio && <IndicadorMargen c={c} codigo={codigo} />}
@@ -293,6 +313,7 @@ function ComoVa({
           valor={faltaElPrecio(manoObra, c.horas_sin_costo, 'Sin costo') ?? moneda(manoObra)}
           tono={c.horas_sin_costo > 0 ? 'aviso' : 'neutro'}
           pie={[
+            delCosto(manoObra),
             `${horasCortas(c.horas)} de personal`,
             c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} sin costo`,
             c.recargo_extras > 0 && `${moneda(c.recargo_extras)} de recargo de extras`,
@@ -313,6 +334,7 @@ function ComoVa({
           }
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
           pie={[
+            delCosto(c.materiales_pen + c.merma_pen),
             `${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén`,
             c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} sin precio`,
             c.merma_pen + c.merma_usd > 0 && `${montoMixto(c.merma_pen, c.merma_usd)} de merma`,
@@ -328,7 +350,7 @@ function ComoVa({
               {c.servicios_usd > 0 && <span className="block text-sm">+ {moneda(c.servicios_usd, 'USD')}</span>}
             </>
           }
-          pie={piesDeServicios(c)}
+          pie={[delCosto(c.servicios_pen), piesDeServicios(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           titulo="Subcontratos"
@@ -339,7 +361,7 @@ function ComoVa({
             </>
           }
           tono={c.subcontratos_por_pagar > 0 ? 'aviso' : 'neutro'}
-          pie={piesDeSubcontratos(c)}
+          pie={[delCosto(c.subcontratos_pen), piesDeSubcontratos(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           className="col-span-2 lg:col-span-1"
@@ -354,6 +376,7 @@ function ComoVa({
             gastosPen + gastosUsd === 0
               ? 'Gastos del mes, trámites aprobados en la OT y egresos de caja con este código'
               : [
+                  delCosto(gastosPen),
                   c.gastos_mes_pen + c.gastos_mes_usd > 0 && `${montoMixto(c.gastos_mes_pen, c.gastos_mes_usd)} de gastos del mes`,
                   c.gastos_ot_pen + c.gastos_ot_usd > 0 && `${montoMixto(c.gastos_ot_pen, c.gastos_ot_usd)} aprobados en la OT`,
                   c.egresos_caja > 0 &&
@@ -549,7 +572,8 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
   const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : 'exito'
   return (
     <Indicador
-      titulo="Margen"
+      // «A hoy»: es la venta menos lo costado hasta ahora, no lo que va a dejar la unidad (auditoría 27/10/2026).
+      titulo="Margen a hoy"
       valor={<span data-margen={v.margen_pct}>{porcentaje(v.margen_pct, 1)}</span>}
       tono={tono}
       pie={[
@@ -785,7 +809,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Avance en 0 %</p>
+          <p className="text-sm font-medium text-texto">Avance en {porcentaje(0)}</p>
           <p className="text-sm text-texto-suave">
             Diseño todavía no armó las etapas de este código y ningún supervisor subió un reporte diario de él. El avance sale de las etapas que
             Diseño carga en «Control de etapas» y de lo que cada área reporta.
@@ -798,7 +822,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Cómo sale el {avance.avance} %</p>
+          <p className="text-sm font-medium text-texto">Cómo sale el {porcentaje(avance.avance)}</p>
           <p className="text-sm text-texto-suave">
             Diseño todavía no armó las etapas de este código, así que el avance es el promedio del último avance de cada trabajo del reporte
             diario, área por área (abajo). Cuando Diseño las arme, el avance saldrá de ellas.
@@ -848,7 +872,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta data-como-sale>
         <TarjetaCabecera
-          titulo={`Cómo sale el ${avance.avance} %`}
+          titulo={`Cómo sale el ${porcentaje(avance.avance)}`}
           ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
         />
         <TarjetaCuerpo>{listaEtapas}</TarjetaCuerpo>
@@ -866,8 +890,8 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
-        titulo={`Cómo sale el ${avance.avance} %`}
-        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${cantidad(resto)} % que no está en planos)` : ''}`}
+        titulo={`Cómo sale el ${porcentaje(avance.avance)}`}
+        descripcion={`${porcentaje(deLosPlanos, 1)} por los planos${resto > 0 ? ` + ${porcentaje(deLasEtapas, 1)} por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${porcentajeCorto(resto)} que no está en planos)` : ''}`}
         ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área que no son de un plano, porque el plano ya contó por su lado."
       />
       <TarjetaCuerpo className="space-y-4">
@@ -894,11 +918,11 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                         : 'sin reporte todavía'}
                   </span>
                 </TD>
-                <TD className="tabular text-right">{cantidad(p.peso)} %</TD>
+                <TD className="tabular text-right">{porcentajeCorto(p.peso)}</TD>
                 <TD>
                   <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
                 </TD>
-                <TD className="tabular text-right">{numero(p.aporte, 1)} %</TD>
+                <TD className="tabular text-right">{porcentaje(p.aporte, 1)}</TD>
               </TR>
             ))}
           </tbody>
@@ -906,7 +930,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
         {resto > 0 && (
           <div className="space-y-2" data-resto={resto}>
             <p className="text-sm font-medium text-texto">
-              El {cantidad(resto)} % que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {numero(avanceResto, 0)} % en promedio
+              El {porcentajeCorto(resto)} que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {porcentaje(avanceResto, 0)} en promedio
             </p>
             {etapas.length > 0 ? (
               listaEtapas

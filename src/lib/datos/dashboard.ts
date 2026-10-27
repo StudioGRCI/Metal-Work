@@ -38,7 +38,7 @@ import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/c
 import { faltaDelServicio } from '@/lib/dominio/detraccion'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { hoyLima, moneda, numero, porcentaje, sumarDias } from '@/lib/format'
+import { hoyLima, moneda, numero, parteDe, porcentaje, sumarDias } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -368,7 +368,19 @@ const CIFRAS = {
       const { codigos } = await c.una('codigos', () => leerListaDeCodigos())
       const pen = codigos.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
       const usd = codigos.reduce((n, k) => n + costoDelCodigo(k).usd, 0)
-      const pie = usd > 0 ? `y ${moneda(usd, 'USD')} sin tipo de cambio · todo lo que suma cada código` : 'todo lo que suma cada código, en soles'
+      // Contra el presupuesto de los que lo tienen: el mismo «% gastado» de cada código, sumado.
+      const conPresupuesto = codigos.filter((k) => k.venta?.presupuesto_pen)
+      const presupuesto = conPresupuesto.reduce((n, k) => n + (k.venta?.presupuesto_pen ?? 0), 0)
+      const gastadoConPresupuesto = conPresupuesto.reduce((n, k) => n + costoDelCodigo(k).pen, 0)
+      const parte = parteDe(gastadoConPresupuesto, presupuesto)
+      const pie = [
+        usd > 0 ? `y ${moneda(usd, 'USD')} sin tipo de cambio` : null,
+        parte === null
+          ? 'todo lo que suma cada código, en soles'
+          : `${porcentaje(parte)} del presupuesto de ${moneda(presupuesto)} (${plural(conPresupuesto.length, 'código con cotización', 'códigos con cotización')})`,
+      ]
+        .filter(Boolean)
+        .join(' · ')
       return { titulo: 'Costo acumulado', valor: moneda(pen), pie, icono: Coins }
     },
   },
@@ -388,7 +400,13 @@ const CIFRAS = {
       const pen = (r.data ?? []).filter((f) => f.moneda !== 'USD')
       const facturado = pen.reduce((n, f) => n + num(f.total), 0)
       const cobrado = pen.reduce((n, f) => n + num(f.cobrado), 0)
-      return { titulo: 'Facturado', valor: moneda(facturado), pie: `cobrado ${moneda(cobrado)}`, icono: ReceiptText }
+      const parte = parteDe(cobrado, facturado)
+      return {
+        titulo: 'Facturado',
+        valor: moneda(facturado),
+        pie: parte === null ? 'nada facturado todavía' : `cobrado ${moneda(cobrado)} · ${porcentaje(parte)} · por cobrar ${moneda(facturado - cobrado)}`,
+        icono: ReceiptText,
+      }
     },
   },
 
@@ -441,17 +459,26 @@ const CIFRAS = {
     ruta: '/tesoreria/por-cobrar',
     calcular: async (c) => {
       const r = await todas((d, h) =>
-        c.supabase.from('v_facturas_venta').select('moneda, saldo, cancelada, fecha_vencimiento').is('anulada_en', null)
+        c.supabase.from('v_facturas_venta').select('moneda, total, saldo, cancelada, fecha_vencimiento').is('anulada_en', null)
           .eq('cancelada', false).gt('saldo', 0).order('id').range(d, h))
       fallo(r)
       const pendientes = (r.data ?? []).filter((f) => !f.cancelada && num(f.saldo) > 0)
       const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < c.hoy).length
+      const enSoles = pendientes.filter((f) => f.moneda !== 'USD')
+      const saldoPen = enSoles.reduce((n, f) => n + num(f.saldo), 0)
+      // Qué parte de lo facturado en esas facturas falta cobrar: el saldo contra su total.
+      const parte = parteDe(saldoPen, enSoles.reduce((n, f) => n + num(f.total), 0))
       return {
         titulo: 'Por cobrar',
         ...soles(
-          pendientes.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.saldo), 0),
+          saldoPen,
           pendientes.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
-          vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(pendientes.length, 'factura', 'facturas'),
+          [
+            vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(pendientes.length, 'factura', 'facturas'),
+            parte === null ? null : `${porcentaje(parte)} de lo facturado en ellas`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         ),
         icono: HandCoins,
         tono: vencidas > 0 ? 'aviso' : 'neutro',
@@ -462,7 +489,7 @@ const CIFRAS = {
     ruta: '/tesoreria/por-pagar',
     calcular: async (c) => {
       const [r, espera] = await Promise.all([
-        todas((d, h) => c.supabase.from('v_cuentas_pagar').select('id, moneda, saldo, fecha_vencimiento').gt('saldo', 0).order('id').range(d, h)),
+        todas((d, h) => c.supabase.from('v_cuentas_pagar').select('id, moneda, total, saldo, fecha_vencimiento').gt('saldo', 0).order('id').range(d, h)),
         c.supabase.rpc('facturas_en_espera', {}),
       ])
       fallo(r)
@@ -471,12 +498,20 @@ const CIFRAS = {
       const esperan = new Set((espera.data ?? []).map((e) => e.adquisicion_id))
       const filas = (r.data ?? []).filter((f) => !esperan.has(f.id))
       const vencidas = filas.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < c.hoy).length
+      const enSoles = filas.filter((f) => f.moneda !== 'USD')
+      const saldoPen = enSoles.reduce((n, f) => n + num(f.saldo), 0)
+      const parte = parteDe(saldoPen, enSoles.reduce((n, f) => n + num(f.total), 0))
       return {
         titulo: 'Por pagar',
         ...soles(
-          filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.saldo), 0),
+          saldoPen,
           filas.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
-          vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(filas.length, 'factura', 'facturas'),
+          [
+            vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(filas.length, 'factura', 'facturas'),
+            parte === null ? null : `${porcentaje(parte)} del total de esas facturas`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         ),
         icono: Banknote,
         tono: vencidas > 0 ? 'peligro' : 'neutro',

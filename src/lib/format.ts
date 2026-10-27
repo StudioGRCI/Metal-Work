@@ -41,11 +41,51 @@ export function cantidad(valor: number | string | null | undefined) {
   return n.toLocaleString('es-PE', { maximumFractionDigits: 4 })
 }
 
+/**
+ * «40 %», con el espacio del castellano antes del signo. Es el mismo espacio
+ * normal que llevan los textos escritos a mano («cada 3 tardanzas, 5 %») y el
+ * que buscan las sondas del banco; donde no pueda partirse, la clase
+ * `whitespace-nowrap`.
+ */
 export function porcentaje(valor: number | string | null | undefined, decimales = 0) {
   return `${Number(valor ?? 0).toLocaleString('es-PE', {
     minimumFractionDigits: decimales,
     maximumFractionDigits: decimales,
-  })}%`
+  })} %`
+}
+
+/** «12,5 %» o «33,33 %» sin ceros de relleno: para pesos y repartos que la gente escribió con decimales. */
+export function porcentajeCorto(valor: number | string | null | undefined) {
+  return `${Number(valor ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
+}
+
+/**
+ * Qué parte del total es una cifra, en porcentaje: 3 200 de 8 000 es 40.
+ * Sin total (cero o nulo) no hay parte que contar y devuelve null, para que la
+ * pantalla diga «—» en vez de inventar un 0 % o un infinito.
+ */
+export function parteDe(parte: number | string | null | undefined, total: number | string | null | undefined) {
+  const t = Number(total ?? 0)
+  if (!Number.isFinite(t) || t <= 0) return null
+  return (Number(parte ?? 0) / t) * 100
+}
+
+/**
+ * Toda cifra calculada se lee en las dos unidades a la vez (DKS, 27/10/2026):
+ * «S/ 3,200.00 · 40 %». Sin porcentaje (sin total contra qué medir) sale solo
+ * el monto; sin monto, solo el porcentaje.
+ */
+export function montoYPorcentaje(
+  monto: number | string | null | undefined,
+  pct: number | string | null | undefined,
+  codigo: CodigoMoneda = 'PEN',
+  decimales = 0,
+) {
+  const partes = [
+    monto === null || monto === undefined ? null : moneda(monto, codigo),
+    pct === null || pct === undefined ? null : porcentaje(pct, decimales),
+  ].filter((p): p is string => p !== null)
+  return partes.length ? partes.join(' · ') : '—'
 }
 
 /**

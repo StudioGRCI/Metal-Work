@@ -10,7 +10,7 @@ import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 import { cabeceraDeAvance, etapasDeLaOrden, listarAvances } from '@/lib/datos/avances'
 import { estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { fecha as formatearFecha } from '@/lib/format'
+import { fecha as formatearFecha, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { esUuid } from '@/lib/utils'
@@ -78,7 +78,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
             <div className="mb-1 flex items-center justify-between text-xs">
               <span className="text-texto-suave">Avance de la unidad</span>
               <span className="tabular font-medium text-texto">
-                {Math.round(Number(orden.avance_porcentaje))}%
+                {porcentaje(Math.round(Number(orden.avance_porcentaje)))}
               </span>
             </div>
             <Progreso valor={Number(orden.avance_porcentaje)} alto="sm" />

@@ -10,7 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
@@ -96,9 +96,9 @@ export function Etapas({
         {esNueva && etapas.length > 0 && !editando && (
           <div className="rounded-[var(--radius-base)] border border-borde p-3">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{cantidad(contemplado)} %</strong></span>
+              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{porcentajeCorto(contemplado)}</strong></span>
               <span className={faltaContemplar > 0 ? 'text-aviso' : 'text-exito'}>
-                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{cantidad(faltaContemplar)} %</strong></> : 'El 100 % está contemplado'}
+                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{porcentajeCorto(faltaContemplar)}</strong></> : 'El 100 % está contemplado'}
               </span>
             </div>
             <Progreso valor={contemplado} etiqueta="Porcentaje contemplado en etapas" alto="sm" />
