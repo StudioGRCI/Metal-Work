@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
 import { BUCKET_SUBCONTRATOS, ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
-import { fecha, fechaHora, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, parteDe, porcentaje, porcentajeCorto } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { adjuntarContratoSubcontrato } from '../acciones'
@@ -289,7 +289,7 @@ function Recibo({ r, subcontratoId, gestiona }: { r: ReciboHonorarios; subcontra
             {r.retencion_porcentaje > 0 ? (
               <>
                 {' '}
-                · retención {porcentaje(r.retencion_porcentaje)} <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
+                · retención {porcentajeCorto(r.retencion_porcentaje)} <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
               </>
             ) : (
               ' · sin retención'

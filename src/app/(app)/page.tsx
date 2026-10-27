@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Indicador } from '@/components/ui/indicador'
+import { Indicador, tramos } from '@/components/ui/indicador'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -302,14 +302,14 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                   {moneda(costo.pen)}
                                 </span>
                                 {costo.margenPct !== null && (
-                                  <span className={cn('block whitespace-nowrap', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                    {costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
+                                  <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
+                                    {tramos(`${costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} ${porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}`)}
                                   </span>
                                 )}
                                 {costo.semaforo && costo.consumidoPct !== null && (
                                   <span
                                     className={cn(
-                                      'block whitespace-nowrap',
+                                      'block',
                                       costo.semaforo === 'EXCEDIDO'
                                         ? 'text-peligro'
                                         : costo.semaforo === 'AJUSTADO'
@@ -317,9 +317,13 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                           : 'text-texto-suave',
                                     )}
                                   >
-                                    {porcentaje(costo.consumidoPct, 0)} del presupuesto
-                                    {costo.presupuestoPen !== null &&
-                                      ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`}
+                                    {tramos(
+                                      `${porcentaje(costo.consumidoPct, 0)} del presupuesto${
+                                        costo.presupuestoPen !== null
+                                          ? ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`
+                                          : ''
+                                      }`,
+                                    )}
                                   </span>
                                 )}
                                 {costo.sinPrecio > 0 && (
