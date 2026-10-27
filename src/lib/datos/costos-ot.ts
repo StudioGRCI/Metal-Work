@@ -125,7 +125,8 @@ export async function costoDeOrdenes(
           margenPen: null,
           consumidoPct: null,
           presupuestoPen: null,
-          costoDelPresupuesto: 0,
+          // `codigos_internos_costo` mide el presupuesto y el margen con el costo vivo del código.
+          costoDelPresupuesto: Number(f?.costo_pen ?? 0),
           semaforo: null,
           presupuestoFijado: f?.presupuesto_fijado === true,
           codigo,
