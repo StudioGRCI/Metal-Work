@@ -302,14 +302,14 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                   {moneda(costo.pen)}
                                 </span>
                                 {costo.margenPct !== null && (
-                                  <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                    Margen a hoy {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
+                                  <span className={cn('block whitespace-nowrap', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
+                                    {costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                   </span>
                                 )}
                                 {costo.semaforo && costo.consumidoPct !== null && (
                                   <span
                                     className={cn(
-                                      'block',
+                                      'block whitespace-nowrap',
                                       costo.semaforo === 'EXCEDIDO'
                                         ? 'text-peligro'
                                         : costo.semaforo === 'AJUSTADO'

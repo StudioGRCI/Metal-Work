@@ -264,17 +264,16 @@ function ComoVa({
               'No aplica'
             ) : (
               <span data-avance={avance?.avance ?? 0}>
-                {/* Con presupuesto, lo hecho se lee también en plata: lo que vale ese avance del presupuesto. */}
+                {/* Lo que vale lo hecho en plata va en el pie, con su frase: al lado de la barra se leía como otro costo (auditoría 27/10/2026). */}
                 <Progreso
                   valor={avance?.avance ?? 0}
                   mostrarValor
-                  costo={presupuesto !== null && verPrecio ? (presupuesto * (avance?.avance ?? 0)) / 100 : undefined}
                   etiqueta="Avance del código"
                 />
               </span>
             )
           }
-          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && `lo hecho, en soles, es esa parte del presupuesto de ${moneda(presupuesto)}`]
+          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && (avance?.avance ?? 0) > 0 && `lo hecho vale ${moneda((presupuesto * (avance?.avance ?? 0)) / 100)} de los ${moneda(presupuesto)} del presupuesto`]
             .filter(Boolean)
             .join(' · ')}
         />
@@ -570,7 +569,10 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
     )
   }
   const incompleto = c.materiales_sin_precio > 0 || c.horas_sin_costo > 0 || c.lineas_sin_cambio > 0
-  const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : 'exito'
+  // Verde solo al cierre: con el costeo abierto un 98 % no es una buena noticia, es que falta costear (auditoría 27/10/2026).
+  const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : c.cierre ? 'exito' : 'neutro'
+  // Lo que se espera dejar si se gasta el presupuesto entero: ancla el margen a hoy.
+  const previsto = v.presupuesto_pen === null ? null : parteDe(v.precio_neto_pen - v.presupuesto_pen, v.precio_neto_pen)
   return (
     <Indicador
       // «A hoy»: es la venta menos lo costado hasta ahora, no lo que va a dejar la unidad (auditoría 27/10/2026).
@@ -580,6 +582,7 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
       pie={[
         `${moneda(v.margen_pen)} de ${moneda(v.precio_neto_pen)} sin IGV`,
         v.consumido_pct !== null && `${porcentaje(v.consumido_pct, 0)} gastado del presupuesto${v.presupuesto_fijado ? ' fijado en la OT' : ''}`,
+        !c.cierre && previsto !== null && `previsto al cotizar: ${porcentaje(previsto, 1)}`,
         incompleto && 'con el costo incompleto',
       ]
         .filter(Boolean)

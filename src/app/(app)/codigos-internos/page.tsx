@@ -348,14 +348,8 @@ function FilaCodigo({
             {origenDelAvance(c.codigo, avance)}
             {c.ultimo_reporte && <span className="text-texto-suave"> · último reporte el {fecha(c.ultimo_reporte)}</span>}
           </span>
-          {/* Con presupuesto, el avance se lee también en plata: lo que vale lo hecho del presupuesto. */}
-          <Progreso
-            valor={avance?.avance ?? 0}
-            alto="sm"
-            mostrarValor
-            costo={presupuesto !== null ? (presupuesto * (avance?.avance ?? 0)) / 100 : undefined}
-            etiqueta={`Avance de ${c.codigo}`}
-          />
+          {/* Solo el %: con los soles al lado se leía como un segundo costo (auditoría 27/10/2026); en plata va en el detalle. */}
+          <Progreso valor={avance?.avance ?? 0} alto="sm" mostrarValor etiqueta={`Avance de ${c.codigo}`} />
         </div>
       )}
 

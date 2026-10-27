@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import { tramos } from '@/components/ui/indicador'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
@@ -133,7 +134,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
               />
               {verMargen && (
                 <Cifra
-                  etiqueta="Margen"
+                  etiqueta={delCodigo?.cierre ? 'Margen al cierre' : 'Margen a hoy'}
                   valor={delCodigo?.margenPct != null ? porcentaje(delCodigo.margenPct, 1) : '—'}
                   pie={
                     delCodigo?.margenPct != null
@@ -231,7 +232,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                                   <span className={costo.pen > 0 ? 'text-texto' : 'text-texto-tenue'}>{moneda(costo.pen)}</span>
                                   {costo.margenPct !== null && (
                                     <span className={cn('block text-[11px]', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                      Margen {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
+                                      {costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                     </span>
                                   )}
                                 </>
@@ -329,7 +330,7 @@ function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
       <p className="text-xs text-texto-suave">{etiqueta}</p>
       <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</p>
-      <p className="text-xs text-texto-tenue">{pie}</p>
+      <p className="text-xs text-texto-tenue">{tramos(pie)}</p>
     </div>
   )
 }

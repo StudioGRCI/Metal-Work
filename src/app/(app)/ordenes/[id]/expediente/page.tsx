@@ -7,7 +7,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { PlanContraReal } from '@/components/expediente/plan-contra-real'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
-import { Indicador } from '@/components/ui/indicador'
+import { Indicador, tramos } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
@@ -258,7 +258,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               pie={
                 faltanteDelCosto({ sinPrecio: delCodigo.sinPrecio, horasSinCosto: delCodigo.sinCosto, sinCambio: delCodigo.sinCambio })
                   ?? (delCodigo.margenPct !== null
-                    ? `Margen ${porcentajeYMonto(delCodigo.margenPct, delCodigo.margenPen, 'PEN', 1)} · el costo del código ${delCodigo.codigo}`
+                    ? `Margen a hoy ${porcentajeYMonto(delCodigo.margenPct, delCodigo.margenPen, 'PEN', 1)} · el costo del código ${delCodigo.codigo}`
                     : `El costo del código ${delCodigo.codigo}`)
               }
               tono={delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0 ? 'aviso' : 'neutro'}
@@ -276,7 +276,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   : enSoles.sinCambio > 0
                     ? `${enSoles.sinCambio} línea(s) en dólares sin tipo de cambio`
                     : expediente.margen?.margen_pct != null
-                      ? `Margen ${porcentajeYMonto(expediente.margen.margen_pct, expediente.margen.margen_pen, 'PEN', 1)} sobre la venta sin IGV`
+                      ? `Margen a hoy ${porcentajeYMonto(expediente.margen.margen_pct, expediente.margen.margen_pen, 'PEN', 1)} sobre la venta sin IGV`
                       : enSoles.totalUsd > 0
                         ? `Incluye ${moneda(enSoles.totalUsd, 'USD')} al cambio de su fecha`
                         : 'Material despachado, planilla cerrada y gastos aprobados'
@@ -1212,7 +1212,7 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
       />
       {verMargen && (
         <CifraMargen
-          etiqueta="Margen"
+          etiqueta={costo.cierre ? 'Margen al cierre' : 'Margen a hoy'}
           valor={costo.margenPct === null ? '—' : porcentaje(costo.margenPct, 1)}
           pie={
             costo.margenPct === null
@@ -1259,7 +1259,7 @@ function CifraMargen({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: 
     <div className="min-w-0">
       <dt className="text-xs text-texto-suave">{etiqueta}</dt>
       <dd className={cn('tabular text-lg font-semibold', tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</dd>
-      <dd className="text-xs text-texto-tenue">{pie}</dd>
+      <dd className="text-xs text-texto-tenue">{tramos(pie)}</dd>
     </div>
   )
 }

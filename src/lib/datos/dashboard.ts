@@ -404,7 +404,7 @@ const CIFRAS = {
       return {
         titulo: 'Facturado',
         valor: moneda(facturado),
-        pie: parte === null ? 'nada facturado todavía' : `cobrado ${moneda(cobrado)} · ${porcentaje(parte)} · por cobrar ${moneda(facturado - cobrado)}`,
+        pie: parte === null ? 'nada facturado todavía' : `cobrado ${moneda(cobrado)} (${porcentaje(parte)}) · por cobrar ${moneda(facturado - cobrado)}`,
         icono: ReceiptText,
       }
     },
@@ -475,7 +475,7 @@ const CIFRAS = {
           pendientes.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(pendientes.length, 'factura', 'facturas'),
-            parte === null ? null : `${porcentaje(parte)} de lo facturado en ellas`,
+            parte === null ? null : `falta cobrar el ${porcentaje(parte)} de esas facturas`,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -508,7 +508,7 @@ const CIFRAS = {
           filas.filter((f) => f.moneda === 'USD').reduce((n, f) => n + num(f.saldo), 0),
           [
             vencidas > 0 ? plural(vencidas, 'factura vencida', 'facturas vencidas') : plural(filas.length, 'factura', 'facturas'),
-            parte === null ? null : `${porcentaje(parte)} del total de esas facturas`,
+            parte === null ? null : `falta pagar el ${porcentaje(parte)} de esas facturas`,
           ]
             .filter(Boolean)
             .join(' · '),
