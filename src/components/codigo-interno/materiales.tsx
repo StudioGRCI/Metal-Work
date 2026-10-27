@@ -6,7 +6,7 @@ import type { LineaDeMaterial, LineaPedida, MaterialComparado } from '@/lib/dato
 import { comparacionMaterial } from '@/lib/dominio/diseno-codigos'
 import { definir } from '@/lib/dominio/estados'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
-import { cantidad, fecha } from '@/lib/format'
+import { cantidad, fecha, parteDe, porcentaje } from '@/lib/format'
 
 /**
  * Material por material: lo que puso Diseño, lo comprado por OC y lo salido del
@@ -44,8 +44,15 @@ export function TablaComparada({ materiales }: { materiales: MaterialComparado[]
                   </p>
                 </TD>
                 <TD className="tabular text-right align-top">{m.disenado === null ? '—' : cantidad(m.disenado)}</TD>
-                <TD className="tabular text-right align-top">{cantidad(m.comprado)}</TD>
-                <TD className="tabular text-right align-top">{cantidad(m.salido)}</TD>
+                {/* Cada cantidad con su parte de lo diseñado (DKS, 27/10/2026: porcentaje y costo); sin soles, que Diseño y el taller no ven. */}
+                <TD className="tabular text-right align-top">
+                  {cantidad(m.comprado)}
+                  {m.disenado !== null && m.disenado > 0 && <p className="text-xs text-texto-suave">{porcentaje(parteDe(m.comprado, m.disenado))}</p>}
+                </TD>
+                <TD className="tabular text-right align-top">
+                  {cantidad(m.salido)}
+                  {m.disenado !== null && m.disenado > 0 && <p className="text-xs text-texto-suave">{porcentaje(parteDe(m.salido, m.disenado))}</p>}
+                </TD>
                 <TD className="hidden align-top sm:table-cell">
                   <Insignia tono={como.tono}>{como.etiqueta}</Insignia>
                 </TD>

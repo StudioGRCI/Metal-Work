@@ -175,7 +175,7 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-baseline justify-between gap-4">
                 <span className="text-xs font-medium text-texto-suave">Avance de la unidad</span>
-                <strong className="tabular text-lg text-texto">{porcentaje(orden.avance_porcentaje, 1)}</strong>
+                <strong className="tabular text-lg text-texto">{porcentaje(orden.avance_porcentaje)}</strong>
               </div>
               <Progreso valor={orden.avance_porcentaje} etiqueta="Avance de la orden de trabajo" alto={esResumen?'md':'sm'}/>
               {/* Desde el 2026-10-15 el avance es el del código interno: las

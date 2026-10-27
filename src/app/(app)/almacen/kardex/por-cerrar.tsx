@@ -38,9 +38,11 @@ const TIPOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
  * imprime con su formato, se firma a mano por el almacenero y por quien
  * recibe, y se cierra cargando el escaneo o la foto del formato firmado.
  */
-export function SalidasPorCerrar({ salidas, puedeCerrar }: { salidas: SalidaParaCerrar[]; puedeCerrar: boolean }) {
+export function SalidasPorCerrar({ salidas, puedeCerrar, almacen = null }: { salidas: SalidaParaCerrar[]; puedeCerrar: boolean; almacen?: string | null }) {
   if (salidas.length === 0) {
-    return <p className="text-sm text-texto-suave">Ninguna salida abierta: todas las de materia prima y EPP tienen su formato firmado.</p>
+    // Con un almacén elegido lo dice, para que no parezca que no hay ninguna en los demás.
+    const donde = almacen && esAlmacen(almacen) ? ` en ${ALMACENES[almacen].etiqueta}` : ''
+    return <p className="text-sm text-texto-suave">Ninguna salida abierta{donde}: las de materia prima y EPP tienen su formato firmado.</p>
   }
   return (
     <ul className="divide-y divide-borde">

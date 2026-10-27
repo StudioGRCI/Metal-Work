@@ -9,7 +9,7 @@ import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
-import { fecha } from '@/lib/format'
+import { fecha, parteDe, porcentaje } from '@/lib/format'
 
 import { AbrirCodigo } from './formularios'
 
@@ -181,7 +181,8 @@ function Resumen({ c, vista }: { c: CodigoDeDiseno; vista: VistaDiseno }) {
   return (
     <span className="flex flex-col items-end gap-1 text-xs text-texto">
       <span>
-        {c.etapas_terminadas} de {c.etapas} {c.etapas === 1 ? 'terminada' : 'terminadas'}
+        {c.etapas_terminadas} de {c.etapas} {c.etapas === 1 ? 'terminada' : 'terminadas'}{' '}
+        <span className="tabular text-texto-suave">({porcentaje(parteDe(c.etapas_terminadas, c.etapas))})</span>
         {c.etapas_vencidas > 0 && (
           <>
             {' '}

@@ -64,12 +64,33 @@ export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: str
 }
 
 /**
+ * Como `nombreDeUnidad`, pero la unidad que no tiene placa ni código a la vista
+ * —o que el puesto no ve— toma el código del que sale su avance: el colaborador
+ * de Diseño no ve la unidad y leía «Unidad sin placa» o «Sin unidad asignada»
+ * (DKS, 15/10/2026: todo se ve por código).
+ */
+export function nombreDeUnidadOCodigo(unidad: UnidadNombrable | null | undefined, codigo: string | null | undefined): string {
+  const nombre = nombreDeUnidad(unidad)
+  return (!unidad || nombre === 'Unidad sin placa') && codigo ? codigo : nombre
+}
+
+/**
  * `true` cuando lo que se está mostrando NO es la placa. Sirve para que la
  * pantalla lo diga en vez de dejar creer que ese texto es una matrícula: quien
  * lee «Chasis 9BM…» tiene que saber que esa unidad todavía no está matriculada.
  */
 export function todaviaSinPlaca(unidad: UnidadNombrable | null | undefined): boolean {
   return Boolean(unidad) && !limpio(unidad?.placa)
+}
+
+/**
+ * Si el nombre que muestra `nombreDeUnidadOCodigo` va tenue: solo cuando es el
+ * FMI o el chasis, que se pueden leer de lejos como matrícula. El código interno
+ * es como se busca la unidad en el taller y va con el color del texto.
+ */
+export function nombreVaTenue(unidad: UnidadNombrable | null | undefined, codigo: string | null | undefined): boolean {
+  if (!todaviaSinPlaca(unidad) || limpio(unidad?.codigo_interno)) return false
+  return nombreDeUnidadOCodigo(unidad, codigo) !== codigo
 }
 
 /**

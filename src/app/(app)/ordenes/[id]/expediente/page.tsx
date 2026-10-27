@@ -14,6 +14,8 @@ import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
+import { avanceDelCodigo } from '@/lib/datos/codigos-internos'
+import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
@@ -99,8 +101,12 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // Con código interno, el costo de la unidad es el de su código (el mismo de
   // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
   // Solo depende de la orden: se lee junto con lo demás, no después.
+  // Quién lee las etapas del código (las mismas llaves que `puede_ver_codigos_de_diseno()`)
+  // y quién cuenta sus reportes (`codigo_interno_avance` exige `codigos_internos.ver`).
+  const veEtapasDelCodigo = puede(perfil, ['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
+  const cuentaReportesDelCodigo = puede(perfil, 'codigos_internos.ver')
   const leyendoOrden = obtenerOrden(id)
-  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo] = await Promise.all([
+  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo, tallerDelCodigo] = await Promise.all([
     leyendoOrden,
     pendientesDeOrden(id),
     expedienteDeOrden(id, { verCosteo, verMargen }),
@@ -113,12 +119,30 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         ? costoDeOrdenes([{ id: o.id, codigo_interno: codigo }], { conMargen: verMargen }).then((m) => m.get(o.id) ?? null)
         : null
     }),
+    // Con código interno el taller empieza con la primera etapa del código y sus reportes son los del
+    // código: la OT decía «Todavía no empieza» con Maestranza terminada (auditoría del 27/10/2026).
+    leyendoOrden.then(async (o) => {
+      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      if (!o || codigo === '' || codigo === CODIGO_SIN_AVANCE) return null
+      // Cada lectura con la llave que pide su función, y solo si el puesto la tiene:
+      // las etapas, `puede_ver_codigos_de_diseno()`; los reportes, `codigos_internos.ver`
+      // (Diseño ve las etapas y no los reportes). Un error de verdad no se calla.
+      const [etapas, avance] = await Promise.all([
+        veEtapasDelCodigo ? etapasDeCodigo(codigo) : null,
+        cuentaReportesDelCodigo ? avanceDelCodigo(codigo) : null,
+      ])
+      if (etapas === null && avance === null) return null
+      const inicios = (etapas ?? []).flatMap((e) => (e.inicio_real ? [e.inicio_real] : [])).sort()
+      return {
+        inicio: inicios[0] ?? null,
+        reportes: avance === null ? null : new Set(avance.filter((a) => a.estado !== 'ANULADO').map((a) => a.reporte_id)).size,
+      }
+    }),
   ])
   if (!orden) notFound()
   // Las pestañas dependen de la orden: la de una cotización lleva su ficha y
   // sus etapas por el código interno.
   const pestanas = seccionesDeOrden(perfil, orden)
-  const veEtapasDelCodigo = puede(perfil, ['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
 
   const hoy = hoyLima()
   const viva = !ESTADOS_CERRADOS.includes(orden.estado)
@@ -143,7 +167,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const terminadas = expediente.etapas.filter((e) => e.estado === 'TERMINADA').length
   const entregaReal = expediente.acta?.fecha_entrega ?? null
   const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, entregaReal, hoy)
-  const taller = tiempoEnTaller(orden.fecha_inicio_real, orden.fecha_fin_real ?? entregaReal, hoy)
+  const taller = tiempoEnTaller(orden.fecha_inicio_real ?? tallerDelCodigo?.inicio ?? null, orden.fecha_fin_real ?? entregaReal, hoy)
   const composicion = expediente.costo ? composicionDelCosto(expediente.costo.resumen) : null
   const enSoles = enSolesDe(expediente)
   const conFoto = expediente.reportes.filter((r) => r.foto_url)
@@ -219,7 +243,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             tono={Number(orden.avance_porcentaje) >= 100 ? 'exito' : 'acento'}
             valor={
               <div>
-                <span>{porcentaje(orden.avance_porcentaje, 1)}</span>
+                <span>{porcentaje(orden.avance_porcentaje)}</span>
                 <Progreso valor={orden.avance_porcentaje} alto="sm" className="mt-2" etiqueta="Avance de la unidad" />
               </div>
             }
@@ -287,8 +311,16 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <Indicador
               titulo="Reportes del taller"
               icono={FileText}
-              valor={expediente.reportes.length}
-              pie={`${conFoto.length} con foto`}
+              // Con código, los reportes del taller son los del código: quien no los
+              // puede contar ve «—» y no los de la OT, que no son el trabajo hecho.
+              valor={tallerDelCodigo ? (tallerDelCodigo.reportes ?? '—') : expediente.reportes.length}
+              pie={
+                tallerDelCodigo
+                  ? tallerDelCodigo.reportes !== null
+                    ? `reportes diarios del código ${codigoDeLaUnidad}`
+                    : `van por el código ${codigoDeLaUnidad}`
+                  : `${conFoto.length} con foto`
+              }
             />
           )}
         </section>
@@ -299,7 +331,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         <Tarjeta className="no-partir">
           <TarjetaCabecera titulo="Hitos" ayuda="Los pasos que toda carrocería recorre, con su fecha" />
           <TarjetaCuerpo>
-            <Hitos orden={orden} expediente={expediente} />
+            <Hitos orden={orden} expediente={expediente} inicioDelCodigo={tallerDelCodigo?.inicio ?? null} />
           </TarjetaCuerpo>
         </Tarjeta>
 
@@ -745,7 +777,7 @@ type OrdenParaHitos = {
 }
 
 /** Los pasos de toda carrocería, en orden, con la fecha en que se cumplieron. */
-function Hitos({ orden, expediente }: { orden: OrdenParaHitos; expediente: Expediente }) {
+function Hitos({ orden, expediente, inicioDelCodigo }: { orden: OrdenParaHitos; expediente: Expediente; inicioDelCodigo: string | null }) {
   const planosEntregados = expediente.planos.filter((p) => p.fecha_entrega)
   const ultimoPlano = planosEntregados.map((p) => p.fecha_entrega as string).sort().at(-1) ?? null
   const hitos: { titulo: string; cuando: string | null; detalle?: string }[] = [
@@ -757,7 +789,8 @@ function Hitos({ orden, expediente }: { orden: OrdenParaHitos; expediente: Exped
           detalle: `${planosEntregados.length} de ${expediente.planos.length}`,
         }]
       : []),
-    { titulo: 'Inicio del trabajo', cuando: orden.fecha_inicio_real },
+    // Con código, el trabajo empieza con la primera etapa del código, como el tiempo en taller.
+    { titulo: 'Inicio del trabajo', cuando: orden.fecha_inicio_real ?? inicioDelCodigo },
     { titulo: 'Trabajo terminado', cuando: orden.fecha_fin_real },
     { titulo: 'Liberación de Tesorería', cuando: expediente.liberacion?.liberado_en ?? null },
     { titulo: 'Acta de entrega', cuando: expediente.acta?.fecha_entrega ?? null, detalle: expediente.acta?.numero ?? undefined },
