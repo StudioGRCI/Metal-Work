@@ -5,7 +5,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentajeCorto } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesTrabajador, NuevoTrabajador } from './formulario'
@@ -86,6 +86,13 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
   )
 }
 
+/** «+20 % sobre el sueldo»: lo que la persona cuesta de más (o de menos) que lo que gana. */
+function sobreElSueldo(costo: number, sueldo: number) {
+  const pct = parteDe(costo - sueldo, sueldo)
+  if (pct === null) return ''
+  return `${pct >= 0 ? '+' : '−'}${porcentajeCorto(Math.abs(pct))} sobre el sueldo`
+}
+
 function FilaTrabajador({
   trabajador: t,
   areas,
@@ -116,6 +123,23 @@ function FilaTrabajador({
           <p className="text-xs text-texto">
             {t.cargo ?? 'Sin cargo'}
             {t.area && ` · ${t.area.nombre}`}
+          </p>
+        )}
+        {/* En el teléfono la columna de la cuenta no cabe: el sueldo y el costo van bajo el nombre. */}
+        {ve && (t.remuneracion_mensual || t.costo_mensual) && (
+          <p className="text-xs text-texto-suave lg:hidden">
+            {t.remuneracion_mensual && (
+              <>
+                Gana <span className="tabular whitespace-nowrap">{moneda(t.remuneracion_mensual)}</span>
+              </>
+            )}
+            {t.remuneracion_mensual && t.costo_mensual && ' · '}
+            {t.costo_mensual && (
+              <>
+                cuesta <span className="tabular whitespace-nowrap">{moneda(t.costo_mensual)}</span>
+                {t.remuneracion_mensual ? ` (${sobreElSueldo(t.costo_mensual, t.remuneracion_mensual)})` : ''}
+              </>
+            )}
           </p>
         )}
         <p className="tabular text-[11px] text-texto-suave md:hidden">{horario}</p>
@@ -149,7 +173,8 @@ function FilaTrabajador({
           <p className="mt-0.5 text-[11px] text-texto-suave">
             {t.costo_mensual ? (
               <>
-                Cuesta <span className="tabular">{moneda(t.costo_mensual)}</span> al mes ·{' '}
+                Cuesta <span className="tabular">{moneda(t.costo_mensual)}</span> al mes
+                {t.remuneracion_mensual ? ` (${sobreElSueldo(t.costo_mensual, t.remuneracion_mensual)})` : ''} ·{' '}
                 <span className="tabular">{moneda(t.costo_mensual / HORAS_DEL_MES)}</span> la hora
               </>
             ) : (

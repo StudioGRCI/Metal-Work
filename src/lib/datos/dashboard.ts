@@ -38,6 +38,7 @@ import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/c
 import { faltaDelServicio } from '@/lib/dominio/detraccion'
 import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
 import { hoyLima, moneda, numero, parteDe, porcentaje, sumarDias } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
@@ -724,9 +725,24 @@ const CIFRAS = {
   tardanzas_del_mes: {
     ruta: '/rrhh/tardanzas',
     calcular: async (c) => {
-      const r = await c.supabase.from('asistencias').select('id', { count: 'exact', head: true }).eq('es_tardanza', true).gte('fecha', c.mes).is('anulado_en', null)
+      // La misma cuenta que la pantalla de Tardanzas: cuántas personas ya llevan descuento y cuánto es.
+      // Los soles solo para quien ve el sueldo (RR. HH.); Gerencia y Administración ven el porcentaje.
+      const [r, resumen, regla] = await Promise.all([
+        c.supabase.from('asistencias').select('id', { count: 'exact', head: true }).eq('es_tardanza', true).gte('fecha', c.mes).is('anulado_en', null),
+        resumenTardanzas(c.mes),
+        reglaTardanza(),
+      ])
       fallo(r)
-      return { titulo: 'Tardanzas del mes', valor: String(r.count ?? 0), pie: 'cada tres, el descuento', icono: AlertTriangle }
+      const conDescuento = resumen.filter((t) => t.porcentaje > 0)
+      const porRestar = conDescuento.reduce((n, t) => n + (t.descuento ?? 0), 0)
+      const veSueldo = puede(c.perfil, ['rrhh.personal', 'planilla_diaria.preparar'])
+      const cada = regla?.tardanzas_por_descuento ?? 3
+      const pct = regla?.porcentaje_descuento ?? 5
+      const pie =
+        conDescuento.length === 0
+          ? `cada ${cada}, el ${porcentaje(pct)} del sueldo`
+          : `${plural(conDescuento.length, 'persona', 'personas')} con el ${porcentaje(pct)} por restar${veSueldo && porRestar > 0 ? ` · ${moneda(porRestar)}` : ''}`
+      return { titulo: 'Tardanzas del mes', valor: String(r.count ?? 0), pie, icono: AlertTriangle, tono: conDescuento.length > 0 ? 'aviso' : 'neutro' }
     },
   },
 
