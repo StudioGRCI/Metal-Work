@@ -56,6 +56,7 @@ export default async function PaginaPlanos({ params, searchParams }: {
     <div className="mt-5 space-y-5">
       <div className="min-w-0 space-y-4">
         <Cumplimiento ordenId={id} resumen={cumplimiento?.resumen ?? null} planos={cumplimiento?.planos ?? []}
+          codigoInterno={orden.avance_del_codigo ?? null} avanceDelCodigo={orden.avance_porcentaje}
           versiones={versiones.map(v => ({ ...v,
             puedeRevisarDiseno: abierta && v.revision_diseno === 'PENDIENTE' && v.creado_por !== perfil.id && puede(perfil, 'diseno.planos'),
             puedeRevisar: abierta && v.revision_diseno === 'APROBADO' && v.estado === 'POR_REVISAR' && v.creado_por !== perfil.id && puedeHojaDeArea(perfil, v.area_id) && puede(perfil, 'produccion.actividades'),

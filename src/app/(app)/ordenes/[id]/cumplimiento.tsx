@@ -16,6 +16,7 @@ import type {
   PlanoCumplimiento,
   ResumenCumplimiento,
 } from '@/lib/datos/cumplimiento'
+import { enlaceDisenoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cantidad as fmtCantidad, fecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
@@ -84,6 +85,8 @@ export function Cumplimiento({
   areaPropia = null,
   ordenViva,
   motivoInactiva,
+  codigoInterno = null,
+  avanceDelCodigo = null,
 }: {
   ordenId: string
   etapas: { id: string; nombre: string }[]
@@ -104,7 +107,13 @@ export function Cumplimiento({
   ordenViva: boolean
   /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
   motivoInactiva?: string | null
+  /** El código interno del que sale el avance de la cabecera, cuando la unidad trabaja por código. */
+  codigoInterno?: string | null
+  /** Ese avance, para que esta hoja no diga 0 % con la cabecera en 40 % (auditoría del 27/10/2026). */
+  avanceDelCodigo?: number | null
 }) {
+  // Con código interno y sin planos propios, los planos viven en el código: esta hoja lo dice y manda allá.
+  const porCodigo = Boolean(codigoInterno) && planos.length === 0
   const pesoTotal = Number(resumen?.peso_total ?? 0)
   const faltaPeso = Math.round((100 - pesoTotal) * 100) / 100
   const sinEntregar = planos.filter((p) => !p.fecha_entrega).length
@@ -129,8 +138,10 @@ export function Cumplimiento({
         <TarjetaCuerpo>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Cifra titulo="Avance de la unidad">
-              <Progreso valor={resumen?.avance_pct} mostrarValor />
-              <span className="text-[11px] text-texto-suave">Ponderado por el peso de cada plano</span>
+              <Progreso valor={porCodigo ? avanceDelCodigo : resumen?.avance_pct} mostrarValor />
+              <span className="text-xs text-texto-suave">
+                {porCodigo ? `Por los planos y etapas del código ${codigoInterno}` : 'Ponderado por el peso de cada plano'}
+              </span>
             </Cifra>
             <Cifra titulo="Planos entregados">
               <span className="tabular text-lg font-semibold text-texto">
@@ -192,7 +203,21 @@ export function Cumplimiento({
           pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
       )}
 
-      {planos.length === 0 ? (
+      {porCodigo && codigoInterno ? (
+        <Tarjeta>
+          <TarjetaCuerpo>
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium text-texto">Los planos de esta unidad están en su código interno</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+                Diseño los carga por código, cada uno con su parte de la unidad; el avance de arriba sale de ahí.
+              </p>
+              <Link href={enlaceDisenoCodigo(codigoInterno, 'planos')} className="mt-3 inline-block text-sm font-medium text-acento hover:underline">
+                Abrir los planos de {codigoInterno}
+              </Link>
+            </div>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      ) : planos.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <div className="py-8 text-center">

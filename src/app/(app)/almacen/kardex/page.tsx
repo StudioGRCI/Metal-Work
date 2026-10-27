@@ -141,6 +141,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     .filter((m) => minimos.has(m.material_id) && m.existencia < (minimos.get(m.material_id) ?? 0))
     .sort((a, b) => a.existencia / (minimos.get(a.material_id) || 1) - b.existencia / (minimos.get(b.material_id) || 1))
   // El tablero: cuántos materiales con saldo, bajo mínimo y salidas abiertas tiene cada almacén.
+  // Las salidas abiertas del almacén elegido (o de todos): el título y la lista salen de aquí.
+  const porCerrarDelAlmacen = porCerrar.filter((s): s is typeof s & { id: string } => Boolean(s.id) && (!filtros.almacen || s.almacen === filtros.almacen))
   const tablero = ORDEN_ALMACENES.map((a) => ({
     almacen: a,
     def: ALMACENES[a],
@@ -327,14 +329,14 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 
       {!elegido && (porCerrar.length > 0 || puedeSalida) && (
         <Tarjeta id="por-cerrar" className="mb-4">
+          {/* El título y el cuerpo cuentan lo mismo: lo del almacén elegido (decía «2 salidas» y abajo «ninguna»). */}
           <TarjetaCabecera
-            titulo={porCerrar.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrar.length === 1 ? '1 salida' : `${porCerrar.length} salidas`}`}
+            titulo={porCerrarDelAlmacen.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrarDelAlmacen.length === 1 ? '1 salida' : `${porCerrarDelAlmacen.length} salidas`}`}
             ayuda="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
-            acciones={porCerrar.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
+            acciones={porCerrarDelAlmacen.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
           />
           <TarjetaCuerpo>
-            <SalidasPorCerrar puedeCerrar={puedeSalida}
-              salidas={porCerrar.filter((s): s is typeof s & { id: string } => Boolean(s.id) && (!filtros.almacen || s.almacen === filtros.almacen))} />
+            <SalidasPorCerrar puedeCerrar={puedeSalida} salidas={porCerrarDelAlmacen} almacen={filtros.almacen ?? null} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}

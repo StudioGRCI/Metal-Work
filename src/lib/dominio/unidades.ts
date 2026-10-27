@@ -68,6 +68,16 @@ export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: str
  * pantalla lo diga en vez de dejar creer que ese texto es una matrícula: quien
  * lee «Chasis 9BM…» tiene que saber que esa unidad todavía no está matriculada.
  */
+/**
+ * Como `nombreDeUnidad`, pero la unidad que no tiene placa ni código a la vista
+ * toma el código del que sale su avance: el colaborador de Diseño no ve la
+ * unidad y leía «Unidad sin placa» (DKS, 15/10/2026: todo se ve por código).
+ */
+export function nombreDeUnidadOCodigo(unidad: UnidadNombrable | null | undefined, codigo: string | null | undefined): string {
+  const nombre = nombreDeUnidad(unidad)
+  return nombre === 'Unidad sin placa' && codigo ? codigo : nombre
+}
+
 export function todaviaSinPlaca(unidad: UnidadNombrable | null | undefined): boolean {
   return Boolean(unidad) && !limpio(unidad?.placa)
 }

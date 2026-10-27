@@ -14,7 +14,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { nombreDeUnidadOCodigo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, fechaLarga, hoyLima, moneda, porcentajeYMonto, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
@@ -262,7 +262,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                           <p className="line-clamp-2 text-xs text-texto-suave sm:line-clamp-1">
                             {unidad && (
                               <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : 'text-texto'}>
-                                {nombreDeUnidad(unidad)}
+                                {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
                                 {(orden.cliente || orden.cliente_id === null) && ' · '}
                               </span>
                             )}

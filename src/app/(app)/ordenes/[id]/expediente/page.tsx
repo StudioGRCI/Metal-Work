@@ -14,6 +14,8 @@ import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
+import { avanceDelCodigo } from '@/lib/datos/codigos-internos'
+import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
@@ -100,7 +102,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
   // Solo depende de la orden: se lee junto con lo demás, no después.
   const leyendoOrden = obtenerOrden(id)
-  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo] = await Promise.all([
+  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo, tallerDelCodigo] = await Promise.all([
     leyendoOrden,
     pendientesDeOrden(id),
     expedienteDeOrden(id, { verCosteo, verMargen }),
@@ -112,6 +114,20 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
       return o && verCosteo && codigo !== '' && codigo !== CODIGO_SIN_AVANCE
         ? costoDeOrdenes([{ id: o.id, codigo_interno: codigo }], { conMargen: verMargen }).then((m) => m.get(o.id) ?? null)
         : null
+    }),
+    // Con código interno el taller empieza con la primera etapa del código y sus reportes son los del
+    // código: la OT decía «Todavía no empieza» con Maestranza terminada (auditoría del 27/10/2026).
+    leyendoOrden.then(async (o) => {
+      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      if (!o || codigo === '' || codigo === CODIGO_SIN_AVANCE) return null
+      try {
+        const [etapas, avance] = await Promise.all([etapasDeCodigo(codigo), avanceDelCodigo(codigo)])
+        const inicios = etapas.flatMap((e) => (e.inicio_real ? [e.inicio_real] : [])).sort()
+        return { inicio: inicios[0] ?? null, reportes: new Set(avance.filter((a) => a.estado !== 'ANULADO').map((a) => a.reporte_id)).size }
+      } catch {
+        // Quien no puede leer las etapas del código sigue con las fechas de la OT.
+        return null
+      }
     }),
   ])
   if (!orden) notFound()
@@ -143,7 +159,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const terminadas = expediente.etapas.filter((e) => e.estado === 'TERMINADA').length
   const entregaReal = expediente.acta?.fecha_entrega ?? null
   const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, entregaReal, hoy)
-  const taller = tiempoEnTaller(orden.fecha_inicio_real, orden.fecha_fin_real ?? entregaReal, hoy)
+  const taller = tiempoEnTaller(orden.fecha_inicio_real ?? tallerDelCodigo?.inicio ?? null, orden.fecha_fin_real ?? entregaReal, hoy)
   const composicion = expediente.costo ? composicionDelCosto(expediente.costo.resumen) : null
   const enSoles = enSolesDe(expediente)
   const conFoto = expediente.reportes.filter((r) => r.foto_url)
@@ -287,8 +303,8 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <Indicador
               titulo="Reportes del taller"
               icono={FileText}
-              valor={expediente.reportes.length}
-              pie={`${conFoto.length} con foto`}
+              valor={tallerDelCodigo ? tallerDelCodigo.reportes : expediente.reportes.length}
+              pie={tallerDelCodigo ? `reportes diarios del código ${codigoDeLaUnidad}` : `${conFoto.length} con foto`}
             />
           )}
         </section>

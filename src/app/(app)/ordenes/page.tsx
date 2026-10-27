@@ -12,7 +12,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, fecha } from '@/lib/format'
 import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { nombreDeUnidadOCodigo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import {
   ORDENES_POR_PAGINA,
   comoEstado,
@@ -103,7 +103,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
           : habiles === null
             ? null
             : {
-                texto: habiles === 0 ? 'se entrega hoy' : `quedan ${habiles} ${habiles === 1 ? 'día' : 'días'} de taller`,
+                texto: habiles === 0 ? 'se entrega hoy' : `faltan ${habiles} ${habiles === 1 ? 'día hábil' : 'días hábiles'} de taller`,
                 clase: habiles <= 3 ? 'font-medium text-aviso' : 'text-texto-suave',
               },
     }
@@ -170,7 +170,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
                 </p>
                 <p className="text-xs text-texto-suave">
-                  <span className={sinPlaca ? 'text-texto-tenue' : undefined}>{nombreDeUnidad(unidad)}</span>
+                  <span className={sinPlaca ? 'text-texto-tenue' : undefined}>{nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}</span>
                   {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
                 </p>
                 <div className="mt-3 flex items-end justify-between gap-4">
@@ -264,7 +264,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                             el chasis: va más tenue para que nadie lo lea de
                             lejos como si fuera una matrícula. */}
                         <span className={sinPlaca ? 'text-texto-tenue' : undefined}>
-                          {nombreDeUnidad(unidad)}
+                          {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
                         </span>
                         {/* El responsable no tiene columna propia en el
                             teléfono: viaja aquí, pegado a la unidad. */}

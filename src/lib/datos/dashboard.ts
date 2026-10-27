@@ -284,7 +284,15 @@ const CIFRAS = {
     ruta: '/compras/ordenes',
     calcular: async (c) => {
       const oc = (await ordenesDeCompra(c)).filter((o) => o.aprobacion === 'POR_APROBAR')
-      return { titulo: 'OC en Gerencia', valor: String(oc.length), pie: 'esperan su aprobación', icono: Clock, tono: oc.length > 0 ? 'aviso' : 'neutro' }
+      // Cuánto es lo que espera, sin IGV, como lo lleva la lista.
+      const pen = oc.reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)
+      return {
+        titulo: 'OC en Gerencia',
+        valor: String(oc.length),
+        pie: oc.length > 0 && pen > 0 ? `esperan su aprobación · ${moneda(pen)} sin IGV` : 'esperan su aprobación',
+        icono: Clock,
+        tono: oc.length > 0 ? 'aviso' : 'neutro',
+      }
     },
   },
   compras_del_mes: {
@@ -296,7 +304,16 @@ const CIFRAS = {
       // Todo en soles al cambio de su fecha, como en la lista; sin cambio, en su moneda.
       const pen = delMes.reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)
       const sinCambio = delMes.filter((o) => o.moneda === 'USD' && o.monto_pen === null).reduce((n, o) => n + num(o.monto), 0)
-      return { titulo: 'Comprado este mes', ...soles(pen, sinCambio, plural(delMes.length, 'orden de compra', 'órdenes de compra')), icono: Wallet }
+      // Dice que es sin IGV y qué parte todavía espera a Gerencia (Adquisiciones suma con IGV y no cuadraba).
+      const enGerencia = delMes.filter((o) => o.aprobacion === 'POR_APROBAR').reduce((n, o) => n + num(o.monto_pen ?? (o.moneda === 'USD' ? 0 : o.monto)), 0)
+      const parteEnGerencia = parteDe(enGerencia, pen)
+      const pie = [
+        `${plural(delMes.length, 'orden de compra', 'órdenes de compra')} sin IGV`,
+        parteEnGerencia !== null && enGerencia > 0 ? `${porcentaje(parteEnGerencia)} espera a Gerencia` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return { titulo: 'Comprado este mes', ...soles(pen, sinCambio, pie), icono: Wallet }
     },
   },
   en_recojo: {
@@ -632,7 +649,14 @@ const CIFRAS = {
       const codigos = await deDiseno(c)
       const planos = codigos.reduce((n, k) => n + k.planos, 0)
       const porRecibir = codigos.reduce((n, k) => n + k.planos_por_recibir, 0)
-      return { titulo: 'Planos sin recibir', valor: String(porRecibir), pie: `de ${planos} vigentes`, icono: DraftingCompass, tono: porRecibir > 0 ? 'aviso' : 'neutro' }
+      const parte = parteDe(porRecibir, planos)
+      return {
+        titulo: 'Planos sin recibir',
+        valor: String(porRecibir),
+        pie: parte === null ? `de ${planos} vigentes` : `de ${planos} vigentes · ${porcentaje(parte)}`,
+        icono: DraftingCompass,
+        tono: porRecibir > 0 ? 'aviso' : 'neutro',
+      }
     },
   },
   codigos_sin_materiales: {
@@ -673,8 +697,19 @@ const CIFRAS = {
       const r = await consulta
       fallo(r)
       const filas = r.data ?? []
-      const validados = filas.filter((f) => estadoDeReporte(f) === 'VALIDADO').length
-      return { titulo: 'Reportes diarios del mes', valor: String(filas.length), pie: `${validados} validados`, icono: ClipboardList }
+      // Cada estado con su cuenta: el supervisor ve su observado y RR. HH. lo que espera validar.
+      const cuenta = (estado: ReturnType<typeof estadoDeReporte>) => filas.filter((f) => estadoDeReporte(f) === estado).length
+      const observados = cuenta('OBSERVADO')
+      const porValidar = cuenta('POR_VALIDAR')
+      const validados = cuenta('VALIDADO')
+      const pie = [
+        observados > 0 ? plural(observados, 'observado', 'observados') : null,
+        porValidar > 0 ? `${porValidar} por validar` : null,
+        plural(validados, 'validado', 'validados'),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return { titulo: 'Reportes diarios del mes', valor: String(filas.length), pie, icono: ClipboardList, tono: observados > 0 ? 'aviso' : 'neutro' }
     },
   },
   planos_del_area: {
@@ -791,15 +826,21 @@ const CIFRAS = {
   aprobadas_del_mes: {
     ruta: '/cotizaciones/pdf?estado=APROBADA_MES&de=mias',
     calcular: async (c) => {
-      const r = await c.supabase
-        .from('v_cotizaciones_pdf')
-        .select('moneda, monto_venta')
-        .eq('estado', 'APROBADA')
-        .eq('registrado_por', c.perfil.id)
-        .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
-        .limit(500)
+      const [r, subidas] = await Promise.all([
+        c.supabase
+          .from('v_cotizaciones_pdf')
+          .select('moneda, monto_venta')
+          .eq('estado', 'APROBADA')
+          .eq('registrado_por', c.perfil.id)
+          .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
+          .limit(500),
+        // Contra cuántas subió este mes, para leer la cuenta como parte (DKS, 27/10/2026: porcentaje y costo).
+        c.supabase.from('v_cotizaciones_pdf').select('id', { count: 'exact', head: true }).eq('registrado_por', c.perfil.id).gte('creado_en', `${c.mes}T00:00:00-05:00`),
+      ])
       fallo(r)
+      fallo(subidas)
       const filas = r.data ?? []
+      const parteAprobada = parteDe(filas.length, subidas.count ?? 0)
       // Cada moneda con su total: sumar solo los soles decía «por S/ 0.00» en
       // un mes de cotizaciones en dólares.
       const soles = filas.filter((f) => f.moneda !== 'USD').reduce((n, f) => n + num(f.monto_venta), 0)
@@ -808,7 +849,12 @@ const CIFRAS = {
       return {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
-        pie: montos.length > 0 ? `de las que subiste, por ${montos.join(' y ')}` : 'de las que subiste',
+        pie: [
+          montos.length > 0 ? `de las que subiste, por ${montos.join(' y ')}` : 'de las que subiste',
+          parteAprobada !== null ? `${porcentaje(parteAprobada)} de las ${subidas.count} subidas este mes` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         icono: FileText,
         tono: filas.length > 0 ? 'exito' : 'neutro',
       }
