@@ -33,6 +33,8 @@ const esquemaOrdenes = z.array(
     /** Lo que ya está facturado de la OC en otras facturas registradas. */
     facturado_otras: z.coerce.number().default(0),
     otras_facturas: z.array(z.object({ numero_documento: z.string(), parcial: z.boolean() })).default([]),
+    /** La aprobación de Gerencia: la factura de una OC por aprobar no se paga (migración 20261027100000). */
+    aprobacion: z.string().nullable().default(null),
   }),
 )
 export type OrdenDeFactura = z.infer<typeof esquemaOrdenes>[number]

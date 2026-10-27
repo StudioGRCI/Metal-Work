@@ -967,6 +967,10 @@ function Factura({
   const aviso = control ? (CONTROL_FACTURA_COMPRA[control.control] ?? { etiqueta: control.control, tono: 'neutro' as const }) : null
   const avisos = avisosDeFacturaRegistrada(c, control)
   const ordenes = control?.ordenes ?? []
+  // La base no deja pagar la factura de una OC que Gerencia no aprobó (migración 20261027100000):
+  // en vez del botón, la factura dice a quién espera.
+  const sinAprobar = saldo > 0 ? ordenes.filter((o) => o.aprobacion === 'POR_APROBAR' || o.aprobacion === 'RECHAZADA') : []
+  const rechazada = sinAprobar.find((o) => o.aprobacion === 'RECHAZADA')
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
@@ -1034,6 +1038,7 @@ function Factura({
             {saldo <= 0 && <Insignia tono="exito">Pagada</Insignia>}
             {saldo > 0 && Number(c.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {c.enEspera && saldo > 0 && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
+            {sinAprobar.length > 0 && (rechazada ? <Insignia tono="peligro">OC rechazada</Insignia> : <Insignia tono="aviso">Espera a Gerencia</Insignia>)}
             {aviso && <Insignia tono={aviso.tono}>{aviso.etiqueta}</Insignia>}
             <InsigniaDelDetector avisos={avisos} />
           </p>
@@ -1121,6 +1126,27 @@ function Factura({
             Espera a Contabilidad: la{' '}
             <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
+          </p>
+        ) : sinAprobar.length > 0 ? (
+          <p className={`text-xs ${rechazada ? 'text-peligro' : 'text-aviso'}`}>
+            {rechazada ? (
+              <>
+                Gerencia rechazó la <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>: esta factura
+                no se paga. Contabilidad ve con el proveedor qué pasa con ella.
+              </>
+            ) : (
+              <>
+                {sinAprobar.length === 1 ? 'La ' : 'Las '}
+                {sinAprobar.map((o, i) => (
+                  <span key={o.id}>
+                    {i > 0 && (i === sinAprobar.length - 1 ? ' y ' : ', ')}
+                    <span className={o.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(o)}</span>
+                  </span>
+                ))}{' '}
+                {sinAprobar.length === 1 ? 'todavía espera' : 'todavía esperan'} la aprobación de Gerencia: la factura se paga cuando Gerencia{' '}
+                {sinAprobar.length === 1 ? 'la apruebe' : 'las apruebe'}.
+              </>
+            )}
           </p>
         ) : espera ? (
           <p className="text-xs text-aviso">

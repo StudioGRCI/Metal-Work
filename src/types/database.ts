@@ -14991,6 +14991,19 @@ export type Database = {
         }
         Returns: null
       }
+      precio_de_salida: {
+        Args: {
+          p_material: string | null
+          p_en: string | null
+          p_precio?: number | null
+          p_moneda?: string | null
+        }
+        Returns: {
+          precio: number | null
+          moneda: string | null
+          origen: string | null
+        }[]
+      }
       presupuesto_ot: {
         Args: {
           p_orden: string | null
