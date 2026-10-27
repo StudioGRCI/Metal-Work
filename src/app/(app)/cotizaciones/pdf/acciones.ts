@@ -12,10 +12,10 @@ import { createClient } from '@/lib/supabase/server'
  *
  *   · El vendedor la sube (`cotizaciones.crear`). El archivo ya viajó del
  *     navegador a Storage; acá se anota con lo poco que el sistema necesita.
- *   · Gerencia la aprueba dando el código interno y subiendo la OT, o la
- *     rechaza (`cotizaciones.revisar`). La base crea la OT aprobada, con sus
- *     etapas y su PDF, y deja la cotización aprobada, de una vez (migración
- *     20261016900000). Administración ya no emite la OT.
+ *   · Gerencia la aprueba con un toque, o la rechaza (`cotizaciones.revisar`).
+ *   · Administración le da el código interno y sube la OT (`ordenes.crear`): la
+ *     base crea la OT aprobada con su PDF, de una vez (migración 20261027200000;
+ *     hasta el 27/10 lo hacía Gerencia al aprobar).
  *
  * Cada permiso es exactamente el que pide la política o la función de la base.
  */
@@ -133,10 +133,9 @@ export async function revisarCotizacionPdf(_previo: unknown, datos: FormData): P
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/cotizaciones/pdf')
-  return {
-    ok: true,
-    mensaje: v.decision === 'APROBADA' ? 'Aprobada: la corrección queda con su código y su OT.' : 'Rechazada.',
-  }
+  // La tarjeta se repinta con lo que sigue: la nueva espera a Administración y
+  // la corrección conserva su código y su OT.
+  return { ok: true, mensaje: v.decision === 'APROBADA' ? 'Aprobada.' : 'Rechazada.' }
 }
 
 const esquemaCorregir = z.object({
@@ -259,7 +258,7 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
   return { ok: true, mensaje: rutas.length > 1 ? 'Cotización quitada, con todas sus versiones.' : 'Cotización quitada, con su archivo.' }
 }
 
-const esquemaAprobarConOt = z.object({
+const esquemaCodigoYOt = z.object({
   cotizacion_id: z.guid(),
   orden_id: z.guid(),
   // El código interno es lo que nace con la aprobación: la referencia del
@@ -282,29 +281,27 @@ const esquemaAprobarConOt = z.object({
   }),
   marca: z.string().trim().max(80).optional(),
   modelo: z.string().trim().max(80).optional(),
-  fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega'),
+  fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega al cliente'),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
   tamano_pdf: z.coerce.number().int().min(0).optional(),
 })
 
 /**
- * Gerencia aprueba la cotización dando el código interno de la unidad y
- * subiendo la OT, en un solo paso (migración 20261016900000). También sirve
- * para la que quedó aprobada antes sin OT. La base crea la unidad o reusa la
- * del código, crea la OT aprobada con su PDF y deja la cotización aprobada:
- * todo o nada.
+ * Administración da el código interno de la unidad y sube la OT de una
+ * cotización que Gerencia ya aprobó (migración 20261027200000). La base crea la
+ * unidad o reusa la del código y crea la OT aprobada con su PDF: todo o nada.
  */
-export async function aprobarCotizacionConOt(
+export async function cargarCodigoYOt(
   _previo: unknown,
   datos: FormData,
 ): Promise<ResultadoAccion<{ codigo: string }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.revisar')) {
-    return { ok: false, error: 'No tienes permiso para aprobar la cotización.' }
+  if (!puede(perfil, 'ordenes.crear')) {
+    return { ok: false, error: 'No tienes permiso para dar el código interno ni subir la OT de la cotización.' }
   }
 
-  const analisis = esquemaAprobarConOt.safeParse(Object.fromEntries(datos))
+  const analisis = esquemaCodigoYOt.safeParse(Object.fromEntries(datos))
   if (!analisis.success) {
     return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el código interno y los datos de la OT.' }
   }
@@ -315,7 +312,7 @@ export async function aprobarCotizacionConOt(
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('aprobar_cotizacion_con_ot', {
+  const { data, error } = await supabase.rpc('cargar_codigo_y_ot_de_cotizacion', {
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
     p_codigo_interno: v.codigo_interno,
@@ -341,7 +338,7 @@ export async function aprobarCotizacionConOt(
   revalidatePath('/diseno/codigo')
   return {
     ok: true,
-    mensaje: `Aprobada con el código ${v.codigo_interno.toUpperCase()}. Diseño ya tiene su OT y Contabilidad ya la puede facturar.`,
+    mensaje: `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene y Contabilidad ya la puede facturar.`,
     datos: { codigo: v.codigo_interno },
   }
 }

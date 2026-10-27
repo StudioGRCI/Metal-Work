@@ -160,9 +160,9 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     })
   }
 
-  // Las aprobadas antes de que la aprobación trajera código y OT (migración
-  // 20261016900000): Gerencia les da su código y les carga la OT.
-  if (puede(perfil, 'cotizaciones.revisar')) {
+  // Las que Gerencia aprobó y esperan su código interno y su OT: las carga
+  // Administración (migración 20261027200000).
+  if (puede(perfil, 'ordenes.crear')) {
     tareas.push({
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',

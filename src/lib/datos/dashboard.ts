@@ -243,10 +243,12 @@ const CIFRAS = {
   // con el visto del reporte diario.
   por_aprobar: loQueEspera(
     'Por aprobar',
-    ['compras_por_aprobar', 'pdf_por_revisar', 'pdf_sin_ot', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar', 'reportes_visto_gerencia_en'],
+    ['compras_por_aprobar', 'pdf_por_revisar', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar', 'reportes_visto_gerencia_en'],
     '/compras/aprobacion',
     ClipboardList,
   ),
+  // Las que Gerencia aprobó y esperan que Administración les dé su código y suba su OT.
+  aprobadas_sin_codigo: loQueEspera('Aprobadas sin código', ['pdf_sin_ot'], '/cotizaciones/pdf?estado=APROBADA_SIN_OT', Hash),
   por_facturar: loQueEspera('Por facturar', ['por_facturar'], '/contabilidad/facturacion', ClipboardList, { enSoles: true }),
   planillas_por_pagar: loQueEspera('Planillas por pagar', ['planillas_por_pagar'], '/planilla-diaria', ClipboardList, { enSoles: true }),
   // Requerimientos
@@ -952,7 +954,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar', 'planillas_por_pagar'] },
   CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['por_facturar', 'facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
   DISENO: { titulo: 'Por código interno', cifras: ['etapas_en_curso', 'codigos_sin_etapas', 'planos_sin_recibir', 'codigos_sin_materiales'] },
-  ADMINISTRACION: { titulo: 'Administración', cifras: ['rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
+  ADMINISTRACION: { titulo: 'Administración', cifras: ['aprobadas_sin_codigo', 'rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
   RECURSOS_HUMANOS: { titulo: 'Recursos Humanos', cifras: ['personal_activo', 'entraron_hoy', 'tardanzas_del_mes', 'reportes_del_mes'] },
   PORTERO: { titulo: 'Portería hoy', cifras: ['entraron_hoy', 'salieron_hoy', 'tardanzas_de_hoy'] },
   SUPERVISOR: { titulo: 'Tu área', cifras: ['reportes_del_mes', 'planos_del_area', 'rq_abiertos'] },

@@ -23,9 +23,11 @@ select test.crear_usuario('Vico', 'Ventas', 'ventas439@demo.pe', 'VENDEDOR', (se
 select test.crear_usuario('Vera', 'Ventas', 'ventas439b@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA439')) as vendedor2_id \gset
 select test.crear_usuario('Coni', 'Contable', 'contabilidad439@demo.pe', 'CONTABILIDAD', (select id from public.sedes where codigo = 'QA439')) as conta_id \gset
 select test.crear_usuario('Dino', 'Diseño', 'diseno439@demo.pe', 'DISENO', (select id from public.sedes where codigo = 'QA439')) as disenador_id \gset
+select test.crear_usuario('Olga', 'Oficina', 'oficina439@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA439')) as oficina_id \gset
 
 select set_config('prueba.gerente', :'gerente_id', true);
 select set_config('prueba.disenador', :'disenador_id', true);
+select set_config('prueba.oficina', :'oficina_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.vendedor2', :'vendedor2_id', true);
 select set_config('prueba.conta', :'conta_id', true);
@@ -160,7 +162,8 @@ begin
 end $$;
 
 -- ============================================ 2. Facturada, no se corrige
--- Ventas corrige la rechazada y Gerencia la aprueba con su código y su OT.
+-- Ventas corrige la rechazada, Gerencia la aprueba y Administración le da su
+-- código y sube su OT (migración 20261027200000).
 do $$
 begin
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
@@ -170,15 +173,26 @@ begin
          motivo_correccion = 'Se agregó el plazo de entrega.'
    where id = current_setting('prueba.cot1')::uuid;
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
-  perform public.aprobar_cotizacion_con_ot(current_setting('prueba.cot1')::uuid, current_setting('prueba.ot1')::uuid, 'qa-ci 439', '9439', 'SEMIRREMOLQUE',
-                                           current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot1') || '/orden.pdf', 'orden.pdf', 100);
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = current_setting('prueba.cot1')::uuid;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  perform public.cargar_codigo_y_ot_de_cotizacion(current_setting('prueba.cot1')::uuid, current_setting('prueba.ot1')::uuid, 'qa-ci 439', '9439', 'SEMIRREMOLQUE',
+                                                  current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot1') || '/orden.pdf', 'orden.pdf', 100);
   reset role;
   perform test.afirmar((select estado::text from public.cotizaciones_pdf where id = current_setting('prueba.cot1')::uuid) = 'APROBADA',
     'la cotización queda aprobada');
   perform test.afirmar((select cuerpo from public.notificaciones
                          where usuario_id = current_setting('prueba.vendedor')::uuid and titulo = 'Gerencia aprobó tu cotización')
-                       = 'La QA-439-1 de QA CLIENTE SIN VENDEDOR S.A.C., con el código interno QA-CI 439.',
+                       = 'La QA-439-1 de QA CLIENTE SIN VENDEDOR S.A.C. Administración le da su código interno y sube su OT.',
     'el aviso de la aprobación no sale con doble punto');
+  perform test.afirmar((select cuerpo from public.notificaciones
+                         where usuario_id = current_setting('prueba.vendedor')::uuid and titulo = 'Tu cotización ya tiene su código')
+                       = 'La QA-439-1 de QA CLIENTE SIN VENDEDOR S.A.C. quedó con el código interno QA-CI 439 y la OT 9439-'
+                         || to_char(current_setting('prueba.hoy')::date, 'YYYY') || '.',
+    'ni el del código que le da Administración');
+  perform test.afirmar((select cuerpo from public.notificaciones
+                         where usuario_id = current_setting('prueba.oficina')::uuid and titulo = 'Cotización aprobada: falta su código y su OT')
+                       = 'Gerencia aprobó la QA-439-1 de QA CLIENTE SIN VENDEDOR S.A.C. Dale su código interno y sube su OT.',
+    'ni el que le llega a Administración');
   perform test.afirmar((select bool_and(cuerpo like '%de QA CLIENTE SIN VENDEDOR S.A.C. Entrega prometida:%')
                           from public.notificaciones where titulo = 'Código nuevo con su OT' and cuerpo like 'QA-CI 439:%'
                            and usuario_id = current_setting('prueba.disenador')::uuid),

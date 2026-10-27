@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { archivoNoEncontrado, SIN_ENLACES } from '@/lib/datos/facturacion'
+import { bajarComo } from '@/lib/descarga'
 import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
@@ -63,11 +64,9 @@ async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
   const words = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) !== PDF)
   await Promise.all(
     words.map(async (f) => {
-      const { data, error } = await supabase.storage
-        .from('cotizaciones-pdf')
-        .createSignedUrl(f.ruta_storage as string, 600, { download: f.nombre_archivo ?? true })
+      const { data, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrl(f.ruta_storage as string, 600)
       if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
-      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, data.signedUrl)
+      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, bajarComo(data.signedUrl, f.nombre_archivo ?? true))
     }),
   )
   return enlaces

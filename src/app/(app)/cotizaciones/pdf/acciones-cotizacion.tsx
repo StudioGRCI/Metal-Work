@@ -18,7 +18,7 @@ import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
 import { useEnvio } from '@/lib/envio'
 import { createClient } from '@/lib/supabase/client'
 
-import { aprobarCotizacionConOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
+import { cargarCodigoYOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
 function Falla({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -30,21 +30,11 @@ function Falla({ texto }: { texto: string | null }) {
 }
 
 /**
- * Gerencia: aprobar la cotización, o rechazarla diciendo por qué. La que no
- * tiene OT se aprueba con su código interno y su OT, en la misma ventana; la
- * corrección de una que ya tiene OT se aprueba con un toque, como antes.
+ * Gerencia: aprobar la cotización con un toque, o rechazarla diciendo por qué.
+ * El código interno y la OT los carga después Administración (migración
+ * 20261027200000); la corrección de una que ya tiene OT los conserva.
  */
-export function RevisarCotizacion({
-  id,
-  numero,
-  tipoUnidad,
-  conOrden,
-}: {
-  id: string
-  numero: string
-  tipoUnidad?: string | null
-  conOrden: boolean
-}) {
+export function RevisarCotizacion({ id, conOrden }: { id: string; conOrden: boolean }) {
   const [rechazando, setRechazando] = useState(false)
   const aprobar = useEnvio(revisarCotizacionPdf)
   const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false))
@@ -79,18 +69,14 @@ export function RevisarCotizacion({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {conOrden ? (
-        <form onSubmit={aprobar.alEnviar} className="contents">
-          <input type="hidden" name="id" value={id} />
-          <input type="hidden" name="decision" value="APROBADA" />
-          <Boton type="submit" tamano="sm" cargando={aprobar.enviando}>
-            <Check aria-hidden className="size-3.5" />
-            Aprobar la corrección
-          </Boton>
-        </form>
-      ) : (
-        <AprobarConOt cotizacionId={id} numero={numero} tipoUnidad={tipoUnidad} yaAprobada={false} />
-      )}
+      <form onSubmit={aprobar.alEnviar} className="contents">
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="decision" value="APROBADA" />
+        <Boton type="submit" tamano="sm" cargando={aprobar.enviando}>
+          <Check aria-hidden className="size-3.5" />
+          {conOrden ? 'Aprobar la corrección' : 'Aprobar'}
+        </Boton>
+      </form>
       <Boton
         type="button"
         tamano="sm"
@@ -434,26 +420,22 @@ const TIPOS_UNIDAD = [
 ] as const
 
 /**
- * Gerencia aprueba la cotización dando el código interno que tendrá la unidad
- * —nuevo, o uno que ya existe del mismo cliente— y subiendo la OT: su PDF, su
- * número, si es semirremolque o carrocería montada y la fecha prometida. El
- * tipo viene propuesto por la carrocería de la cotización cuando el catálogo lo
- * sabe. La base hace todo junto o nada (migración 20261016900000): desde ahí
- * Diseño ve la OT dentro del código y Contabilidad ya la puede facturar.
- *
- * `yaAprobada` es la que Gerencia aprobó antes de este cambio y quedó sin OT:
- * la misma ventana le da su código y su OT.
+ * Administración, con la cotización ya aprobada por Gerencia, le da el código
+ * interno que tendrá la unidad —nuevo, o uno que ya existe del mismo cliente— y
+ * sube la OT: su PDF, su número, si es semirremolque o carrocería montada y la
+ * fecha de entrega al cliente. El tipo viene propuesto por la carrocería de la
+ * cotización cuando el catálogo lo sabe. La base hace todo junto o nada
+ * (migración 20261027200000): desde ahí Diseño ve la OT dentro del código y
+ * Contabilidad ya la puede facturar.
  */
-export function AprobarConOt({
+export function CargarCodigoYOt({
   cotizacionId,
   numero,
   tipoUnidad,
-  yaAprobada,
 }: {
   cotizacionId: string
   numero: string
   tipoUnidad?: string | null
-  yaAprobada: boolean
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -504,7 +486,7 @@ export function AprobarConOt({
       if (datos.numero) setNumeroOrden(datos.numero)
       if (datos.fechaEntrega) setFechaEntrega(datos.fechaEntrega)
       if (datos.tipoUnidad) setTipo(datos.tipoUnidad)
-      setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de aprobar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
+      setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de guardar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
     } catch {
       setAvisoLectura('No se pudo leer el PDF. Completa los datos mirando la vista previa.')
     } finally {
@@ -561,7 +543,7 @@ export function AprobarConOt({
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
 
-        const r = await aprobarCotizacionConOt(null, datos)
+        const r = await cargarCodigoYOt(null, datos)
         if (!r.ok) {
           await supabase.storage.from('adjuntos-ot').remove([ruta])
           subido = false
@@ -572,10 +554,10 @@ export function AprobarConOt({
         setAbierto(false)
         iniciar(() => router.refresh())
       } catch {
-        // No se aprobó: el PDF que ya viajó se quita, para que no quede un
+        // No se guardó: el PDF que ya viajó se quita, para que no quede un
         // archivo que ninguna OT nombra.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
-        setError('No se pudo aprobar con la OT. Vuelve a intentar.')
+        setError('No se pudo guardar el código y la OT. Vuelve a intentar.')
       } finally {
         enCurso.current = false
       }
@@ -585,19 +567,15 @@ export function AprobarConOt({
   return (
     <>
       <Boton type="button" tamano="sm" onClick={abrir}>
-        {yaAprobada ? <Hash aria-hidden className="size-3.5" /> : <Check aria-hidden className="size-3.5" />}
-        {yaAprobada ? 'Dar código y cargar la OT' : 'Aprobar'}
+        <Hash aria-hidden className="size-3.5" />
+        Dar código y cargar la OT
       </Boton>
 
       <Ventana
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
-        titulo={yaAprobada ? `Código interno y OT de la ${numero}` : `Aprobar la ${numero}`}
-        descripcion={
-          yaAprobada
-            ? 'Ya está aprobada pero no tiene OT. Escribe el código interno que tendrá la unidad y sube la OT: desde ahí Diseño la ve dentro del código y Contabilidad ya la puede facturar.'
-            : 'Se aprueba con el código interno que tendrá la unidad y su OT, todo junto. El cliente y la carrocería salen de la cotización. Desde ahí Diseño ve la OT dentro del código y Contabilidad ya la puede facturar.'
-        }
+        titulo={`Código interno y OT de la ${numero}`}
+        descripcion="Gerencia ya la aprobó. Escribe el código interno que tendrá la unidad y sube su OT, todo junto; el cliente y la carrocería salen de la cotización. Desde ahí Diseño ve la OT dentro del código y Contabilidad ya la puede facturar."
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
@@ -632,7 +610,7 @@ export function AprobarConOt({
               texto="Elegir el PDF de la OT"
               hastaMb={MAXIMO_ADJUNTO_MB}
               archivo={archivo ?? rechazado?.archivo ?? null}
-              aviso={rechazado?.motivo ?? (faltaPdf ? 'Falta el PDF de la OT: sin él no se aprueba' : null)}
+              aviso={rechazado?.motivo ?? (faltaPdf ? 'Falta el PDF de la OT: sin él no se guarda' : null)}
               estado={leyendo ? avisoLectura || 'Leyendo el PDF…' : null}
               onChange={(e) => void elegirArchivo(e.target.files?.[0])}
             />
@@ -703,10 +681,11 @@ export function AprobarConOt({
             </Campo>
           </div>
 
+          {/* «Fecha de entrega prometida» no se entendía (observación de Gerencia, 27/10). */}
           <Campo
-            etiqueta="Fecha de entrega prometida"
+            etiqueta="Fecha de entrega al cliente"
             htmlFor="eo-fecha"
-            ayuda="La que se le dijo al cliente: es la que manda al medir si la OT se entregó a tiempo"
+            ayuda="El día en que se le prometió al cliente entregarle la unidad terminada, como dice la OT. Con ella se mide si se entregó a tiempo"
             requerido
           >
             <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />
@@ -719,7 +698,7 @@ export function AprobarConOt({
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
-              {yaAprobada ? 'Guardar código y OT' : 'Aprobar con código y OT'}
+              Guardar código y OT
             </Boton>
           </div>
           </div>

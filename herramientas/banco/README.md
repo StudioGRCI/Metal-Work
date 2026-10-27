@@ -51,11 +51,12 @@ falló, así que sirve tal cual en una comprobación automática.
 Y para lo que no se ve mirando pantallas —lo que pasa al apretar los botones—:
 
 ```bash
-BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-aprobar-con-codigo-y-ot.mjs
+BANCO_CLAVE='la-que-quieras' node herramientas/banco/probar-gerencia-aprueba-y-administracion-carga-la-ot.mjs
 ```
 
-Ventas sube la cotización en PDF, Gerencia la aprueba con su código interno y
-su OT en una sola ventana, y Diseño recibe el aviso y abre el PDF de la OT. Hay
+Ventas sube la cotización en PDF, Gerencia la aprueba con un toque,
+Administración le da su código interno y sube su OT, y Diseño recibe el aviso y
+abre el PDF de la OT. Hay
 uno así por cada circuito, en la tabla de abajo. (El de la cotización que se
 emitía en borrador se retiró el 2026-10-20: esa pantalla ya no existe y la
 cotización se sube en PDF.)

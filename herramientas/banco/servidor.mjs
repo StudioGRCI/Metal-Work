@@ -614,9 +614,14 @@ async function manejarArchivos(req, res, url) {
     if (!entrega) return responder(res, 400, NO_ENCONTRADO)
     try {
       const contenido = await readFile(join(ARCHIVOS, camino))
+      // Con `download` (createSignedUrl(…, { download })), como Supabase: se
+      // baja con ese nombre, o con el del archivo si viene vacío.
+      const bajar = url.searchParams.get('download')
+      const comoNombre = bajar === null ? null : encodeURIComponent(bajar || nombre.split('/').pop())
       res.writeHead(200, {
         'content-type': 'application/octet-stream',
         'access-control-allow-origin': '*',
+        ...(comoNombre ? { 'content-disposition': `attachment; filename=${comoNombre}; filename*=UTF-8''${comoNombre};` } : {}),
       })
       return res.end(contenido)
     } catch {

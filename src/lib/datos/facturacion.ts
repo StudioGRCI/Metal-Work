@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
+import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
@@ -80,11 +81,9 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
     filas
       .filter((f) => f.archivo_ruta && !esPdf(f))
       .map(async (f) => {
-        const { data: firmado, error } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .createSignedUrl(f.archivo_ruta as string, 600, { download: f.archivo_nombre ?? true })
+        const { data: firmado, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrl(f.archivo_ruta as string, 600)
         if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
-        if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, firmado.signedUrl)
+        if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, bajarComo(firmado.signedUrl, f.archivo_nombre ?? true))
       }),
   )
   return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null }))
