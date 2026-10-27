@@ -149,6 +149,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                   {nombreTarea(t.tipo)}
                   {/* Lo que en el monitor tiene columna propia. */}
                   <span className="block text-xs text-texto-suave md:hidden">{t.componente} · {t.responsable} · desde el {fecha(t.fecha_inicio)}</span>
+                  {t.observacion && <span className="block text-xs text-texto-suave md:hidden">{t.observacion}</span>}
                 </TD>
                 <TD className="hidden min-w-48 md:table-cell">{t.componente}{t.observacion && <span className="block text-xs text-texto-suave">{t.observacion}</span>}</TD>
                 <TD className="tabular hidden whitespace-nowrap md:table-cell">{fecha(t.fecha_inicio)}</TD>
@@ -185,6 +186,11 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                 <TD className="font-medium sm:whitespace-nowrap">
                   {codigoInternoOt(e.codigo_interno, e.ot)}
                   <span className="block text-xs font-normal text-texto-suave md:hidden">{e.tipo_plano} · {e.responsable}{e.fecha_entrega ? ` · ${fecha(e.fecha_entrega)}` : ''}</span>
+                  {e.entregado_a.length > 0 && (
+                    <span className="block text-xs font-normal text-texto-suave md:hidden">
+                      Entregado a {e.entregado_a.map((a) => AREAS_QUE_RECIBEN[a as keyof typeof AREAS_QUE_RECIBEN] ?? a).join(', ')}
+                    </span>
+                  )}
                 </TD>
                 <TD className="hidden sm:table-cell">{siglaCarroceria(e.tipo_unidad)}</TD>
                 <TD className="tabular text-right">{e.n_planos}</TD>

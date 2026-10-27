@@ -101,7 +101,7 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
   const lista = muchas ? (
     <SeleccionDeFiltro
       etiqueta={etiqueta}
-      className="sm:hidden"
+      className={cn('sm:hidden', className)}
       opciones={opciones.map((opcion) => ({
         etiqueta: opcion.etiqueta,
         href: enlace(props.ruta as string, props.params as Params, claves, opcion, props.clave),

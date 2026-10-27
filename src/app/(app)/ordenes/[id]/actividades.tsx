@@ -179,7 +179,7 @@ export function ActividadesDeOrden({
                     </p>
                   </div>
                   <Progreso valor={Number(a.avance_pct)} />
-                  <p className="mt-1 text-[11px] text-texto-suave">
+                  <p className="mt-1 text-xs text-texto-suave">
                     {a.terminadas} de {a.actividades} terminadas
                     {Number(a.peso_repartido) < 100 && (
                       <span className="text-aviso">
@@ -189,7 +189,7 @@ export function ActividadesDeOrden({
                     )}
                   </p>
                   {a.ultimo_reporte && (
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       último reporte: {fmtFecha(a.ultimo_reporte)}
                     </p>
                   )}
@@ -275,11 +275,11 @@ export function ActividadesDeOrden({
                           {act.nombre}
                         </p>
                         {(act.referencia || act.detalle) && (
-                          <p className="text-[11px] text-texto-suave">
+                          <p className="text-xs text-texto-suave">
                             {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                           </p>
                         )}
-                        {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
+                        {act.etapa_id && <p className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                         <PlanDeActividad actividad={act} hoy={hoy} />
                       </div>
                       <span className="tabular shrink-0 text-xs text-texto-suave">pesa {porcentaje(act.peso_pct, 0)}</span>
@@ -290,7 +290,7 @@ export function ActividadesDeOrden({
                         {porcentaje(act.avance_pct)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       {act.ultimo_reporte ? `Último reporte: ${fmtFecha(act.ultimo_reporte)}` : 'Sin reportes'}
                     </p>
                     {(puedeReportar || puedeArmar) && (
@@ -332,11 +332,11 @@ export function ActividadesDeOrden({
                     <TD>
                       <p className="text-sm font-medium text-texto">{act.nombre}</p>
                       {(act.referencia || act.detalle) && (
-                        <p className="text-[11px] text-texto-suave">
+                        <p className="text-xs text-texto-suave">
                           {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                         </p>
                       )}
-                      {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
+                      {act.etapa_id && <p className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                       <PlanDeActividad actividad={act} hoy={hoy} />
                     </TD>
                     <TD className="text-right tabular text-sm">{porcentaje(act.peso_pct, 0)}</TD>
@@ -511,7 +511,7 @@ function PlanDeActividad({ actividad, hoy }: { actividad: ActividadArea; hoy: st
   const tocaAhora = !actividad.terminada && !atrasada && inicio !== null && inicio <= hoy
 
   return (
-    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-texto-suave">
+    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave">
       <CalendarDays aria-hidden className="size-3 shrink-0" />
       <span className="tabular">
         {inicio ? fmtFecha(inicio) : '—'} → {fin ? fmtFecha(fin) : '—'}
@@ -721,7 +721,7 @@ function AccionesActividad({
       {puedeReportar && !puedeArmar && (
         <Link
           href={`/ordenes/${ordenId}?vista=resumen&observar=DIS&sobre=${encodeURIComponent(`Actividad «${actividad.nombre}» (${actividad.area}): `)}#observaciones`}
-          className="inline-flex min-h-11 items-center gap-1 px-1 text-[11px] text-aviso hover:underline sm:min-h-0"
+          className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-aviso hover:underline sm:min-h-0"
           title="Anotar una observación a Diseño sobre esta actividad"
         >
           <MessageSquareWarning aria-hidden className="size-3.5" />

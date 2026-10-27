@@ -136,22 +136,37 @@ async function todas<T>(
  * Gerencia tenía por aprobar (auditoría del 27/10/2026). No le dice a nadie
  * qué hacer: dice cuánto hay y en qué pantalla, como los globos.
  */
-function loQueEspera(titulo: string, claves: string[], ruta: string, icono: LucideIcon): Generador {
+function loQueEspera(titulo: string, claves: string[], ruta: string, icono: LucideIcon, opciones: { enSoles?: boolean } = {}): Generador {
   return {
     ruta,
     calcular: async (c) => {
-      const { tareas, sinComprobar } = await c.una('pendientes', () => pendientesGlobales(c.perfil))
+      const { tareas, clavesSinComprobar } = await c.una('pendientes', () => pendientesGlobales(c.perfil))
       const mias = tareas.filter((t) => claves.includes(t.clave))
       const total = mias.reduce((n, t) => n + t.cantidad, 0)
-      const sinLeer = sinComprobar.includes(ruta.split(/[?#]/)[0])
-      return {
-        titulo,
-        valor: sinLeer && total === 0 ? '—' : String(total),
-        pie: sinLeer ? 'una cuenta no se pudo leer' : mias.length > 0 ? mias.map((t) => t.texto).join(' · ') : 'nada por ahora',
-        href: mias.length === 1 ? mias[0].ruta : ruta,
-        icono,
-        tono: sinLeer ? 'aviso' : total > 0 ? 'aviso' : 'neutro',
+      // Cualquiera de sus cuentas que falle: la cifra no puede decir «nada por ahora».
+      const sinLeer = claves.some((k) => clavesSinComprobar.includes(k))
+      // Lo que vale, para las cuentas que son dinero (DKS, 27/10/2026: porcentaje y costo).
+      const pen = mias.reduce((n, t) => n + (t.monto?.PEN ?? 0), 0)
+      const usd = mias.reduce((n, t) => n + (t.monto?.USD ?? 0), 0)
+      const conMonto = mias.some((t) => t.monto)
+      // Cada cuenta con lo que vale al lado; la que no es dinero, solo su texto.
+      const textos = mias.map((t) =>
+        !opciones.enSoles && t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
+          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')})`
+          : t.texto,
+      )
+      const pie = [sinLeer ? 'una cuenta no se pudo leer' : null, ...(mias.length > 0 ? textos : sinLeer ? [] : ['nada por ahora'])]
+        .filter(Boolean)
+        .join(' · ')
+      // Con todo en una sola pantalla, la tarjeta lleva ahí; si no, a la de la primera cuenta.
+      const rutas = [...new Set(mias.map((t) => t.ruta.split(/[?#]/)[0]))]
+      const href = mias.length === 0 ? ruta : rutas.length === 1 && mias.length === 1 ? mias[0].ruta : rutas.length === 1 ? rutas[0] : mias[0].ruta
+      const tono = sinLeer || total > 0 ? 'aviso' : 'neutro'
+      if (opciones.enSoles && conMonto) {
+        // El monto es la cifra y la cantidad va en el pie, como «Servicios por pagar».
+        return { titulo, ...soles(pen, usd, pie), href, icono, tono }
       }
+      return { titulo, valor: sinLeer && total === 0 ? '—' : String(total), pie, href, icono, tono }
     },
   }
 }
@@ -224,9 +239,16 @@ const bajoMinimo = (c: Contexto) =>
 // ── El catálogo de cifras ───────────────────────────────────────────────────
 
 const CIFRAS = {
-  por_aprobar: loQueEspera('Por aprobar', ['compras_por_aprobar', 'pdf_por_revisar', 'pdf_sin_ot', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar'], '/compras/aprobacion', ClipboardList),
-  por_facturar: loQueEspera('Por facturar', ['por_facturar'], '/contabilidad/facturacion', ClipboardList),
-  planillas_por_pagar: loQueEspera('Planillas por pagar', ['planillas_por_pagar'], '/planilla-diaria', ClipboardList),
+  // Las mismas claves que cuentan los globos del grupo «Por aprobar» del menú de Gerencia,
+  // con el visto del reporte diario.
+  por_aprobar: loQueEspera(
+    'Por aprobar',
+    ['compras_por_aprobar', 'pdf_por_revisar', 'pdf_sin_ot', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar', 'reportes_visto_gerencia_en'],
+    '/compras/aprobacion',
+    ClipboardList,
+  ),
+  por_facturar: loQueEspera('Por facturar', ['por_facturar'], '/contabilidad/facturacion', ClipboardList, { enSoles: true }),
+  planillas_por_pagar: loQueEspera('Planillas por pagar', ['planillas_por_pagar'], '/planilla-diaria', ClipboardList, { enSoles: true }),
   // Requerimientos
   rq_abiertos: {
     ruta: '/requerimientos',
@@ -404,7 +426,7 @@ const CIFRAS = {
     calcular: async (c) => {
       const n = (await enGestion(c)).filter((g) => g.dejado_en && g.dejado_en.slice(0, 10) >= c.mes).length
       // Recojos lista las de la semana: el pie lo dice para que las dos cifras no parezcan contradecirse.
-      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén · en Recojos, las de esta semana', icono: PackageCheck }
+      return { titulo: 'Dejadas este mes', valor: String(n), pie: 'en el almacén; Recojos muestra solo esta semana', icono: PackageCheck }
     },
   },
 

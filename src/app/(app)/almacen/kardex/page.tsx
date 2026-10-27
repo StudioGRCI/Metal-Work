@@ -240,7 +240,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
                 </div>
                 <p className="mt-1 text-xs text-texto-suave">{t.def.regla}</p>
-                <p className="mt-1 text-[11px]">
+                <p className="mt-1 text-xs">
                   {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
                   {t.bajoMinimo > 0 && t.porCerrar > 0 && <span className="text-texto-tenue"> · </span>}
                   {t.porCerrar > 0 && <span className="font-medium text-aviso">{t.porCerrar === 1 ? '1 salida por cerrar' : `${t.porCerrar} salidas por cerrar`}</span>}
@@ -465,9 +465,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               )
               const unidadYOt = (
                 <>
-                  {f.codigo_unidad
-                    ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
-                    : <span className="text-xs text-texto-tenue">—</span>}
+                  {/* La columna dice «Código interno»: el código, y si la salida no lo tiene, el nombre de la unidad. */}
+                  {f.codigo_interno
+                    ? <span className="block font-mono text-sm font-medium break-words">{f.codigo_interno}</span>
+                    : f.codigo_unidad
+                      ? <span className="block text-sm break-words">{f.codigo_unidad}</span>
+                      : <span className="text-xs text-texto-tenue">—</span>}
                   {f.orden_id && f.orden_numero && (abreOt
                     ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-xs text-acento hover:underline">OT {f.orden_numero}</Link>
                     : <span className="block text-xs text-texto-suave">OT {f.orden_numero}</span>)}
@@ -482,7 +485,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 inline-flex min-h-6 items-center text-xs font-medium text-aviso hover:underline">Formato pendiente</Link>
                   )}
                   {f.con_formato && exigeFormato(f.almacen) && (
-                    <a href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</a>
+                    <a href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" rel="noopener" className="ml-2 text-xs text-acento hover:underline">Ver formato</a>
                   )}
                 </>
               )
@@ -494,9 +497,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                       {!elegido && <div>{material}</div>}
                       <div className="flex flex-wrap items-center gap-1">
                         <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
-                        <span className="text-[11px] text-texto-suave">{origen}</span>
+                        <span className="text-xs text-texto-suave">{origen}</span>
                       </div>
-                      {f.documento && <span className="block text-[11px] text-texto-suave">{f.documento}</span>}
+                      {f.documento && <span className="block text-xs text-texto-suave">{f.documento}</span>}
                       <div>{unidadYOt}</div>
                     </div>
                   </TD>
@@ -507,21 +510,21 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   )}
                   <TD className="hidden sm:table-cell">
                     <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
-                    <span className="block text-[11px] text-texto-suave">{origen}</span>
-                    <span className="block text-[11px] text-texto-suave md:hidden">{f.documento}</span>
+                    <span className="block text-xs text-texto-suave">{origen}</span>
+                    <span className="block text-xs text-texto-suave md:hidden">{f.documento}</span>
                   </TD>
                   <TD className="hidden max-w-60 md:table-cell">
                     {/* El nombre de una OC sin número es largo: entero al pasar el puntero. */}
                     <span className="line-clamp-2 text-sm" title={f.documento ?? undefined}>{f.documento ?? '—'}</span>
                     {(f.recibido_por_nombre || f.registrado_por_nombre) && (
-                      <span className="block text-[11px] text-texto-suave">
+                      <span className="block text-xs text-texto-suave">
                         {f.recibido_por_nombre ? `Recibió ${f.recibido_por_nombre}` : null}
                         {f.recibido_por_nombre && f.registrado_por_nombre ? ' · ' : null}
                         {f.registrado_por_nombre ? `Registró ${f.registrado_por_nombre}` : null}
                       </span>
                     )}
                     {f.desde_planilla && (
-                      <span className="block text-[11px] text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>
+                      <span className="block text-xs text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>
                     )}
                   </TD>
                   <TD className="hidden max-w-52 sm:table-cell">{unidadYOt}</TD>
@@ -529,7 +532,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   <TD className="tabular px-2 text-right sm:px-3 text-peligro">{Number(f.salida) > 0 ? cantidad(f.salida) : ''}</TD>
                   <TD className="tabular px-2 text-right sm:px-3 font-semibold">
                     {cantidad(f.saldo)}
-                    {!elegido && f.unidad_medida && <span className="ml-1 text-[10px] font-normal text-texto-tenue">{f.unidad_medida}</span>}
+                    {!elegido && f.unidad_medida && <span className="ml-1 text-xs font-normal text-texto-tenue">{f.unidad_medida}</span>}
                   </TD>
                 </TR>
               )
@@ -545,9 +548,9 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 function Cifra({ etiqueta, valor, acento, alerta }: { etiqueta: string; valor: string; acento?: boolean; alerta?: string }) {
   return (
     <div className={`rounded-[var(--radius-base)] border bg-superficie px-3 py-2 ${alerta ? 'border-peligro' : 'border-borde'}`}>
-      <dt className="text-[11px] text-texto-suave">{etiqueta}</dt>
+      <dt className="text-xs text-texto-suave">{etiqueta}</dt>
       <dd className={`tabular mt-1 text-lg font-semibold ${alerta ? 'text-peligro' : acento ? 'text-acento' : 'text-texto'}`}>{valor}</dd>
-      {alerta && <dd className="text-[11px] font-medium text-peligro">{alerta}</dd>}
+      {alerta && <dd className="text-xs font-medium text-peligro">{alerta}</dd>}
     </div>
   )
 }

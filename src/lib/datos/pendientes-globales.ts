@@ -32,12 +32,24 @@ export type PendientesGlobales = {
   sinComprobar: string[]
   /** Cada cuenta con algo, con su texto: el Dashboard arma con ellas la cifra de lo que espera por el puesto. */
   tareas: TareaPendiente[]
+  /** Las claves cuya cuenta no se pudo leer: la cifra del Dashboard que las suma no puede decir «nada por ahora». */
+  clavesSinComprobar: string[]
 }
 
-export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string }
+/** Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero. */
+export type MontoPendiente = { PEN: number; USD: number }
 
-/** Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más antiguo, por ejemplo). */
-type Cuenta = () => Promise<number | { cantidad: number; ruta?: string }>
+export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string; monto?: MontoPendiente }
+
+/**
+ * Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más
+ * antiguo, por ejemplo); con `monto`, cuánto vale (DKS, 27/10/2026: toda la
+ * matemática en porcentaje y costo).
+ */
+type Cuenta = () => Promise<number | { cantidad: number; ruta?: string; monto?: MontoPendiente }>
+
+const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T) => number): MontoPendiente =>
+  filas.reduce((m, f) => (moneda(f) === 'USD' ? { ...m, USD: m.USD + monto(f) } : { ...m, PEN: m.PEN + monto(f) }), { PEN: 0, USD: 0 })
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
@@ -540,7 +552,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       ruta: '/contabilidad/facturacion',
       tono: 'acento',
       texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
-      contar: async () => (await facturacion()).por_facturar ?? 0,
+      contar: async () => {
+        // La cuenta es la de la base; lo que vale sale de la misma bandeja que
+        // Facturación: las aprobadas con código y sin factura vigente.
+        const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
+        if (bandeja.error) throw new Error('No se pudo consultar el pendiente.')
+        const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
+        return { cantidad: cuenta.por_facturar ?? 0, monto: enMonedas(sinFactura, (c) => c.moneda, (c) => Number(c.monto_venta ?? 0)) }
+      },
     })
   }
 
@@ -637,7 +656,12 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       if (aprueba.data !== true) return 0
       const { data, error } = await supabase.rpc('documentos_por_aprobar')
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).filter((d) => d.aprobacion === 'POR_APROBAR').length
+      const espera = (data ?? []).filter((d) => d.aprobacion === 'POR_APROBAR')
+      // En soles al cambio de su fecha, como la pantalla; sin cambio, en su moneda.
+      return {
+        cantidad: espera.length,
+        monto: enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)),
+      }
     },
   })
 
@@ -863,11 +887,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     contar: async () => {
       const { data, error } = await supabase
         .from('planillas_diarias')
-        .select('anulado_en, gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_entregada_en)')
+        .select('anulado_en, gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_entregada_en, total)')
         .is('anulado_en', null)
         .limit(200)
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente ?? []))).length
+      const porPagar = (data ?? []).filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente ?? [])))
+      // Lo que falta pagar: las personas de esas planillas sin su pago.
+      const falta = porPagar.flatMap((p) => (p.gente ?? []).filter((g) => !g.pago_id))
+      return { cantidad: porPagar.length, monto: { PEN: falta.reduce((n, g) => n + Number(g.total ?? 0), 0), USD: 0 } }
     },
   })
 
@@ -945,19 +972,28 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()
+  const clavesSinComprobar: string[] = []
   const conAlgo: TareaPendiente[] = []
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
       sinComprobar.add(t.ruta.split(/[?#]/)[0])
+      clavesSinComprobar.push(t.clave)
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
     const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
-    conAlgo.push({ clave: t.clave, ruta: typeof cuenta === 'number' ? t.ruta : (cuenta.ruta ?? t.ruta), tono: t.tono, cantidad: n, texto: t.texto(n) })
+    conAlgo.push({
+      clave: t.clave,
+      ruta: typeof cuenta === 'number' ? t.ruta : (cuenta.ruta ?? t.ruta),
+      tono: t.tono,
+      cantidad: n,
+      texto: t.texto(n),
+      monto: typeof cuenta === 'number' ? undefined : cuenta.monto,
+    })
   })
 
-  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo }
+  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar }
 })

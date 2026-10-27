@@ -23,7 +23,7 @@ export const RECOJO_COMPRA: Record<string, Def> = {
 
 /** El estado del servicio. La aprobación de Gerencia va aparte, en `APROBACION_COMPRA`. */
 export const ESTADO_SERVICIO: Record<string, Def> = {
-  EMITIDA: { etiqueta: 'Emitida', tono: 'neutro', descripcion: 'Enviada al proveedor; pasa a «En ejecución» cuando empieza el trabajo. Si Gerencia la aprobó, lo dice aparte.' },
+  EMITIDA: { etiqueta: 'Emitida', tono: 'neutro', descripcion: 'Emitida; se inicia cuando Gerencia la aprueba.' },
   EN_EJECUCION: { etiqueta: 'En ejecución', tono: 'info', descripcion: 'El proveedor está haciendo el trabajo.' },
   CONFORME: { etiqueta: 'Conforme', tono: 'exito', descripcion: 'El trabajo volvió bien: Tesorería puede pagar.' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro', descripcion: 'Anulada con su motivo.' },
