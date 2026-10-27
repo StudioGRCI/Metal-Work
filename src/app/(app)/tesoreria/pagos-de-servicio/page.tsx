@@ -154,8 +154,8 @@ function Servicio({
           </p>
           {conDetraccion && !s.cancelada && (
             <p className="text-xs text-texto-suave">
-              Detracción {detraccion.detalle}. Al proveedor se le pagan {moneda(saldo.alProveedor, m)}; la detracción va a su cuenta del Banco de la
-              Nación.
+              {/* El detalle ya dice cuánto va al proveedor y qué parte es; aquí solo adónde va el resto. */}
+              Detracción {detraccion.detalle}. La detracción va a la cuenta del proveedor en el Banco de la Nación.
             </p>
           )}
           {todoPagado && (

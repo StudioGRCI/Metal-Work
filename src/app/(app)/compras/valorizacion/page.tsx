@@ -82,7 +82,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         <Cifra
           etiqueta="Valor en almacén (soles)"
           valor={sinPrecio.length > 0 && sinPrecio.length === enAlmacen.length ? 'Sin calcular' : moneda(valor.PEN, 'PEN')}
-          pie={sinPrecio.length > 0 ? `sin ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}) que no tienen precio` : undefined}
+          pie={sinPrecio.length > 0 ? `no cuenta ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}): no tienen precio` : undefined}
         />
         <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
       </dl>
