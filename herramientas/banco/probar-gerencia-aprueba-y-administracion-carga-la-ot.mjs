@@ -231,19 +231,32 @@ const ESPERA_ADMINISTRACION = 'Falta que Administración le dé su código inter
   const v = pagina.locator('[role="dialog"]')
   const darCodigo = () => pagina.getByRole('button', { name: 'Dar código y cargar la OT' }).count()
 
-  for (const letra of ['A', 'B']) {
+  // La B en «Vigentes» y la A en «Por revisar»: en los dos casos la tarjeta
+  // aprobada se queda donde estaba, y bajo el dedo no queda el «Aprobar» de otra.
+  for (const [letra, ruta] of [['B', '/cotizaciones/pdf'], ['A', '/cotizaciones/pdf?estado=POR_REVISAR']]) {
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
     const t = pagina.locator(`li[id="${cot[letra].id}"]`)
     const ofrece = await botones(t)
     comprobar(ofrece.includes('Aprobar') && ofrece.includes('Rechazar') && !ofrece.some((b) => /Dar código/.test(b)),
       `la ${cot[letra].numero} ofrece «Aprobar» y «Rechazar», sin cargar la OT (${ofrece.join(' · ')})`)
-    await t.getByRole('button', { name: 'Aprobar', exact: true }).click()
+    const boton = t.getByRole('button', { name: 'Aprobar', exact: true })
+    await boton.scrollIntoViewIfNeeded()
+    const caja = await boton.boundingBox()
+    const antes = (await t.boundingBox())?.y
+    await boton.click()
     // Un toque: no se abre ninguna ventana que pida código, OT ni PDF.
     await pagina.waitForTimeout(300)
     comprobar((await v.count()) === 0 || !(await v.first().isVisible()), `al tocar «Aprobar» en la ${cot[letra].numero} no se abre ninguna ventana`)
     await t.getByText(ESPERA_ADMINISTRACION).waitFor({ timeout: 30000 }).catch(() => {})
     const texto = limpio(await t.textContent())
     comprobar(texto.includes('Aprobada') && texto.includes(ESPERA_ADMINISTRACION), 'la tarjeta queda «Aprobada» y dice que falta Administración')
+    const despues = (await t.boundingBox())?.y
+    const debajo = await pagina.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button')?.textContent?.trim() ?? '',
+      { x: caja.x + caja.width / 2, y: caja.y + caja.height / 2 })
+    comprobar(antes !== undefined && antes === despues && !/^Aprobar/.test(debajo),
+      `en ${ruta === '/cotizaciones/pdf' ? '«Vigentes»' : '«Por revisar»'} la tarjeta no se mueve y bajo el dedo no queda otro «Aprobar» (${antes} → ${despues}; debajo: «${debajo}»)`)
   }
+  await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
   comprobar((await darCodigo()) === 0, 'Gerencia no tiene «Dar código y cargar la OT» en ninguna tarjeta')
 
   // «Descargar» baja la cotización con su nombre, no con el del almacenamiento.
@@ -288,8 +301,10 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
   await b.getByRole('button', { name: 'Dar código y cargar la OT' }).click()
   const ventana = limpio(await v.textContent())
   comprobar(ventana.includes(`Código interno y OT de la ${cot.B.numero}`) && ventana.includes('Gerencia ya la aprobó'), 'abre «Código interno y OT»')
-  comprobar(ventana.includes('Fecha de entrega al cliente') && ventana.includes('El día en que se le prometió al cliente entregarle la unidad terminada'),
-    'la fecha dice que es la de entrega al cliente y para qué sirve')
+  // La ayuda corta se lee bajo el campo, sin tocar la «i».
+  const ayudaFecha = v.getByText('El día prometido al cliente para entregarle la unidad, según la OT')
+  comprobar(ventana.includes('Fecha de entrega al cliente') && (await ayudaFecha.isVisible()),
+    'la fecha dice que es la de entrega al cliente, con su ayuda a la vista')
   await v.locator('input[name="codigo_interno"]').fill(X1)
   await v.locator('input[type="file"]').setInputFiles(ARCHIVO_N1)
   await esperarLectura(v)
@@ -301,11 +316,15 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
   await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const eB = await esperarVentana(pagina)
   comprobar(eB === '', `la ${cot.B.numero} recibe su código y su OT${eB ? ` (dijo: ${eB})` : ''}`)
-  // Con su código sale de «Aprobadas sin código», el filtro por el que entró.
-  await b.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
-  comprobar((await b.count()) === 0, 'y sale de la lista de las aprobadas sin código')
+  // Al guardar lleva a su tarjeta, resaltada, con el código y la OT.
+  await pagina.waitForURL((u) => u.hash === `#${cot.B.id}` && u.search === '', { timeout: 30000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  const textoB = limpio(await b.textContent().catch(() => ''))
+  comprobar(textoB.includes(X1) && textoB.includes(`OT ${N1}-${anio}`) && (await b.evaluate((e) => e.matches(':target'))) && (await b.isVisible()),
+    'y lleva a su tarjeta, resaltada, con el código y la OT')
 
-  // La A: sin código el navegador no envía; sin PDF tampoco.
+  // La A, desde las aprobadas sin código: sin código el navegador no envía; sin PDF tampoco.
+  await pagina.goto(`${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`, { waitUntil: 'networkidle' })
   await a.getByRole('button', { name: 'Dar código y cargar la OT' }).click()
   await v.locator('input[name="numero"]').fill(N2)
   await v.locator('input[name="fecha_entrega"]').fill(`${anio}-11-28`)
@@ -335,7 +354,19 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
   await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const eA = await esperarVentana(pagina)
   comprobar(eA === '', `Administración guarda el código y la OT${eA ? ` (dijo: ${eA})` : ''}`)
-  await a.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.hash === `#${cot.A.id}` && u.search === '', { timeout: 30000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  comprobar(await a.evaluate((e) => e.matches(':target')).catch(() => false), 'y también lleva a su tarjeta')
+
+  // Se busca por el código interno.
+  await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(X2)}`, { waitUntil: 'networkidle' })
+  const halladas = await pagina.locator('li[id]').evaluateAll((l) => l.map((e) => e.id))
+  comprobar(halladas.includes(cot.A.id), `la búsqueda por el código ${X2} la encuentra (${halladas.length} tarjetas)`)
+
+  // Si «Descargar» no puede, vuelve a la lista con el aviso en vez de bajar un archivo de error.
+  await pagina.goto(`${BASE}/cotizaciones/pdf/archivo/00000000-0000-4000-8000-000000000000`, { waitUntil: 'networkidle' })
+  const alerta = limpio(await pagina.locator('[role="alert"]').first().textContent().catch(() => ''))
+  comprobar(new URL(pagina.url()).search === '?descarga=fallo' && alerta.startsWith('No se pudo bajar la cotización'), `una descarga que no puede vuelve con el aviso («${alerta}»)`)
 
   // En la lista completa, las dos con su código y su OT.
   await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })

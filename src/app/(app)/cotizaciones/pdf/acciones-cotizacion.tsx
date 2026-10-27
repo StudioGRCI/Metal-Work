@@ -437,7 +437,6 @@ export function CargarCodigoYOt({
   numero: string
   tipoUnidad?: string | null
 }) {
-  const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
   // El que no sirve se queda a la vista en su campo, con el motivo; `archivo` es solo el que sí.
@@ -552,12 +551,21 @@ export function CargarCodigoYOt({
         }
         subido = false
         setAbierto(false)
-        iniciar(() => router.refresh())
+        // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
+        // iba de la lista y no se veía que había quedado. Se carga entera para
+        // que el navegador la resalte (`target:`) aunque la dirección no cambie.
+        if (window.location.pathname === '/cotizaciones/pdf' && window.location.search === '') {
+          window.location.hash = cotizacionId
+          window.location.reload()
+        } else {
+          window.location.assign(`/cotizaciones/pdf#${cotizacionId}`)
+        }
       } catch {
-        // No se guardó: el PDF que ya viajó se quita, para que no quede un
-        // archivo que ninguna OT nombra.
-        if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
-        setError('No se pudo guardar el código y la OT. Vuelve a intentar.')
+        // Sin respuesta no se sabe si la base la guardó: el PDF no se toca
+        // (quitarlo dejaría una OT nombrando un archivo que no existe), y
+        // reintentar a ciegas cargaría otra.
+        if (subido) setError('No llegó la respuesta. Recarga la página y mira si la cotización ya tiene su código antes de volver a intentar.')
+        else setError('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
       } finally {
         enCurso.current = false
       }
@@ -575,7 +583,7 @@ export function CargarCodigoYOt({
         abierta={abierto}
         alCerrar={() => setAbierto(false)}
         titulo={`Código interno y OT de la ${numero}`}
-        descripcion="Gerencia ya la aprobó. Escribe el código interno que tendrá la unidad y sube su OT, todo junto; el cliente y la carrocería salen de la cotización. Desde ahí Diseño ve la OT dentro del código y Contabilidad ya la puede facturar."
+        descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
@@ -685,7 +693,7 @@ export function CargarCodigoYOt({
           <Campo
             etiqueta="Fecha de entrega al cliente"
             htmlFor="eo-fecha"
-            ayuda="El día en que se le prometió al cliente entregarle la unidad terminada, como dice la OT. Con ella se mide si se entregó a tiempo"
+            ayuda="El día prometido al cliente para entregarle la unidad, según la OT"
             requerido
           >
             <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />

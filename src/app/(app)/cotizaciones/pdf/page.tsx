@@ -5,6 +5,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
@@ -50,10 +51,12 @@ function EnlaceArchivo({ url, mime, nombre, descarga }: { url: string; mime: str
           {nombre ? ` · ${nombre}` : ''}
         </span>
       </a>
+      {/* Sin `download`: el nombre lo pone el almacenamiento, y si falla la ruta
+          vuelve a la lista con el motivo en vez de bajar un archivo de error. */}
       {!word && (
         <a
           href={descarga}
-          download
+          aria-label={nombre ? `Descargar ${nombre}` : 'Descargar la cotización'}
           className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
         >
           <Download aria-hidden className="size-4 shrink-0" />
@@ -142,7 +145,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     ? (params.estado as FiltroEstado)
     : null
   const palabras = palabrasDeBusqueda(typeof params.q === 'string' ? params.q : '')
-  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria])
+  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria, c.codigo_interno])
   // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
   // que esperan su visto; Administración, las aprobadas que esperan su código y
   // su OT; Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
@@ -151,9 +154,17 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     (revisa && c.estado === 'POR_REVISAR') ||
     (cargaOt && sinCodigo(c)) ||
     (puedeCorregirCotizacion(perfil, c) && !c.facturada)
+  // La que Gerencia acaba de revisar se queda donde estaba, ya aprobada o
+  // rechazada, también en «Por revisar»: si se iba al fondo, bajo el dedo
+  // quedaba el «Aprobar» de otra y un segundo toque aprobaba la equivocada.
+  const ahora = new Date().getTime()
+  const recienRevisada = (c: (typeof cotizaciones)[number]) =>
+    revisa && (c.estado === 'APROBADA' || c.estado === 'RECHAZADA') && c.revisado_en !== null
+    && ahora - new Date(c.revisado_en).getTime() < 15 * 60 * 1000
+  const arriba = (c: (typeof cotizaciones)[number]) => meToca(c) || recienRevisada(c)
   const visibles = cotizaciones
-    .filter((c) => enFiltro(c, filtro, mes) && buscada(c))
-    .sort((a, b) => Number(meToca(b)) - Number(meToca(a)))
+    .filter((c) => (enFiltro(c, filtro, mes) || (filtro === 'POR_REVISAR' && recienRevisada(c))) && buscada(c))
+    .sort((a, b) => Number(arriba(b)) - Number(arriba(a)))
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -173,9 +184,15 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
       />
 
+      {params.descarga === 'fallo' && (
+        <AvisoEnfocado rol="alert" className="mb-4">
+          No se pudo bajar la cotización. Ábrela con «Abrir el PDF» y guárdala desde ahí; si tampoco abre, avisa al administrador.
+        </AvisoEnfocado>
+      )}
+
       {todas.length > 0 && (
         <>
-          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente o carrocería" />
+          <BuscadorSimple ruta="/cotizaciones/pdf" etiqueta="Buscar cotizaciones" marcador="Número, cliente, carrocería o código" />
           <PastillaFiltro
             ruta="/cotizaciones/pdf"
             clave="estado"
@@ -205,9 +222,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
       {cotizaciones.length > 0 && visibles.length === 0 && (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">Ninguna cotización con ese filtro</p>
+            <p className="text-sm font-medium text-texto">
+              {filtro === 'APROBADA_SIN_OT' && palabras.length === 0 ? 'Ninguna aprobada espera su código' : 'Ninguna cotización con ese filtro'}
+            </p>
             <p className="mt-1 text-sm text-texto-suave">
-              Prueba con otro estado o quita la búsqueda.{' '}
+              {filtro === 'APROBADA_SIN_OT' && palabras.length === 0
+                ? 'Todas las aprobadas ya tienen su código interno y su OT.'
+                : 'Prueba con otro estado o quita la búsqueda.'}{' '}
               <Link href="/cotizaciones/pdf" className="text-acento hover:underline">
                 Ver todas
               </Link>
