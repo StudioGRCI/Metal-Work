@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
@@ -28,14 +30,22 @@ export type PendientesGlobales = {
   porRuta: Record<string, number>
   /** Las rutas con alguna cuenta que no se pudo leer: su globo dice «!», no cero. */
   sinComprobar: string[]
+  /** Cada cuenta con algo, con su texto: el Dashboard arma con ellas la cifra de lo que espera por el puesto. */
+  tareas: TareaPendiente[]
 }
+
+export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string }
 
 /** Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más antiguo, por ejemplo). */
 type Cuenta = () => Promise<number | { cantidad: number; ruta?: string }>
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
-export async function pendientesGlobales(perfil: PerfilSesion): Promise<PendientesGlobales> {
+/**
+ * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
+ * de lo que espera, en la misma carga, y las consultas se hacen una sola vez.
+ */
+export const pendientesGlobales = cache(async function pendientesGlobales(perfil: PerfilSesion): Promise<PendientesGlobales> {
   const supabase = await createClient()
   const hoy = hoyLima()
 
@@ -935,6 +945,7 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()
+  const conAlgo: TareaPendiente[] = []
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
@@ -945,7 +956,8 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     if (n <= 0) return
     const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
+    conAlgo.push({ clave: t.clave, ruta: typeof cuenta === 'number' ? t.ruta : (cuenta.ruta ?? t.ruta), tono: t.tono, cantidad: n, texto: t.texto(n) })
   })
 
-  return { porRuta, sinComprobar: [...sinComprobar] }
-}
+  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo }
+})
