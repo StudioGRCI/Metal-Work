@@ -59,7 +59,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const puedeSalida = puede(perfil, 'almacen.despachar')
   const puedeIngreso = puede(perfil, 'almacen.recibir')
   // Almacén y Supervisión general ya no abren la OT (2026-10-15): el número queda como referencia.
-  const abreOt = seccionesDeOrden(perfil).length > 0
+  // Y el enlace va a la pestaña de materiales: quien no la tiene (Contabilidad) terminaba en «No tienes acceso».
+  const abreOt = seccionesDeOrden(perfil).includes('materiales')
   const db = await createClient()
 
   const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer] = await Promise.all([
@@ -238,7 +239,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   <span className="text-sm font-semibold">{t.def.etiqueta}</span>
                   <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
                 </div>
-                <p className="mt-1 line-clamp-2 text-[11px] text-texto-suave">{t.def.regla}</p>
+                <p className="mt-1 text-xs text-texto-suave">{t.def.regla}</p>
                 <p className="mt-1 text-[11px]">
                   {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
                   {t.bajoMinimo > 0 && t.porCerrar > 0 && <span className="text-texto-tenue"> · </span>}
@@ -422,7 +423,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               {!elegido && <TH className="hidden sm:table-cell">Material</TH>}
               <TH className="hidden sm:table-cell">Movimiento</TH>
               <TH className="hidden md:table-cell">Documento o motivo</TH>
-              <TH className="hidden sm:table-cell">Unidad / OT</TH>
+              <TH className="hidden sm:table-cell">Código interno</TH>
               <TH className="px-2 text-right sm:px-3">Entrada</TH>
               <TH className="px-2 text-right sm:px-3">Salida</TH>
               <TH className="px-2 text-right sm:px-3">Saldo</TH>
@@ -459,7 +460,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               const material = (
                 <>
                   <Link href={`/almacen/kardex?material=${f.material_id}`} className="line-clamp-2 text-sm text-acento hover:underline">{f.material ?? 'Material'}</Link>
-                  <span className="block font-mono text-[10px] text-texto-tenue">{f.material_codigo}</span>
+                  <span className="block font-mono text-xs text-texto-tenue">{f.material_codigo}</span>
                 </>
               )
               const unidadYOt = (
@@ -468,16 +469,17 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                     ? <span className="block text-sm font-medium break-words">{f.codigo_unidad}</span>
                     : <span className="text-xs text-texto-tenue">—</span>}
                   {f.orden_id && f.orden_numero && (abreOt
-                    ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-[11px] text-acento hover:underline">OT {f.orden_numero}</Link>
-                    : <span className="block text-[11px] text-texto-suave">OT {f.orden_numero}</span>)}
+                    ? <Link href={`/ordenes/${f.orden_id}?vista=materiales`} className="text-xs text-acento hover:underline">OT {f.orden_numero}</Link>
+                    : <span className="block text-xs text-texto-suave">OT {f.orden_numero}</span>)}
                   {f.requerimiento_numero && (
-                    <span className="block text-[11px] text-texto-suave">{f.requerimiento_numero}</span>
+                    <span className="block text-xs text-texto-suave">{f.requerimiento_numero}</span>
                   )}
+                  {/* Enlaces de 12 px de alto no se tocan con el guante: 24 px, como pide WCAG 2.5.8 (auditoría del 27/10/2026). */}
                   {f.con_foto && (
-                    <a href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver foto</a>
+                    <a href={`/almacen/movimientos/${f.id}/evidencia`} target="_blank" rel="noopener" className="ml-2 inline-flex min-h-6 items-center text-xs text-acento hover:underline">Ver foto</a>
                   )}
                   {f.formato_pendiente && (
-                    <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 text-[11px] font-medium text-aviso hover:underline">Formato pendiente</Link>
+                    <Link href={`/almacen/movimientos/${f.id}/formato`} target="_blank" className="ml-2 inline-flex min-h-6 items-center text-xs font-medium text-aviso hover:underline">Formato pendiente</Link>
                   )}
                   {f.con_formato && exigeFormato(f.almacen) && (
                     <a href={`/almacen/movimientos/${f.id}/formato-firmado`} target="_blank" rel="noopener" className="ml-2 text-[11px] text-acento hover:underline">Ver formato</a>

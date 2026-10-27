@@ -94,7 +94,8 @@ export function FichaDelVehiculo({
           Ingreso {ingresoCerrado ? `cerrado el ${fechaHora(ficha?.ingreso_cerrado_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
         <Insignia tono={salidaCerrada ? 'exito' : 'neutro'}>
-          Salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
+          {/* «Salida cerrada» junto a «Sigue en la planta» se leía como que ya salió: es la hoja la que se cierra. */}
+          Hoja de salida {salidaCerrada ? `cerrada el ${fechaHora(ficha?.salida_cerrada_en ?? '')}` : salio ? 'sin cerrar' : 'por cerrar'}
         </Insignia>
       </div>
 

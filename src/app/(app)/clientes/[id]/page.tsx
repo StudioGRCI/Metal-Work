@@ -107,7 +107,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Unidades"
-            descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo' : 'vehículos'} registrados`}
+            descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo registrado' : 'vehículos registrados'}`}
             acciones={registraUnidades && <NuevaUnidad clienteId={id} />}
           />
           <TarjetaCuerpo className="p-0">

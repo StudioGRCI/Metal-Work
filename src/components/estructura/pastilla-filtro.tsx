@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { SeleccionDeFiltro } from '@/components/estructura/seleccion-de-filtro'
 import { cn } from '@/lib/utils'
 
 type Params = Record<string, string | string[] | undefined>
@@ -68,6 +69,10 @@ export const INACTIVA = 'border-borde-fuerte bg-superficie text-texto-suave hove
 // 438 px en 390). `min-w-0` para que un padre flex nunca lo estire.
 export const GRUPO_PASTILLAS = 'flex min-w-0 flex-wrap gap-2 sm:gap-1'
 
+// Desde cuántas pastillas el teléfono las cambia por una lista desplegable:
+// nueve en cuatro filas dejaban el primer resultado a media pantalla.
+const PASTILLAS_PARA_LISTA = 5
+
 /** Vacío, `null` y ausente son la misma cosa: no hay filtro puesto. */
 function mismo(a: string | null | undefined, b: string | null | undefined) {
   return (a || null) === (b || null)
@@ -91,8 +96,24 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
   const claves = new Set<string>(props.clave ? [props.clave] : [])
   for (const opcion of opciones) if (opcion.clave) claves.add(opcion.clave)
 
+  // Con muchas opciones, en el teléfono una lista desplegable con los mismos enlaces.
+  const muchas = !props.alPulsar && opciones.length >= PASTILLAS_PARA_LISTA
+  const lista = muchas ? (
+    <SeleccionDeFiltro
+      etiqueta={etiqueta}
+      className="sm:hidden"
+      opciones={opciones.map((opcion) => ({
+        etiqueta: opcion.etiqueta,
+        href: enlace(props.ruta as string, props.params as Params, claves, opcion, props.clave),
+        activa: mismo(activo, opcion.valor),
+      }))}
+    />
+  ) : null
+
   return (
-    <div role="group" aria-label={etiqueta} className={cn(GRUPO_PASTILLAS, className)}>
+    <>
+    {lista}
+    <div role="group" aria-label={etiqueta} className={cn(GRUPO_PASTILLAS, muchas && 'hidden sm:flex', className)}>
       {opciones.map((opcion) => {
         const activa = mismo(activo, opcion.valor)
         const clases = cn(PASTILLA, activa ? ACTIVA : INACTIVA)
@@ -128,6 +149,7 @@ export function PastillaFiltro(props: PropsPastillaFiltro) {
         )
       })}
     </div>
+    </>
   )
 }
 
