@@ -261,8 +261,9 @@ export async function quitarCotizacionPdf(_previo: unknown, datos: FormData): Pr
 const esquemaCodigoYOt = z.object({
   cotizacion_id: z.guid(),
   orden_id: z.guid(),
-  // El código interno es lo que nace con la aprobación: la referencia del
-  // trabajo para Diseño, Contabilidad y Gerencia (migración 20261016900000).
+  // El código interno lo da Administración después de la aprobación: la
+  // referencia del trabajo para Diseño, Contabilidad y Gerencia (migración
+  // 20261027200000).
   codigo_interno: z
     .string()
     .trim()

@@ -9,9 +9,9 @@ import type { Vistas } from '@/types/database'
  * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
  * 103). El sistema guarda lo poco que necesita y la traza: quién la subió,
  * quién la aprobó, qué orden salió de ella y, si Gerencia la rechazó, cada
- * versión con la observación que le hizo. Desde la migración 20261016900000
- * Gerencia la aprueba con el código interno y la OT: `codigo_interno` es el de
- * la unidad de su OT.
+ * versión con la observación que le hizo. Desde la migración 20261027200000
+ * Gerencia la aprueba con un toque y Administración le da el código interno y
+ * sube la OT: `codigo_interno` es el de la unidad de su OT.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {

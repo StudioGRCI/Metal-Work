@@ -5,6 +5,7 @@ import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { bandejaDeFacturacion, type CotizacionParaFacturar } from '@/lib/datos/facturacion'
+import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -49,6 +50,7 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
  */
 export default async function PaginaFacturacion() {
   const perfil = await exigirPermiso(['contabilidad.facturar', 'cotizaciones.ver_aprobadas'])
+  const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const factura = puede(perfil, 'contabilidad.facturar')
   const cotizaciones = await bandejaDeFacturacion()
   const hoy = hoyLima()
@@ -147,6 +149,17 @@ export default async function PaginaFacturacion() {
                         </a>
                       ) : (
                         <span role="alert" className="text-aviso">No se pudo abrir la cotización. Recarga la página.</span>
+                      )}
+                      {/* Guardado desde el visor, el PDF sale con el nombre interno del archivo. */}
+                      {c.url && c.archivo_mime === 'application/pdf' && c.cotizacion_id && puedeBajar && (
+                        <a
+                          href={rutaParaBajarCotizacion(c.cotizacion_id)}
+                          aria-label={`Descargar la cotización ${c.numero}`}
+                          className="inline-flex min-h-11 items-center gap-1.5 text-acento hover:underline sm:min-h-0"
+                        >
+                          <Download aria-hidden className="size-4" />
+                          Descargar
+                        </a>
                       )}
                     </div>
 

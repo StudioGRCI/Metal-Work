@@ -186,7 +186,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
       {params.descarga === 'fallo' && (
         <AvisoEnfocado rol="alert" className="mb-4">
-          No se pudo bajar la cotización. Ábrela con «Abrir el PDF» y guárdala desde ahí; si tampoco abre, avisa al administrador.
+          No se pudo bajar la cotización. Vuelve a intentarlo; si se repite, avisa al administrador.
         </AvisoEnfocado>
       )}
 

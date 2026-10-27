@@ -11,3 +11,15 @@ export function bajarComo(enlace: string, nombre: string | true): string {
   const separador = enlace.includes('?') ? '&' : '?'
   return `${enlace}${separador}download=${nombre === true ? '' : encodeURIComponent(nombre)}`
 }
+
+/**
+ * Quién baja una cotización con su nombre por `/cotizaciones/pdf/archivo/[id]`.
+ * La ruta lo exige y cada pantalla que ofrece «Descargar» lo mira antes: un
+ * botón que lleva a «sin permiso» no se muestra.
+ */
+export const PERMISOS_BAJAR_COTIZACION = ['cotizaciones.ver_pdf_comercial', 'cotizaciones.ver_aprobadas', 'tesoreria.ver_documentos']
+
+/** La ruta que baja la cotización con el nombre con que se subió. */
+export function rutaParaBajarCotizacion(cotizacion: string): string {
+  return `/cotizaciones/pdf/archivo/${cotizacion}`
+}

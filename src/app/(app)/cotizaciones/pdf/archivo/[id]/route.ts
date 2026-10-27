@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { bajarComo } from '@/lib/descarga'
+import { bajarComo, PERMISOS_BAJAR_COTIZACION } from '@/lib/descarga'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -17,7 +17,8 @@ import { createClient } from '@/lib/supabase/server'
  * con un nombre de letras y números, y el motivo no se veía.
  */
 export async function GET(request: Request, context: RouteContext<'/cotizaciones/pdf/archivo/[id]'>) {
-  await exigirPermiso(['cotizaciones.ver_pdf_comercial', 'cotizaciones.ver_aprobadas', 'tesoreria.ver_documentos'])
+  // Los mismos permisos que la lista a la que vuelve si falla.
+  await exigirPermiso(PERMISOS_BAJAR_COTIZACION)
   const { id } = await context.params
   const version = new URL(request.url).searchParams.get('version')
   const fallo = () => NextResponse.redirect(new URL('/cotizaciones/pdf?descarga=fallo', request.url), 303)

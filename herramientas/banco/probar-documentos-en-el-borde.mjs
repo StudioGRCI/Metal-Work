@@ -13,7 +13,7 @@
  *      anterior por su hora, los dos «Quitar» se distinguen, quitar el vigente
  *      avisa cuál queda, y al quitar el foco vuelve a «Cambiar el PDF». En la
  *      tarjeta, el PDF va antes que el Excel del cronograma y la hora no se parte.
- *   4. Ventas y Gerencia: con un archivo que no sirve, al enviar el navegador
+ *   4. Ventas y Administración: con un archivo que no sirve, al enviar el navegador
  *      se queda en el archivo y no salta al primer campo vacío de abajo.
  *   5. Diseño, el Excel del cronograma: sin señal dice cómo volver a
  *      intentarlo; si se pierde la respuesta, no afirma que no quedó.
@@ -376,16 +376,19 @@ async function noSirveAlEnviar(viewport) {
     await contexto.close()
   }
   {
-    // Una cotización de Ventas que espera a Gerencia, de las que deja la prueba de documentos.
-    const cot = await uno(`select id, numero from public.cotizaciones_pdf
-                            where numero like 'QA-DOC-%' and estado = 'POR_REVISAR' order by creado_en desc limit 1`)
+    // Una cotización que Gerencia aprobó y espera su código y su OT, de las que
+    // deja la prueba de documentos.
+    const cot = await uno(`select c.id, c.numero from public.cotizaciones_pdf c
+                            where c.numero like 'QA-DOC-%' and c.estado = 'APROBADA'
+                              and not exists (select 1 from public.ordenes_trabajo o where o.cotizacion_pdf_id = c.id)
+                            order by c.creado_en desc limit 1`)
     if (!cot) {
-      console.log('  -- sin cotización QA-DOC pendiente: corre antes probar-documentos-al-elegir.mjs para la parte de Gerencia')
+      console.log('  -- sin cotización QA-DOC aprobada sin OT: corre antes probar-documentos-al-elegir.mjs para la parte de Administración')
       return
     }
-    const { pagina: p, contexto } = await entrar('gerencia.local@metalwork.test', viewport)
-    await ir(p, '/cotizaciones/pdf')
-    await p.locator('li').filter({ hasText: cot.numero }).first().getByRole('button', { name: 'Aprobar', exact: true }).click()
+    const { pagina: p, contexto } = await entrar('administracion.local@metalwork.test', viewport)
+    await ir(p, '/cotizaciones/pdf?estado=APROBADA_SIN_OT')
+    await p.locator('li').filter({ hasText: cot.numero }).first().getByRole('button', { name: 'Dar código y cargar la OT' }).click()
     const v = p.getByRole('dialog')
     await v.waitFor()
     const campo = v.locator(`#aprobar-pdf-${cot.id}`)
@@ -395,7 +398,7 @@ async function noSirveAlEnviar(viewport) {
     await esperar(async () => (await dice(campo)).includes('dañado'), 5000)
     await v.locator('button[type=submit]').last().click()
     await p.waitForTimeout(400)
-    comprobar((await enfocado(p))?.id === `aprobar-pdf-${cot.id}`, `[Gerencia ${tam}] con un Word llamado .pdf, el envío se queda en el PDF de la OT: ${JSON.stringify(await enfocado(p))}`)
+    comprobar((await enfocado(p))?.id === `aprobar-pdf-${cot.id}`, `[Administración ${tam}] con un Word llamado .pdf, el envío se queda en el PDF de la OT: ${JSON.stringify(await enfocado(p))}`)
     await contexto.close()
   }
 }

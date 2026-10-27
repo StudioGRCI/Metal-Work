@@ -7,8 +7,10 @@
  *   1. Ventas, «Subir cotización»: dice qué pide y el tope; un .txt queda en
  *      rojo con el motivo y no se lee; el PDF se lee y queda en verde.
  *   2. Ventas, «Editar cotización» de una suya: lo mismo con el archivo corregido.
- *   3. Gerencia, «Aprobar» la cotización: un Word con nombre «.pdf» queda en
+ *   3. Gerencia la aprueba con un toque, y Administración, en «Dar código y
+ *      cargar la OT», elige el PDF de la OT: un Word con nombre «.pdf» queda en
  *      rojo («no es un PDF de verdad») y no llega a la vista previa; el PDF sí.
+ *      No guarda: la cotización queda aprobada sin OT para el borde.
  *   4. Administración, el PDF de una orden sin cotización: se sube apenas se
  *      elige. El falso no sale (ni fila ni archivo en Storage); el bueno queda
  *      en la lista y el campo vuelve a pedir.
@@ -51,6 +53,18 @@ const fallas = []
 function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
   if (!cond) fallas.push(texto)
+}
+async function esperar(fn, ms = 15000) {
+  const hasta = Date.now() + ms
+  while (Date.now() < hasta) {
+    try {
+      if (await fn()) return true
+    } catch {
+      // Todavía no está.
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  return false
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
@@ -253,29 +267,39 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await contexto.close()
   }
 
-  // ------------------------------------------------ 3. Gerencia
-  {
+  // ------------------------------------------------ 3. Gerencia aprueba; Administración carga la OT
+  if ((await uno('select estado from public.cotizaciones_pdf where id = $1', [cotId])).estado === 'POR_REVISAR') {
     const { pagina, contexto } = await entrar('gerencia.local@metalwork.test', viewport)
     await ir(pagina, '/cotizaciones/pdf')
     const tarjeta = pagina.locator('li').filter({ hasText: numeroCot }).first()
     await tarjeta.getByRole('button', { name: 'Aprobar', exact: true }).click()
+    await esperar(async () => (await uno('select estado from public.cotizaciones_pdf where id = $1', [cotId])).estado === 'APROBADA', 15000)
+    comprobar((await uno('select estado from public.cotizaciones_pdf where id = $1', [cotId])).estado === 'APROBADA' && (await pagina.getByRole('dialog').count()) === 0,
+      `[Gerencia ${tam}] «Aprobar» la aprueba con un toque, sin pedir el PDF de la OT`)
+    await contexto.close()
+  }
+  {
+    const { pagina, contexto } = await entrar('administracion.local@metalwork.test', viewport)
+    await ir(pagina, '/cotizaciones/pdf?estado=APROBADA_SIN_OT')
+    const tarjeta = pagina.locator('li').filter({ hasText: numeroCot }).first()
+    await tarjeta.getByRole('button', { name: 'Dar código y cargar la OT' }).click()
     const v = pagina.getByRole('dialog')
     await v.waitFor()
     const campo = v.locator('[id^="aprobar-pdf-"]')
     comprobar((await dice(campo)).includes('Elegir el PDF de la OT') && (await dice(campo)).includes('Solo PDF, hasta 20 MB'),
-      `[Gerencia ${tam}] «Aprobar» dice qué pide y el tope: «${await dice(campo)}»`)
+      `[Administración ${tam}] «Dar código y cargar la OT» dice qué pide y el tope: «${await dice(campo)}»`)
     await campo.setInputFiles(WORD_COMO_PDF)
     await esperarQueDiga(campo, 'Está dañado o no es un PDF de verdad', 5000)
     comprobar((await dice(campo)).includes(`OT-FALSA-${sello}.pdf`) && (await dice(campo)).includes('Está dañado o no es un PDF de verdad'),
-      `[Gerencia ${tam}] un Word con nombre «.pdf» se ve y dice por qué no sirve`)
-    comprobar(await invalido(campo), `[Gerencia ${tam}] y queda marcado`)
-    comprobar(limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Gerencia ${tam}] y no llega a la vista previa`)
+      `[Administración ${tam}] un Word con nombre «.pdf» se ve y dice por qué no sirve`)
+    comprobar(await invalido(campo), `[Administración ${tam}] y queda marcado`)
+    comprobar(limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Administración ${tam}] y no llega a la vista previa`)
     await campo.setInputFiles(PDF_OT)
     await esperarQueDiga(campo, listo, 60000)
-    comprobar((await dice(campo)).includes(`OT-DOC-${sello}.pdf`) && !(await invalido(campo)), `[Gerencia ${tam}] el PDF de la OT queda en verde`)
-    comprobar(!limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Gerencia ${tam}] y se ve en la vista previa`)
-    comprobar((await desborde(pagina)) <= 0, `[Gerencia ${tam}] sin desborde`)
-    await pagina.screenshot({ path: `${CAPTURAS}/doc-gerencia-aprobar-${tam}.png` })
+    comprobar((await dice(campo)).includes(`OT-DOC-${sello}.pdf`) && !(await invalido(campo)), `[Administración ${tam}] el PDF de la OT queda en verde`)
+    comprobar(!limpio(await v.innerText()).includes('El PDF aparecerá aquí al seleccionarlo.'), `[Administración ${tam}] y se ve en la vista previa`)
+    comprobar((await desborde(pagina)) <= 0, `[Administración ${tam}] sin desborde`)
+    await pagina.screenshot({ path: `${CAPTURAS}/doc-administracion-cargar-ot-${tam}.png` })
     await contexto.close()
   }
 
