@@ -488,9 +488,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   // entera (pide `requerimientos.crear` y `ordenes.ver` a la vez): la siembra va
   // directa, y lo que se prueba lo hace Logística en pantalla. La OT no tiene
   // pedido de Maestranza, o el que tiene es solo de esta suite: las líneas se
-  // colgaban del pedido de otro (decimonovena pasada).
+  // colgaban del pedido de otro (decimonovena pasada). En una base recién armada
+  // la única OT en marcha ya lleva el pedido que siembran otras suites: sirve
+  // una aprobada o programada, que la compra solo descarta la anulada.
   const ot = await uno(`select o.id as orden_id, o.numero as numero_ot from ordenes_trabajo o
-                         where o.estado = 'EN_PROCESO'
+                         where o.estado in ('EN_PROCESO', 'PROGRAMADA', 'APROBADA')
                            and not exists (select 1 from requerimientos_materiales r where r.orden_id = o.id and r.area_destino = 'MTZ'
                                             and not exists (select 1 from requerimiento_material_detalles d
                                                               join ot_materiales om on om.id = d.ot_material_id join materiales m on m.id = om.material_id
@@ -498,8 +500,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                            and not exists (select 1 from requerimientos_materiales r join requerimiento_material_detalles d on d.requerimiento_id = r.id
                                              join ot_materiales om on om.id = d.ot_material_id join materiales m on m.id = om.material_id
                                             where r.orden_id = o.id and r.area_destino = 'MTZ' and m.codigo not like 'QA-TAB-%')
-                         order by o.numero limit 1`)
-  comprobar(Boolean(ot), 'el banco tiene una OT en marcha sin pedido de Maestranza ajeno donde sembrar')
+                         order by o.estado <> 'EN_PROCESO', o.estado <> 'PROGRAMADA', o.numero limit 1`)
+  comprobar(Boolean(ot), 'el banco tiene una OT abierta sin pedido de Maestranza ajeno donde sembrar')
   if (ot) {
     const insumo = `Plancha del tablero QA ${SELLO}`
     const proveedor = `ACEROS DEL TABLERO QA ${SELLO}`

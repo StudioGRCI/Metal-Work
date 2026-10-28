@@ -127,12 +127,19 @@ if (!teso || !gere || !cont || !logi) throw new Error('Faltan las cuentas de Tes
 const ids = {}
 await base.query('begin')
 try {
-  // Una cuenta en soles que empezó hace tres días y no cerró ninguno: su globo.
+  // Una cuenta en soles que empezó hace tres días, con un movimiento de hace dos
+  // que nadie cerró: su globo. Un día sin movimientos no hay que cerrarlo
+  // (caja_del_dia mira los movimientos, no el inicio de la cuenta).
   ids.caja = (await consulta(
     `insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
      values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 10000, $2::date - 3, $3) returning id`,
     [SOLES, hoy, teso.id],
   ))[0].id
+  await consulta(
+    `insert into movimientos_caja (caja_id, fecha, tipo, monto, descripcion, registrado_por)
+     values ($1, $2::date - 2, 'INGRESO', 50, $3, $4)`,
+    [ids.caja, hoy, `Ingreso de prueba ${SOLES}`, teso.id],
+  )
   const [prov] = await consulta(
     `insert into proveedores (numero_documento, razon_social)
      select '2010098' || $1::text || d, 'PROVEEDOR PRUEBA IGV' from generate_series(0, 9) d where ruc_es_valido('2010098' || $1::text || d) limit 1

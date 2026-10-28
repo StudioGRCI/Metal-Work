@@ -262,7 +262,11 @@ const rechaza = async (pagina, ruta) => {
   for (const id of [...oc, `QA-OS-${SUFIJO}-1`, `QA-OS-${SUFIJO}-2`]) pagos[id.startsWith('QA') ? id : nombre(id)] = await columna(fila(pagina, id), 6)
   console.log('     Pago de cada fila:', JSON.stringify(pagos))
   comprobar(pagos[nombre(oc[0])]?.startsWith('Espera a Gerencia'), 'la OC sin aprobar espera a Gerencia')
-  comprobar(/^Pagada en parte Saldo S\/ [\d,.]+ Voucher .*S\/ 100\.00/.test(pagos[nombre(oc[1])] ?? ''), `la OC con factura pagada en parte dice su saldo y su voucher («${pagos[nombre(oc[1])]}»)`)
+  // Desde #174, el saldo va con la parte pagada de la factura.
+  comprobar(
+    new RegExp(`^Pagada en parte Saldo S/ [\\d,.]+ · pagado ${Math.round(10000 / totalOc2)} % Voucher .*S/ 100\\.00`).test(pagos[nombre(oc[1])] ?? ''),
+    `la OC con factura pagada en parte dice su saldo, cuánto se pagó y su voucher («${pagos[nombre(oc[1])]}»)`,
+  )
   comprobar(pagos[nombre(oc[2])]?.startsWith('Espera su factura'), 'la OC sin factura registrada espera su factura')
   // Desde la 20261020210000 la OC con boleta la paga Tesorería, como una OS.
   comprobar(pagos[nombre(oc[3])]?.startsWith('Por pagar'), 'la que va con boleta no espera factura: la paga Tesorería')

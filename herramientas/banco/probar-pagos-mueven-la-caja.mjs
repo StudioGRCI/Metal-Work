@@ -207,6 +207,19 @@ try {
             'cot/' || nuevo.id || '/prueba.pdf', 'application/pdf', 120, $3, 1000, 'USD' from nuevo returning id`,
     [`QA-CAJA-${sello}`, clienteId, teso.id],
   )
+  // Desde #167 la factura solo sale de una cotización aprobada: la aprueba
+  // Gerencia, con su rol, como en probar-facturacion. Después sigue postgres.
+  await consulta(
+    `select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+            set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,
+    [gere.id],
+  )
+  await base.query('set local role authenticated')
+  await consulta(`update cotizaciones_pdf set estado = 'APROBADA' where id = $1`, [cot.id])
+  await base.query('reset role')
+  await consulta(
+    `select set_config('request.jwt.claim.sub', '', true), set_config('request.jwt.claim.role', '', true), set_config('request.jwt.claims', '', true)`,
+  )
   ids.fv = (await consulta(
     `insert into facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, cliente_id, numero, fecha_emision, fecha_vencimiento,
                                  moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
