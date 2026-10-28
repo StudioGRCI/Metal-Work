@@ -1175,6 +1175,17 @@ if (corre('cuenta')) {
     `[Otra cuenta] la OC ${deK?.numero ?? 'nada'} entra a nombre de Logística y su comprobante, cortado por Administración, no se anota con ella: la ventana se cierra y dice que falta (${JSON.stringify({ dijoK, anotados: anotadosK.length, enStorage: subidoK.length })})`)
   await enOtraPestana(ch, 'logistica')
   await hasta(() => deOtraCuenta(ph), (t) => !t, 15000)
+  // El aviso nació con la traba puesta, fuera del árbol del lector. Al volver,
+  // la ventana ya no está: el cursor va al aviso y el anuncio no dice «puedes
+  // seguir donde estabas» (vigesimocuarta pasada).
+  const vueltaK = await ph.evaluate(() => ({
+    cursor: (document.activeElement?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    enElCuerpo: document.activeElement === document.body,
+    anuncio: document.querySelector('[data-volvio-la-cuenta]')?.textContent ?? '',
+  }))
+  comprobar(/no se adjuntó: en otra pestaña entró otra cuenta/.test(vueltaK.cursor) && !vueltaK.enElCuerpo
+    && vueltaK.anuncio === `Volvió la cuenta de ${NOMBRE_LOGISTICA} (${LOGISTICA}).`,
+    `[Otra cuenta] de vuelta Logística, el cursor va al aviso de la OC, que nació con la traba puesta, y el anuncio no dice «puedes seguir donde estabas» (${JSON.stringify(vueltaK)})`)
   const quitado = await hasta(enStorage, (r) => r.length === 0, 15000)
   const enLista = await hasta(() => d.fila(ph, deK?.numero).count(), (n) => n > 0, 15000)
   comprobar(quitado.length === 0 && enLista > 0 && (await documentos()).length === 0,

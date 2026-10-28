@@ -173,7 +173,12 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   global de `:focus-visible` respeta `outline-none` (`globals.css`,
   vigesimotercera). Lo de detrás no se
   toca ni se pierde: si la primera cuenta vuelve, se destraba con lo escrito,
-  el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Antes la
+  el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Lo de
+  detrás que cambió con la traba puesta —el aviso de una cadena que terminó en
+  ese rato— no lo leyó nadie: si el cursor vuelve donde estaba, el anuncio lo
+  suma («Mientras tanto: …»); si no puede —la ventana se cerró, el botón tocado
+  sigue apagado—, el cursor va a ese aviso, como `AvisoEnfocado`, y el anuncio
+  no dice «puedes seguir donde estabas» (vigesimocuarta). Antes la
   traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
   botones de la pantalla y la ventana de una pregunta. Mientras dure, la
   pantalla no se refresca sola (`RefrescoAlVolver`), ni tras un envío que salió

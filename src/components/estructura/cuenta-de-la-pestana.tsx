@@ -19,7 +19,7 @@ export function CuentaDeLaPestana({ usuario, puesto, nombre }: { usuario: string
     entroLaCuenta(usuario, puesto, nombre)
   }, [usuario, puesto, nombre])
   const otraCuenta = useOtraCuentaEnLaPestana()
-  return <TrabaDeOtraCuenta texto={otraCuenta} volvio={`Volvió la cuenta de ${nombre.trim() ? `${nombre.trim()} (${puesto})` : puesto}: puedes seguir donde estabas.`} />
+  return <TrabaDeOtraCuenta texto={otraCuenta} cuenta={nombre.trim() ? `${nombre.trim()} (${puesto})` : puesto} />
 }
 
 /**
@@ -35,14 +35,34 @@ export function CuentaDeLaPestana({ usuario, puesto, nombre }: { usuario: string
  * cuando la sesión vuelve a ser de esta pantalla, y el cursor vuelve a donde
  * estaba. Eso se anuncia aparte, porque mientras la traba está puesta lo de
  * detrás no se lee.
+ *
+ * Lo de detrás no se lee, pero puede cambiar: una cadena que ya había salido
+ * termina con la traba puesta —la OC entró y su comprobante no— y su aviso nace
+ * fuera del árbol del lector. Al volver la cuenta se dice: si el cursor puede
+ * volver donde estaba, va ahí y el anuncio suma el aviso; si no —la ventana se
+ * cerró, o el botón que se tocó sigue apagado—, el cursor va al aviso, como
+ * `AvisoEnfocado`. «Puedes seguir donde estabas» solo cuando se puede
+ * (vigesimocuarta pasada).
  */
 const ANUNCIO_MS = 10_000
 
-function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: string }) {
+/** Lo que una pantalla dice cuando cambia: sus avisos. */
+const AVISO = '[role="alert"], [role="status"], [aria-live="polite"], [aria-live="assertive"]'
+
+/** El aviso que cambió al último, si todavía está a la vista y dice algo. */
+function ultimoAviso(cambiados: HTMLElement[]) {
+  for (let i = cambiados.length - 1; i >= 0; i--) {
+    const aviso = cambiados[i]
+    if (aviso.isConnected && aviso.textContent?.trim() && aviso.getClientRects().length > 0) return aviso
+  }
+  return null
+}
+
+function TrabaDeOtraCuenta({ texto, cuenta }: { texto: string | null; cuenta: string }) {
   const traba = useRef<HTMLDialogElement>(null)
   const aviso = useRef<HTMLParagraphElement>(null)
   const estado = useRef<HTMLParagraphElement>(null)
-  const ultimoVolvio = useRef(volvio)
+  const ultimaCuenta = useRef(cuenta)
   const idTitulo = useId()
   const trabada = texto !== null
   // El aviso de que volvió la cuenta vive solo alrededor de la traba: nace con
@@ -53,7 +73,7 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
   if (trabada && !conAnuncio) setConAnuncio(true)
 
   useEffect(() => {
-    ultimoVolvio.current = volvio
+    ultimaCuenta.current = cuenta
   })
 
   useEffect(() => {
@@ -67,6 +87,26 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
     if (!trabada || !dialogo) return
     const veniaDe = document.activeElement instanceof HTMLElement ? document.activeElement : null
     if (estado.current) estado.current.textContent = ''
+    // Los avisos de la pantalla que cambian mientras está trabada, el último al final.
+    const cambiados: HTMLElement[] = []
+    const anotar = (el: Element | null | undefined) => {
+      if (!(el instanceof HTMLElement) || el.closest('[data-traba-otra-cuenta], [data-volvio-la-cuenta]')) return
+      const i = cambiados.indexOf(el)
+      if (i >= 0) cambiados.splice(i, 1)
+      cambiados.push(el)
+    }
+    const mirar = (registros: MutationRecord[]) => {
+      for (const r of registros) {
+        anotar((r.target instanceof Element ? r.target : r.target.parentElement)?.closest(AVISO))
+        for (const n of r.addedNodes) {
+          if (!(n instanceof Element)) continue
+          if (n.matches(AVISO)) anotar(n)
+          n.querySelectorAll(AVISO).forEach(anotar)
+        }
+      }
+    }
+    const vigia = new MutationObserver(mirar)
+    vigia.observe(document.body, { subtree: true, childList: true, characterData: true })
     const abrir = () => {
       try {
         if (!dialogo.open) dialogo.showModal()
@@ -88,10 +128,24 @@ function TrabaDeOtraCuenta({ texto, volvio }: { texto: string | null; volvio: st
       dialogo.removeEventListener('cancel', noCancelar)
       dialogo.removeEventListener('close', abrir)
       document.removeEventListener('keydown', sinEscape, true)
+      mirar(vigia.takeRecords())
+      vigia.disconnect()
       if (dialogo.open) dialogo.close()
       if (veniaDe?.isConnected && veniaDe !== document.body) veniaDe.focus()
+      const sigue = veniaDe !== null && veniaDe !== document.body && document.activeElement === veniaDe
+      const cambio = ultimoAviso(cambiados)
+      const dicho = cambio?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      let volvio = `Volvió la cuenta de ${ultimaCuenta.current}`
+      if (sigue) volvio += cambio ? `. Mientras tanto: ${dicho}` : ': puedes seguir donde estabas.'
+      else {
+        volvio += '.'
+        if (cambio) {
+          if (!cambio.hasAttribute('tabindex')) cambio.setAttribute('tabindex', '-1')
+          cambio.focus()
+        }
+      }
       // Después de cerrar: con la traba puesta, lo de detrás no se anuncia.
-      if (estado.current?.isConnected) estado.current.textContent = ultimoVolvio.current
+      if (estado.current?.isConnected) estado.current.textContent = volvio
     }
   }, [trabada])
 
