@@ -418,7 +418,8 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
       (o) => o.numero ?? `Ref. del proveedor: ${o.referencia}`,
     )
     await ir(pagina, `${BASE}/adquisiciones?vista=sin-factura`)
-    const sinFactura = limpio(await pagina.locator('table').textContent())
+    // Con varias OC esperando, la vista tiene una tabla por grupo: se leen las que se ven.
+    const sinFactura = limpio((await pagina.locator('table:visible').allTextContents()).join(' '))
     comprobar(
       !sinFactura.includes(FA) && !sinFactura.includes(FB) &&
         (esperan.length > 0
