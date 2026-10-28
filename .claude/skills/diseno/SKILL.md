@@ -190,7 +190,10 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   ofrece «Salir y entrar con otra cuenta».
 - **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
   la misma clase van en una frase con su plural; lo que salió de esta pestaña a
-  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión.
+  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión, y
+  su nombre si es del mismo puesto que quien lee (`comoSeNombra`), como en la
+  traba: «a nombre de Logística», dicho a otra persona de Logística, no decía
+  quién fue (vigesimoquinta).
 - **Una cola de fotos se corta con la traba** (`SelectorFotos`): cada foto mira
   la sesión antes de subir, no solo la primera. La que se cortó y las que
   esperaban quedan en la lista con «Reintentar» y su vista previa, y se achican

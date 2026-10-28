@@ -531,10 +531,12 @@ async function excelQueNoQuedo(viewport) {
   }
 }
 
-// La salida del kardex necesita un material con saldo libre. En una base recién
-// armada no hay ninguno: se ingresa como Almacén, con su permiso.
-if (!(await uno(`select 1 as hay from public.v_existencias_materiales where disponible >= 6 limit 1`))) {
-  const material = await uno(`select id from public.materiales where activo order by codigo limit 1`)
+// La salida del kardex necesita un material con saldo libre, de los que lista la
+// planilla de Almacén (activos y con su unidad). En una base recién armada no hay
+// ninguno: se ingresa como Almacén, con su permiso.
+if (!(await uno(`select 1 as hay from public.v_existencias_materiales e join public.materiales m on m.id = e.material_id
+                  where e.disponible >= 6 and m.activo and not m.unidad_pendiente limit 1`))) {
+  const material = await uno(`select id from public.materiales where activo and not unidad_pendiente order by codigo limit 1`)
   const { id: almacenero } = await uno(`select id from public.usuarios where lower(correo) = 'almacen.local@metalwork.test'`)
   await base.query('begin')
   try {

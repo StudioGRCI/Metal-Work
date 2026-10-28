@@ -54,7 +54,7 @@ export type LoQueEntro = {
   falta: Falta | null
   /** «Lo que registres ahora será otra.» */
   cierre: string
-  /** El puesto de la cuenta que lo registró, si no fue la de la sesión; `null` si fue ella. */
+  /** El puesto de la cuenta que lo registró (con su nombre si es del mismo puesto), si no fue la de la sesión; `null` si fue ella. */
   autor: string | null
 }
 

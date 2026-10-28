@@ -32,8 +32,8 @@
  *   7. Diseño, el plano y su revisión: sin respuesta y con otro PDF, el plano
  *      (sin ventana) y la revisión (con ventana) dicen sin rojo que ya quedó, y
  *      el siguiente entra. La revisión se traba y solo ofrece «Cerrar».
- *   8. La OC directa con otra cuenta en otra pestaña (Logística y
- *      Administración pueden emitir):
+ *   8. La OC directa con otra cuenta en otra pestaña (la emite Logística;
+ *      Administración, desde la migración 20261026160000, solo la de su RQA):
  *      a. con la ventana abierta y escrita, entra Administración en otra
  *         pestaña: la pantalla entera queda bajo la traba al momento, con el
  *         puesto de las dos, el cursor en ella y solo «Recargar la pantalla»;
@@ -49,11 +49,16 @@
  *      Sin la cookie a la vista (un navegador que no la deja leer):
  *      e. sin el aviso de la otra pestaña, la pregunta al abrir traba, aunque
  *         antes conteste una anterior hecha con Logística;
- *      f. lo que sale antes de que la base conteste esa pregunta entra con la
- *         sesión de Administración; de vuelta Logística, la ventana dice cuál
- *         quedó y a nombre de quién;
- *      g. lo mismo, y «Recargar la pantalla» con Administración: lo ve como
- *         suyo y suelta lo de Logística.
+ *      f. lo que sale antes de que la base conteste esa pregunta sale con la
+ *         sesión que haya. Con la de Administración la base no lo deja entrar:
+ *         de vuelta Logística, la ventana no dice que quedó nada y lo que envía
+ *         entra una vez. Con la de otra persona de Logística (una segunda
+ *         cuenta, que la prueba crea si falta y deja inactiva al terminar),
+ *         entra a su nombre, la traba nombra a las dos con su nombre, y de
+ *         vuelta la primera, la ventana dice cuál quedó y a nombre de quién,
+ *         también con su nombre;
+ *      g. lo mismo, y «Recargar la pantalla» con la segunda: lo ve como suyo y
+ *         suelta lo de la primera.
  *      Con la cookie a la vista otra vez:
  *      h. la OC ya entró y su comprobante termina de subir cuando entra
  *         Administración: no se anota con ella, la ventana se cierra diciendo
@@ -66,7 +71,8 @@
  * Siembra sus datos en la base del banco con un sufijo nuevo. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE, SOLO (las
  * partes que corren, p. ej. `sc,caja`; de os, oc, rq, sc, caja, lista, planos y cuenta) y el
- * correo de cada cuenta si no es `<puesto>.local@metalwork.test`.
+ * correo de cada cuenta si no es `<puesto>.local@metalwork.test` (la segunda de
+ * Logística, LOGISTICA_DOS, si no es `logistica.dos.local@metalwork.test`).
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -125,8 +131,35 @@ const MATERIAL = `Disco de corte mismo envío ${SUFIJO}`
 const SUBCONTRATISTA = `Subcontratista mismo envío ${SUFIJO}`
 const CODIGO = 'PLA_SR_O4_1_26/21'
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
+// La parte 8 necesita a dos personas del mismo puesto: una segunda cuenta de
+// Logística, que se crea si falta y queda inactiva al terminar, para no sumar a
+// nadie a los avisos de Logística en las otras pruebas.
+const SEGUNDA_DE_LOGISTICA = process.env.LOGISTICA_DOS ?? 'logistica.dos.local@metalwork.test'
+async function segundaDeLogistica(activa) {
+  if (activa) {
+    await consulta(
+      `insert into auth.users (id, email, encrypted_password, raw_user_meta_data)
+       select gen_random_uuid(), $1::text, crypt($2, gen_salt('bf')), jsonb_build_object('nombres', 'Segunda', 'apellidos', 'de Logística')
+        where not exists (select 1 from auth.users where email = $1::text)`,
+      [SEGUNDA_DE_LOGISTICA, CLAVE],
+    )
+    await consulta(
+      `insert into usuarios (id, nombres, apellidos, correo, cargo, rol_id, sede_id, area_id)
+       select a.id, 'Segunda', 'de Logística', a.email, 'Logística', (select id from roles where codigo = 'COMPRADOR'),
+              (select id from sedes where activo order by creado_en limit 1), (select id from areas where codigo = 'LOG')
+         from auth.users a
+        where a.email = $1::text and not exists (select 1 from usuarios u where u.correo = $1::text)`,
+      [SEGUNDA_DE_LOGISTICA],
+    )
+  }
+  await consulta(`update usuarios set activo = $2 where correo = $1`, [SEGUNDA_DE_LOGISTICA, activa])
+}
+if (corre('cuenta')) {
+  await segundaDeLogistica(true)
+  CUENTAS.logistica_dos = SEGUNDA_DE_LOGISTICA
+}
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
-for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
+for (const [p, c] of Object.entries(CUENTAS)) if (!ids[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco: preparar.sh crea las cuentas locales.`)
 
 /** Lo que hace la sesión de esa cuenta: los disparadores y las funciones leen el usuario de aquí. */
 async function como(puesto) {
@@ -842,7 +875,12 @@ if (corre('cuenta')) {
     ))[0]
   const { puesto: LOGISTICA, nombre: NOMBRE_LOGISTICA } = await cuentaDe('logistica')
   const { puesto: ADMINISTRACION } = await cuentaDe('administracion')
+  const { puesto: PUESTO_DOS, nombre: NOMBRE_DOS } = await cuentaDe('logistica_dos')
   const TRABADA = `Esta pantalla se abrió con la cuenta de ${LOGISTICA}, y en otra pestaña entró la de ${ADMINISTRACION}: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con ${LOGISTICA} en esa pestaña. Si recargas, sigues con ${ADMINISTRACION} y se pierde lo escrito aquí.`
+  // Si las dos son del mismo puesto, cada una va con su nombre.
+  const PRIMERA = `${NOMBRE_LOGISTICA} (${LOGISTICA})`
+  const SEGUNDA = `${NOMBRE_DOS} (${PUESTO_DOS})`
+  const TRABADA_DOS = `Esta pantalla se abrió con la cuenta de ${PRIMERA}, y en otra pestaña entró la de ${SEGUNDA}: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con ${PRIMERA} en esa pestaña. Si recargas, sigues con ${SEGUNDA} y se pierde lo escrito aquí.`
   // Mientras nada dijo quién entró: solo la cookie, que lleva el id y no el puesto.
   const TRABADA_SIN_PUESTO = `Esta pantalla se abrió con la cuenta de ${LOGISTICA}, y en otra pestaña entró otra: desde aquí no se envía nada. Para seguir aquí con lo escrito, vuelve a entrar con ${LOGISTICA} en esa pestaña. Si recargas, sigues con la cuenta que entró y se pierde lo escrito aquí.`
   const TRABA = 'dialog[data-traba-otra-cuenta]'
@@ -875,15 +913,16 @@ if (corre('cuenta')) {
   const unRato = (p = pagina, ms = 1500) => p.evaluate((espera) => new Promise((listo) => setTimeout(listo, espera)), ms)
 
   /**
-   * Administración entra en otra pestaña sin avisar, y en esta se emite antes de
-   * que la base conteste la pregunta de la ventana (se detiene): Next despacha
-   * las acciones de una en una y el envío sale detrás, con la sesión que haya.
-   * Solo pasa sin la cookie a la vista: con ella, el envío no sale. Su respuesta
-   * se pierde: con la traba puesta no se ve «No llegó la respuesta», así que el
-   * corte se da por terminado después (`cortando`).
+   * `otra` entra en otra pestaña sin avisar, y en esta se emite antes de que la
+   * base conteste la pregunta de la ventana (se detiene): Next despacha las
+   * acciones de una en una y el envío sale detrás, con la sesión que haya. Solo
+   * pasa sin la cookie a la vista: con ella, el envío no sale. Su respuesta se
+   * pierde: con la traba puesta no se ve «No llegó la respuesta», así que el
+   * corte se da por terminado después (`cortando`). Con `entra: false` no se
+   * espera la fila: se mira, cuando el servidor ya contestó, que no esté.
    */
-  async function carrera(marca, precio) {
-    await enOtraPestana(contexto, 'administracion', { sinAviso: true })
+  async function carrera(marca, precio, { otra = 'logistica_dos', entra = true } = {}) {
+    await enOtraPestana(contexto, otra, { sinAviso: true })
     corte.retener = d.consulta
     corte.retenerSinIds = true
     const retenidas = corte.retenidas
@@ -899,11 +938,11 @@ if (corre('cuenta')) {
     corte.retener = null
     corte.retenerSinIds = false
     corte.soltar()
-    const [fila] = await hasta(() => d.contar(marca), (r) => r.length > 0, 30000)
+    const [entro] = entra ? await hasta(() => d.contar(marca), (r) => r.length > 0, 30000) : []
     const dijo = limpio(await hasta(deOtraCuenta, (t) => Boolean(t), 15000))
     await fallo
     await unRato(pagina, 300)
-    return { fila, dijo }
+    return { fila: entro ?? (await d.contar(marca))[0], dijo }
   }
 
   // a. Con la ventana abierta y escrita, en otra pestaña entra Administración.
@@ -1091,27 +1130,53 @@ if (corre('cuenta')) {
   comprobar(!destrabada, '[Otra cuenta] sin la cookie, el aviso de la pestaña de Logística destraba la pantalla')
   await cancelar()
 
-  // f. Lo que sale antes de que la base conteste esa pregunta entra con la
-  // sesión de Administración: es el borde que queda sin la cookie. La pantalla
-  // se traba al contestar; de vuelta Logística, la ventana dice cuál quedó y a
-  // nombre de quién.
+  // f. Lo que sale antes de que la base conteste esa pregunta sale con la
+  // sesión que haya: es el borde que queda sin la cookie. Con la de
+  // Administración no entra: compra solo lo de su RQA, y la base le rechaza la
+  // OC directa (migración 20261026160000). La pantalla se traba al contestar; de
+  // vuelta Logística, la ventana no dice que quedó nada y lo que envía entra una
+  // vez, a su nombre.
+  const A = `${SUFIJO}xa`
+  const ca = await carrera(A, '135', { otra: 'administracion', entra: false })
+  comprobar(!ca.fila && ca.dijo === TRABADA,
+    `[Otra cuenta] sin la cookie, lo emitido con la sesión de Administración antes de que la base conteste no entra (compra solo lo de su RQA) y la pantalla se traba al contestar: «${ca.dijo}» (${ca.fila?.numero ?? 'nada'})`)
+  await enOtraPestana(contexto, 'logistica')
+  await hasta(deOtraCuenta, (t) => !t, 15000)
+  await cancelar()
+  cortando = false
+  const preguntadas = corte.consultas
+  await abrir()
+  await hasta(() => corte.consultas, (n) => n > preguntadas, 15000)
+  await unRato(pagina, 300)
+  const nadaQuedo = limpio(await nota())
+  await d.llenar(v, pagina, A, '135')
+  await enviar()
+  const errorA = await esperarVentana(pagina)
+  const deA = await hasta(() => d.contar(A), (r) => r.length > 0, 15000)
+  comprobar(!nadaQuedo && !errorA && deA.length === 1 && (await autor(deA[0].numero)) === CUENTAS.logistica,
+    `[Otra cuenta] de vuelta Logística, la ventana no dice que quedó nada y lo que envía entra una vez, a su nombre (${deA.map((f) => f.numero).join(', ') || 'nada'}${nadaQuedo ? `; dijo «${nadaQuedo}»` : ''}${errorA ? `; avisó «${errorA}»` : ''})`)
+
+  // Con otra persona del mismo puesto, sí entra a su nombre. La traba nombra a
+  // las dos con su nombre, y de vuelta la primera, la ventana dice cuál quedó y
+  // a nombre de quién, también con su nombre: «a nombre de Logística», dicho a
+  // otra persona de Logística, no diría quién fue.
   const C = `${SUFIJO}xc`
   const c = await carrera(C, '140')
-  comprobar(Boolean(c.fila) && (await autor(c.fila.numero)) === CUENTAS.administracion && c.dijo === TRABADA,
-    `[Otra cuenta] sin la cookie, lo emitido antes de que la base conteste entra a nombre de Administración (${c.fila?.numero ?? 'nada'}) y la pantalla se traba al contestar: «${c.dijo}»`)
+  comprobar(Boolean(c.fila) && (await autor(c.fila.numero)) === CUENTAS.logistica_dos && c.dijo === TRABADA_DOS,
+    `[Otra cuenta] sin la cookie, lo emitido antes de que la base conteste entra a nombre de ${SEGUNDA} (${c.fila?.numero ?? 'nada'}) y la traba nombra a las dos con su nombre: «${c.dijo}»`)
   await enOtraPestana(contexto, 'logistica')
   await hasta(deOtraCuenta, (t) => !t, 15000)
   await cancelar()
   cortando = false
   await abrir()
   const aNombre = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
-  comprobar(aNombre === `La orden de compra que se envió antes desde esta pestaña sí quedó, a nombre de ${ADMINISTRACION}, que tenía la sesión: ${c.fila?.numero}. Lo que registres ahora será otra.`,
-    `[Otra cuenta] de vuelta Logística, la ventana dice cuál quedó y a nombre de quién: «${aNombre}»`)
+  comprobar(aNombre === `La orden de compra que se envió antes desde esta pestaña sí quedó, a nombre de ${SEGUNDA}, que tenía la sesión: ${c.fila?.numero}. Lo que registres ahora será otra.`,
+    `[Otra cuenta] de vuelta ${PRIMERA}, la ventana dice cuál quedó y a nombre de quién, con su nombre: «${aNombre}»`)
   await cancelar()
   comprobar((await d.contar(C)).length === 1, `[Otra cuenta] ${c.fila?.numero} está una vez`)
 
-  // g. Otra vez, y «Recargar la pantalla» con Administración: lo ve como suyo y
-  // suelta lo de Logística. Antes la ventana solo miraba lo de la cuenta
+  // g. Otra vez, y «Recargar la pantalla» con la segunda: lo ve como suyo y
+  // suelta lo de la primera. Antes la ventana solo miraba lo de la cuenta
   // pintada, y el reintento entraba dos veces (vigésima pasada).
   const D = `${SUFIJO}xd`
   const dd = await carrera(D, '150')
@@ -1123,7 +1188,7 @@ if (corre('cuenta')) {
   const suya = limpio(await hasta(nota, (t) => /sí quedó/.test(t ?? ''), 15000))
   const deLogistica = await pendientesDe('logistica')
   comprobar(recargada === d.ruta && Boolean(dd.fila) && suya.startsWith(`La orden de compra que enviaste antes sí quedó: ${dd.fila?.numero}.`) && deLogistica.length === 0,
-    `[Otra cuenta] «Recargar la pantalla» la pinta con Administración (${recargada}): dice que ${dd.fila?.numero ?? 'nada'} quedó y suelta lo de Logística: «${suya}» (${deLogistica.length} llaves de Logística)`)
+    `[Otra cuenta] «Recargar la pantalla» la pinta con ${SEGUNDA} (${recargada}): dice que ${dd.fila?.numero ?? 'nada'} quedó y suelta lo de la primera: «${suya}» (${deLogistica.length} llaves de la primera)`)
   await cancelar()
   comprobar((await d.contar(D)).length === 1, `[Otra cuenta] ${dd.fila?.numero} está una vez`)
   await contexto.close()
@@ -1192,6 +1257,7 @@ if (corre('cuenta')) {
     `[Otra cuenta] de vuelta Logística, el comprobante suelto se quita de Storage y la lista se pone al día con ${deK?.numero ?? 'nada'} (${JSON.stringify({ enStorage: quitado.length, enLista })})`)
   await ph.unrouteAll({ behavior: 'ignoreErrors' })
   await ch.close()
+  await segundaDeLogistica(false)
 }
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)

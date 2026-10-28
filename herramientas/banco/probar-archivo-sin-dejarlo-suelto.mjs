@@ -52,7 +52,8 @@
  *      al registrarla: la segunda vez la acción reconoce su propio PDF, abre la
  *      orden y no hay otra. (En el monitor; deja una orden de banco.)
  *   4. La cotización con la respuesta perdida: Ventas la sube y la edita, y
- *      Gerencia la aprueba con su código y su OT. Cada vez, la segunda vuelta
+ *      Gerencia la aprueba con un toque y Administración le da su código y
+ *      carga su OT. Cada vez, la segunda vuelta
  *      reconoce lo suyo, la ventana se cierra como si nada y no hay otra
  *      cotización, versión ni OT. (En el monitor; deja una cotización
  *      aprobada de banco.) Lo escrito antes de que termine la lectura se
@@ -1806,40 +1807,46 @@ async function cotizacionSinRespuesta(viewport) {
   comprobar(corrigio, `[Ventas ${tam}] y la ventana se cierra en vez de decir que la cotización cambió${corrigio ? '' : ` (dijo: ${await alerta(p)})`}`)
   await ventas.contexto.close()
 
-  // 4c. Gerencia la aprueba con su código y su OT.
+  // 4c. Gerencia la aprueba con un toque, y Administración le da su código y carga su OT.
   const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
   const libre = (await uno(`select n from generate_series(9100, 9999) n
                              where not exists (select 1 from public.ordenes_trabajo o where o.numero = n || '-' || $1) order by n desc limit 1`, [anio])).n
   const gerencia = await entrar('gerencia.local@metalwork.test', viewport)
-  const g = gerencia.pagina
-  await ir(g, '/cotizaciones/pdf')
-  await g.locator(`li[id="${cot.id}"]`).getByRole('button', { name: 'Aprobar', exact: true }).click()
+  await ir(gerencia.pagina, '/cotizaciones/pdf')
+  await gerencia.pagina.locator(`li[id="${cot.id}"]`).getByRole('button', { name: 'Aprobar', exact: true }).click()
+  const aprobada = await esperar(async () => (await uno('select estado::text from public.cotizaciones_pdf where id = $1', [cot.id]))?.estado === 'APROBADA', 30000)
+  await gerencia.contexto.close()
+  if (!aprobada) return comprobar(false, `[Gerencia ${tam}] aprueba la cotización con un toque`)
+  const administracion = await entrar('administracion.local@metalwork.test', viewport)
+  const g = administracion.pagina
+  await ir(g, '/cotizaciones/pdf?estado=APROBADA_SIN_OT')
+  await g.locator(`li[id="${cot.id}"]`).getByRole('button', { name: 'Dar código y cargar la OT' }).click()
   const a = g.getByRole('dialog').first()
   await a.waitFor({ timeout: 20000 })
   await a.locator('#eo-codigo-interno').fill(`QA_SUELTO_${sello}/26`)
   // El número escrito antes de leer el PDF se queda, y si no es el del PDF se avisa.
   await a.locator('#eo-numero').fill('1')
   await a.locator(`#aprobar-pdf-${cot.id}`).setInputFiles({ name: `OT-${libre}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}-${anio}`]) })
-  await leido(a, 'Aprobar con código y OT')
+  await leido(a, 'Guardar código y OT')
   const otroNumero = a.getByText(`El PDF dice la OT ${libre}-${anio}: revisa el número.`)
   comprobar((await a.locator('#eo-numero').inputValue()) === '1' && (await otroNumero.count()) === 1,
-    `[Gerencia ${tam}] el número escrito antes de leer el PDF se queda y se avisa que el PDF dice otro («${await a.locator('#eo-numero').inputValue()}»)`)
+    `[Administración ${tam}] el número escrito antes de leer el PDF se queda y se avisa que el PDF dice otro («${await a.locator('#eo-numero').inputValue()}»)`)
   // Una OT que ya existe se dice junto a su número, y el cursor va ahí.
   const repetida = (await uno(`select split_part(numero, '-', 1) as n from public.ordenes_trabajo where numero like '%-' || $1 order by numero limit 1`, [anio]))?.n
   if (repetida) {
     await a.locator('#eo-numero').fill(repetida)
     await a.locator('#eo-fecha').fill(`${anio}-12-15`)
     await a.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
-    await a.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+    await a.getByRole('button', { name: 'Guardar código y OT' }).click()
     const campo = a.locator('#eo-numero')
     await esperar(async () => (await campo.getAttribute('aria-invalid')) === 'true', 30000)
     const junto = limpio(await campo.locator('xpath=ancestor::div[contains(@class,"space-y-1.5")][1]').innerText().catch(() => ''))
     comprobar(junto.includes('Ya hay una OT') && (await a.locator('[role=alert]', { hasText: 'Ya hay una OT' }).count()) === 1,
-      `[Gerencia ${tam}] la OT repetida se dice junto a su número, una sola vez: «${junto}»`)
-    comprobar(await esperar(async () => (await enfocado(g)).id === 'eo-numero', 3000), `[Gerencia ${tam}] y el cursor va al número (${(await enfocado(g)).id})`)
-  } else comprobar(false, `[Gerencia ${tam}] hay una OT de este año para repetir`)
+      `[Administración ${tam}] la OT repetida se dice junto a su número, una sola vez: «${junto}»`)
+    comprobar(await esperar(async () => (await enfocado(g)).id === 'eo-numero', 3000), `[Administración ${tam}] y el cursor va al número (${(await enfocado(g)).id})`)
+  } else comprobar(false, `[Administración ${tam}] hay una OT de este año para repetir`)
   await a.locator('#eo-numero').fill(String(libre))
-  comprobar(await esperar(async () => (await otroNumero.count()) === 0, 3000), `[Gerencia ${tam}] con el número del PDF, el aviso se va`)
+  comprobar(await esperar(async () => (await otroNumero.count()) === 0, 3000), `[Administración ${tam}] con el número del PDF, el aviso se va`)
   // Lo que el PDF no trae no pisa lo escrito: el año se queda si el PDF dice la
   // misma OT sin año. La fecha escrita que no es la del PDF se avisa.
   const conOtroAnio = `${libre}-${Number(anio) - 1}`
@@ -1847,28 +1854,29 @@ async function cotizacionSinRespuesta(viewport) {
   await a.locator('#eo-fecha').fill(`${anio}-12-20`)
   await a.locator(`#aprobar-pdf-${cot.id}`).setInputFiles({ name: `OT-${libre}.pdf`, mimeType: 'application/pdf',
     buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}`, `FECHA DE ENTREGA: 15/12/${anio}`]) })
-  await leido(a, 'Aprobar con código y OT')
+  await leido(a, 'Guardar código y OT')
   const avisosOt = await a.getByText(/El PDF dice la OT/).count()
   comprobar((await a.locator('#eo-numero').inputValue()) === conOtroAnio && avisosOt === 0,
-    `[Gerencia ${tam}] el año escrito se queda si el PDF dice la misma OT sin año («${await a.locator('#eo-numero').inputValue()}», ${avisosOt} avisos)`)
+    `[Administración ${tam}] el año escrito se queda si el PDF dice la misma OT sin año («${await a.locator('#eo-numero').inputValue()}», ${avisosOt} avisos)`)
   const otraFecha = a.getByRole('status').filter({ hasText: `El PDF dice la entrega el 15/12/${anio}: revisa la fecha.` })
   comprobar((await a.locator('#eo-fecha').inputValue()) === `${anio}-12-20` && (await otraFecha.count()) === 1,
-    `[Gerencia ${tam}] la fecha escrita se queda y se avisa la del PDF («${await a.locator('#eo-fecha').inputValue()}»)`)
+    `[Administración ${tam}] la fecha escrita se queda y se avisa la del PDF («${await a.locator('#eo-fecha').inputValue()}»)`)
   await a.locator('#eo-numero').fill(String(libre))
   await a.locator('#eo-fecha').fill(`${anio}-12-15`)
-  comprobar(await esperar(async () => (await otraFecha.count()) === 0, 3000), `[Gerencia ${tam}] con la fecha del PDF, el aviso se va`)
+  comprobar(await esperar(async () => (await otraFecha.count()) === 0, 3000), `[Administración ${tam}] con la fecha del PDF, el aviso se va`)
   await a.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
   const aprobar = await perderLaPrimeraRespuesta(g, 'ruta_pdf')
-  await a.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+  await a.getByRole('button', { name: 'Guardar código y OT' }).click()
   const aprobo = await cerrada(g)
   await g.unrouteAll({ behavior: 'ignoreErrors' })
-  const ots = await base.query(`select o.id from public.ordenes_trabajo o where o.cotizacion_pdf_id = $1`, [cot.id])
+  const ots = await base.query(`select o.id, (select count(*)::int from public.ot_adjuntos j where j.orden_id = o.id and j.tipo = 'ORDEN') as pdfs
+                                   from public.ordenes_trabajo o where o.cotizacion_pdf_id = $1`, [cot.id])
   const estado = (await uno('select estado::text from public.cotizaciones_pdf where id = $1', [cot.id]))?.estado
-  comprobar(aprobar.n === 2 && ots.rows.length === 1 && estado === 'APROBADA',
-    `[Gerencia ${tam}] aprobación sin respuesta: se pregunta otra vez y queda aprobada con una sola OT (${aprobar.n} vueltas, ${ots.rows.length} OT, ${estado})`)
-  comprobar(aprobo, `[Gerencia ${tam}] y la ventana se cierra en vez de decir que ya tiene su OT${aprobo ? '' : ` (dijo: ${await alerta(g)})`}`)
+  comprobar(aprobar.n === 2 && ots.rows.length === 1 && ots.rows[0].pdfs === 1 && estado === 'APROBADA',
+    `[Administración ${tam}] el código y la OT sin respuesta: se pregunta otra vez y queda una sola OT, con su PDF (${aprobar.n} vueltas, ${ots.rows.length} OT, ${ots.rows[0]?.pdfs ?? 0} PDF, ${estado})`)
+  comprobar(aprobo, `[Administración ${tam}] y la ventana se cierra en vez de decir que ya tiene su OT${aprobo ? '' : ` (dijo: ${await alerta(g)})`}`)
   await g.screenshot({ path: join(CAPTURAS, `suelto-cotizacion-aprobada-${tam}.png`) })
-  await gerencia.contexto.close()
+  await administracion.contexto.close()
 }
 
 // ------------------------------------------------- 5. el plano cuya respuesta se pierde
