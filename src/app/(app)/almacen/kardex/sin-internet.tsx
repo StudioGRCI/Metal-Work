@@ -75,7 +75,7 @@ export function SinInternet() {
                   <FileSpreadsheet aria-hidden className="size-5 shrink-0 text-acento" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-texto">Descargar planilla</span>
-                    <span className="block text-[11px] text-texto-suave">El Excel con el catálogo y el saldo de hoy, para llenar sin señal</span>
+                    <span className="block text-xs text-texto-suave">El Excel con el catálogo y el saldo de hoy, para llenar sin señal</span>
                   </span>
                 </a>
               </li>
@@ -88,7 +88,7 @@ export function SinInternet() {
                   <FileUp aria-hidden className="size-5 shrink-0 text-acento" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-texto">Cargar planilla</span>
-                    <span className="block text-[11px] text-texto-suave">La planilla ya llena: revisas qué entra y lo registras</span>
+                    <span className="block text-xs text-texto-suave">La planilla ya llena: revisas qué entra y lo registras</span>
                   </span>
                 </button>
               </li>

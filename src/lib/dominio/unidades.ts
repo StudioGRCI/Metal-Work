@@ -64,10 +64,53 @@ export function nombreDeFlota(unidad: { placa?: string | null; descripcion?: str
 }
 
 /**
+ * Como `nombreDeUnidad`, pero la unidad que no tiene placa ni código a la vista
+ * —o que el puesto no ve— toma el código del que sale su avance: el colaborador
+ * de Diseño no ve la unidad y leía «Unidad sin placa» o «Sin unidad asignada»
+ * (DKS, 15/10/2026: todo se ve por código).
+ */
+export function nombreDeUnidadOCodigo(unidad: UnidadNombrable | null | undefined, codigo: string | null | undefined): string {
+  const nombre = nombreDeUnidad(unidad)
+  return (!unidad || nombre === 'Unidad sin placa') && codigo ? codigo : nombre
+}
+
+/**
  * `true` cuando lo que se está mostrando NO es la placa. Sirve para que la
  * pantalla lo diga en vez de dejar creer que ese texto es una matrícula: quien
  * lee «Chasis 9BM…» tiene que saber que esa unidad todavía no está matriculada.
  */
 export function todaviaSinPlaca(unidad: UnidadNombrable | null | undefined): boolean {
   return Boolean(unidad) && !limpio(unidad?.placa)
+}
+
+/**
+ * Si el nombre que muestra `nombreDeUnidadOCodigo` va tenue: solo cuando es el
+ * FMI o el chasis, que se pueden leer de lejos como matrícula. El código interno
+ * es como se busca la unidad en el taller y va con el color del texto.
+ */
+export function nombreVaTenue(unidad: UnidadNombrable | null | undefined, codigo: string | null | undefined): boolean {
+  if (!todaviaSinPlaca(unidad) || limpio(unidad?.codigo_interno)) return false
+  return nombreDeUnidadOCodigo(unidad, codigo) !== codigo
+}
+
+/**
+ * Los tipos de vehículo como los dice la gente. La base guarda el código sin
+ * tilde («CAMION»); la pantalla escribe «Camión», igual que el formulario.
+ */
+export const TIPOS_VEHICULO = [
+  ['VOLQUETE', 'Volquete'],
+  ['TRACTO', 'Tracto'],
+  ['SEMIRREMOLQUE', 'Semirremolque'],
+  ['CAMION', 'Camión'],
+  ['REMOLQUE', 'Remolque'],
+  ['FURGON', 'Furgón'],
+  ['OTRO', 'Otro'],
+] as const
+
+const NOMBRE_DE_TIPO: Record<string, string> = Object.fromEntries(TIPOS_VEHICULO)
+
+/** «Camión» para «CAMION»; un código que no está en la lista sale tal cual. */
+export function tipoDeVehiculo(codigo: string | null | undefined): string | null {
+  if (!codigo) return null
+  return NOMBRE_DE_TIPO[codigo] ?? codigo
 }

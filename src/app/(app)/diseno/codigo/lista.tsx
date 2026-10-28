@@ -9,7 +9,7 @@ import { codigosDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
-import { fecha } from '@/lib/format'
+import { fecha, parteDe, porcentaje } from '@/lib/format'
 
 import { AbrirCodigo } from './formularios'
 
@@ -61,7 +61,10 @@ export async function ListaDeCodigosDeDiseno({
   params: Record<string, string | string[] | undefined>
   seguimiento?: boolean
 }) {
-  const titulo = seguimiento ? 'Seguimiento por código' : (VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos')
+  // Almacén entra por «Materiales por código» del menú: el título dice lo mismo que el menú.
+  const titulo = seguimiento
+    ? vista === 'materiales' ? 'Materiales por código' : 'Seguimiento por código'
+    : (VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Códigos internos')
   const ruta = seguimiento ? '/seguimiento' : `/diseno/${vista}`
   const enlace = seguimiento ? enlaceSeguimientoCodigo : enlaceDisenoCodigo
   const q = typeof params.q === 'string' ? params.q.trim() : ''
@@ -181,7 +184,8 @@ function Resumen({ c, vista }: { c: CodigoDeDiseno; vista: VistaDiseno }) {
   return (
     <span className="flex flex-col items-end gap-1 text-xs text-texto">
       <span>
-        {c.etapas_terminadas} de {c.etapas} {c.etapas === 1 ? 'terminada' : 'terminadas'}
+        {c.etapas_terminadas} de {c.etapas} {c.etapas === 1 ? 'terminada' : 'terminadas'}{' '}
+        <span className="tabular text-texto-suave">({porcentaje(parteDe(c.etapas_terminadas, c.etapas))})</span>
         {c.etapas_vencidas > 0 && (
           <>
             {' '}

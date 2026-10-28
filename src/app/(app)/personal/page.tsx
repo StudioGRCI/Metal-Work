@@ -93,20 +93,19 @@ export default async function PaginaPersonal({ searchParams }: PageProps<'/perso
           <TablaCabecera>
             <tr>
               <TH>Persona</TH>
-              {/* En el teléfono quedan persona, puesto, alcance y acciones; correo,
-                  área y costo bajan a la celda de al lado en letra chica. */}
+              {/* En el teléfono quedan persona, puesto, alcance y acciones; correo
+                  y área bajan a la celda de al lado en letra chica. */}
               <TH className="hidden sm:table-cell">Correo</TH>
               <TH className="hidden sm:table-cell">Puesto</TH>
               <TH className="hidden sm:table-cell">Área</TH>
               <TH className="hidden sm:table-cell">Alcance</TH>
-              <TH className="hidden text-right sm:table-cell">Costo hora</TH>
               {gestiona && <TH className="text-right">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
             {personal.length === 0 && (
               <SinDatos
-                colSpan={gestiona ? 7 : 6}
+                colSpan={gestiona ? 6 : 5}
                 titulo={filtrando ? 'Nadie coincide con lo que se pidió' : 'Aún no hay personal'}
                 descripcion={
                   filtrando

@@ -41,11 +41,61 @@ export function cantidad(valor: number | string | null | undefined) {
   return n.toLocaleString('es-PE', { maximumFractionDigits: 4 })
 }
 
+/**
+ * «40 %», con el espacio del castellano antes del signo. Es el mismo espacio
+ * normal que llevan los textos escritos a mano («cada 3 tardanzas, 5 %»);
+ * donde no pueda partirse, la clase `whitespace-nowrap`. Antes daba «40%»
+ * y había cuatro formas de escribirlo a mano: desde el 27/10/2026 todo
+ * porcentaje pasa por aquí.
+ */
 export function porcentaje(valor: number | string | null | undefined, decimales = 0) {
-  return `${Number(valor ?? 0).toLocaleString('es-PE', {
+  const n = Number(valor ?? 0)
+  // Mientras quede algo, el redondeo no puede decir «0 %» ni «100 %»: en la
+  // revisión de salida un «100 % · falta S/ 400» deja salir el vehículo con
+  // deuda. Lo que no llega a la unidad que se muestra se dice como «< 1 %» y
+  // lo que ya casi llega, como «> 99 %» (auditoría del 27/10/2026).
+  const paso = 10 ** -decimales
+  if (n > 0 && n < paso / 2) return `< ${numero(paso, decimales)} %`
+  if (n < 100 && n > 100 - paso / 2) return `> ${numero(100 - paso, decimales)} %`
+  return `${n.toLocaleString('es-PE', {
     minimumFractionDigits: decimales,
     maximumFractionDigits: decimales,
-  })}%`
+  })} %`
+}
+
+/** «12.5 %» o «33.33 %» sin ceros de relleno: para pesos y repartos que la gente escribió con decimales. */
+export function porcentajeCorto(valor: number | string | null | undefined) {
+  return `${Number(valor ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 2 })} %`
+}
+
+/**
+ * Qué parte del total es una cifra, en porcentaje: 3 200 de 8 000 es 40.
+ * Sin total (cero o nulo) no hay parte que contar y devuelve null, para que la
+ * pantalla diga «—» en vez de inventar un 0 % o un infinito.
+ */
+export function parteDe(parte: number | string | null | undefined, total: number | string | null | undefined) {
+  const t = Number(total ?? 0)
+  if (!Number.isFinite(t) || t <= 0) return null
+  return (Number(parte ?? 0) / t) * 100
+}
+
+/**
+ * Toda cifra calculada se lee en las dos unidades a la vez (DKS, 27/10/2026),
+ * siempre en el mismo orden que `PorcentajeYCosto`: «40 % · S/ 3,200.00». Sin
+ * porcentaje (sin total contra qué medir) sale solo el monto; sin monto, solo
+ * el porcentaje. Para texto plano (pies, títulos); en JSX va la pieza.
+ */
+export function porcentajeYMonto(
+  pct: number | string | null | undefined,
+  monto: number | string | null | undefined,
+  codigo: CodigoMoneda = 'PEN',
+  decimales = 0,
+) {
+  const partes = [
+    pct === null || pct === undefined ? null : porcentaje(pct, decimales),
+    monto === null || monto === undefined ? null : moneda(monto, codigo),
+  ].filter((p): p is string => p !== null)
+  return partes.length ? partes.join(' · ') : '—'
 }
 
 /**
@@ -248,12 +298,17 @@ export function etiquetasDePuesto<T extends { id: string; puesto?: string | null
  * de noche ya es la de mañana.
  */
 export function hoyLima(): string {
+  return diaLima(new Date())
+}
+
+/** El día en el taller (America/Lima) de un instante, como YYYY-MM-DD. */
+export function diaLima(valor: string | Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: ZONA,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date())
+  }).format(new Date(valor))
 }
 
 /** El tamaño de un archivo para leerlo de un vistazo: «2.4 MB», «350 KB». */

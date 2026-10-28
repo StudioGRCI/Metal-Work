@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { TIPOS_REPORTE_PERMISO } from '@/lib/dominio/rrhh'
 import { editaComoRrhh, exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -14,10 +15,16 @@ function dato(formulario: FormData, nombre: string) {
 
 const SIN_PERMISO = 'No tienes permiso para gestionar los permisos del personal.'
 
-/** El saldo de horas extras cambia con cada justificación: se repintan las dos pantallas. */
+/**
+ * El saldo de horas extras cambia con cada justificación, y lo descontado entra
+ * al próximo pago: se repintan las pantallas que lo muestran.
+ */
 function repintar() {
   revalidatePath('/rrhh/permisos')
   revalidatePath('/rrhh/horas-extras')
+  revalidatePath('/rrhh/observaciones')
+  revalidatePath('/rrhh/pagos-oficina')
+  revalidatePath('/planilla-diaria')
 }
 
 /** RR. HH. registra el permiso que pidió una persona. Mismo permiso que `rrhh_registrar_permiso` (`rrhh.permisos`). */
@@ -88,6 +95,65 @@ export async function justificarPermiso(_previo: unknown, formulario: FormData):
   return { ok: true, mensaje: 'Justificado con sus horas extras: salen de su saldo.' }
 }
 
+/**
+ * Descontar lo que falta justificar de un permiso que ya pasó: en taller esas
+ * horas no se pagan, en la oficina se restan de su próximo pago. Mismo permiso
+ * que `rrhh_descontar_permiso` (`rrhh.permisos`).
+ */
+export async function descontarPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!editaComoRrhh(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
+  const analisis = z.object({ id: z.guid(), permiso_id: z.guid() }).safeParse({ id: dato(formulario, 'id'), permiso_id: dato(formulario, 'permiso_id') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_descontar_permiso', { p_id: d.id, p_permiso_id: d.permiso_id })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'No quedó descontado. Recarga la pantalla.' }
+
+  repintar()
+  return { ok: true, mensaje: 'Descontado: se resta en su próximo pago.' }
+}
+
+/**
+ * Reportar un permiso que no se justificó: queda en las observaciones de la
+ * persona con el motivo «Permiso sin justificar». Mismo permiso que
+ * `rrhh_reportar_permiso` (`rrhh.permisos`).
+ */
+export async function reportarPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!editaComoRrhh(perfil, 'rrhh.permisos')) return { ok: false, error: SIN_PERMISO }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      permiso_id: z.guid(),
+      tipo: z.enum(TIPOS_REPORTE_PERMISO, 'Elige si queda como observación o como amonestación.'),
+      nota: z.string().max(500, 'La nota pasa de 500 caracteres.'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      permiso_id: dato(formulario, 'permiso_id'),
+      tipo: dato(formulario, 'tipo'),
+      nota: dato(formulario, 'nota'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rrhh_reportar_permiso', {
+    p_id: d.id,
+    p_permiso_id: d.permiso_id,
+    p_tipo: d.tipo,
+    p_nota: d.nota || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'No quedó reportado. Recarga la pantalla.' }
+
+  repintar()
+  return { ok: true, mensaje: 'Reportado: queda en sus observaciones.' }
+}
+
 /** Anular un permiso con su motivo: lo justificado vuelve al saldo. Mismo permiso que `rrhh_anular_permiso`. */
 export async function anularPermiso(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -106,5 +172,5 @@ export async function anularPermiso(_previo: unknown, formulario: FormData): Pro
   if (data !== analisis.data.id) return { ok: false, error: 'No se anuló. Recarga la pantalla.' }
 
   repintar()
-  return { ok: true, mensaje: 'Permiso anulado. Lo justificado volvió a su saldo de horas.' }
+  return { ok: true, mensaje: 'Permiso anulado. Lo justificado volvió a su saldo de horas y, si ya se restó algo por él, se devuelve en su próximo pago.' }
 }

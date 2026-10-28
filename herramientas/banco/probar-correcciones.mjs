@@ -3,7 +3,10 @@
  * 20261016602000), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Requerimientos corrige el material y la cantidad de un insumo de su RQ:
- *      sin justificante el navegador no envía; con él, queda en el historial.
+ *      sin justificante el navegador no envía; con él, queda en el historial y
+ *      la pantalla dice que el aviso le llegó a Almacén. Otro RQ, que Almacén
+ *      ya dejó por comprar, le avisó «Por comprar» y, al corregirlo, la
+ *      pantalla dice que el aviso le llegó a Logística (DKS, 26/10/2026).
  *   2. Almacén ve la corrección en Atención, con su justificante, y no corrige.
  *   3. Logística corrige el precio de una línea de la OC, con su justificante.
  *   4. Contabilidad corrige la factura registrada: le suma la otra OC del mismo
@@ -136,6 +139,15 @@ await como('requerimientos', `select public.emitir_requerimiento($1, 'OPERACION'
   JSON.stringify([{ material_id: mat[0], cantidad: 4 }]),
 ])
 const rq = await uno('select numero from public.requerimientos where id = $1', [rqId])
+// Otro RQ que Almacén ya revisó y no tiene: queda por comprar, con su aviso a Requerimientos.
+const rq2Id = (await uno('select gen_random_uuid() as id')).id
+await como('requerimientos', `select public.emitir_requerimiento($1, 'OPERACION', $2, 'QA_CORR_1', 'Barandas de prueba del banco', null, $3::jsonb)`, [
+  rq2Id,
+  area,
+  JSON.stringify([{ material_id: mat[0], cantidad: 3 }]),
+])
+await como('almacen', `select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]', null)`, [rq2Id])
+const rq2 = await uno('select numero, estado from public.requerimientos where id = $1', [rq2Id])
 
 const ruc = (await uno(`select n::text as ruc from generate_series(20100038200::bigint, 20100038299::bigint) n where public.ruc_es_valido(n::text) limit 1`)).ruc
 const proveedor = (await uno(
@@ -299,6 +311,8 @@ try {
     const sueltos = await consulta(`select o.name from storage.objects o where o.bucket_id = 'justificantes-correccion' and o.name like $1
                                       and not exists (select 1 from public.correcciones c where c.justificante_ruta = o.name)`, [`%${rqId}%`])
     comprobar(sueltos.length === 0, `y ningún justificante suelto (${sueltos.length})`)
+    // «A Almacén le llegó el aviso.» no sale aquí: la respuesta de la corrección se perdió y la
+    // ventana se cerró con «ya quedó». A quién le llegó el aviso lo mira el segundo RQ, más abajo.
     await pagina.reload({ waitUntil: 'networkidle' })
     // Desde el 2026-10-20 la lista de RQ son tarjetas, no filas.
     const fila = pagina.locator(`[data-rq="${rq.numero}"]`)
@@ -306,6 +320,34 @@ try {
     await fila.getByText('Corregido una vez').click()
     comprobar((await fila.getByText(/Insumo 1: Plancha LAC 2 mm QA .* → Plancha LAC 3 mm QA/).count()) === 1, 'el historial dice qué insumo cambió')
     await pagina.screenshot({ path: `${CAPTURAS}/correccion-rq.png`, fullPage: true })
+
+    // El RQ que Almacén dejó por comprar: le avisó a Requerimientos, y corregirlo avisa a Logística.
+    comprobar(rq2.estado === 'SIN_STOCK', `el segundo RQ quedó por comprar (${rq2.estado})`)
+    const porComprar = await uno(
+      `select count(*)::int as n, max(cuerpo) as cuerpo from public.notificaciones where usuario_id = $1 and origen_id = $2 and titulo = $3`,
+      [ids.requerimientos, rq2Id, `Por comprar: ${rq2.numero}`],
+    )
+    comprobar(porComprar.n === 1, `a Requerimientos le llegó «Por comprar: ${rq2.numero}» (${porComprar.cuerpo})`)
+    await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' })
+    comprobar((await pagina.getByText(`Por comprar: ${rq2.numero}`).count()) >= 1, 'y lo ve en sus avisos')
+    await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: `Corregir el requerimiento ${rq2.numero}` }).click()
+    const v2 = pagina.locator('[role="dialog"]')
+    await v2.locator('[id^="rq-corr-cant-"]').first().fill('2')
+    await v2.locator('[id^="correccion-motivo-"]').fill('Basta con dos barandas, según el supervisor')
+    await v2.locator('[id^="correccion-justificante-"]').setInputFiles(justificante)
+    await v2.getByRole('button', { name: 'Corregir', exact: true }).click()
+    const alerta2 = await terminarVentana(pagina)
+    const linea2 = await uno('select cantidad::float as cantidad from public.requerimiento_lineas where requerimiento_id = $1 and item = 1', [rq2Id])
+    comprobar(!alerta2 && linea2.cantidad === 2, `Requerimientos corrige la cantidad del RQ por comprar ${alerta2 ? `(${alerta2})` : ''}`)
+    const dicho2 = await pagina.locator(`[data-rq="${rq2.numero}"] [role="status"]`).innerText().catch(() => '')
+    comprobar(dicho2.includes('A Logística le llegó el aviso.'), `la pantalla dice que el aviso le llegó a Logística: «${dicho2}»`)
+    const aLogistica = await uno(
+      `select count(*)::int as n from public.notificaciones where usuario_id = $1 and origen_id = $2 and titulo = $3`,
+      [ids.logistica, rq2Id, `Requerimiento corregido: ${rq2.numero}`],
+    )
+    comprobar(aLogistica.n === 1, 'y a Logística de verdad le llegó')
+    await pagina.screenshot({ path: `${CAPTURAS}/correccion-rq-por-comprar.png`, fullPage: true })
     await contexto.close()
   }
 

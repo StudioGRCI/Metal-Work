@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import { tramos } from '@/components/ui/indicador'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
@@ -11,8 +12,8 @@ import { historiaDeUnidad, obtenerUnidad, type HistoriaDeUnidad } from '@/lib/da
 import { TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { dias, diasEntre } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { fecha, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
+import { nombreDeUnidad, tipoDeVehiculo } from '@/lib/dominio/unidades'
+import { fecha, hoyLima, moneda, numero, porcentaje, porcentajeYMonto } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 import { esUuid } from '@/lib/utils'
@@ -105,7 +106,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
             <Dato etiqueta="N.º de chasis" valor={unidad.numero_chasis} />
             <Dato etiqueta="N.º de motor" valor={unidad.numero_motor} />
             <Dato etiqueta="Vehículo" valor={vehiculo} />
-            <Dato etiqueta="Tipo" valor={unidad.tipo_vehiculo} />
+            <Dato etiqueta="Tipo" valor={tipoDeVehiculo(unidad.tipo_vehiculo)} />
             <Dato etiqueta="Carrocería" valor={carroceria?.nombre} />
             <Dato etiqueta="Capacidad" valor={capacidad} />
             <Dato etiqueta="Color" valor={unidad.color} />
@@ -133,9 +134,13 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
               />
               {verMargen && (
                 <Cifra
-                  etiqueta="Margen"
+                  etiqueta={delCodigo?.cierre ? 'Margen al cierre' : 'Margen a hoy'}
                   valor={delCodigo?.margenPct != null ? porcentaje(delCodigo.margenPct, 1) : '—'}
-                  pie={delCodigo?.margenPct != null ? 'Sobre la cotización aprobada sin IGV' : 'Sin cotización aprobada con precio, o sin costo todavía'}
+                  pie={
+                    delCodigo?.margenPct != null
+                      ? `${delCodigo.margenPen != null ? `${moneda(delCodigo.margenPen)} · ` : ''}sobre la cotización aprobada sin IGV`
+                      : 'Sin cotización aprobada con precio, o sin costo todavía'
+                  }
                   tono={delCodigo?.margenPct != null && delCodigo.margenPct < 0 ? 'peligro' : undefined}
                 />
               )}
@@ -227,7 +232,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                                   <span className={costo.pen > 0 ? 'text-texto' : 'text-texto-tenue'}>{moneda(costo.pen)}</span>
                                   {costo.margenPct !== null && (
                                     <span className={cn('block text-[11px]', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                      Margen {porcentaje(costo.margenPct, 1)}
+                                      {costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                     </span>
                                   )}
                                 </>
@@ -325,7 +330,7 @@ function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4">
       <p className="text-xs text-texto-suave">{etiqueta}</p>
       <p className={cn('tabular mt-1 text-lg font-semibold', tono === 'aviso' ? 'text-aviso' : tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</p>
-      <p className="text-xs text-texto-tenue">{pie}</p>
+      <p className="text-xs text-texto-tenue">{tramos(pie)}</p>
     </div>
   )
 }

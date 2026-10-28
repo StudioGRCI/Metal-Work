@@ -13,7 +13,6 @@ export type PersonaEnLista = {
   telefono: string | null
   documento: string | null
   es_operario: boolean
-  costo_hora: number
   activo: boolean
   rol: { id: string; codigo: string; nombre: string } | null
   area: { id: string; codigo: string; nombre: string } | null
@@ -53,23 +52,25 @@ export async function listarPersonal(filtros: { busqueda?: string; estado?: stri
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo listar el personal: ${error.message}`)
-  const personas = (data ?? []) as unknown as Omit<PersonaEnLista, 'documento' | 'costo_hora'>[]
+  const personas = (data ?? []) as unknown as Omit<PersonaEnLista, 'documento'>[]
 
-  // El DNI y el costo por hora viven aparte (migración 20261020163000): `usuarios`
-  // la lee toda cuenta, y esta tabla solo RR. HH. y quien administra el personal.
-  // Para cualquier otro, el RLS la devuelve vacía y la ficha sale sin esos dos.
-  const reservados = new Map<string, { documento: string | null; costo_hora: number }>()
+  // El DNI vive aparte (migración 20261020163000): `usuarios` la lee toda
+  // cuenta, y esta tabla solo RR. HH. y quien administra el personal. Para
+  // cualquier otro, el RLS la devuelve vacía y la ficha sale sin él. El costo
+  // por hora de la cuenta se queda en la tabla, pero ya no se muestra (DKS,
+  // 2026-10-26): la mano de obra sale de la ficha y del tareo.
+  const reservados = new Map<string, { documento: string | null }>()
   const ids = personas.map((p) => p.id)
   for (let i = 0; i < ids.length; i += 150) {
     const { data: tanda, error: errorReservados } = await supabase
       .from('usuario_datos_reservados')
-      .select('usuario_id, documento, costo_hora')
+      .select('usuario_id, documento')
       .in('usuario_id', ids.slice(i, i + 150))
-    if (errorReservados) throw new Error(`No se pudo leer el DNI y el costo del personal: ${errorReservados.message}`)
-    for (const r of tanda ?? []) reservados.set(r.usuario_id, { documento: r.documento, costo_hora: Number(r.costo_hora) })
+    if (errorReservados) throw new Error(`No se pudo leer el DNI del personal: ${errorReservados.message}`)
+    for (const r of tanda ?? []) reservados.set(r.usuario_id, { documento: r.documento })
   }
 
-  return personas.map((p) => ({ ...p, documento: null, costo_hora: 0, ...reservados.get(p.id) }))
+  return personas.map((p) => ({ ...p, documento: null, ...reservados.get(p.id) }))
 }
 
 /** Los catálogos que necesita el formulario de alta. */

@@ -1860,6 +1860,95 @@ export type Database = {
           }
         ]
       }
+      descuentos_del_pago: {
+        Row: {
+          id: string
+          trabajador_id: string
+          concepto: string
+          fecha: string
+          horas: number | null
+          tardanzas: number | null
+          porcentaje: number | null
+          regla_cada: number | null
+          regla_porcentaje: number | null
+          base: number
+          monto: number
+          detalle: string
+          planilla_persona_id: string | null
+          oficina_pago_id: string | null
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          trabajador_id: string
+          concepto: string
+          fecha: string
+          horas?: number | null
+          tardanzas?: number | null
+          porcentaje?: number | null
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
+          base: number
+          monto: number
+          detalle: string
+          planilla_persona_id?: string | null
+          oficina_pago_id?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          trabajador_id?: string
+          concepto?: string
+          fecha?: string
+          horas?: number | null
+          tardanzas?: number | null
+          porcentaje?: number | null
+          regla_cada?: number | null
+          regla_porcentaje?: number | null
+          base?: number
+          monto?: number
+          detalle?: string
+          planilla_persona_id?: string | null
+          oficina_pago_id?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "descuentos_del_pago_oficina_pago_id_fkey"
+            columns: ["oficina_pago_id"]
+            isOneToOne: false
+            referencedRelation: "oficina_pagos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "descuentos_del_pago_planilla_persona_id_fkey"
+            columns: ["planilla_persona_id"]
+            isOneToOne: false
+            referencedRelation: "planilla_diaria_personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "descuentos_del_pago_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "descuentos_del_pago_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       detracciones_servicio: {
         Row: {
           codigo: string
@@ -4003,6 +4092,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          permiso_id: string | null
         }
         Insert: {
           id?: string
@@ -4019,6 +4109,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          permiso_id?: string | null
         }
         Update: {
           id?: string
@@ -4035,6 +4126,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          permiso_id?: string | null
         }
         Relationships: [
           {
@@ -4042,6 +4134,13 @@ export type Database = {
             columns: ["anulado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "observaciones_personal_permiso_id_fkey"
+            columns: ["permiso_id"]
+            isOneToOne: false
+            referencedRelation: "permisos_personal"
             referencedColumns: ["id"]
           },
           {
@@ -6957,6 +7056,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          destino: string
         }
         Insert: {
           id?: string
@@ -6976,6 +7076,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          destino?: string
         }
         Update: {
           id?: string
@@ -6995,6 +7096,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          destino?: string
         }
         Relationships: [
           {
@@ -7196,6 +7298,77 @@ export type Database = {
           descripcion?: string
         }
         Relationships: []
+      }
+      permisos_descontados: {
+        Row: {
+          id: string
+          permiso_id: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          permiso_id: string
+          trabajador_id: string
+          fecha: string
+          horas: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          permiso_id?: string
+          trabajador_id?: string
+          fecha?: string
+          horas?: number
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permisos_descontados_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permisos_descontados_permiso_id_fkey"
+            columns: ["permiso_id"]
+            isOneToOne: false
+            referencedRelation: "permisos_personal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permisos_descontados_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permisos_descontados_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       permisos_personal: {
         Row: {
@@ -7429,6 +7602,9 @@ export type Database = {
           boleta_entregada_en: string | null
           creado_en: string
           actualizado_en: string
+          horas_permiso: number
+          monto_permiso: number
+          monto_descuentos: number
         }
         Insert: {
           id?: string
@@ -7451,6 +7627,9 @@ export type Database = {
           boleta_entregada_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          horas_permiso?: number
+          monto_permiso?: number
+          monto_descuentos?: number
         }
         Update: {
           id?: string
@@ -7473,6 +7652,9 @@ export type Database = {
           boleta_entregada_en?: string | null
           creado_en?: string
           actualizado_en?: string
+          horas_permiso?: number
+          monto_permiso?: number
+          monto_descuentos?: number
         }
         Relationships: [
           {
@@ -11721,6 +11903,17 @@ export type Database = {
         }
         Returns: string
       }
+      avance_de_ordenes: {
+        Args: {
+          p_ordenes: string[] | null
+        }
+        Returns: {
+          orden_id: string | null
+          avance: number | null
+          codigo_interno: string | null
+          del_codigo: boolean | null
+        }[]
+      }
       avance_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -11791,6 +11984,12 @@ export type Database = {
         Returns: null
       }
       avisar_pago_directo: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: null
+      }
+      avisar_pago_por_confirmar: {
         Args: {
           p_compras: string[] | null
         }
@@ -11936,6 +12135,22 @@ export type Database = {
         }
         Returns: string
       }
+      cargar_codigo_y_ot_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
+          p_codigo_interno: string | null
+          p_numero_ot: string | null
+          p_tipo_unidad: Database["public"]["Enums"]["tipo_unidad_carroceria"] | null
+          p_fecha_entrega: string | null
+          p_ruta_pdf: string | null
+          p_nombre_pdf: string | null
+          p_tamano_pdf: number | null
+          p_marca?: string | null
+          p_modelo?: string | null
+        }
+        Returns: string
+      }
       cargar_cronograma: {
         Args: {
           p_orden: string | null
@@ -12029,6 +12244,15 @@ export type Database = {
           p_texto: string | null
         }
         Returns: string
+      }
+      clientes_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cliente: string | null
+        }[]
       }
       codigo_interno_actividades: {
         Args: {
@@ -12369,6 +12593,27 @@ export type Database = {
         }[]
       }
       codigo_interno_lineas_nota_credito: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fuente: string | null
+          fecha: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          horas: number | null
+          precio_unitario: number | null
+          moneda: string | null
+          monto: number | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+        }[]
+      }
+      codigo_interno_lineas_planilla: {
         Args: {
           p_codigo: string | null
         }
@@ -12801,6 +13046,10 @@ export type Database = {
           moneda: string | null
         }[]
       }
+      compra_solo_su_rqa: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       compra_tiene_comprobante: {
         Args: {
           p_compra: string | null
@@ -13016,6 +13265,12 @@ export type Database = {
           alcanza: boolean | null
         }[]
       }
+      con_punto_final: {
+        Args: {
+          p_texto: string | null
+        }
+        Returns: string
+      }
       conciliar_pago_directo: {
         Args: {
           p_compras: string[] | null
@@ -13118,6 +13373,14 @@ export type Database = {
           p_cotizacion: string | null
         }
         Returns: boolean
+      }
+      cotizaciones_con_factura: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+        }[]
       }
       cotizaciones_para_facturar: {
         Args: Record<PropertyKey, never>
@@ -13283,6 +13546,28 @@ export type Database = {
           p_monto: number | null
         }
         Returns: string
+      }
+      descuentos_pendientes: {
+        Args: {
+          p_hasta?: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          concepto: string | null
+          fecha: string | null
+          horas: number | null
+          tardanzas: number | null
+          porcentaje: number | null
+          base: number | null
+          monto: number | null
+          detalle: string | null
+          regla_cada: number | null
+          regla_porcentaje: number | null
+        }[]
+      }
+      descuentos_vigentes: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
       }
       despachar_material: {
         Args: {
@@ -14250,7 +14535,21 @@ export type Database = {
         }
         Returns: string
       }
+      mes_en_texto: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: string
+      }
       meses_sin_pagos_oficina: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          periodo: string | null
+        }[]
+      }
+      meses_sin_planilla_taller: {
         Args: {
           p_codigo: string | null
         }
@@ -14415,6 +14714,12 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: string
+      }
+      oc_nace_de_un_rqa: {
+        Args: {
+          p_orden_compra: string | null
+        }
+        Returns: boolean
       }
       orden_compra_de_ruta: {
         Args: {
@@ -14656,6 +14961,46 @@ export type Database = {
         }
         Returns: string
       }
+      permisos_por_dia: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          fecha: string | null
+          taller: boolean | null
+          horas_permiso: number | null
+          justificadas: number | null
+          descontadas: number | null
+          ordinarias: number | null
+          pagadas: number | null
+          a_pagar: number | null
+          por_pagar: number | null
+          a_descontar: number | null
+        }[]
+      }
+      planilla_ajuste_desde: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      planilla_al_costo: {
+        Args: {
+          p_planilla?: string | null
+        }
+        Returns: {
+          planilla_id: string | null
+          periodo: string | null
+          persona_id: string | null
+          nombre: string | null
+          trabajador_id: string | null
+          como: string | null
+          costo: number | null
+          horas: number | null
+          costo_horas: number | null
+          recargo: number | null
+          ajuste: number | null
+          codigos: number | null
+          mes_con_horas: boolean | null
+        }[]
+      }
       planilla_diaria_archivo: {
         Args: {
           p_planilla_id: string | null
@@ -14720,6 +15065,20 @@ export type Database = {
           p_cliente: string | null
         }
         Returns: null
+      }
+      precio_de_salida: {
+        Args: {
+          p_material: string | null
+          p_en: string | null
+          p_precio?: number | null
+          p_moneda?: string | null
+          p_salida?: string | null
+        }
+        Returns: {
+          precio: number | null
+          moneda: string | null
+          origen: string | null
+        }[]
       }
       presupuesto_ot: {
         Args: {
@@ -15299,6 +15658,7 @@ export type Database = {
           p_ruta: string | null
           p_caja: string | null
           p_monto_cuenta: number | null
+          p_destino: string | null
         }
         Returns: string
       }
@@ -15784,6 +16144,44 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_descontar_permiso: {
+        Args: {
+          p_id: string | null
+          p_permiso_id: string | null
+        }
+        Returns: string
+      }
+      rrhh_descuentos_de_tardanzas: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          descontado: number | null
+          por_descontar: number | null
+          documentos: string | null
+        }[]
+      }
+      rrhh_descuentos_desde: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      rrhh_descuentos_por_aplicar: {
+        Args: {
+          p_hasta?: string | null
+        }
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          planilla: string | null
+          activo: boolean | null
+          concepto: string | null
+          fecha: string | null
+          horas: number | null
+          monto: number | null
+          detalle: string | null
+        }[]
+      }
       rrhh_dni_de_trabajadores: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -15884,6 +16282,37 @@ export type Database = {
         }
         Returns: string
       }
+      rrhh_permisos_con_estado: {
+        Args: {
+          p_mes?: string | null
+        }
+        Returns: {
+          id: string | null
+          trabajador_id: string | null
+          nombre: string | null
+          cargo: string | null
+          activo: boolean | null
+          planilla: string | null
+          fecha: string | null
+          horas: number | null
+          motivo: string | null
+          justificadas: number | null
+          descontadas: number | null
+          por_justificar: number | null
+          saldo: number | null
+          reportado: boolean | null
+          ingreso: string | null
+          salida: string | null
+          horas_reporte: number | null
+          horas_pagadas: number | null
+          descontado: number | null
+          valor_hora: number | null
+          por_restar: number | null
+          creado_en: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
       rrhh_permisos_personal: {
         Args: {
           p_mes?: string | null
@@ -15903,6 +16332,39 @@ export type Database = {
           creado_en: string | null
           anulado_en: string | null
           motivo_anulacion: string | null
+        }[]
+      }
+      rrhh_planilla_al_costo: {
+        Args: {
+          p_planilla: string | null
+        }
+        Returns: {
+          persona_id: string | null
+          trabajador_id: string | null
+          trabajador: string | null
+          como: string | null
+          costo: number | null
+          horas: number | null
+          costo_horas: number | null
+          recargo: number | null
+          ajuste: number | null
+          entra: number | null
+          codigos: number | null
+          mes_con_horas: boolean | null
+        }[]
+      }
+      rrhh_recargo_extras_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          codigo: string | null
+          fecha: string | null
+          documento: string | null
+          planilla_id: string | null
+          personas: number | null
+          horas: number | null
+          monto: number | null
         }[]
       }
       rrhh_registrar_observacion: {
@@ -15948,6 +16410,15 @@ export type Database = {
           p_codigo_interno: string | null
           p_horas: number | null
           p_labor?: string | null
+        }
+        Returns: string
+      }
+      rrhh_reportar_permiso: {
+        Args: {
+          p_id: string | null
+          p_permiso_id: string | null
+          p_tipo: string | null
+          p_nota?: string | null
         }
         Returns: string
       }
@@ -16029,6 +16500,24 @@ export type Database = {
           p_material: string | null
         }
         Returns: number
+      }
+      saldos_de_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          moneda: string | null
+          total: number | null
+          detraccion: number | null
+          detraccion_en_moneda: number | null
+          al_proveedor: number | null
+          pagado_proveedor: number | null
+          pagado_detraccion: number | null
+          saldo_proveedor: number | null
+          saldo_detraccion: number | null
+          cancelada: boolean | null
+        }[]
       }
       salidas_a_recojo: {
         Args: Record<PropertyKey, never>
@@ -16368,6 +16857,13 @@ export type Database = {
           p_compra: string | null
         }
         Returns: number
+      }
+      trabajador_de_planilla: {
+        Args: {
+          p_nombre: string | null
+          p_documento: string | null
+        }
+        Returns: string
       }
       transitar_informe_diseno: {
         Args: {

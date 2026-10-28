@@ -152,8 +152,11 @@ export async function guardarUnidad(
   const editando = Boolean(v.id)
   // Corrigen la unidad Ventas (`clientes.editar`) y Diseño e Ingeniería
   // (`diseno.unidades`), los mismos permisos que acepta la política de
-  // `unidades`; el alta sigue siendo de Ventas, en la ficha del cliente.
-  if (!puede(perfil, editando ? ['clientes.editar', 'diseno.unidades'] : 'clientes.editar')) {
+  // `unidades`. El alta la hace quien registra clientes (`clientes.crear` o
+  // `clientes.editar`, como la política `crear_unidades` desde la
+  // 20261026160000): Administración da de alta la unidad del cliente nuevo en
+  // la orden sin cotización.
+  if (!puede(perfil, editando ? ['clientes.editar', 'diseno.unidades'] : ['clientes.crear', 'clientes.editar'])) {
     return { ok: false, error: editando ? 'No tienes permiso para editar unidades.' : 'No tienes permiso para registrar unidades.' }
   }
 

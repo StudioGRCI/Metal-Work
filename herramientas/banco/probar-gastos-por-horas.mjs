@@ -168,7 +168,7 @@ try {
     const [parte] = await consulta(`select parte from public.horas_por_codigo_del_mes($1::date) h,
                                            lateral (select round(100 * h.horas / h.total, 2) as parte) p where h.codigo = $2`, [`${mes}-01`, CODIGO])
     const filaUnidad = limpio(await tarjeta.locator('tr', { hasText: CODIGO }).innerText())
-    comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`),
+    comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`),
       `«Cómo se reparte» lista la unidad con 8 h y su ${parte.parte} %: «${filaUnidad}»`)
     const [oficina] = await consulta(`select personas, monto from public.sueldos_oficina_del_mes($1::date)`, [`${mes}-01`])
     const ficha = limpio(await pagina.locator('[data-sueldo-oficina]').innerText())

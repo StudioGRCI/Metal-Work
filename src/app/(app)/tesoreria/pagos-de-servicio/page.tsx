@@ -12,10 +12,10 @@ import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacio
 import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { resumenDetraccion } from '@/lib/dominio/detraccion'
+import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
-import { fecha, hoyLima, moneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularPagoServicio, PagarServicio } from '../formularios'
@@ -27,8 +27,10 @@ export const metadata = { title: 'Pagos de servicio' }
  * Los trabajos de terceros —arenado, torno, pintura— que Logística encargó con
  * su orden de servicio y Gerencia aprobó (migración 20261015120000). Tesorería
  * los paga contra la factura del proveedor, con el voucher; primero los que ya
- * volvieron conformes. Si la OS lleva detracción, esa parte se deposita en el
- * Banco de la Nación y al proveedor se le paga el resto (20261015141000).
+ * volvieron conformes. Lo que se debe es el total con IGV; si la OS lleva
+ * detracción, esa parte se deposita en el Banco de la Nación y al proveedor se le
+ * paga el resto (20261015141000). Cuánto falta de cada parte lo da la base
+ * (`saldos_de_servicios`, migración 20261026100000).
  * Al pagar se ven la factura y el contrato que adjuntó Logística a la OS y las
  * cuentas del proveedor; si la factura llega a Tesorería, la adjunta aquí
  * (migración 20261020210000).
@@ -54,7 +56,7 @@ export default async function PaginaPagosDeServicio() {
     .sort((a, b) => Number(b.estado === 'CONFORME') - Number(a.estado === 'CONFORME'))
   const pagados = servicios.filter((s) => s.cancelada)
   const conformes = porPagar.filter((s) => s.estado === 'CONFORME').length
-  const resumen = resumenPorMoneda(porPagar.map((s) => ({ moneda: s.moneda, monto: saldoDe(s) })), ['orden', 'órdenes'])
+  const resumen = resumenPorMoneda(porPagar.map((s) => ({ moneda: s.moneda, monto: faltaDelServicio(s.saldo) })), ['orden', 'órdenes'])
 
   return (
     <AvisoDeLaCaja>
@@ -96,8 +98,6 @@ export default async function PaginaPagosDeServicio() {
   )
 }
 
-const saldoDe = (s: ServicioPorPagar) => Math.max(Number(s.monto ?? 0) - Number(s.pagado ?? 0), 0)
-
 function Servicio({
   servicio: s,
   paga,
@@ -116,21 +116,29 @@ function Servicio({
   cajas: Map<string, CajaDelPago> | undefined
 }) {
   const m = codigoMoneda(s.moneda)
-  const saldo = saldoDe(s)
+  const saldo = s.saldo
+  const pagado = saldo.pagadoProveedor > 0 || saldo.pagadoDetraccion > 0
+  const conDetraccion = saldo.detraccion > 0
+  // Pagada entera a cuenta: un pago más no la cancela, se rehace el último.
+  const todoPagado = !s.cancelada && pagado && saldo.saldoProveedor <= 0 && saldo.saldoDetraccion <= 0
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
   const documentos = s.documentos.map((d) => ({ clave: d.id, etiqueta: etiquetaDocumentoServicio(d), url: d.url }))
   const comprobante = s.documentos.some((d) => d.tipo === 'FACTURA' || d.tipo === 'BOLETA' || d.tipo === 'RECIBO')
   const sinCuentas = verCuentas ? 'El proveedor no tiene cuentas activas en Proveedores: pídeselas a Logística.' : null
+  // La detracción va a su cuenta del Banco de la Nación: al elegirla, solo esa.
+  const cuentasDetraccion = s.cuentas.filter((c) => /naci[oó]n/i.test(c.banco))
+  const sinCuentaDetraccion = verCuentas ? 'El proveedor no tiene su cuenta del Banco de la Nación en Proveedores: pídesela a Logística.' : null
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div>
+        {/* Con un texto largo, el total sigue en su columna de la derecha. */}
+        <div className="min-w-0 sm:flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium tabular text-texto">{s.numero}</span>
             <Insignia tono={s.cancelada ? 'exito' : estado.tono}>{s.cancelada ? 'Pagada' : estado.etiqueta}</Insignia>
-            {!s.cancelada && Number(s.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
+            {!s.cancelada && pagado && <Insignia tono="aviso">Pagada en parte</Insignia>}
             <Insignia tono={detraccion.tono}>{detraccion.texto}</Insignia>
           </p>
           <p className="mt-0.5 text-sm text-texto">
@@ -144,16 +152,55 @@ function Servicio({
             {s.conformidad_en && ` · conforme el ${fecha(s.conformidad_en)}`}
             {s.codigo_interno && ` · código ${s.codigo_interno}`}
           </p>
-          {s.detraccion.afecta && s.detraccion.monto !== null && !s.cancelada && (
+          {conDetraccion && !s.cancelada && (
             <p className="text-xs text-texto-suave">
-              {detraccion.detalle}: la detracción va a la cuenta del proveedor en el Banco de la Nación y a él se le paga el resto.
+              {/* El detalle ya dice cuánto va al proveedor y qué parte es, en soles; en dólares se repite en su moneda, que es la del voucher. */}
+              Detracción {detraccion.detalle}.
+              {m !== 'PEN' && saldo.alProveedor > 0 && ` Al proveedor se le pagan ${moneda(saldo.alProveedor, m)}.`}
+              {' '}La detracción va a la cuenta del proveedor en el Banco de la Nación.
+            </p>
+          )}
+          {todoPagado && (
+            <p className="text-xs text-aviso">
+              Ya se pagó todo, pero ningún pago la canceló: anula el último pago y regístralo otra vez con «Sí, queda pagada».
             </p>
           )}
         </div>
         {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
-        <div className="sm:text-right">
-          <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, m)}</p>
-          {Number(s.pagado) > 0 && <p className="tabular text-xs text-texto-suave">Pagado {moneda(s.pagado, m)}</p>}
+        <div className="shrink-0 sm:text-right">
+          {/* Primero lo que falta, que es lo que se paga; el total con IGV, debajo. */}
+          {!s.cancelada && saldo.saldoProveedor > 0 && (
+            <p className="text-sm font-semibold text-texto">
+              Falta <span className="tabular">{moneda(saldo.saldoProveedor, m)}</span> <span className="font-normal">al proveedor</span>
+              {saldo.pagadoProveedor > 0 && parteDe(saldo.saldoProveedor, saldo.alProveedor) !== null && (
+                <span className="tabular font-normal text-texto-suave"> · {porcentaje(parteDe(saldo.saldoProveedor, saldo.alProveedor))} de lo que va a él</span>
+              )}
+            </p>
+          )}
+          {!s.cancelada && saldo.saldoDetraccion > 0 && (
+            <p className="text-sm text-texto">
+              {saldo.saldoProveedor > 0 ? 'y ' : 'Falta '}
+              <span className="tabular font-semibold">{moneda(saldo.saldoDetraccion)}</span> de detracción
+              {saldo.pagadoDetraccion > 0 && parteDe(saldo.saldoDetraccion, saldo.detraccion) !== null && (
+                <span className="tabular text-texto-suave"> · {porcentaje(parteDe(saldo.saldoDetraccion, saldo.detraccion))} de ella</span>
+              )}
+            </p>
+          )}
+          <p className="text-xs text-texto-suave">
+            Total <span className="tabular">{moneda(saldo.total, m)}</span> con IGV
+          </p>
+          {saldo.pagadoProveedor > 0 && (
+            <p className="tabular text-xs text-texto-suave">
+              Pagado al proveedor {moneda(saldo.pagadoProveedor, m)}
+              {parteDe(saldo.pagadoProveedor, saldo.alProveedor) !== null && ` · ${porcentaje(parteDe(saldo.pagadoProveedor, saldo.alProveedor))} de lo que va a él`}
+            </p>
+          )}
+          {saldo.pagadoDetraccion > 0 && (
+            <p className="tabular text-xs text-texto-suave">
+              Detracción depositada {moneda(saldo.pagadoDetraccion)}
+              {parteDe(saldo.pagadoDetraccion, saldo.detraccion) !== null && ` · ${porcentaje(parteDe(saldo.pagadoDetraccion, saldo.detraccion))} de ella`}
+            </p>
+          )}
         </div>
       </div>
 
@@ -165,9 +212,9 @@ function Servicio({
           </p>
         )}
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
-        {s.id && !s.cancelada && (paga || adjunta) && (
+        {s.id && !s.cancelada && ((paga && !todoPagado) || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">
-            {paga && (
+            {paga && !todoPagado && (
               <PagarServicio
                 ordenServicioId={s.id}
                 numero={s.numero ?? 'orden de servicio'}
@@ -177,6 +224,11 @@ function Servicio({
                 codigoMoneda={m}
                 cuentas={cuentasCaja}
                 paraPagar={<ParaPagar documentos={documentos} cuentas={s.cuentas} monedaDocumento={m} sinCuentas={sinCuentas} />}
+                paraLaDetraccion={
+                  conDetraccion ? (
+                    <ParaPagar documentos={documentos} cuentas={cuentasDetraccion} monedaDocumento="PEN" sinCuentas={sinCuentaDetraccion} />
+                  ) : undefined
+                }
               />
             )}
             {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
@@ -189,7 +241,8 @@ function Servicio({
             <li key={p.id} className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
               <span className="text-texto-suave">
                 <span className={p.anulado_en ? 'line-through' : undefined}>
-                  Pago del {fecha(p.fecha_pago)} · <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
+                  {p.destino === 'DETRACCION' ? 'Detracción del' : 'Pago del'} {fecha(p.fecha_pago)} ·{' '}
+                  <span className="tabular text-texto">{moneda(p.monto, codigoMoneda(p.moneda))}</span>
                   {p.cancela ? ' · cancela la orden' : ' · a cuenta'}
                   {p.operacion && ` · op. ${p.operacion}`}
                   {p.comprobante_proveedor && ` · comprobante ${p.comprobante_proveedor}`}

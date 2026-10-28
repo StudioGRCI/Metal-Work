@@ -16,7 +16,7 @@ import type {
   PlanoCumplimiento,
   ResumenCumplimiento,
 } from '@/lib/datos/cumplimiento'
-import { cantidad as fmtCantidad, fecha, hoyLima, numero } from '@/lib/format'
+import { cantidad as fmtCantidad, fecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { CargarVersion, PdfPorArea, Version, type Catalogos, type VersionEnPantalla } from './planos/panel-planos'
@@ -84,6 +84,8 @@ export function Cumplimiento({
   areaPropia = null,
   ordenViva,
   motivoInactiva,
+  codigoInterno = null,
+  enlaceDelCodigo = null,
 }: {
   ordenId: string
   etapas: { id: string; nombre: string }[]
@@ -104,7 +106,16 @@ export function Cumplimiento({
   ordenViva: boolean
   /** Por qué no los acepta: en borrador falta la aprobación, cerrada ya no hay qué repartir. */
   motivoInactiva?: string | null
+  /** El código interno del que sale el avance de la cabecera, cuando la unidad trabaja por código. */
+  codigoInterno?: string | null
+  /** Adónde abre sus planos quien mira, según su permiso; null si no abre ninguna pantalla del código. */
+  enlaceDelCodigo?: string | null
 }) {
+  // Con código y sin planos propios, los planos están en el código: la hoja no
+  // pinta las cifras de la OT en cero ni ofrece cargar planos aquí, que
+  // contradecían la cabecera y empujaban a Diseño a crearlos en la OT
+  // (auditoría del 27/10/2026). El avance ya lo dice la cabecera.
+  const porCodigo = Boolean(codigoInterno) && planos.length === 0
   const pesoTotal = Number(resumen?.peso_total ?? 0)
   const faltaPeso = Math.round((100 - pesoTotal) * 100) / 100
   const sinEntregar = planos.filter((p) => !p.fecha_entrega).length
@@ -121,7 +132,7 @@ export function Cumplimiento({
 
   return (
     <div className="space-y-4">
-      <Tarjeta>
+      {!porCodigo && <Tarjeta>
         <TarjetaCabecera
           titulo={planos.some(p => p.lista.length > 0) ? 'Planos y avance histórico de piezas' : 'Planos de la OT'}
           ayuda={planos.some(p => p.lista.length > 0) ? 'Diseño repartió los planos con su peso. Las piezas históricas se muestran para consulta.' : 'Diseño agrega los planos y los vincula con su etapa. Los materiales se definen en la pestaña Materiales.'}
@@ -130,7 +141,7 @@ export function Cumplimiento({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Cifra titulo="Avance de la unidad">
               <Progreso valor={resumen?.avance_pct} mostrarValor />
-              <span className="text-[11px] text-texto-suave">Ponderado por el peso de cada plano</span>
+              <span className="text-xs text-texto-suave">Ponderado por el peso de cada plano</span>
             </Cifra>
             <Cifra titulo="Planos entregados">
               <span className="tabular text-lg font-semibold text-texto">
@@ -152,7 +163,7 @@ export function Cumplimiento({
             </Cifra>}
             <Cifra titulo="Peso repartido">
               <span className={cn('tabular text-lg font-semibold', pesoTotal === 100 ? 'text-texto' : 'text-aviso')}>
-                {numero(pesoTotal, 0)}%
+                {porcentaje(pesoTotal, 0)}
               </span>
               <span className="text-[11px] text-texto-suave">
                 {pesoTotal === 100
@@ -166,33 +177,50 @@ export function Cumplimiento({
             </Cifra>
           </div>
         </TarjetaCuerpo>
-      </Tarjeta>
+      </Tarjeta>}
 
-      {!ordenViva && (
+      {!ordenViva && !porCodigo && (
         <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-xs text-texto-suave">
           {motivoInactiva ?? 'La orden no está en curso'}: la hoja se consulta, pero mientras no se reparten planos.
         </p>
       )}
 
-      {puedeSubirPdf && ordenViva && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
+      {puedeSubirPdf && ordenViva && !porCodigo && <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
         {planosDeColaboradores.size === 0
           ? 'Diseño debe registrar tu nombre en «Personas que elaboran los planos» y asignarte a un plano. Después podrás adjuntar el PDF para aprobación de Jefatura de Diseño.'
           : 'Adjunta el PDF en tu plano asignado. Jefatura de Diseño lo aprobará antes de enviarlo al área.'}
       </p>}
 
-      {puedeDisenar && ordenViva && planos.length > 1 && (pesoTotal !== 100 || sinEntregar > 1) && (
+      {puedeDisenar && ordenViva && !porCodigo && planos.length > 1 && (pesoTotal !== 100 || sinEntregar > 1) && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {pesoTotal !== 100 && <RepartirPeso ordenId={ordenId} cuantos={planos.length} />}
           {sinEntregar > 1 && <EntregarPendientes ordenId={ordenId} cuantos={sinEntregar} />}
         </div>
       )}
 
-      {puedeDisenar && ordenViva && (
+      {puedeDisenar && ordenViva && !porCodigo && (
         <NuevoPlano ordenId={ordenId} etapas={etapas} equipo={catalogos.equipoNominal}
           pesoLibre={Math.max(0, faltaPeso)} numeroPropuesto={numeroPropuesto} />
       )}
 
-      {planos.length === 0 ? (
+      {porCodigo && codigoInterno ? (
+        <Tarjeta>
+          <TarjetaCuerpo>
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium text-texto">Los planos de esta unidad están en su código interno</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
+                Diseño los carga por código, cada uno con su parte de la unidad; el avance de arriba sale de ahí.
+              </p>
+              {/* El enlace lo elige la página por el permiso de quien mira: a /diseno/codigo Gerencia y el colaborador llegaban a «No tienes acceso». */}
+              {enlaceDelCodigo && (
+                <Link href={enlaceDelCodigo} className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
+                  Abrir los planos de {codigoInterno}
+                </Link>
+              )}
+            </div>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      ) : planos.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <div className="py-8 text-center">
@@ -264,7 +292,7 @@ function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }
     <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-base)] bg-aviso-suave px-2 py-1">
       <input type="hidden" name="orden_id" value={ordenId} />
       <span className="text-xs text-texto">
-        ¿Poner {Math.floor((100 / cuantos) * 100) / 100} % a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
+        ¿Poner {porcentajeCorto(Math.floor((100 / cuantos) * 100) / 100)} a cada uno de los {cuantos} planos? Se pierden los pesos de ahora.
       </span>
       <Boton type="submit" tamano="sm" cargando={enviando}>
         Sí, repartir
@@ -474,7 +502,7 @@ function TarjetaPlano({
               Plano {plano.numero_plano}
             </span>
             {plano.nombre}
-            <Insignia tono="neutro">{numero(plano.peso_pct, 0)} %</Insignia>
+            <Insignia tono="neutro">{porcentaje(plano.peso_pct, 0)}</Insignia>
             {plano.etapa_id && <span className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === plano.etapa_id)?.nombre ?? 'Sin nombre'}</span>}
             {entregado ? (
               <span className="text-xs text-exito">Entregado el {fecha(plano.fecha_entrega)}</span>
@@ -961,7 +989,7 @@ function TarjetaPieza({
             {pieza.observacion ? ` · ${pieza.observacion}` : ''}
           </p>
         </div>
-        <span className="tabular shrink-0 text-sm font-medium text-texto">{numero(pieza.avance_pct, 0)} %</span>
+        <span className="tabular shrink-0 text-sm font-medium text-texto">{porcentaje(pieza.avance_pct, 0)}</span>
       </div>
 
       <ul className="flex flex-wrap gap-1.5" aria-label="Por dónde va la pieza">

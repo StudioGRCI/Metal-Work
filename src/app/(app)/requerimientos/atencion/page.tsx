@@ -291,7 +291,7 @@ function Fila({
     rq.en_atencion_en ? `${administracion ? 'La administradora' : 'Logística'} compra desde ${fechaHora(rq.en_atencion_en)}` : null,
     rq.nota_logistica ? `${administracion ? 'Administración' : 'Logística'}: ${rq.nota_logistica}` : null,
     rq.listo_en_almacen_en ? `Listo en almacén ${fechaHora(rq.listo_en_almacen_en)}` : null,
-    rq.entregado_en ? `Entregado ${fechaHora(rq.entregado_en)}${rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}` : null,
+    rq.entregado_en ? `Entregado ${fechaHora(rq.entregado_en)}${rq.nota_entrega ? ` · ${rq.nota_entrega}` : ''}` : null,
     // Lo que no salió del kardex y su motivo se leen como en Requerimientos: la
     // etiqueta resaltada, lo que no salió en tono de aviso.
     rq.faltante_al_entregar ? { etiqueta: 'No salió del kardex:', texto: rq.faltante_al_entregar, clase: 'text-aviso', faltante: true } : null,
@@ -325,7 +325,7 @@ function Fila({
                 {cantidad(l.cantidad)} {l.unidad}
               </span>{' '}
               <span className="text-texto">{l.descripcion}</span>
-              <span className="block text-[11px] text-texto-suave">
+              <span className="block text-xs text-texto-suave">
                 <MaterialDelInsumo linea={l} />
                 {l.categoria}
                 <CompraDelInsumo linea={l} estadoRq={rq.estado} />
@@ -345,7 +345,7 @@ function Fila({
       <TD className="block pt-1 pb-3 align-top sm:table-cell sm:py-2">
         {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
         <AvanceDelRequerimiento rq={rq} />
-        <ul className="mt-1 space-y-0.5 text-[11px] text-texto-suave">
+        <ul className="mt-1 space-y-0.5 text-xs text-texto-suave">
           {pasos.map((p) =>
             typeof p === 'string' ? (
               <li key={p}>{p}</li>

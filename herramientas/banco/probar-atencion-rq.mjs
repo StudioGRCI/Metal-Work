@@ -4,6 +4,7 @@
  *
  *   1. Requerimientos registra un RQ; su menú tiene «Requerimientos» y «Vehículos», y el gasto en «Consultas».
  *   2. Almacén lo ve en «Atención de requerimiento» y revisa el stock: no tiene nada.
+ *      A Requerimientos le llega «Por comprar» (DKS, 26/10/2026).
  *   3. Logística lo ve por comprar y lo marca en compra; su menú arranca por Atención.
  *   4. Almacén lo deja listo en almacén y lo entrega con faltante (no hay salida
  *      en el kardex de un material nuevo sin stock); pasa al historial.
@@ -160,9 +161,22 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   comprobar((await fila.getByRole('button', { name: 'Revisar stock' }).count()) === 1 && (await fila.getByRole('button', { name: 'Listo en almacén' }).count()) === 0,
     'con el botón «Revisar stock»')
   await revisarStock(pagina, fila, 'nada', 'No queda plancha de 2 mm')
-  comprobar((await pagina.locator('tbody tr', { hasText: codigo }).innerText()).includes('Por comprar'), 'queda «Por comprar»')
+  // Como con «En compra»: se espera la fila con el estado nuevo, no la pausa fija.
+  const porComprar = pagina.locator('tbody tr', { hasText: codigo }).filter({ hasText: 'Por comprar' })
+  comprobar(await porComprar.waitFor({ timeout: 15000 }).then(() => true, () => false), 'queda «Por comprar»')
   await pagina.screenshot({ path: `${CAPTURAS}/atencion-almacen.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola como Almacén ${errores.join(' | ')}`)
+  await contexto.close()
+}
+
+// ------------------------------------------------ 2b. Requerimientos: le llegó «Por comprar»
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos)
+  await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' })
+  const aviso = pagina.locator('li, tr, a', { hasText: codigo }).filter({ hasText: /Por comprar: RQ-/ }).first()
+  const texto = (await aviso.innerText().catch(() => '')).replace(/\s+/g, ' ')
+  comprobar(texto.includes('Almacén no tiene nada; Logística compra 1 de 1 insumo'), `a Requerimientos le llegó «Por comprar» con lo que se compra: «${texto.slice(0, 200)}»`)
+  comprobar(errores.length === 0, `sin errores de consola en los avisos de Requerimientos ${errores.join(' | ')}`)
   await contexto.close()
 }
 

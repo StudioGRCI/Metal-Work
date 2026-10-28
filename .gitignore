@@ -58,3 +58,6 @@ next-env.d.ts
 # Registro local de correcciones del asistente (ver .claude/skills/aprender)
 /.claude/aprendizaje/
 /.claude/settings.local.json
+
+# worktrees de los auditores (skill auditar)
+/.claude/worktrees/

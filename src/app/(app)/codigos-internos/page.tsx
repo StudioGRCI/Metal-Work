@@ -6,6 +6,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { PorcentajeYCosto } from '@/components/ui/porcentaje-y-costo'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -24,7 +25,7 @@ import {
 } from '@/lib/dominio/codigos-internos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, moneda, porcentaje } from '@/lib/format'
+import { cantidad, fecha, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Códigos internos' }
@@ -127,8 +128,13 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
             órdenes de servicio, subcontratos, unidades e ingresos a la planta.
           </p>
           <p>
-            <strong className="text-texto">El avance</strong> es el promedio de las etapas que arma Diseño: la terminada vale 100 % y la que
-            no, lo que su área reporta en el reporte diario. Sin etapas, sale del reporte diario.
+            <strong className="text-texto">El avance</strong> sale de lo que arma Diseño. Si puso a cada plano el porcentaje de la unidad que
+            representa, cada plano aporta ese porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya
+            terminó. Lo que no se repartió en planos se mide por el promedio de las etapas, donde la terminada vale 100 % y la que no, el
+            promedio de las actividades de su área que no son de un plano (el plano ya contó por su lado); si no hay etapas, por el promedio
+            de las actividades del reporte diario que no son de un plano. Sin planos con porcentaje, el avance es el promedio de las etapas,
+            con lo que su área reporta en el reporte diario; sin etapas, el promedio del último avance de cada trabajo del reporte diario,
+            área por área. En el detalle de cada código, la pestaña Avance muestra cómo sale el suyo.
           </p>
           <p>
             <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
@@ -225,41 +231,103 @@ function FilaCodigo({
   avance: AvanceDeCodigo | undefined
 }) {
   const costo = costoDelCodigo(c)
+  const sinPrecio = faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo)
+  const presupuesto = c.venta?.presupuesto_pen ?? null
+  const margen = c.venta?.margen_pct ?? null
+  // Cada parte del costo con lo que pesa en el total en soles: se lee de un
+  // vistazo qué se lleva la plata (DKS, 27/10/2026: porcentaje y costo).
+  const partes = [
+    {
+      clave: 'mano-obra',
+      etiqueta: 'Mano de obra',
+      pen: c.mano_obra + c.recargo_extras,
+      usd: 0,
+      texto: faltaElPrecio(c.mano_obra + c.recargo_extras, c.horas_sin_costo, 'sin costo'),
+      extra: c.horas > 0 ? horasCortas(c.horas) : null,
+    },
+    {
+      clave: 'materiales',
+      etiqueta: 'Materiales',
+      pen: c.materiales_pen + c.merma_pen,
+      usd: c.materiales_usd + c.merma_usd,
+      texto: faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio, 'sin precio'),
+      extra: c.merma_pen + c.merma_usd > 0 ? 'con su merma' : null,
+    },
+    { clave: 'servicios', etiqueta: 'Servicios', pen: c.servicios_pen, usd: c.servicios_usd, texto: null, extra: null },
+    { clave: 'subcontratos', etiqueta: 'Subcontratos', pen: c.subcontratos_pen, usd: c.subcontratos_usd, texto: null, extra: null },
+    {
+      clave: 'gastos',
+      etiqueta: 'Gastos y caja',
+      pen: c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen,
+      usd: c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd,
+      texto: null,
+      extra: null,
+    },
+  ].filter((p) => p.pen > 0 || p.usd > 0 || p.texto !== null)
+
   return (
     <Link
       href={enlaceCodigo(c.codigo)}
       className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 hover:border-acento"
       data-codigo={c.codigo}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="grid gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <p className="font-mono font-semibold break-all text-texto">{c.codigo}</p>
           {diseno?.unidad && <p className="text-xs text-texto">{diseno.unidad}</p>}
           <p className="text-xs text-texto-suave">{dondeAparece(c, diseno)}</p>
         </div>
-        <div className="text-right">
-          <p className="tabular font-semibold text-texto">
-            {faltaElPrecio(costo.pen + costo.usd, c.materiales_sin_precio + c.horas_sin_costo) ?? moneda(costo.pen)}
-          </p>
-          {costo.usd > 0 && <p className="tabular text-xs text-texto">+ {moneda(costo.usd, 'USD')} sin cambio</p>}
-          <p className="text-[11px] text-texto-suave">costo hasta hoy</p>
-          {c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined && (
-            <p className={`tabular text-xs ${c.venta.margen_pct < 0 ? 'text-peligro' : 'text-texto'}`} data-margen={c.venta.margen_pct}>
-              Margen {porcentaje(c.venta.margen_pct, 1)}
-            </p>
+        {/* Las tres cifras del código, cada una en sus dos unidades. En el
+            teléfono van debajo del código, en una rejilla de rótulo y cifra. */}
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs sm:justify-items-end sm:text-right">
+          <dt className="text-texto-suave">Costo hasta hoy</dt>
+          <dd className="tabular font-semibold text-texto">
+            {sinPrecio ?? (
+              <>
+                {moneda(costo.pen)}
+                {presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined && (
+                  <span
+                    className={`font-normal ${c.venta.semaforo === 'EXCEDIDO' ? 'text-peligro' : c.venta.semaforo === 'AJUSTADO' ? 'text-aviso' : 'text-texto-suave'}`}
+                    data-consumido={c.venta.consumido_pct}
+                  >
+                    {' '}
+                    · {porcentaje(c.venta.consumido_pct)} del presupuesto
+                  </span>
+                )}
+              </>
+            )}
+            {costo.usd > 0 && <span className="block font-normal text-texto">+ {moneda(costo.usd, 'USD')} sin cambio</span>}
+          </dd>
+          {margen !== null && (
+            <>
+              <dt className="text-texto-suave">{c.cierre ? 'Margen al cierre' : 'Margen a hoy'}</dt>
+              <dd data-margen={margen}>
+                <PorcentajeYCosto porcentaje={margen} costo={c.venta?.margen_pen} decimales={1} tono={margen < 0 ? 'text-peligro' : 'text-texto'} />
+                <span className="sr-only">, sobre la venta sin IGV</span>
+              </dd>
+            </>
+          )}
+          {presupuesto !== null && (
+            <>
+              <dt className="text-texto-suave">Presupuesto</dt>
+              <dd className="tabular text-texto" data-presupuesto={presupuesto}>
+                {moneda(presupuesto)}
+                {c.venta?.presupuesto_fijado && <span className="text-texto-suave"> · fijado en la OT</span>}
+              </dd>
+            </>
           )}
           {c.cierre && (
             <>
-              <p className="mt-0.5">
+              <dt className="text-texto-suave">
                 <Insignia tono="exito">Costeo cerrado</Insignia>
-              </p>
+              </dt>
               {/* Lo congelado al entregar; si después entró algo, el costo de arriba ya no es el mismo. */}
-              <p className="tabular text-[11px] text-texto-suave" data-cerrado={c.cierre.costo_pen}>
+              <dd className="tabular text-texto-suave" data-cerrado={c.cierre.costo_pen}>
                 en {moneda(c.cierre.costo_pen)} el {fecha(c.cierre.cerrado_en)}
-              </p>
+              </dd>
             </>
           )}
-        </div>
+        </dl>
       </div>
 
       {parecidos.length > 0 && (
@@ -275,51 +343,29 @@ function FilaCodigo({
       {noEsUnidad(c.codigo) ? (
         <p className="mt-2 text-xs text-texto-suave">{origenDelAvance(c.codigo, avance)}.</p>
       ) : (
-        <div className="mt-2 grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs" data-avance={avance?.avance ?? 0}>
+        <div className="mt-2 grid items-center gap-x-3 gap-y-1 text-xs sm:grid-cols-[minmax(0,1fr)_14rem]" data-avance={avance?.avance ?? 0}>
           <span className={avance ? 'text-texto' : 'text-texto-suave'}>
             {origenDelAvance(c.codigo, avance)}
             {c.ultimo_reporte && <span className="text-texto-suave"> · último reporte el {fecha(c.ultimo_reporte)}</span>}
           </span>
+          {/* Solo el %: con los soles al lado se leía como un segundo costo (auditoría 27/10/2026); en plata va en el detalle. */}
           <Progreso valor={avance?.avance ?? 0} alto="sm" mostrarValor etiqueta={`Avance de ${c.codigo}`} />
         </div>
       )}
 
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
-        <span>
-          Mano de obra{' '}
-          <span className="tabular text-texto">
-            {faltaElPrecio(c.mano_obra + c.recargo_extras, c.horas_sin_costo, 'sin costo') ?? moneda(c.mano_obra + c.recargo_extras)}
-          </span>
-          {c.horas > 0 && <span className="tabular"> ({horasCortas(c.horas)})</span>}
-        </span>
-        <span>
-          Materiales{' '}
-          <span className="tabular text-texto">
-            {faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio, 'sin precio') ??
-              montoMixto(c.materiales_pen + c.merma_pen, c.materiales_usd + c.merma_usd)}
-          </span>
-          {c.merma_pen + c.merma_usd > 0 && <span> con su merma</span>}
-        </span>
-        {(c.servicios_pen > 0 || c.servicios_usd > 0) && (
-          <span>
-            Servicios <span className="tabular text-texto">{moneda(c.servicios_pen)}</span>
-            {c.servicios_usd > 0 && <span className="tabular text-texto"> + {moneda(c.servicios_usd, 'USD')}</span>}
-          </span>
-        )}
-        {(c.subcontratos_pen > 0 || c.subcontratos_usd > 0) && (
-          <span>
-            Subcontratos <span className="tabular text-texto">{moneda(c.subcontratos_pen)}</span>
-            {c.subcontratos_usd > 0 && <span className="tabular text-texto"> + {moneda(c.subcontratos_usd, 'USD')}</span>}
-          </span>
-        )}
-        {c.gastos_mes_pen + c.gastos_mes_usd + c.gastos_ot_pen + c.gastos_ot_usd + c.caja_pen + c.caja_usd > 0 && (
-          <span>
-            Gastos y caja{' '}
-            <span className="tabular text-texto">
-              {montoMixto(c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen, c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd)}
+        {partes.map((p) => {
+          // Con dólares en la parte, su % contra el total al cambio saldría corto: no se dice.
+          const parte = p.texto === null && p.usd <= 0 ? parteDe(p.pen, costo.pen) : null
+          return (
+            <span key={p.clave} data-costo-parte={p.clave}>
+              {p.etiqueta}{' '}
+              <span className="tabular text-texto">{p.texto ?? montoMixto(p.pen, p.usd)}</span>
+              {parte !== null && costo.pen > 0 && <span className="tabular"> · {porcentaje(parte)}</span>}
+              {p.extra && <span className="tabular"> ({p.extra})</span>}
             </span>
-          </span>
-        )}
+          )
+        })}
         {c.usd_al_cambio > 0 && (
           <span>
             Los <span className="tabular">{moneda(c.usd_al_cambio, 'USD')}</span> suman{' '}

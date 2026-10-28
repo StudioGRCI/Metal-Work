@@ -21,7 +21,7 @@ import type {
   AvanceDeArea,
   ReporteDiario,
 } from '@/lib/datos/actividades'
-import { fecha as fmtFecha, hoyLima, numero } from '@/lib/format'
+import { fecha as fmtFecha, hoyLima, numero, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
@@ -130,7 +130,7 @@ export function ActividadesDeOrden({
             {observadosMios.map((r) => (
               <li key={r.id} className="text-xs text-texto">
                 <a href={`#${r.id}`} className="font-medium hover:underline">
-                  {fmtFecha(r.fecha)} · {r.actividad} · +{numero(r.avance_pct, 0)} %
+                  {fmtFecha(r.fecha)} · {r.actividad} · +{porcentaje(r.avance_pct, 0)}
                 </a>
                 {r.observacion && <span className="text-texto-suave"> — {r.observacion}</span>}
               </li>
@@ -175,21 +175,21 @@ export function ActividadesDeOrden({
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-texto">{a.area}</p>
                     <p className="text-lg font-semibold tabular text-texto">
-                      {numero(a.avance_pct, 1)} %
+                      {porcentaje(a.avance_pct, 1)}
                     </p>
                   </div>
                   <Progreso valor={Number(a.avance_pct)} />
-                  <p className="mt-1 text-[11px] text-texto-suave">
+                  <p className="mt-1 text-xs text-texto-suave">
                     {a.terminadas} de {a.actividades} terminadas
                     {Number(a.peso_repartido) < 100 && (
                       <span className="text-aviso">
                         {' '}
-                        · le falta repartir {numero(100 - Number(a.peso_repartido), 0)} % de peso
+                        · le falta repartir {porcentaje(100 - Number(a.peso_repartido))} de peso
                       </span>
                     )}
                   </p>
                   {a.ultimo_reporte && (
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       último reporte: {fmtFecha(a.ultimo_reporte)}
                     </p>
                   )}
@@ -275,22 +275,22 @@ export function ActividadesDeOrden({
                           {act.nombre}
                         </p>
                         {(act.referencia || act.detalle) && (
-                          <p className="text-[11px] text-texto-suave">
+                          <p className="text-xs text-texto-suave">
                             {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                           </p>
                         )}
-                        {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
+                        {act.etapa_id && <p className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                         <PlanDeActividad actividad={act} hoy={hoy} />
                       </div>
-                      <span className="tabular shrink-0 text-xs text-texto-suave">pesa {numero(act.peso_pct, 0)} %</span>
+                      <span className="tabular shrink-0 text-xs text-texto-suave">pesa {porcentaje(act.peso_pct, 0)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Progreso valor={Number(act.avance_pct)} />
                       <span className={cn('tabular text-xs', act.terminada ? 'text-exito' : 'text-texto-suave')}>
-                        {numero(act.avance_pct, 0)} %
+                        {porcentaje(act.avance_pct)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       {act.ultimo_reporte ? `Último reporte: ${fmtFecha(act.ultimo_reporte)}` : 'Sin reportes'}
                     </p>
                     {(puedeReportar || puedeArmar) && (
@@ -332,14 +332,14 @@ export function ActividadesDeOrden({
                     <TD>
                       <p className="text-sm font-medium text-texto">{act.nombre}</p>
                       {(act.referencia || act.detalle) && (
-                        <p className="text-[11px] text-texto-suave">
+                        <p className="text-xs text-texto-suave">
                           {[act.referencia, act.detalle].filter(Boolean).join(' · ')}
                         </p>
                       )}
-                      {act.etapa_id && <p className="text-[11px] text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
+                      {act.etapa_id && <p className="text-xs text-texto-suave">Etapa: {etapas.find(e => e.id === act.etapa_id)?.nombre ?? 'Sin nombre'}</p>}
                       <PlanDeActividad actividad={act} hoy={hoy} />
                     </TD>
-                    <TD className="text-right tabular text-sm">{numero(act.peso_pct, 0)} %</TD>
+                    <TD className="text-right tabular text-sm">{porcentaje(act.peso_pct, 0)}</TD>
                     <TD>
                       <div className="flex items-center gap-2">
                         <Progreso valor={Number(act.avance_pct)} />
@@ -349,7 +349,7 @@ export function ActividadesDeOrden({
                             act.terminada ? 'text-exito' : 'text-texto-suave',
                           )}
                         >
-                          {numero(act.avance_pct, 0)} %
+                          {porcentaje(act.avance_pct)}
                         </span>
                       </div>
                     </TD>
@@ -406,17 +406,17 @@ export function ActividadesDeOrden({
                       <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-tenue" />
                       <span className="tabular text-xs text-texto-suave">{fmtFecha(r.fecha)}</span>
                       <span className="text-sm font-medium text-texto">{r.actividad}</span>
-                      <span className="tabular text-sm text-exito">+{numero(r.avance_pct, 0)} %</span>
+                      <span className="tabular text-sm text-exito">+{porcentaje(r.avance_pct, 0)}</span>
                       {r.nota && <span className="text-xs text-texto-suave">· {r.nota}</span>}
                       <span className="ml-auto flex items-center gap-2">
                         <InsigniaRevision revision={r.revision} />
                         {r.reportado_por_nombre && (
-                          <span className="text-[11px] text-texto-tenue">{r.reportado_por_nombre}</span>
+                          <span className="text-xs text-texto-tenue">{r.reportado_por_nombre}</span>
                         )}
                       </span>
                     </div>
                     <NotaRevision r={r} />
-                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noopener noreferrer" className="inline-flex text-xs font-medium text-acento hover:underline">
+                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-xs font-medium text-acento hover:underline">
                       Ver foto del reporte
                     </a>}
                     {r.materiales_usados.length > 0 && <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-texto-suave" aria-label="Materiales usados">
@@ -511,7 +511,7 @@ function PlanDeActividad({ actividad, hoy }: { actividad: ActividadArea; hoy: st
   const tocaAhora = !actividad.terminada && !atrasada && inicio !== null && inicio <= hoy
 
   return (
-    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-texto-suave">
+    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave">
       <CalendarDays aria-hidden className="size-3 shrink-0" />
       <span className="tabular">
         {inicio ? fmtFecha(inicio) : '—'} → {fin ? fmtFecha(fin) : '—'}
@@ -677,7 +677,7 @@ function AccionesActividad({
               destacado={deHoy.revision === 'OBSERVADO'}
             />
           ) : (
-            <span className="px-1 text-xs text-exito">Reportado hoy: +{numero(deHoy.avance_pct, 0)} %</span>
+            <span className="px-1 text-xs text-exito">Reportado hoy: +{porcentaje(deHoy.avance_pct, 0)}</span>
           )}
           {!actividad.terminada && <ReportarDia actividad={actividad} ordenId={ordenId} deOtroDia esNueva={esNueva} despachos={despachos.filter(d => d.area === actividad.area_codigo)} />}
         </>
@@ -721,7 +721,7 @@ function AccionesActividad({
       {puedeReportar && !puedeArmar && (
         <Link
           href={`/ordenes/${ordenId}?vista=resumen&observar=DIS&sobre=${encodeURIComponent(`Actividad «${actividad.nombre}» (${actividad.area}): `)}#observaciones`}
-          className="inline-flex min-h-11 items-center gap-1 px-1 text-[11px] text-aviso hover:underline sm:min-h-0"
+          className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-aviso hover:underline sm:min-h-0"
           title="Anotar una observación a Diseño sobre esta actividad"
         >
           <MessageSquareWarning aria-hidden className="size-3.5" />
@@ -802,7 +802,7 @@ function NuevaActividad({
           {!esNueva && <Campo
             etiqueta="Pesa"
             htmlFor="na-peso"
-            ayuda={propuesta.peso > 0 ? `Quedan ${propuesta.peso} % por repartir en el área` : 'El área ya repartió su 100 %'}
+            ayuda={propuesta.peso > 0 ? `Quedan ${porcentajeCorto(propuesta.peso)} por repartir en el área` : 'El área ya repartió su 100 %'}
           >
             <Entrada
               key={`peso-${area}`}

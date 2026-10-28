@@ -9,13 +9,14 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
-import { hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularCobro, CobrarFactura } from '../formularios'
-import { RevisionesDeSalida } from '../revisiones-de-salida'
+import { RevisionesDeSalida, type CobroDelCodigo } from '../revisiones-de-salida'
 import { SolicitudesOT } from '../solicitudes-ot'
 
 export const metadata = { title: 'Cuentas por cobrar' }
@@ -31,9 +32,12 @@ const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
  */
 export default async function PaginaPorCobrar() {
   const perfil = await exigirPermiso('tesoreria.ver_documentos')
+  const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   // Paga quien lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const cobra = puede(perfil, 'tesoreria.registrar_cobros') && puede(perfil, 'tesoreria.caja')
   const responde = puede(perfil, 'tesoreria.liberar')
+  // El aviso de cada factura y de cada salida por revisar va a quien cobra (tesoreria.registrar_cobros), no a quien solo mira.
+  const avisado = puede(perfil, 'tesoreria.registrar_cobros')
   const [facturas, cotizaciones, solicitudes, salidas, cuentasCaja] = await Promise.all([
     facturasDeVenta(),
     cotizacionesAprobadas(),
@@ -51,16 +55,39 @@ export default async function PaginaPorCobrar() {
   const cobradas = facturas.filter((f) => !pendientes.includes(f))
   const vencidas = pendientes.filter((f) => f.fecha_vencimiento && f.fecha_vencimiento < hoy).length
   const resumen = resumenPorMoneda(pendientes.map((f) => ({ moneda: f.moneda, monto: Number(f.saldo) })), ['factura', 'facturas'])
+  // Lo cobrado de cada código que pide salir: el mismo dato de «Cotizaciones
+  // aprobadas», junto a la revisión. Un código con dos cotizaciones las suma
+  // (antes quedaba solo la más vieja); en monedas distintas no se suman y se dice.
+  const cobrosPorCodigo: Record<string, CobroDelCodigo> = {}
+  for (const c of cotizaciones) {
+    if (!c.codigo_interno) continue
+    const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+    const previo = cobrosPorCodigo[c.codigo_interno]
+    if (!previo) {
+      cobrosPorCodigo[c.codigo_interno] = { total, facturado: Number(c.facturado ?? 0), cobrado: Number(c.cobrado ?? 0), moneda: codigo(c.moneda), cotizaciones: 1, monedasDistintas: false }
+    } else if (previo.moneda !== codigo(c.moneda)) {
+      previo.monedasDistintas = true
+      previo.cotizaciones += 1
+    } else {
+      previo.total = previo.total === null || total === null ? null : previo.total + total
+      previo.facturado += Number(c.facturado ?? 0)
+      previo.cobrado += Number(c.cobrado ?? 0)
+      previo.cotizaciones += 1
+    }
+  }
+  const abreVehiculos = puede(perfil, 'vehiculos.ver') || puede(perfil, 'vehiculos.registrar')
 
   return (
     <AvisoDeLaCaja>
       <EncabezadoPagina
         titulo="Cuentas por cobrar"
         descripcion={resumen && `Por cobrar: ${resumen}${vencidas > 0 ? ` · ${vencidas === 1 ? 'una vencida' : `${vencidas} vencidas`}` : ''}.`}
-        ayuda="Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. Registra cada cobro con su voucher."
+        ayuda={`Las facturas que registró Contabilidad, por código interno, de la que vence antes a la que vence después. ${
+          avisado ? 'Registra cada cobro con su voucher.' : 'Los cobros los registra Tesorería, con su voucher.'
+        }`}
       />
 
-      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} />}
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={cobrosPorCodigo} abreVehiculos={abreVehiculos} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
@@ -73,7 +100,7 @@ export default async function PaginaPorCobrar() {
               </span>
               <p className="mt-3 text-sm font-semibold text-texto">No hay facturas por cobrar</p>
               <p className="mt-1 max-w-lg text-sm text-texto-suave">
-                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada. Te llega un aviso con cada una.
+                Llegan solas cuando Contabilidad registra la factura de una cotización aprobada.{avisado && ' Te llega un aviso con cada una.'}
               </p>
             </div>
           ) : (
@@ -150,7 +177,9 @@ export default async function PaginaPorCobrar() {
                         <Insignia tono="neutro">{c.codigo_interno ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
                       ) : (
                         <span className="tabular">
-                          Facturado {moneda(c.facturado, m)} · cobrado {moneda(c.cobrado, m)}
+                          Facturado {moneda(c.facturado, m)}
+                          {parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado {moneda(c.cobrado, m)}
+                          {parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
                         </span>
                       )}
                       {c.url && (
@@ -162,6 +191,17 @@ export default async function PaginaPorCobrar() {
                         >
                           {c.archivo_mime === 'application/pdf' ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
                           {c.archivo_mime === 'application/pdf' ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                      {/* Guardado desde el visor, el PDF sale con el nombre interno del archivo. */}
+                      {c.url && c.archivo_mime === 'application/pdf' && c.cotizacion_id && puedeBajar && (
+                        <a
+                          href={rutaParaBajarCotizacion(c.cotizacion_id)}
+                          aria-label={`Descargar la cotización ${c.numero}`}
+                          className="inline-flex min-h-11 items-center gap-1 text-acento hover:underline sm:min-h-0"
+                        >
+                          <Download aria-hidden className="size-3.5" />
+                          Descargar
                         </a>
                       )}
                     </span>

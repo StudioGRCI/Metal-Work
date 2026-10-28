@@ -109,8 +109,10 @@ export function ControlesVehiculo({
           Sale al arenado
         </Boton>
       )}
-      <Boton type="button" variante="contornoPeligro" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} onClick={() => setPaso('ANULAR')}>
-        <Ban aria-hidden className="size-4" />
+      {/* Anular corrige un error, no es el paso del trabajo: va sin borde para
+          no pesar como «Marcar salida» en cada fila (auditoría del 27/10/2026). */}
+      <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} onClick={() => setPaso('ANULAR')}>
+        <Ban aria-hidden className="size-4 text-peligro" />
         Anular
       </Boton>
       <Ventana

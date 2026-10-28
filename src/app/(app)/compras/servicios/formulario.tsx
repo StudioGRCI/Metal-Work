@@ -9,11 +9,10 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
-import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { yaEntroEnLaVentana, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
-import type { AreaSolicitante, OtParaLogistica } from '@/lib/datos/logistica'
+import type { AreaSolicitante } from '@/lib/datos/logistica'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
@@ -28,19 +27,17 @@ import { SelectorDetraccion } from './selector-detraccion'
 const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 
 /**
- * La orden de servicio: quién hace el trabajo, qué, para qué código interno, OT
- * o área, cuánto, cuándo, si lleva detracción y, si ya está, su contrato.
+ * La orden de servicio: quién hace el trabajo, qué, para qué código interno
+ * y área, cuánto, cuándo, si lleva detracción y, si ya está, su contrato.
  */
 export function NuevaOrdenServicio({
   proveedores,
-  ordenes,
   areas,
   tipos,
   codigos,
   puedeRegistrarProveedor,
 }: {
   proveedores: ProveedorParaCompra[]
-  ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
   tipos: TipoDetraccion[]
   /** Para el buscador de código interno; `null` si la lista no se pudo leer. */
@@ -109,7 +106,6 @@ export function NuevaOrdenServicio({
             }}
             alCancelar={() => setAbierta(false)}
             proveedores={proveedores}
-            ordenes={ordenes}
             areas={areas}
             tipos={tipos}
             codigos={codigos}
@@ -135,7 +131,6 @@ function FormularioServicio({
   alYaEntrar,
   alCancelar,
   proveedores,
-  ordenes,
   areas,
   tipos,
   codigos,
@@ -149,7 +144,6 @@ function FormularioServicio({
   alYaEntrar: () => void
   alCancelar: () => void
   proveedores: ProveedorParaCompra[]
-  ordenes: OtParaLogistica[]
   areas: AreaSolicitante[]
   tipos: TipoDetraccion[]
   codigos: CodigoParaElegir[] | null
@@ -157,7 +151,6 @@ function FormularioServicio({
   alTerminar: (mensaje: string, faltaContrato: string | null) => void
 }) {
   const [proveedorId, setProveedorId] = useState('')
-  const [ordenId, setOrdenId] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [dias, setDias] = useState(0)
   const [divisa, setDivisa] = useState('PEN')
@@ -245,17 +238,6 @@ function FormularioServicio({
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo etiqueta="Código interno" htmlFor="os-codigo" requerido ayuda={AYUDA_CODIGO_INTERNO}>
           <CodigoInternoConLista id="os-codigo" name="codigo_interno" requerido codigos={codigos} fijos={CODIGOS_FIJOS} />
-        </Campo>
-        <Campo etiqueta="Para la OT (opcional)" htmlFor="os-orden" ayuda="Si el servicio es para una unidad en taller.">
-          <SeleccionBuscable
-            id="os-orden"
-            name="orden_id"
-            valor={ordenId}
-            onChange={setOrdenId}
-            marcador="Sin OT"
-            marcadorBusqueda="Número de OT o unidad…"
-            opciones={ordenes.map((o) => ({ valor: o.id, etiqueta: `OT ${o.numero}`, detalle: o.unidad ?? undefined }))}
-          />
         </Campo>
         <Campo etiqueta="Área que lo pide (opcional)" htmlFor="os-area">
           <Seleccion id="os-area" name="area_id" defaultValue="">

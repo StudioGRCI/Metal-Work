@@ -18,7 +18,7 @@ import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cantidad, fecha as formatearFecha } from '@/lib/format'
+import { cantidad, fecha as formatearFecha, porcentaje as fmtPorcentaje } from '@/lib/format'
 import { SIN_RESPUESTA, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import type {
   AreaMaterial,
@@ -164,7 +164,7 @@ export function TableroMateriales({
             <div className="min-w-48 flex-1">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-texto">Atención completa de requerimientos</p>
-                <p className="tabular text-sm font-semibold text-acento">{avanceLineas}%</p>
+                <p className="tabular text-sm font-semibold text-acento">{fmtPorcentaje(avanceLineas)}</p>
               </div>
               <Progreso valor={avanceLineas} etiqueta="Líneas de materiales entregadas por completo" />
               <p className="mt-1 text-xs text-texto-suave">
@@ -387,7 +387,7 @@ function LineaMaterial({
         </div>
         <div className="min-w-52 flex-1 sm:max-w-72">
           <div className="mb-1 flex justify-between gap-2 text-[11px] text-texto-suave">
-            <span>Entregado al área</span><span className="tabular font-medium text-texto">{porcentaje}%</span>
+            <span>Entregado al área</span><span className="tabular font-medium text-texto">{fmtPorcentaje(porcentaje)}</span>
           </div>
           <Progreso valor={porcentaje} etiqueta={`Material entregado: ${linea.material ?? 'material'}`} />
         </div>

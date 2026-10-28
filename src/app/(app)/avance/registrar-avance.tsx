@@ -10,6 +10,7 @@ import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { pudoHaberEntrado } from '@/lib/acciones'
 import { useEnvio } from '@/lib/envio'
+import { porcentaje } from '@/lib/format'
 
 import { registrarAvance } from './acciones'
 
@@ -146,7 +147,7 @@ export function RegistrarAvance({
               <option value="">Sin etapa en particular</option>
               {enCurso.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.nombre} · {e.avance}%
+                  {e.nombre} · {porcentaje(e.avance)}
                 </option>
               ))}
             </Seleccion>
@@ -161,7 +162,7 @@ export function RegistrarAvance({
             etiqueta="Avance de la etapa"
             ayuda={
               etapa
-                ? `A cuánto quedó. Iba en ${etapa.avance} %.`
+                ? `A cuánto quedó. Iba en ${porcentaje(etapa.avance)}.`
                 : 'Elige primero la etapa para poder moverla.'
             }
             defaultValue={null}

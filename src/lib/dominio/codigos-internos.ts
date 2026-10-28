@@ -240,7 +240,8 @@ export const ESTADO_DOCUMENTO_CODIGO: Record<string, Def> = {
 export const ESTADO_SERVICIO_CODIGO: Record<string, Def> = {
   POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso' },
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
-  EMITIDA: { etiqueta: 'Aprobada', tono: 'neutro' },
+  // El mismo nombre que en Órdenes de servicio y Pagos de servicio: «Aprobada» aquí y «Emitida» allá era el mismo dato con dos nombres.
+  EMITIDA: { etiqueta: 'Emitida', tono: 'neutro' },
   EN_EJECUCION: { etiqueta: 'En ejecución', tono: 'info' },
   CONFORME: { etiqueta: 'Conforme', tono: 'exito' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
@@ -251,6 +252,8 @@ export const VISTAS_CODIGO = [
   { valor: 'avance', etiqueta: 'Avance' },
   // Lo que carga Diseño por código (migración 20261015200000).
   { valor: 'etapas', etiqueta: 'Etapas' },
+  // La ficha de taller de la unidad se llena desde el código (2026-10-26); se guarda en su OT.
+  { valor: 'ficha', etiqueta: 'Ficha de taller' },
   { valor: 'planos', etiqueta: 'Planos' },
   { valor: 'materiales', etiqueta: 'Materiales' },
   { valor: 'costeo', etiqueta: 'Costeo' },

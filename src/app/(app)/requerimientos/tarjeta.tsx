@@ -25,7 +25,7 @@ import {
   type PartesDelInsumo,
   type PasoDelRq,
 } from '@/lib/dominio/requerimientos'
-import { cantidad, diasHasta, fecha, fechaHora } from '@/lib/format'
+import { cantidad, diasHasta, fecha, fechaHora, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { MaterialDelInsumo } from './avance'
@@ -277,7 +277,8 @@ export function TarjetaRequerimiento({
           {rq.entregado_en && (
             <p>
               Entregado {fechaHora(rq.entregado_en)}
-              {rq.nota_entrega ? ` a ${rq.nota_entrega}` : ''}
+              {/* La nota la escribe quien entrega («Lo recogió el supervisor»): con «a» delante no se leía. */}
+              {rq.nota_entrega ? ` · ${rq.nota_entrega}` : ''}
             </p>
           )}
           {/* Entregado con faltante: qué no salió del kardex y por qué, para quien lo pidió. */}
@@ -365,11 +366,11 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
           )
         })}
       </ol>
-      {/* El porcentaje sale de la etapa del insumo más atrasado, no de lo recibido (lo dice la «i» de la página).
+      {/* El porcentaje es el promedio de las etapas de los insumos, no lo recibido (lo dice la «i» de la página).
           Con todo en almacén ya lo dicen los pasos, y un 85 % al lado parecía contradecirlos. */}
       {rq.avance && actual !== 'ENTREGADO' && !llegoTodo(rq) && (
         <p className="mt-1.5 text-xs text-texto-suave">
-          Avance <span className="tabular font-medium text-texto">{rq.avance.porcentaje} %</span>
+          Avance <span className="tabular font-medium text-texto">{porcentaje(rq.avance.porcentaje)}</span>
         </p>
       )}
     </div>

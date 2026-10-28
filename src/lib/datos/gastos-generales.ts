@@ -66,3 +66,15 @@ export async function mesesSinPagosDeOficina(codigo: string): Promise<string[]> 
   if (error) throw new Error(`No se pudo leer qué meses esperan los pagos de la oficina: ${error.message}`)
   return (data ?? []).flatMap((f) => (f.periodo ? [f.periodo] : []))
 }
+
+/**
+ * Los meses ya terminados (`YYYY-MM-01`, desde noviembre de 2026) en que el código
+ * tuvo horas y la planilla de taller sigue sin cerrar: su ajuste no entró y el
+ * cierre del costeo los espera (`cerrar_costeo_codigo`).
+ */
+export async function mesesSinPlanillaDeTaller(codigo: string): Promise<string[]> {
+  const db = await createClient()
+  const { data, error } = await db.rpc('meses_sin_planilla_taller', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer qué meses esperan la planilla de taller: ${error.message}`)
+  return (data ?? []).flatMap((f) => (f.periodo ? [f.periodo] : []))
+}

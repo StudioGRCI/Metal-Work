@@ -10,33 +10,20 @@ import { useEnvio } from '@/lib/envio'
 
 import { guardarDatosDeCuenta } from './acciones'
 
-/** El lápiz de una cuenta y su ventana con el DNI y el costo por hora. */
-export function EditarDatosDeCuenta({
-  usuarioId,
-  nombre,
-  documento,
-  costoHora,
-  conCosto,
-}: {
-  usuarioId: string
-  nombre: string
-  documento: string | null
-  costoHora: number
-  /** Solo las cuentas de operario llevan costo por hora; las demás guardan el que tienen. */
-  conCosto: boolean
-}) {
+/** El lápiz de una cuenta y su ventana con el DNI. */
+export function EditarDatosDeCuenta({ usuarioId, nombre, documento }: { usuarioId: string; nombre: string; documento: string | null }) {
   const [abierta, setAbierta] = useState(false)
   const envio = useEnvio(guardarDatosDeCuenta, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="fantasma" tamano="icono" aria-label={`Cambiar el DNI y el costo de ${nombre}`} onClick={() => setAbierta(true)}>
+      <Boton type="button" variante="fantasma" tamano="icono" aria-label={`Cambiar el DNI de ${nombre}`} onClick={() => setAbierta(true)}>
         <Pencil aria-hidden className="size-4" />
       </Boton>
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={nombre}
-        descripcion="El DNI y el costo por hora de su cuenta. Solo los ven Recursos Humanos y el administrador."
+        descripcion="El DNI de su cuenta. Solo lo ven Recursos Humanos y el administrador."
         ancho="sm"
       >
         <form onSubmit={envio.alEnviar} className="space-y-4">
@@ -44,22 +31,6 @@ export function EditarDatosDeCuenta({
           <Campo etiqueta="DNI o carné de extranjería" htmlFor={`doc-${usuarioId}`}>
             <Entrada id={`doc-${usuarioId}`} name="documento" maxLength={20} autoComplete="off" defaultValue={documento ?? ''} className="tabular" />
           </Campo>
-          {conCosto ? (
-            <Campo etiqueta="Costo por hora (S/)" htmlFor={`costo-${usuarioId}`}>
-              <Entrada
-                id={`costo-${usuarioId}`}
-                name="costo_hora"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                defaultValue={costoHora}
-                className="tabular"
-              />
-            </Campo>
-          ) : (
-            <input type="hidden" name="costo_hora" value={costoHora} />
-          )}
           {envio.error && (
             <p role="alert" className="text-sm text-peligro">
               {envio.error}

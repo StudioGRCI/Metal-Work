@@ -8,7 +8,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { obtenerEvaluacionDiseno } from '@/lib/datos/evaluaciones-diseno'
 import { ESTADO_EVALUACION_DISENO, definir } from '@/lib/dominio/estados'
 import { ESCALA_DISENO, criteriosPorGrupo, puntajeDiseno } from '@/lib/dominio/evaluacion-diseno'
-import { fecha, fechaHora, mesLargo } from '@/lib/format'
+import { fecha, fechaHora, mesLargo, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 import { AccionesEvaluacion } from './acciones-evaluacion'
@@ -112,7 +112,7 @@ export default async function PaginaEvaluacion({ params }: PageProps<'/diseno/ev
                 <tfoot>
                   <tr className="border-t-2 border-borde-fuerte">
                     <th scope="row" colSpan={6} className="px-2 py-2 text-right font-semibold text-texto sm:px-3">Puntaje total</th>
-                    <td className="tabular px-2 py-2 text-right text-base font-semibold whitespace-nowrap text-texto sm:px-3">{total} %</td>
+                    <td className="tabular px-2 py-2 text-right text-base font-semibold whitespace-nowrap text-texto sm:px-3">{porcentaje(total)}</td>
                   </tr>
                   <tr>
                     <th scope="row" colSpan={6} className="px-2 pb-2 text-right font-normal text-texto-suave sm:px-3">Rendimiento deseado</th>

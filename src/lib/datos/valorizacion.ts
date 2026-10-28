@@ -20,7 +20,8 @@ export async function materialesParaValorizar(): Promise<MaterialParaValorizar[]
 /**
  * El precio con el que el costeo valoriza una salida de hoy: el de la última
  * compra y, si el material nunca se compró por el sistema, el que fijó
- * Logística. Mismo orden que `detalle_costeo_ot`.
+ * Logística. Es el orden de `precio_de_salida` en la base (migración
+ * 20261027110000), que usan el costeo del código, el de la OT y esta pantalla.
  */
 export function precioDeCosteo(m: MaterialParaValorizar): { precio: number; moneda: 'PEN' | 'USD'; origen: 'COMPRA' | 'LOGISTICA' } | null {
   if (m.ultima_compra !== null && (m.moneda_compra === 'PEN' || m.moneda_compra === 'USD')) {

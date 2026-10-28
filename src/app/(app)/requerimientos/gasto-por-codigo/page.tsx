@@ -7,7 +7,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarGastoPorCodigo, type GastoDeCodigo } from '@/lib/datos/gasto-por-codigo'
 import { enlaceGastoCodigo, faltaElPrecio, llaveParecido, parecidos } from '@/lib/dominio/codigos-internos'
-import { fecha, moneda } from '@/lib/format'
+import { fecha, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Gasto por código interno' }
@@ -98,7 +98,7 @@ export default async function PaginaGastoPorCodigo({ searchParams }: PageProps<'
         <ul className="space-y-3">
           {codigos.map((c) => (
             <li key={c.codigo}>
-              <FilaGasto codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} />
+              <FilaGasto codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} total={materiales} />
             </li>
           ))}
         </ul>
@@ -109,7 +109,9 @@ export default async function PaginaGastoPorCodigo({ searchParams }: PageProps<'
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
-function FilaGasto({ codigo: c, parecidos }: { codigo: GastoDeCodigo; parecidos: string[] }) {
+function FilaGasto({ codigo: c, parecidos, total }: { codigo: GastoDeCodigo; parecidos: string[]; total: number }) {
+  // Qué parte del total de materiales en soles es este código (DKS, 27/10/2026: porcentaje y costo).
+  const parte = c.materiales_pen > 0 ? parteDe(c.materiales_pen, total) : null
   const donde = [
     c.requerimientos > 0 && plural(c.requerimientos, 'RQ', 'RQ'),
     c.salidas > 0 && plural(c.salidas, 'salida del almacén', 'salidas del almacén'),
@@ -121,7 +123,8 @@ function FilaGasto({ codigo: c, parecidos }: { codigo: GastoDeCodigo; parecidos:
       className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 hover:border-acento"
       data-codigo={c.codigo}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      {/* Rejilla y no flex-wrap: según el largo del texto el monto saltaba abajo y a la izquierda (auditoría del 27/10/2026). */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className="min-w-0">
           <p className="font-mono font-semibold break-all text-texto">{c.codigo}</p>
           <p className="text-xs text-texto-suave">
@@ -134,7 +137,7 @@ function FilaGasto({ codigo: c, parecidos }: { codigo: GastoDeCodigo; parecidos:
             {faltaElPrecio(c.materiales_pen + c.materiales_usd, c.materiales_sin_precio) ?? moneda(c.materiales_pen)}
           </p>
           {c.materiales_usd > 0 && <p className="tabular text-xs text-texto">+ {moneda(c.materiales_usd, 'USD')}</p>}
-          <p className="text-[11px] text-texto-suave">en materiales</p>
+          <p className="text-xs text-texto-suave">en materiales{parte !== null ? ` · ${porcentaje(parte)} del total` : ''}</p>
         </div>
       </div>
 

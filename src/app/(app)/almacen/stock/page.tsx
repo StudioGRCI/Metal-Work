@@ -9,7 +9,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ALMACENES, ORDEN_ALMACENES, type Almacen, esAlmacen } from '@/lib/dominio/almacen'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { cantidad } from '@/lib/format'
+import { cantidad, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Stock en almacén' }
@@ -179,6 +179,13 @@ function FilaDeStock({ material: m }: { material: MaterialEnStock }) {
         {m.existencia > 0 && ocupado && (
           <p className="tabular mt-0.5 text-xs text-texto-suave">
             de {cantidad(m.existencia)} {m.unidad} en almacén
+          </p>
+        )}
+        {/* En su propia línea: pegado al de arriba, la celda no se partía y en el
+            teléfono cortaba la cifra de toda la columna (auditoría del 27/10/2026). */}
+        {m.existencia > 0 && ocupado && (
+          <p className="tabular text-xs text-texto-suave">
+            {porcentaje(parteDe(m.separado + m.reservado_ot, m.existencia))} separado
           </p>
         )}
         {bajoMinimo && m.existencia > 0 && (

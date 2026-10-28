@@ -1,26 +1,27 @@
 /**
- * Recorre con clic real «la cotización se aprueba con su código interno y su
- * OT» (migración 20261016900000), con la cuenta de cada puesto (nunca ADMIN):
+ * Recorre con clic real «Gerencia aprueba con un toque y Administración le da
+ * el código interno y sube la OT» (migraciones 20261027200000 y
+ * 20261027201000), con la cuenta de cada puesto (nunca ADMIN):
  *
- *   1. Ventas sube la cotización y no la aprueba; la aprobada de antes que
- *      quedó sin OT le dice que la destraba Gerencia.
- *   2. Gerencia le da código y OT a la aprobada de antes, desde su tarjeta.
- *   3. Gerencia aprueba la nueva en una sola ventana: el código interno es
- *      obligatorio, sin el PDF no envía, el número y la fecha salen del PDF, y
- *      un número de OT que ya existe se rechaza sin dejar el PDF suelto.
- *      Aprobada, la tarjeta muestra el código y la OT.
+ *   1. Ventas sube dos cotizaciones y no las aprueba.
+ *   2. Gerencia las aprueba con un toque: no se abre ninguna ventana, no le
+ *      pide código, OT ni PDF, y no tiene cómo cargarlos. La tarjeta dice que
+ *      falta Administración. «Descargar» baja la cotización con su nombre.
+ *   3. A Administración le llega el aviso y lo cuenta su dashboard; entra por
+ *      el aviso y le da código y OT a cada una: el código es obligatorio, sin
+ *      el PDF no guarda, el número y la fecha de entrega al cliente salen del
+ *      PDF, y un número de OT que ya existe se rechaza sin dejar el PDF suelto.
  *   4. Diseño recibe el aviso, entra por él al código y abre el PDF de la OT.
- *   5. Administración ya no emite la OT: ve el código y ningún botón.
- *   6. Contabilidad ve la cotización con su código, lista para facturar, y
- *      Ventas recibe el aviso con el código.
+ *   5. Gerencia ve la cotización con su código y su OT, sin botones.
+ *   6. Contabilidad la ve con su código, lista para facturar, y a Ventas le
+ *      llegan los dos avisos: aprobada y con su código.
  *
  * Arma sus propios datos ficticios (QA-COT-…) y las cuentas `*.cot@banco.test`
- * con la clave local; la cuenta ADMIN solo arma la aprobada de antes, como en
- * el check 391, y no entra a la aplicación. Variables: BANCO_CLAVE, BASE
- * (http://localhost:3111), BANCO_BASE (mw_demo), BANCO_ARCHIVOS (el mismo del
- * servidor del banco), CAPTURAS.
+ * con la clave local. Variables: BANCO_CLAVE, BASE (http://localhost:3111),
+ * BANCO_BASE (mw_demo), BANCO_ARCHIVOS (el mismo del servidor del banco),
+ * CAPTURAS.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import pg from 'pg'
@@ -86,25 +87,20 @@ const CUENTAS = {
   administracion: ['ADMINISTRACION', 'ADM'],
   diseno: ['DISENO', 'DIS'],
   contabilidad: ['CONTABILIDAD', 'CON'],
-  admin: ['ADMIN', 'ADM'],
 }
 const ids = {}
 for (const [clave, [rol, area]] of Object.entries(CUENTAS)) {
   const correo = `${clave}.cot@banco.test`
   let fila = await uno('select id from public.usuarios where correo = $1', [correo])
   if (!fila) {
-    // La cuenta ADMIN no lleva clave: arma un dato y no entra a la aplicación.
-    fila = await uno(
-      `insert into auth.users (id, email, encrypted_password) values (gen_random_uuid(), $1, $2) returning id`,
-      [correo, null],
-    )
+    fila = await uno(`insert into auth.users (id, email, encrypted_password) values (gen_random_uuid(), $1, null) returning id`, [correo])
     await consulta(
       `insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
        select $1, $2, 'Banco cotización', $3, r.id, (select id from public.areas where codigo = $4) from public.roles r where r.codigo = $2`,
       [fila.id, rol, correo, area],
     )
   }
-  if (rol !== 'ADMIN') await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [correo, CLAVE])
+  await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [correo, CLAVE])
   ids[clave] = fila.id
 }
 await consulta(`insert into public.empresa (ruc, razon_social) select '20100000390', 'PRUEBAS COTIZACION S.A.C.' where not exists (select 1 from public.empresa)`)
@@ -134,13 +130,13 @@ const clienteId = (await uno(
 )).id
 const carroceria = (await uno(`select id from public.tipos_carroceria where activo order by orden_secuencia limit 1`)).id
 
-// Dos cotizaciones de Ventas: la nueva espera a Gerencia; la de antes ya está
-// aprobada y quedó sin OT (la arma ADMIN, como un dato viejo).
+// Dos cotizaciones de Ventas, las dos por revisar. Se suben con su nombre: es
+// el que tiene que salir al descargarlas.
 const cot = {}
 for (const letra of ['A', 'B']) {
   const id = (await uno('select gen_random_uuid() as id')).id
   const numero = `QA-COT-${sello}-${letra}`
-  const ruta = `cot/${id}/${numero}.pdf`
+  const ruta = `cot/${id}/${id}.pdf`
   const contenido = pdfConTexto([`COTIZACION ${numero}`, `CLIENTE: ${cliente}`, 'Semirremolque plataforma de prueba'])
   const destino = join(ARCHIVOS, 'cotizaciones-pdf', ruta)
   mkdirSync(dirname(destino), { recursive: true })
@@ -148,13 +144,12 @@ for (const letra of ['A', 'B']) {
   await como('ventas', `insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage,
                                                              mime_type, tamano_bytes, registrado_por, monto_venta, moneda)
                         values ($1, $2, $3, $4, $5, $6, 'application/pdf', $7, $8, 59000, 'USD')`,
-  [id, numero, clienteId, carroceria, `${numero}.pdf`, ruta, contenido.length, ids.ventas])
+  [id, numero, clienteId, carroceria, `Cotización ${numero}.pdf`, ruta, contenido.length, ids.ventas])
   await consulta(`insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
                   values ('cotizaciones-pdf', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'application/pdf', 'size', $3::bigint))`,
   [ruta, ids.ventas, contenido.length])
   cot[letra] = { id, numero }
 }
-await como('admin', `update public.cotizaciones_pdf set estado = 'APROBADA' where id = $1`, [cot.B.id])
 
 // Dos números de OT libres y los dos PDF que los traen.
 const libres = (await consulta(`select n from generate_series(9100, 9999) n
@@ -178,12 +173,13 @@ const X1 = `QA_SR_${sello}/26`
 const X2 = `QA_SR_${sello}/27`
 
 // ------------------------------------------------------------------- navegador
-const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
+// En UTF-8, como el equipo de la oficina: sin eso Chromium baja «Cotización….pdf» como «download».
+const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'], env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' } })
 const errores = []
 
 async function entrar(clave) {
   const correo = `${clave}.cot@banco.test`
-  const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima' })
+  const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'America/Lima', acceptDownloads: true })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
@@ -215,6 +211,7 @@ async function esperarLectura(v) {
 const huerfanosOt = () => consulta(`select name from storage.objects o where bucket_id = 'adjuntos-ot'
                                      and not exists (select 1 from public.ot_adjuntos a where a.ruta_storage = o.name)`)
 const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextContents()).map(limpio)
+const ESPERA_ADMINISTRACION = 'Falta que Administración le dé su código interno y suba la OT.'
 
 // ------------------------------------------------------------------ 1. Ventas
 {
@@ -223,93 +220,178 @@ const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextCon
   const a = pagina.locator(`li[id="${cot.A.id}"]`)
   const textoA = limpio(await a.textContent())
   comprobar(textoA.includes(cot.A.numero) && textoA.includes('Por revisar'), 'Ventas ve su cotización nueva esperando a Gerencia')
-  comprobar(!(await botones(a)).some((b) => /^Aprobar/.test(b)), 'y no tiene cómo aprobarla')
-  const b = limpio(await pagina.locator(`li[id="${cot.B.id}"]`).textContent())
-  comprobar(b.includes('Falta que Gerencia le dé su código interno y cargue la OT'), 'la aprobada de antes sin OT le dice que la destraba Gerencia')
+  comprobar(!(await botones(a)).some((b) => /^Aprobar|Dar código/.test(b)), 'y no tiene cómo aprobarla ni darle código')
   await contexto.close()
 }
 
-// -------------------------------------------------------------- 2 y 3. Gerencia
+// ---------------------------------------------------------------- 2. Gerencia
 {
   const { pagina, contexto } = await entrar('gerencia')
   await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
   const v = pagina.locator('[role="dialog"]')
+  const darCodigo = () => pagina.getByRole('button', { name: 'Dar código y cargar la OT' }).count()
 
-  // 2. La aprobada de antes: código y OT desde su tarjeta.
+  // La B en «Vigentes» y la A en «Por revisar»: en los dos casos la tarjeta
+  // aprobada se queda donde estaba, y bajo el dedo no queda el «Aprobar» de otra.
+  for (const [letra, ruta] of [['B', '/cotizaciones/pdf'], ['A', '/cotizaciones/pdf?estado=POR_REVISAR']]) {
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    const t = pagina.locator(`li[id="${cot[letra].id}"]`)
+    const ofrece = await botones(t)
+    comprobar(ofrece.includes('Aprobar') && ofrece.includes('Rechazar') && !ofrece.some((b) => /Dar código/.test(b)),
+      `la ${cot[letra].numero} ofrece «Aprobar» y «Rechazar», sin cargar la OT (${ofrece.join(' · ')})`)
+    const boton = t.getByRole('button', { name: 'Aprobar', exact: true })
+    await boton.scrollIntoViewIfNeeded()
+    const caja = await boton.boundingBox()
+    const antes = (await t.boundingBox())?.y
+    await boton.click()
+    // Un toque: no se abre ninguna ventana que pida código, OT ni PDF.
+    await pagina.waitForTimeout(300)
+    comprobar((await v.count()) === 0 || !(await v.first().isVisible()), `al tocar «Aprobar» en la ${cot[letra].numero} no se abre ninguna ventana`)
+    await t.getByText(ESPERA_ADMINISTRACION).waitFor({ timeout: 30000 }).catch(() => {})
+    const texto = limpio(await t.textContent())
+    comprobar(texto.includes('Aprobada') && texto.includes(ESPERA_ADMINISTRACION), 'la tarjeta queda «Aprobada» y dice que falta Administración')
+    const despues = (await t.boundingBox())?.y
+    const debajo = await pagina.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('button')?.textContent?.trim() ?? '',
+      { x: caja.x + caja.width / 2, y: caja.y + caja.height / 2 })
+    comprobar(antes !== undefined && antes === despues && !/^Aprobar/.test(debajo),
+      `en ${ruta === '/cotizaciones/pdf' ? '«Vigentes»' : '«Por revisar»'} la tarjeta no se mueve y bajo el dedo no queda otro «Aprobar» (${antes} → ${despues}; debajo: «${debajo}»)`)
+  }
+  await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
+  comprobar((await darCodigo()) === 0, 'Gerencia no tiene «Dar código y cargar la OT» en ninguna tarjeta')
+
+  // «Descargar» baja la cotización con su nombre, no con el del almacenamiento.
+  const a = pagina.locator(`li[id="${cot.A.id}"]`)
+  const [descarga] = await Promise.all([
+    pagina.waitForEvent('download', { timeout: 30000 }).catch(() => null),
+    a.getByRole('link', { name: 'Descargar' }).first().click(),
+  ])
+  const nombre = descarga?.suggestedFilename() ?? ''
+  const contenido = descarga ? readFileSync(await descarga.path()).subarray(0, 5).toString() : ''
+  comprobar(nombre === `Cotización ${cot.A.numero}.pdf` && contenido === '%PDF-', `«Descargar» la baja con su nombre («${nombre}»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-1-gerencia-aprueba.png'), fullPage: true })
+
+  const [f] = await consulta(
+    `select c.estado, c.revisado_por, (select count(*) from public.ordenes_trabajo o where o.cotizacion_pdf_id = c.id)::int as ots
+       from public.cotizaciones_pdf c where c.id = $1`, [cot.A.id])
+  comprobar(f?.estado === 'APROBADA' && f.revisado_por === ids.gerencia && f.ots === 0, 'la base la guarda aprobada por Gerencia y todavía sin OT')
+  await contexto.close()
+}
+
+// ------------------------------------------------------------ 3. Administración
+const avisoAdministracion = await uno(
+  `select titulo, cuerpo, ruta from public.notificaciones where usuario_id = $1 and origen_id = $2 order by creado_en desc limit 1`,
+  [ids.administracion, cot.A.id])
+comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su código y su OT'
+  && avisoAdministracion.ruta === `/cotizaciones/pdf?estado=APROBADA_SIN_OT#${cot.A.id}`,
+`a Administración le llega el aviso («${avisoAdministracion?.titulo ?? ''}»)`)
+{
+  const { pagina, contexto } = await entrar('administracion')
+  const tablero = limpio(await pagina.locator('main').textContent())
+  comprobar(/Aprobadas sin código/.test(tablero), 'su dashboard cuenta las aprobadas sin código')
+
+  await pagina.goto(`${BASE}${avisoAdministracion?.ruta ?? '/cotizaciones/pdf?estado=APROBADA_SIN_OT'}`, { waitUntil: 'networkidle' })
+  const v = pagina.locator('[role="dialog"]')
+  const a = pagina.locator(`li[id="${cot.A.id}"]`)
+  const ofrece = await botones(a)
+  comprobar(ofrece.includes('Dar código y cargar la OT') && !ofrece.some((b) => /^Aprobar|^Rechazar/.test(b)),
+    `el aviso la lleva a la cotización, con «Dar código y cargar la OT» y sin aprobar (${ofrece.join(' · ')})`)
+
+  // La B: el número, la fecha y el tipo salen del PDF.
   const b = pagina.locator(`li[id="${cot.B.id}"]`)
   await b.getByRole('button', { name: 'Dar código y cargar la OT' }).click()
-  comprobar(limpio(await v.textContent()).includes(`Código interno y OT de la ${cot.B.numero}`), 'la aprobada de antes abre «Código interno y OT»')
+  const ventana = limpio(await v.textContent())
+  comprobar(ventana.includes(`Código interno y OT de la ${cot.B.numero}`) && ventana.includes('Gerencia ya la aprobó'), 'abre «Código interno y OT»')
+  // La ayuda corta se lee bajo el campo, sin tocar la «i».
+  const ayudaFecha = v.getByText('El día prometido al cliente para entregarle la unidad, según la OT')
+  comprobar(ventana.includes('Fecha de entrega al cliente') && (await ayudaFecha.isVisible()),
+    'la fecha dice que es la de entrega al cliente, con su ayuda a la vista')
   await v.locator('input[name="codigo_interno"]').fill(X1)
   await v.locator('input[type="file"]').setInputFiles(ARCHIVO_N1)
   await esperarLectura(v)
   comprobar((await v.locator('input[name="numero"]').inputValue()) === `${N1}-${anio}`, `el número de la OT sale del PDF (${N1}-${anio})`)
   comprobar((await v.locator('input[name="fecha_entrega"]').inputValue()) === `${anio}-11-20`, 'la fecha de entrega sale del PDF')
   comprobar((await v.locator('select[name="tipo_unidad"]').inputValue()) === 'SEMIRREMOLQUE', 'y el tipo, del producto del PDF')
+  await v.locator('input[name="marca"]').fill('Volvo')
+  await v.locator('input[name="modelo"]').fill('FMX 8x4')
   await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const eB = await esperarVentana(pagina)
-  comprobar(eB === '', `la aprobada de antes recibe su código y su OT${eB ? ` (dijo: ${eB})` : ''}`)
-  await b.getByText(X1).waitFor({ timeout: 30000 }).catch(() => {})
-  const textoB = limpio(await b.textContent())
-  comprobar(textoB.includes(X1) && textoB.includes(`OT ${N1}-${anio}`), 'su tarjeta muestra el código y la OT')
+  comprobar(eB === '', `la ${cot.B.numero} recibe su código y su OT${eB ? ` (dijo: ${eB})` : ''}`)
+  // Al guardar lleva a su tarjeta, resaltada, con el código y la OT.
+  await pagina.waitForURL((u) => u.hash === `#${cot.B.id}` && u.search === '', { timeout: 30000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  const textoB = limpio(await b.textContent().catch(() => ''))
+  comprobar(textoB.includes(X1) && textoB.includes(`OT ${N1}-${anio}`) && (await b.evaluate((e) => e.matches(':target'))) && (await b.isVisible()),
+    'y lleva a su tarjeta, resaltada, con el código y la OT')
 
-  // 3. La nueva: Aprobar abre la ventana; no hay aprobación suelta.
-  const a = pagina.locator(`li[id="${cot.A.id}"]`)
-  const ofrece = await botones(a)
-  comprobar(ofrece.includes('Aprobar') && ofrece.includes('Rechazar') && !ofrece.includes('Aprobar la corrección'),
-    `la nueva ofrece «Aprobar» y «Rechazar», sin aprobación suelta (${ofrece.join(' · ')})`)
-  await a.getByRole('button', { name: 'Aprobar', exact: true }).click()
-  comprobar(limpio(await v.textContent()).includes(`Aprobar la ${cot.A.numero}`), 'abre «Aprobar» con el código interno y la OT')
-
-  // Sin código el navegador no envía; sin PDF tampoco.
+  // La A, desde las aprobadas sin código: sin código el navegador no envía; sin PDF tampoco.
+  await pagina.goto(`${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`, { waitUntil: 'networkidle' })
+  await a.getByRole('button', { name: 'Dar código y cargar la OT' }).click()
   await v.locator('input[name="numero"]').fill(N2)
   await v.locator('input[name="fecha_entrega"]').fill(`${anio}-11-28`)
   await v.locator('select[name="tipo_unidad"]').selectOption('SEMIRREMOLQUE')
-  await v.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+  await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const sinCodigo = await v.locator('input[name="codigo_interno"]').evaluate((e) => e.validity.valueMissing)
   comprobar(sinCodigo && (await v.isVisible()), 'sin código interno el navegador no envía')
   await v.locator('input[name="codigo_interno"]').fill(X2)
-  await v.getByRole('button', { name: 'Aprobar con código y OT' }).click()
-  // Lo dice su campo, en rojo y con el foco ahí (el mismo campo de documentos que en todo el sistema).
+  await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const campoPdf = v.locator('input[type="file"]')
   await pagina.waitForTimeout(300)
   const sinPdf = limpio(await campoPdf.locator('xpath=..').innerText())
   comprobar(sinPdf.includes('Falta el PDF de la OT') && (await campoPdf.getAttribute('aria-invalid')) === 'true'
-    && (await campoPdf.evaluate((e) => e === document.activeElement)), `sin el PDF no envía: su campo dice que falta y el foco queda ahí («${sinPdf}»)`)
+    && (await campoPdf.evaluate((e) => e === document.activeElement)), `sin el PDF no guarda: su campo dice que falta y el foco queda ahí («${sinPdf}»)`)
 
   // Con el PDF, pero con el número de una OT que ya existe: se rechaza y el PDF no queda suelto.
   await v.locator('input[type="file"]').setInputFiles(ARCHIVO_N2)
   await esperarLectura(v)
   comprobar((await v.locator('input[name="numero"]').inputValue()) === `${N2}-${anio}`, 'el número se toma del PDF elegido')
   await v.locator('input[name="numero"]').fill(N1)
-  await v.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+  await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const repetida = await esperarVentana(pagina)
   comprobar(repetida.includes(`Ya hay una OT ${N1}-${anio}`), `un número de OT que ya existe se rechaza («${repetida}»)`)
   comprobar((await huerfanosOt()).length === 0, 'y el PDF de ese intento no quedó suelto en el almacenamiento')
-  const [sigue] = await consulta(`select estado from public.cotizaciones_pdf where id = $1`, [cot.A.id])
-  comprobar(sigue?.estado === 'POR_REVISAR', 'la cotización sigue por revisar: no se aprueba a medias')
 
   await v.locator('input[name="numero"]').fill(N2)
-  await v.getByRole('button', { name: 'Aprobar con código y OT' }).click()
+  await v.getByRole('button', { name: 'Guardar código y OT' }).click()
   const eA = await esperarVentana(pagina)
-  comprobar(eA === '', `Gerencia aprueba con el código y la OT${eA ? ` (dijo: ${eA})` : ''}`)
-  await a.getByText(X2).waitFor({ timeout: 30000 }).catch(() => {})
-  const textoA = limpio(await a.textContent())
-  comprobar(textoA.includes('Aprobada') && textoA.includes(X2) && textoA.includes(`OT ${N2}-${anio}`), 'la tarjeta queda «Aprobada» con su código y su OT')
-  const enlace = await a.getByRole('link', { name: X2 }).getAttribute('href').catch(() => null)
+  comprobar(eA === '', `Administración guarda el código y la OT${eA ? ` (dijo: ${eA})` : ''}`)
+  await pagina.waitForURL((u) => u.hash === `#${cot.A.id}` && u.search === '', { timeout: 30000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  comprobar(await a.evaluate((e) => e.matches(':target')).catch(() => false), 'y también lleva a su tarjeta')
+
+  // Se busca por el código interno.
+  await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(X2)}`, { waitUntil: 'networkidle' })
+  const halladas = await pagina.locator('li[id]').evaluateAll((l) => l.map((e) => e.id))
+  comprobar(halladas.includes(cot.A.id), `la búsqueda por el código ${X2} la encuentra (${halladas.length} tarjetas)`)
+
+  // Si «Descargar» no puede, vuelve a la lista con el aviso en vez de bajar un archivo de error.
+  await pagina.goto(`${BASE}/cotizaciones/pdf/archivo/00000000-0000-4000-8000-000000000000`, { waitUntil: 'networkidle' })
+  const alerta = limpio(await pagina.locator('[role="alert"]').first().textContent().catch(() => ''))
+  comprobar(new URL(pagina.url()).search === '?descarga=fallo' && alerta.startsWith('No se pudo bajar la cotización'), `una descarga que no puede vuelve con el aviso («${alerta}»)`)
+
+  // En la lista completa, las dos con su código y su OT.
+  await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
+  for (const [letra, X, N] of [['A', X2, N2], ['B', X1, N1]]) {
+    const t = pagina.locator(`li[id="${cot[letra].id}"]`)
+    const texto = limpio(await t.textContent())
+    comprobar(texto.includes('Aprobada') && texto.includes(X) && texto.includes(`OT ${N}-${anio}`) && !texto.includes('Dar código'),
+      `la ${cot[letra].numero} queda «Aprobada» con su código y su OT, sin el botón`)
+  }
+  const enlace = await pagina.locator(`li[id="${cot.A.id}"]`).getByRole('link', { name: X2 }).getAttribute('href').catch(() => null)
   comprobar(enlace === `/codigos-internos/detalle?codigo=${encodeURIComponent(X2)}`, 'y el código lleva a Códigos internos')
-  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-1-gerencia.png'), fullPage: true })
+  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-2-administracion-carga.png'), fullPage: true })
 
   const [f] = await consulta(
-    `select c.estado, c.revisado_por, o.numero, o.estado as estado_ot, u.codigo_interno, u.cliente_id, a.ruta_storage
+    `select c.estado, c.revisado_por, o.numero, o.estado as estado_ot, u.codigo_interno, u.cliente_id, a.ruta_storage, a.subido_por
        from public.cotizaciones_pdf c
        join public.ordenes_trabajo o on o.cotizacion_pdf_id = c.id
        join public.unidades u on u.id = o.unidad_id
        left join public.ot_adjuntos a on a.orden_id = o.id and a.tipo = 'ORDEN'
       where c.id = $1`, [cot.A.id])
-  comprobar(f?.estado === 'APROBADA' && f.revisado_por === ids.gerencia, 'la base la guarda aprobada por Gerencia')
+  comprobar(f?.estado === 'APROBADA' && f.revisado_por === ids.gerencia, 'la cotización sigue aprobada por Gerencia')
   comprobar(f?.numero === `${N2}-${anio}` && f.estado_ot === 'APROBADA' && f.codigo_interno === X2 && f.cliente_id === clienteId,
     `con su OT ${N2}-${anio} aprobada en la unidad ${X2} del cliente`)
-  comprobar(Boolean(f?.ruta_storage) && (await huerfanosOt()).length === 0, 'el PDF de la OT quedó anotado en la orden, sin archivos sueltos')
+  comprobar(Boolean(f?.ruta_storage) && f.subido_por === ids.administracion && (await huerfanosOt()).length === 0,
+    'el PDF de la OT lo subió Administración y quedó anotado en la orden, sin archivos sueltos')
   await contexto.close()
 }
 
@@ -329,19 +411,20 @@ const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextCon
   const respuesta = pdf ? await fetch(pdf) : null
   const cabeza = respuesta?.ok ? Buffer.from(await respuesta.arrayBuffer()).subarray(0, 5).toString() : ''
   comprobar(cabeza === '%PDF-', 'y abre el PDF de la OT')
-  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-2-diseno.png'), fullPage: true })
+  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-3-diseno.png'), fullPage: true })
   await contexto.close()
 }
 
-// ------------------------------------------------------------ 5. Administración
+// -------------------------------------------------------- 5. Gerencia, después
 {
-  const { pagina, contexto } = await entrar('administracion')
+  const { pagina, contexto } = await entrar('gerencia')
   await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
   const a = pagina.locator(`li[id="${cot.A.id}"]`)
   const texto = limpio(await a.textContent())
   const ofrece = await botones(a)
-  comprobar(texto.includes(X2) && texto.includes(`OT ${N2}-${anio}`), 'Administración ve la cotización con su código y su OT')
-  comprobar(!ofrece.some((t) => /Emitir|Aprobar|Dar código/.test(t)), `y ya no emite la OT ni aprueba (${ofrece.join(' · ') || 'sin botones'})`)
+  comprobar(texto.includes(X2) && texto.includes(`OT ${N2}-${anio}`) && !texto.includes(ESPERA_ADMINISTRACION),
+    'Gerencia ve la cotización con el código y la OT que cargó Administración')
+  comprobar(!ofrece.some((t) => /Aprobar|Dar código/.test(t)), `y sin botones para cargarla (${ofrece.join(' · ') || 'sin botones'})`)
   await contexto.close()
 }
 
@@ -353,12 +436,16 @@ const botones = async (tarjeta) => (await tarjeta.getByRole('button').allTextCon
   const texto = limpio(await tarjeta.textContent().catch(() => ''))
   comprobar(texto.includes(`Código ${X2}`) && texto.includes('Por facturar'), 'Contabilidad ve la cotización por su código, por facturar')
   comprobar((await tarjeta.getByRole('button', { name: 'Registrar factura' }).count()) === 1, 'y ya puede registrar su factura')
-  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-3-contabilidad.png'), fullPage: true })
+  await pagina.screenshot({ path: join(CAPTURAS, 'cotizacion-4-contabilidad.png'), fullPage: true })
   await contexto.close()
 
-  const [aviso] = await consulta(`select cuerpo from public.notificaciones where usuario_id = $1 and cuerpo like $2 limit 1`,
-    [ids.ventas, `%${cot.A.numero}%`])
-  comprobar(Boolean(aviso) && aviso.cuerpo.includes(`con el código interno ${X2}`), `Ventas recibe el aviso con el código («${aviso?.cuerpo ?? ''}»)`)
+  const avisos = await consulta(`select titulo, cuerpo from public.notificaciones where usuario_id = $1 and origen_id = $2 order by creado_en`,
+    [ids.ventas, cot.A.id])
+  const aprobada = avisos.find((n) => n.cuerpo.includes('Administración le da su código interno y sube su OT'))
+  const conCodigo = avisos.find((n) => n.titulo === 'Tu cotización ya tiene su código')
+  comprobar(Boolean(aprobada), `a Ventas le llega que está aprobada y que el código lo da Administración («${aprobada?.cuerpo ?? ''}»)`)
+  comprobar(Boolean(conCodigo) && conCodigo.cuerpo.includes(`con el código interno ${X2} y la OT ${N2}-${anio}`),
+    `y después, que ya tiene su código («${conCodigo?.cuerpo ?? ''}»)`)
 }
 
 await navegador.close()

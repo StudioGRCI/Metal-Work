@@ -136,7 +136,9 @@ function AyudaEnIcono({ id, etiqueta }: { id: string; etiqueta: string }) {
       aria-label={`Qué es «${etiqueta}»`}
       aria-describedby={id}
       data-ayuda
-      className="flex size-4 shrink-0 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
+      // Se ve de 16 px para no pesar al lado de la etiqueta, pero el blanco mide
+      // 32 px (`after:-inset-2`): con 16 quedaba bajo los 24 px de WCAG 2.5.8.
+      className="relative flex size-4 shrink-0 items-center justify-center rounded-full border border-borde text-[10px] leading-none font-semibold text-texto-tenue after:absolute after:-inset-2 after:content-[''] hover:border-acento hover:text-acento focus-visible:border-acento focus-visible:text-acento"
     >
       i
     </button>

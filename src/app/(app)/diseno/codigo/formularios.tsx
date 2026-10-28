@@ -353,9 +353,11 @@ export function RecibirPlano({ revision, numero }: { revision: string; numero: s
   const { ejecutar, enviando, error } = useAccion(recibirPlano)
   return (
     <div className="space-y-1">
+      {/* Dice lo que hace, no un estado: «✓ Recibido» junto a «Por recibir» se leía como que ya estaba (auditoría del 27/10/2026). */}
       <Boton
         type="button"
         tamano="sm"
+        variante="secundario"
         cargando={enviando}
         onClick={() => {
           const datos = new FormData()
@@ -365,7 +367,7 @@ export function RecibirPlano({ revision, numero }: { revision: string; numero: s
         aria-label={`Marcar recibido el plano ${numero}`}
       >
         <Check aria-hidden className="size-4" />
-        Recibido
+        Marcar recibido
       </Boton>
       <Alerta error={error} />
     </div>
