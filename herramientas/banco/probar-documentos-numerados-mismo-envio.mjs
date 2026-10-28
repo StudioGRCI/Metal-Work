@@ -152,7 +152,22 @@ async function segundaDeLogistica(activa) {
       [SEGUNDA_DE_LOGISTICA],
     )
   }
-  await consulta(`update usuarios set activo = $2 where correo = $1`, [SEGUNDA_DE_LOGISTICA, activa])
+  // El estado de una cuenta solo lo cambia quien administra usuarios
+  // (fn_usuario_proteger_rol): se cambia como el administrador del banco, igual
+  // que preparar.sh crea las cuentas, y solo dentro de esta transacción.
+  await consulta('begin')
+  try {
+    await consulta(
+      `select set_config('request.jwt.claim.sub',
+         (select u.id::text from usuarios u join roles r on r.id = u.rol_id
+           where r.codigo = 'ADMIN' and u.activo order by u.creado_en limit 1), true)`,
+    )
+    await consulta(`update usuarios set activo = $2 where correo = $1`, [SEGUNDA_DE_LOGISTICA, activa])
+    await consulta('commit')
+  } catch (error) {
+    await consulta('rollback')
+    throw error
+  }
 }
 if (corre('cuenta')) {
   await segundaDeLogistica(true)
