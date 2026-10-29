@@ -23,7 +23,10 @@ type Paso = 'SALIDA' | 'ARENADO' | 'ANULAR'
  * mientras se envía, se quedan con ese envío y lo que conteste se dice en la
  * fila, cuyos botones entretanto giran y no abren otra ventana. Antes se
  * quitaban en el acto: la base rechazaba la salida («La foto 1 no terminó de
- * subir…») y nada lo decía (vigesimosexta pasada).
+ * subir…») y nada lo decía (vigesimosexta pasada). La anulación, sin fotos, va
+ * igual: cerrada en vuelo, su rechazo no lo decía nadie, y al contestar cerraba
+ * la ventana de la salida que se hubiera abierto entretanto, con sus fotos
+ * sueltas (vigesimoctava pasada).
  *
  * `bloqueoSalida` es lo que la base dice que le falta para salir (el 100 % del
  * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
@@ -55,19 +58,34 @@ export function ControlesVehiculo({
   const salida = useEnvio(fotosSalida.conFotos(registrarSalidaVehiculo), () => {
     if (!fotosSalida.seCerroAlEnviar()) setPaso(null)
   })
-  const anular = useEnvio(anularRegistroVehiculo, () => setPaso(null))
+  const fotosAnular = useFotosDelEnvio(BUCKET_FOTOS_VEHICULO)
+  const anular = useEnvio(fotosAnular.conFotos(anularRegistroVehiculo), () => {
+    if (!fotosAnular.seCerroAlEnviar()) setPaso(null)
+  })
   const envio = paso === 'ANULAR' ? anular : salida
   const sale = paso === 'SALIDA' || paso === 'ARENADO'
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length
   const bloqueado = sale && (subiendo || fallidas || listas === 0)
-  // Cerrada mientras la salida va en camino: la fila no abre otra ventana hasta que conteste.
-  const { sigue } = fotosSalida
+  // Cerrada mientras la salida o la anulación van en camino: la fila no abre
+  // otra ventana hasta que contesten, ni mientras la página se pone al día tras
+  // el ok (vigesimoctava pasada).
+  const sigue = fotosSalida.sigue || fotosAnular.sigue
+  const ocupado = sigue || ((salida.enviando || anular.enviando) && paso === null)
+  // El que sigue nombra su estado; el bloqueo de la salida, el suyo.
+  const describe = (...ids: (string | false)[]) => ids.filter(Boolean).join(' ') || undefined
+  const estado = fotosSalida.sigue ? fotosSalida.idDelEstado : fotosAnular.sigue && fotosAnular.idDelEstado
 
   function cerrar() {
-    fotosSalida.cerrar()
+    ;(paso === 'ANULAR' ? fotosAnular : fotosSalida).cerrar()
     setPaso(null)
+  }
+
+  function abrirAnular() {
+    anular.limpiar()
+    fotosAnular.abrir()
+    setPaso('ANULAR')
   }
 
   function abrirSalida(destino: 'SALIDA' | 'ARENADO') {
@@ -83,11 +101,11 @@ export function ControlesVehiculo({
         variante="secundario"
         tamano="sm"
         disabled={Boolean(bloqueoSalida)}
-        aria-describedby={bloqueoSalida ? `veh-bloqueo-${id}` : undefined}
-        ocupado={sigue}
+        aria-describedby={describe(Boolean(bloqueoSalida) && `veh-bloqueo-${id}`, estado)}
+        ocupado={ocupado}
         onClick={() => abrirSalida('SALIDA')}
       >
-        {!sigue && <LogOut aria-hidden className="size-4" />}
+        {!ocupado && <LogOut aria-hidden className="size-4" />}
         Marcar salida
       </Boton>
       {alArenado && (
@@ -95,24 +113,34 @@ export function ControlesVehiculo({
           type="button"
           variante="contorno"
           tamano="sm"
-          ocupado={sigue}
+          ocupado={ocupado}
+          aria-describedby={describe(estado)}
           onClick={() => abrirSalida('ARENADO')}
         >
-          {!sigue && <Wind aria-hidden className="size-4" />}
+          {!ocupado && <Wind aria-hidden className="size-4" />}
           Sale al arenado
         </Boton>
       )}
       {/* Anular corrige un error, no es el paso del trabajo: va sin borde para
           no pesar como «Marcar salida» en cada fila (auditoría del 27/10/2026). */}
-      <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} ocupado={sigue} onClick={() => setPaso('ANULAR')}>
-        {!sigue && <Ban aria-hidden className="size-4 text-peligro" />}
+      <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} ocupado={ocupado} aria-describedby={describe(estado)} onClick={abrirAnular}>
+        {!ocupado && <Ban aria-hidden className="size-4 text-peligro" />}
         Anular
       </Boton>
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
       <EstadoDelEnvio
-        sigue={sigue}
+        id={fotosSalida.idDelEstado}
+        sigue={fotosSalida.sigue}
         desenlace={fotosSalida.desenlace}
         registro="La salida"
+        femenino
+        className="sm:basis-full sm:text-right"
+      />
+      <EstadoDelEnvio
+        id={fotosAnular.idDelEstado}
+        sigue={fotosAnular.sigue}
+        desenlace={fotosAnular.desenlace}
+        registro="La anulación"
         femenino
         className="sm:basis-full sm:text-right"
       />

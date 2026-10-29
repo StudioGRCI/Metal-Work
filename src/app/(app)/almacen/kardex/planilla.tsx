@@ -12,7 +12,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, motivoDelFallo, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -125,8 +125,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       if (esta !== vuelta.current) return
       if (!r.ok) setAvisoArchivo(r.error)
       else setFilas(r.datos?.filas ?? [])
-    } catch {
-      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer la planilla: revisa la conexión y elígela otra vez')
+    } catch (e) {
+      if (esta === vuelta.current) setAvisoArchivo(motivoDelFallo(e, 'No se pudo leer la planilla: revisa la conexión y elígela otra vez'))
     } finally {
       setLeyendo(false)
       enCurso.current = false
@@ -157,8 +157,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       // Fila por fila, cada una sale con la sesión de ese momento. Si entró otra
       // cuenta, la que iba y las que siguen se quedan con su motivo, y salen
       // cuando vuelva la tuya (vigesimotercera pasada).
-      const cortar = (desde: number) => {
-        const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
+      const cortar = (desde: number, mensaje = NO_SALIO_OTRA_CUENTA) => {
+        const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje }]))
         setResultados((r) => ({ ...r, ...quedan }))
       }
       for (const [i, f] of orden.entries()) {
@@ -209,7 +209,13 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             cortar(i)
             break
           }
-          resultado = { ok: false, error: 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.' }
+          resultado = { ok: false, error: motivoDelFallo(e, 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.') }
+        }
+        // Una pestaña de antes del último despliegue: ni esta ni las que siguen
+        // salen desde aquí (vigesimoctava pasada).
+        if (!resultado.ok && resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
+          cortar(i, SE_ACTUALIZO_EL_SISTEMA)
+          break
         }
         setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
       }

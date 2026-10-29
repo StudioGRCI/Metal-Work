@@ -143,7 +143,12 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `useCursorAlRechazo` (`src/lib/envio.ts`): al campo que lo causó, o al aviso
   (`tabIndex={-1}`) si no es de un campo. No se llama a `focus()` dentro del
   `alEnviar`: mientras envía, el `<fieldset disabled>` no acepta el foco y se
-  pierde sin aviso (el banco de Administración lo vio el 2026-10-22).
+  pierde sin aviso (el banco de Administración lo vio el 2026-10-22). Por lo
+  mismo, `Ventana` da por enfocable solo lo que no está `:disabled` —un campo
+  dentro de un `fieldset disabled` no lleva el atributo propio— y, si ningún
+  campo toma el cursor al abrir, se lo queda ella: la que se abría trabada
+  dejaba el cursor detrás, sin Escape y con el tabulador por la página
+  (vigesimoctava).
   El error de un campo (un número que ya existe) va en el `error` de su
   `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo; el
   de un archivo («Falta el PDF»), en el `aviso` de su `ElegirArchivo`. Llevar
@@ -231,10 +236,27 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   (vigesimoséptima). Ese «sigue» es el `sigue` del hook, que se apaga cuando la
   acción contesta, no el `enviando` de `useEnvio`: ese sigue encendido mientras
   la página se pone al día tras el ok, y «se sigue enviando» asomaba junto al
-  verde (vigesimoctava). Cómo terminó se dice ahí mismo: «El reporte que se estaba
+  verde (vigesimoctava). El botón sí gira, sin texto al lado, mientras dura esa
+  puesta al día (`ocupado={sigue || (enviando && !abierto)}`): la ventana abierta
+  entonces salía trabada y girando. Mientras `sigue`, el botón lleva
+  `aria-describedby` con el `idDelEstado` del hook, y la región de
+  `EstadoDelEnvio` está siempre montada (vacía, `sr-only`): la que nace con su
+  texto no se anuncia, y al llegar al botón el lector decía «no disponible» sin
+  el porqué. En una fila con varios botones que abren ventanas (el vehículo:
+  salida, arenado y anular), cada envío lleva su hook y su `EstadoDelEnvio`, y
+  todos los botones giran mientras cualquiera siga: la anulación cerrada en
+  vuelo cerraba al contestar la ventana de la salida abierta entretanto. Si la
+  misma ventana se pinta dos veces (la tarjeta del teléfono y la fila del
+  monitor de la orden), las dos comparten el envío con una `clave`
+  (`useFotosDelEnvio(bucket, clave)`, y el aviso verde con
+  `useEstadoCompartido`): al girar el teléfono, el botón a la vista no sabía del
+  envío en camino (vigesimoctava). Cómo terminó se dice ahí mismo: «El reporte que se estaba
   enviando no se registró: …», o, si no se sabe, «…: No llegó la respuesta…»;
   si ya había quedado la primera vez, sin rojo y diciendo que lo cambiado al
-  reenviar no se guardó. **Mientras se envía, la ventana traba sus campos y el
+  reenviar no se guardó. Desde una pestaña de antes del último despliegue (la
+  acción ya no existe en el servidor), «no se registró» y que hay que recargar,
+  no «revisa la conexión»; sus fotos se quitan, también las de la ventana
+  abierta, y la ventana pide elegirlas otra vez. **Mientras se envía, la ventana traba sus campos y el
   selector de fotos** (`fieldset disabled`, con el pie fuera para que
   «Cancelar» siga): una foto elegida entonces no iba con el registro y se
   quitaba sin aviso, y la ✕ quitaba de Storage la que el envío nombraba. El

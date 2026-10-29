@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
-import { navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
+import { motivoDelFallo, navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
 import { destinoAviso } from '@/lib/dominio/destino-aviso'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 
@@ -15,8 +15,8 @@ export function useAvisos(alAbrir?: () => void) {
       if (!resultado.ok) return resultado
       const ruta = datos.get('ruta')
       return { ok: true, datos: { destino: typeof ruta === 'string' ? destinoAviso(ruta, null) : null, abrir: typeof id === 'string' } }
-    } catch {
-      return { ok: false, error: 'No se pudo guardar la lectura. Comprueba tu conexión y vuelve a intentarlo.' }
+    } catch (e) {
+      return { ok: false, error: motivoDelFallo(e, 'No se pudo guardar la lectura. Comprueba tu conexión y vuelve a intentarlo.') }
     }
   }, ({ datos }) => {
     if (datos?.abrir) alAbrir?.()

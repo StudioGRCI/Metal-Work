@@ -463,7 +463,11 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await pagina.fill('#rd-descripcion', 'Se avanzó la tolva del lado izquierdo.')
   const elegir = async (etiqueta, texto) => {
     await pagina.getByRole('combobox', { name: etiqueta }).click()
-    await pagina.keyboard.type(texto)
+    // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+    // tiene el foco, o las letras se pierden en el botón (se vio en la cola).
+    const caja = pagina.locator('input[type="search"]:focus')
+    await caja.waitFor({ timeout: 10000 })
+    await caja.fill(texto)
     await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
   }
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
@@ -535,7 +539,11 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await pagina.fill('#rd-descripcion', 'Se armó la cola de la tolva.')
   const elegir = async (etiqueta, texto) => {
     await pagina.getByRole('combobox', { name: etiqueta }).click()
-    await pagina.keyboard.type(texto)
+    // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+    // tiene el foco, o las letras se pierden en el botón (se vio en la cola).
+    const caja = pagina.locator('input[type="search"]:focus')
+    await caja.waitFor({ timeout: 10000 })
+    await caja.fill(texto)
     await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
   }
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')

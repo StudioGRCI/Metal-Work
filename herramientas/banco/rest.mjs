@@ -451,6 +451,7 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, 
   // rechazaba toda escritura en el banco, y en Supabase entraba.
   const soloColumnas = nodos.every((n) => n.tipo === 'columna' && n.nombre !== '*')
   const devolver = soloColumnas ? nodos.map((n) => comillas(n.nombre)).join(', ') : '*'
+  const json = esquema.relaciones.get(relacion).json ?? new Set()
 
   if (metodo === 'POST') {
     const filas = Array.isArray(cuerpo) ? cuerpo : [cuerpo]
@@ -458,7 +459,7 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, 
     const columnas = [...new Set(filas.flatMap((f) => Object.keys(f)))]
 
     const valores = filas.map(
-      (fila) => `(${columnas.map((c) => ctx.parametro(fila[c] ?? null)).join(', ')})`,
+      (fila) => `(${columnas.map((c) => ctx.parametro(aColumna(fila[c] ?? null, json.has(c)))).join(', ')})`,
     )
     // `.upsert()` de supabase-js: `Prefer: resolution=merge-duplicates` y
     // `on_conflict` con las columnas de la llave, como lo resuelve PostgREST.
@@ -477,7 +478,7 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, 
   if (metodo === 'PATCH') {
     const columnas = Object.keys(cuerpo)
     if (columnas.length === 0) throw new ErrorNoSoportado('Actualización sin columnas')
-    const asignaciones = columnas.map((c) => `${comillas(c)} = ${ctx.parametro(cuerpo[c])}`)
+    const asignaciones = columnas.map((c) => `${comillas(c)} = ${ctx.parametro(aColumna(cuerpo[c], json.has(c)))}`)
     const donde = construirDonde(propios, ctx, 't')
     if (donde.length === 0) throw new ErrorNoSoportado('Actualización sin filtro: se negó por seguridad')
     const texto =
@@ -495,6 +496,12 @@ export function construirEscritura(esquema, relacion, metodo, cuerpo, busqueda, 
 
   throw new ErrorNoSoportado(`Método no soportado: ${metodo}`)
 }
+
+// Una columna json/jsonb recibe de PostgREST el valor JSON tal cual. node-pg
+// mandaba un arreglo como arreglo de Postgres: `materiales_usados: []` llegaba
+// como «{}», un objeto, y ck_materiales_usados_array rechazaba en el banco
+// todo «Reportar día» que en Supabase entra (crítica de la vigesimoctava).
+const aColumna = (v, esJson) => (esJson && v !== null && v !== undefined ? JSON.stringify(v) : v)
 
 // node-pg convierte todo arreglo en un arreglo de Postgres («{…}»). PostgREST,
 // en cambio, le pasa a la función el JSON tal cual. Un parámetro `json`/`jsonb`

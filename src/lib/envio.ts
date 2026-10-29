@@ -29,6 +29,21 @@ export class OtraCuentaEnLaPestana extends Error {
 }
 
 /**
+ * La pestaña es de antes del último despliegue: cada compilación cambia el id
+ * de cada acción, y el servidor ya no conoce el que manda esta pantalla (404 con
+ * `x-nextjs-action-not-found`). La acción no corrió, así que no entró, y
+ * reintentar desde aquí no sirve: hay que recargar.
+ */
+export const SE_ACTUALIZO_EL_SISTEMA = 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
+
+/**
+ * El motivo de un `catch` que tiene el suyo («revisa la conexión y elígelo otra
+ * vez»), salvo en una pestaña de antes del último despliegue: ahí reintentar no
+ * sirve, y se dice que hay que recargar (vigesimoctava pasada).
+ */
+export const motivoDelFallo = (e: unknown, motivo: string) => (unstable_isUnrecognizedActionError(e) ? SE_ACTUALIZO_EL_SISTEMA : motivo)
+
+/**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
  * devolver su resultado. Sin esto la excepción llegaba al límite de error: la
  * pantalla entera caía en «Esta pantalla no se pudo abrir» y se perdía lo
@@ -41,9 +56,7 @@ export function explicarFallo(e: unknown): string {
   unstable_rethrow(e)
   if (e instanceof OtraCuentaEnLaPestana) return e.message
   console.error(e)
-  if (unstable_isUnrecognizedActionError(e)) {
-    return 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
-  }
+  if (unstable_isUnrecognizedActionError(e)) return SE_ACTUALIZO_EL_SISTEMA
   if (e instanceof TypeError || (typeof navigator !== 'undefined' && !navigator.onLine)) return SIN_RESPUESTA
   return 'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
 }

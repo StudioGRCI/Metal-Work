@@ -1,5 +1,7 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
+import { unstable_isUnrecognizedActionError } from 'next/navigation'
+
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { noGuardoNada } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 
@@ -105,7 +107,16 @@ export async function anotarSinDejarloSuelto<T = never>({
   let primera: ResultadoAccion<T>
   try {
     primera = await anotar()
-  } catch {
+  } catch (e) {
+    // Una pestaña de antes del último despliegue: el servidor no conoce la
+    // acción y no la corrió. No entró, y preguntar otra vez da lo mismo: el
+    // archivo se quita y se dice que hay que recargar. Antes, tras la pausa, cada
+    // intento decía «No quedó registrado: no llegó la respuesta. Vuelve a
+    // intentar.» (crítica de la vigesimoctava pasada).
+    if (unstable_isUnrecognizedActionError(e)) {
+      await quitarSiSuelto()
+      return { ok: false, error: SE_ACTUALIZO_EL_SISTEMA }
+    }
     await new Promise((listo) => setTimeout(listo, PAUSA_ANTES_DE_PREGUNTAR_MS))
     // En la pausa entró otra cuenta: no se pregunta con ella, y no se sabe si la
     // primera quedó. El archivo se mira cuando vuelva la cuenta de la pantalla:
@@ -116,15 +127,18 @@ export async function anotarSinDejarloSuelto<T = never>({
       return { ok: false, error: sinRespuesta }
     }
     let otraVez: ResultadoAccion<T> | null
+    // El despliegue llegó durante la pausa.
+    let vieja = false
     try {
       otraVez = await anotar()
-    } catch {
+    } catch (e) {
       otraVez = null
+      vieja = unstable_isUnrecognizedActionError(e)
     }
     if (otraVez?.ok) return otraVez
     // Quitado quiere decir que ninguna fila lo nombraba: no quedó, y lo que
     // dijo la base la segunda vez es el motivo de verdad.
-    if ((await quitarSiSuelto()) === 'quitado') return otraVez ?? { ok: false, error: NO_QUEDO_SIN_RESPUESTA }
+    if ((await quitarSiSuelto()) === 'quitado') return otraVez ?? { ok: false, error: vieja ? SE_ACTUALIZO_EL_SISTEMA : NO_QUEDO_SIN_RESPUESTA }
     return { ok: false, error: sinRespuesta }
   }
   // Si una subida de adentro ya dijo que no se sabe, o que no se pudo retirar,

@@ -104,12 +104,15 @@ function Reportar({
   }
 
   // Cerrada mientras el reporte va en camino: no se abre otra hasta que conteste.
-  const { sigue } = envio
+  // Tampoco mientras la página se pone al día tras el ok: salía trabada y
+  // girando (vigesimoctava pasada).
+  const { sigue, idDelEstado } = envio
+  const ocupado = sigue || (enviando && !abierto)
 
   return (
     <>
-      <Boton onClick={abrir} ocupado={sigue}>
-        {!sigue && <Camera aria-hidden className="size-4" />}
+      <Boton onClick={abrir} ocupado={ocupado} aria-describedby={sigue ? idDelEstado : undefined}>
+        {!ocupado && <Camera aria-hidden className="size-4" />}
         Reportar
       </Boton>
       {aviso && (
@@ -118,7 +121,7 @@ function Reportar({
         </p>
       )}
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
+      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 
       <Ventana
         abierta={abierto}

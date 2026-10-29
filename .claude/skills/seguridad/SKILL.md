@@ -138,7 +138,10 @@ En la misma migración que la crea, sin excepción:
 - Un archivo que el navegador sube a Storage se anota con
   `anotarSinDejarloSuelto` (`src/lib/subida-privada.ts`), no con un `try/catch`
   propio: si la respuesta se pierde, pregunta otra vez con la misma ruta y solo
-  quita el archivo si ninguna fila lo nombra. Antes unas pantallas lo dejaban
+  quita el archivo si ninguna fila lo nombra. Si el servidor no conoce la acción
+  (una pestaña de antes del último despliegue, `UnrecognizedActionError`), no
+  corrió: quita el archivo en el acto y dice `SE_ACTUALIZO_EL_SISTEMA`, sin
+  pausa ni reintento, que darían lo mismo (vigesimoctava). Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
   repetido —en la función, por su id **con la misma ruta y la misma persona**;

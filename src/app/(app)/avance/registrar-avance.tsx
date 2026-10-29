@@ -74,13 +74,16 @@ export function RegistrarAvance({
   }
 
   // Cerrada mientras el avance va en camino: no se abre otra hasta que conteste.
-  const { sigue } = envio
+  // Tampoco mientras la página se pone al día tras el ok: salía trabada y
+  // girando (vigesimoctava pasada).
+  const { sigue, idDelEstado } = envio
+  const ocupado = sigue || (enviando && !abierto)
 
   return (
     <>
       <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={abrir} ocupado={sigue}>
-          {!sigue && <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />}
+        <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={abrir} ocupado={ocupado} aria-describedby={sigue ? idDelEstado : undefined}>
+          {!ocupado && <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />}
           Registrar avance
         </Boton>
         {aviso && (
@@ -89,7 +92,7 @@ export function RegistrarAvance({
           </span>
         )}
         {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-        <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El avance" />
+        <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El avance" />
       </span>
 
       <Ventana

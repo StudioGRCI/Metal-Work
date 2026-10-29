@@ -295,8 +295,9 @@ let registroId = null
   await pagina.screenshot({ path: join(CAPTURAS, 'vehiculo-ingreso-celular.png'), fullPage: true })
   await registrar.click()
   await registrar.click({ timeout: 500 }).catch(() => {})
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  const aviso = limpio(await pagina.locator('[role="status"]').innerText())
+  // La fila y el formulario tienen su región de estado montada y vacía: se espera la que dice algo.
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText())
   comprobar(aviso.includes('con 2 fotos'), `aviso: «${aviso}»`)
 
   const [reg] = await consulta(

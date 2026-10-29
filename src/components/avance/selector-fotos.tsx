@@ -1,11 +1,13 @@
 'use client'
 
 import { Camera, Images, RotateCcw, X } from 'lucide-react'
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { unstable_isUnrecognizedActionError } from 'next/navigation'
+import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SIN_RESPUESTA } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, SIN_RESPUESTA } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
@@ -88,6 +90,13 @@ export type Desenlace = { tono: 'no-entro' | 'en-duda' | 'ya-entro'; motivo: str
 
 const CORTADO_OTRA_CUENTA = 'en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.'
 
+// La pestaña es de antes del último despliegue (`SE_ACTUALIZO_EL_SISTEMA`): en
+// la ventana, y junto al botón si se cerró mientras se enviaba. Las fotos se
+// quitan, así que se dice que hay que elegirlas otra vez.
+const SE_ACTUALIZO_CON_FOTOS =
+  'El sistema se actualizó mientras tenías la pantalla abierta: no se registró. Copia lo escrito, vuelve a cargar la pantalla y elige las fotos otra vez.'
+const SE_ACTUALIZO_SIN_VENTANA = 'el sistema se actualizó mientras tenías la pantalla abierta. Vuelve a cargar la pantalla y envíalo otra vez.'
+
 /** El registro entró, pero sus fotos no (`fotosSueltas` de la acción): ninguna fila las nombra. */
 const entroSinFotos = (datos: unknown) =>
   typeof datos === 'object' && datos !== null && 'fotosSueltas' in datos && Boolean(datos.fotosSueltas)
@@ -100,7 +109,9 @@ const entroSinFotos = (datos: unknown) =>
  * - se cierra la ventana sin enviar, o el envío que salió con la ventana ya
  *   cerrada vuelve con un rechazo de la base;
  * - el registro entró sin ellas (`fotosSueltas`), o ya había entrado la primera
- *   vez (las que ese nombra, la política del bucket no deja quitarlas).
+ *   vez (las que ese nombra, la política del bucket no deja quitarlas);
+ * - la pestaña es de antes del último despliegue: la acción no corrió, y desde
+ *   ella no va a correr. Se quitan también las de la ventana abierta.
  *
  * Si no se sabe cómo terminó —no llegó la respuesta, el servidor cayó—, se
  * quedan, también al cerrar después: el registro pudo entrar con ellas, y la
@@ -119,18 +130,24 @@ const entroSinFotos = (datos: unknown) =>
  * (`desenlace`).
  *
  * Uso: `conFotos(accion)` va a `useEnvio`; `abrir()` y `cerrar()`, con la
- * ventana; `EstadoDelEnvio` con `sigue` y `desenlace`, junto al botón que la
- * abre, que lleva `ocupado={sigue}`. En el ok, la ventana
- * se cierra solo si no se cerró mientras se enviaba (`seCerroAlEnviar()`).
+ * ventana; `EstadoDelEnvio` con `idDelEstado`, `sigue` y `desenlace`, junto al
+ * botón que la abre, que lleva `ocupado` mientras `sigue` (y mientras la página
+ * se pone al día tras el ok) y, mientras `sigue`, `aria-describedby` con
+ * `idDelEstado`. En el ok, la ventana se cierra solo si no se cerró mientras se
+ * enviaba (`seCerroAlEnviar()`).
+ *
+ * `clave`: la misma ventana pintada dos veces (la tarjeta del teléfono y la fila
+ * del monitor) comparte `sigue` y `desenlace` (`useEstadoCompartido`).
  */
-export function useFotosDelEnvio(bucket: string) {
+export function useFotosDelEnvio(bucket: string, clave?: string) {
   const [fotos, setFotos] = useState<FotoLista[]>([])
   // Cómo terminó el envío que salió con la ventana ya cerrada, si no entró.
-  const [desenlace, setDesenlace] = useState<Desenlace | null>(null)
+  const [desenlace, setDesenlace] = useEstadoCompartido<Desenlace | null>(clave && `${clave}:desenlace`, null)
   // Ese envío sigue en camino. No es el `enviando` de useEnvio: ese sigue
   // encendido mientras la página se pone al día tras el ok, y junto al verde
   // asomaba «se sigue enviando» (vigesimoctava pasada).
-  const [sigue, setSigue] = useState(false)
+  const [sigue, setSigue] = useEstadoCompartido(clave && `${clave}:sigue`, false)
+  const idDelEstado = useId()
   // El envío en curso, o el último.
   const intento = useRef<Intento | null>(null)
   // Las rutas que salieron en un envío de esta ventana que no se sabe cómo terminó.
@@ -171,6 +188,23 @@ export function useFotosDelEnvio(bucket: string) {
         if (este.sinVentana && !r.ok) setDesenlace({ tono: yaEntro ? 'ya-entro' : enDudaR ? 'en-duda' : 'no-entro', motivo: r.error })
         return r
       } catch (e) {
+        // Una pestaña de antes del último despliegue: el servidor no conoce la
+        // acción y no la corrió, y desde aquí no va a entrar. Las fotos se quitan,
+        // también las de la ventana abierta, que ya no tienen con qué enviarse.
+        // Antes quedaban «en duda», sueltas para siempre, y el desenlace mandaba a
+        // revisar la conexión (crítica de la vigesimoctava pasada).
+        if (unstable_isUnrecognizedActionError(e)) {
+          // La anulación del vehículo va por aquí sin fotos.
+          const conFotosQueElegir = este.fotos.length > 0 || actuales.current.length > 0
+          if (este.sinVentana) {
+            quitarFotosSueltas(bucket, este.fotos)
+            setDesenlace({ tono: 'no-entro', motivo: SE_ACTUALIZO_SIN_VENTANA })
+          } else {
+            quitarFotosSueltas(bucket, [...new Set([...este.fotos, ...actuales.current])])
+            setFotos([])
+          }
+          return { ok: false, error: conFotosQueElegir ? SE_ACTUALIZO_CON_FOTOS : SE_ACTUALIZO_EL_SISTEMA }
+        }
         // Lo cortó la traba antes de salir: no se envió nada. Lo demás no se sabe.
         const corte = e instanceof OtraCuentaEnLaPestana
         if (!corte) dudar()
@@ -212,6 +246,7 @@ export function useFotosDelEnvio(bucket: string) {
     cerrar,
     desenlace,
     sigue,
+    idDelEstado,
     seCerroAlEnviar: () => Boolean(intento.current?.sinVentana),
   }
 }
@@ -222,40 +257,47 @@ export function useFotosDelEnvio(bucket: string) {
  * cómo terminó. `registro` es lo que se envía, con su artículo («El reporte»,
  * «La salida»), y `femenino` concuerda el «registrado». Lo que sí entró lo dice
  * el aviso verde de cada pantalla.
+ *
+ * La región que avisa está siempre montada, vacía y fuera de la vista mientras
+ * no hay nada que decir: una que nace con su texto el lector no la lee, y al
+ * llegar al botón se oía «no disponible» sin el porqué (vigesimoctava pasada).
+ * `id` es el `idDelEstado` del hook, al que apunta el botón ocupado.
  */
 export function EstadoDelEnvio({
+  id,
   sigue,
   desenlace,
   registro,
   femenino = false,
   className,
 }: {
+  id: string
   sigue: boolean
   desenlace: Desenlace | null
   registro: string
   femenino?: boolean
   className?: string
 }) {
-  if (sigue) {
-    return (
-      <span role="status" className={cn('text-xs text-texto-suave', className)}>
-        {registro} se sigue enviando: lo que conteste se dice aquí.
-      </span>
-    )
-  }
-  if (!desenlace) return null
-  if (desenlace.tono === 'ya-entro') {
-    return (
-      <span role="status" className={cn('text-xs text-texto-suave', className)}>
-        {registro} ya había quedado {femenino ? 'registrada' : 'registrado'} la primera vez: lo que cambiaste al
-        reenviar no se guardó.
-      </span>
-    )
-  }
+  const estado = sigue
+    ? `${registro} se sigue enviando: lo que conteste se dice aquí.`
+    : desenlace?.tono === 'ya-entro'
+      ? `${registro} ya había quedado ${femenino ? 'registrada' : 'registrado'} la primera vez: lo que cambiaste al reenviar no se guardó.`
+      : ''
+  const alerta =
+    !sigue && desenlace && desenlace.tono !== 'ya-entro'
+      ? `${registro} que se estaba enviando${desenlace.tono === 'no-entro' ? ' no se registró' : ''}: ${desenlace.motivo}`
+      : ''
   return (
-    <span role="alert" className={cn('text-xs text-peligro', className)}>
-      {registro} que se estaba enviando{desenlace.tono === 'no-entro' ? ' no se registró' : ''}: {desenlace.motivo}
-    </span>
+    <>
+      <span id={id} role="status" className={estado ? cn('text-xs text-texto-suave', className) : 'sr-only'}>
+        {estado}
+      </span>
+      {alerta && (
+        <span role="alert" className={cn('text-xs text-peligro', className)}>
+          {alerta}
+        </span>
+      )}
+    </>
   )
 }
 

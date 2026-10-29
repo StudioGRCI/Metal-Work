@@ -13,7 +13,7 @@ import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/jus
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { motivoDelFallo, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir } from './acciones'
 
@@ -61,8 +61,8 @@ export function AccionesCompra({
   async function abrirCorreccion() {
     setCorrigiendo(true)
     setLineas(null)
-    const r = await lineasDeLaCompra(id).catch(() => null)
-    setLineas(r?.ok ? (r.datos ?? []) : (r?.error ?? 'No se pudieron leer las líneas. Vuelve a abrir la corrección.'))
+    const r = await lineasDeLaCompra(id).catch((e: unknown) => ({ ok: false as const, error: motivoDelFallo(e, 'No se pudieron leer las líneas. Vuelve a abrir la corrección.') }))
+    setLineas(r.ok ? (r.datos ?? []) : r.error)
   }
   // El documento lleva un identificador fijo: un reintento no lo duplica. La
   // ventana desmonta el formulario al cerrarse, así que se guarda aquí, y cambia

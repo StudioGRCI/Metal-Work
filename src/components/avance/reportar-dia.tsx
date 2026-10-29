@@ -10,6 +10,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { numero } from '@/lib/format'
 
 function Error_({ texto }: { texto: string | null }) {
@@ -48,14 +49,19 @@ export function ReportarDia({
   despachos?: { id: string; nombre: string; unidad: string; area: string; cantidad: number }[]
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // La orden pinta cada actividad dos veces (la tarjeta del teléfono y la fila
+  // del monitor): las dos comparten el envío en camino, su desenlace y el aviso
+  // verde, o al girar el teléfono el que queda a la vista no sabía de ellos
+  // (vigesimoctava pasada).
+  const clave = `reportar-dia:${actividad.id}:${deOtroDia ? 'otro' : 'hoy'}`
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`${clave}:aviso`, null)
   // Mientras se envía, la foto se queda: el reporte que está entrando la nombra,
   // y la base exige que esté en Storage (`validar_reporte_taller`). Tampoco se
   // quita si no se sabe si entró, ni tras un rechazo con la ventana abierta: se
   // corrige el porcentaje y se vuelve a enviar sin tomarla de nuevo. Antes
   // cualquier rechazo, o un corte de la señal, la quitaba en el acto
   // (vigesimosexta pasada). Como en «Registrar avance» (`useFotosDelEnvio`).
-  const envio = useFotosDelEnvio('fotos-avance')
+  const envio = useFotosDelEnvio('fotos-avance', clave)
   const { fotos, setFotos } = envio
   const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(reportarAvance), (r) => {
     if (!envio.seCerroAlEnviar()) setAbierto(false)
@@ -69,14 +75,18 @@ export function ReportarDia({
   const falta = Math.max(0, 100 - Number(actividad.avance_pct))
   const prefijo = `${deOtroDia ? 'o' : 'r'}-${actividad.id.slice(0, 8)}`
   // Cerrada mientras el reporte va en camino: no se abre otra hasta que conteste.
-  const { sigue } = envio
+  // Tampoco mientras la página se pone al día tras el ok: salía trabada y
+  // girando (vigesimoctava pasada).
+  const { sigue, idDelEstado } = envio
+  const ocupado = sigue || (enviando && !abierto)
 
   return (
     <>
       <Boton
         variante={deOtroDia ? 'fantasma' : 'secundario'}
         tamano="sm"
-        ocupado={sigue}
+        ocupado={ocupado}
+        aria-describedby={sigue ? idDelEstado : undefined}
         onClick={() => {
           limpiar()
           setAviso(null)
@@ -84,7 +94,7 @@ export function ReportarDia({
           setAbierto(true)
         }}
       >
-        {sigue ? null : deOtroDia ? (
+        {ocupado ? null : deOtroDia ? (
           <CalendarDays aria-hidden className="size-3.5" />
         ) : (
           <TrendingUp aria-hidden className="size-3.5" />
@@ -97,7 +107,7 @@ export function ReportarDia({
         </span>
       )}
       {/* También en la lista apretada: si no entró, nadie más lo diría. */}
-      <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
+      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 
       <Ventana
         abierta={abierto}

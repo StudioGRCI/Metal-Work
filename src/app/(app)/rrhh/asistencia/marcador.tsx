@@ -10,7 +10,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
-import { useEnvio } from '@/lib/envio'
+import { motivoDelFallo, useEnvio } from '@/lib/envio'
 
 import { anularAsistencia, buscarPorDni, marcarAsistencia } from './acciones'
 
@@ -55,7 +55,7 @@ export function Marcador({
     let vigente = true
     buscarPorDni(dni)
       .then((r) => vigente && setRespuesta({ dni, ...r }))
-      .catch(() => vigente && setRespuesta({ dni, id: null, error: 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.' }))
+      .catch((e: unknown) => vigente && setRespuesta({ dni, id: null, error: motivoDelFallo(e, 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.') }))
     return () => {
       vigente = false
     }

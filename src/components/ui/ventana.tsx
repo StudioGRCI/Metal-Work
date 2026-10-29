@@ -27,6 +27,16 @@ const ENFOCABLES = [
   .map((s) => `${s}:not([tabindex="-1"])`)
   .join(', ')
 
+/**
+ * Que de verdad pueda llevar el cursor: un campo dentro de un `<fieldset
+ * disabled>` no lleva `disabled` propio y el selector lo daba por enfocable. La
+ * ventana que se abría con su envío todavía en camino dejaba el cursor detrás:
+ * Escape no cerraba y el tabulador recorría la página (vigesimoctava pasada).
+ */
+const llevaElCursor = (e: HTMLElement) => !e.matches(':disabled')
+const enfocablesDe = (raiz: HTMLElement | null) =>
+  [...(raiz?.querySelectorAll<HTMLElement>(ENFOCABLES) ?? [])].filter(llevaElCursor)
+
 const ANCHOS = {
   sm: 'max-w-md',
   md: 'max-w-lg',
@@ -118,10 +128,11 @@ export function Ventana({
     // El foco va al primer campo, no a la «i» de su ayuda: con el foco en la
     // «i» el texto de ayuda se abría solo y tapaba el campo («Importar del
     // Excel», 2026-10-20).
-    const primerCampo = (raiz: HTMLElement | null) =>
-      [...(raiz?.querySelectorAll<HTMLElement>(ENFOCABLES) ?? [])].find((e) => !e.hasAttribute('data-ayuda'))
+    const primerCampo = (raiz: HTMLElement | null) => enfocablesDe(raiz).find((e) => !e.hasAttribute('data-ayuda'))
     const primero = primerCampo(contenido.current) ?? primerCampo(caja.current)
     ;(primero ?? caja.current)?.focus()
+    // Si el campo no lo tomó, la ventana: el cursor no se queda detrás de ella.
+    if (!caja.current?.contains(document.activeElement)) caja.current?.focus()
 
     // Escape cierra también cuando el cursor cayó a la página: un botón que se
     // apaga mientras envía lo suelta en el <body>, fuera de la ventana, y Escape
@@ -155,13 +166,17 @@ export function Ventana({
 
     if (e.key !== 'Tab') return
 
-    const enfocables = caja.current?.querySelectorAll<HTMLElement>(ENFOCABLES)
-    if (!enfocables || enfocables.length === 0) return
+    const enfocables = enfocablesDe(caja.current)
+    if (enfocables.length === 0) return
 
     const primero = enfocables[0]
     const ultimo = enfocables[enfocables.length - 1]
 
-    if (e.shiftKey && document.activeElement === primero) {
+    // Con el cursor en la ventana misma, Mayús+Tab salía a la página de detrás.
+    if (document.activeElement === caja.current) {
+      e.preventDefault()
+      ;(e.shiftKey ? ultimo : primero).focus()
+    } else if (e.shiftKey && document.activeElement === primero) {
       e.preventDefault()
       ultimo.focus()
     } else if (!e.shiftKey && document.activeElement === ultimo) {

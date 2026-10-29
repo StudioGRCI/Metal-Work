@@ -53,12 +53,16 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
     setAbierta(false)
   }
   // Cerrada mientras el ingreso va en camino: no se abre otra hasta que conteste.
-  const { sigue } = envio
+  // Tampoco mientras la página se pone al día tras el ok: salía trabada y
+  // girando (vigesimoctava pasada).
+  const { sigue, idDelEstado } = envio
+  const ocupado = sigue || (enviando && !abierta)
   return (
     <>
       <Boton
         type="button"
-        ocupado={sigue}
+        ocupado={ocupado}
+        aria-describedby={sigue ? idDelEstado : undefined}
         onClick={() => {
           limpiar()
           setAviso(null)
@@ -67,7 +71,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
           setAbierta(true)
         }}
       >
-        {!sigue && <LogIn aria-hidden className="size-4" />}
+        {!ocupado && <LogIn aria-hidden className="size-4" />}
         Registrar ingreso
       </Boton>
       {aviso && (
@@ -76,7 +80,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
         </p>
       )}
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El ingreso" className="basis-full text-sm" />
+      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El ingreso" className="basis-full text-sm" />
       <Ventana
         abierta={abierta}
         alCerrar={cerrar}

@@ -28,7 +28,7 @@ import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { navegarSiEsDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { motivoDelFallo, navegarSiEsDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -160,17 +160,11 @@ function fotosDe(s: Seccion) {
  */
 function conOpciones(
   s: Seccion,
-  r: Awaited<ReturnType<typeof opcionesDelCodigo>> | null,
+  r: Awaited<ReturnType<typeof opcionesDelCodigo>>,
   codigo: string,
   fecha: string,
 ): Seccion {
-  if (!r || !r.ok) {
-    return {
-      ...s,
-      leyendo: false,
-      errorOpciones: r && !r.ok ? r.error : 'No llegó la respuesta. Revisa la conexión y vuelve a escribir el código.',
-    }
-  }
+  if (!r.ok) return { ...s, leyendo: false, errorOpciones: r.error }
   const nuevas = r.datos ?? []
   const validas = new Set(nuevas.map(claveDe))
   const anteriores = new Map(s.opciones.map((o) => [claveDe(o), o.etiqueta]))
@@ -362,7 +356,10 @@ export function FormularioReporteDiario({
     espera.current.set(
       s.clave,
       setTimeout(async () => {
-        const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch(() => null)
+        const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch((e: unknown) => ({
+          ok: false as const,
+          error: motivoDelFallo(e, 'No llegó la respuesta. Revisa la conexión y vuelve a escribir el código.'),
+        }))
         if (numero !== pedido.current.get(s.clave)) return
         cambiar(s.clave, (actual) => conOpciones(actual, r, codigo, fecha))
       }, 400),

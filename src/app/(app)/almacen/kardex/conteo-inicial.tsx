@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { laPestanaEsDeOtraCuenta, refrescarSiEsDeLaPestana } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, motivoDelFallo, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
@@ -113,8 +113,8 @@ export function ConteoInicial() {
         setFilas(r.datos?.filas ?? [])
         setFechaLeida(fecha)
       }
-    } catch {
-      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer el conteo: revisa la conexión y elígelo otra vez')
+    } catch (e) {
+      if (esta === vuelta.current) setAvisoArchivo(motivoDelFallo(e, 'No se pudo leer el conteo: revisa la conexión y elígelo otra vez'))
     } finally {
       setLeyendo(false)
       enCurso.current = false
@@ -149,8 +149,16 @@ export function ConteoInicial() {
           nuevos = r.ok
             ? Object.fromEntries((r.datos?.resultados ?? []).map((x) => [x.id, x.error ? { estado: 'error', mensaje: x.error } : { estado: 'ok' }]))
             : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
-        } catch {
-          nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.' }]))
+        } catch (e) {
+          // Una pestaña de antes del último despliegue: ni esta tanda ni las que
+          // siguen salen desde aquí (vigesimoctava pasada).
+          const mensaje = motivoDelFallo(e, 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.')
+          if (mensaje === SE_ACTUALIZO_EL_SISTEMA) {
+            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje }]))
+            setResultados((previos) => ({ ...previos, ...quedan }))
+            break
+          }
+          nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje }]))
         }
         setResultados((previos) => ({ ...previos, ...nuevos }))
       }
