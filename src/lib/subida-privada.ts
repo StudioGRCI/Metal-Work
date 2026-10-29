@@ -100,9 +100,14 @@ export async function anotarSinDejarloSuelto<T = never>({
     primera = await anotar()
   } catch {
     await new Promise((listo) => setTimeout(listo, PAUSA_ANTES_DE_PREGUNTAR_MS))
-    // En la pausa entró otra cuenta: no se pregunta con ella. No se sabe si la
-    // primera quedó, y el archivo no se toca: la fila pudo nombrarlo.
-    if (laPestanaEsDeOtraCuenta()) return { ok: false, error: sinRespuesta }
+    // En la pausa entró otra cuenta: no se pregunta con ella, y no se sabe si la
+    // primera quedó. El archivo se mira cuando vuelva la cuenta de la pantalla:
+    // Storage solo deja quitar el que ninguna fila nombra, así que si la primera
+    // quedó, se queda. Antes se quedaba suelto para siempre (vigesimoquinta pasada).
+    if (laPestanaEsDeOtraCuenta()) {
+      cuandoVuelvaLaCuenta(() => void quitarSiSuelto())
+      return { ok: false, error: sinRespuesta }
+    }
     let otraVez: ResultadoAccion<T> | null
     try {
       otraVez = await anotar()

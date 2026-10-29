@@ -4,7 +4,7 @@ import { Camera, Images, RotateCcw, X } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { laPestanaEsDeOtraCuenta } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta } from '@/lib/envio'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
@@ -72,6 +72,27 @@ export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
   const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
   if (rutas.length > 0) void createClient().storage.from(bucket).remove(rutas)
   soltarMiniaturas(fotos)
+}
+
+// Lo justo para que el registro que se perdió de vista termine de entrar, como en `anotarSinDejarloSuelto`.
+const PAUSA_ANTES_DE_QUITAR_MS = 1500
+
+/**
+ * Las fotos de un envío que salió con la ventana ya cerrada y no volvió con un
+ * sí: nadie va a reintentar. Si la base lo rechazó, ningún registro las nombra;
+ * si no llegó la respuesta, pudo entrar con ellas. Se quitan igual, después de
+ * una pausa, porque la política del bucket no deja quitar la que una fila nombra:
+ * la anotada se queda y la suelta se va. Con la sesión de otra cuenta el borrado
+ * vuelve vacío: se deja para cuando vuelva la de la pantalla. Antes, sin
+ * respuesta, se quedaban sueltas y nada lo decía (vigesimoquinta pasada).
+ */
+export function quitarLasQueNadieNombre(bucket: string, fotos: FotoLista[], { pausa }: { pausa: boolean }) {
+  const quitar = () => {
+    if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(() => quitarFotosSueltas(bucket, fotos))
+    else quitarFotosSueltas(bucket, fotos)
+  }
+  if (pausa) setTimeout(quitar, PAUSA_ANTES_DE_QUITAR_MS)
+  else quitar()
 }
 
 /** La que todavía sube, o se achica, se quita de Storage sola cuando termina. */

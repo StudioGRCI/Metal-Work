@@ -4,7 +4,15 @@ import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
+import {
+  SelectorFotos,
+  fotosParaEnviar,
+  haySubiendo,
+  quitarFotosSueltas,
+  quitarLasQueNadieNombre,
+  soltarMiniaturas,
+  type FotoLista,
+} from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -82,12 +90,20 @@ function Reportar({
   // el aviso queda al lado del botón para que nadie dude de si entró.
   // Se cerró mientras se enviaba: las fotos quedaron en manos del envío.
   const cerradaEnviando = useRef(false)
+  // Lo mismo, para pintar: el rechazo de un envío sin ventana se dice junto al botón.
+  const [sinVentana, setSinVentana] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     async (previo: unknown, datos: FormData) => {
-      const r = await reportarFlota(previo, datos)
-      // Se cerró mientras iba y la base lo rechazó: ningún reporte las nombra,
-      // y la ventana ya no está para quitarlas. Sin respuesta pudo entrar con ellas.
-      if (!r.ok && cerradaEnviando.current && !pudoHaberEntrado(r.error)) quitarFotosSueltas('fotos-avance', fotos)
+      let r: Awaited<ReturnType<typeof reportarFlota>>
+      try {
+        r = await reportarFlota(previo, datos)
+      } catch (e) {
+        // Se cerró mientras iba y no volvió nada: nadie va a reintentar.
+        if (cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: true })
+        throw e
+      }
+      // Se cerró mientras iba y no volvió un sí: la ventana ya no está para quitarlas.
+      if (!r.ok && cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: pudoHaberEntrado(r.error) })
       return r
     },
     (r) => {
@@ -105,6 +121,7 @@ function Reportar({
   function cerrar() {
     if (enviando) {
       cerradaEnviando.current = true
+      setSinVentana(true)
       soltarMiniaturas(fotos)
     } else {
       quitarFotosSueltas('fotos-avance', fotos)
@@ -119,6 +136,7 @@ function Reportar({
     limpiar()
     setAviso(null)
     cerradaEnviando.current = false
+    setSinVentana(false)
     setFotos([])
     setAbierto(true)
   }
@@ -132,6 +150,12 @@ function Reportar({
       {aviso && (
         <p role="status" className="text-xs font-medium text-exito">
           {aviso}
+        </p>
+      )}
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      {sinVentana && !abierto && error && (
+        <p role="alert" className="text-xs text-peligro">
+          El reporte que se estaba enviando: {error}
         </p>
       )}
 

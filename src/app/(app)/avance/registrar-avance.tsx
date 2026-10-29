@@ -4,7 +4,15 @@ import { Camera } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
+import {
+  SelectorFotos,
+  fotosParaEnviar,
+  haySubiendo,
+  quitarFotosSueltas,
+  quitarLasQueNadieNombre,
+  soltarMiniaturas,
+  type FotoLista,
+} from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -47,13 +55,22 @@ export function RegistrarAvance({
   // era un segundo avance.
   // Se cerró mientras se enviaba: las fotos quedaron en manos del envío.
   const cerradaEnviando = useRef(false)
+  // Lo mismo, para pintar: el rechazo de un envío sin ventana se dice junto al botón.
+  const [sinVentana, setSinVentana] = useState(false)
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     async (previo: unknown, datos: FormData) => {
-      const r = await registrarAvance(previo, datos)
-      // Se cerró mientras iba y la base lo rechazó: ningún avance las nombra, y
-      // la ventana ya no está para quitarlas (vigesimotercera pasada). Sin
-      // respuesta, el avance pudo entrar con ellas: se quedan.
-      if (!r.ok && cerradaEnviando.current && !pudoHaberEntrado(r.error)) quitarFotosSueltas('fotos-avance', fotos)
+      let r: Awaited<ReturnType<typeof registrarAvance>>
+      try {
+        r = await registrarAvance(previo, datos)
+      } catch (e) {
+        // Se cerró mientras iba y no volvió nada: nadie va a reintentar.
+        if (cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: true })
+        throw e
+      }
+      // Se cerró mientras iba y no volvió un sí: la ventana ya no está para
+      // quitarlas (vigesimotercera pasada). Sin respuesta, el avance pudo entrar
+      // con ellas: se espera y solo se va la que ningún avance nombra.
+      if (!r.ok && cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: pudoHaberEntrado(r.error) })
       return r
     },
     (r) => {
@@ -75,6 +92,7 @@ export function RegistrarAvance({
   function cerrar() {
     if (enviando) {
       cerradaEnviando.current = true
+      setSinVentana(true)
       soltarMiniaturas(fotos)
     } else {
       quitarFotosSueltas('fotos-avance', fotos)
@@ -89,6 +107,7 @@ export function RegistrarAvance({
     limpiar()
     setAviso(null)
     cerradaEnviando.current = false
+    setSinVentana(false)
     setFotos([])
     setEtapaId('')
     setAbierto(true)
@@ -104,6 +123,12 @@ export function RegistrarAvance({
         {aviso && (
           <span role="status" className="text-xs font-medium text-exito">
             {aviso}
+          </span>
+        )}
+        {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+        {sinVentana && !abierto && error && (
+          <span role="alert" className="text-xs text-peligro">
+            El avance que se estaba enviando: {error}
           </span>
         )}
       </span>

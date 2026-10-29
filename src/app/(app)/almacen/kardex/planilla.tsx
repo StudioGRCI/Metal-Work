@@ -4,6 +4,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, avisoDeArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -323,11 +324,14 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             {sinFoto.length > 0 && (
               <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
             )}
+            {/* Se lleva el cursor en cada vuelta: el botón que se tocó se apagó mientras
+                registraba, o se fue si ya no falta nada, y el cursor caía a la página. Y
+                el aviso que nace con su texto no se anunciaba (vigesimoquinta pasada). */}
             {empezado && !registrando && (
-              <p role="status" className={queda ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+              <AvisoEnfocado key={intentos} aviso={Boolean(queda)}>
                 {hechas === 0 ? 'No se registró ninguno' : hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
                 {queda ? `; ${queda}.` : '.'}
-              </p>
+              </AvisoEnfocado>
             )}
             <div className="flex flex-wrap gap-2">
               {!terminado && (

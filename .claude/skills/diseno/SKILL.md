@@ -178,7 +178,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   ese rato— no lo leyó nadie: si el cursor vuelve donde estaba, el anuncio lo
   suma («Mientras tanto: …»); si no puede —la ventana se cerró, el botón tocado
   sigue apagado—, el cursor va a ese aviso, como `AvisoEnfocado`, y el anuncio
-  no dice «puedes seguir donde estabas» (vigesimocuarta). Antes la
+  no dice «puedes seguir donde estabas» (vigesimocuarta). Los otros que
+  cambiaron (hasta tres: la OS emitida, cuando el que falló es su contrato) los
+  suma el anuncio sin repetir el que lee el cursor. Un aviso solo para el
+  lector (`sr-only`, un píxel al fondo) no recibe el cursor —la página saltaba
+  al fondo—: dice dónde se ve con `data-se-ve-en`, el id del mando visible (el
+  botón de la caja), y el cursor va ahí. Si lo enviado lleva a la pantalla que
+  sigue, el anuncio dice «Se abre la pantalla que sigue a lo que enviaste.» en
+  vez de mandar al cursor a lo que se va (vigesimoquinta). Antes la
   traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
   botones de la pantalla y la ventana de una pregunta. Mientras dure, la
   pantalla no se refresca sola (`RefrescoAlVolver`), ni tras un envío que salió
@@ -201,7 +208,12 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   que entró y volvían con «No tienes permiso», que no era cierto. Quitar con ✕
   una foto que todavía sube, o cerrar la ventana mientras sube, la quita en
   cuanto termina: quedaba en Storage sin fila que la nombrara (reporte diario,
-  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera).
+  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera). Cerrar
+  la ventana con el envío en curso es lo mismo: si el envío no entró, sus fotos
+  se quitan (`quitarLasQueNadieNombre`) —tras una pausa si pudo haber entrado,
+  porque Storage solo deja quitar la que ninguna fila nombra, y cuando vuelva la
+  cuenta si la traba está puesta—, y el motivo se dice fuera de la ventana,
+  junto al botón: «El reporte que se estaba enviando: …» (vigesimoquinta).
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que
@@ -209,8 +221,12 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   entró otra cuenta. Adjúntala desde la lista.» (`pasoTrasLoQueQuedo`):
   callado, la ventana seguiría abierta como si nada hubiera entrado. En lo que sale fila
   por fila (planilla y conteo del kardex, planos por área) lo que no salió se
-  queda con su motivo y su botón para enviarlo cuando vuelva la cuenta. Si no
-  quedó nada, no se dice nada: lo dice la traba.
+  queda con su motivo y su botón para enviarlo cuando vuelva la cuenta, y el
+  resumen de lo que queda recibe el cursor (`AvisoEnfocado` con `key` por
+  intento). Si no quedó nada, la ventana lo dice con `NO_SE_GUARDO_OTRA_CUENTA`
+  («No se guardó: en otra pestaña entró otra cuenta. Cuando vuelva la tuya,
+  vuelve a enviarlo.»): callada, al volver la cuenta nadie sabía si lo enviado
+  había salido (vigesimoquinta).
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,

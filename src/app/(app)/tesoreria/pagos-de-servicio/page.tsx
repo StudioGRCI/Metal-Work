@@ -166,8 +166,9 @@ function Servicio({
             </p>
           )}
         </div>
-        {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto. */}
-        <div className="shrink-0 sm:text-right">
+        {/* En el teléfono baja bajo el proveedor, alineada a la izquierda como el resto, y se
+            ajusta al ancho: sin encogerse, «· 100 % de lo que va a él» salía de la tarjeta. */}
+        <div className="min-w-0 sm:shrink-0 sm:text-right">
           {/* Primero lo que falta, que es lo que se paga; el total con IGV, debajo. */}
           {!s.cancelada && saldo.saldoProveedor > 0 && (
             <p className="text-sm font-semibold text-texto">

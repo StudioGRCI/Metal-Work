@@ -311,7 +311,10 @@ En la misma migración que la crea, sin excepción:
   ventana diga qué falta. El archivo que una cadena cortada dejó subido no se
   anota ni se quita con la otra sesión —Storage no la deja—: se quita cuando
   vuelve la cuenta de la pantalla (`cuandoVuelvaLaCuenta`); si en vez de
-  volver se recarga, se queda suelto, visible solo para quien lo subió. El
+  volver se recarga, se queda suelto, visible solo para quien lo subió. Lo
+  mismo si la otra cuenta entra en la pausa antes de volver a preguntar, tras
+  una respuesta perdida: no se pregunta con ella, y el archivo se mira cuando
+  vuelva la cuenta (antes se quedaba suelto para siempre, vigesimoquinta). El
   refresco y la navegación tras un envío también esperan
   (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`): con la otra sesión
   pintaban su pantalla y se llevaban la traba.

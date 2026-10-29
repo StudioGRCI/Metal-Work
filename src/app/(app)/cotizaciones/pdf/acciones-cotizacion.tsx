@@ -16,7 +16,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -278,9 +278,13 @@ export function CorregirCotizacion({
         setAbierto(false)
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
-        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
-        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
-        if (e instanceof OtraCuentaEnLaPestana) return
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
         // Lo que se cae acá es la subida: la corrección todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
         setError('No se pudo subir la corrección. Vuelve a intentar.')
@@ -511,12 +515,15 @@ export function CargarCodigoYOt({
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
-  // Al volver de un rechazo, el cursor va al número repetido, que se dice junto
-  // a su campo, o al aviso: la ventana estuvo trabada.
+  // Al volver de un rechazo, el cursor va al número repetido o al código que no
+  // sirve, que se dicen junto a su campo, o al aviso: la ventana estuvo trabada.
+  // Lo del código salía en el aviso de abajo, lejos del campo (vigesimoquinta pasada).
   const avisoError = useRef<HTMLParagraphElement>(null)
   const campoNumero = useRef<HTMLInputElement>(null)
-  const errorNumero = error?.startsWith('Ya hay una OT') ? error : null
-  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
+  const campoCodigo = useRef<HTMLInputElement>(null)
+  const errorNumero = error && /^(Ya hay una OT|El número de la OT)/.test(error) ? error : null
+  const errorCodigo = error && /^(Escribe el código interno|El código interno|PLANTA no es una unidad)/.test(error) ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : avisoError.current))
   // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
   // después o sea de otro PDF, no lo pisa.
   const aMano = useRef(new Set<'numero' | 'fecha' | 'tipo'>())
@@ -585,6 +592,7 @@ export function CargarCodigoYOt({
     const datos = new FormData(evento.currentTarget)
     if (codigo.trim().length < 2) {
       setError('Escribe el código interno que tendrá la unidad.')
+      campoCodigo.current?.focus()
       return
     }
     if (!archivo) {
@@ -660,9 +668,13 @@ export function CargarCodigoYOt({
         if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(irASuTarjeta)
         else irASuTarjeta()
       } catch (e) {
-        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
-        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
-        if (e instanceof OtraCuentaEnLaPestana) return
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
         // Lo que se cae acá es la subida: todavía no se guardó.
         if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
         setError('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
@@ -695,9 +707,11 @@ export function CargarCodigoYOt({
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
             ayuda="El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad."
+            error={errorCodigo ?? undefined}
             requerido
           >
             <Entrada
+              ref={campoCodigo}
               id="eo-codigo-interno"
               name="codigo_interno"
               autoComplete="off"
@@ -706,7 +720,10 @@ export function CargarCodigoYOt({
               minLength={2}
               maxLength={40}
               value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
+              onChange={(e) => {
+                if (errorCodigo) setError(null)
+                setCodigo(e.target.value)
+              }}
               className="font-mono"
             />
           </Campo>
@@ -830,7 +847,7 @@ export function CargarCodigoYOt({
             </p>
           )}
 
-          <Falla ref={avisoError} texto={errorNumero ? null : error} />
+          <Falla ref={avisoError} texto={errorNumero || errorCodigo ? null : error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>

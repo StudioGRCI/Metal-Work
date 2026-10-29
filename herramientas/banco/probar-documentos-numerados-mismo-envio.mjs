@@ -132,26 +132,26 @@ const SUBCONTRATISTA = `Subcontratista mismo envío ${SUFIJO}`
 const CODIGO = 'PLA_SR_O4_1_26/21'
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 // La parte 8 necesita a dos personas del mismo puesto: una segunda cuenta de
-// Logística, que se crea si falta y queda inactiva al terminar, para no sumar a
-// nadie a los avisos de Logística en las otras pruebas.
+// Logística, que se crea si falta y solo está activa mientras corre la parte 8,
+// para no sumar a nadie a los avisos de Logística en las otras pruebas. Se apaga
+// aunque la parte se caiga (`conLaSegundaDeLogistica`): con la clave común, una
+// cuenta activa de más es una puerta (vigesimoquinta pasada).
 const SEGUNDA_DE_LOGISTICA = process.env.LOGISTICA_DOS ?? 'logistica.dos.local@metalwork.test'
 async function segundaDeLogistica(activa) {
-  if (activa) {
-    await consulta(
-      `insert into auth.users (id, email, encrypted_password, raw_user_meta_data)
-       select gen_random_uuid(), $1::text, crypt($2, gen_salt('bf')), jsonb_build_object('nombres', 'Segunda', 'apellidos', 'de Logística')
-        where not exists (select 1 from auth.users where email = $1::text)`,
-      [SEGUNDA_DE_LOGISTICA, CLAVE],
-    )
-    await consulta(
-      `insert into usuarios (id, nombres, apellidos, correo, cargo, rol_id, sede_id, area_id)
-       select a.id, 'Segunda', 'de Logística', a.email, 'Logística', (select id from roles where codigo = 'COMPRADOR'),
-              (select id from sedes where activo order by creado_en limit 1), (select id from areas where codigo = 'LOG')
-         from auth.users a
-        where a.email = $1::text and not exists (select 1 from usuarios u where u.correo = $1::text)`,
-      [SEGUNDA_DE_LOGISTICA],
-    )
-  }
+  await consulta(
+    `insert into auth.users (id, email, encrypted_password, raw_user_meta_data)
+     select gen_random_uuid(), $1::text, crypt($2, gen_salt('bf')), jsonb_build_object('nombres', 'Segunda', 'apellidos', 'de Logística')
+      where not exists (select 1 from auth.users where email = $1::text)`,
+    [SEGUNDA_DE_LOGISTICA, CLAVE],
+  )
+  await consulta(
+    `insert into usuarios (id, nombres, apellidos, correo, cargo, rol_id, sede_id, area_id)
+     select a.id, 'Segunda', 'de Logística', a.email, 'Logística', (select id from roles where codigo = 'COMPRADOR'),
+            (select id from sedes where activo order by creado_en limit 1), (select id from areas where codigo = 'LOG')
+       from auth.users a
+      where a.email = $1::text and not exists (select 1 from usuarios u where u.correo = $1::text)`,
+    [SEGUNDA_DE_LOGISTICA],
+  )
   // El estado de una cuenta solo lo cambia quien administra usuarios
   // (fn_usuario_proteger_rol): se cambia como el administrador del banco, igual
   // que preparar.sh crea las cuentas, y solo dentro de esta transacción.
@@ -169,8 +169,18 @@ async function segundaDeLogistica(activa) {
     throw error
   }
 }
-if (corre('cuenta')) {
+/** La parte 8 con la segunda cuenta de Logística activa, y apagada al salir aunque la parte se caiga. */
+async function conLaSegundaDeLogistica(parte) {
   await segundaDeLogistica(true)
+  try {
+    await parte()
+  } finally {
+    await segundaDeLogistica(false)
+  }
+}
+if (corre('cuenta')) {
+  // Existe desde aquí, para saber su id; apagada hasta la parte 8.
+  await segundaDeLogistica(false)
   CUENTAS.logistica_dos = SEGUNDA_DE_LOGISTICA
 }
 const ids = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
@@ -849,7 +859,7 @@ if (corre('planos')) {
 }
 
 // ---------------------------------------------------------------- 8. La OC directa desde la pantalla de otra cuenta
-if (corre('cuenta')) {
+if (corre('cuenta')) await conLaSegundaDeLogistica(async () => {
   const d = ocDirecta
   const { pagina, contexto } = await entrar('logistica')
   const v = pagina.locator(VENTANA)
@@ -1253,27 +1263,43 @@ if (corre('cuenta')) {
     && /no se adjuntó: en otra pestaña entró otra cuenta\. Adjúntal[oa] desde la lista\./.test(dijoK)
     && anotadosK.length === 0 && subidoK.length === 1 && subidoK[0].dueno === ids[CUENTAS.logistica],
     `[Otra cuenta] la OC ${deK?.numero ?? 'nada'} entra a nombre de Logística y su comprobante, cortado por Administración, no se anota con ella: la ventana se cierra y dice que falta (${JSON.stringify({ dijoK, anotados: anotadosK.length, enStorage: subidoK.length })})`)
+  // La OC ya sale en la lista con la respuesta de la emisión: lo que dice que la
+  // pantalla se puso al día es el refresco que esperaba a la cuenta, contado
+  // desde que vuelve (vigesimoquinta pasada: con la traba puesta no hubo ninguno).
+  let refrescosK = 0
+  const contarRefresco = (q) => {
+    const h = q.headers()
+    if (q.method() === 'GET' && h.rsc === '1' && !h['next-router-prefetch'] && new URL(q.url()).pathname === new URL(`${BASE}${d.ruta}`).pathname) refrescosK++
+  }
+  const refrescosConTraba = { n: 0 }
+  ph.on('request', contarRefresco)
+  await unRato(ph)
+  refrescosConTraba.n = refrescosK
+  refrescosK = 0
   await enOtraPestana(ch, 'logistica')
   await hasta(() => deOtraCuenta(ph), (t) => !t, 15000)
   // El aviso nació con la traba puesta, fuera del árbol del lector. Al volver,
   // la ventana ya no está: el cursor va al aviso y el anuncio no dice «puedes
-  // seguir donde estabas» (vigesimocuarta pasada).
+  // seguir donde estabas» (vigesimocuarta pasada). Puede sumar otros avisos que
+  // cambiaron mientras tanto, pero no repite el que lee el cursor (vigesimoquinta).
   const vueltaK = await ph.evaluate(() => ({
     cursor: (document.activeElement?.textContent ?? '').replace(/\s+/g, ' ').trim(),
     enElCuerpo: document.activeElement === document.body,
     anuncio: document.querySelector('[data-volvio-la-cuenta]')?.textContent ?? '',
   }))
   comprobar(/no se adjuntó: en otra pestaña entró otra cuenta/.test(vueltaK.cursor) && !vueltaK.enElCuerpo
-    && vueltaK.anuncio === `Volvió la cuenta de ${NOMBRE_LOGISTICA} (${LOGISTICA}).`,
+    && (vueltaK.anuncio === `Volvió la cuenta de ${NOMBRE_LOGISTICA} (${LOGISTICA}).` || vueltaK.anuncio.startsWith(`Volvió la cuenta de ${NOMBRE_LOGISTICA} (${LOGISTICA}). Mientras tanto: `))
+    && !/puedes seguir|no se adjuntó/.test(vueltaK.anuncio),
     `[Otra cuenta] de vuelta Logística, el cursor va al aviso de la OC, que nació con la traba puesta, y el anuncio no dice «puedes seguir donde estabas» (${JSON.stringify(vueltaK)})`)
   const quitado = await hasta(enStorage, (r) => r.length === 0, 15000)
+  const refrescos = await hasta(() => refrescosK, (n) => n > 0, 15000)
+  ph.off('request', contarRefresco)
   const enLista = await hasta(() => d.fila(ph, deK?.numero).count(), (n) => n > 0, 15000)
-  comprobar(quitado.length === 0 && enLista > 0 && (await documentos()).length === 0,
-    `[Otra cuenta] de vuelta Logística, el comprobante suelto se quita de Storage y la lista se pone al día con ${deK?.numero ?? 'nada'} (${JSON.stringify({ enStorage: quitado.length, enLista })})`)
+  comprobar(quitado.length === 0 && refrescosConTraba.n === 0 && refrescos > 0 && enLista > 0 && (await documentos()).length === 0,
+    `[Otra cuenta] de vuelta Logística, el comprobante suelto se quita de Storage y la lista se pone al día con ${deK?.numero ?? 'nada'}, con la traba no (${JSON.stringify({ enStorage: quitado.length, refrescosConTraba: refrescosConTraba.n, refrescos, enLista })})`)
   await ph.unrouteAll({ behavior: 'ignoreErrors' })
   await ch.close()
-  await segundaDeLogistica(false)
-}
+})
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)
 await navegador.close()

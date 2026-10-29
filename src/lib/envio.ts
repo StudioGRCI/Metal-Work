@@ -455,7 +455,10 @@ let cuentaDeLaPestana: string | null = null
  */
 export function entroLaCuenta(usuario: string, puesto: string, nombre: string) {
   // Lo que esperaba a la cuenta de antes (`cuandoVuelvaLaCuenta`) no es de esta: se suelta.
-  if (cuentaDeLaPestana !== null && cuentaDeLaPestana !== usuario) alVolver.clear()
+  if (cuentaDeLaPestana !== null && cuentaDeLaPestana !== usuario) {
+    alVolver.clear()
+    navegaciones.clear()
+  }
   cuentaDeLaPestana = usuario
   conocer(usuario, puesto, nombre)
   noticias++
@@ -634,16 +637,32 @@ let preguntas = 0
 const vigias = new Set<() => void>()
 // Lo que se dejó para cuando la pantalla vuelva a ser de la sesión (`cuandoVuelvaLaCuenta`).
 const alVolver = new Set<() => void>()
+// De eso, lo que lleva a otra pantalla (`navegarSiEsDeLaPestana`).
+const navegaciones = new Set<() => void>()
+// La última vuelta de la cuenta llevó a otra pantalla: la traba no dice «puedes seguir donde estabas».
+let alVolverSeFue = false
 
 function marcarOtraCuenta(texto: string | null) {
   if (otraCuenta === texto) return
   const estabaTrabada = otraCuenta !== null
   otraCuenta = texto
+  // Antes de avisar: la traba lo lee al quitarse.
+  if (texto === null && estabaTrabada) alVolverSeFue = [...alVolver].some((hacer) => navegaciones.has(hacer))
   for (const avisar of vigias) avisar()
   if (texto !== null || !estabaTrabada) return
   const pendientes = [...alVolver]
   alVolver.clear()
+  navegaciones.clear()
   for (const hacer of pendientes) hacer()
+}
+
+/**
+ * Si al volver la cuenta la pantalla se fue a la que seguía a un envío (la
+ * orden recién abierta, el trabajo recién reportado). La traba decía «puedes
+ * seguir donde estabas» con la pantalla ya yéndose (vigesimoquinta pasada).
+ */
+export function alVolverLaCuentaSeFue() {
+  return alVolverSeFue
 }
 
 /**
@@ -670,6 +689,15 @@ export function seguirConLaCuentaDeLaPestana() {
 
 /** Lo que se dice cuando el paso que sigue a uno que ya quedó no sale porque entró otra cuenta. */
 export const ENTRO_OTRA_CUENTA = 'En otra pestaña entró otra cuenta.'
+
+/**
+ * Lo que dice una ventana cuya cadena cortó la traba sin que quedara nada (la
+ * orden nueva, «Dar código y cargar la OT», la cotización). Con el botón apagado
+ * mientras enviaba, el cursor había caído a la página, y al volver la cuenta la
+ * ventana seguía llena sin decir que no se guardó (vigesimoquinta pasada). El
+ * aviso nace con la traba puesta: al volver, el cursor va a él.
+ */
+export const NO_SE_GUARDO_OTRA_CUENTA = 'No se guardó: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.'
 
 /**
  * El paso que sigue a uno que ya quedó (el comprobante de la OC recién
@@ -705,7 +733,9 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  */
 export function navegarSiEsDeLaPestana(router: { push(url: string): void }, url: string) {
   if (!laPestanaEsDeOtraCuenta()) return router.push(url)
-  cuandoVuelvaLaCuenta(() => startTransition(() => router.push(url)))
+  const ir = () => startTransition(() => router.push(url))
+  navegaciones.add(ir)
+  cuandoVuelvaLaCuenta(ir)
 }
 
 function vigilar(avisar: () => void) {

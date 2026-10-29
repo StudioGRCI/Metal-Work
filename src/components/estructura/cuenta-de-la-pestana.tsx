@@ -3,7 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { entroLaCuenta, useOtraCuentaEnLaPestana } from '@/lib/envio'
+import { alVolverLaCuentaSeFue, entroLaCuenta, useOtraCuentaEnLaPestana } from '@/lib/envio'
 
 /**
  * Quién usa la pantalla, para guardar por cuenta el envío pendiente (`useIdDelEnvio`)
@@ -49,13 +49,29 @@ const ANUNCIO_MS = 10_000
 /** Lo que una pantalla dice cuando cambia: sus avisos. */
 const AVISO = '[role="alert"], [role="status"], [aria-live="polite"], [aria-live="assertive"]'
 
-/** El aviso que cambió al último, si todavía está a la vista y dice algo. */
-function ultimoAviso(cambiados: HTMLElement[]) {
-  for (let i = cambiados.length - 1; i >= 0; i--) {
-    const aviso = cambiados[i]
-    if (aviso.isConnected && aviso.textContent?.trim() && aviso.getClientRects().length > 0) return aviso
-  }
-  return null
+/** Los avisos que cambiaron y todavía están en la pantalla diciendo algo, el último al final: los tres últimos. */
+function avisosVigentes(cambiados: HTMLElement[]) {
+  return cambiados.filter((a) => a.isConnected && a.textContent?.trim() && a.getClientRects().length > 0).slice(-3)
+}
+
+/** Lo que dijeron, en orden y sin repetir. */
+function loQueDijeron(avisos: HTMLElement[]) {
+  return [...new Set(avisos.map((a) => a.textContent?.replace(/\s+/g, ' ').trim() ?? '').filter(Boolean))].join(' ')
+}
+
+/**
+ * Dónde se ve un aviso. El que es solo para el lector (`sr-only`, un píxel al
+ * final de la página) no se ve: con el cursor en él, la página saltaba al fondo
+ * y el cursor no se veía (vigesimoquinta pasada, el pago de Tesorería). Si dice
+ * dónde se ve (`data-se-ve-en`, el id del botón de la caja), el cursor va ahí;
+ * si no, a ninguna parte.
+ */
+function dondeSeVe(aviso: HTMLElement) {
+  const caja = aviso.getBoundingClientRect()
+  if (caja.width > 1 && caja.height > 1) return aviso
+  const id = aviso.dataset.seVeEn
+  const destino = id ? document.getElementById(id) : null
+  return destino?.isConnected && destino.getClientRects().length > 0 ? destino : null
 }
 
 function TrabaDeOtraCuenta({ texto, cuenta }: { texto: string | null; cuenta: string }) {
@@ -133,17 +149,30 @@ function TrabaDeOtraCuenta({ texto, cuenta }: { texto: string | null; cuenta: st
       if (dialogo.open) dialogo.close()
       if (veniaDe?.isConnected && veniaDe !== document.body) veniaDe.focus()
       const sigue = veniaDe !== null && veniaDe !== document.body && document.activeElement === veniaDe
-      const cambio = ultimoAviso(cambiados)
-      const dicho = cambio?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      const vigentes = avisosVigentes(cambiados)
+      const cambio = vigentes.at(-1) ?? null
       let volvio = `Volvió la cuenta de ${ultimaCuenta.current}`
-      if (sigue) volvio += cambio ? `. Mientras tanto: ${dicho}` : ': puedes seguir donde estabas.'
-      else {
-        volvio += '.'
-        if (cambio) {
-          if (!cambio.hasAttribute('tabindex')) cambio.setAttribute('tabindex', '-1')
-          cambio.focus()
+      // Lo enviado lleva a la pantalla que sigue: lo de aquí ya no se queda.
+      if (alVolverLaCuentaSeFue()) volvio += '. Se abre la pantalla que sigue a lo que enviaste.'
+      else if (sigue) volvio += cambio ? `. Mientras tanto: ${loQueDijeron(vigentes)}` : ': puedes seguir donde estabas.'
+      else if (cambio) {
+        // Con el cursor en el aviso, el lector lo lee; los otros que cambiaron
+        // (la OS emitida, cuando el que falló es su contrato) y el que no se ve
+        // los dice el anuncio (vigesimoquinta pasada).
+        const destino = dondeSeVe(cambio)
+        const antes = loQueDijeron(destino === cambio ? vigentes.slice(0, -1) : vigentes)
+        volvio += antes ? `. Mientras tanto: ${antes}` : '.'
+        if (destino) {
+          if (destino === cambio && !cambio.hasAttribute('tabindex')) {
+            cambio.setAttribute('tabindex', '-1')
+            // Es texto que recibe el cursor para que se lea, no un mando: sin
+            // anillo, como `AvisoEnfocado`. Con él, el del PDF de la orden tapaba
+            // el nombre del archivo (vigesimoquinta pasada).
+            cambio.classList.add('outline-none')
+          }
+          destino.focus()
         }
-      }
+      } else volvio += '.'
       // Después de cerrar: con la traba puesta, lo de detrás no se anuncia.
       if (estado.current?.isConnected) estado.current.textContent = volvio
     }

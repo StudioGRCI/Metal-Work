@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -309,9 +309,13 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         setAbierto(false)
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
-        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
-        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
-        if (e instanceof OtraCuentaEnLaPestana) return
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
         // Lo único que puede caerse acá es la carrocería nueva o la subida:
         // la cotización todavía no se anotó.
         if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])

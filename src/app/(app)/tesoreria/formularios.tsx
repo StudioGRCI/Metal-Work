@@ -341,7 +341,8 @@ export function PagarServicio({
                     Al proveedor ({saldo.saldoProveedor > 0 ? `falta ${montoEntero(saldo.saldoProveedor, codigoMoneda)}` : 'ya está pagado'})
                   </option>
                   <option value="DETRACCION">
-                    La detracción en el Banco de la Nación ({saldo.saldoDetraccion > 0 ? `falta ${montoEntero(saldo.saldoDetraccion, 'PEN')}` : 'ya está depositada'})
+                    {/* Corta: a 390 el texto largo se cortaba en el campo cerrado. Dónde se deposita lo dice la ayuda. */}
+                    La detracción ({saldo.saldoDetraccion > 0 ? `falta ${montoEntero(saldo.saldoDetraccion, 'PEN')}` : 'ya está depositada'})
                   </option>
                 </Seleccion>
               </Campo>

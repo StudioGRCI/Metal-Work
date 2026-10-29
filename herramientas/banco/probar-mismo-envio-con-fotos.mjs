@@ -57,6 +57,42 @@ const base = new pg.Client({
 await base.connect()
 const consulta = async (sql, valores = []) => (await base.query(sql, valores)).rows
 
+/** Corre `sql` en una transacción con la sesión de esa cuenta y el rol authenticated: como lo haría su pantalla. */
+async function comoPuesto(correo, sql, valores = []) {
+  await base.query('begin')
+  try {
+    const [{ id }] = (await base.query('select id::text from usuarios where correo = $1', [correo])).rows
+    await base.query(
+      `select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+              set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,
+      [id],
+    )
+    await base.query('set local role authenticated')
+    const filas = (await base.query(sql, valores)).rows
+    await base.query('commit')
+    return filas
+  } catch (error) {
+    await base.query('rollback')
+    throw error
+  }
+}
+/**
+ * Una persona del taller de Maestranza, con su costo, como la registra RR. HH.
+ * desde su pantalla. Antes se metía como postgres, por encima del permiso, y la
+ * prueba no decía si RR. HH. podía (vigesimoquinta pasada).
+ */
+async function personaDeMaestranza(nombres, apellidos, dni) {
+  const [r] = await comoPuesto(
+    CUENTAS.rrhh,
+    `select public.rrhh_guardar_trabajador(x.id, $1, $2, $3, 'Soldadora', (select id from areas where codigo = 'MTZ'), '08:00', '17:00',
+                                           'Banco de Pruebas', 'AHORROS', '191-' || $3, null) = x.id as ficha,
+            public.rrhh_guardar_costo_trabajador(x.id, 2400) = x.id as costo
+       from (select gen_random_uuid() as id) x`,
+    [nombres, apellidos, dni],
+  )
+  if (!r?.ficha || !r?.costo) throw new Error(`RR. HH. no pudo registrar a ${nombres} con su costo.`)
+}
+
 const fallas = []
 function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
@@ -163,10 +199,38 @@ for (const [n, relleno] of [['A', 700], ['B', 2100], ['C', 900], ['D', 1300], ['
 mkdirSync(join(archivos, 'otro'), { recursive: true })
 pdfs.Eotro = join(archivos, 'otro', `QA-GASTO-E-${sello}.pdf`)
 writeFileSync(pdfs.Eotro, PDF(3000))
-// Fotos pequeñas de verdad, cada una distinta.
+// Fotos pequeñas de verdad, cada una distinta. Las chicas en JPEG se suben tal
+// cual (`comprimirFoto`); las dos grandes, en PNG y con ruido para que no se
+// compriman solas, son las que la cola tiene que achicar antes de subirlas.
 const fotos = {}
+const pesoOriginal = {}
 {
   const p = await (await navegador.newContext()).newPage()
+  for (const n of ['dosGrande', 'tresGrande']) {
+    const b64 = await p.evaluate(async () => {
+      const c = document.createElement('canvas')
+      c.width = 1800
+      c.height = 1350
+      const g = c.getContext('2d')
+      const ruido = g.createImageData(c.width, c.height)
+      for (let i = 0; i < ruido.data.length; i += 4) {
+        ruido.data[i] = Math.random() * 256
+        ruido.data[i + 1] = Math.random() * 256
+        ruido.data[i + 2] = Math.random() * 256
+        ruido.data[i + 3] = 255
+      }
+      g.putImageData(ruido, 0, 0)
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+      const b = new Uint8Array(await blob.arrayBuffer())
+      let s = ''
+      for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000))
+      return btoa(s)
+    })
+    fotos[n] = join(archivos, `foto-${n}-${sello}.png`)
+    const buffer = Buffer.from(b64, 'base64')
+    pesoOriginal[n] = buffer.length
+    writeFileSync(fotos[n], buffer)
+  }
   for (const [n, color] of [['uno', '#7a4b2a'], ['dos', '#3a3f44'], ['tres', '#2a5a7a'], ['cuatro', '#5a7a2a'], ['cinco', '#7a2a5a'], ['seis', '#2a7a6a']]) {
     const b64 = await p.evaluate(async (color) => {
       const c = document.createElement('canvas')
@@ -388,14 +452,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
 // ------------------------------------------- 3. El reporte diario (Maestranza, en el celular)
 {
   const persona = `Elsa ${sello}`
-  await consulta(
-    `with nueva as (
-       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
-       values ($1, 'Prueba Mismo Envío', '6' || $2, 'Soldadora', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3))
-       returning id)
-     insert into trabajador_costos (trabajador_id, costo_mensual) select id, 2400 from nueva`,
-    [persona, sello.padStart(7, '0'), CUENTAS.rrhh],
-  )
+  await personaDeMaestranza(persona, 'Prueba Mismo Envío', `6${sello.padStart(7, '0')}`)
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
   const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
   const codigo = `QA_SR_O4_1_26/${sello.slice(-2)}`
@@ -467,14 +524,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
 // primera, las que seguían salían con esa sesión.
 {
   const persona = `Rita ${sello}`
-  await consulta(
-    `with nueva as (
-       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
-       values ($1, 'Prueba Cola De Fotos', '7' || $2, 'Soldadora', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3))
-       returning id)
-     insert into trabajador_costos (trabajador_id, costo_mensual) select id, 2400 from nueva`,
-    [persona, sello.padStart(7, '0'), CUENTAS.rrhh],
-  )
+  await personaDeMaestranza(persona, 'Prueba Cola De Fotos', `7${sello.padStart(7, '0')}`)
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
   const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
   const [logistica] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.logistica])
@@ -498,12 +548,15 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const [{ desde }] = await consulta(`select now() as desde`)
   const deQuien = () =>
     consulta(
-      `select count(*) filter (where owner_id = $2)::int as mias, count(*) filter (where owner_id = $3)::int as de_logistica
+      `select count(*) filter (where owner_id = $2)::int as mias, count(*) filter (where owner_id = $3)::int as de_logistica,
+              count(*) filter (where owner_id = $2 and metadata->>'mimetype' = 'image/jpeg')::int as en_jpeg,
+              coalesce(max((metadata->>'size')::bigint) filter (where owner_id = $2), 0)::bigint as la_mas_pesada
          from storage.objects where bucket_id = 'fotos-reporte-diario' and created_at >= $1`,
       [desde, yo.id, logistica.id],
-    ).then(([r]) => r)
+    ).then(([r]) => ({ ...r, la_mas_pesada: Number(r.la_mas_pesada) }))
   corte.retenerFoto = true
-  await pagina.locator('input[type="file"]:not([capture])').setInputFiles([fotos.uno, fotos.dos, fotos.tres])
+  // La primera, chica, sube tal cual; las dos que esperan son las grandes, que hay que achicar.
+  await pagina.locator('input[type="file"]:not([capture])').setInputFiles([fotos.uno, fotos.dosGrande, fotos.tresGrande])
   await hasta(async () => corte.fotosRetenidas, (n) => n === 1)
   await enOtraPestana(contexto, CUENTAS.logistica)
   const traba = pagina.locator('dialog[data-traba-otra-cuenta]')
@@ -525,8 +578,12 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await esperarSubidas(pagina)
   const sinFallas = await hasta(() => pagina.getByRole('list', { name: 'Fotos que no entraron' }).count(), (n) => n === 0, 10000)
   const despues = await deQuien()
-  comprobar(destrabada && sinFallas === 0 && despues.mias === 3 && despues.de_logistica === 0,
-    `[Maestranza 390] vuelve su cuenta, «Reintentar» achica y sube las dos, y quedan las tres a su nombre (Storage: ${despues.mias} suyas, ${despues.de_logistica} de Logística)`)
+  // Achicadas: en Storage las tres son JPEG y ninguna pesa lo que pesaba la
+  // más liviana de las grandes en PNG (vigesimoquinta pasada: con fotos chicas,
+  // «achica» no se medía).
+  const pngMasLiviano = Math.min(pesoOriginal.dosGrande, pesoOriginal.tresGrande)
+  comprobar(destrabada && sinFallas === 0 && despues.mias === 3 && despues.de_logistica === 0 && despues.en_jpeg === 3 && despues.la_mas_pesada < pngMasLiviano,
+    `[Maestranza 390] vuelve su cuenta, «Reintentar» achica y sube las dos, y quedan las tres a su nombre (Storage: ${despues.mias} suyas, ${despues.en_jpeg} en JPEG, la más pesada ${Math.round(despues.la_mas_pesada / 1024)} KB contra ${Math.round(pngMasLiviano / 1024)} KB del PNG; ${despues.de_logistica} de Logística)`)
 
   await pagina.getByRole('button', { name: 'Subir reporte' }).click()
   await pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {})

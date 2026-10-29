@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeOtraCuenta, navegarSiEsDeLaPestana, OtraCuentaEnLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -206,9 +206,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         listo = true
         navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
       } catch (e) {
-        // Entró otra cuenta a media cadena: no sigue, lo dice la traba, y el
-        // archivo que haya subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`).
-        if (e instanceof OtraCuentaEnLaPestana) return
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
         // Lo que se cae acá es la subida: la orden todavía no se registró.
         setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
       } finally {
