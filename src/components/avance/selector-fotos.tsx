@@ -5,7 +5,16 @@ import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction 
 
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { esDeLaVersionAnterior, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, SIN_RESPUESTA } from '@/lib/envio'
+import {
+  esDeLaVersionAnterior,
+  laPestanaEsDeLaVersionAnterior,
+  laPestanaEsDeOtraCuenta,
+  OtraCuentaEnLaPestana,
+  quitarConLaCuenta,
+  SE_ACTUALIZO_EL_SISTEMA,
+  SIN_RESPUESTA,
+  vigilarLaVersion,
+} from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
@@ -72,13 +81,41 @@ const NO_SUBIO_SE_ACTUALIZO = 'No se subió: el sistema se actualizó. Vuelve a 
  *
  * La que todavía sube se anota (`retiradas`): cuando termina, se quita sola.
  * Antes llegaba a Storage después de cerrar y quedaba suelta (vigesimosegunda
- * pasada).
+ * pasada). Devuelve el borrado, para quien tiene que esperarlo antes de
+ * recargar (`alVolverACargar`).
  */
 export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
-  retirarLasQueSuben(fotos)
-  const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
-  if (rutas.length > 0) void quitarConLaCuenta(() => createClient().storage.from(bucket).remove(rutas))
-  soltarMiniaturas(fotos)
+  // La que ya se está quitando no se pide dos veces: al saberse vieja la
+  // pestaña el reporte diario quita las suyas, y su envío cortado, otra vez.
+  const nuevas = fotos.filter((f) => !quitandose.has(f))
+  retirarLasQueSuben(nuevas)
+  const rutas = nuevas.flatMap((f) => (f.ruta ? [f.ruta] : []))
+  const borrado = rutas.length > 0 ? quitarConLaCuenta(() => createClient().storage.from(bucket).remove(rutas)) : Promise.resolve()
+  soltarMiniaturas(nuevas)
+  for (const f of nuevas) quitandose.set(f, borrado)
+  return Promise.all(fotos.map((f) => quitandose.get(f)))
+}
+
+const quitandose = new WeakMap<FotoLista, Promise<unknown>>()
+
+// La que ya estaba subida, o subiendo, cuando la pestaña se supo de antes del
+// último despliegue (`quitarAlSaberseVieja`).
+const SE_QUITO_SE_ACTUALIZO = 'Se quitó: el sistema se actualizó.'
+
+/**
+ * La pestaña se supo de antes del último despliegue (`vigilarLaVersion`) con
+ * fotos ya subidas o subiendo: desde aquí nada las va a nombrar, y al recargar,
+ * como pide el aviso, quedaban sueltas. Se quitan de Storage en el acto y se
+ * quedan en la lista sin miniatura, con una sola alerta que pide elegirlas otra
+ * vez al volver a cargar (trigésima pasada). Devuelve con qué cambiar la lista,
+ * o `null` si no había ninguna.
+ */
+export function quitarAlSaberseVieja(bucket: string, fotos: FotoLista[]) {
+  const van = fotos.filter((f) => f.ruta || f.subiendo)
+  if (van.length === 0) return null
+  void quitarFotosSueltas(bucket, van)
+  return (lista: FotoLista[]) =>
+    lista.map((f): FotoLista => (van.includes(f) ? { ...f, ruta: undefined, subiendo: false, vistaPrevia: '', error: SE_QUITO_SE_ACTUALIZO } : f))
 }
 
 /** Un envío con fotos: con cuáles salió, si su ventana se cerró mientras iba y si ya terminó. */
@@ -155,11 +192,29 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
   const intento = useRef<Intento | null>(null)
   // Las rutas que salieron en un envío de esta ventana que no se sabe cómo terminó.
   const enDuda = useRef(new Set<string>())
+  // Las que van en un envío que sigue en camino.
+  const enCamino = useRef(new Set<FotoLista>())
   // Las de la ventana ahora: el envío vuelve después de que se pintaron otras.
   const actuales = useRef<FotoLista[]>([])
   useEffect(() => {
     actuales.current = fotos
   })
+
+  // Con la ventana abierta, al saberse vieja la pestaña se quitan sus fotos
+  // subidas (`quitarAlSaberseVieja`), menos las de un envío en camino, que son
+  // de ese envío, y las de uno que no se sabe cómo terminó, que pudo nombrarlas.
+  useEffect(
+    () =>
+      vigilarLaVersion(() => {
+        if (!laPestanaEsDeLaVersionAnterior()) return
+        const marcar = quitarAlSaberseVieja(
+          bucket,
+          actuales.current.filter((f) => !enCamino.current.has(f) && !(f.ruta && enDuda.current.has(f.ruta))),
+        )
+        if (marcar) setFotos(marcar)
+      }),
+    [bucket],
+  )
 
   // Entró, o ya había entrado: las del envío ya no son de la ventana.
   function alEntrar(este: Intento, sinNombrar: boolean) {
@@ -175,6 +230,7 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
     return async (previo: unknown, datos: FormData): Promise<ResultadoAccion<T>> => {
       const este: Intento = { fotos, sinVentana: false, termino: false }
       intento.current = este
+      for (const f of fotos) enCamino.current.add(f)
       const dudar = () => {
         for (const f of este.fotos) if (f.ruta) enDuda.current.add(f.ruta)
       }
@@ -216,6 +272,7 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
         throw e
       } finally {
         este.termino = true
+        for (const f of este.fotos) enCamino.current.delete(f)
         if (este.sinVentana) setSigue(false)
       }
     }
@@ -518,7 +575,9 @@ export function SelectorFotos({
     alCambiar((f) => f.filter((item) => item !== foto))
   }
 
-  const fallidas = fotos.filter((f) => f.error)
+  const fallidas = fotos.filter((f) => f.error && f.error !== SE_QUITO_SE_ACTUALIZO)
+  // Se quitan todas a la vez: una alerta por foto se leía una tras otra.
+  const quitadasAlActualizar = fotos.filter((f) => f.error === SE_QUITO_SE_ACTUALIZO).length
 
   return (
     <div>
@@ -536,7 +595,7 @@ export function SelectorFotos({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={foto.vistaPrevia} alt={foto.archivo.name} className="size-full object-cover" />
             ) : (
-              <p className="p-1.5 text-[11px] text-peligro">No entró</p>
+              <p className="p-1.5 text-[11px] text-peligro">{foto.error === SE_QUITO_SE_ACTUALIZO ? 'Se quitó' : 'No entró'}</p>
             )}
 
             {foto.subiendo && (
@@ -608,13 +667,20 @@ export function SelectorFotos({
         </label>}
       </div>
 
-      {fallidas.length > 0 && (
+      {(fallidas.length > 0 || quitadasAlActualizar > 0) && (
         <ul className="mt-2 space-y-1" aria-label="Fotos que no entraron">
           {fallidas.map((f, i) => (
             <li key={`${f.archivo.name}-falla-${i}`} role="alert" className="text-xs text-peligro">
               <span className="font-medium">{f.archivo.name}:</span> {f.error}
             </li>
           ))}
+          {quitadasAlActualizar > 0 && (
+            <li role="alert" className="text-xs text-peligro" data-fotos-quitadas>
+              {quitadasAlActualizar === 1
+                ? 'La foto ya subida se quitó: el sistema se actualizó. Vuelve a cargar la pantalla y elígela otra vez.'
+                : `Las ${quitadasAlActualizar} fotos ya subidas se quitaron: el sistema se actualizó. Vuelve a cargar la pantalla y elígelas otra vez.`}
+            </li>
+          )}
         </ul>
       )}
 

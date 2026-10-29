@@ -2,13 +2,14 @@
 
 import { Plus, Trash2, Users, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   SelectorFotos,
   fotosParaEnviar,
   hayFallidas,
   haySubiendo,
+  quitarAlSaberseVieja,
   quitarFotosSueltas,
   SE_ACTUALIZO_CON_FOTOS,
   type FotoLista,
@@ -29,7 +30,18 @@ import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { esDeLaVersionAnterior, motivoDelFallo, navegarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import {
+  alVolverACargar,
+  esDeLaVersionAnterior,
+  laPestanaEsDeLaVersionAnterior,
+  motivoDelFallo,
+  navegarSiEsDeLaPestana,
+  SE_ACTUALIZO_EL_SISTEMA,
+  useCursorAlRechazo,
+  useEnvio,
+  usePestanaDeLaVersionAnterior,
+  vigilarLaVersion,
+} from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -149,6 +161,11 @@ function trabajosParaEnviar(s: Seccion) {
       personal: s.general ? [] : paraEnviar(t.personal),
     }
   })
+}
+
+/** Las que ya están en Storage o van en camino: si nadie las nombra, quedan sueltas. */
+function fotosSubidas(s: Seccion) {
+  return s.fotos.filter((f) => f.ruta || f.subiendo)
 }
 
 function fotosDe(s: Seccion) {
@@ -313,6 +330,34 @@ export function FormularioReporteDiario({
     { refrescar: false },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)
+  const vieja = usePestanaDeLaVersionAnterior()
+
+  // Las fotos ya subidas que nadie va a nombrar si la pantalla se recarga. Se
+  // leen de aquí, no del pintado en que se pidió quitarlas.
+  const actuales = useRef(secciones)
+  useEffect(() => {
+    actuales.current = secciones
+  })
+  // Al saberse vieja la pestaña, como venga, sus fotos ya subidas se quitan en
+  // el acto (`quitarAlSaberseVieja`): desde aquí el reporte ya no entra, y al
+  // recargar, como pide el aviso de arriba, quedaban sueltas. Las de la
+  // corrección (`fotosPrevias`) son del reporte que ya está y no se tocan.
+  useEffect(
+    () =>
+      vigilarLaVersion(() => {
+        if (!laPestanaEsDeLaVersionAnterior()) return
+        const marcar = quitarAlSaberseVieja(BUCKET_FOTOS_REPORTE, actuales.current.flatMap((s) => s.fotos))
+        if (marcar) setSecciones((ss) => ss.map((s) => ({ ...s, fotos: marcar(s.fotos) })))
+      }),
+    [],
+  )
+  // Y «Volver a cargar», el del aviso de arriba después de un despliegue, las
+  // quita antes de recargar: antes quedaban sueltas (trigésima pasada).
+  useEffect(
+    () => alVolverACargar(() => Promise.all(actuales.current.map((s) => quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s))))),
+    [],
+  )
+
   // El cursor va al aviso, al final de un formulario largo: caía a la página.
   const aviso = useRef<HTMLParagraphElement>(null)
   useCursorAlRechazo(enviando, error, () => aviso.current)
@@ -582,7 +627,9 @@ export function FormularioReporteDiario({
         </p>
       )}
       {fallidas && !subiendo && (
-        <p className="text-sm text-peligro">Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.</p>
+        <p className="text-sm text-peligro">
+          {vieja ? 'Vuelve a cargar la pantalla para subir el reporte.' : 'Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.'}
+        </p>
       )}
       {repetidos.size > 0 && <p className="text-sm text-peligro">Un código va dos veces: junta sus trabajos en uno solo.</p>}
       <div className="flex justify-end">

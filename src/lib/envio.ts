@@ -29,48 +29,100 @@ export class OtraCuentaEnLaPestana extends Error {
 }
 
 /**
- * La pestaña es de antes del último despliegue: cada compilación cambia el id
- * de cada acción, y el servidor ya no conoce el que manda esta pantalla (404 con
- * `x-nextjs-action-not-found`). La acción no corrió, así que no entró, y
- * reintentar desde aquí no sirve: hay que recargar.
+ * La pestaña es de antes del último despliegue y el servidor ya no conoce el id
+ * de la acción que manda esta pantalla (404 con `x-nextjs-action-not-found`). Ese
+ * id no cambia en cada despliegue: es un hash con una clave que Next guarda en
+ * `.next/cache` y rota cada catorce días, y cambia también si la acción cambia
+ * de archivo o de nombre. La acción no corrió, así que no entró, y reintentar
+ * desde aquí no sirve: hay que recargar.
  */
 export const SE_ACTUALIZO_EL_SISTEMA = 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
 
 /** La fila de una tanda que no salió por eso: la causa la dice una sola vez el resumen. */
 export const NO_SALIO_SE_ACTUALIZO = 'No salió: el sistema se actualizó.'
 
-// Una vez que una acción contesta que no existe, la pestaña entera es de antes
-// del despliegue: lo sabe `RefrescoAlVolver`, que deja de repintar (en esta
-// pestaña, `router.refresh()` recarga el documento y se lleva lo escrito) y lo
-// dice arriba (vigesimonovena pasada).
-let deLaVersionAnterior = false
-const alSaberQueEsVieja = new Set<() => void>()
+/**
+ * Lo que la pestaña sabe del despliegue con que se pintó:
+ *
+ * · `al-dia`: contesta el mismo servidor.
+ * · `nueva`: hubo un despliegue. Lo sabe `RefrescoAlVolver`, que compara la
+ *   compilación con que se pintó la pantalla con la del servidor que contesta.
+ *   Las acciones suelen seguir existiendo, pero `router.refresh()` ya no
+ *   repinta: Next ve otra compilación y recarga el documento entero. Se llevaba
+ *   lo escrito y dejaba suelta la foto ya subida del reporte diario, en el
+ *   despliegue de todos los días, que conserva los ids (crítica de la trigésima
+ *   pasada; la vigesimonovena solo miraba la acción desconocida).
+ * · `vieja`: además, una acción contestó que no existe. Nada de lo que se envíe
+ *   desde aquí entra.
+ *
+ * `callado`: lo supo un envío que ya lo dice junto a su botón, y el aviso de
+ * arriba no lo anuncia otra vez (trigésima pasada).
+ */
+export type VersionDeLaPestana = { estado: 'al-dia' | 'nueva' | 'vieja'; callado: boolean }
+const AL_DIA: VersionDeLaPestana = { estado: 'al-dia', callado: false }
+let version = AL_DIA
+const alCambiarLaVersion = new Set<() => void>()
+
+function anotarVersion(siguiente: VersionDeLaPestana) {
+  version = siguiente
+  for (const avisar of alCambiarLaVersion) avisar()
+}
 
 /**
  * Si `e` es la acción que el servidor ya no conoce (`unstable_isUnrecognizedActionError`),
  * y de paso deja anotado que esta pestaña es de antes del despliegue. Todo
- * `catch` que lo mire pasa por aquí, no por la función de Next.
+ * `catch` que lo mire pasa por aquí, no por la función de Next. Con
+ * `sinAvisoPropio` (el refresco al volver, la pregunta al abrir una ventana),
+ * quien llama no dice nada y lo anuncia el aviso de arriba.
  */
-export function esDeLaVersionAnterior(e: unknown) {
+export function esDeLaVersionAnterior(e: unknown, { sinAvisoPropio = false } = {}) {
   if (!unstable_isUnrecognizedActionError(e)) return false
-  if (!deLaVersionAnterior) {
-    deLaVersionAnterior = true
-    for (const avisar of alSaberQueEsVieja) avisar()
-  }
+  if (version.estado !== 'vieja') anotarVersion({ estado: 'vieja', callado: !sinAvisoPropio })
   return true
 }
 
-export const laPestanaEsDeLaVersionAnterior = () => deLaVersionAnterior
+/** Hubo un despliegue desde que se pintó la pantalla (`RefrescoAlVolver`). */
+export function anotarQueHuboUnDespliegue() {
+  if (version.estado === 'al-dia') anotarVersion({ estado: 'nueva', callado: false })
+}
+
+export const laPestanaEsDeLaVersionAnterior = () => version.estado === 'vieja'
+
+/** Hubo un despliegue: aquí `router.refresh()` recargaría el documento entero. */
+export const laPestanaEsDeOtroDespliegue = () => version.estado !== 'al-dia'
+
+/** Avisa cada vez que cambia lo que la pestaña sabe del despliegue. Devuelve con qué dejar de avisar. */
+export const vigilarLaVersion = (avisar: () => void) => {
+  alCambiarLaVersion.add(avisar)
+  return () => void alCambiarLaVersion.delete(avisar)
+}
+
+export function useVersionDeLaPestana() {
+  return useSyncExternalStore(vigilarLaVersion, () => version, () => AL_DIA)
+}
 
 export function usePestanaDeLaVersionAnterior() {
-  return useSyncExternalStore(
-    (avisar) => {
-      alSaberQueEsVieja.add(avisar)
-      return () => void alSaberQueEsVieja.delete(avisar)
-    },
-    laPestanaEsDeLaVersionAnterior,
-    () => false,
-  )
+  return useVersionDeLaPestana().estado === 'vieja'
+}
+
+/**
+ * Lo que una pantalla quita antes de que «Volver a cargar», el del aviso de
+ * arriba, recargue: la foto ya subida del reporte diario, que después de
+ * recargar no la nombraría nadie (trigésima pasada). Devuelve con qué dejar de
+ * pedirlo.
+ */
+const antesDeRecargar = new Set<() => unknown>()
+
+export function alVolverACargar(quitar: () => unknown) {
+  antesDeRecargar.add(quitar)
+  return () => void antesDeRecargar.delete(quitar)
+}
+
+/** Recarga la pantalla después de lo de `alVolverACargar`, con un tope: sin red, recarga igual. */
+export async function volverACargar() {
+  const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
+  await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
+  window.location.reload()
 }
 
 /**
@@ -429,8 +481,10 @@ export function useIdDelEnvio(clave?: ClaveDelEnvio, alEntrar?: (cuentas: Cuenta
           setAnterior(contarLoQueEntro(propios, deOtraCuenta))
           alEntrar?.(entraron)
         },
-        // Sin respuesta tampoco se sabe: sigue el mismo id.
-        () => {},
+        // Sin respuesta tampoco se sabe: sigue el mismo id. Si la pregunta ya no
+        // existe, la pestaña es vieja, y se dice en el acto: antes la persona
+        // escribía la ventana entera y se enteraba al enviar (trigésima pasada).
+        (e: unknown) => void esDeLaVersionAnterior(e, { sinAvisoPropio: true }),
       )
     },
     salio() {

@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useId, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
-import { useCursorAlRechazo } from '@/lib/envio'
+import { useCursorAlRechazo, useVersionDeLaPestana } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { abrioVentana, cerroVentana, esLaUltimaVentana } from '@/lib/ventanas-abiertas'
 
@@ -106,6 +106,15 @@ export function Ventana({
   })
   const idTitulo = useId()
   const idDescripcion = useId()
+  const idVieja = useId()
+  // Si la pestaña ya se sabía vieja al abrir: el aviso de dentro se lee con la ventana.
+  const vieja = useVersionDeLaPestana().estado === 'vieja'
+  const [abiertaAntes, setAbiertaAntes] = useState(abierta)
+  const [viejaAlAbrir, setViejaAlAbrir] = useState(abierta && vieja)
+  if (abierta !== abiertaAntes) {
+    setAbiertaAntes(abierta)
+    setViejaAlAbrir(abierta && vieja)
+  }
   // En el servidor no hay documento al que colgar el portal, así que la
   // ventana no se pinta hasta que la página está hidratada. Una que nace
   // abierta (la salida que llega desde un RQ, `/almacen/kardex?rq=`) se pintaba
@@ -199,7 +208,7 @@ export function Ventana({
         role="dialog"
         aria-modal="true"
         aria-labelledby={idTitulo}
-        aria-describedby={descripcion ? idDescripcion : undefined}
+        aria-describedby={[descripcion && idDescripcion, viejaAlAbrir && idVieja].filter(Boolean).join(' ') || undefined}
         tabIndex={-1}
         onKeyDown={alTeclado}
         className={cn(
@@ -233,12 +242,43 @@ export function Ventana({
         </div>
 
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
           {children}
         </div>
       </div>
     </div>,
     document.body,
   )
+}
+
+/**
+ * Arriba de la ventana, en una pestaña de antes del último despliegue: lo que
+ * se envíe desde ella no va a entrar. El aviso de arriba de la pantalla queda
+ * detrás del fondo, y la persona escribía la ventana entera para enterarse al
+ * enviar (trigésima pasada). Si ya se sabía al abrir, se lee con la ventana
+ * (`aria-describedby`). Si se sabe con ella abierta y nadie lo dijo (la
+ * pregunta del envío anterior, al abrir), se anuncia: nace vacío y el texto
+ * llega en la pintada siguiente. Si lo dijo el envío de la ventana, junto a su
+ * botón, no se repite.
+ */
+function SeActualizoEnLaVentana({ id, alAbrir }: { id: string; alAbrir: boolean }) {
+  const version = useVersionDeLaPestana()
+  const [conTexto, setConTexto] = useState(alAbrir)
+  const vieja = version.estado === 'vieja' && (alAbrir || !version.callado)
+  useEffect(() => {
+    if (!vieja || conTexto) return
+    const cuadro = requestAnimationFrame(() => setConTexto(true))
+    return () => cancelAnimationFrame(cuadro)
+  }, [vieja, conTexto])
+  if (!vieja) return null
+
+  const texto = conTexto && (
+    <p id={id} className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-texto" data-ventana-vieja>
+      El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde esta ventana no va a entrar. Copia lo que tengas escrito y vuelve a cargar la
+      pantalla.
+    </p>
+  )
+  return alAbrir ? texto : <div role="status">{texto}</div>
 }
 
 /**

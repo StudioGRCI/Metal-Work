@@ -6,6 +6,7 @@ import { CuentaDeLaPestana } from '@/components/estructura/cuenta-de-la-pestana'
 import { PerfilMenu } from '@/components/estructura/perfil-menu'
 import { AvisoInstalar } from '@/components/estructura/instalar-app'
 import { RefrescoAlVolver } from '@/components/estructura/refresco-al-volver'
+import { compilacionDelServidor } from '@/lib/compilacion'
 import { avisosSinLeer } from '@/lib/datos/notificaciones'
 import { pendientesGlobales } from '@/lib/datos/pendientes-globales'
 import { exigirSesion } from '@/lib/sesion'
@@ -25,7 +26,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <CuentaDeLaPestana usuario={perfil.id} puesto={perfil.puesto} nombre={`${perfil.nombres} ${perfil.apellidos}`} />
       <BarraSuperior />
       <AvisoInstalar />
-      <RefrescoAlVolver sinLeer={sinLeer} contar={contarAvisosSinLeer} />
+      <RefrescoAlVolver sinLeer={sinLeer} compilacion={compilacionDelServidor()} contar={contarAvisosSinLeer} />
       <div className="flex flex-1">
         <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta} sinComprobar={pendientes.sinComprobar}>
           <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />

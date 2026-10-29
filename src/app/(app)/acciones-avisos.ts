@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { compilacionDelServidor } from '@/lib/compilacion'
 import { exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -41,11 +42,12 @@ export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
 }
 
 /**
- * Cuántos avisos sin leer tiene esta cuenta ahora mismo. Lo pregunta la
- * pantalla cada minuto (`RefrescoAlVolver`) para saber si vale la pena
- * repintar: es una cuenta de cabecera, no trae filas.
+ * Cuántos avisos sin leer tiene esta cuenta ahora mismo, y de qué despliegue es
+ * el servidor. Lo pregunta la pantalla cada minuto y al volver
+ * (`RefrescoAlVolver`) para saber si vale la pena repintar, y si todavía se
+ * puede: es una cuenta de cabecera, no trae filas.
  */
-export async function contarAvisosSinLeer(): Promise<number> {
+export async function contarAvisosSinLeer(): Promise<{ sinLeer: number; compilacion: string | null }> {
   await exigirSesion()
   const supabase = await createClient()
   const { count, error } = await supabase
@@ -53,7 +55,7 @@ export async function contarAvisosSinLeer(): Promise<number> {
     .select('id', { count: 'exact', head: true })
     .is('leida_en', null)
   if (error) throw new Error(mensajeDeError(error))
-  return count ?? 0
+  return { sinLeer: count ?? 0, compilacion: compilacionDelServidor() }
 }
 
 /** Todos de una vez, que es lo que se hace después de mirarlos por encima. */

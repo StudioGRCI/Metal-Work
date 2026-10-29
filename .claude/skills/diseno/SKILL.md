@@ -275,31 +275,49 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
   mira antes.
 - **Una pestaña de antes del último despliegue no se recarga sola, y lo dice
-  arriba** (vigesimonovena). Cada compilación cambia el id de las acciones y el
-  servidor contesta que no existe. El primer `UnrecognizedActionError` pasa por
-  `esDeLaVersionAnterior` (`src/lib/envio.ts`, el único camino: nunca la función
-  de Next directo), que anota la pestaña como vieja. `RefrescoAlVolver` pinta
-  entonces arriba «El sistema se actualizó mientras tenías la pantalla abierta:
-  lo que envíes desde aquí no va a entrar…» con «Volver a cargar» (montado solo entonces,
-  vacío y con el texto en la pintada siguiente: uno fijo en toda pantalla
-  quedaba delante de la región de estado de cada una), y deja de
-  refrescar: en esa pestaña `router.refresh()` no repinta, recarga el documento
-  entero (Next ve otra compilación), y se llevaba lo escrito y dejaba suelta la
-  foto ya subida del reporte diario. Al volver tras 30 s pregunta primero por los
-  avisos, y si esa acción ya no existe no repinta. Ya sabida vieja, nada sube a
-  Storage: ni el documento de `subirArchivoPrivado` ni el plano por área ni la
-  salida de la planilla, y la foto que se elige dice «No se subió: el sistema se
-  actualizó. Vuelve a cargar la pantalla y elígela otra vez.», sin «Reintentar»:
-  al recargar, como pide el aviso, quedaba suelta (trigésima). El reporte diario, que no pasa por `conFotos`, quita sus fotos y
-  pide elegirlas otra vez (`SE_ACTUALIZO_CON_FOTOS`). Una tanda cortada (el
-  conteo inicial, la planilla) dice la causa una vez, en el resumen que recibe
-  el cursor; cada fila, «No salió: el sistema se actualizó.» sin alerta propia
-  (eran N alertas iguales a la vez), y en vez de «Registrar», que fallaría
-  igual, «Volver a cargar la pantalla». Una cadena por áreas (el plano) se corta
-  en la primera y no pide a la vez recargar y «vuelve a enviar sin cambiar el
-  archivo». Un `catch` con su propio «Vuelve a intentar» pasa por
-  `motivoDelFallo`: reintentar desde esa pestaña no entra nunca (la cotización
-  con cliente nuevo).
+  arriba** (vigesimonovena y trigésima). En esa pestaña `router.refresh()` no
+  repinta: recarga el documento entero (Next ve otra compilación), y se llevaba
+  lo escrito y dejaba suelta la foto ya subida del reporte diario. Las acciones
+  **casi siempre conservan su id** entre despliegues (la clave dura 14 días en
+  `.next/cache` y Vercel la conserva), así que no basta con esperar un 404: la
+  pregunta por los avisos (`contarAvisosSinLeer`, al volver tras 30 s y cada
+  minuto) trae de qué despliegue es el servidor (`compilacionDelServidor`) y
+  `RefrescoAlVolver` la compara con la de la pantalla. La pestaña queda en uno de
+  tres estados (`useVersionDeLaPestana`): `al-dia`; `nueva`, otro despliegue con
+  las acciones vivas, que dice arriba «El sistema se actualizó… Termina lo que
+  estás haciendo y vuelve a cargar la pantalla para ver lo nuevo.»; y `vieja`,
+  la acción ya no existe (el primer `UnrecognizedActionError` pasa por
+  `esDeLaVersionAnterior`, el único camino: nunca la función de Next directo),
+  «…lo que envíes desde aquí no va a entrar…». En los dos deja de repintar.
+  Sin respuesta a la pregunta, tampoco: sin red Next pedía la pantalla entera
+  al navegador y salía la página sin conexión. El aviso de arriba se monta solo
+  entonces, vacío y con el texto en la pintada siguiente (uno fijo en toda
+  pantalla quedaba delante de la región de estado de cada una); si lo descubrió
+  un envío que ya lo dice junto a su botón, sin región: se oía dos veces. Una
+  `Ventana` abierta o que se abre en la pestaña vieja lo dice arriba de su
+  contenido (`data-ventana-vieja`), en una región si llega con ella abierta y
+  en su `aria-describedby` si ya se sabía al abrirla. «Volver a cargar» quita
+  antes lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`, hasta
+  4 s). Ya sabida vieja, nada sube a Storage: los ayudantes del navegador
+  (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
+  nueva, la cotización, el plano por área, la salida de la planilla y las fotos
+  miran `laPestanaEsDeLaVersionAnterior()` antes de tocarlo. La foto que se
+  elige dice «No se subió: el sistema se actualizó. Vuelve a cargar la pantalla y
+  elígela otra vez.», sin «Reintentar», y las ya subidas se quitan en el acto
+  (`quitarAlSaberseVieja`): quedan en la lista sin miniatura, «Se quitó», con
+  una sola alerta para todas, y debajo «Vuelve a cargar la pantalla para subir
+  el reporte.» en vez de «Quita o vuelve a subir». El reporte diario, que no
+  pasa por `conFotos`, al enviar quita sus fotos y pide elegirlas otra vez
+  (`SE_ACTUALIZO_CON_FOTOS`). Una tanda cortada (el conteo inicial, la planilla)
+  dice la causa una vez, en el resumen que recibe el cursor; cada fila, «No
+  salió: el sistema se actualizó.» sin alerta propia (eran N alertas iguales a
+  la vez), y en vez de «Registrar», que fallaría igual, «Volver a cargar la
+  pantalla». Una cadena por áreas (el plano) se corta en la primera y no pide a
+  la vez recargar y «vuelve a enviar sin cambiar el archivo». Un `catch` con su
+  propio «Vuelve a intentar» pasa por `motivoDelFallo`: reintentar desde esa
+  pestaña no entra nunca (la cotización con cliente nuevo). En `nueva`, un envío
+  que revalida entra y después Next recarga el documento: lo guardado está, el
+  verde se pierde; solo Skew Protection de Vercel lo evita.
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que

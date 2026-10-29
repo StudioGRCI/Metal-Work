@@ -25,7 +25,7 @@ import {
   MOTIVO_VEHICULO,
   motivoExigeCodigo,
 } from '@/lib/dominio/requerimientos'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, usePestanaDeLaVersionAnterior } from '@/lib/envio'
 
 import { registrarIngresoVehiculo } from './acciones'
 
@@ -346,8 +346,15 @@ export function AvisoFotos({
   listas: number
   momento: 'entrar' | 'salir'
 }) {
+  // Con la pestaña vieja ni quitarlas ni subirlas otra vez sirve: no va a entrar.
+  const vieja = usePestanaDeLaVersionAnterior()
   if (subiendo) return null
-  if (fallidas) return <p className="text-sm text-peligro">Quita o vuelve a subir las fotos que no entraron antes de registrar.</p>
+  if (fallidas)
+    return (
+      <p className="text-sm text-peligro">
+        {vieja ? 'Vuelve a cargar la pantalla para registrar.' : 'Quita o vuelve a subir las fotos que no entraron antes de registrar.'}
+      </p>
+    )
   if (listas === 0) return <p className="text-sm text-texto-suave">Toma al menos una foto del vehículo al {momento}.</p>
   return null
 }

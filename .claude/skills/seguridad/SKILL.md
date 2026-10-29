@@ -145,9 +145,14 @@ En la misma migración que la crea, sin excepción:
   siempre con `esDeLaVersionAnterior` (`src/lib/envio.ts`), no con la función de
   Next: además anota la pestaña como vieja, para que no se recargue sola al
   volver (se perdía lo escrito y la foto quedaba suelta) y para que nada suba
-  antes de su acción: `subirArchivoPrivado`, el plano, la planilla y las fotos
-  que se eligen miran `laPestanaEsDeLaVersionAnterior()` antes de tocar Storage
-  (vigesimonovena y trigésima). Antes unas pantallas lo dejaban
+  antes de su acción: todo lo que sube desde el navegador (`subirArchivoPrivado`,
+  `subirAdjunto`, los archivos de subcontratos, planilla y finanzas, la orden
+  nueva, la cotización, el plano, la salida de la planilla y las fotos) mira
+  `laPestanaEsDeLaVersionAnterior()` antes de tocar Storage (vigesimonovena y
+  trigésima). Que el id de la acción cambie no es lo de siempre: la clave dura
+  14 días y Vercel la conserva, así que el despliegue de todos los días se
+  reconoce por la compilación que contesta el servidor
+  (`compilacionDelServidor`, en `contarAvisosSinLeer`), no por un 404. Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
   repetido —en la función, por su id **con la misma ruta y la misma persona**;
