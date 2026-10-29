@@ -48,26 +48,34 @@ export interface BotonProps extends React.ButtonHTMLAttributes<HTMLButtonElement
   variante?: Variante
   tamano?: Tamano
   cargando?: boolean
+  /**
+   * Gira y no hace nada al tocarlo, pero sigue recibiendo el cursor: el botón
+   * que abre una ventana que se cerró mientras enviaba. Apagado (`cargando`), la
+   * ventana no podía devolverle el cursor al cerrarse y caía a la página.
+   */
+  ocupado?: boolean
 }
 
 export const Boton = React.forwardRef<HTMLButtonElement, BotonProps>(function Boton(
-  { className, variante = 'primario', tamano = 'md', cargando, disabled, children, ...props },
+  { className, variante = 'primario', tamano = 'md', cargando, ocupado, disabled, onClick, children, ...props },
   ref,
 ) {
   return (
     <button
       ref={ref}
       disabled={disabled || cargando}
+      aria-disabled={ocupado || undefined}
+      onClick={ocupado ? (e) => e.preventDefault() : onClick}
       className={cn(
         BASE_BOTON,
-        'disabled:pointer-events-none disabled:opacity-50',
+        'disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-progress aria-disabled:opacity-50',
         VARIANTES[variante],
         TAMANOS[tamano],
         className,
       )}
       {...props}
     >
-      {cargando && (
+      {(cargando || ocupado) && (
         <span
           aria-hidden
           className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"

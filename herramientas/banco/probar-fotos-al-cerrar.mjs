@@ -1,17 +1,23 @@
 /**
  * Las fotos de un envío que se cierra a medias, y lo que la traba deja dicho
- * (vigesimosexta pasada del PR #148), con clic real y la cuenta de cada puesto
- * (nunca ADMIN):
+ * (vigesimosexta a vigesimoctava pasadas del PR #148), con clic real y la
+ * cuenta de cada puesto (nunca ADMIN):
  *
  *   1. El supervisor de Maestranza reporta un trabajo sin orden:
  *      a. cierra la ventana mientras el reporte va en camino: entra con su
  *         foto y la foto sigue en Storage (antes se quitaba al cerrar y el
- *         reporte quedaba nombrando una foto que no existía);
+ *         reporte quedaba nombrando una foto que no existía); cuando entra, el
+ *         botón se libera y «se sigue enviando» no asoma junto al verde
+ *         mientras la página se pone al día (lo hacía: se miraba el envío de
+ *         `useEnvio`, que sigue encendido durante esa puesta al día);
  *      b. sin respuesta y con «Cancelar», el servidor lo recibe después: la
  *         foto se queda, porque no se sabe si entró;
- *      c. cierra, vuelve a abrir con otra foto y el primero vuelve rechazado:
- *         se quita la foto del rechazado y no la de la ventana nueva, y el
- *         motivo se dice junto al botón;
+ *      c. mientras se envía, el selector y los campos están trabados (una
+ *         foto elegida entonces se perdía, y la ✕ quitaba la que el envío
+ *         nombraba); cierra en vuelo: «Reportar» gira con el cursor encima, no
+ *         abre otra ventana y dice que sigue enviándose (la ventana vuelta a
+ *         abrir salía vacía, girando sin decir por qué); vuelve rechazado: se
+ *         quita su foto y se dice que no se registró;
  *      d. quita con ✕ una foto que todavía sube y en otra pestaña entra
  *         Logística: la foto se quita cuando vuelve su cuenta (antes el borrado
  *         salía con la sesión de Logística, volvía vacío y la foto quedaba
@@ -20,7 +26,9 @@
  *      mientras se envía: entra con su foto. Si además la respuesta se pierde
  *      y el servidor lo recibe después, entra igual y junto al botón se dice
  *      que no llegó la respuesta. Antes la base lo rechazaba («La foto 1 no
- *      terminó de subir») y nada lo decía.
+ *      terminó de subir») y nada lo decía. Si ya había entrado la primera vez
+ *      y se reenvía con otra foto, cerrado en vuelo: se dice sin rojo, la foto
+ *      nueva se quita y la primera se queda.
  *   3. La salida del mismo vehículo, cerrada mientras se envía: entra con su foto.
  *   4. Logística elige el comprobante de una OC directa con la traba puesta:
  *      al volver, el anuncio no lee el pie del campo («toca», «haz clic», «KB»).
@@ -86,6 +94,25 @@ async function hasta(leer, cumple, ms = 20000) {
   }
   return ultimo
 }
+/**
+ * Mira en la página, cada 30 ms, si el aviso verde y el «se sigue enviando»
+ * llegan a verse a la vez, hasta 1,5 s después de que aparece el verde: tras el
+ * ok la página se pone al día y el envío de `useEnvio` sigue encendido.
+ */
+const vigilarJunto = (pagina, verde) =>
+  pagina.evaluate(async (verde) => {
+    const fin = Date.now() + 20000
+    let hasta = Infinity
+    while (Date.now() < Math.min(fin, hasta)) {
+      const t = document.body.innerText
+      if (t.includes(verde)) {
+        if (t.includes('se sigue enviando')) return true
+        if (hasta === Infinity) hasta = Date.now() + 1500
+      }
+      await new Promise((r) => setTimeout(r, 30))
+    }
+    return false
+  }, verde).catch(() => null)
 const esperarSubidas = (pagina) => pagina.waitForFunction(() => !document.body.innerText.includes('subiendo…'), null, { timeout: 60000 })
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -187,7 +214,7 @@ mkdirSync(archivos, { recursive: true })
 const fotos = {}
 {
   const p = await (await navegador.newContext()).newPage()
-  for (const [n, color] of [['a', '#7a4b2a'], ['b', '#3a3f44'], ['c', '#2a5a7a'], ['d', '#5a7a2a'], ['e', '#7a2a5a'], ['f', '#2a7a6a'], ['g', '#6a2a7a'], ['h', '#7a6a2a']]) {
+  for (const [n, color] of [['a', '#7a4b2a'], ['b', '#3a3f44'], ['c', '#2a5a7a'], ['d', '#5a7a2a'], ['e', '#7a2a5a'], ['f', '#2a7a6a'], ['g', '#6a2a7a'], ['h', '#7a6a2a'], ['i', '#2a2a7a'], ['j', '#7a7a2a']]) {
     const b64 = await p.evaluate(async (color) => {
       const c = document.createElement('canvas')
       c.width = 640
@@ -258,18 +285,23 @@ if (corre('1')) {
   await ventana.locator('#rf-descripcion').fill(descA)
   corte.regla = { marca: `Reporte ${sello} A`, etapa: 'Request' }
   await ventana.getByRole('button', { name: 'Registrar', exact: true }).click()
-  await hasta(() => corte.retenidas, (n) => n === 1)
+  const retenidoA = (await hasta(() => corte.retenidas, (n) => n === 1)) === 1
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   const cerroA = await cerrada()
   // Lo que antes se quitaba en el acto, al cerrar.
   await pagina.waitForTimeout(1500)
   const enVueloA = await existe('fotos-avance', rutaA)
+  const juntoA = vigilarJunto(pagina, 'Reporte registrado')
   corte.soltar('seguir')
   const [repA] = await hasta(() => reporte(descA), (r) => r.length === 1)
   const avisoA = limpio(await hasta(() => pagina.getByRole('status').filter({ hasText: 'Reporte registrado' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 15000))
+  const asomaA = await juntoA
+  const libreA = (await pagina.getByRole('button', { name: 'Reportar' }).getAttribute('aria-disabled')) === null
   await pagina.waitForTimeout(1500)
-  comprobar(cerroA && enVueloA && repA?.fotos === 1 && repA?.ruta === rutaA && (await existe('fotos-avance', rutaA)) && avisoA.includes('Reporte registrado'),
-    `[Maestranza 1280] a. cierra mientras se envía: la foto se queda en el camino, el reporte entra con ella y lo dice junto al botón (cerró ${cerroA}, en vuelo ${enVueloA}, ${repA?.fotos} foto, «${avisoA}»)`)
+  comprobar(asomaA === false && libreA,
+    `[Maestranza 1280] a. cuando el reporte entra, el botón se libera y «se sigue enviando» no asoma junto al verde mientras la página se pone al día (asoma ${asomaA}, libre ${libreA})`)
+  comprobar(retenidoA && cerroA && enVueloA && repA?.fotos === 1 && repA?.ruta === rutaA && (await existe('fotos-avance', rutaA)) && avisoA.includes('Reporte registrado'),
+    `[Maestranza 1280] a. cierra mientras se envía: la foto se queda en el camino, el reporte entra con ella y lo dice junto al botón (retenido ${retenidoA}, cerró ${cerroA}, en vuelo ${enVueloA}, ${repA?.fotos} foto, «${avisoA}»)`)
 
   // b. Sin respuesta, «Cancelar», y el servidor lo recibe después.
   await abrir()
@@ -279,7 +311,7 @@ if (corre('1')) {
   await ventana.locator('#rf-descripcion').fill(descB)
   corte.regla = { marca: `Reporte ${sello} B`, etapa: 'Request' }
   await ventana.getByRole('button', { name: 'Registrar', exact: true }).click()
-  await hasta(() => corte.retenidas, (n) => n === 2)
+  const retenidoB = (await hasta(() => corte.retenidas, (n) => n === 2)) === 2
   corte.soltar('carrera')
   const dijoB = limpio(await hasta(() => ventana.locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
@@ -288,39 +320,55 @@ if (corre('1')) {
   const estadoB = await Promise.all(corte.repeticiones)
   const [repB] = await hasta(() => reporte(descB), (r) => r.length === 1)
   await pagina.waitForTimeout(2000)
-  comprobar(dijoB.includes(SIN_RESPUESTA) && cerroB && sigueB && estadoB.at(-1) === 200 && repB?.fotos === 1 && repB?.ruta === rutaB && (await existe('fotos-avance', rutaB)),
+  comprobar(retenidoB && dijoB.includes(SIN_RESPUESTA) && cerroB && sigueB && estadoB.at(-1) === 200 && repB?.fotos === 1 && repB?.ruta === rutaB && (await existe('fotos-avance', rutaB)),
     `[Maestranza 1280] b. sin respuesta y «Cancelar»: la foto se queda y el reporte que llega después la encuentra («${dijoB.slice(0, 40)}…», llegó con ${estadoB.at(-1)}, ${repB?.fotos} foto)`)
 
-  // c. Cierra, abre otra con otra foto, y el primero vuelve rechazado.
+  // c. Trabado mientras se envía; cerrado en vuelo, el botón gira y no abre
+  //    otra; vuelve rechazado y se dice que no se registró.
   await abrir()
   await ponerFoto(fotos.c)
   const [rutaC] = await nuevas()
   await ventana.locator('#rf-descripcion').fill('abc')
   corte.regla = { marca: rutaC, etapa: 'Response' }
   await ventana.getByRole('button', { name: 'Registrar', exact: true }).click()
-  await hasta(() => corte.retenidas, (n) => n === 3)
+  const retenidoC = (await hasta(() => corte.retenidas, (n) => n === 3)) === 3
+  const trabadoC = {
+    elegir: await ventana.locator('input[type="file"]:not([capture])').isDisabled(),
+    quitar: await ventana.getByRole('button', { name: `Quitar ${basename(fotos.c)}` }).isDisabled(),
+    texto: await ventana.locator('#rf-descripcion').isDisabled(),
+    cancelar: await ventana.getByRole('button', { name: 'Cancelar' }).isEnabled(),
+  }
+  comprobar(retenidoC && Object.values(trabadoC).every(Boolean),
+    `[Maestranza 1280] c. mientras se envía, el selector de fotos y los campos están trabados y «Cancelar» no (${JSON.stringify(trabadoC)})`)
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await cerrada()
-  await pagina.waitForTimeout(1500)
+  const reportar = pagina.getByRole('button', { name: 'Reportar', exact: true })
+  const ocupadoC = await reportar.getAttribute('aria-disabled')
+  const cursorC = await pagina.evaluate(() => (document.activeElement?.textContent ?? '').trim())
+  const sigueC = limpio(await hasta(() => pagina.getByRole('status').filter({ hasText: 'se sigue enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 5000))
+  // Un toque al botón que gira no abre otra ventana.
+  await reportar.click({ force: true })
+  await pagina.waitForTimeout(800)
+  const abrioOtra = (await ventana.count()) > 0
   const enVueloC = await existe('fotos-avance', rutaC)
-  await abrir()
-  await ponerFoto(fotos.d)
-  const [rutaD] = await nuevas()
+  await pagina.screenshot({ path: join(CAPTURAS, 'fotos-al-cerrar-sigue-enviando.png') })
+  comprobar(ocupadoC === 'true' && cursorC === 'Reportar' && sigueC === 'El reporte se sigue enviando: lo que conteste se dice aquí.' && !abrioOtra && enVueloC,
+    `[Maestranza 1280] c. cerrada en vuelo: «Reportar» gira con el cursor encima, no abre otra ventana y dice que sigue enviándose (aria-disabled ${ocupadoC}, cursor en «${cursorC}», «${sigueC}», abrió otra ${abrioOtra}, foto en vuelo ${enVueloC})`)
   corte.soltar('seguir')
   const quitadaC = !(await hasta(() => existe('fotos-avance', rutaC), (v) => !v, 15000))
-  await pagina.waitForTimeout(1000)
-  const siguenD = await existe('fotos-avance', rutaD)
+  const desenlace = limpio(await hasta(
+    () => pagina.getByRole('alert').filter({ hasText: 'El reporte que se estaba enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 10000))
+  const libreC = (await reportar.getAttribute('aria-disabled')) === null
+  comprobar(quitadaC && libreC && desenlace === 'El reporte que se estaba enviando no se registró: Cuenta qué se hizo hoy',
+    `[Maestranza 1280] c. vuelve rechazado: se quita su foto, el botón se libera y junto a él se dice que no se registró y por qué («${desenlace}», libre ${libreC})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'fotos-al-cerrar-rechazo.png'), fullPage: true })
+  // Al volver a abrir, la ventana nueva no hereda el rechazo y el de afuera se va.
+  await abrir()
   const enLaNueva = limpio((await ventana.locator('[role="alert"]').allInnerTexts()).join(' '))
-  comprobar(enVueloC && quitadaC && siguenD && !enLaNueva.includes('Cuenta qué se hizo hoy'),
-    `[Maestranza 1280] c. el rechazado vuelve con otra ventana abierta: se quita su foto, la de la ventana nueva sigue y esa ventana no hereda el rechazo (en vuelo ${enVueloC}, quitada ${quitadaC}, la nueva ${siguenD}, «${enLaNueva}»)`)
+  const afuera = await pagina.getByRole('alert').filter({ hasText: 'que se estaba enviando' }).count()
+  comprobar(!enLaNueva && afuera === 0, `[Maestranza 1280] c. la ventana vuelta a abrir sale limpia («${enLaNueva}», afuera ${afuera})`)
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await cerrada()
-  const quitadaD = !(await hasta(() => existe('fotos-avance', rutaD), (v) => !v, 15000))
-  const desenlace = limpio(await hasta(
-    () => pagina.getByRole('alert').filter({ hasText: 'El reporte que se estaba enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 5000))
-  comprobar(quitadaD && desenlace.includes('El reporte que se estaba enviando: Cuenta qué se hizo hoy'),
-    `[Maestranza 1280] c. al cancelar la nueva se quita su foto, y junto al botón queda por qué no entró el primero («${desenlace}»)`)
-  await pagina.screenshot({ path: join(CAPTURAS, 'fotos-al-cerrar-rechazo.png'), fullPage: true })
 
   // d. ✕ a la que todavía sube, y entra Logística en otra pestaña.
   await abrir()
@@ -369,7 +417,7 @@ if (corre('2')) {
          from registro_vehiculos v where v.empresa = $1`,
       [empresa],
     )
-  const ingreso = async (letra, foto) => {
+  const llenarIngreso = async (letra, foto) => {
     await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
     await ventana.waitFor({ timeout: 10000 })
     await ventana.locator('#veh-motivo').selectOption('COCHERA')
@@ -380,23 +428,46 @@ if (corre('2')) {
     await ventana.locator('input[type="file"]:not([capture])').setInputFiles(foto)
     await esperarSubidas(pagina)
     const [ruta] = await nuevas()
+    return { empresa, ruta }
+  }
+  /** Envía y espera a que el pedido quede retenido; `false` si nunca llegó a retenerse. */
+  const enviarYRetener = async (empresa) => {
     corte.regla = { marca: empresa, etapa: 'Request' }
     await ventana.getByRole('button', { name: 'Registrar ingreso' }).click()
-    await hasta(() => corte.retenidas, (n) => n === vistasRetenidas + 1)
+    const retenido = (await hasta(() => corte.retenidas, (n) => n === vistasRetenidas + 1)) === vistasRetenidas + 1
     vistasRetenidas++
+    return retenido
+  }
+  const cerrarEnVuelo = async () => {
     await pagina.keyboard.press('Escape')
-    const cerro = (await hasta(() => ventana.count(), (n) => n === 0, 5000)) === 0
+    return (await hasta(() => ventana.count(), (n) => n === 0, 5000)) === 0
+  }
+  const ingreso = async (letra, foto) => {
+    const { empresa, ruta } = await llenarIngreso(letra, foto)
+    const retenido = await enviarYRetener(empresa)
+    // Mientras se envía, el selector de fotos está trabado.
+    const trabado = await ventana.locator('input[type="file"]:not([capture])').isDisabled()
+    const cerro = await cerrarEnVuelo()
+    const boton = pagina.getByRole('button', { name: 'Registrar ingreso' })
+    const ocupado = (await boton.getAttribute('aria-disabled')) === 'true'
+    const sigue = limpio(await hasta(() => pagina.getByRole('status').filter({ hasText: 'se sigue enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 5000))
     await pagina.waitForTimeout(1500)
-    return { empresa, ruta, cerro, enVuelo: await existe('fotos-vehiculos', ruta) }
+    return { empresa, ruta, cerro, retenido, trabado, ocupado, sigue, enVuelo: await existe('fotos-vehiculos', ruta) }
   }
   let vistasRetenidas = 0
   await ir(pagina, `${BASE}/vehiculos`)
 
   // 2a. Se cierra mientras va en camino y llega.
   const a = await ingreso('A', fotos.f)
+  const juntoIngreso = vigilarJunto(pagina, 'Ingreso registrado')
   corte.soltar('seguir')
   const [regA] = await hasta(() => registro(a.empresa), (r) => r.length === 1)
   const avisoA = limpio(await hasta(() => pagina.getByRole('status').filter({ hasText: 'Ingreso registrado' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 15000))
+  const asomaIngreso = await juntoIngreso
+  comprobar(asomaIngreso === false,
+    `[Requerimientos 390] 2a. cuando el ingreso entra, «se sigue enviando» no asoma junto al verde mientras la página se pone al día (asoma ${asomaIngreso})`)
+  comprobar(a.retenido && a.trabado && a.ocupado && a.sigue === 'El ingreso se sigue enviando: lo que conteste se dice aquí.',
+    `[Requerimientos 390] 2a. mientras se envía, las fotos están trabadas; cerrada en vuelo, «Registrar ingreso» gira y dice que sigue enviándose (retenido ${a.retenido}, trabado ${a.trabado}, ocupado ${a.ocupado}, «${a.sigue}»)`)
   comprobar(a.cerro && a.enVuelo && regA?.fotos === 1 && regA?.ruta === a.ruta && (await existe('fotos-vehiculos', a.ruta)) && avisoA.includes('Ingreso registrado con 1 foto'),
     `[Requerimientos 390] 2a. cierra mientras se envía: el ingreso entra con su foto y lo dice junto al botón (cerró ${a.cerro}, en vuelo ${a.enVuelo}, ${regA?.fotos ?? 'sin'} foto, «${avisoA}»)`)
 
@@ -408,10 +479,36 @@ if (corre('2')) {
   const estadoB = await Promise.all(corte.repeticiones)
   const [regB] = await hasta(() => registro(b.empresa), (r) => r.length === 1)
   await pagina.waitForTimeout(2000)
-  comprobar(b.cerro && b.enVuelo && desenlace.includes(`El ingreso que se estaba enviando: ${SIN_RESPUESTA}`) && estadoB.at(-1) === 200
+  comprobar(b.retenido && b.cerro && b.enVuelo && desenlace.includes(`El ingreso que se estaba enviando: ${SIN_RESPUESTA}`) && estadoB.at(-1) === 200
       && regB?.fotos === 1 && (await existe('fotos-vehiculos', b.ruta)),
     `[Requerimientos 390] 2b. cerrado y sin respuesta: lo dice junto al botón, la foto se queda y el ingreso que llega después entra con ella («${desenlace.slice(0, 70)}…», llegó con ${estadoB.at(-1)}, ${regB?.fotos ?? 'sin'} foto)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'fotos-al-cerrar-ingreso-390.png'), fullPage: true })
+
+  // 2c. La respuesta se pierde con la ventana abierta y el ingreso entra; se
+  //     agrega otra foto, se reenvía y se cierra en vuelo. «Ya quedó» se dice
+  //     sin rojo y diciendo que lo cambiado no se guardó; la foto nueva se
+  //     quita y la primera se queda con su ingreso.
+  const c = await llenarIngreso('C', fotos.i)
+  const retenidoC1 = await enviarYRetener(c.empresa)
+  corte.soltar('carrera')
+  const sinRespuestaC = limpio(await hasta(() => ventana.locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')), (t) => t.includes(SIN_RESPUESTA)))
+  const [regC1] = await hasta(() => registro(c.empresa), (r) => r.length === 1)
+  await ventana.locator('input[type="file"]:not([capture])').setInputFiles(fotos.j)
+  await esperarSubidas(pagina)
+  const [rutaJ] = await nuevas()
+  const retenidoC2 = await enviarYRetener(c.empresa)
+  const cerroC = await cerrarEnVuelo()
+  corte.soltar('seguir')
+  const yaQuedo = limpio(await hasta(
+    () => pagina.getByRole('status').filter({ hasText: 'ya había quedado' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 15000))
+  const rojoC = await pagina.getByRole('alert').filter({ hasText: 'El ingreso' }).count()
+  const quitadaJ = !(await hasta(() => existe('fotos-vehiculos', rutaJ), (v) => !v, 15000))
+  const [regC] = await registro(c.empresa)
+  await pagina.screenshot({ path: join(CAPTURAS, 'fotos-al-cerrar-ya-quedo-390.png'), fullPage: true })
+  comprobar(retenidoC1 && sinRespuestaC.includes(SIN_RESPUESTA) && Boolean(regC1) && retenidoC2 && cerroC
+      && yaQuedo === 'El ingreso ya había quedado registrado la primera vez: lo que cambiaste al reenviar no se guardó.' && rojoC === 0
+      && quitadaJ && regC?.fotos === 1 && regC?.ruta === c.ruta && (await existe('fotos-vehiculos', c.ruta)),
+    `[Requerimientos 390] 2c. «ya quedó» con la ventana cerrada: sin rojo, dice que lo cambiado no se guardó, la foto nueva se quita y la primera se queda («${yaQuedo}», rojos ${rojoC}, nueva quitada ${quitadaJ}, ${regC?.fotos ?? 'sin'} foto)`)
 
   // 3. La salida del primero, cerrada mientras se envía.
   await ir(pagina, `${BASE}/vehiculos/${regA?.id}`)
@@ -425,9 +522,13 @@ if (corre('2')) {
   const [rutaS] = await nuevas()
   corte.regla = { marca: `Salida ${sello}`, etapa: 'Request' }
   await s.getByRole('button', { name: 'Registrar salida' }).click()
-  await hasta(() => corte.retenidas, (n) => n === vistasRetenidas + 1)
+  const retenidoS = (await hasta(() => corte.retenidas, (n) => n === vistasRetenidas + 1)) === vistasRetenidas + 1
+  vistasRetenidas++
+  const trabadoS = await s.locator('input[type="file"]:not([capture])').isDisabled()
   await pagina.keyboard.press('Escape')
   const cerroS = (await hasta(() => s.count(), (n) => n === 0, 5000)) === 0
+  const ocupadoS = (await pagina.getByRole('button', { name: 'Marcar salida' }).getAttribute('aria-disabled')) === 'true'
+  const sigueS = limpio(await hasta(() => pagina.getByRole('status').filter({ hasText: 'se sigue enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 5000))
   await pagina.waitForTimeout(1500)
   const enVueloS = await existe('fotos-vehiculos', rutaS)
   corte.soltar('seguir')
@@ -438,6 +539,8 @@ if (corre('2')) {
     (r) => r[0]?.salio,
   )
   const sinMarcar = await hasta(() => pagina.getByRole('button', { name: 'Marcar salida' }).count(), (n) => n === 0, 10000)
+  comprobar(retenidoS && trabadoS && ocupadoS && sigueS === 'La salida se sigue enviando: lo que conteste se dice aquí.',
+    `[Requerimientos 390] 3. mientras se envía, las fotos de la salida están trabadas; cerrada en vuelo, «Marcar salida» gira y dice que sigue enviándose (retenido ${retenidoS}, trabado ${trabadoS}, ocupado ${ocupadoS}, «${sigueS}»)`)
   comprobar(cerroS && enVueloS && salida?.salio && salida?.fotos === 1 && (await existe('fotos-vehiculos', rutaS)) && sinMarcar === 0,
     `[Requerimientos 390] 3. la salida cerrada mientras se envía entra con su foto y la pantalla ya no ofrece «Marcar salida» (cerró ${cerroS}, en vuelo ${enVueloS}, ${salida?.fotos ?? 'sin'} foto)`)
   comprobar(errores.length === 0, `[Requerimientos 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)

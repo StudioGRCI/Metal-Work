@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 import { reportarAvance } from '@/app/(app)/ordenes/[id]/acciones-actividades'
 import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -68,12 +68,15 @@ export function ReportarDia({
 
   const falta = Math.max(0, 100 - Number(actividad.avance_pct))
   const prefijo = `${deOtroDia ? 'o' : 'r'}-${actividad.id.slice(0, 8)}`
+  // Cerrada mientras el reporte va en camino: no se abre otra hasta que conteste.
+  const { sigue } = envio
 
   return (
     <>
       <Boton
         variante={deOtroDia ? 'fantasma' : 'secundario'}
         tamano="sm"
+        ocupado={sigue}
         onClick={() => {
           limpiar()
           setAviso(null)
@@ -81,7 +84,7 @@ export function ReportarDia({
           setAbierto(true)
         }}
       >
-        {deOtroDia ? (
+        {sigue ? null : deOtroDia ? (
           <CalendarDays aria-hidden className="size-3.5" />
         ) : (
           <TrendingUp aria-hidden className="size-3.5" />
@@ -94,11 +97,7 @@ export function ReportarDia({
         </span>
       )}
       {/* También en la lista apretada: si no entró, nadie más lo diría. */}
-      {envio.desenlace && (
-        <span role="alert" className="text-xs text-peligro">
-          El reporte que se estaba enviando: {envio.desenlace}
-        </span>
-      )}
+      <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 
       <Ventana
         abierta={abierto}
@@ -128,32 +127,36 @@ export function ReportarDia({
           <input type="hidden" name="actividad_id" value={actividad.id} />
           <input type="hidden" name="orden_id" value={ordenId} />
 
-          <CampoPorcentaje
-            id={`${prefijo}-pct`}
-            name="avance_pct"
-            etiqueta="Avancé"
-            ayuda="Lo del día, del 100 % de la actividad."
-            max={falta}
-            requerido
-          />
+          {/* Trabado mientras se envía: la foto que se quitaba entonces era la
+              que el reporte nombraba (vigesimoséptima pasada). */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
+            <CampoPorcentaje
+              id={`${prefijo}-pct`}
+              name="avance_pct"
+              etiqueta="Avancé"
+              ayuda="Lo del día, del 100 % de la actividad."
+              max={falta}
+              requerido
+            />
 
-          <Campo etiqueta="Qué se hizo" htmlFor={`${prefijo}-nota`}>
-            <Entrada id={`${prefijo}-nota`} name="nota" placeholder="Opcional" maxLength={500} />
-          </Campo>
+            <Campo etiqueta="Qué se hizo" htmlFor={`${prefijo}-nota`}>
+              <Entrada id={`${prefijo}-nota`} name="nota" placeholder="Opcional" maxLength={500} />
+            </Campo>
 
-          {esNueva && <>
-            <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`ot/${ordenId}/taller`} maximo={1} />
-            <p className="text-xs text-texto-suave">Adjunta una sola foto para sustentar el porcentaje.</p>
-            {despachos.length > 0 && <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-texto">Materiales usados</legend>
-              {despachos.map(d => <Campo key={d.id} etiqueta={`${d.nombre} · ${d.area} · despachado ${d.cantidad} ${d.unidad}`} htmlFor={`material-${d.id}`}>
-                <Entrada id={`material-${d.id}`} name={`material-${d.id}`} type="number" inputMode="decimal" min={0} max={d.cantidad} step="any" defaultValue="0" />
-              </Campo>)}
-            </fieldset>}
-            {fotos.length > 1 && <p role="alert" className="text-xs text-peligro">Deja una sola foto para este reporte.</p>}
-          </>}
+            {esNueva && <>
+              <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`ot/${ordenId}/taller`} maximo={1} />
+              <p className="text-xs text-texto-suave">Adjunta una sola foto para sustentar el porcentaje.</p>
+              {despachos.length > 0 && <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-texto">Materiales usados</legend>
+                {despachos.map(d => <Campo key={d.id} etiqueta={`${d.nombre} · ${d.area} · despachado ${d.cantidad} ${d.unidad}`} htmlFor={`material-${d.id}`}>
+                  <Entrada id={`material-${d.id}`} name={`material-${d.id}`} type="number" inputMode="decimal" min={0} max={d.cantidad} step="any" defaultValue="0" />
+                </Campo>)}
+              </fieldset>}
+              {fotos.length > 1 && <p role="alert" className="text-xs text-peligro">Deja una sola foto para este reporte.</p>}
+            </>}
 
-          <FechaDelReporte id={`${prefijo}-fecha`} deOtroDia={deOtroDia} />
+            <FechaDelReporte id={`${prefijo}-fecha`} deOtroDia={deOtroDia} />
+          </fieldset>
 
           <Error_ texto={error} />
 

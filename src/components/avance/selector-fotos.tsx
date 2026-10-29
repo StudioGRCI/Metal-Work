@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, SIN_RESPUESTA } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SIN_RESPUESTA } from '@/lib/envio'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
@@ -79,6 +79,15 @@ export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
 /** Un envío con fotos: con cuáles salió, si su ventana se cerró mientras iba y si ya terminó. */
 type Intento = { fotos: FotoLista[]; sinVentana: boolean; termino: boolean }
 
+/**
+ * Cómo terminó el envío que salió con la ventana ya cerrada, cuando no entró:
+ * no se registró (la base lo rechazó, o la traba lo cortó antes de salir), no
+ * se sabe (no llegó la respuesta), o ya había quedado la primera vez.
+ */
+export type Desenlace = { tono: 'no-entro' | 'en-duda' | 'ya-entro'; motivo: string }
+
+const CORTADO_OTRA_CUENTA = 'en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.'
+
 /** El registro entró, pero sus fotos no (`fotosSueltas` de la acción): ninguna fila las nombra. */
 const entroSinFotos = (datos: unknown) =>
   typeof datos === 'object' && datos !== null && 'fotosSueltas' in datos && Boolean(datos.fotosSueltas)
@@ -103,18 +112,25 @@ const entroSinFotos = (datos: unknown) =>
  * Cerrar mientras se envía deja las fotos en manos de ese envío. Lo de cada
  * envío va con él y no con la ventana: volver a abrirla mientras el anterior
  * seguía en camino lo soltaba, y su foto quedaba suelta sin aviso (vigesimosexta
- * pasada). Si ese envío no entra, se dice junto al botón que abre la ventana
- * (`desenlace`), aunque entretanto se haya vuelto a abrir: el rechazo de
- * `useEnvio` se suelta cuando hay otra ventana abierta.
+ * pasada). Mientras ese envío siga en camino, el botón que abre la ventana gira
+ * y no la abre (`EstadoDelEnvio`): la ventana nueva salía vacía, con «Registrar»
+ * girando sin decir por qué, y el «Reporte registrado.» del primero quedaba
+ * debajo de ella (vigesimoséptima). Si no entra, se dice junto a ese botón
+ * (`desenlace`).
  *
  * Uso: `conFotos(accion)` va a `useEnvio`; `abrir()` y `cerrar()`, con la
- * ventana. En el ok, la ventana se cierra solo si no se cerró mientras se
- * enviaba (`seCerroAlEnviar()`): si se volvió a abrir, es otra.
+ * ventana; `EstadoDelEnvio` con `sigue` y `desenlace`, junto al botón que la
+ * abre, que lleva `ocupado={sigue}`. En el ok, la ventana
+ * se cierra solo si no se cerró mientras se enviaba (`seCerroAlEnviar()`).
  */
 export function useFotosDelEnvio(bucket: string) {
   const [fotos, setFotos] = useState<FotoLista[]>([])
-  // Por qué no entró el envío que salió con la ventana ya cerrada.
-  const [desenlace, setDesenlace] = useState<string | null>(null)
+  // Cómo terminó el envío que salió con la ventana ya cerrada, si no entró.
+  const [desenlace, setDesenlace] = useState<Desenlace | null>(null)
+  // Ese envío sigue en camino. No es el `enviando` de useEnvio: ese sigue
+  // encendido mientras la página se pone al día tras el ok, y junto al verde
+  // asomaba «se sigue enviando» (vigesimoctava pasada).
+  const [sigue, setSigue] = useState(false)
   // El envío en curso, o el último.
   const intento = useRef<Intento | null>(null)
   // Las rutas que salieron en un envío de esta ventana que no se sabe cómo terminó.
@@ -144,28 +160,36 @@ export function useFotosDelEnvio(bucket: string) {
       }
       try {
         const r = await accion(previo, datos)
+        const yaEntro = !r.ok && yaEntroLaPrimeraVez(r.error)
+        const enDudaR = !r.ok && !yaEntro && pudoHaberEntrado(r.error)
         if (r.ok) alEntrar(este, entroSinFotos(r.datos))
-        else if (yaEntroLaPrimeraVez(r.error)) alEntrar(este, true)
-        else if (pudoHaberEntrado(r.error)) dudar()
+        else if (yaEntro) alEntrar(este, true)
+        else if (enDudaR) dudar()
         else if (este.sinVentana) quitarFotosSueltas(bucket, este.fotos)
-        if (este.sinVentana && !r.ok) setDesenlace(r.error)
+        // «Ya quedó la primera vez» no es un rechazo: se dice sin rojo, y que lo
+        // cambiado al reenviarlo no se guardó (vigesimoséptima pasada).
+        if (este.sinVentana && !r.ok) setDesenlace({ tono: yaEntro ? 'ya-entro' : enDudaR ? 'en-duda' : 'no-entro', motivo: r.error })
         return r
       } catch (e) {
         // Lo cortó la traba antes de salir: no se envió nada. Lo demás no se sabe.
         const corte = e instanceof OtraCuentaEnLaPestana
         if (!corte) dudar()
         else if (este.sinVentana) quitarFotosSueltas(bucket, este.fotos)
-        if (este.sinVentana) setDesenlace(corte ? NO_SE_GUARDO_OTRA_CUENTA : SIN_RESPUESTA)
+        if (este.sinVentana) setDesenlace(corte ? { tono: 'no-entro', motivo: CORTADO_OTRA_CUENTA } : { tono: 'en-duda', motivo: SIN_RESPUESTA })
         throw e
       } finally {
         este.termino = true
+        if (este.sinVentana) setSigue(false)
       }
     }
   }
 
   function cerrar() {
     const enCurso = intento.current && !intento.current.termino ? intento.current : null
-    if (enCurso) enCurso.sinVentana = true
+    if (enCurso) {
+      enCurso.sinVentana = true
+      setSigue(true)
+    }
     const quedan = new Set(enDuda.current)
     for (const f of enCurso?.fotos ?? []) if (f.ruta) quedan.add(f.ruta)
     quitarFotosSueltas(bucket, fotos.filter((f) => !(f.ruta && quedan.has(f.ruta))))
@@ -187,8 +211,52 @@ export function useFotosDelEnvio(bucket: string) {
     abrir,
     cerrar,
     desenlace,
+    sigue,
     seCerroAlEnviar: () => Boolean(intento.current?.sinVentana),
   }
+}
+
+/**
+ * Junto al botón que abre la ventana, lo del envío que salió con ella cerrada:
+ * que sigue en camino —y por eso el botón gira (`ocupado`)— y, si no entró,
+ * cómo terminó. `registro` es lo que se envía, con su artículo («El reporte»,
+ * «La salida»), y `femenino` concuerda el «registrado». Lo que sí entró lo dice
+ * el aviso verde de cada pantalla.
+ */
+export function EstadoDelEnvio({
+  sigue,
+  desenlace,
+  registro,
+  femenino = false,
+  className,
+}: {
+  sigue: boolean
+  desenlace: Desenlace | null
+  registro: string
+  femenino?: boolean
+  className?: string
+}) {
+  if (sigue) {
+    return (
+      <span role="status" className={cn('text-xs text-texto-suave', className)}>
+        {registro} se sigue enviando: lo que conteste se dice aquí.
+      </span>
+    )
+  }
+  if (!desenlace) return null
+  if (desenlace.tono === 'ya-entro') {
+    return (
+      <span role="status" className={cn('text-xs text-texto-suave', className)}>
+        {registro} ya había quedado {femenino ? 'registrada' : 'registrado'} la primera vez: lo que cambiaste al
+        reenviar no se guardó.
+      </span>
+    )
+  }
+  return (
+    <span role="alert" className={cn('text-xs text-peligro', className)}>
+      {registro} que se estaba enviando{desenlace.tono === 'no-entro' ? ' no se registró' : ''}: {desenlace.motivo}
+    </span>
+  )
 }
 
 /** La que todavía sube, o se achica, se quita de Storage sola cuando termina. */
@@ -204,7 +272,7 @@ export function soltarMiniaturas(fotos: FotoLista[]) {
 // El campo de verdad está oculto: el anillo de foco del teclado lo lleva el
 // mosaico, igual que la caja de ElegirArchivo.
 const MOSAICO =
-  'flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco'
+  'flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-base)] border border-dashed border-borde text-texto-suave hover:bg-superficie-2 hover:text-texto has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50'
 
 /** Qué le pasó a la subida, en palabras del taller. */
 function explicarFalla(mensaje: string) {
@@ -433,22 +501,24 @@ export function SelectorFotos({
                 type="button"
                 onClick={() => reintentar(foto)}
                 aria-label={`Volver a subir ${foto.archivo.name}`}
-                className="absolute inset-x-0 bottom-0 flex min-h-11 items-center justify-center gap-1 bg-black/60 text-xs font-medium text-white hover:bg-black/80 sm:min-h-0 sm:py-1"
+                className="absolute inset-x-0 bottom-0 flex min-h-11 items-center justify-center gap-1 bg-black/60 text-xs font-medium text-white hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1"
               >
                 <RotateCcw aria-hidden className="size-3.5" />
                 Reintentar
               </button>
             )}
 
-            {/* Sin confirmación a propósito: la foto todavía no es parte de
-                ningún reporte y se vuelve a poner con el mismo botón de al lado.
-                Blanco de 44 px en el teléfono: con guante se fallaba o se quitaba
-                la de al lado. */}
+            {/* Sin confirmación a propósito: la foto es de lo que se está armando
+                y se vuelve a poner con el mismo botón de al lado. Mientras se
+                envía, la ventana traba el selector entero (`fieldset disabled`):
+                la ✕ quitaba de Storage una foto que el envío en curso nombraba
+                (vigesimoséptima pasada). Blanco de 44 px en el teléfono: con
+                guante se fallaba o se quitaba la de al lado. */}
             <button
               type="button"
               onClick={() => quitar(foto)}
               aria-label={`Quitar ${foto.archivo.name}`}
-              className="absolute top-0 right-0 flex size-11 items-center justify-center text-white drop-shadow hover:text-peligro-suave sm:size-6"
+              className="absolute top-0 right-0 flex size-11 items-center justify-center text-white drop-shadow hover:text-peligro-suave disabled:cursor-not-allowed disabled:opacity-50 sm:size-6"
             >
               <span className="flex size-6 items-center justify-center rounded-full bg-black/60 sm:size-5">
                 <X aria-hidden className="size-3.5" />

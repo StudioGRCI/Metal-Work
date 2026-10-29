@@ -316,13 +316,18 @@ En la misma migración que la crea, sin excepción:
   una respuesta perdida: no se pregunta con ella, y el archivo se mira cuando
   vuelva la cuenta (antes se quedaba suelto para siempre, vigesimoquinta).
   **Un borrado con la sesión de otra cuenta vuelve vacío y sin error**, como si
-  una fila lo nombrara: todo borrado de Storage desde el navegador va por
-  `quitarConLaCuenta`, que lo deja para cuando vuelva la cuenta, y
-  `subirARutaNueva` lo pide como argumento para que nadie lo olvide (el
-  servidor pasa `quitarEnElActo`). Donde el vacío se lee —el 409 de
-  `subirArchivoPrivado`—, la cuenta se mira antes y después del borrado: con la
-  traba, el vacío decía «quedó registrado la primera vez» sin que quedara nada
-  (vigesimosexta). El
+  una fila lo nombrara: ningún borrado de Storage sale del navegador con esa
+  sesión. Lo que solo se quita va por `quitarConLaCuenta`, que lo deja para
+  cuando vuelva la cuenta, y `subirARutaNueva` lo pide como argumento para que
+  nadie lo olvide (el servidor pasa `quitarEnElActo`). Donde el vacío se lee,
+  la cuenta se mira antes: `quitarSiSuelto` (en `anotarSinDejarloSuelto`) con
+  la traba no pide nada, se deja para la vuelta y entretanto no se sabe —tras un
+  rechazo con la traba, el archivo quedaba suelto sin que nadie lo quitara
+  (vigesimoséptima)—; `quitarConEstaCuenta` (el 409 y el otro tipo de archivo en
+  otra ruta, en `subirArchivoPrivado`) la mira antes y después y, si cambió,
+  corta la cadena: con la traba, el vacío decía «quedó registrado la primera
+  vez» sin que quedara nada (vigesimosexta). La caja diaria copia la misma
+  regla en línea al cambiar la captura. El
   refresco y la navegación tras un envío también esperan
   (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`): con la otra sesión
   pintaban su pantalla y se llevaban la traba.

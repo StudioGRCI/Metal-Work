@@ -4,7 +4,7 @@ import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -103,10 +103,13 @@ function Reportar({
     setAbierto(true)
   }
 
+  // Cerrada mientras el reporte va en camino: no se abre otra hasta que conteste.
+  const { sigue } = envio
+
   return (
     <>
-      <Boton onClick={abrir}>
-        <Camera aria-hidden className="size-4" />
+      <Boton onClick={abrir} ocupado={sigue}>
+        {!sigue && <Camera aria-hidden className="size-4" />}
         Reportar
       </Boton>
       {aviso && (
@@ -115,11 +118,7 @@ function Reportar({
         </p>
       )}
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      {envio.desenlace && (
-        <p role="alert" className="text-xs text-peligro">
-          El reporte que se estaba enviando: {envio.desenlace}
-        </p>
-      )}
+      <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 
       <Ventana
         abierta={abierto}
@@ -134,56 +133,61 @@ function Reportar({
         >
           <input type="hidden" name="flota_id" value={flotaId} />
 
-          {/* La foto primero: es lo que se hace parado frente al trabajo. La
-              ruta empieza por flota/{trabajo}: la base comprueba que cada foto
-              cuelgue de este trabajo y las políticas de Storage la dejan ver a
-              quien ve el taller. */}
-          <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`flota/${flotaId}`} />
+          {/* Trabado mientras se envía: lo que va en camino no cambia, y una
+              foto elegida o quitada entonces no iba con el reporte (se perdía
+              sin aviso) o le quitaba la suya. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
+            {/* La foto primero: es lo que se hace parado frente al trabajo. La
+                ruta empieza por flota/{trabajo}: la base comprueba que cada foto
+                cuelgue de este trabajo y las políticas de Storage la dejan ver a
+                quien ve el taller. */}
+            <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`flota/${flotaId}`} />
 
-          <Campo etiqueta="Qué se hizo" htmlFor="rf-descripcion" requerido>
-            <AreaTexto
-              id="rf-descripcion"
-              name="descripcion"
-              rows={3}
-              required
-              placeholder="Se desmontó la compuerta y se cortó el refuerzo rajado. Mañana va la nueva."
-            />
-          </Campo>
-
-          <FechaDelReporte id="rf-fecha" />
-
-          {/* El supervisor reporta en su área y en ninguna otra: si solo hay
-              una, se dice cuál y no se pregunta. El desplegable queda para
-              quien responde por todo el taller. */}
-          {areas.length === 1 ? (
-            <p className="text-sm text-texto-suave">
-              <input type="hidden" name="area_id" value={areas[0].id} />
-              Área: <span className="font-medium text-texto">{areas[0].nombre}</span>
-            </p>
-          ) : (
-            <Campo etiqueta="Área" htmlFor="rf-area" requerido>
-              <Seleccion id="rf-area" name="area_id" required defaultValue={areaInicial ?? ''}>
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nombre}
-                  </option>
-                ))}
-              </Seleccion>
+            <Campo etiqueta="Qué se hizo" htmlFor="rf-descripcion" requerido>
+              <AreaTexto
+                id="rf-descripcion"
+                name="descripcion"
+                rows={3}
+                required
+                placeholder="Se desmontó la compuerta y se cortó el refuerzo rajado. Mañana va la nueva."
+              />
             </Campo>
-          )}
 
-          <CampoPorcentaje
-            id="rf-avance"
-            name="avance_porcentaje"
-            etiqueta="Cuánto va"
-            ayuda="Como lo ves. No hace falta afinar."
-          />
+            <FechaDelReporte id="rf-fecha" />
 
-          <CampoTraba
-            id="rf-impedimento"
-            actual={traba}
-            ayuda="Material que falta, decisión del cliente, pieza en el proveedor"
-          />
+            {/* El supervisor reporta en su área y en ninguna otra: si solo hay
+                una, se dice cuál y no se pregunta. El desplegable queda para
+                quien responde por todo el taller. */}
+            {areas.length === 1 ? (
+              <p className="text-sm text-texto-suave">
+                <input type="hidden" name="area_id" value={areas[0].id} />
+                Área: <span className="font-medium text-texto">{areas[0].nombre}</span>
+              </p>
+            ) : (
+              <Campo etiqueta="Área" htmlFor="rf-area" requerido>
+                <Seleccion id="rf-area" name="area_id" required defaultValue={areaInicial ?? ''}>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nombre}
+                    </option>
+                  ))}
+                </Seleccion>
+              </Campo>
+            )}
+
+            <CampoPorcentaje
+              id="rf-avance"
+              name="avance_porcentaje"
+              etiqueta="Cuánto va"
+              ayuda="Como lo ves. No hace falta afinar."
+            />
+
+            <CampoTraba
+              id="rf-impedimento"
+              actual={traba}
+              ayuda="Material que falta, decisión del cliente, pieza en el proveedor"
+            />
+          </fieldset>
 
           <Error_ texto={error} />
 

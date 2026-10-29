@@ -4,7 +4,7 @@ import { Camera } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -73,11 +73,14 @@ export function RegistrarAvance({
     setAbierto(true)
   }
 
+  // Cerrada mientras el avance va en camino: no se abre otra hasta que conteste.
+  const { sigue } = envio
+
   return (
     <>
       <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={abrir}>
-          <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />
+        <Boton tamano={compacto ? 'sm' : undefined} variante={compacto ? 'secundario' : undefined} onClick={abrir} ocupado={sigue}>
+          {!sigue && <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />}
           Registrar avance
         </Boton>
         {aviso && (
@@ -86,11 +89,7 @@ export function RegistrarAvance({
           </span>
         )}
         {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-        {envio.desenlace && (
-          <span role="alert" className="text-xs text-peligro">
-            El avance que se estaba enviando: {envio.desenlace}
-          </span>
-        )}
+        <EstadoDelEnvio sigue={sigue} desenlace={envio.desenlace} registro="El avance" />
       </span>
 
       <Ventana
@@ -106,59 +105,63 @@ export function RegistrarAvance({
         >
           <input type="hidden" name="orden_id" value={ordenId} />
 
-          {/* La ruta empieza por ot/{orden_id}: las políticas de Storage se
-              apoyan en esa convención para decidir quién puede ver la foto. */}
-          <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`ot/${ordenId}/avance`} />
+          {/* Trabado mientras se envía: una foto elegida o quitada entonces no
+              iba con el avance o le quitaba la suya (vigesimoséptima pasada). */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
+            {/* La ruta empieza por ot/{orden_id}: las políticas de Storage se
+                apoyan en esa convención para decidir quién puede ver la foto. */}
+            <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`ot/${ordenId}/avance`} />
 
-          <Campo etiqueta="Qué se hizo" htmlFor="descripcion" requerido>
-            <AreaTexto
-              id="descripcion"
-              name="descripcion"
-              rows={3}
-              required
-              placeholder="Se soldaron los travesaños del piso y se dejó lista la compuerta para pintura."
+            <Campo etiqueta="Qué se hizo" htmlFor="descripcion" requerido>
+              <AreaTexto
+                id="descripcion"
+                name="descripcion"
+                rows={3}
+                required
+                placeholder="Se soldaron los travesaños del piso y se dejó lista la compuerta para pintura."
+              />
+            </Campo>
+
+            <FechaDelReporte id="fecha" />
+
+            <Campo etiqueta="Etapa" htmlFor="etapa_id" ayuda="En qué está la unidad ahora">
+              <Seleccion
+                id="etapa_id"
+                name="etapa_id"
+                value={etapaId}
+                onChange={(e) => setEtapaId(e.target.value)}
+              >
+                <option value="">Sin etapa en particular</option>
+                {enCurso.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nombre} · {porcentaje(e.avance)}
+                  </option>
+                ))}
+              </Seleccion>
+            </Campo>
+
+            {/* Con `key`: al cambiar de etapa, el porcentaje arranca de nuevo
+                en lo que esa etapa ya tenía, no en lo que se tocó para otra. */}
+            <CampoPorcentaje
+              key={etapaId || 'sin-etapa'}
+              id="avance_porcentaje"
+              name="avance_porcentaje"
+              etiqueta="Avance de la etapa"
+              ayuda={
+                etapa
+                  ? `A cuánto quedó. Iba en ${porcentaje(etapa.avance)}.`
+                  : 'Elige primero la etapa para poder moverla.'
+              }
+              defaultValue={null}
+              disabled={!etapa}
             />
-          </Campo>
 
-          <FechaDelReporte id="fecha" />
-
-          <Campo etiqueta="Etapa" htmlFor="etapa_id" ayuda="En qué está la unidad ahora">
-            <Seleccion
-              id="etapa_id"
-              name="etapa_id"
-              value={etapaId}
-              onChange={(e) => setEtapaId(e.target.value)}
-            >
-              <option value="">Sin etapa en particular</option>
-              {enCurso.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nombre} · {porcentaje(e.avance)}
-                </option>
-              ))}
-            </Seleccion>
-          </Campo>
-
-          {/* Con `key`: al cambiar de etapa, el porcentaje arranca de nuevo
-              en lo que esa etapa ya tenía, no en lo que se tocó para otra. */}
-          <CampoPorcentaje
-            key={etapaId || 'sin-etapa'}
-            id="avance_porcentaje"
-            name="avance_porcentaje"
-            etiqueta="Avance de la etapa"
-            ayuda={
-              etapa
-                ? `A cuánto quedó. Iba en ${porcentaje(etapa.avance)}.`
-                : 'Elige primero la etapa para poder moverla.'
-            }
-            defaultValue={null}
-            disabled={!etapa}
-          />
-
-          <CampoTraba
-            id="impedimento"
-            actual={trabaActual}
-            ayuda="Material que falta, plano pendiente, pieza en el proveedor"
-          />
+            <CampoTraba
+              id="impedimento"
+              actual={trabaActual}
+              ayuda="Material que falta, plano pendiente, pieza en el proveedor"
+            />
+          </fieldset>
 
           {error && (
             <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">

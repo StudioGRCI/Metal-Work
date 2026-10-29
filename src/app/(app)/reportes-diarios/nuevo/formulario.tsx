@@ -437,8 +437,10 @@ export function FormularioReporteDiario({
       className="space-y-6"
     >
       {/* Tras «ya quedó», lo de arriba ya no se envía: queda a la vista y trabado.
-          Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada). */}
-      <fieldset disabled={yaEntro} className="min-w-0 space-y-6">
+          Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada).
+          Mientras se envía, también: lo elegido o quitado entonces no iba con el
+          reporte (vigesimoséptima pasada). */}
+      <fieldset disabled={yaEntro || enviando} className="min-w-0 space-y-6">
         <section aria-labelledby="rd-cabecera" className="space-y-4">
           <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
             El reporte

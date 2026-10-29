@@ -223,11 +223,27 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   en el acto hacía que la base rechazara el ingreso del vehículo («La foto 1 no
   terminó de subir…») sin que nada lo dijera. Lo de cada envío va con él, no con
   la ventana —volver a abrirla mientras el anterior seguía en camino lo
-  soltaba—, y si no entra se dice junto al botón que abre la ventana: «El
-  reporte que se estaba enviando: …». El envío vive con la ventana, no dentro:
-  la `Ventana` desmonta lo suyo al cerrarse, y un `useEnvio` adentro se llevaba
-  el rechazo con él. Todo borrado de Storage desde el navegador pasa por
-  `quitarConLaCuenta`: con la traba puesta vuelve vacío y sin error.
+  soltaba—. **Mientras siga en camino, el botón que abre la ventana gira y no
+  la abre** (`Boton ocupado`, que no suelta el cursor: apagado, la ventana no
+  podía devolvérselo al cerrarse), y al lado se dice que sigue enviándose
+  (`EstadoDelEnvio`): la ventana vuelta a abrir salía vacía, con «Registrar»
+  girando sin decir por qué, y tapaba el «Reporte registrado.» del primero
+  (vigesimoséptima). Ese «sigue» es el `sigue` del hook, que se apaga cuando la
+  acción contesta, no el `enviando` de `useEnvio`: ese sigue encendido mientras
+  la página se pone al día tras el ok, y «se sigue enviando» asomaba junto al
+  verde (vigesimoctava). Cómo terminó se dice ahí mismo: «El reporte que se estaba
+  enviando no se registró: …», o, si no se sabe, «…: No llegó la respuesta…»;
+  si ya había quedado la primera vez, sin rojo y diciendo que lo cambiado al
+  reenviar no se guardó. **Mientras se envía, la ventana traba sus campos y el
+  selector de fotos** (`fieldset disabled`, con el pie fuera para que
+  «Cancelar» siga): una foto elegida entonces no iba con el registro y se
+  quitaba sin aviso, y la ✕ quitaba de Storage la que el envío nombraba. El
+  envío vive con la ventana, no dentro: la `Ventana` desmonta lo suyo al
+  cerrarse, y un `useEnvio` adentro se llevaba el rechazo con él. Ningún
+  borrado de Storage sale del navegador con la sesión de otra cuenta, que
+  vuelve vacío y sin error: `quitarConLaCuenta` lo deja para cuando vuelva, y
+  donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
+  mira antes.
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que

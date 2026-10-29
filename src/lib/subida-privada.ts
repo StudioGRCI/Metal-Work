@@ -74,8 +74,15 @@ export async function anotarSinDejarloSuelto<T = never>({
   // Un archivo que la política no deja quitar vuelve sin error y sin nada
   // quitado: por eso se cuenta lo que volvió.
   const quitarSiSuelto = async (): Promise<'quitado' | 'se queda' | 'sin respuesta'> => {
-    // Con la sesión de otra cuenta el borrado vuelve vacío, como si una fila lo nombrara.
-    if (laPestanaEsDeOtraCuenta()) return 'sin respuesta'
+    // Con la sesión de otra cuenta el borrado vuelve vacío, como si una fila lo
+    // nombrara: no se pide, y se deja para cuando vuelva la de la pantalla, como
+    // todo borrado desde el navegador. Entretanto no se sabe. Antes, tras un
+    // rechazo con la traba puesta, no se dejaba para nadie y el archivo quedaba
+    // suelto (vigesimoséptima pasada).
+    if (laPestanaEsDeOtraCuenta()) {
+      cuandoVuelvaLaCuenta(() => void quitarSiSuelto())
+      return 'sin respuesta'
+    }
     try {
       const { data, error } = await supabase.storage.from(bucket).remove([ruta])
       if (error) return 'sin respuesta'
@@ -92,7 +99,7 @@ export async function anotarSinDejarloSuelto<T = never>({
   // archivo de esta. No se anota, y el archivo se quita si vuelve la cuenta de
   // la pantalla (vigesimotercera pasada).
   if (laPestanaEsDeOtraCuenta()) {
-    cuandoVuelvaLaCuenta(() => void quitarSiSuelto())
+    void quitarSiSuelto()
     seguirConLaCuentaDeLaPestana()
   }
   let primera: ResultadoAccion<T>
@@ -105,7 +112,7 @@ export async function anotarSinDejarloSuelto<T = never>({
     // Storage solo deja quitar el que ninguna fila nombra, así que si la primera
     // quedó, se queda. Antes se quedaba suelto para siempre (vigesimoquinta pasada).
     if (laPestanaEsDeOtraCuenta()) {
-      cuandoVuelvaLaCuenta(() => void quitarSiSuelto())
+      void quitarSiSuelto()
       return { ok: false, error: sinRespuesta }
     }
     let otraVez: ResultadoAccion<T> | null

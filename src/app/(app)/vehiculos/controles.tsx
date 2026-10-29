@@ -3,7 +3,7 @@
 import { Ban, LogOut, Wind } from 'lucide-react'
 import { useState } from 'react'
 
-import { fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
@@ -21,8 +21,9 @@ type Paso = 'SALIDA' | 'ARENADO' | 'ANULAR'
  * o que el ingreso se anotó mal. Si la ventana de la salida se cierra sin
  * registrar, las fotos que ya subieron se retiran de Storage. Si se cierra
  * mientras se envía, se quedan con ese envío y lo que conteste se dice en la
- * fila. Antes se quitaban en el acto: la base rechazaba la salida («La foto 1
- * no terminó de subir…») y nada lo decía (vigesimosexta pasada).
+ * fila, cuyos botones entretanto giran y no abren otra ventana. Antes se
+ * quitaban en el acto: la base rechazaba la salida («La foto 1 no terminó de
+ * subir…») y nada lo decía (vigesimosexta pasada).
  *
  * `bloqueoSalida` es lo que la base dice que le falta para salir (el 100 % del
  * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
@@ -61,6 +62,8 @@ export function ControlesVehiculo({
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length
   const bloqueado = sale && (subiendo || fallidas || listas === 0)
+  // Cerrada mientras la salida va en camino: la fila no abre otra ventana hasta que conteste.
+  const { sigue } = fotosSalida
 
   function cerrar() {
     fotosSalida.cerrar()
@@ -81,9 +84,10 @@ export function ControlesVehiculo({
         tamano="sm"
         disabled={Boolean(bloqueoSalida)}
         aria-describedby={bloqueoSalida ? `veh-bloqueo-${id}` : undefined}
+        ocupado={sigue}
         onClick={() => abrirSalida('SALIDA')}
       >
-        <LogOut aria-hidden className="size-4" />
+        {!sigue && <LogOut aria-hidden className="size-4" />}
         Marcar salida
       </Boton>
       {alArenado && (
@@ -91,24 +95,27 @@ export function ControlesVehiculo({
           type="button"
           variante="contorno"
           tamano="sm"
+          ocupado={sigue}
           onClick={() => abrirSalida('ARENADO')}
         >
-          <Wind aria-hidden className="size-4" />
+          {!sigue && <Wind aria-hidden className="size-4" />}
           Sale al arenado
         </Boton>
       )}
       {/* Anular corrige un error, no es el paso del trabajo: va sin borde para
           no pesar como «Marcar salida» en cada fila (auditoría del 27/10/2026). */}
-      <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} onClick={() => setPaso('ANULAR')}>
-        <Ban aria-hidden className="size-4 text-peligro" />
+      <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Anular el ingreso de ${nombre}`} ocupado={sigue} onClick={() => setPaso('ANULAR')}>
+        {!sigue && <Ban aria-hidden className="size-4 text-peligro" />}
         Anular
       </Boton>
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      {fotosSalida.desenlace && (
-        <p role="alert" className="text-xs text-peligro sm:basis-full sm:text-right">
-          La salida que se estaba enviando: {fotosSalida.desenlace}
-        </p>
-      )}
+      <EstadoDelEnvio
+        sigue={sigue}
+        desenlace={fotosSalida.desenlace}
+        registro="La salida"
+        femenino
+        className="sm:basis-full sm:text-right"
+      />
       <Ventana
         abierta={paso !== null}
         alCerrar={cerrar}
@@ -134,36 +141,42 @@ export function ControlesVehiculo({
           className="space-y-4"
         >
           <input type="hidden" name="id" value={id} />
-          {sale && (
-            <Campo etiqueta="Fecha y hora de salida" htmlFor={`veh-salida-${id}`} ayuda="Déjalo vacío si sale ahora.">
-              <Entrada id={`veh-salida-${id}`} name="salida_en" type="datetime-local" />
+          {/* Trabado mientras se envía: una foto elegida o quitada entonces no
+              iba con la salida (vigesimoséptima pasada). */}
+          <fieldset disabled={envio.enviando} className="min-w-0 space-y-4">
+            {sale && (
+              <Campo etiqueta="Fecha y hora de salida" htmlFor={`veh-salida-${id}`} ayuda="Déjalo vacío si sale ahora.">
+                <Entrada id={`veh-salida-${id}`} name="salida_en" type="datetime-local" />
+              </Campo>
+            )}
+            <Campo
+              etiqueta={paso === 'ANULAR' ? 'Motivo' : 'Observación (opcional)'}
+              htmlFor={`veh-nota-${id}`}
+              requerido={paso === 'ANULAR'}
+            >
+              <AreaTexto
+                id={`veh-nota-${id}`}
+                name={paso === 'ANULAR' ? 'motivo' : 'observacion'}
+                required={paso === 'ANULAR'}
+                minLength={paso === 'ANULAR' ? 10 : undefined}
+                maxLength={500}
+                placeholder={
+                  paso === 'ANULAR'
+                    ? 'Por ejemplo: se anotó la placa de otro vehículo.'
+                    : paso === 'ARENADO'
+                      ? 'Por ejemplo: va al arenado de la av. Argentina, vuelve el jueves.'
+                      : 'Por ejemplo: lo recoge el conductor del cliente.'
+                }
+              />
             </Campo>
-          )}
-          <Campo
-            etiqueta={paso === 'ANULAR' ? 'Motivo' : 'Observación (opcional)'}
-            htmlFor={`veh-nota-${id}`}
-            requerido={paso === 'ANULAR'}
-          >
-            <AreaTexto
-              id={`veh-nota-${id}`}
-              name={paso === 'ANULAR' ? 'motivo' : 'observacion'}
-              required={paso === 'ANULAR'}
-              minLength={paso === 'ANULAR' ? 10 : undefined}
-              maxLength={500}
-              placeholder={
-                paso === 'ANULAR'
-                  ? 'Por ejemplo: se anotó la placa de otro vehículo.'
-                  : paso === 'ARENADO'
-                    ? 'Por ejemplo: va al arenado de la av. Argentina, vuelve el jueves.'
-                    : 'Por ejemplo: lo recoge el conductor del cliente.'
-              }
-            />
-          </Campo>
-          {sale && (
-            <FotosDelMomento titulo="Fotos al salir" fotos={fotos} setFotos={setFotos} prefijoRuta={`${cuentaId}/${id}/salida`} />
-          )}
-          {sale && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
-          {/* Si la salida ya había entrado la primera vez, «Cerrar» quita las fotos nuevas, que no nombra nadie. */}
+            {sale && (
+              <FotosDelMomento titulo="Fotos al salir" fotos={fotos} setFotos={setFotos} prefijoRuta={`${cuentaId}/${id}/salida`} />
+            )}
+            {sale && <AvisoFotos subiendo={subiendo} fallidas={fallidas} listas={listas} momento="salir" />}
+          </fieldset>
+          {/* Si la salida ya había entrado la primera vez, las fotos nuevas, que no
+              nombra nadie, las quita la respuesta misma (`useFotosDelEnvio`):
+              «Cerrar» solo cierra. */}
           <PieDeVentana
             error={envio.error}
             enviando={envio.enviando}

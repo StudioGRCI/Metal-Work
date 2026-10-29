@@ -805,8 +805,9 @@ function textoOtraCuenta(usuarioQueEntro: string) {
 }
 
 /**
- * Mientras se envía, los campos están trabados (`fieldset disabled`) y el cursor
- * se pierde. Si el envío termina en un rechazo, el cursor va a lo que lo explica
+ * Mientras se envía, el botón que envía se apaga —y, donde la ventana los traba
+ * con `fieldset disabled`, también los campos— y el cursor se pierde. Si el
+ * envío termina en un rechazo, el cursor va a lo que lo explica
  * —el campo que la base rechazó o el aviso—, para que el teclado y el lector de
  * pantalla sigan donde estaban. `destino` se mira en ese momento: el aviso
  * todavía no existe cuando empieza el envío.
