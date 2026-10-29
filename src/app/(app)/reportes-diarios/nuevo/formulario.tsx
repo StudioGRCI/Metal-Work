@@ -10,6 +10,7 @@ import {
   hayFallidas,
   haySubiendo,
   quitarFotosSueltas,
+  SE_ACTUALIZO_CON_FOTOS,
   type FotoLista,
 } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -24,11 +25,11 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
+import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { motivoDelFallo, navegarSiEsDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { esDeLaVersionAnterior, motivoDelFallo, navegarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -284,7 +285,20 @@ export function FormularioReporteDiario({
   const pedido = useRef(new Map<string, number>())
   const { alEnviar, enviando, error } = useEnvio(
     async (previo: unknown, datos: FormData) => {
-      const salida = await (corrige ? registrarReporteCorregido : registrarReportesDiarios)(previo, datos)
+      let salida: ResultadoAccion<{ id: string }>
+      try {
+        salida = await (corrige ? registrarReporteCorregido : registrarReportesDiarios)(previo, datos)
+      } catch (e) {
+        if (!esDeLaVersionAnterior(e)) throw e
+        // Una pestaña de antes del último despliegue: la acción no corrió, y al
+        // recargar el formulario sale con otros ids. Las fotos ya subidas no las
+        // nombraría nadie: se quitan, y se dice que hay que elegirlas otra vez
+        // (vigesimonovena pasada; como `conFotos` en las demás ventanas).
+        const habia = secciones.some((s) => s.fotos.length > 0)
+        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, s.fotos)
+        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: [] })))
+        return { ok: false, error: habia ? SE_ACTUALIZO_CON_FOTOS : SE_ACTUALIZO_EL_SISTEMA }
+      }
       // El reporte ya había entrado la primera vez: lo de este envío no se
       // guardó, y sus fotos nuevas no las nombra nadie. Se quitan (las de la
       // primera vez, que su reporte nombra, la base no las deja quitar), y la

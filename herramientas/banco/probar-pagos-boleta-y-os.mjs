@@ -1629,7 +1629,7 @@ let pagoId
   )
   comprobar(contratos.length === 1 && contratos[0].subido_por === ids[CUENTAS.logistica], 'con su contrato adjunto, por Logística')
   comprobar((await objeto('documentos-servicio', contratos[0]?.ruta_storage)) === 1, 'y el archivo en storage.objects')
-  const avisoNueva = limpio(await pagina.locator('[role="status"]').first().innerText().catch(() => ''))
+  const avisoNueva = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText().catch(() => ''))
   comprobar(avisoNueva.includes(nuevas[0]?.numero ?? '¿?') && avisoNueva.includes('Su contrato quedó adjunto'), `el aviso lo dice: «${avisoNueva}»`)
   const filaNueva = pagina.locator(`tr[data-servicio="${nuevas[0]?.numero}"]`)
   const conContrato = await hasta(async () => limpio(await filaNueva.innerText().catch(() => '')), (t) => t.includes('Contrato'))

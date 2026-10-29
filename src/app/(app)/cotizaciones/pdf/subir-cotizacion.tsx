@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -319,7 +319,9 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         // Lo único que puede caerse acá es la carrocería nueva o la subida:
         // la cotización todavía no se anotó.
         if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
-        setError('No se pudo registrar la cotización. Vuelve a intentar.')
+        // Desde una pestaña de antes del último despliegue, reintentar no entra
+        // nunca: se dice que hay que recargar (vigesimonovena pasada).
+        setError(motivoDelFallo(e, 'No se pudo registrar la cotización. Vuelve a intentar.'))
       } finally {
         enCurso.current = false
       }

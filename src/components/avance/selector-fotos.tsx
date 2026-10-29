@@ -1,12 +1,11 @@
 'use client'
 
 import { Camera, Images, RotateCcw, X } from 'lucide-react'
-import { unstable_isUnrecognizedActionError } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, SIN_RESPUESTA } from '@/lib/envio'
+import { esDeLaVersionAnterior, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, SIN_RESPUESTA } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
@@ -59,6 +58,10 @@ const quitadas = new WeakSet<FotoLista>()
 const sinAchicar = new WeakSet<FotoLista>()
 
 const NO_SUBIO_OTRA_CUENTA = 'No se subió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, usa «Reintentar».'
+// La pestaña ya se sabe de antes del último despliegue: lo que se envíe desde
+// ella no va a entrar, y al recargar, como pide el aviso de arriba, la foto
+// subida quedaría suelta. No se sube, y sin «Reintentar», que daría lo mismo.
+const NO_SUBIO_SE_ACTUALIZO = 'No se subió: el sistema se actualizó. Vuelve a cargar la pantalla y elígela otra vez.'
 
 /**
  * Las fotos ya subidas que ningún registro va a nombrar: se retiran de Storage
@@ -92,8 +95,8 @@ const CORTADO_OTRA_CUENTA = 'en otra pestaña entró otra cuenta. Cuando vuelva 
 
 // La pestaña es de antes del último despliegue (`SE_ACTUALIZO_EL_SISTEMA`): en
 // la ventana, y junto al botón si se cerró mientras se enviaba. Las fotos se
-// quitan, así que se dice que hay que elegirlas otra vez.
-const SE_ACTUALIZO_CON_FOTOS =
+// quitan, así que se dice que hay que elegirlas otra vez. También el reporte diario.
+export const SE_ACTUALIZO_CON_FOTOS =
   'El sistema se actualizó mientras tenías la pantalla abierta: no se registró. Copia lo escrito, vuelve a cargar la pantalla y elige las fotos otra vez.'
 const SE_ACTUALIZO_SIN_VENTANA = 'el sistema se actualizó mientras tenías la pantalla abierta. Vuelve a cargar la pantalla y envíalo otra vez.'
 
@@ -193,7 +196,7 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
         // también las de la ventana abierta, que ya no tienen con qué enviarse.
         // Antes quedaban «en duda», sueltas para siempre, y el desenlace mandaba a
         // revisar la conexión (crítica de la vigesimoctava pasada).
-        if (unstable_isUnrecognizedActionError(e)) {
+        if (esDeLaVersionAnterior(e)) {
           // La anulación del vehículo va por aquí sin fotos.
           const conFotosQueElegir = este.fotos.length > 0 || actuales.current.length > 0
           if (este.sinVentana) {
@@ -387,6 +390,10 @@ export function SelectorFotos({
       alCambiar((f) => f.map((item) => (item === foto ? { ...item, subiendo: false, error: NO_SUBIO_OTRA_CUENTA } : item)))
       return false
     }
+    if (laPestanaEsDeLaVersionAnterior()) {
+      alCambiar((f) => f.map((item) => (item === foto ? { ...item, subiendo: false, error: NO_SUBIO_SE_ACTUALIZO } : item)))
+      return true
+    }
     const supabase = createClient()
     const extension = comprimir
       ? (EXTENSION[foto.archivo.type] ?? 'jpg')
@@ -538,7 +545,7 @@ export function SelectorFotos({
               </div>
             )}
 
-            {foto.error && !foto.subiendo && foto.vistaPrevia && (
+            {foto.error && !foto.subiendo && foto.vistaPrevia && foto.error !== NO_SUBIO_SE_ACTUALIZO && (
               <button
                 type="button"
                 onClick={() => reintentar(foto)}

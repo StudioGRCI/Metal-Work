@@ -30,6 +30,40 @@
  *      y de su desenlace. Y el reporte entra: el banco mandaba `[]` como `{}` a
  *      la columna jsonb y ck_materiales_usados_array lo rechazaba.
  *
+ * Y lo que dejó la vigesimonovena:
+ *
+ *   1b. El «Reporte registrado» que llega con la ventana ya cerrada sale en una
+ *       región montada desde antes: la que nace con su texto no la lee el lector.
+ *   1d. El conteo inicial cortado por la pestaña vieja dice la causa una vez, en
+ *       el resumen; las filas dicen «No salió» sin una alerta cada una, y en
+ *       vez de «Registrar», que volvería a fallar, ofrece volver a cargar.
+ *   1e. El reporte diario a medio llenar en la pestaña vieja: al volver tras
+ *       31 s ya no se recarga solo (Next recarga el documento entero si
+ *       `router.refresh()` ve otra compilación, y se perdía lo escrito y la foto
+ *       quedaba suelta); arriba se dice que el sistema se actualizó. Al «Subir
+ *       reporte», la foto se quita y se pide elegirla otra vez. Sin despliegue,
+ *       al volver se repinta como siempre y sin aviso.
+ *   1f. La planilla sin internet del kardex, como el conteo.
+ *   1g. La cotización con cliente nuevo dice que hay que recargar, no «Vuelve a
+ *       intentar», que nunca entraría.
+ *   1h. El plano a dos áreas: una sola acción, una subida y un borrado, y un
+ *       mensaje que no pide a la vez recargar y reenviar.
+ *   3.  La parte se arma sola en un banco nuevo (antes dependía de que hubiera
+ *       corrido probar-documentos-al-elegir), dice «Avance del día reportado» en
+ *       la copia a la vista y en la otra al girar, y deja al OPERARIO
+ *       desactivado.
+ *
+ * Y lo que se cerró antes de la trigésima: una vez que la pestaña se sabe
+ * vieja, lo que se elija o se envíe desde ella ni sube a Storage, porque al
+ * recargar, como pide el aviso de arriba, quedaría suelto.
+ *
+ *   1c. El segundo «Adjuntar» del contrato no sube el archivo ni llama a la acción.
+ *   1e. La foto que se elige después de «Subir reporte» no sube, lo dice y no
+ *       ofrece «Reintentar».
+ *   El aviso de arriba solo está montado en la pestaña vieja (fijo en toda
+ *   pantalla quedaba delante de la región de estado de cada una) y nace vacío,
+ *   para que el lector lo oiga.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes.
  */
@@ -50,6 +84,8 @@ const CUENTAS = {
   almacen: process.env.ALMACEN ?? 'almacen.local@metalwork.test',
   requerimientos: process.env.REQUERIMIENTOS ?? 'requerimientos.local@metalwork.test',
   diseno: process.env.DISENO ?? 'diseno.local@metalwork.test',
+  rrhh: process.env.RRHH ?? 'rrhh.local@metalwork.test',
+  ventas: process.env.VENTAS ?? 'ventas.local@metalwork.test',
   operario: 'operario.giro@banco.test',
 }
 if (!CLAVE) {
@@ -99,7 +135,7 @@ const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--n
 const CELULAR = { width: 390, height: 844 }
 const GIRADO = { width: 844, height: 390 }
 
-async function entrar(correo, viewport = { width: 1280, height: 900 }) {
+async function entrar(correo, viewport = { width: 1280, height: 900 }, { compilacion = false } = {}) {
   const movil = viewport.width < 500
   const contexto = await navegador.newContext({ viewport, isMobile: movil, hasTouch: movil, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
@@ -109,6 +145,9 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
     // El 404 de la acción vieja y el error que Next anota por él son lo que se prueba.
     if (m.type() === 'error' && !/Failed to fetch|net::|404|UnrecognizedActionError|Server Action/.test(t)) errores.push(t.slice(0, 300))
   })
+  // Lo que nadie atrapó: la consola lo anota con el texto de arriba, que se deja
+  // pasar, y una acción desconocida sin atrapar se lleva la pantalla.
+  pagina.on('pageerror', (e) => errores.push(`sin atrapar: ${String(e?.message ?? e).slice(0, 300)}`))
   await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', correo)
   await pagina.fill('input[type="password"]', CLAVE)
@@ -122,10 +161,14 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   // `despliegue`: desde ahora cada acción sale con un id que el servidor no
   // conoce, como desde una pestaña vieja. `marca`: la acción cuyo cuerpo la
   // lleva se detiene antes de salir hasta `soltar()`; sale con el id que diga
-  // `despliegue` en ese momento.
+  // `despliegue` en ese momento. Con `compilacion`, además, las respuestas RSC
+  // llegan con otro x-nextjs-deployment-id mientras dure `despliegue`, como las
+  // de otra compilación: con eso Next recarga el documento entero.
   const cdp = await contexto.newCDPSession(pagina)
-  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] })
-  const corte = { despliegue: false, marca: null, retenidas: 0, esperan: [], acciones: 0 }
+  const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
+  if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
+  await cdp.send('Fetch.enable', { patterns: patrones })
+  const corte = { despliegue: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [] }
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
   }
@@ -134,6 +177,17 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   cdp.on('Fetch.requestPaused', async (e) => {
     const seguir = (extra = {}) => cdp.send('Fetch.continueRequest', { requestId: e.requestId, ...extra }).catch(() => {})
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
+    if (e.responseStatusCode !== undefined || e.responseErrorReason !== undefined) {
+      const responder = (extra = {}) => cdp.send('Fetch.continueResponse', { requestId: e.requestId, ...extra }).catch(() => seguir())
+      if (!corte.despliegue || h.rsc !== '1' || h['next-action'] || e.responseErrorReason) return responder()
+      const responseHeaders = [...(e.responseHeaders ?? []).filter((x) => x.name.toLowerCase() !== 'x-nextjs-deployment-id'), { name: 'x-nextjs-deployment-id', value: 'compilacion-nueva' }]
+      return responder({ responseCode: e.responseStatusCode, responseHeaders })
+    }
+    if (e.resourceType === 'Document') corte.documentos++
+    // El repintado, no lo que Next pide por adelantado de los enlaces.
+    if (h.rsc === '1' && !h['next-action'] && !h['next-router-prefetch']) corte.rsc++
+    const objeto = e.request.url.match(/\/storage\/v1\/object\/([^?]+)/)?.[1]
+    if (objeto && e.request.method !== 'GET' && e.request.method !== 'OPTIONS') corte.storage.push(`${e.request.method} ${objeto}`)
     if (e.request.method !== 'POST' || !h['next-action']) return seguir()
     corte.acciones++
     if (corte.marca && cuerpo(e.request).includes(corte.marca)) {
@@ -160,13 +214,97 @@ const loQueDescribe = (boton) =>
   })
 const idsQueDescribe = (boton) => boton.evaluate((b) => (b.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean))
 
+/**
+ * Anota, para cada región `role="status"` donde aparece `texto`, si ya estaba
+ * montada al llamar: la que nace con su texto el lector no la anuncia.
+ * `leer()` da la lista, en el orden en que aparecieron.
+ */
+async function vigilarElVerde(pagina, texto) {
+  await pagina.evaluate((texto) => {
+    for (const e of document.querySelectorAll('[role="status"]')) e.dataset.deAntes = '1'
+    window.__verdes = []
+    const mirar = () => {
+      for (const e of document.querySelectorAll('[role="status"]')) {
+        if (!e.dataset.vistoVerde && (e.textContent ?? '').includes(texto)) {
+          e.dataset.vistoVerde = '1'
+          window.__verdes.push(e.dataset.deAntes === '1')
+        }
+      }
+    }
+    new MutationObserver(mirar).observe(document.body, { subtree: true, childList: true, characterData: true })
+  }, texto)
+  return { leer: () => pagina.evaluate(() => window.__verdes ?? []) }
+}
+
+/** Lo que hace el teléfono al cambiar de aplicación y volver `ms` después: blur, y focus con el reloj adelantado. */
+const salirYVolver = (pagina, ms = 31_000) =>
+  pagina.evaluate((ms) => {
+    window.dispatchEvent(new Event('blur'))
+    const real = Date.now.bind(Date)
+    Date.now = () => real() + ms
+    window.dispatchEvent(new Event('focus'))
+  }, ms)
+/** Una marca en `window` que solo una recarga del documento borra. */
+const marcarDocumento = (pagina) => pagina.evaluate(() => { window.__mismoDocumento = 1 })
+const mismoDocumento = (pagina) => pagina.evaluate(() => window.__mismoDocumento === 1).catch(() => false)
+const avisoDeArriba = async (pagina) => limpio(await pagina.locator('[data-pestana-vieja]').innerText().catch(() => ''))
+
+async function elegir(pagina, etiqueta, texto) {
+  await pagina.getByRole('combobox', { name: etiqueta }).click()
+  // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+  // tiene el foco, o las letras se pierden en el botón.
+  const caja = pagina.locator('input[type="search"]:focus')
+  await caja.waitFor({ timeout: 10000 })
+  await caja.fill(texto)
+  await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
+}
+
+function pdfConTexto(lineas) {
+  const texto = lineas.map((l, i) => `BT /F1 11 Tf 50 ${780 - i * 18} Td (${l.replace(/[()\\]/g, '')}) Tj ET`).join('\n')
+  const objetos = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(texto, 'latin1')} >>\nstream\n${texto}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const posiciones = []
+  objetos.forEach((o, i) => {
+    posiciones.push(Buffer.byteLength(pdf, 'latin1'))
+    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(pdf, 'latin1')
+  pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`
+  pdf += posiciones.map((p) => `${String(p).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf, 'latin1')
+}
+
+/** Un material propio con 5 en stock, como en probar-fotos-al-cerrar: contar o sacar uno del catálogo le quitaría la salida a otras suites. */
+async function materialPropio(codigo, descripcion) {
+  const [{ id }] = await consulta(
+    `insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+     values ($1, $2, (select id from public.categorias_material where activo and almacen = 'CONSUMIBLES' and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
+             (select id from public.unidades_medida where codigo = 'UND')) returning id`,
+    [codigo, descripcion],
+  )
+  await consulta(
+    `insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, precio_unitario, moneda, registrado_en)
+     select gen_random_uuid(), 'INGRESO', $1, 5, 'INGRESO_GENERAL', 'Compra de banco', u.id, 2, 'PEN', now() - interval '1 hour'
+     from public.usuarios u where u.correo = $2`,
+    [id, CUENTAS.almacen],
+  )
+  return id
+}
+
 const sello = Date.now().toString().slice(-6)
 const archivos = join(CAPTURAS, 'pestana-vieja')
 mkdirSync(archivos, { recursive: true })
 const fotos = {}
 {
   const p = await (await navegador.newContext()).newPage()
-  for (const [n, color] of [['a', '#7a4b2a'], ['b', '#3a3f44'], ['c', '#2a5a7a'], ['d', '#5a7a2a']]) {
+  for (const [n, color] of [['a', '#7a4b2a'], ['b', '#3a3f44'], ['c', '#2a5a7a'], ['d', '#5a7a2a'], ['e', '#7a2a5a']]) {
     const b64 = await p.evaluate(async (color) => {
       const c = document.createElement('canvas')
       c.width = 640
@@ -261,6 +399,23 @@ if (corre('1a') || corre('1b')) {
     comprobar(libre === null && (await reportar.getAttribute('aria-describedby')) === null && quitada && (await reportes()) === 0,
       `[Maestranza 1280] 1b. el botón se libera y deja de nombrar el estado, la foto se quita y no hay reporte (quitada ${quitada})`)
     corte.despliegue = false
+
+    // Y el que sí entra con la ventana ya cerrada: su verde sale en una región
+    // que estaba montada (vigesimonovena pasada).
+    await abrir(fotos.e)
+    const marcaOk = `1b-ok ${sello}`
+    await ventana.locator('#rf-descripcion').fill(`${marcaOk}: se pintó la compuerta`)
+    corte.marca = marcaOk
+    await ventana.getByRole('button', { name: 'Registrar', exact: true }).click()
+    await hasta(() => corte.retenidas, (n) => n >= 2)
+    await ventana.getByRole('button', { name: 'Cancelar' }).click()
+    await hasta(() => ventana.count(), (n) => n === 0, 5000)
+    const verde = await vigilarElVerde(pagina, 'Reporte registrado')
+    corte.soltar()
+    const verdes = await hasta(verde.leer, (v) => v?.length > 0, 20000)
+    const dice = limpio(await pagina.getByRole('status').filter({ hasText: 'Reporte registrado' }).first().innerText().catch(() => ''))
+    comprobar(verdes?.[0] === true && dice.startsWith('Reporte registrado') && (await reportes()) === 1,
+      `[Maestranza 1280] 1b. cerrada en vuelo, «${dice}» sale en una región montada desde antes, que el lector anuncia (${JSON.stringify(verdes)})`)
   }
   comprobar(errores.length === 0, `[Maestranza 1280] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
@@ -296,6 +451,14 @@ if (corre('1c')) {
     `[Administración 1280] 1c. el contrato desde la pestaña vieja dice que hay que recargar, en una sola llamada, sin la pausa (${tardo} ms; «${dice}»; ${corte.acciones - a0} llamada)`)
   comprobar(sueltosDespues === sueltosAntes && (await contratos()) === n0,
     `[Administración 1280] 1c. el archivo subido se quita y no hay contrato nuevo (sueltos ${sueltosAntes} → ${sueltosDespues})`)
+  // Ya se sabe vieja: el segundo intento ni sube el archivo ni llama a la acción.
+  const s1 = corte.storage.length
+  const a1 = corte.acciones
+  await v.getByRole('button', { name: 'Adjuntar', exact: true }).click()
+  await pagina.waitForTimeout(2000)
+  const otraVez = limpio(await v.getByRole('alert').allInnerTexts().then((t) => t.join(' ')))
+  comprobar(otraVez.includes(SE_ACTUALIZO) && corte.storage.length === s1 && corte.acciones === a1 && (await sueltos()) === sueltosAntes,
+    `[Administración 1280] 1c. el segundo «Adjuntar», con la pestaña ya sabida vieja, no sube nada ni llama a la acción (${corte.storage.length - s1} pedidos a Storage, ${corte.acciones - a1} llamadas)`)
   corte.despliegue = false
   await v.getByRole('button', { name: 'Cancelar' }).click().catch(() => {})
   comprobar(errores.length === 0, `[Administración 1280] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
@@ -356,12 +519,284 @@ if (corre('1d')) {
   const a0 = corte.acciones
   corte.despliegue = true
   await boton.click()
-  const alRegistrar = limpio(await hasta(() => v.innerText(), (t) => t?.includes(SE_ACTUALIZO) || /No se confirmó/.test(t ?? ''), 20000))
+  const alRegistrar = limpio(await hasta(() => v.innerText(), (t) => /el sistema se actualizó|No se confirmó/i.test(t ?? ''), 20000))
   await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1d-conteo.png') })
-  comprobar(alRegistrar.includes(SE_ACTUALIZO) && !/No se confirmó/.test(alRegistrar) && corte.acciones - a0 === 1 && (await movimientos()) === m0,
+  comprobar(/el sistema se actualizó mientras tenías la pantalla abierta/i.test(alRegistrar) && !/No se confirmó/.test(alRegistrar) && corte.acciones - a0 === 1 && (await movimientos()) === m0,
     `[Almacén 1280] 1d. registrar el conteo desde la pestaña vieja dice que hay que recargar, en una sola llamada, y no registra nada (${corte.acciones - a0} llamada)`)
+  // La causa una vez, en el resumen que recibe el cursor; las filas sin alerta
+  // propia; y en vez de «Registrar», que fallaría igual, volver a cargar.
+  const resumen = limpio(await pagina.evaluate(() => document.activeElement?.textContent ?? ''))
+  const alertas = await v.getByRole('alert').filter({ hasText: /actualizó/ }).count()
+  const fila = limpio(await v.getByText('No salió: el sistema se actualizó.').first().innerText().catch(() => ''))
+  const registrarOtraVez = await v.getByRole('button', { name: /^Registrar \d/ }).count()
+  const recargar = v.getByRole('button', { name: 'Volver a cargar la pantalla' })
+  comprobar(resumen === 'No se registró ningún material; 1 no salió porque el sistema se actualizó mientras tenías la pantalla abierta. Vuelve a cargar la pantalla y elige el archivo otra vez: lo registrado no se duplica.',
+    `[Almacén 1280] 1d. el resumen enfocado dice la causa y qué hacer («${resumen}»)`)
+  comprobar(alertas === 0 && fila === 'No salió: el sistema se actualizó.' && registrarOtraVez === 0 && (await recargar.count()) === 1,
+    `[Almacén 1280] 1d. la fila dice «${fila}» sin alerta propia (${alertas}); no queda «Registrar» (${registrarOtraVez}) y sí «Volver a cargar la pantalla»`)
+  comprobar((await avisoDeArriba(pagina)).startsWith(SE_ACTUALIZO), `[Almacén 1280] 1d. y arriba de la pantalla lo dice también («${await avisoDeArriba(pagina)}»)`)
   corte.despliegue = false
+  await marcarDocumento(pagina)
+  if (await recargar.count()) await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), recargar.click()])
+  comprobar(!(await mismoDocumento(pagina)) && (await pagina.locator('[data-pestana-vieja]').count()) === 0,
+    `[Almacén 1280] 1d. «Volver a cargar la pantalla» la recarga, y ya sin el aviso de arriba`)
   comprobar(errores.length === 0, `[Almacén 1280] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1e. El reporte diario a medio llenar (Maestranza, a 390)
+if (corre('1e')) {
+  // Una persona de Maestranza para el trabajo, como la dejaría RR. HH.; al
+  // final se da de baja. Sin costo: para enviar no hace falta.
+  const persona = `Pedro ${sello}`
+  await consulta(
+    `insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
+     select $1, 'Prueba Pestaña Vieja', '5' || $2 || '01', 'Soldador', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3)`,
+    [persona, sello.slice(-5), CUENTAS.rrhh],
+  )
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const subidas = async () =>
+    (await consulta(`select name from storage.objects where bucket_id = 'fotos-reporte-diario' and owner_id = $1 and created_at >= $2`, [yo, desde])).map((o) => o.name)
+  const asunto = `Pestaña vieja ${sello}`
+  const reportes = async () => Number((await consulta(`select count(*) n from reportes_diarios where asunto = $1`, [asunto]))[0].n)
+  const llenar = async (pagina, conFoto) => {
+    await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
+    await pagina.fill('#rd-codigo', 'PLANTA')
+    await pagina.fill('#rd-asunto', asunto)
+    await pagina.fill('#rd-descripcion', 'Se ordenó la planta y se soldaron los soportes.')
+    const t1 = pagina.locator('fieldset[data-trabajo="1"]')
+    await elegir(pagina, 'Trabajo 1: sobre qué', 'Tarea nueva')
+    await t1.locator('textarea').fill('Soportes de la tolva')
+    await t1.locator('input[type="number"]').first().fill('30')
+    await elegir(pagina, 'Personal del trabajo 1: persona 1', persona)
+    await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('2')
+    if (conFoto) {
+      await pagina.locator('input[type="file"]:not([capture])').first().setInputFiles(fotos.d)
+      await esperarSubidas(pagina)
+    }
+    // El último toque fuera de un campo, como al cerrar el teclado tocando el
+    // título: con el cursor en un campo, RefrescoAlVolver espera de todos modos.
+    await pagina.locator('main h1').first().click()
+  }
+  const miniaturas = (pagina) => pagina.locator('button[aria-label^="Quitar vieja-d-"]').count()
+
+  // Sin despliegue: al volver se repinta, sin recargar el documento y sin aviso.
+  {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, false)
+    await marcarDocumento(pagina)
+    const r0 = corte.rsc
+    const d0 = corte.documentos
+    await salirYVolver(pagina)
+    const repinto = await hasta(() => corte.rsc - r0, (n) => n > 0, 10000)
+    await quieta(pagina)
+    comprobar(repinto > 0 && corte.documentos === d0 && (await mismoDocumento(pagina)) && (await pagina.inputValue('#rd-asunto')) === asunto && (await pagina.locator('[data-region-pestana-vieja]').count()) === 0,
+      `[Maestranza 390] 1e. sin despliegue, al volver tras 31 s se repinta sin recargar, lo escrito sigue y arriba no hay aviso ni su región (${repinto} pedidos RSC, ${corte.documentos - d0} documentos)`)
+    comprobar(errores.length === 0, `[Maestranza 390] 1e. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // Con despliegue: no se recarga sola, lo dice arriba, y al enviar se quita la foto.
+  {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = await subidas()
+    await marcarDocumento(pagina)
+    // Si la región de arriba aparece ya con su texto, o vacía primero.
+    await pagina.evaluate(() => {
+      new MutationObserver(() => {
+        const r = document.querySelector('[data-region-pestana-vieja]')
+        if (r && window.__regionVaciaPrimero === undefined) window.__regionVaciaPrimero = !r.textContent
+      }).observe(document.body, { subtree: true, childList: true })
+    })
+    const d0 = corte.documentos
+    corte.despliegue = true
+    await salirYVolver(pagina)
+    const arriba = limpio(await hasta(() => avisoDeArriba(pagina), Boolean, 15000))
+    await pagina.waitForTimeout(2000)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1e-al-volver.png') })
+    const mismo = await mismoDocumento(pagina)
+    const escrito = await pagina.inputValue('#rd-asunto')
+    comprobar(corte.documentos === d0 && mismo && escrito === asunto && (await miniaturas(pagina)) === 1 && Boolean(ruta) && (await existe('fotos-reporte-diario', ruta)),
+      `[Maestranza 390] 1e. con despliegue, al volver tras 31 s la pantalla no se recarga sola: lo escrito y la foto siguen (mismo documento ${mismo}, asunto «${escrito}»)`)
+    comprobar(arriba === 'El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde aquí no va a entrar. Copia lo que tengas escrito y vuelve a cargar la pantalla. Volver a cargar',
+      `[Maestranza 390] 1e. y arriba lo dice, con «Volver a cargar» («${arriba}»)`)
+    // La región nace vacía y el texto llega después (`antesDelTexto`, anotado
+    // por el vigía): la que nace con su texto no se oye.
+    const region = await pagina.evaluate(() => ({ rol: document.querySelector('[data-region-pestana-vieja]')?.getAttribute('role'), vacia: window.__regionVaciaPrimero }))
+    comprobar(region.rol === 'status' && region.vacia === true,
+      `[Maestranza 390] 1e. el aviso de arriba nace en una región role=status montada antes que su texto (role ${region.rol}, vacía primero ${region.vacia})`)
+    await pagina.getByRole('button', { name: 'Subir reporte' }).click()
+    const dice = limpio(await hasta(() => pagina.locator('main [role="alert"]').filter({ hasText: SE_ACTUALIZO }).allInnerTexts().then((t) => t.join(' ')), Boolean))
+    const quitada = !(await hasta(() => existe('fotos-reporte-diario', ruta), (v) => v === false, 10000))
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1e-enviar.png'), fullPage: true })
+    comprobar(dice === 'El sistema se actualizó mientras tenías la pantalla abierta: no se registró. Copia lo escrito, vuelve a cargar la pantalla y elige las fotos otra vez.',
+      `[Maestranza 390] 1e. «Subir reporte» desde la pestaña vieja pide elegir las fotos otra vez («${dice}»)`)
+    comprobar(quitada && (await miniaturas(pagina)) === 0 && (await reportes()) === 0 && (await pagina.inputValue('#rd-asunto')) === asunto,
+      `[Maestranza 390] 1e. la foto se quita de Storage y de la pantalla, no hay reporte y lo escrito sigue para copiarlo (quitada ${quitada})`)
+    // Ya se sabe vieja: la foto que se elija ahora ni sube. Al recargar, como
+    // pide el aviso, quedaría suelta.
+    const s1 = corte.storage.length
+    await pagina.locator('input[type="file"]:not([capture])').first().setInputFiles(fotos.a)
+    const noSubio = limpio(await hasta(() => pagina.getByRole('alert').filter({ hasText: 'No se subió' }).allInnerTexts().then((t) => t.join(' ')), Boolean, 15000))
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1e-otra-foto.png'), fullPage: true })
+    comprobar(noSubio.endsWith(': No se subió: el sistema se actualizó. Vuelve a cargar la pantalla y elígela otra vez.') && corte.storage.length === s1
+      && (await pagina.getByRole('button', { name: /^Volver a subir/ }).count()) === 0 && (await subidas()).length === 0,
+      `[Maestranza 390] 1e. la foto elegida después no sube, lo dice y no ofrece «Reintentar» («${noSubio}»; ${corte.storage.length - s1} pedidos a Storage)`)
+    corte.despliegue = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1e. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+  await consulta(`update trabajadores set activo = false where nombres = $1`, [persona])
+}
+
+// ------------------------------------------- 1f. La planilla sin internet del kardex (Almacén)
+if (corre('1f')) {
+  const codigo = `QA-VIEJA-P-${sello}`
+  const materialId = await materialPropio(codigo, `Disco de corte de la pestaña vieja ${sello}`)
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.almacen])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const movimientos = async () => Number((await consulta(`select count(*) n from movimientos_materiales where material_id = $1`, [materialId]))[0].n)
+  const sueltas = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'evidencias-almacen' and o.owner_id = $1 and o.created_at >= $2
+        and not exists (select 1 from movimientos_materiales m where m.foto_ruta = o.name)`, [yo, desde])).map((o) => o.name)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.almacen)
+  await ir(pagina, `${BASE}/almacen/kardex`)
+  const libro = new ExcelJS.Workbook()
+  await libro.xlsx.load(await (await pagina.request.get(`${BASE}/almacen/kardex/planilla`)).body())
+  let unidad = null
+  libro.getWorksheet('Unidades')?.eachRow((f, n) => {
+    if (n > 1 && !unidad && f.getCell(1).value) unidad = String(f.getCell(1).value)
+  })
+  const [a, m, d] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }).split('-').map(Number)
+  const salidas = libro.getWorksheet('Salidas')
+  salidas.getCell(5, 1).value = new Date(Date.UTC(a, m - 1, d))
+  salidas.getCell(5, 3).value = codigo
+  salidas.getCell(5, 6).value = 1
+  salidas.getCell(5, 7).value = `Vale de la pestaña vieja ${sello}`
+  salidas.getCell(5, 8).value = unidad
+  salidas.getCell(5, 9).value = 'Soldador de banco'
+  const llena = join(archivos, `planilla-vieja-${sello}.xlsx`)
+  await libro.xlsx.writeFile(llena)
+  await pagina.getByRole('button', { name: /sin internet/i }).first().click()
+  await pagina.getByRole('button', { name: /Cargar planilla/ }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('#planilla-archivo').setInputFiles(llena)
+  const foto = v.locator('input[type=file][aria-label^="Elegir la foto de la salida"]').first()
+  await foto.waitFor({ state: 'attached', timeout: 30000 })
+  await foto.setInputFiles(fotos.e)
+  const boton = v.getByRole('button', { name: /^Registrar 1 movimiento/ })
+  await boton.waitFor({ timeout: 30000 })
+  const m0 = await movimientos()
+  const a0 = corte.acciones
+  const s0 = corte.storage.length
+  corte.despliegue = true
+  await boton.click()
+  const resumen = limpio(await hasta(() => pagina.evaluate(() => (document.activeElement?.getAttribute('role') === 'status' ? document.activeElement.textContent : '')), Boolean, 30000))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1f-planilla.png') })
+  const alertas = await v.getByRole('alert').filter({ hasText: /actualizó/ }).count()
+  const fila = limpio(await v.getByText('No salió: el sistema se actualizó.').first().innerText().catch(() => ''))
+  const registrarOtraVez = await v.getByRole('button', { name: /^Registrar/ }).count()
+  const enStorage = corte.storage.slice(s0).filter((x) => x.includes('evidencias-almacen'))
+  comprobar(resumen === 'No se registró ninguno; 1 no salió porque el sistema se actualizó mientras tenías la pantalla abierta. Vuelve a cargar la pantalla y elige la planilla y sus fotos otra vez: lo registrado no se duplica.',
+    `[Almacén 1280] 1f. la planilla desde la pestaña vieja: el resumen enfocado dice la causa y qué hacer («${resumen}»)`)
+  comprobar(alertas === 0 && fila === 'No salió: el sistema se actualizó.' && registrarOtraVez === 0 && (await v.getByRole('button', { name: 'Volver a cargar la pantalla' }).count()) === 1,
+    `[Almacén 1280] 1f. la fila dice «${fila}» sin alerta propia (${alertas}); no queda «Registrar» (${registrarOtraVez}) y sí «Volver a cargar la pantalla»`)
+  comprobar(corte.acciones - a0 === 1 && (await movimientos()) === m0 && (await hasta(sueltas, (l) => l.length === 0, 10000)).length === 0,
+    `[Almacén 1280] 1f. una sola llamada, ningún movimiento y ninguna foto suelta (${corte.acciones - a0} llamada; Storage: ${enStorage.join(', ') || 'nada'})`)
+  corte.despliegue = false
+  comprobar(errores.length === 0, `[Almacén 1280] 1f. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1g. La cotización con cliente nuevo (Ventas)
+if (corre('1g')) {
+  // Un RUC válido que nadie tiene: el cliente nuevo no llega a crearse.
+  const [{ n: ruc }] = await consulta(`select n from (select '209' || lpad($1::text, 7, '0') || d as n from generate_series(0, 9) d) x
+                                       where public.ruc_es_valido(n) and not exists (select 1 from clientes c where c.numero_documento = x.n) limit 1`, [sello])
+  const numero = `QA-VIEJA-COT-${sello}`
+  const razon = `Transportes de la pestaña vieja ${sello}`
+  const clientes = async () => Number((await consulta(`select count(*) n from clientes where razon_social = $1`, [razon]))[0].n)
+  const cotizaciones = async () => Number((await consulta(`select count(*) n from cotizaciones_pdf where numero = $1`, [numero]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas)
+  await ir(pagina, `${BASE}/cotizaciones/pdf`)
+  await pagina.getByRole('button', { name: 'Subir cotización' }).first().click()
+  const d = pagina.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#cot-archivo').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${numero}`, 'Semirremolque de banco']) })
+  const subir = d.getByRole('button', { name: 'Subir y mandar a Gerencia' })
+  await pagina.waitForTimeout(1500)
+  await hasta(async () => !/Leyendo/.test(await d.innerText()) && (await subir.isEnabled()), Boolean, 30000)
+  await d.locator('#cot-numero').fill(numero)
+  await d.locator('#cot-monto').fill('1000')
+  await d.locator('#cot-moneda').selectOption('USD')
+  await d.locator('#cot-igv').selectOption('no')
+  if (!(await d.locator('#cot-razon').count())) await d.getByRole('button', { name: 'Es un cliente nuevo' }).click()
+  await d.locator('#cot-tipo-doc').selectOption('RUC')
+  await d.locator('#cot-num-doc').fill(ruc)
+  await d.locator('#cot-razon').fill(razon)
+  if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+  const a0 = corte.acciones
+  corte.despliegue = true
+  for (const vez of [1, 2]) {
+    await subir.click()
+    await hasta(() => corte.acciones - a0, (n) => n >= vez, 20000)
+    const dice = limpio(await hasta(() => d.getByRole('alert').allInnerTexts().then((t) => t.join(' ')), (t) => /actualizó|Vuelve a intentar/.test(t ?? ''), 20000))
+    comprobar(dice.startsWith(SE_ACTUALIZO) && !/Vuelve a intentar/.test(dice),
+      `[Ventas 1280] 1g. cotización con cliente nuevo desde la pestaña vieja, intento ${vez}: dice que hay que recargar, no «Vuelve a intentar» («${dice}»)`)
+  }
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1g-cotizacion.png') })
+  comprobar(corte.acciones - a0 === 2 && (await clientes()) === 0 && (await cotizaciones()) === 0,
+    `[Ventas 1280] 1g. una llamada por intento, sin cliente ni cotización nuevos (${corte.acciones - a0} llamadas)`)
+  corte.despliegue = false
+  comprobar(errores.length === 0, `[Ventas 1280] 1g. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1h. El plano a dos áreas (Diseño)
+if (corre('1h')) {
+  // Un plano va en una etapa de su orden, como en probar-archivo-sin-dejarlo-suelto;
+  // en la orden con plan propio la base pide quién lo elaboró.
+  const [orden] = await consulta(`select o.id, e.id as etapa_id, o.plan_etapas_manual from ordenes_trabajo o join ot_etapas e on e.orden_id = o.id
+                                  where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
+  const integrante = orden.plan_etapas_manual
+    ? (await consulta(`insert into ot_equipo_diseno (orden_id, nombre, funcion) values ($1, 'QA banco Diseño', 'COLABORADOR')
+                       on conflict (orden_id, lower(btrim(nombre))) do update set nombre = excluded.nombre returning id`, [orden.id]))[0].id
+    : null
+  const [plano] = await consulta(`insert into ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
+                                  values ($1, $2, 'Plano de la pestaña vieja', $3, $4) returning id`, [orden.id, `QA-VIEJA-PL-${sello}`, orden.etapa_id, integrante])
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.diseno])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const sueltos = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'planos-privados' and o.name like $1 and o.created_at >= $2
+        and not exists (select 1 from ot_plano_versiones v where v.ruta_storage = o.name)`, [`${yo}/%`, desde])).map((o) => o.name)
+  const versiones = async () => Number((await consulta(`select count(*) n from ot_plano_versiones where plano_id = $1`, [plano.id]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno)
+  await ir(pagina, `${BASE}/ordenes/${orden.id}/planos?plano=${plano.id}`)
+  const archivo = pagina.locator('#version-archivo')
+  await archivo.waitFor({ state: 'attached', timeout: 30000 })
+  const formulario = archivo.locator('xpath=ancestor::form')
+  await formulario.getByLabel('Maestranza', { exact: true }).check()
+  await formulario.getByLabel('Producción', { exact: true }).check()
+  await archivo.setInputFiles({ name: `QA-VIEJA-PL-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-VIEJA-PL-${sello}`]) })
+  const a0 = corte.acciones
+  const s0 = corte.storage.length
+  corte.despliegue = true
+  await formulario.getByRole('button', { name: 'Enviar a revisión' }).click()
+  const dice = limpio(await hasta(() => formulario.locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')), (t) => /actualizó|Falta/.test(t ?? ''), 30000))
+  await pagina.waitForTimeout(1500)
+  const enStorage = corte.storage.slice(s0).filter((x) => x.includes('planos-privados'))
+  const subidasPl = enStorage.filter((x) => x.startsWith('POST')).length
+  const borrados = enStorage.filter((x) => x.startsWith('DELETE')).length
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1h-plano.png') })
+  comprobar(dice === 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.',
+    `[Diseño 1280] 1h. el plano a Maestranza y Producción desde la pestaña vieja dice solo que hay que recargar, sin «Vuelve a enviar sin cambiar el archivo» («${dice}»)`)
+  comprobar(corte.acciones - a0 === 1 && subidasPl === 1 && borrados === 1 && (await versiones()) === 0 && (await hasta(sueltos, (l) => l.length === 0, 10000)).length === 0,
+    `[Diseño 1280] 1h. una sola llamada, una subida y su borrado, ninguna versión y ningún PDF suelto (${corte.acciones - a0} llamada; Storage: ${enStorage.join(', ')})`)
+  corte.despliegue = false
+  comprobar(errores.length === 0, `[Diseño 1280] 1h. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 
@@ -430,10 +865,24 @@ if (corre('2')) {
 
 // ------------------------------------------- 3. «Reportar día» al girar el teléfono (OPERARIO del banco)
 if (corre('3')) {
+  // «Reportar día» es de las órdenes de antes del plan de etapas propio: en las
+  // demás se reporta por tarea, con produccion.reportar_tarea, que el OPERARIO
+  // no tiene, y la actividad sin etapa no entra. Toda orden nueva nace con plan
+  // propio y la base no deja cambiarlo: en el banco, y solo aquí, la 0001-2026
+  // vuelve a ser «de antes» con los disparadores apagados, como hace
+  // probar-documentos-al-elegir. Antes la parte solo pasaba si esa suite había
+  // corrido (vigesimonovena pasada).
+  const [orden] = await consulta(`select id, plan_etapas_manual from ordenes_trabajo where numero = '0001-2026'`)
+  const sinDisparadores = async (sql, valores) => {
+    await consulta('begin')
+    await consulta('set local session_replication_role = replica')
+    await consulta(sql, valores)
+    await consulta('commit')
+  }
+  if (orden?.plan_etapas_manual) await sinDisparadores(`update public.ordenes_trabajo set plan_etapas_manual = false where id = $1`, [orden.id])
   // La cuenta y la actividad, como postgres lo que no tiene pantalla en el banco
   // (no hay cuentas OPERARIO) y con la sesión de Diseño la actividad, que pasa
   // por su disparador. Peso 0: no mueve el avance de la orden.
-  const [orden] = await consulta(`select id from ordenes_trabajo where numero = '0001-2026'`)
   let [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.operario])
   if (!yo) {
     ;[yo] = await consulta(`insert into auth.users (id, email) values (gen_random_uuid(), $1) returning id`, [CUENTAS.operario])
@@ -444,77 +893,99 @@ if (corre('3')) {
     )
   }
   await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [CUENTAS.operario, CLAVE])
-  const nombre = `Soldar refuerzos ${sello}`
-  await consulta('begin')
-  await consulta(`select set_config('request.jwt.claims', json_build_object('sub', (select id from usuarios where correo = $1), 'role', 'authenticated')::text, true)`, [CUENTAS.diseno])
-  await consulta('set local role authenticated')
-  const [act] = await consulta(
-    `insert into ot_actividades (orden_id, area_id, nombre, referencia, peso_pct) values ($1, (select id from areas where codigo = 'PRD'), $2, 'GIRO', 0) returning id`,
-    [orden?.id, nombre],
-  )
-  await consulta('commit')
-  const avances = async () => (await consulta(`select nota, avance_pct, materiales_usados from ot_actividad_avances where actividad_id = $1 order by creado_en`, [act.id]))
+  // Activa solo mientras corre esta parte: al final se desactiva, y no queda una
+  // cuenta OPERARIO con la clave del banco entre una suite y otra. Cambiar el
+  // estado de un usuario es de administrador (fn_usuario_proteger_rol): aquí,
+  // con los disparadores apagados.
+  await sinDisparadores(`update public.usuarios set activo = true where correo = $1`, [CUENTAS.operario])
+  try {
+    const nombre = `Soldar refuerzos ${sello}`
+    await consulta('begin')
+    await consulta(`select set_config('request.jwt.claims', json_build_object('sub', (select id from usuarios where correo = $1), 'role', 'authenticated')::text, true)`, [CUENTAS.diseno])
+    await consulta('set local role authenticated')
+    const [act] = await consulta(
+      `insert into ot_actividades (orden_id, area_id, nombre, referencia, peso_pct) values ($1, (select id from areas where codigo = 'PRD'), $2, 'GIRO', 0) returning id`,
+      [orden?.id, nombre],
+    )
+    await consulta('commit')
+    const avances = async () => (await consulta(`select nota, avance_pct, materiales_usados from ot_actividad_avances where actividad_id = $1 order by creado_en`, [act.id]))
 
-  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.operario, CELULAR)
-  await ir(pagina, `${BASE}/ordenes/${orden?.id}?vista=actividades`)
-  const deLaActividad = (sel) => pagina.locator(`#actividad-${act.id}:visible`).locator(sel)
-  const boton = () => deLaActividad('button').filter({ hasText: 'Reportar día' })
-  const ventana = pagina.locator('[role="dialog"]').filter({ hasText: nombre })
-  const aLaVista = async () => limpio((await deLaActividad('[role="status"], [role="alert"]').allInnerTexts()).join(' | '))
-  const enDom = await pagina.locator(`[id="actividad-${act.id}"]`).count()
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.operario, CELULAR)
+    await ir(pagina, `${BASE}/ordenes/${orden?.id}?vista=actividades`)
+    const deLaActividad = (sel) => pagina.locator(`#actividad-${act.id}:visible`).locator(sel)
+    const boton = () => deLaActividad('button').filter({ hasText: 'Reportar día' })
+    const ventana = pagina.locator('[role="dialog"]').filter({ hasText: nombre })
+    const aLaVista = async () => limpio((await deLaActividad('[role="status"], [role="alert"]').allInnerTexts()).join(' | '))
+    const enDom = await pagina.locator(`[id="actividad-${act.id}"]`).count()
 
-  await boton().click()
-  await ventana.waitFor({ timeout: 10000 })
-  await ventana.getByRole('button', { name: '25 %' }).click()
-  const marca = `Giro ${sello}`
-  await ventana.locator('input[name="nota"]').fill(marca)
-  corte.marca = marca
-  await ventana.getByRole('button', { name: 'Reportar', exact: true }).click()
-  const retenido = (await hasta(() => corte.retenidas, (n) => n >= 1)) >= 1
-  await ventana.getByRole('button', { name: 'Cancelar' }).click()
-  await hasta(() => ventana.count(), (n) => n === 0, 5000)
-  const ocupado390 = await boton().getAttribute('aria-disabled')
-  const dice390 = await hasta(aLaVista, (t) => t.includes('se sigue enviando'), 5000)
+    await boton().click()
+    await ventana.waitFor({ timeout: 10000 })
+    await ventana.getByRole('button', { name: '25 %' }).click()
+    const marca = `Giro ${sello}`
+    await ventana.locator('input[name="nota"]').fill(marca)
+    corte.marca = marca
+    await ventana.getByRole('button', { name: 'Reportar', exact: true }).click()
+    const retenido = (await hasta(() => corte.retenidas, (n) => n >= 1)) >= 1
+    await ventana.getByRole('button', { name: 'Cancelar' }).click()
+    await hasta(() => ventana.count(), (n) => n === 0, 5000)
+    const ocupado390 = await boton().getAttribute('aria-disabled')
+    const dice390 = await hasta(aLaVista, (t) => t.includes('se sigue enviando'), 5000)
 
-  await pagina.setViewportSize(GIRADO)
-  await pagina.waitForTimeout(800)
-  const ocupadoGiro = await boton().getAttribute('aria-disabled')
-  const diceGiro = await aLaVista()
-  const describeGiro = await loQueDescribe(boton())
-  await boton().click({ force: true })
-  await pagina.waitForTimeout(800)
-  const abrio = await ventana.count()
-  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-3-girado.png') })
-  comprobar(enDom === 2 && retenido && ocupado390 === 'true' && dice390.includes('El reporte se sigue enviando'),
-    `[Operario 390] 3. la actividad está dos veces en la página; cerrada en vuelo, «Reportar día» gira y dice que sigue (${enDom} copias, «${dice390}»)`)
-  comprobar(ocupadoGiro === 'true' && diceGiro.includes('El reporte se sigue enviando') && describeGiro === 'El reporte se sigue enviando: lo que conteste se dice aquí.' && abrio === 0,
-    `[Operario girado a 844] 3. el «Reportar día» que aparece sabe del envío: gira, lo dice y no abre otra ventana (aria-disabled ${ocupadoGiro}, «${diceGiro}», describe «${describeGiro}», ventanas ${abrio})`)
+    await pagina.setViewportSize(GIRADO)
+    await pagina.waitForTimeout(800)
+    const ocupadoGiro = await boton().getAttribute('aria-disabled')
+    const diceGiro = await aLaVista()
+    const describeGiro = await loQueDescribe(boton())
+    await boton().click({ force: true })
+    await pagina.waitForTimeout(800)
+    const abrio = await ventana.count()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-3-girado.png') })
+    comprobar(enDom === 2 && retenido && ocupado390 === 'true' && dice390.includes('El reporte se sigue enviando'),
+      `[Operario 390] 3. la actividad está dos veces en la página; cerrada en vuelo, «Reportar día» gira y dice que sigue (${enDom} copias, «${dice390}»)`)
+    comprobar(ocupadoGiro === 'true' && diceGiro.includes('El reporte se sigue enviando') && describeGiro === 'El reporte se sigue enviando: lo que conteste se dice aquí.' && abrio === 0,
+      `[Operario girado a 844] 3. el «Reportar día» que aparece sabe del envío: gira, lo dice y no abre otra ventana (aria-disabled ${ocupadoGiro}, «${diceGiro}», describe «${describeGiro}», ventanas ${abrio})`)
 
-  corte.despliegue = true
-  corte.soltar()
-  const desenlaceGiro = await hasta(aLaVista, (t) => t.includes('que se estaba enviando'))
-  await pagina.setViewportSize(CELULAR)
-  await pagina.waitForTimeout(800)
-  const desenlace390 = await aLaVista()
-  corte.despliegue = false
-  comprobar(desenlaceGiro.includes('El reporte que se estaba enviando no se registró: el sistema se actualizó') && desenlace390 === desenlaceGiro && (await boton().getAttribute('aria-disabled')) === null && (await avances()).length === 0,
-    `[Operario] 3. el desenlace sale en la copia a la vista, girado y de vuelta, y el botón se libera («${desenlaceGiro}»; a 390 «${desenlace390}»)`)
+    corte.despliegue = true
+    corte.soltar()
+    const desenlaceGiro = await hasta(aLaVista, (t) => t.includes('que se estaba enviando'))
+    await pagina.setViewportSize(CELULAR)
+    await pagina.waitForTimeout(800)
+    const desenlace390 = await aLaVista()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-3-desenlace.png'), fullPage: true })
+    corte.despliegue = false
+    comprobar(desenlaceGiro.includes('El reporte que se estaba enviando no se registró: el sistema se actualizó') && desenlace390 === desenlaceGiro && (await boton().getAttribute('aria-disabled')) === null && (await avances()).length === 0,
+      `[Operario] 3. el desenlace sale en la copia a la vista, girado y de vuelta, y el botón se libera («${desenlaceGiro}»; a 390 «${desenlace390}»)`)
 
-  // Y el reporte entra: el banco ya manda `[]` a la columna jsonb.
-  await ir(pagina, `${BASE}/ordenes/${orden?.id}?vista=actividades`)
-  await boton().click()
-  await ventana.waitFor({ timeout: 10000 })
-  await ventana.getByRole('button', { name: '25 %' }).click()
-  await ventana.locator('input[name="nota"]').fill(`${marca} entra`)
-  await ventana.getByRole('button', { name: 'Reportar', exact: true }).click()
-  const [fila] = await hasta(avances, (r) => r.length === 1, 15000)
-  // El aviso verde vive en el «Reportar día» de hoy, que al ponerse al día la
-  // página se vuelve «Otro día»: lo que queda es «Reportado hoy» o «Corregir».
-  const verde = limpio(await hasta(() => deLaActividad('*').allInnerTexts().then((t) => t.join(' ').match(/Avance del día reportado|Reportado hoy: \+25|Corregir el de hoy/)?.[0] ?? ''), Boolean, 10000))
-  comprobar(fila && Number(fila.avance_pct) === 25 && Array.isArray(fila.materiales_usados) && fila.materiales_usados.length === 0 && Boolean(verde),
-    `[Operario 390] 3. el reporte del día entra, con materiales_usados [] (${JSON.stringify(fila?.materiales_usados)}), y lo dice («${verde}»)`)
-  comprobar(errores.length === 0, `[Operario] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
-  await contexto.close()
+    // Y el reporte entra: el banco ya manda `[]` a la columna jsonb.
+    await ir(pagina, `${BASE}/ordenes/${orden?.id}?vista=actividades`)
+    await boton().click()
+    await ventana.waitFor({ timeout: 10000 })
+    await ventana.getByRole('button', { name: '25 %' }).click()
+    await ventana.locator('input[name="nota"]').fill(`${marca} entra`)
+    const verde = await vigilarElVerde(pagina, 'Avance del día reportado')
+    await ventana.getByRole('button', { name: 'Reportar', exact: true }).click()
+    const [fila] = await hasta(avances, (r) => r.length === 1, 15000)
+    comprobar(fila && Number(fila.avance_pct) === 25 && Array.isArray(fila.materiales_usados) && fila.materiales_usados.length === 0,
+      `[Operario 390] 3. el reporte del día entra, con materiales_usados [] (${JSON.stringify(fila?.materiales_usados)})`)
+    // Al ponerse al día, la página cambia el «Reportar día» de hoy por «Corregir
+    // el de hoy» y «Otro día»: el verde es de la actividad y se queda; antes se
+    // iba a los 300 ms (vigesimonovena pasada).
+    await hasta(() => deLaActividad('button, span').allInnerTexts().then((t) => /Corregir el de hoy|Reportado hoy/.test(t.join(' '))), Boolean, 15000)
+    await pagina.waitForTimeout(1500)
+    const verde390 = await aLaVista()
+    const verdes = await verde.leer()
+    await pagina.setViewportSize(GIRADO)
+    await pagina.waitForTimeout(800)
+    const verdeGiro = await aLaVista()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-3-verde-girado.png') })
+    comprobar(verde390.includes('Avance del día reportado.') && verdes[0] === true,
+      `[Operario 390] 3. «Avance del día reportado.» sigue a la vista tras ponerse al día, y salió primero en una región montada desde antes («${verde390}», ${JSON.stringify(verdes)})`)
+    comprobar(verdeGiro.includes('Avance del día reportado.'), `[Operario girado a 844] 3. la otra copia también lo dice («${verdeGiro}»)`)
+    comprobar(errores.length === 0, `[Operario] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  } finally {
+    await sinDisparadores(`update public.usuarios set activo = false where correo = $1`, [CUENTAS.operario])
+  }
 }
 
 await navegador.close()

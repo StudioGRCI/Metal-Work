@@ -529,7 +529,7 @@ await mismoEnvio({
   },
   contar: (marca) => consulta(`select numero, monto::float as valor from ordenes_servicio where descripcion = $1 order by creado_en`, [`Torneado de prueba ${marca}`]),
   fila: (p, numero) => p.locator(`tr[data-servicio="${numero}"]`),
-  alGuardar: async (p, f) => limpio(await p.locator('[role="status"]').first().innerText().catch(() => '')).includes(f?.numero ?? '¿?'),
+  alGuardar: async (p, f) => limpio(await p.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText().catch(() => '')).includes(f?.numero ?? '¿?'),
 })
 
 // ---------------------------------------------------------------- 2. OC directa

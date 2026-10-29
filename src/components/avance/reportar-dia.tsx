@@ -54,7 +54,10 @@ export function ReportarDia({
   // verde, o al girar el teléfono el que queda a la vista no sabía de ellos
   // (vigesimoctava pasada).
   const clave = `reportar-dia:${actividad.id}:${deOtroDia ? 'otro' : 'hoy'}`
-  const [aviso, setAviso] = useEstadoCompartido<string | null>(`${clave}:aviso`, null)
+  // El aviso es de la actividad, no del día: al entrar el de hoy, la página
+  // cambia «Reportar día» por «Otro día» y el verde se iba a los 300 ms, antes
+  // de que el lector lo dijera (vigesimonovena pasada).
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`reportar-dia:${actividad.id}:aviso`, null)
   // Mientras se envía, la foto se queda: el reporte que está entrando la nombra,
   // y la base exige que esté en Storage (`validar_reporte_taller`). Tampoco se
   // quita si no se sabe si entró, ni tras un rechazo con la ventana abierta: se
@@ -101,11 +104,12 @@ export function ReportarDia({
         )}
         {deOtroDia ? 'Otro día' : 'Reportar día'}
       </Boton>
-      {aviso && !compacto && (
-        <span role="status" className="text-xs font-medium text-exito">
-          {aviso}
-        </span>
-      )}
+      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
+          tras cerrar en vuelo es lo único que dice que entró. En la lista
+          apretada no se ve, pero se oye (vigesimonovena pasada). */}
+      <span role="status" className={aviso && !compacto ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </span>
       {/* También en la lista apretada: si no entró, nadie más lo diría. */}
       <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 

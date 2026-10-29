@@ -195,7 +195,9 @@ let idReporte2 = null
   await elegirPersona(pagina, 'Personal del trabajo 2: persona 2', ana)
   await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 2: horas de la persona 2' }).fill('2')
 
-  const resumen = limpio(await pagina.locator('[aria-live="polite"]:not([data-opciones])').textContent())
+  // Por su marca: la pantalla tiene más de una región que se anuncia, y cuál va
+  // primero no es cosa de esta suite.
+  const resumen = limpio(await pagina.locator('[data-resumen-personal]').textContent())
   comprobar(/3 personas · 17\.5 h en total/.test(resumen.replace(/,/g, '.')) || /3 personas/.test(resumen), `el resumen suma por persona (${resumen.slice(0, 120)})`)
 
   // Las fotos: un archivo que no es foto no entra; las dos de verdad se achican y suben.
@@ -223,7 +225,7 @@ let idReporte2 = null
   await pagina.waitForLoadState('networkidle')
   idReporte1 = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idReporte1), `al subir, abre el reporte (${pagina.url()})`)
-  const aviso = limpio(await pagina.locator('[role="status"]').textContent().catch(() => ''))
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
   comprobar(aviso.includes('Reporte subido') && aviso.includes(codigo), `avisa que subió con su código (${aviso})`)
 
   const [r] = await consulta(

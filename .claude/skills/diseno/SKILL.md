@@ -250,13 +250,21 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   monitor de la orden), las dos comparten el envío con una `clave`
   (`useFotosDelEnvio(bucket, clave)`, y el aviso verde con
   `useEstadoCompartido`): al girar el teléfono, el botón a la vista no sabía del
-  envío en camino (vigesimoctava). Cómo terminó se dice ahí mismo: «El reporte que se estaba
+  envío en camino (vigesimoctava). El verde de esas ventanas («Reporte
+  registrado.», «Ingreso registrado…», «Avance del día reportado.») también está
+  siempre montado (`className={aviso ? '…' : 'sr-only'}`): cerrada en vuelo, es
+  lo único que dice que entró, y el que nacía con su texto no se oía. En
+  «Reportar día» el aviso es de la actividad (`reportar-dia:<id>:aviso`), no del
+  día: al entrar el de hoy, la página cambia el botón por «Corregir el de hoy» y
+  «Otro día», y `useEstadoCompartido` le deja el valor al que monta en la misma
+  pintada; el verde duraba 0,3 s (vigesimonovena). Cómo terminó se dice ahí mismo: «El reporte que se estaba
   enviando no se registró: …», o, si no se sabe, «…: No llegó la respuesta…»;
   si ya había quedado la primera vez, sin rojo y diciendo que lo cambiado al
   reenviar no se guardó. Desde una pestaña de antes del último despliegue (la
   acción ya no existe en el servidor), «no se registró» y que hay que recargar,
   no «revisa la conexión»; sus fotos se quitan, también las de la ventana
-  abierta, y la ventana pide elegirlas otra vez. **Mientras se envía, la ventana traba sus campos y el
+  abierta, y la ventana pide elegirlas otra vez (lo de toda la pestaña, en el
+  punto que sigue). **Mientras se envía, la ventana traba sus campos y el
   selector de fotos** (`fieldset disabled`, con el pie fuera para que
   «Cancelar» siga): una foto elegida entonces no iba con el registro y se
   quitaba sin aviso, y la ✕ quitaba de Storage la que el envío nombraba. El
@@ -266,6 +274,32 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   vuelve vacío y sin error: `quitarConLaCuenta` lo deja para cuando vuelva, y
   donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
   mira antes.
+- **Una pestaña de antes del último despliegue no se recarga sola, y lo dice
+  arriba** (vigesimonovena). Cada compilación cambia el id de las acciones y el
+  servidor contesta que no existe. El primer `UnrecognizedActionError` pasa por
+  `esDeLaVersionAnterior` (`src/lib/envio.ts`, el único camino: nunca la función
+  de Next directo), que anota la pestaña como vieja. `RefrescoAlVolver` pinta
+  entonces arriba «El sistema se actualizó mientras tenías la pantalla abierta:
+  lo que envíes desde aquí no va a entrar…» con «Volver a cargar» (montado solo entonces,
+  vacío y con el texto en la pintada siguiente: uno fijo en toda pantalla
+  quedaba delante de la región de estado de cada una), y deja de
+  refrescar: en esa pestaña `router.refresh()` no repinta, recarga el documento
+  entero (Next ve otra compilación), y se llevaba lo escrito y dejaba suelta la
+  foto ya subida del reporte diario. Al volver tras 30 s pregunta primero por los
+  avisos, y si esa acción ya no existe no repinta. Ya sabida vieja, nada sube a
+  Storage: ni el documento de `subirArchivoPrivado` ni el plano por área ni la
+  salida de la planilla, y la foto que se elige dice «No se subió: el sistema se
+  actualizó. Vuelve a cargar la pantalla y elígela otra vez.», sin «Reintentar»:
+  al recargar, como pide el aviso, quedaba suelta (trigésima). El reporte diario, que no pasa por `conFotos`, quita sus fotos y
+  pide elegirlas otra vez (`SE_ACTUALIZO_CON_FOTOS`). Una tanda cortada (el
+  conteo inicial, la planilla) dice la causa una vez, en el resumen que recibe
+  el cursor; cada fila, «No salió: el sistema se actualizó.» sin alerta propia
+  (eran N alertas iguales a la vez), y en vez de «Registrar», que fallaría
+  igual, «Volver a cargar la pantalla». Una cadena por áreas (el plano) se corta
+  en la primera y no pide a la vez recargar y «vuelve a enviar sin cambiar el
+  archivo». Un `catch` con su propio «Vuelve a intentar» pasa por
+  `motivoDelFallo`: reintentar desde esa pestaña no entra nunca (la cotización
+  con cliente nuevo).
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que

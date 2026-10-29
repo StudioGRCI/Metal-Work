@@ -599,7 +599,7 @@ writeFileSync(
     comprobar(limpio(await entrega.textContent().catch(() => '')).includes(`Vacío: queda con ${NOMBRE_5}.`), 'y la ayuda dice con qué queda si la guía va en blanco')
     await entrega.getByRole('button', { name: 'Validar ingreso' }).click()
     await pagina.locator('[role="status"]', { hasText: `${NOMBRE_5}:` }).waitFor({ timeout: 30000 }).catch(() => {})
-    const aviso = limpio(await pagina.locator('[role="status"]').first().textContent().catch(() => ''))
+    const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
     comprobar(aviso.startsWith(`${NOMBRE_5}:`), `el aviso de validado la nombra: «${aviso.slice(0, 80)}»`)
     const guardado = await consulta(
       `select m.documento_referencia from ingresos_pendientes_almacen p join movimientos_materiales m on m.id = p.movimiento_id where p.orden_compra_id = $1`, [oc5])

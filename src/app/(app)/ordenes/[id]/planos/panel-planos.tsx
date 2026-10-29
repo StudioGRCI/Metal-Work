@@ -7,7 +7,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, useEnvio } from '@/lib/envio'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, SE_ACTUALIZO_EL_SISTEMA, useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import type { ResultadoAccion } from '@/lib/acciones'
@@ -133,9 +133,17 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     // (vigesimotercera pasada). El archivo que haya subido se quita cuando vuelva
     // la tuya (`anotarSinDejarloSuelto`).
     let cortadaEn: number | null = null
+    // Una pestaña de antes del último despliegue: la que iba y las que siguen
+    // tampoco entrarían desde aquí (vigesimonovena pasada).
+    let viejaEn: number | null = null
     for (const [i, area] of areas.entries()) {
       if (laPestanaEsDeOtraCuenta()) {
         cortadaEn = i
+        break
+      }
+      // Ya se sabe vieja (otra acción lo dijo): ni se sube.
+      if (laPestanaEsDeLaVersionAnterior()) {
+        viejaEn = i
         break
       }
       const ruta = `${sesion.user.id}/${ids[area]}.pdf`
@@ -178,11 +186,24 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
         break
       }
       if (resultado.ok) { enviadas.push(nombre(area)); mensaje = resultado.mensaje; continue }
+      if (resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
+        viejaEn = i
+        break
+      }
       fallidas.push(`${nombre(area)}: ${resultado.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : resultado.error}`)
     }
     // Sin nada enviado, lo dice la traba, como en cualquier envío.
     if (cortadaEn === 0) throw new OtraCuentaEnLaPestana()
     if (cortadaEn !== null) for (const area of areas.slice(cortadaEn)) fallidas.push(`${nombre(area)}: no salió, en otra pestaña entró otra cuenta`)
+    // Reenviar sin cambiar el archivo no sirve aquí: hay que recargar.
+    if (viejaEn !== null) {
+      const antes = [
+        enviadas.length ? `Enviado a ${enviadas.join(' y ')}.` : '',
+        fallidas.length ? `Falta: ${fallidas.join('; ')}.` : '',
+        enviadas.length || fallidas.length ? `No salió a ${areas.slice(viejaEn).map(nombre).join(' ni a ')}.` : '',
+      ].filter(Boolean)
+      return { ok: false, error: [...antes, SE_ACTUALIZO_EL_SISTEMA].join(' ') }
+    }
     if (fallidas.length > 0) {
       // Volver a elegir el archivo cambia la solicitud: se reenvía sin tocarlo.
       return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.` }

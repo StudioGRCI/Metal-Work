@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, RotateCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
@@ -12,7 +12,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
-import { laPestanaEsDeOtraCuenta, motivoDelFallo, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -71,12 +71,16 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   const faltan = porRegistrar.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
+  // Las que no salieron porque la pestaña es de antes del despliegue: desde aquí no van a salir.
+  const porLaVersion = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_SE_ACTUALIZO).length
   const empezado = intentos > 0
   // Terminado es que no quede nada por registrar, no que algo ya haya entrado:
   // si no, la salida cuya foto no subió se quedaba sin botón para volver a intentarlo.
   const terminado = !registrando && empezado && faltan.length === 0
   // Lo que queda sin entrar, para no cerrar en verde con una salida sin foto encima.
-  const queda = fallidas
+  const queda = porLaVersion
+    ? `${porLaVersion === 1 ? '1 no salió' : `${porLaVersion} no salieron`} porque el sistema se actualizó mientras tenías la pantalla abierta${fallidas > porLaVersion ? ` (${fallidas - porLaVersion} más, por el motivo de cada uno)` : ''}. Vuelve a cargar la pantalla y elige la planilla y sus fotos otra vez: lo registrado no se duplica`
+    : fallidas
     ? `${fallidas} no: revisa el mensaje de cada uno`
     : faltan.length
       ? faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`
@@ -166,6 +170,11 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
           cortar(i)
           break
         }
+        // Ya se sabe vieja (otra acción lo dijo): ni se sube la foto.
+        if (laPestanaEsDeLaVersionAnterior()) {
+          cortar(i, NO_SALIO_SE_ACTUALIZO)
+          break
+        }
         setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
         const datos = new FormData()
         datos.set('hoja', f.hoja)
@@ -212,9 +221,10 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
           resultado = { ok: false, error: motivoDelFallo(e, 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.') }
         }
         // Una pestaña de antes del último despliegue: ni esta ni las que siguen
-        // salen desde aquí (vigesimoctava pasada).
+        // salen desde aquí (vigesimoctava pasada). La causa la dice una vez el
+        // resumen, no cada fila (vigesimonovena).
         if (!resultado.ok && resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
-          cortar(i, SE_ACTUALIZO_EL_SISTEMA)
+          cortar(i, NO_SALIO_SE_ACTUALIZO)
           break
         }
         setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
@@ -305,7 +315,9 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                           </Seleccion>
                         </div>
                       )}
-                      {r?.estado === 'error' && !avisoFoto && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                      {r?.estado === 'error' && !avisoFoto && (
+                        <p role={r.mensaje === NO_SALIO_SE_ACTUALIZO ? undefined : 'alert'} className="mt-1 text-xs text-peligro">{r.mensaje}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 sm:justify-end">
                       {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
@@ -340,7 +352,13 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
               </AvisoEnfocado>
             )}
             <div className="flex flex-wrap gap-2">
-              {!terminado && (
+              {/* Desde una pestaña vieja, «Registrar lo que falta» volvería a fallar igual. */}
+              {porLaVersion > 0 && !registrando && (
+                <Boton onClick={() => window.location.reload()}>
+                  <RotateCw aria-hidden className="size-4" />Volver a cargar la pantalla
+                </Boton>
+              )}
+              {!terminado && !(porLaVersion > 0 && !registrando) && (
                 <Boton onClick={registrar} cargando={registrando} disabled={faltan.length === 0}>
                   {empezado
                     ? `Registrar lo que falta (${faltan.length})`

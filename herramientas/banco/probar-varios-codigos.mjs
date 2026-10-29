@@ -224,7 +224,7 @@ let idB = null
   idA = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idA), `sube y abre el reporte (${pagina.url()})`)
   if (idA) {
-    const aviso = limpio(await pagina.locator('[role="status"]').first().innerText())
+    const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText())
     comprobar(aviso.includes('Reporte subido con 2 códigos'), `el aviso dice que subió con 2 códigos (${aviso})`)
     const enlace = pagina.locator('[data-mismo-envio] a')
     comprobar((await enlace.count()) === 1 && limpio(await enlace.innerText()) === OTRO, 'el detalle enlaza al otro código del envío')

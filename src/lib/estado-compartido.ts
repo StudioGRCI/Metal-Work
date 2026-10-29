@@ -9,8 +9,8 @@ import { useEffect, useId, useSyncExternalStore } from 'react'
  * oculto (crítica de la vigesimoctava pasada).
  *
  * Sin `clave` es de este componente, como `useState`. Lo de una clave que ya no
- * monta nadie se olvida, y lo que llega después (un envío que contesta con la
- * pantalla ya cerrada) no se guarda. `inicial` es un valor que no cambia de una
+ * monta nadie se olvida (salvo que otro la monte en la misma pintada), y lo que
+ * llega después (un envío que contesta con la pantalla ya cerrada) no se guarda. `inicial` es un valor que no cambia de una
  * pintada a otra (`null`, `false`, un texto): React compara lo que devuelve.
  */
 const valores = new Map<string, unknown>()
@@ -39,7 +39,11 @@ export function useEstadoCompartido<T>(clave: string | null | undefined, inicial
       const quedan = (montados.get(llave) ?? 1) - 1
       if (quedan > 0) return void montados.set(llave, quedan)
       montados.delete(llave)
-      valores.delete(llave)
+      // Si en la misma pintada otro componente monta con la clave (el «Reportar
+      // día» de hoy que se vuelve «Otro día»), se queda con el valor.
+      queueMicrotask(() => {
+        if (!montados.has(llave)) valores.delete(llave)
+      })
     }
   }, [llave])
   const poner = (nuevo: T) => {

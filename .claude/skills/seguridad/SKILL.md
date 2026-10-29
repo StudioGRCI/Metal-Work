@@ -141,7 +141,13 @@ En la misma migración que la crea, sin excepción:
   quita el archivo si ninguna fila lo nombra. Si el servidor no conoce la acción
   (una pestaña de antes del último despliegue, `UnrecognizedActionError`), no
   corrió: quita el archivo en el acto y dice `SE_ACTUALIZO_EL_SISTEMA`, sin
-  pausa ni reintento, que darían lo mismo (vigesimoctava). Antes unas pantallas lo dejaban
+  pausa ni reintento, que darían lo mismo (vigesimoctava). Ese caso se reconoce
+  siempre con `esDeLaVersionAnterior` (`src/lib/envio.ts`), no con la función de
+  Next: además anota la pestaña como vieja, para que no se recargue sola al
+  volver (se perdía lo escrito y la foto quedaba suelta) y para que nada suba
+  antes de su acción: `subirArchivoPrivado`, el plano, la planilla y las fotos
+  que se eligen miran `laPestanaEsDeLaVersionAnterior()` antes de tocar Storage
+  (vigesimonovena y trigésima). Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
   repetido —en la función, por su id **con la misma ruta y la misma persona**;

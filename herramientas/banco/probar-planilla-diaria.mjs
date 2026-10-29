@@ -207,7 +207,7 @@ let numeroPlanilla = null
   await pagina.waitForLoadState('networkidle')
   idA = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idA), 'sube el primer reporte')
-  const aviso = limpio(await pagina.locator('[role="status"]').textContent().catch(() => ''))
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
   comprobar(aviso.includes('Gerencia y Recursos Humanos lo validan'), `al subir avisa que lo validan Gerencia y RR. HH. (${aviso.slice(0, 90)}…)`)
   const validacion = limpio(await pagina.locator('[data-lado]').allTextContents().then((t) => t.join(' | ')))
   comprobar(

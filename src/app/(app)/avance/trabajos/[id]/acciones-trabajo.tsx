@@ -115,11 +115,11 @@ function Reportar({
         {!ocupado && <Camera aria-hidden className="size-4" />}
         Reportar
       </Boton>
-      {aviso && (
-        <p role="status" className="text-xs font-medium text-exito">
-          {aviso}
-        </p>
-      )}
+      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
+          tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
+      <p role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </p>
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
       <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 

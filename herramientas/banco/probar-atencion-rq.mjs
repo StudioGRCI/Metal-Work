@@ -134,7 +134,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('[id^="rq-cant-"]').fill('3')
   await ventana.locator('[id^="rq-cat-"]').selectOption({ index: 1 })
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
   const fila = pagina.locator('[data-rq]', { hasText: codigo })
   await fila.waitFor({ timeout: 20000 })
   comprobar((await fila.innerText()).includes('Por revisar'), 'el RQ nace «Por revisar» (Almacén)')

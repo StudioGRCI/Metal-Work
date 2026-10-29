@@ -36,12 +36,49 @@ export class OtraCuentaEnLaPestana extends Error {
  */
 export const SE_ACTUALIZO_EL_SISTEMA = 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.'
 
+/** La fila de una tanda que no salió por eso: la causa la dice una sola vez el resumen. */
+export const NO_SALIO_SE_ACTUALIZO = 'No salió: el sistema se actualizó.'
+
+// Una vez que una acción contesta que no existe, la pestaña entera es de antes
+// del despliegue: lo sabe `RefrescoAlVolver`, que deja de repintar (en esta
+// pestaña, `router.refresh()` recarga el documento y se lleva lo escrito) y lo
+// dice arriba (vigesimonovena pasada).
+let deLaVersionAnterior = false
+const alSaberQueEsVieja = new Set<() => void>()
+
+/**
+ * Si `e` es la acción que el servidor ya no conoce (`unstable_isUnrecognizedActionError`),
+ * y de paso deja anotado que esta pestaña es de antes del despliegue. Todo
+ * `catch` que lo mire pasa por aquí, no por la función de Next.
+ */
+export function esDeLaVersionAnterior(e: unknown) {
+  if (!unstable_isUnrecognizedActionError(e)) return false
+  if (!deLaVersionAnterior) {
+    deLaVersionAnterior = true
+    for (const avisar of alSaberQueEsVieja) avisar()
+  }
+  return true
+}
+
+export const laPestanaEsDeLaVersionAnterior = () => deLaVersionAnterior
+
+export function usePestanaDeLaVersionAnterior() {
+  return useSyncExternalStore(
+    (avisar) => {
+      alSaberQueEsVieja.add(avisar)
+      return () => void alSaberQueEsVieja.delete(avisar)
+    },
+    laPestanaEsDeLaVersionAnterior,
+    () => false,
+  )
+}
+
 /**
  * El motivo de un `catch` que tiene el suyo («revisa la conexión y elígelo otra
  * vez»), salvo en una pestaña de antes del último despliegue: ahí reintentar no
  * sirve, y se dice que hay que recargar (vigesimoctava pasada).
  */
-export const motivoDelFallo = (e: unknown, motivo: string) => (unstable_isUnrecognizedActionError(e) ? SE_ACTUALIZO_EL_SISTEMA : motivo)
+export const motivoDelFallo = (e: unknown, motivo: string) => (esDeLaVersionAnterior(e) ? SE_ACTUALIZO_EL_SISTEMA : motivo)
 
 /**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
@@ -56,7 +93,7 @@ export function explicarFallo(e: unknown): string {
   unstable_rethrow(e)
   if (e instanceof OtraCuentaEnLaPestana) return e.message
   console.error(e)
-  if (unstable_isUnrecognizedActionError(e)) return SE_ACTUALIZO_EL_SISTEMA
+  if (esDeLaVersionAnterior(e)) return SE_ACTUALIZO_EL_SISTEMA
   if (e instanceof TypeError || (typeof navigator !== 'undefined' && !navigator.onLine)) return SIN_RESPUESTA
   return 'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
 }

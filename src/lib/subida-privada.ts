@@ -1,7 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
-import { unstable_isUnrecognizedActionError } from 'next/navigation'
 
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, esDeLaVersionAnterior, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { noGuardoNada } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 
@@ -113,7 +112,7 @@ export async function anotarSinDejarloSuelto<T = never>({
     // archivo se quita y se dice que hay que recargar. Antes, tras la pausa, cada
     // intento decía «No quedó registrado: no llegó la respuesta. Vuelve a
     // intentar.» (crítica de la vigesimoctava pasada).
-    if (unstable_isUnrecognizedActionError(e)) {
+    if (esDeLaVersionAnterior(e)) {
       await quitarSiSuelto()
       return { ok: false, error: SE_ACTUALIZO_EL_SISTEMA }
     }
@@ -133,7 +132,7 @@ export async function anotarSinDejarloSuelto<T = never>({
       otraVez = await anotar()
     } catch (e) {
       otraVez = null
-      vieja = unstable_isUnrecognizedActionError(e)
+      vieja = esDeLaVersionAnterior(e)
     }
     if (otraVez?.ok) return otraVez
     // Quitado quiere decir que ninguna fila lo nombraba: no quedó, y lo que
@@ -195,6 +194,9 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
   // Antes de tocar Storage: la cadena pudo empezar con la cuenta de la pantalla
   // y llegar aquí con la de otra pestaña.
   seguirConLaCuentaDeLaPestana()
+  // La pestaña ya se sabe de antes del último despliegue: la acción que lo
+  // anotaría no existe, así que ni se sube (trigésima pasada).
+  if (laPestanaEsDeLaVersionAnterior()) return { ok: false, error: SE_ACTUALIZO_EL_SISTEMA }
   const supabase = createClient()
   const clave = `${bucket}/${ruta}`
   const documento = `${bucket}/${ruta.replace(/\.[^./]+$/, '')}`

@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, ClipboardList, FileSpreadsheet } from 'lucide-react'
+import { CheckCircle2, ClipboardList, FileSpreadsheet, RotateCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { laPestanaEsDeOtraCuenta, motivoDelFallo, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
@@ -65,6 +65,8 @@ export function ConteoInicial() {
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
   // Las que no salieron porque entró otra cuenta: si son todas, se dice con qué se envían.
   const porLaOtraCuenta = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_OTRA_CUENTA).length
+  // Las que no salieron porque la pestaña es de antes del despliegue: desde aquí no van a salir.
+  const porLaVersion = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_SE_ACTUALIZO).length
   const terminado = !registrando && Object.keys(resultados).length > 0
   const botonRegistrar = pendientes.length === 1 ? 'Registrar 1 material' : `Registrar ${pendientes.length} materiales`
 
@@ -151,10 +153,11 @@ export function ConteoInicial() {
             : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
         } catch (e) {
           // Una pestaña de antes del último despliegue: ni esta tanda ni las que
-          // siguen salen desde aquí (vigesimoctava pasada).
+          // siguen salen desde aquí (vigesimoctava pasada). La causa la dice una
+          // vez el resumen, no cada fila (vigesimonovena).
           const mensaje = motivoDelFallo(e, 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.')
           if (mensaje === SE_ACTUALIZO_EL_SISTEMA) {
-            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje }]))
+            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_SE_ACTUALIZO }]))
             setResultados((previos) => ({ ...previos, ...quedan }))
             break
           }
@@ -249,7 +252,9 @@ export function ConteoInicial() {
                         {f.errores.length > 0 && (
                           <ul className="mt-1 list-disc pl-4 text-xs text-peligro">{f.errores.map((e) => <li key={e}>{e}</li>)}</ul>
                         )}
-                        {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                        {r?.estado === 'error' && (
+                          <p role={r.mensaje === NO_SALIO_SE_ACTUALIZO ? undefined : 'alert'} className="mt-1 text-xs text-peligro">{r.mensaje}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 sm:justify-end">
                         {f.estado === 'LISTA' && !r && <Insignia tono={f.via === 'SALDO_INICIAL' ? 'exito' : 'info'}>{f.via === 'SALDO_INICIAL' ? 'Saldo inicial' : 'Ajuste'}</Insignia>}
@@ -274,13 +279,21 @@ export function ConteoInicial() {
                   {hechas === 0 ? 'No se registró ningún material' : hechas === 1 ? 'Se registró 1 material' : `Se registraron ${hechas} materiales`}
                   {!fallidas
                     ? '.'
-                    : fallidas === porLaOtraCuenta
+                    : porLaVersion > 0
+                      ? `; ${porLaVersion === 1 ? '1 no salió' : `${porLaVersion} no salieron`} porque el sistema se actualizó mientras tenías la pantalla abierta${fallidas > porLaVersion ? ` (${fallidas - porLaVersion} más, por el motivo de cada uno)` : ''}. Vuelve a cargar la pantalla y elige el archivo otra vez: lo registrado no se duplica.`
+                      : fallidas === porLaOtraCuenta
                       ? `; ${fallidas === 1 ? '1 no salió' : `${fallidas} no salieron`} porque entró otra cuenta: «${botonRegistrar}» ${fallidas === 1 ? 'lo envía' : 'los envía'}.`
                       : `; ${fallidas} no: revisa el mensaje de cada uno.`}
                 </AvisoEnfocado>
               )}
               <div className="flex flex-wrap gap-2">
-                {pendientes.length > 0 && !registrando && <Boton onClick={registrar}>{botonRegistrar}</Boton>}
+                {/* Desde una pestaña vieja, «Registrar» volvería a fallar igual. */}
+                {pendientes.length > 0 && !registrando && !porLaVersion && <Boton onClick={registrar}>{botonRegistrar}</Boton>}
+                {porLaVersion > 0 && !registrando && (
+                  <Boton onClick={() => window.location.reload()}>
+                    <RotateCw aria-hidden className="size-4" />Volver a cargar la pantalla
+                  </Boton>
+                )}
                 {registrando && <Boton cargando disabled>Registrando</Boton>}
                 {terminado && <Boton variante={pendientes.length > 0 ? 'contorno' : 'primario'} onClick={cerrar}>Cerrar</Boton>}
               </div>
