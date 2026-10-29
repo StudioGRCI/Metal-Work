@@ -275,17 +275,19 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
   mira antes.
 - **Una pestaña de antes del último despliegue no se recarga sola, y lo dice
-  arriba** (vigesimonovena y trigésima). En esa pestaña `router.refresh()` no
+  arriba** (vigesimonovena a trigesimoprimera). En esa pestaña `router.refresh()` no
   repinta: recarga el documento entero (Next ve otra compilación), y se llevaba
   lo escrito y dejaba suelta la foto ya subida del reporte diario. Las acciones
   **casi siempre conservan su id** entre despliegues (la clave dura 14 días en
   `.next/cache` y Vercel la conserva), así que no basta con esperar un 404: la
-  pregunta por los avisos (`contarAvisosSinLeer`, al volver tras 30 s y cada
+  pregunta por los avisos (`contarAvisosYDespliegue`, al volver tras 30 s y cada
   minuto) trae de qué despliegue es el servidor (`compilacionDelServidor`) y
   `RefrescoAlVolver` la compara con la de la pantalla. La pestaña queda en uno de
   tres estados (`useVersionDeLaPestana`): `al-dia`; `nueva`, otro despliegue con
-  las acciones vivas, que dice arriba «El sistema se actualizó… Termina lo que
-  estás haciendo y vuelve a cargar la pantalla para ver lo nuevo.»; y `vieja`,
+  las acciones vivas, que dice arriba «El sistema se actualizó… Lo que envíes
+  todavía entra, pero al enviarlo la pantalla se vuelve a cargar y se pierde lo
+  que tengas a medio escribir en otra parte de ella. Envía una cosa a la vez…»
+  (no «Termina lo que estás haciendo»: terminar una cosa se llevaba la otra); y `vieja`,
   la acción ya no existe (el primer `UnrecognizedActionError` pasa por
   `esDeLaVersionAnterior`, el único camino: nunca la función de Next directo),
   «…lo que envíes desde aquí no va a entrar…». En los dos deja de repintar.
@@ -296,19 +298,26 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   un envío que ya lo dice junto a su botón, sin región: se oía dos veces. Una
   `Ventana` abierta o que se abre en la pestaña vieja lo dice arriba de su
   contenido (`data-ventana-vieja`), en una región si llega con ella abierta y
-  en su `aria-describedby` si ya se sabía al abrirla. «Volver a cargar» quita
-  antes lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`, hasta
-  4 s). Ya sabida vieja, nada sube a Storage: los ayudantes del navegador
+  en su `aria-describedby` si ya se sabía al abrirla; con una ventana abierta,
+  el aviso de arriba sale sin región, para que se oiga una vez. «Volver a
+  cargar» espera a que vuelva lo que está en camino (`mientrasSeEnvia`, hasta
+  10 s, y 4 s más si ese envío navega o recarga) y quita antes lo que la
+  pantalla subió y nadie va a nombrar (`alVolverACargar`, hasta 4 s): sin
+  esperar, borraba la foto del reporte que el servidor estaba guardando. Ya
+  sabida vieja, nada sube a Storage: los ayudantes del navegador
   (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
   nueva, la cotización, el plano por área, la salida de la planilla y las fotos
   miran `laPestanaEsDeLaVersionAnterior()` antes de tocarlo. La foto que se
   elige dice «No se subió: el sistema se actualizó. Vuelve a cargar la pantalla y
   elígela otra vez.», sin «Reintentar», y las ya subidas se quitan en el acto
-  (`quitarAlSaberseVieja`): quedan en la lista sin miniatura, «Se quitó», con
-  una sola alerta para todas, y debajo «Vuelve a cargar la pantalla para subir
-  el reporte.» en vez de «Quita o vuelve a subir». El reporte diario, que no
-  pasa por `conFotos`, al enviar quita sus fotos y pide elegirlas otra vez
-  (`SE_ACTUALIZO_CON_FOTOS`). Una tanda cortada (el conteo inicial, la planilla)
+  (`quitarAlSaberseVieja`): quedan en la lista con su miniatura del disco y
+  «Se quitó» encima, sin «Reintentar», con una sola alerta para todas, y debajo
+  «Vuelve a cargar la pantalla para subir el reporte.» en vez de «Quita o
+  vuelve a subir». El reporte diario, que no pasa por `conFotos`, al enviar
+  quita sus fotos y pide elegirlas otra vez (`SE_ACTUALIZO_CON_FOTOS`); las de
+  un envío en camino o en duda no se quitan nunca (`esDeUnEnvio`), y si el
+  último quedó en duda dice «No se sabe si entró el reporte que enviaste:
+  búscalo en Reportes diarios…» en vez de pedirlas otra vez. Una tanda cortada (el conteo inicial, la planilla)
   dice la causa una vez, en el resumen que recibe el cursor; cada fila, «No
   salió: el sistema se actualizó.» sin alerta propia (eran N alertas iguales a
   la vez), y en vez de «Registrar», que fallaría igual, «Volver a cargar la
@@ -316,8 +325,13 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   la vez recargar y «vuelve a enviar sin cambiar el archivo». Un `catch` con su
   propio «Vuelve a intentar» pasa por `motivoDelFallo`: reintentar desde esa
   pestaña no entra nunca (la cotización con cliente nuevo). En `nueva`, un envío
-  que revalida entra y después Next recarga el documento: lo guardado está, el
-  verde se pierde; solo Skew Protection de Vercel lo evita.
+  que revalida entra y después Next recarga el documento: lo guardado está, y
+  se pierden el verde y lo que hubiera a medio escribir en otra parte de la
+  pantalla; solo Skew Protection de Vercel lo evita. Por eso lo que se envía
+  por partes no revalida en cada una: la planilla del kardex y el conteo
+  inicial ponen al día el kardex al cerrar su ventana (cortaban la planilla en
+  la primera fila), y la campana y la lista de avisos, en `nueva`, pintan lo
+  leído desde el navegador (`useAvisos`, la acción le dice `otroDespliegue`).
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que

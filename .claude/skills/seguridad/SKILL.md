@@ -152,7 +152,7 @@ En la misma migración que la crea, sin excepción:
   trigésima). Que el id de la acción cambie no es lo de siempre: la clave dura
   14 días y Vercel la conserva, así que el despliegue de todos los días se
   reconoce por la compilación que contesta el servidor
-  (`compilacionDelServidor`, en `contarAvisosSinLeer`), no por un 404. Antes unas pantallas lo dejaban
+  (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
   repetido —en la función, por su id **con la misma ruta y la misma persona**;

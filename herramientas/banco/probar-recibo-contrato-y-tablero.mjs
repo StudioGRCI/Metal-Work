@@ -429,7 +429,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       pagina.waitForEvent('load', { timeout: 30000 }),
       pagina.locator(TRABA).getByRole('button', { name: 'Recargar la pantalla' }).click(),
     ])
-    await pagina.waitForLoadState('networkidle')
+    // Cargada, y como mucho 15 s de red quieta: a veces Chromium deja en cola un
+    // pedido adelantado y la red no se queda quieta nunca (pasó en dos pasadas).
+    await pagina.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
     const recargada = new URL(pagina.url()).pathname
     const sinPermiso = {
       dice: limpio(await pagina.locator('main').innerText().catch(() => '')),

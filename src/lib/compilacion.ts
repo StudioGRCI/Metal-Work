@@ -19,6 +19,17 @@ export function compilacionDelServidor() {
   return leida
 }
 
+/**
+ * Si la pantalla que llama se pintó con otro despliegue (`deLaPestana`, la que
+ * anotó `RefrescoAlVolver`). Ahí revalidar no repinta: Next ve otra
+ * compilación en la respuesta y recarga el documento entero. Sin una de las
+ * dos no se sabe, y se repinta como antes.
+ */
+export function esDeOtroDespliegue(deLaPestana: unknown) {
+  const delServidor = compilacionDelServidor()
+  return typeof deLaPestana === 'string' && deLaPestana !== '' && delServidor !== null && deLaPestana !== delServidor
+}
+
 function leerBuildId() {
   try {
     return readFileSync(join(/* turbopackIgnore: true */ process.cwd(), '.next', 'BUILD_ID'), 'utf8').trim() || null

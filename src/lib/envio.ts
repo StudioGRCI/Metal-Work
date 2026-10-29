@@ -73,7 +73,8 @@ function anotarVersion(siguiente: VersionDeLaPestana) {
  * y de paso deja anotado que esta pestaña es de antes del despliegue. Todo
  * `catch` que lo mire pasa por aquí, no por la función de Next. Con
  * `sinAvisoPropio` (el refresco al volver, la pregunta al abrir una ventana),
- * quien llama no dice nada y lo anuncia el aviso de arriba.
+ * quien llama no dice nada: lo anuncia la ventana abierta, si la hay
+ * (`SeActualizoEnLaVentana`), o el aviso de arriba.
  */
 export function esDeLaVersionAnterior(e: unknown, { sinAvisoPropio = false } = {}) {
   if (!unstable_isUnrecognizedActionError(e)) return false
@@ -90,6 +91,19 @@ export const laPestanaEsDeLaVersionAnterior = () => version.estado === 'vieja'
 
 /** Hubo un despliegue: aquí `router.refresh()` recargaría el documento entero. */
 export const laPestanaEsDeOtroDespliegue = () => version.estado !== 'al-dia'
+
+/**
+ * La compilación con que se pintó la pantalla (la anota `RefrescoAlVolver`). La
+ * lleva la acción que, si el servidor es de otro despliegue, no revalida: ahí
+ * Next recargaría el documento entero (`marcarAvisoLeido`).
+ */
+let compilacionDeLaPestana: string | null = null
+
+export function anotarLaCompilacionDeLaPestana(compilacion: string | null) {
+  compilacionDeLaPestana ??= compilacion
+}
+
+export const laCompilacionDeLaPestana = () => compilacionDeLaPestana
 
 /** Avisa cada vez que cambia lo que la pestaña sabe del despliegue. Devuelve con qué dejar de avisar. */
 export const vigilarLaVersion = (avisar: () => void) => {
@@ -118,10 +132,52 @@ export function alVolverACargar(quitar: () => unknown) {
   return () => void antesDeRecargar.delete(quitar)
 }
 
-/** Recarga la pantalla después de lo de `alVolverACargar`, con un tope: sin red, recarga igual. */
+/**
+ * Los envíos que todavía no vuelven (`mientrasSeEnvia`). «Volver a cargar» los
+ * espera: con el reporte diario en camino quitaba la foto que ese envío
+ * nombraba, el reporte no entraba y la pantalla recargaba vacía, sin aviso; y
+ * si entraba, la pantalla vacía invitaba a subirlo otra vez (trigesimoprimera
+ * pasada).
+ */
+let enviosEnCamino = 0
+let alVolverLosEnvios: Array<() => void> = []
+
+export async function mientrasSeEnvia<T>(enviar: () => Promise<T>): Promise<T> {
+  enviosEnCamino++
+  try {
+    return await enviar()
+  } finally {
+    enviosEnCamino--
+    if (enviosEnCamino === 0) {
+      const ahora = alVolverLosEnvios
+      alVolverLosEnvios = []
+      for (const listo of ahora) listo()
+    }
+  }
+}
+
+const losEnviosVolvieron = () =>
+  enviosEnCamino === 0 ? Promise.resolve() : new Promise<void>((listo) => alVolverLosEnvios.push(listo))
+
+// Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
+// carga entera, y «Volver a cargar» no recarga encima la de antes.
+let seVaDeLaPantalla = false
+
+function anotarQueSeVa() {
+  if (laPestanaEsDeOtroDespliegue()) seVaDeLaPantalla = true
+}
+
+/**
+ * Recarga la pantalla después de lo de `alVolverACargar`. Antes espera a los
+ * envíos en camino; si uno entró y lleva a otra pantalla, le da tiempo a Next
+ * para ir a ella. Todo con tope: sin red, recarga igual.
+ */
 export async function volverACargar() {
+  const tope = (ms: number) => new Promise((listo) => setTimeout(listo, ms))
+  await Promise.race([losEnviosVolvieron(), tope(10_000)])
+  if (seVaDeLaPantalla) await tope(4000)
   const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
-  await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
+  await Promise.race([quitar, tope(4000)])
   window.location.reload()
 }
 
@@ -242,7 +298,7 @@ export function useAccion<T = never>(
     setResultado(null)
     const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
 
-    iniciar(async () => {
+    iniciar(() => mientrasSeEnvia(async () => {
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true
@@ -269,6 +325,7 @@ export function useAccion<T = never>(
             mensaje = explicarFallo(e)
           } catch (deNext) {
             soltar = false
+            anotarQueSeVa()
             throw deNext
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
@@ -278,7 +335,10 @@ export function useAccion<T = never>(
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
         // devuelve nada: Next ya está navegando a la pantalla nueva.
-        if (!salida) return
+        if (!salida) {
+          anotarQueSeVa()
+          return
+        }
         setResultado(salida)
         if (!salida.ok) {
           despuesDelRechazo(salida, ventana, false)
@@ -291,7 +351,7 @@ export function useAccion<T = never>(
       } finally {
         if (soltar) enCurso.current = false
       }
-    })
+    }))
   }
 
   return {
@@ -864,7 +924,10 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  * que entró y se llevaría la traba. Espera a que vuelva la de la pantalla.
  */
 export function navegarSiEsDeLaPestana(router: { push(url: string): void }, url: string) {
-  if (!laPestanaEsDeOtraCuenta()) return router.push(url)
+  if (!laPestanaEsDeOtraCuenta()) {
+    anotarQueSeVa()
+    return router.push(url)
+  }
   const ir = () => startTransition(() => router.push(url))
   navegaciones.add(ir)
   cuandoVuelvaLaCuenta(ir)

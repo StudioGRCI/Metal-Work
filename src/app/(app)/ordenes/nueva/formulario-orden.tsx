@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -164,7 +164,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     enCurso.current = true
     setError(null)
     setErrorNumero(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la orden vuelva.
+    iniciar(() => mientrasSeEnvia(async () => {
       const supabase = createClient()
       // El PDF viaja a la carpeta de la orden antes de que exista; la base
       // registra la orden y su PDF juntos, o ninguno.
@@ -224,7 +226,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       } finally {
         if (!listo) enCurso.current = false
       }
-    })
+    }))
   }
 
   return (

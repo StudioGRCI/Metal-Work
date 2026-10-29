@@ -11,7 +11,7 @@ import { avisosSinLeer } from '@/lib/datos/notificaciones'
 import { pendientesGlobales } from '@/lib/datos/pendientes-globales'
 import { exigirSesion } from '@/lib/sesion'
 
-import { contarAvisosSinLeer } from './acciones-avisos'
+import { contarAvisosYDespliegue } from './acciones-avisos'
 
 export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
   const perfil = await exigirSesion()
@@ -26,7 +26,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <CuentaDeLaPestana usuario={perfil.id} puesto={perfil.puesto} nombre={`${perfil.nombres} ${perfil.apellidos}`} />
       <BarraSuperior />
       <AvisoInstalar />
-      <RefrescoAlVolver sinLeer={sinLeer} compilacion={compilacionDelServidor()} contar={contarAvisosSinLeer} />
+      <RefrescoAlVolver sinLeer={sinLeer} compilacion={compilacionDelServidor()} contar={contarAvisosYDespliegue} />
       <div className="flex flex-1">
         <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta} sinComprobar={pendientes.sinComprobar}>
           <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />

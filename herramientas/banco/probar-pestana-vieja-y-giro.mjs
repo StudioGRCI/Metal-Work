@@ -84,8 +84,27 @@
  *       pestaña vieja y lo dice dentro; abierta otra vez, nace con el aviso.
  *   1k. El PDF de la orden: la segunda vez, ya sabida vieja, ni sube.
  *
+ * Y lo que dejó la trigesimoprimera, también en el despliegue que conserva los
+ * ids (la pestaña «nueva»), donde casi todo envío repinta y Next recarga el
+ * documento entero:
+ *
+ *   1e. La foto quitada al saberse vieja la pestaña conserva su miniatura, con
+ *       «Se quitó» encima: con tres eran tres cuadros iguales.
+ *   1f-conserva. La planilla del kardex con un ingreso y dos salidas entra
+ *       entera: cada fila repintaba, y Next recargaba a mitad de la planilla.
+ *   1j. Con la ventana abierta, solo la ventana lo anuncia; arriba, sin región.
+ *   1l. «Marcar todos leídos» y un aviso de la campana no recargan la pantalla
+ *       ni se llevan el reporte a medio llenar, se sepa o no todavía que hubo
+ *       un despliegue; la campana los pinta leídos.
+ *   1m. «Volver a cargar» con el reporte en camino lo espera: el reporte entra
+ *       con su foto y lleva a él. Antes quitaba la foto y el reporte no entraba.
+ *   1n. El reporte que no se sabe si entró, en la pestaña que se sabe vieja:
+ *       su foto no se quita ni dice «Se quitó», y debajo se pide buscarlo antes
+ *       de subirlo otra vez.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
- * SOLO=1a,2 corre solo esas partes (1i son 1i-volver, 1i-sondeo y 1i-sin-senal).
+ * SOLO=1a,2 corre solo esas partes (1i son 1i-volver, 1i-sondeo y 1i-sin-senal;
+ * 1f también corre 1f-conserva).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -203,12 +222,16 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   // así que el servidor nuevo conoce las acciones de la pestaña: no se cambia
   // el id, y lo que cambia es la compilación que dicen sus respuestas (la
   // cabecera, y en el cuerpo la `b` de Next y la que contesta
-  // contarAvisosSinLeer). La de la pantalla se lee de la página al entrar.
+  // contarAvisosYDespliegue). La de la pantalla se lee de la página al entrar,
+  // y la que la pestaña manda (la campana) sale como la de antes.
+  //
+  // `perder`: la respuesta de la acción cuyo cuerpo lo lleva no llega, como
+  // con la señal que se corta después de que el servidor guardó.
   const cdp = await contexto.newCDPSession(pagina)
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0 }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -220,6 +243,14 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
     if (e.responseStatusCode !== undefined || e.responseErrorReason !== undefined) {
       const responder = (extra = {}) => cdp.send('Fetch.continueResponse', { requestId: e.requestId, ...extra }).catch(() => seguir())
+      if (h['next-action'] && corte.perder && !e.responseErrorReason) {
+        const enviado = cuerpo(e.request)
+        if (!enviado || enviado.includes(corte.perder)) {
+          corte.perder = null
+          corte.perdidas++
+          return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => responder())
+        }
+      }
       if (!corte.despliegue || e.responseErrorReason) return responder()
       const responseHeaders = [...(e.responseHeaders ?? []).filter((x) => x.name.toLowerCase() !== 'x-nextjs-deployment-id'), { name: 'x-nextjs-deployment-id', value: 'compilacion-nueva' }]
       if (h['next-action']) {
@@ -253,7 +284,13 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
       corte.retenidas++
       await new Promise((listo) => corte.esperan.push(listo))
     }
-    if (!corte.despliegue || corte.conservaIds) return seguir()
+    if (!corte.despliegue) return seguir()
+    if (corte.conservaIds) {
+      // La compilación que manda la pestaña (la campana) es la de antes del despliegue.
+      const enviado = cuerpo(e.request)
+      if (!corte.compilacion || !enviado.includes(corte.compilacion)) return seguir()
+      return seguir({ postData: Buffer.from(enviado.split(corte.compilacion).join('compilacion-vieja')).toString('base64') })
+    }
     const headers = Object.entries(e.request.headers).map(([name, value]) => ({ name, value: name.toLowerCase() === 'next-action' ? ID_VIEJO : value }))
     return seguir({ headers })
   })
@@ -309,7 +346,7 @@ const avisoDeArriba = async (pagina) => limpio(await pagina.locator('[data-pesta
 const TEXTO_VIEJA =
   'El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde aquí no va a entrar. Copia lo que tengas escrito y vuelve a cargar la pantalla.'
 const TEXTO_NUEVA =
-  'El sistema se actualizó mientras tenías la pantalla abierta. Termina lo que estás haciendo y vuelve a cargar la pantalla para ver lo nuevo.'
+  'El sistema se actualizó mientras tenías la pantalla abierta. Lo que envíes todavía entra, pero al enviarlo la pantalla se vuelve a cargar y se pierde lo que tengas a medio escribir en otra parte de ella. Envía una cosa a la vez y vuelve a cargar la pantalla para ver lo nuevo.'
 const TEXTO_VENTANA =
   'El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde esta ventana no va a entrar. Copia lo que tengas escrito y vuelve a cargar la pantalla.'
 /** Anota si la región del aviso de arriba nació vacía: la que nace con su texto el lector no la lee. */
@@ -631,7 +668,7 @@ if (corre('1d')) {
 }
 
 // ------------------------------------------- 1e y 1i. El reporte diario a medio llenar (Maestranza, a 390)
-if (corre('1e') || corre('1i-volver') || corre('1i-sondeo') || corre('1i-sin-senal')) {
+if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n'].some(corre)) {
   // Una persona de Maestranza para el trabajo, como la dejaría RR. HH.; al
   // final se le pone su costo y se da de baja. Para enviar no hace falta.
   const persona = `Pedro ${sello}`
@@ -666,7 +703,7 @@ if (corre('1e') || corre('1i-volver') || corre('1i-sondeo') || corre('1i-sin-sen
     await pagina.locator('main h1').first().click()
   }
   // La foto a la vista: su miniatura. Al quitarla por la pestaña vieja queda
-  // en la lista sin miniatura, diciendo «Se quitó».
+  // en la lista con su miniatura y «Se quitó» encima.
   const miniaturas = (pagina) => pagina.locator('main img[alt^="vieja-d-"]').count()
   const subirReporte = (pagina) => pagina.getByRole('button', { name: 'Subir reporte' })
 
@@ -714,9 +751,9 @@ if (corre('1e') || corre('1i-volver') || corre('1i-sondeo') || corre('1i-sin-sen
     const alerta = limpio(await pagina.locator('[data-fotos-quitadas]').innerText().catch(() => ''))
     const alertas = await pagina.locator('main [role="alert"]').filter({ hasText: /se quitó|se quitaron/ }).count()
     const tarjeta = limpio(await pagina.locator('main').getByText('Se quitó', { exact: true }).first().innerText().catch(() => ''))
-    comprobar(Boolean(ruta) && quitada && (await miniaturas(pagina)) === 0 && tarjeta === 'Se quitó'
+    comprobar(Boolean(ruta) && quitada && (await miniaturas(pagina)) === 1 && tarjeta === 'Se quitó'
       && alerta === 'La foto ya subida se quitó: el sistema se actualizó. Vuelve a cargar la pantalla y elígela otra vez.' && alertas === 1,
-      `[Maestranza 390] 1e. la foto ya subida se quita de Storage en el acto y queda sin miniatura, con una sola alerta que pide elegirla otra vez («${alerta}»; quitada ${quitada}, ${alertas} alerta)`)
+      `[Maestranza 390] 1e. la foto ya subida se quita de Storage en el acto y queda con su miniatura y «Se quitó» encima, con una sola alerta que pide elegirla otra vez («${alerta}»; quitada ${quitada}, ${alertas} alerta)`)
     const ayuda = await pagina.getByText('Vuelve a cargar la pantalla para subir el reporte.', { exact: true }).count()
     comprobar(ayuda === 1 && (await pagina.getByText(/Quita o vuelve a subir/).count()) === 0 && (await subirReporte(pagina).isDisabled()) && (await reportes()) === 0,
       `[Maestranza 390] 1e. debajo dice «Vuelve a cargar la pantalla para subir el reporte.», no «Quita o vuelve a subir», y «Subir reporte» no se deja tocar`)
@@ -785,7 +822,7 @@ if (corre('1e') || corre('1i-volver') || corre('1i-sondeo') || corre('1i-sin-sen
     comprobar(corte.reescritas > 0 && corte.documentos === d0 && corte.rsc === r0 && mismo && escrito === asunto,
       `[Maestranza 390] 1i. el servidor nuevo contesta la pregunta (${corte.reescritas} respuestas de otra compilación) y la pantalla no se recarga ni se repinta: lo escrito sigue (${corte.rsc - r0} pedidos RSC, ${corte.documentos - d0} documentos)`)
     comprobar(arriba === `${TEXTO_NUEVA} Volver a cargar` && (await pagina.locator('[data-pestana-vieja="nueva"]').count()) === 1,
-      `[Maestranza 390] 1i. arriba dice que el sistema se actualizó y que termine lo que está haciendo («${arriba}»)`)
+      `[Maestranza 390] 1i. arriba dice que el sistema se actualizó: lo que envíe entra, pero la pantalla se vuelve a cargar («${arriba}»)`)
     const region = await regionDeArriba(pagina)
     comprobar(region.rol === 'status' && region.vacia === true,
       `[Maestranza 390] 1i. en una región role=status montada antes que su texto (role ${region.rol}, vacía primero ${region.vacia})`)
@@ -874,6 +911,155 @@ if (corre('1e') || corre('1i-volver') || corre('1i-sondeo') || corre('1i-sin-sen
     comprobar(errores.length === 0, `[Maestranza 390] 1i. sin señal y al enviar, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }
+  // 1l. La campana en la pestaña de otro despliegue: marcar lo leído no
+  // revalida, así que Next no recarga. Antes «Marcar todos leídos» se llevaba el
+  // reporte a medio llenar y dejaba suelta su foto (D7 de la trigesimoprimera).
+  // Los avisos los dejan los disparadores; aquí se siembran.
+  const sinLeer = async () => Number((await consulta(`select count(*) n from notificaciones where usuario_id = $1 and leida_en is null`, [yo]))[0].n)
+  const sembrarAvisos = (n, de) =>
+    consulta(`insert into notificaciones (usuario_id, titulo, cuerpo) select $1, $2 || ' ' || g, 'Sembrado por probar-pestana-vieja-y-giro' from generate_series(1, $3) g`, [yo, de, n])
+  const campana = (pagina) => pagina.getByRole('button', { name: /^Avisos/ })
+  if (corre('1l')) {
+    const titulo = `Aviso de la pestaña nueva ${sello}`
+    await sembrarAvisos(2, titulo)
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    await marcarDocumento(pagina)
+    const d0 = corte.documentos
+    corte.despliegue = true
+    corte.conservaIds = true
+    await salirYVolver(pagina)
+    await hasta(() => pagina.locator('[data-pestana-vieja="nueva"]').count(), (n) => n === 1, 15000)
+    const n0 = await sinLeer()
+    // Un aviso sin pantalla a la que ir: se marca, la campana se cierra y nada se recarga.
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: new RegExp(`^${titulo} 1`) }).click()
+    await hasta(sinLeer, (n) => n === n0 - 1, 10000)
+    await pagina.waitForTimeout(1500)
+    const etiqueta1 = await campana(pagina).getAttribute('aria-label')
+    comprobar((await mismoDocumento(pagina)) && corte.documentos === d0 && (await pagina.inputValue('#rd-asunto')) === asunto && etiqueta1 === `Avisos, ${n0 - 1} sin leer`,
+      `[Maestranza 390] 1l. en la pestaña «nueva», tocar un aviso lo marca leído sin recargar: lo escrito sigue y la campana baja a ${n0 - 1} («${etiqueta1}»)`)
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: 'Marcar todos leídos' }).click()
+    await hasta(sinLeer, (n) => n === 0, 10000)
+    await pagina.waitForTimeout(1500)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1l-campana.png'), fullPage: true })
+    const mismo = await mismoDocumento(pagina)
+    const etiqueta = await campana(pagina).getAttribute('aria-label')
+    const negritas = await pagina.locator('#panel-avisos p.font-semibold').count()
+    comprobar(mismo && corte.documentos === d0 && (await pagina.inputValue('#rd-asunto')) === asunto && (await miniaturas(pagina)) === 1 && (await existe('fotos-reporte-diario', ruta)),
+      `[Maestranza 390] 1l. «Marcar todos leídos» no recarga: lo escrito y la foto siguen (mismo documento ${mismo}, ${corte.documentos - d0} documentos)`)
+    comprobar(etiqueta === 'Avisos' && negritas === 0 && (await pagina.locator('#panel-avisos').getByRole('button', { name: 'Marcar todos leídos' }).count()) === 0,
+      `[Maestranza 390] 1l. y la campana los pinta leídos sin repintar la pantalla («${etiqueta}», ${negritas} sin leer en la lista)`)
+    await pagina.getByRole('button', { name: 'Cerrar notificaciones' }).click()
+    // Y el reporte todavía entra, con su foto.
+    await Promise.all([
+      pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {}),
+      subirReporte(pagina).click(),
+    ])
+    const [rd] = await consulta(`select count(*)::int n from reporte_diario_fotos where ruta = $1`, [ruta])
+    comprobar(rd?.n === 1, `[Maestranza 390] 1l. después, el reporte entra con su foto (${new URL(pagina.url()).pathname})`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1l. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+  // 1l. Lo mismo antes de que la pestaña sepa del despliegue (sigue «al día»):
+  // la respuesta de la acción lo dice, y arriba aparece el aviso.
+  if (corre('1l')) {
+    await sembrarAvisos(1, `Aviso sin saberlo ${sello}`)
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, false)
+    await marcarDocumento(pagina)
+    const d0 = corte.documentos
+    corte.despliegue = true
+    corte.conservaIds = true
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: 'Marcar todos leídos' }).click()
+    await hasta(sinLeer, (n) => n === 0, 10000)
+    const arriba = limpio(await hasta(() => avisoDeArriba(pagina), Boolean, 10000))
+    await pagina.waitForTimeout(1500)
+    const mismo = await mismoDocumento(pagina)
+    comprobar(mismo && corte.documentos === d0 && (await pagina.inputValue('#rd-asunto')) === asunto && arriba.startsWith(TEXTO_NUEVA) && (await campana(pagina).getAttribute('aria-label')) === 'Avisos',
+      `[Maestranza 390] 1l. sin saberse todavía del despliegue, «Marcar todos leídos» no recarga, la campana queda en cero y arriba lo dice (mismo documento ${mismo})`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1l. sin saberlo, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // 1m. «Volver a cargar» con el reporte en camino: espera a que vuelva, y como
+  // entró, lleva a él. Antes quitaba la foto que el envío nombraba, el servidor
+  // no la encontraba y la pantalla recargaba vacía (Importante 1 de la
+  // trigesimoprimera). La acción se retiene antes de salir, como el servidor en frío.
+  if (corre('1m')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    corte.despliegue = true
+    corte.conservaIds = true
+    await salirYVolver(pagina)
+    await hasta(() => pagina.locator('[data-pestana-vieja="nueva"]').count(), (n) => n === 1, 15000)
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    corte.marca = asunto
+    await subirReporte(pagina).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 15000)
+    await pagina.locator('[data-pestana-vieja]').getByRole('button', { name: 'Volver a cargar' }).click()
+    await pagina.waitForTimeout(2000)
+    const esperando = (await mismoDocumento(pagina)) && (await existe('fotos-reporte-diario', ruta))
+    await Promise.all([
+      pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {}),
+      corte.soltar(),
+    ])
+    await quieta(pagina)
+    const [rd] = await consulta(
+      `select r.id, (select count(*)::int from reporte_diario_fotos f where f.reporte_id = r.id and f.ruta = $2) as fotos
+       from reportes_diarios r where r.asunto = $1 order by r.creado_en desc limit 1`,
+      [asunto, ruta],
+    )
+    const llego = new URL(pagina.url()).pathname
+    comprobar(esperando, `[Maestranza 390] 1m. «Volver a cargar» con el reporte en camino espera: ni recarga ni quita la foto mientras tanto`)
+    comprobar((await reportes()) === n0 + 1 && rd?.fotos === 1 && (await existe('fotos-reporte-diario', ruta)) && llego === `/reportes-diarios/${rd?.id}`,
+      `[Maestranza 390] 1m. cuando vuelve, el reporte entró con su foto y la pantalla lleva a él (${llego})`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1m. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // 1n. El reporte que no se sabe si entró (la respuesta no llegó, y sí entró),
+  // en la pestaña que después se sabe vieja: su foto no se quita ni dice «Se
+  // quitó… elígela otra vez», que llevaba a subirlo dos veces con sus horas (F2
+  // de la trigesimoprimera). Debajo se pide buscarlo antes de subirlo otra vez.
+  if (corre('1n')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    const n0 = await reportes()
+    corte.perder = asunto
+    await subirReporte(pagina).click()
+    const sinRespuesta = limpio(await hasta(() => pagina.locator('main [role="alert"]').filter({ hasText: SIN_RESPUESTA }).allInnerTexts().then((t) => t.join(' ')), Boolean))
+    const entro = (await hasta(reportes, (n) => n === n0 + 1, 10000)) === n0 + 1
+    comprobar(corte.perdidas === 1 && Boolean(sinRespuesta) && entro, `[Maestranza 390] 1n. la respuesta no llega y el reporte sí entró («${sinRespuesta}»)`)
+    corte.despliegue = true
+    await salirYVolver(pagina)
+    await hasta(() => pagina.locator('[data-pestana-vieja="vieja"]').count(), (n) => n === 1, 15000)
+    await pagina.waitForTimeout(2000)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1n-en-duda.png'), fullPage: true })
+    const enDuda = await pagina.getByText('No se sabe si entró el reporte que enviaste: búscalo en Reportes diarios antes de volver a cargar la pantalla y subirlo otra vez.', { exact: true }).count()
+    comprobar((await existe('fotos-reporte-diario', ruta)) && (await pagina.locator('[data-fotos-quitadas]').count()) === 0 && (await pagina.locator('main').getByText('Se quitó', { exact: true }).count()) === 0 && enDuda === 1,
+      `[Maestranza 390] 1n. al saberse vieja, la foto del reporte en duda no se quita ni dice «Se quitó», y debajo se pide buscarlo antes de subirlo otra vez`)
+    await subirReporte(pagina).click()
+    const dice = limpio(await hasta(() => pagina.locator('main [role="alert"]').filter({ hasText: SE_ACTUALIZO }).allInnerTexts().then((t) => t.join(' ')), Boolean))
+    comprobar(dice === 'El sistema se actualizó mientras tenías la pantalla abierta. Copia lo escrito y vuelve a cargar la pantalla.' && (await existe('fotos-reporte-diario', ruta)) && (await reportes()) === n0 + 1,
+      `[Maestranza 390] 1n. «Subir reporte» otra vez no pide elegir las fotos de nuevo, y la foto del que entró sigue («${dice}»)`)
+    corte.despliegue = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1n. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
   // Su costo, como se lo pondría RR. HH.: las horas del reporte que entró pasan
   // al costeo, y el aviso de «Horas… que esperan su costo» no queda prendido
   // para probar-reporte-diario.
@@ -942,6 +1128,81 @@ if (corre('1f')) {
     `[Almacén 1280] 1f. una sola llamada, ningún movimiento y ninguna foto suelta (${corte.acciones - a0} llamada; Storage: ${enStorage.join(', ') || 'nada'})`)
   corte.despliegue = false
   comprobar(errores.length === 0, `[Almacén 1280] 1f. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1f-conserva. La planilla, tras el despliegue de todos los días
+// Un ingreso y dos salidas con su foto, en la pestaña que se sabe «nueva». Cada
+// fila repintaba el kardex, y Next, que veía otra compilación, recargaba el
+// documento a mitad de la planilla: la segunda salida no salía nunca, sin aviso
+// (trigesimoprimera pasada). Ahora se pone al día al cerrar.
+if (corre('1f-conserva')) {
+  const codigo = `QA-NUEVA-P-${sello}`
+  await materialPropio(codigo, `Disco de corte de la pestaña nueva ${sello}`)
+  const marca = `Planilla nueva ${sello}`
+  const movimientos = async () =>
+    (await consulta(`select tipo, foto_ruta from movimientos_materiales where documento_referencia like $1 order by registrado_en`, [`${marca}%`]))
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.almacen, undefined, { compilacion: true })
+  await ir(pagina, `${BASE}/almacen/kardex`)
+  const libro = new ExcelJS.Workbook()
+  await libro.xlsx.load(await (await pagina.request.get(`${BASE}/almacen/kardex/planilla`)).body())
+  let unidad = null
+  libro.getWorksheet('Unidades')?.eachRow((f, n) => {
+    if (n > 1 && !unidad && f.getCell(1).value) unidad = String(f.getCell(1).value)
+  })
+  const [a, m, d] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }).split('-').map(Number)
+  const fecha = new Date(Date.UTC(a, m - 1, d))
+  const ingresos = libro.getWorksheet('Ingresos')
+  ingresos.getCell(5, 1).value = fecha
+  ingresos.getCell(5, 3).value = codigo
+  ingresos.getCell(5, 6).value = 3
+  ingresos.getCell(5, 7).value = 'Ingreso general'
+  ingresos.getCell(5, 8).value = `${marca} I1`
+  const salidas = libro.getWorksheet('Salidas')
+  for (const fila of [5, 6]) {
+    salidas.getCell(fila, 1).value = fecha
+    salidas.getCell(fila, 3).value = codigo
+    salidas.getCell(fila, 6).value = 1
+    salidas.getCell(fila, 7).value = `${marca} S${fila - 4}`
+    salidas.getCell(fila, 8).value = unidad
+    salidas.getCell(fila, 9).value = 'Soldador de banco'
+  }
+  const llena = join(archivos, `planilla-nueva-${sello}.xlsx`)
+  await libro.xlsx.writeFile(llena)
+  await pagina.getByRole('button', { name: /sin internet/i }).first().click()
+  await pagina.getByRole('button', { name: /Cargar planilla/ }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('#planilla-archivo').setInputFiles(llena)
+  for (const [fila, foto] of [[5, fotos.a], [6, fotos.b]]) {
+    const campo = v.getByLabel(`Elegir la foto de la salida de la fila ${fila}`)
+    await campo.waitFor({ state: 'attached', timeout: 30000 })
+    await campo.setInputFiles(foto)
+  }
+  const boton = v.getByRole('button', { name: /^Registrar 3 movimientos/ })
+  await boton.waitFor({ timeout: 30000 })
+  await marcarDocumento(pagina)
+  const d0 = corte.documentos
+  // La pestaña se sabe «nueva», con el aviso de arriba que invita a terminar.
+  corte.despliegue = true
+  corte.conservaIds = true
+  await salirYVolver(pagina)
+  await hasta(() => pagina.locator('[data-pestana-vieja="nueva"]').count(), (n) => n === 1, 15000)
+  await boton.click()
+  const resumen = limpio(await hasta(() => pagina.evaluate(() => (document.activeElement?.getAttribute('role') === 'status' ? document.activeElement.textContent : '')), Boolean, 45000))
+  await pagina.waitForTimeout(3000)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1f-conserva.png') })
+  const entraron = await movimientos()
+  const mismo = await mismoDocumento(pagina)
+  comprobar(entraron.length === 3 && entraron.filter((x) => x.foto_ruta).length === 2 && mismo && corte.documentos === d0 && resumen === 'Se registraron 3 movimientos.',
+    `[Almacén 1280] 1f-conserva. tras el despliegue que conserva los ids, la planilla entra entera sin recargar la pantalla («${resumen}»; ${entraron.length} de 3, mismo documento ${mismo})`)
+  // Al cerrar, el kardex se pone al día: aquí Next recarga, como dice el aviso de arriba.
+  await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), v.locator('button', { hasText: /^Cerrar$/ }).click()])
+  await quieta(pagina)
+  comprobar(!(await mismoDocumento(pagina)), `[Almacén 1280] 1f-conserva. al cerrar, la pantalla se vuelve a cargar con lo registrado`)
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Almacén 1280] 1f-conserva. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 
@@ -1050,8 +1311,8 @@ if (corre('1j')) {
   const enRegion = await v.locator('[role="status"] [data-ventana-vieja]').count()
   const arriba = await avisoDeArriba(pagina)
   await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1j-ventana.png') })
-  comprobar(enVentana === TEXTO_VENTANA && enRegion === 1 && arriba.startsWith(TEXTO_VIEJA) && (await pagina.locator('[data-region-pestana-vieja]').count()) === 1,
-    `[Requerimientos 1280] 1j. al abrir «Nuevo requerimiento», la pregunta por el envío anterior descubre la pestaña vieja: la ventana lo dice en una región que lo anuncia, y arriba también («${enVentana}»)`)
+  comprobar(enVentana === TEXTO_VENTANA && enRegion === 1 && arriba.startsWith(TEXTO_VIEJA) && (await pagina.locator('[data-region-pestana-vieja]').count()) === 0,
+    `[Requerimientos 1280] 1j. al abrir «Nuevo requerimiento», la pregunta por el envío anterior descubre la pestaña vieja: la ventana lo dice en una región que lo anuncia, y arriba está sin región, para que no se oiga dos veces («${enVentana}»)`)
   corte.despliegue = false
   await pagina.keyboard.press('Escape')
   await hasta(() => v.count(), (n) => n === 0, 5000)
@@ -1065,6 +1326,30 @@ if (corre('1j')) {
     `[Requerimientos 1280] 1j. abierta otra vez, la ventana nace con el aviso, sin región, y su aria-describedby lo nombra («${describe}»)`)
   await pagina.keyboard.press('Escape')
   comprobar(errores.length === 0, `[Requerimientos 1280] 1j. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// 1j. El otro camino: con la ventana abierta y a medio llenar, se sale y se
+// vuelve tras 31 s, y la pregunta por los avisos descubre la pestaña vieja.
+// Solo la ventana lo anuncia (trigesimoprimera pasada: las dos regiones
+// recibían su texto en el mismo instante).
+if (corre('1j')) {
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.requerimientos)
+  await ir(pagina, `${BASE}/requerimientos`)
+  const v = pagina.getByRole('dialog')
+  await pagina.getByRole('button', { name: /^Nuevo requerimiento/ }).first().click()
+  await v.waitFor()
+  await quieta(pagina)
+  corte.despliegue = true
+  await salirYVolver(pagina)
+  const enVentana = limpio(await hasta(() => v.locator('[data-ventana-vieja]').innerText().catch(() => ''), Boolean, 15000))
+  const enRegion = await v.locator('[role="status"] [data-ventana-vieja]').count()
+  const arriba = await avisoDeArriba(pagina)
+  comprobar(enVentana === TEXTO_VENTANA && enRegion === 1 && arriba.startsWith(TEXTO_VIEJA) && (await pagina.locator('[data-region-pestana-vieja]').count()) === 0,
+    `[Requerimientos 1280] 1j. al volver tras 31 s con la ventana abierta, la ventana lo anuncia y arriba está sin región («${enVentana}»)`)
+  corte.despliegue = false
+  await pagina.keyboard.press('Escape')
+  comprobar(errores.length === 0, `[Requerimientos 1280] 1j. al volver, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

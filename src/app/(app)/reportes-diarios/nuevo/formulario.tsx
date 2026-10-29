@@ -26,7 +26,7 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
-import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
@@ -36,6 +36,7 @@ import {
   laPestanaEsDeLaVersionAnterior,
   motivoDelFallo,
   navegarSiEsDeLaPestana,
+  OtraCuentaEnLaPestana,
   SE_ACTUALIZO_EL_SISTEMA,
   useCursorAlRechazo,
   useEnvio,
@@ -166,6 +167,11 @@ function trabajosParaEnviar(s: Seccion) {
 /** Las que ya están en Storage o van en camino: si nadie las nombra, quedan sueltas. */
 function fotosSubidas(s: Seccion) {
   return s.fotos.filter((f) => f.ruta || f.subiendo)
+}
+
+/** La foto va en un envío que sigue en camino, o en uno que no se sabe cómo terminó. */
+function esDeUnEnvio(f: FotoLista, enCamino: Set<FotoLista>, enDuda: Set<string>) {
+  return enCamino.has(f) || Boolean(f.ruta && enDuda.has(f.ruta))
 }
 
 function fotosDe(s: Seccion) {
@@ -300,22 +306,52 @@ export function FormularioReporteDiario({
   const [libres, setLibres] = useState(() => ids.slice(1))
   const espera = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const pedido = useRef(new Map<string, number>())
+  // Las fotos del envío que sigue en camino, y las rutas del que no se sabe
+  // cómo terminó (no llegó la respuesta): pudo nombrarlas. Ni al saberse vieja
+  // la pestaña ni con «Volver a cargar» se quitan, como en `useFotosDelEnvio`.
+  // Se quitaban: el reporte en camino no entraba porque su foto ya no estaba, y
+  // del que sí había entrado se decía «Se quitó… elígela otra vez», y subirlo
+  // otra vez lo duplicaba con sus horas (trigesimoprimera pasada).
+  const enCamino = useRef(new Set<FotoLista>())
+  const enDuda = useRef(new Set<string>())
+  const [enDudaElAnterior, setEnDudaElAnterior] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(
     async (previo: unknown, datos: FormData) => {
+      const van = secciones.flatMap((s) => s.fotos)
+      for (const f of van) enCamino.current.add(f)
+      const dudar = () => {
+        for (const f of van) if (f.ruta) enDuda.current.add(f.ruta)
+        setEnDudaElAnterior(true)
+      }
       let salida: ResultadoAccion<{ id: string }>
       try {
         salida = await (corrige ? registrarReporteCorregido : registrarReportesDiarios)(previo, datos)
       } catch (e) {
-        if (!esDeLaVersionAnterior(e)) throw e
+        if (!esDeLaVersionAnterior(e)) {
+          // Lo cortó la traba antes de salir: no se envió nada. Lo demás no se sabe.
+          if (!(e instanceof OtraCuentaEnLaPestana)) dudar()
+          throw e
+        }
         // Una pestaña de antes del último despliegue: la acción no corrió, y al
         // recargar el formulario sale con otros ids. Las fotos ya subidas no las
         // nombraría nadie: se quitan, y se dice que hay que elegirlas otra vez
-        // (vigesimonovena pasada; como `conFotos` en las demás ventanas).
-        const habia = secciones.some((s) => s.fotos.length > 0)
-        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, s.fotos)
-        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: [] })))
-        return { ok: false, error: habia ? SE_ACTUALIZO_CON_FOTOS : SE_ACTUALIZO_EL_SISTEMA }
+        // (vigesimonovena pasada; como `conFotos` en las demás ventanas). Las de
+        // un envío anterior en duda se quedan, y lo dice el texto de abajo.
+        const sueltas = (s: Seccion) => s.fotos.filter((f) => !(f.ruta && enDuda.current.has(f.ruta)))
+        const habia = secciones.some((s) => sueltas(s).length > 0)
+        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, sueltas(s))
+        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: s.fotos.filter((f) => f.ruta && enDuda.current.has(f.ruta)) })))
+        return { ok: false, error: habia && !enDudaElAnterior ? SE_ACTUALIZO_CON_FOTOS : SE_ACTUALIZO_EL_SISTEMA }
+      } finally {
+        for (const f of van) enCamino.current.delete(f)
       }
+      if (!salida.ok && pudoHaberEntrado(salida.error)) {
+        dudar()
+        return salida
+      }
+      // Con los mismos ids, cualquier otra respuesta dice también cómo terminó el anterior.
+      enDuda.current.clear()
+      setEnDudaElAnterior(false)
       // El reporte ya había entrado la primera vez: lo de este envío no se
       // guardó, y sus fotos nuevas no las nombra nadie. Se quitan (las de la
       // primera vez, que su reporte nombra, la base no las deja quitar), y la
@@ -346,7 +382,8 @@ export function FormularioReporteDiario({
     () =>
       vigilarLaVersion(() => {
         if (!laPestanaEsDeLaVersionAnterior()) return
-        const marcar = quitarAlSaberseVieja(BUCKET_FOTOS_REPORTE, actuales.current.flatMap((s) => s.fotos))
+        const libres = actuales.current.flatMap((s) => s.fotos).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current))
+        const marcar = quitarAlSaberseVieja(BUCKET_FOTOS_REPORTE, libres)
         if (marcar) setSecciones((ss) => ss.map((s) => ({ ...s, fotos: marcar(s.fotos) })))
       }),
     [],
@@ -354,7 +391,14 @@ export function FormularioReporteDiario({
   // Y «Volver a cargar», el del aviso de arriba después de un despliegue, las
   // quita antes de recargar: antes quedaban sueltas (trigésima pasada).
   useEffect(
-    () => alVolverACargar(() => Promise.all(actuales.current.map((s) => quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s))))),
+    () =>
+      alVolverACargar(() =>
+        Promise.all(
+          actuales.current.map((s) =>
+            quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current))),
+          ),
+        ),
+      ),
     [],
   )
 
@@ -626,10 +670,17 @@ export function FormularioReporteDiario({
             : error}
         </p>
       )}
-      {fallidas && !subiendo && (
+      {vieja && enDudaElAnterior ? (
         <p className="text-sm text-peligro">
-          {vieja ? 'Vuelve a cargar la pantalla para subir el reporte.' : 'Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.'}
+          No se sabe si entró el reporte que enviaste: búscalo en Reportes diarios antes de volver a cargar la pantalla y subirlo otra vez.
         </p>
+      ) : (
+        fallidas &&
+        !subiendo && (
+          <p className="text-sm text-peligro">
+            {vieja ? 'Vuelve a cargar la pantalla para subir el reporte.' : 'Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.'}
+          </p>
+        )
       )}
       {repetidos.size > 0 && <p className="text-sm text-peligro">Un código va dos veces: junta sus trabajos en uno solo.</p>}
       <div className="flex justify-end">

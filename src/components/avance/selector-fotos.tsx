@@ -106,16 +106,23 @@ const SE_QUITO_SE_ACTUALIZO = 'Se quitó: el sistema se actualizó.'
  * La pestaña se supo de antes del último despliegue (`vigilarLaVersion`) con
  * fotos ya subidas o subiendo: desde aquí nada las va a nombrar, y al recargar,
  * como pide el aviso, quedaban sueltas. Se quitan de Storage en el acto y se
- * quedan en la lista sin miniatura, con una sola alerta que pide elegirlas otra
- * vez al volver a cargar (trigésima pasada). Devuelve con qué cambiar la lista,
- * o `null` si no había ninguna.
+ * quedan en la lista con «Se quitó» sobre su miniatura, con una sola alerta que
+ * pide elegirlas otra vez al volver a cargar (trigésima pasada). Sin miniatura,
+ * con tres eran tres cuadros iguales y no se sabía cuáles volver a elegir
+ * (trigesimoprimera). Devuelve con qué cambiar la lista, o `null` si no había
+ * ninguna.
  */
 export function quitarAlSaberseVieja(bucket: string, fotos: FotoLista[]) {
   const van = fotos.filter((f) => f.ruta || f.subiendo)
   if (van.length === 0) return null
   void quitarFotosSueltas(bucket, van)
+  // La de antes la soltó `quitarFotosSueltas`: se pinta otra con el mismo archivo.
+  const miniaturas = new Map(van.map((f) => [f, URL.createObjectURL(f.archivo)]))
   return (lista: FotoLista[]) =>
-    lista.map((f): FotoLista => (van.includes(f) ? { ...f, ruta: undefined, subiendo: false, vistaPrevia: '', error: SE_QUITO_SE_ACTUALIZO } : f))
+    lista.map((f): FotoLista => {
+      const vistaPrevia = miniaturas.get(f)
+      return vistaPrevia === undefined ? f : { ...f, ruta: undefined, subiendo: false, vistaPrevia, error: SE_QUITO_SE_ACTUALIZO }
+    })
 }
 
 /** Un envío con fotos: con cuáles salió, si su ventana se cerró mientras iba y si ya terminó. */
@@ -604,7 +611,11 @@ export function SelectorFotos({
               </div>
             )}
 
-            {foto.error && !foto.subiendo && foto.vistaPrevia && foto.error !== NO_SUBIO_SE_ACTUALIZO && (
+            {foto.error === SE_QUITO_SE_ACTUALIZO && foto.vistaPrevia && (
+              <p className="absolute inset-x-0 bottom-0 bg-black/60 py-1 text-center text-xs font-medium text-white">Se quitó</p>
+            )}
+
+            {foto.error && !foto.subiendo && foto.vistaPrevia && foto.error !== NO_SUBIO_SE_ACTUALIZO && foto.error !== SE_QUITO_SE_ACTUALIZO && (
               <button
                 type="button"
                 onClick={() => reintentar(foto)}

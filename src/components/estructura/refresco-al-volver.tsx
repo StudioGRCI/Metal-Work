@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { startTransition, useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { hayVentanaAbierta } from '@/lib/ventanas-abiertas'
 import {
+  anotarLaCompilacionDeLaPestana,
   anotarQueHuboUnDespliegue,
   esDeLaVersionAnterior,
   laPestanaEsDeOtraCuenta,
@@ -79,6 +81,8 @@ export function RefrescoAlVolver({
     conocido.current = sinLeer
   }, [sinLeer])
 
+  useEffect(() => anotarLaCompilacionDeLaPestana(deLaPestana), [deLaPestana])
+
   useEffect(() => {
     const refrescar = () => {
       if (alguienEscribe()) return
@@ -87,7 +91,7 @@ export function RefrescoAlVolver({
 
     /** Los avisos sin leer, o `null` si no se debe repintar. */
     const preguntar = async () => {
-      let cuenta: Cuenta
+      let cuenta: Partial<Cuenta> | null
       try {
         cuenta = await contar()
       } catch (e) {
@@ -96,7 +100,10 @@ export function RefrescoAlVolver({
         esDeLaVersionAnterior(e, { sinAvisoPropio: true })
         return null
       }
-      if (deLaPestana && cuenta.compilacion && cuenta.compilacion !== deLaPestana) {
+      // Otra forma es otro despliegue, que cambió la respuesta sin cambiarle el
+      // nombre a la acción: la pestaña de antes comparaba un número con el
+      // objeto de ahora y se recargaba (trigesimoprimera pasada).
+      if (typeof cuenta?.sinLeer !== 'number' || (deLaPestana && cuenta.compilacion && cuenta.compilacion !== deLaPestana)) {
         anotarQueHuboUnDespliegue()
         return null
       }
@@ -149,8 +156,12 @@ export function RefrescoAlVolver({
   return <AvisoDeOtroDespliegue key={`${version.estado}-${version.callado}`} version={version} />
 }
 
+// En «nueva» lo enviado entra, pero casi todo envío repinta, y Next recarga el
+// documento: «Termina lo que estás haciendo» invitaba a seguir con lo de otra
+// parte de la pantalla, y el envío se lo llevaba (trigesimoprimera pasada).
 const TEXTO = {
-  nueva: 'El sistema se actualizó mientras tenías la pantalla abierta. Termina lo que estás haciendo y vuelve a cargar la pantalla para ver lo nuevo.',
+  nueva:
+    'El sistema se actualizó mientras tenías la pantalla abierta. Lo que envíes todavía entra, pero al enviarlo la pantalla se vuelve a cargar y se pierde lo que tengas a medio escribir en otra parte de ella. Envía una cosa a la vez y vuelve a cargar la pantalla para ver lo nuevo.',
   vieja:
     'El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde aquí no va a entrar. Copia lo que tengas escrito y vuelve a cargar la pantalla.',
 }
@@ -166,7 +177,10 @@ const TEXTO = {
  * como la que `TrabaDeOtraCuenta` dejó de tener.
  */
 function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
-  const anunciar = !version.callado
+  // Vieja con una ventana abierta: la ventana lo anuncia arriba de su contenido
+  // (`SeActualizoEnLaVentana`), y aquí se oía otra vez en el mismo instante
+  // (trigesimoprimera pasada). Se mira al montarse: cada cambio es otra llave.
+  const [anunciar] = useState(() => !version.callado && !(version.estado === 'vieja' && hayVentanaAbierta()))
   const [conTexto, setConTexto] = useState(!anunciar)
   const [recargando, setRecargando] = useState(false)
   useEffect(() => {

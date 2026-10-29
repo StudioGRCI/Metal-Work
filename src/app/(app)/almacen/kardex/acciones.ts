@@ -516,7 +516,11 @@ export async function registrarFilaPlanilla(_previo: unknown, formulario: FormDa
   } else {
     return { ok: false, error: 'La fila no es de Ingresos ni de Salidas.' }
   }
-  revalidatePath('/almacen/kardex')
+  // Sin revalidatePath: la planilla se registra fila por fila, y el kardex se
+  // pone al día al cerrar su ventana (`cerrar`, planilla.tsx). En una pestaña de
+  // después de un despliegue, cada fila que revalidaba hacía que Next recargara
+  // el documento entero en mitad de la planilla, y las filas que faltaban no
+  // salían nunca, sin aviso (trigesimoprimera pasada).
   return { ok: true }
 }
 
@@ -690,7 +694,8 @@ export async function registrarConteoInicial(
     else if (data !== f.id) resultados.push({ id: f.id, error: NO_TOCO_NADA })
     else resultados.push({ id: f.id, error: null })
   }
-  revalidatePath('/almacen/kardex')
+  // Sin revalidatePath, como `registrarFilaPlanilla`: va por tandas, y el kardex
+  // se pone al día al cerrar la ventana del conteo.
   return { ok: true, datos: { resultados } }
 }
 
