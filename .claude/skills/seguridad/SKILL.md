@@ -314,7 +314,15 @@ En la misma migración que la crea, sin excepción:
   volver se recarga, se queda suelto, visible solo para quien lo subió. Lo
   mismo si la otra cuenta entra en la pausa antes de volver a preguntar, tras
   una respuesta perdida: no se pregunta con ella, y el archivo se mira cuando
-  vuelva la cuenta (antes se quedaba suelto para siempre, vigesimoquinta). El
+  vuelva la cuenta (antes se quedaba suelto para siempre, vigesimoquinta).
+  **Un borrado con la sesión de otra cuenta vuelve vacío y sin error**, como si
+  una fila lo nombrara: todo borrado de Storage desde el navegador va por
+  `quitarConLaCuenta`, que lo deja para cuando vuelva la cuenta, y
+  `subirARutaNueva` lo pide como argumento para que nadie lo olvide (el
+  servidor pasa `quitarEnElActo`). Donde el vacío se lee —el 409 de
+  `subirArchivoPrivado`—, la cuenta se mira antes y después del borrado: con la
+  traba, el vacío decía «quedó registrado la primera vez» sin que quedara nada
+  (vigesimosexta). El
   refresco y la navegación tras un envío también esperan
   (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`): con la otra sesión
   pintaban su pantalla y se llevaban la traba.
@@ -325,9 +333,12 @@ En la misma migración que la crea, sin excepción:
   pegarse). Un aviso nuevo de «mismo envío» lleva
   «la primera vez que lo enviaste» para que `yaEntroLaPrimeraVez` lo
   reconozca. **Las fotos nuevas de ese envío no las nombra nadie: se quitan al
-  recibir el aviso**, en el envoltorio de la acción (`quitarFotosSueltas`; la
-  base no deja quitar las de la primera vez), no al pulsar «Cerrar», que puede
-  no llegar. El formulario de página (el reporte diario) además se traba y
+  recibir el aviso**, en el envoltorio de la acción (`useFotosDelEnvio`, o
+  `quitarFotosSueltas` en el formulario de página; la base no deja quitar las
+  de la primera vez), no al pulsar «Cerrar», que puede no llegar. **Sin
+  respuesta no se quita nada:** la política de Storage solo protege la foto que
+  una fila ya nombra, y la del reporte que todavía está entrando se borraba
+  (vigesimosexta). El formulario de página (el reporte diario) además se traba y
   lleva al registro, y el que fija su id al abrirse (el gasto del área) lo
   cambia tras el aviso, o el próximo envío chocaría con el mismo. El aviso dice
   qué quedó y cómo se corrige; «recarga la pantalla» con el formulario vacío se

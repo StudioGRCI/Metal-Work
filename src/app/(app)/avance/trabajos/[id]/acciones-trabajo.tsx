@@ -1,22 +1,13 @@
 'use client'
 
 import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import {
-  SelectorFotos,
-  fotosParaEnviar,
-  haySubiendo,
-  quitarFotosSueltas,
-  quitarLasQueNadieNombre,
-  soltarMiniaturas,
-  type FotoLista,
-} from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { pudoHaberEntrado } from '@/lib/acciones'
 import { useEnvio } from '@/lib/envio'
 
 import { cambiarEstadoFlota, reportarFlota } from '../../acciones-flota'
@@ -84,49 +75,22 @@ function Reportar({
   traba: string | null
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
   const [aviso, setAviso] = useState<string | null>(null)
-  // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
-  // el aviso queda al lado del botón para que nadie dude de si entró.
-  // Se cerró mientras se enviaba: las fotos quedaron en manos del envío.
-  const cerradaEnviando = useRef(false)
-  // Lo mismo, para pintar: el rechazo de un envío sin ventana se dice junto al botón.
-  const [sinVentana, setSinVentana] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(
-    async (previo: unknown, datos: FormData) => {
-      let r: Awaited<ReturnType<typeof reportarFlota>>
-      try {
-        r = await reportarFlota(previo, datos)
-      } catch (e) {
-        // Se cerró mientras iba y no volvió nada: nadie va a reintentar.
-        if (cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: true })
-        throw e
-      }
-      // Se cerró mientras iba y no volvió un sí: la ventana ya no está para quitarlas.
-      if (!r.ok && cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: pudoHaberEntrado(r.error) })
-      return r
-    },
-    (r) => {
-      // El reporte entró sin sus fotos: ya subidas, ningún registro las nombra.
-      if (r.datos?.fotosSueltas) quitarFotosSueltas('fotos-avance', fotos)
-      setAbierto(false)
-      setAviso(r.mensaje ?? 'Reporte registrado.')
-    },
-  )
-
   // Sin reportar, las fotos ya subidas no las nombra ningún reporte: se quitan
   // de Storage, como en «Registrar avance». Antes «Cancelar» solo cerraba y
-  // quedaban sueltas (vigesimotercera pasada). Mientras se envía se quedan: el
-  // reporte que está entrando las nombra.
+  // quedaban sueltas (vigesimotercera pasada). Lo que se envía, o no se sabe
+  // si entró, se queda (`useFotosDelEnvio`).
+  const envio = useFotosDelEnvio('fotos-avance')
+  const { fotos, setFotos } = envio
+  // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
+  // el aviso queda al lado del botón para que nadie dude de si entró.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(reportarFlota), (r) => {
+    if (!envio.seCerroAlEnviar()) setAbierto(false)
+    setAviso(r.mensaje ?? 'Reporte registrado.')
+  })
+
   function cerrar() {
-    if (enviando) {
-      cerradaEnviando.current = true
-      setSinVentana(true)
-      soltarMiniaturas(fotos)
-    } else {
-      quitarFotosSueltas('fotos-avance', fotos)
-    }
-    setFotos([])
+    envio.cerrar()
     setAbierto(false)
   }
 
@@ -135,9 +99,7 @@ function Reportar({
   function abrir() {
     limpiar()
     setAviso(null)
-    cerradaEnviando.current = false
-    setSinVentana(false)
-    setFotos([])
+    envio.abrir()
     setAbierto(true)
   }
 
@@ -153,9 +115,9 @@ function Reportar({
         </p>
       )}
       {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      {sinVentana && !abierto && error && (
+      {envio.desenlace && (
         <p role="alert" className="text-xs text-peligro">
-          El reporte que se estaba enviando: {error}
+          El reporte que se estaba enviando: {envio.desenlace}
         </p>
       )}
 

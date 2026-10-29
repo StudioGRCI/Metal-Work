@@ -3,12 +3,11 @@
 import { Ban, LogOut, Wind } from 'lucide-react'
 import { useState } from 'react'
 
-import { fotosParaEnviar, hayFallidas, haySubiendo, quitarFotosSueltas, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
+import { fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { BUCKET_FOTOS_VEHICULO } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 
@@ -20,7 +19,10 @@ type Paso = 'SALIDA' | 'ARENADO' | 'ANULAR'
 /**
  * Lo que se marca en un vehículo que está en planta: que salió, con sus fotos,
  * o que el ingreso se anotó mal. Si la ventana de la salida se cierra sin
- * registrar, las fotos que ya subieron se retiran de Storage.
+ * registrar, las fotos que ya subieron se retiran de Storage. Si se cierra
+ * mientras se envía, se quedan con ese envío y lo que conteste se dice en la
+ * fila. Antes se quitaban en el acto: la base rechazaba la salida («La foto 1
+ * no terminó de subir…») y nada lo decía (vigesimosexta pasada).
  *
  * `bloqueoSalida` es lo que la base dice que le falta para salir (el 100 % del
  * avance de su código y la revisión de Tesorería): mientras haya algo, el botón
@@ -44,27 +46,14 @@ export function ControlesVehiculo({
   alArenado?: boolean
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
-  const salida = useEnvio(
-    async (previo: unknown, datos: FormData) => {
-      const r = await registrarSalidaVehiculo(previo, datos)
-      // La salida ya había entrado la primera vez: las fotos de este envío no
-      // las nombra nadie y se quitan ya, no al cerrar (las de la primera vez,
-      // que su salida nombra, la base no las deja quitar). Al cerrar, la
-      // página se pone al día y esta ventana ya no está para quitarlas.
-      if (!r.ok && yaEntroLaPrimeraVez(r.error)) {
-        quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
-        setFotos([])
-      }
-      return r
-    },
-    () => {
-      // Ya son parte de la salida: solo se sueltan las miniaturas.
-      soltarMiniaturas(fotos)
-      setFotos([])
-      setPaso(null)
-    },
-  )
+  // Si la salida ya había entrado la primera vez, las fotos de este envío no
+  // las nombra nadie y se quitan ya, no al cerrar: al cerrar, la página se pone
+  // al día y esta ventana ya no está para quitarlas (`useFotosDelEnvio`).
+  const fotosSalida = useFotosDelEnvio(BUCKET_FOTOS_VEHICULO)
+  const { fotos, setFotos } = fotosSalida
+  const salida = useEnvio(fotosSalida.conFotos(registrarSalidaVehiculo), () => {
+    if (!fotosSalida.seCerroAlEnviar()) setPaso(null)
+  })
   const anular = useEnvio(anularRegistroVehiculo, () => setPaso(null))
   const envio = paso === 'ANULAR' ? anular : salida
   const sale = paso === 'SALIDA' || paso === 'ARENADO'
@@ -74,9 +63,14 @@ export function ControlesVehiculo({
   const bloqueado = sale && (subiendo || fallidas || listas === 0)
 
   function cerrar() {
-    quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
-    setFotos([])
+    fotosSalida.cerrar()
     setPaso(null)
+  }
+
+  function abrirSalida(destino: 'SALIDA' | 'ARENADO') {
+    salida.limpiar()
+    fotosSalida.abrir()
+    setPaso(destino)
   }
 
   return (
@@ -87,10 +81,7 @@ export function ControlesVehiculo({
         tamano="sm"
         disabled={Boolean(bloqueoSalida)}
         aria-describedby={bloqueoSalida ? `veh-bloqueo-${id}` : undefined}
-        onClick={() => {
-          setFotos([])
-          setPaso('SALIDA')
-        }}
+        onClick={() => abrirSalida('SALIDA')}
       >
         <LogOut aria-hidden className="size-4" />
         Marcar salida
@@ -100,10 +91,7 @@ export function ControlesVehiculo({
           type="button"
           variante="contorno"
           tamano="sm"
-          onClick={() => {
-            setFotos([])
-            setPaso('ARENADO')
-          }}
+          onClick={() => abrirSalida('ARENADO')}
         >
           <Wind aria-hidden className="size-4" />
           Sale al arenado
@@ -115,6 +103,12 @@ export function ControlesVehiculo({
         <Ban aria-hidden className="size-4 text-peligro" />
         Anular
       </Boton>
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      {fotosSalida.desenlace && (
+        <p role="alert" className="text-xs text-peligro sm:basis-full sm:text-right">
+          La salida que se estaba enviando: {fotosSalida.desenlace}
+        </p>
+      )}
       <Ventana
         abierta={paso !== null}
         alCerrar={cerrar}

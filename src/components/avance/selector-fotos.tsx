@@ -1,10 +1,11 @@
 'use client'
 
 import { Camera, Images, RotateCcw, X } from 'lucide-react'
-import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, SIN_RESPUESTA } from '@/lib/envio'
 import { tamanoArchivo } from '@/lib/format'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
@@ -58,10 +59,11 @@ const sinAchicar = new WeakSet<FotoLista>()
 const NO_SUBIO_OTRA_CUENTA = 'No se subió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, usa «Reintentar».'
 
 /**
- * Al cerrar sin registrar, las fotos ya subidas quedan sueltas en Storage: se
- * retiran (la política deja a su dueño quitar las que ningún registro nombra)
- * y se sueltan sus miniaturas. Sin esperar: si falla, la foto queda suelta y
- * nadie más la ve.
+ * Las fotos ya subidas que ningún registro va a nombrar: se retiran de Storage
+ * (la política deja a su dueño quitar las que ningún registro nombra) y se
+ * sueltan sus miniaturas. Sin esperar: si falla, la foto queda suelta y nadie
+ * más la ve. Con la sesión de otra cuenta el borrado volvía vacío: se deja para
+ * cuando vuelva la de la pantalla (`quitarConLaCuenta`).
  *
  * La que todavía sube se anota (`retiradas`): cuando termina, se quita sola.
  * Antes llegaba a Storage después de cerrar y quedaba suelta (vigesimosegunda
@@ -70,29 +72,123 @@ const NO_SUBIO_OTRA_CUENTA = 'No se subió: en otra pestaña entró otra cuenta.
 export function quitarFotosSueltas(bucket: string, fotos: FotoLista[]) {
   retirarLasQueSuben(fotos)
   const rutas = fotos.flatMap((f) => (f.ruta ? [f.ruta] : []))
-  if (rutas.length > 0) void createClient().storage.from(bucket).remove(rutas)
+  if (rutas.length > 0) void quitarConLaCuenta(() => createClient().storage.from(bucket).remove(rutas))
   soltarMiniaturas(fotos)
 }
 
-// Lo justo para que el registro que se perdió de vista termine de entrar, como en `anotarSinDejarloSuelto`.
-const PAUSA_ANTES_DE_QUITAR_MS = 1500
+/** Un envío con fotos: con cuáles salió, si su ventana se cerró mientras iba y si ya terminó. */
+type Intento = { fotos: FotoLista[]; sinVentana: boolean; termino: boolean }
+
+/** El registro entró, pero sus fotos no (`fotosSueltas` de la acción): ninguna fila las nombra. */
+const entroSinFotos = (datos: unknown) =>
+  typeof datos === 'object' && datos !== null && 'fotosSueltas' in datos && Boolean(datos.fotosSueltas)
 
 /**
- * Las fotos de un envío que salió con la ventana ya cerrada y no volvió con un
- * sí: nadie va a reintentar. Si la base lo rechazó, ningún registro las nombra;
- * si no llegó la respuesta, pudo entrar con ellas. Se quitan igual, después de
- * una pausa, porque la política del bucket no deja quitar la que una fila nombra:
- * la anotada se queda y la suelta se va. Con la sesión de otra cuenta el borrado
- * vuelve vacío: se deja para cuando vuelva la de la pantalla. Antes, sin
- * respuesta, se quedaban sueltas y nada lo decía (vigesimoquinta pasada).
+ * Las fotos de una ventana que las sube al elegirlas y las nombra al registrar:
+ * el reporte del trabajo, el avance, el reporte del día, el ingreso y la salida
+ * del vehículo. Una foto ya subida se quita de Storage solo cuando se sabe que
+ * ningún registro la va a nombrar:
+ * - se cierra la ventana sin enviar, o el envío que salió con la ventana ya
+ *   cerrada vuelve con un rechazo de la base;
+ * - el registro entró sin ellas (`fotosSueltas`), o ya había entrado la primera
+ *   vez (las que ese nombra, la política del bucket no deja quitarlas).
+ *
+ * Si no se sabe cómo terminó —no llegó la respuesta, el servidor cayó—, se
+ * quedan, también al cerrar después: el registro pudo entrar con ellas, y la
+ * política solo protege la que una fila ya nombra. Una pausa ciega antes de
+ * quitarlas borraba la foto de un reporte que sí entró si el servidor tardaba
+ * (vigesimosexta pasada). Una foto suelta no la ve nadie; un reporte con su foto
+ * borrada, sí.
+ *
+ * Cerrar mientras se envía deja las fotos en manos de ese envío. Lo de cada
+ * envío va con él y no con la ventana: volver a abrirla mientras el anterior
+ * seguía en camino lo soltaba, y su foto quedaba suelta sin aviso (vigesimosexta
+ * pasada). Si ese envío no entra, se dice junto al botón que abre la ventana
+ * (`desenlace`), aunque entretanto se haya vuelto a abrir: el rechazo de
+ * `useEnvio` se suelta cuando hay otra ventana abierta.
+ *
+ * Uso: `conFotos(accion)` va a `useEnvio`; `abrir()` y `cerrar()`, con la
+ * ventana. En el ok, la ventana se cierra solo si no se cerró mientras se
+ * enviaba (`seCerroAlEnviar()`): si se volvió a abrir, es otra.
  */
-export function quitarLasQueNadieNombre(bucket: string, fotos: FotoLista[], { pausa }: { pausa: boolean }) {
-  const quitar = () => {
-    if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(() => quitarFotosSueltas(bucket, fotos))
-    else quitarFotosSueltas(bucket, fotos)
+export function useFotosDelEnvio(bucket: string) {
+  const [fotos, setFotos] = useState<FotoLista[]>([])
+  // Por qué no entró el envío que salió con la ventana ya cerrada.
+  const [desenlace, setDesenlace] = useState<string | null>(null)
+  // El envío en curso, o el último.
+  const intento = useRef<Intento | null>(null)
+  // Las rutas que salieron en un envío de esta ventana que no se sabe cómo terminó.
+  const enDuda = useRef(new Set<string>())
+  // Las de la ventana ahora: el envío vuelve después de que se pintaron otras.
+  const actuales = useRef<FotoLista[]>([])
+  useEffect(() => {
+    actuales.current = fotos
+  })
+
+  // Entró, o ya había entrado: las del envío ya no son de la ventana.
+  function alEntrar(este: Intento, sinNombrar: boolean) {
+    if (sinNombrar) quitarFotosSueltas(bucket, este.fotos)
+    else soltarMiniaturas(este.fotos)
+    if (este.sinVentana) return
+    // Las que se eligieron mientras se enviaba no fueron con el registro.
+    quitarFotosSueltas(bucket, actuales.current.filter((f) => !este.fotos.includes(f)))
+    setFotos([])
   }
-  if (pausa) setTimeout(quitar, PAUSA_ANTES_DE_QUITAR_MS)
-  else quitar()
+
+  function conFotos<T>(accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>) {
+    return async (previo: unknown, datos: FormData): Promise<ResultadoAccion<T>> => {
+      const este: Intento = { fotos, sinVentana: false, termino: false }
+      intento.current = este
+      const dudar = () => {
+        for (const f of este.fotos) if (f.ruta) enDuda.current.add(f.ruta)
+      }
+      try {
+        const r = await accion(previo, datos)
+        if (r.ok) alEntrar(este, entroSinFotos(r.datos))
+        else if (yaEntroLaPrimeraVez(r.error)) alEntrar(este, true)
+        else if (pudoHaberEntrado(r.error)) dudar()
+        else if (este.sinVentana) quitarFotosSueltas(bucket, este.fotos)
+        if (este.sinVentana && !r.ok) setDesenlace(r.error)
+        return r
+      } catch (e) {
+        // Lo cortó la traba antes de salir: no se envió nada. Lo demás no se sabe.
+        const corte = e instanceof OtraCuentaEnLaPestana
+        if (!corte) dudar()
+        else if (este.sinVentana) quitarFotosSueltas(bucket, este.fotos)
+        if (este.sinVentana) setDesenlace(corte ? NO_SE_GUARDO_OTRA_CUENTA : SIN_RESPUESTA)
+        throw e
+      } finally {
+        este.termino = true
+      }
+    }
+  }
+
+  function cerrar() {
+    const enCurso = intento.current && !intento.current.termino ? intento.current : null
+    if (enCurso) enCurso.sinVentana = true
+    const quedan = new Set(enDuda.current)
+    for (const f of enCurso?.fotos ?? []) if (f.ruta) quedan.add(f.ruta)
+    quitarFotosSueltas(bucket, fotos.filter((f) => !(f.ruta && quedan.has(f.ruta))))
+    soltarMiniaturas(fotos)
+    setFotos([])
+  }
+
+  // Cada vez que se abre empieza limpia: es un evento, no un efecto.
+  function abrir() {
+    enDuda.current = new Set()
+    setDesenlace(null)
+    setFotos([])
+  }
+
+  return {
+    fotos,
+    setFotos,
+    conFotos,
+    abrir,
+    cerrar,
+    desenlace,
+    seCerroAlEnviar: () => Boolean(intento.current?.sinVentana),
+  }
 }
 
 /** La que todavía sube, o se achica, se quita de Storage sola cuando termina. */
@@ -187,10 +283,10 @@ export function SelectorFotos({
       : (foto.archivo.name.split('.').pop() ?? 'jpg').toLowerCase()
     const ruta = `${prefijoRuta}/${crypto.randomUUID()}.${extension}`
 
-    const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, foto.archivo, foto.archivo.type)
+    const { error } = await subirARutaNueva(supabase.storage.from(bucket), ruta, foto.archivo, foto.archivo.type, quitarConLaCuenta)
     // Se cerró sin registrar mientras subía: nada la va a nombrar.
     if (retiradas.has(foto)) {
-      if (!error) void supabase.storage.from(bucket).remove([ruta])
+      if (!error) void quitarConLaCuenta(() => supabase.storage.from(bucket).remove([ruta]))
       return true
     }
 
@@ -299,10 +395,8 @@ export function SelectorFotos({
       retiradas.add(foto)
       quitadas.add(foto)
     }
-    if (foto.ruta) {
-      const supabase = createClient()
-      await supabase.storage.from(bucket).remove([foto.ruta])
-    }
+    const { ruta } = foto
+    if (ruta) await quitarConLaCuenta(() => createClient().storage.from(bucket).remove([ruta]))
     if (foto.vistaPrevia) URL.revokeObjectURL(foto.vistaPrevia)
     alCambiar((f) => f.filter((item) => item !== foto))
   }

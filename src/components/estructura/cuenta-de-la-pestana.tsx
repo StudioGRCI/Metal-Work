@@ -51,12 +51,16 @@ const AVISO = '[role="alert"], [role="status"], [aria-live="polite"], [aria-live
 
 /** Los avisos que cambiaron y todavía están en la pantalla diciendo algo, el último al final: los tres últimos. */
 function avisosVigentes(cambiados: HTMLElement[]) {
-  return cambiados.filter((a) => a.isConnected && a.textContent?.trim() && a.getClientRects().length > 0).slice(-3)
+  return cambiados.filter((a) => a.isConnected && a.getClientRects().length > 0 && a.innerText.trim()).slice(-3)
 }
 
-/** Lo que dijeron, en orden y sin repetir. */
+/**
+ * Lo que dijeron, en orden y sin repetir. Lo que se ve (`innerText`): con
+ * `textContent` sumaba los dos textos que el campo de archivo elige por el
+ * puntero, y se oía «tocahaz clic para cambiarlo» (vigesimosexta pasada).
+ */
 function loQueDijeron(avisos: HTMLElement[]) {
-  return [...new Set(avisos.map((a) => a.textContent?.replace(/\s+/g, ' ').trim() ?? '').filter(Boolean))].join(' ')
+  return [...new Set(avisos.map((a) => a.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean))].join(' ')
 }
 
 /**
@@ -105,8 +109,9 @@ function TrabaDeOtraCuenta({ texto, cuenta }: { texto: string | null; cuenta: st
     if (estado.current) estado.current.textContent = ''
     // Los avisos de la pantalla que cambian mientras está trabada, el último al final.
     const cambiados: HTMLElement[] = []
+    // Lo que solo dice el estado de un campo (`data-no-anunciar`, el pie de `ElegirArchivo`) no se suma: el cursor ya lo tiene delante.
     const anotar = (el: Element | null | undefined) => {
-      if (!(el instanceof HTMLElement) || el.closest('[data-traba-otra-cuenta], [data-volvio-la-cuenta]')) return
+      if (!(el instanceof HTMLElement) || el.closest('[data-traba-otra-cuenta], [data-volvio-la-cuenta], [data-no-anunciar]')) return
       const i = cambiados.indexOf(el)
       if (i >= 0) cambiados.splice(i, 1)
       cambiados.push(el)

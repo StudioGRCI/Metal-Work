@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -270,7 +270,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         }
 
         seguirConLaCuentaDeLaPestana()
-        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
@@ -318,7 +318,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         }
         // Lo único que puede caerse acá es la carrocería nueva o la subida:
         // la cotización todavía no se anotó.
-        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
         setError('No se pudo registrar la cotización. Vuelve a intentar.')
       } finally {
         enCurso.current = false

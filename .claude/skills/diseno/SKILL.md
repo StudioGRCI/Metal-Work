@@ -208,12 +208,26 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   que entró y volvían con «No tienes permiso», que no era cierto. Quitar con ✕
   una foto que todavía sube, o cerrar la ventana mientras sube, la quita en
   cuanto termina: quedaba en Storage sin fila que la nombrara (reporte diario,
-  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera). Cerrar
-  la ventana con el envío en curso es lo mismo: si el envío no entró, sus fotos
-  se quitan (`quitarLasQueNadieNombre`) —tras una pausa si pudo haber entrado,
-  porque Storage solo deja quitar la que ninguna fila nombra, y cuando vuelva la
-  cuenta si la traba está puesta—, y el motivo se dice fuera de la ventana,
-  junto al botón: «El reporte que se estaba enviando: …» (vigesimoquinta).
+  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera).
+- **Una foto subida se quita solo cuando se sabe que nadie la va a nombrar**
+  (`useFotosDelEnvio`, en toda ventana que sube fotos al elegirlas: «Reportar»,
+  «Registrar avance», «Reportar día», el ingreso y la salida del vehículo). Se
+  quita al cerrar sin enviar, tras un rechazo de la base con la ventana ya
+  cerrada, y si el registro entró sin ella o ya había entrado la primera vez.
+  **Si no se sabe cómo terminó** —no llegó la respuesta, el servidor cayó—, **se
+  queda**, también al cerrar después: el registro pudo entrar con ella, y
+  Storage solo protege la que una fila ya nombra. Una pausa ciega antes de
+  quitarla borraba la foto de un reporte que sí entró si el servidor tardaba;
+  una foto suelta no la ve nadie, un reporte con su foto borrada sí
+  (vigesimosexta). Cerrar mientras se envía deja las fotos con ese envío: quitarlas
+  en el acto hacía que la base rechazara el ingreso del vehículo («La foto 1 no
+  terminó de subir…») sin que nada lo dijera. Lo de cada envío va con él, no con
+  la ventana —volver a abrirla mientras el anterior seguía en camino lo
+  soltaba—, y si no entra se dice junto al botón que abre la ventana: «El
+  reporte que se estaba enviando: …». El envío vive con la ventana, no dentro:
+  la `Ventana` desmonta lo suyo al cerrarse, y un `useEnvio` adentro se llevaba
+  el rechazo con él. Todo borrado de Storage desde el navegador pasa por
+  `quitarConLaCuenta`: con la traba puesta vuelve vacío y sin error.
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que
@@ -223,10 +237,22 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   por fila (planilla y conteo del kardex, planos por área) lo que no salió se
   queda con su motivo y su botón para enviarlo cuando vuelva la cuenta, y el
   resumen de lo que queda recibe el cursor (`AvisoEnfocado` con `key` por
-  intento). Si no quedó nada, la ventana lo dice con `NO_SE_GUARDO_OTRA_CUENTA`
-  («No se guardó: en otra pestaña entró otra cuenta. Cuando vuelva la tuya,
-  vuelve a enviarlo.»): callada, al volver la cuenta nadie sabía si lo enviado
-  había salido (vigesimoquinta).
+  intento; en el conteo faltaba hasta la vigesimosexta, y tras «Registrar 1
+  material» el cursor caía a la página). Si no quedó nada, la ventana lo dice
+  con `NO_SE_GUARDO_OTRA_CUENTA` («No se guardó: en otra pestaña entró otra
+  cuenta. Cuando vuelva la tuya, vuelve a enviarlo.»): callada, al volver la
+  cuenta nadie sabía si lo enviado había salido (vigesimoquinta). `useAccion`
+  lo dice solo cuando la cadena lanza `OtraCuentaEnLaPestana` a medias: el pago
+  de Tesorería cortado mientras subía el voucher quedaba con la ventana llena y
+  muda (vigesimosexta).
+- **La pantalla que se abre tras un envío dice qué pasó.** Su franja
+  (`?creada=1` en la orden nueva) es un `AvisoEnfocado`: un `<p>` sin rol no se
+  anunciaba y el cursor quedaba en la página (vigesimosexta).
+- **El anuncio al volver la cuenta lee lo que se ve** (`innerText`, no
+  `textContent`): con `textContent` sumaba «tocahaz clic» de los dos textos por
+  puntero de `ElegirArchivo`. El pie de un campo que solo dice su estado
+  («1 KB · toca para cambiarlo») lleva `data-no-anunciar`: el cursor ya lo
+  tiene delante (vigesimosexta).
 - **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
   lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
   lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,

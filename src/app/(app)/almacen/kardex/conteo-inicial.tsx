@@ -4,6 +4,7 @@ import { CheckCircle2, ClipboardList, FileSpreadsheet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -39,6 +40,8 @@ export function ConteoInicial() {
   const [filas, setFilas] = useState<FilaConteo[] | null>(null)
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
+  // Cuántas veces se apretó «Registrar»: el resumen de cada vuelta es otro y recibe el cursor.
+  const [intentos, setIntentos] = useState(0)
   const [fechaLeida, setFechaLeida] = useState('')
   // Lo que la fecha tiene mal se dice en la fecha, antes de leer el Excel; si
   // el servidor la rechaza igual (pasó la medianoche), también va ahí.
@@ -60,7 +63,10 @@ export function ConteoInicial() {
   const pendientes = listas.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
+  // Las que no salieron porque entró otra cuenta: si son todas, se dice con qué se envían.
+  const porLaOtraCuenta = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_OTRA_CUENTA).length
   const terminado = !registrando && Object.keys(resultados).length > 0
+  const botonRegistrar = pendientes.length === 1 ? 'Registrar 1 material' : `Registrar ${pendientes.length} materiales`
 
   function reiniciar() {
     vuelta.current++
@@ -150,6 +156,7 @@ export function ConteoInicial() {
       }
     } finally {
       setRegistrando(false)
+      setIntentos((n) => n + 1)
       enCurso.current = false
     }
   }
@@ -251,17 +258,21 @@ export function ConteoInicial() {
               {registrando && (
                 <p role="status" className="text-sm text-texto-suave">Registrando… {hechas + fallidas} de {listas.length}</p>
               )}
+              {/* Se lleva el cursor en cada vuelta, como en la planilla: el botón que se
+                  tocó se apagó mientras registraba, y el cursor caía a la página con
+                  la fila que falló al fondo de la lista (vigesimosexta pasada). */}
               {terminado && (
-                <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                  {hechas === 1 ? 'Se registró 1 material' : `Se registraron ${hechas} materiales`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
-                </p>
+                <AvisoEnfocado key={intentos} aviso={fallidas > 0}>
+                  {hechas === 0 ? 'No se registró ningún material' : hechas === 1 ? 'Se registró 1 material' : `Se registraron ${hechas} materiales`}
+                  {!fallidas
+                    ? '.'
+                    : fallidas === porLaOtraCuenta
+                      ? `; ${fallidas === 1 ? '1 no salió' : `${fallidas} no salieron`} porque entró otra cuenta: «${botonRegistrar}» ${fallidas === 1 ? 'lo envía' : 'los envía'}.`
+                      : `; ${fallidas} no: revisa el mensaje de cada uno.`}
+                </AvisoEnfocado>
               )}
               <div className="flex flex-wrap gap-2">
-                {pendientes.length > 0 && !registrando && (
-                  <Boton onClick={registrar}>
-                    {pendientes.length === 1 ? 'Registrar 1 material' : `Registrar ${pendientes.length} materiales`}
-                  </Boton>
-                )}
+                {pendientes.length > 0 && !registrando && <Boton onClick={registrar}>{botonRegistrar}</Boton>}
                 {registrando && <Boton cargando disabled>Registrando</Boton>}
                 {terminado && <Boton variante={pendientes.length > 0 ? 'contorno' : 'primario'} onClick={cerrar}>Cerrar</Boton>}
               </div>

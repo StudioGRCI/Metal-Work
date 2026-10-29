@@ -16,7 +16,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -239,7 +239,7 @@ export function CorregirCotizacion({
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
       try {
-        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime)
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
@@ -286,7 +286,7 @@ export function CorregirCotizacion({
           return
         }
         // Lo que se cae acá es la subida: la corrección todavía no se anotó.
-        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
         setError('No se pudo subir la corrección. Vuelve a intentar.')
       } finally {
         enCurso.current = false
@@ -622,7 +622,7 @@ export function CargarCodigoYOt({
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let subido = false
       try {
-        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf')
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf', quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
@@ -676,7 +676,7 @@ export function CargarCodigoYOt({
           return
         }
         // Lo que se cae acá es la subida: todavía no se guardó.
-        if (subido) await supabase.storage.from('adjuntos-ot').remove([ruta])
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('adjuntos-ot').remove([ruta]))
         setError('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
       } finally {
         enCurso.current = false

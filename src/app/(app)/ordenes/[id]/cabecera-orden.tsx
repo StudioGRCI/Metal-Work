@@ -2,6 +2,7 @@ import { FileText, Truck, CalendarDays } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -129,13 +130,16 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
         }
       />
 
+      {/* La pantalla a la que lleva «Registrar orden» dice qué pasó y recibe el
+          cursor: con un <p> sin rol, el cursor quedaba en la página y no se oía
+          nada (vigesimosexta pasada). */}
       {creada && orden.estado === 'BORRADOR' && (
-        <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
+        <AvisoEnfocado className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2">
           {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
           {puede(perfil, 'ordenes.aprobar')
             ? 'Orden registrada con su PDF. Apruébala para que Diseño pueda definir las etapas.'
             : 'Orden registrada con su PDF. Gerencia la aprueba para que Diseño pueda definir las etapas.'}
-        </p>
+        </AvisoEnfocado>
       )}
 
       {/* La que abrió el taller: se dice quién la revisa y que el trabajo no

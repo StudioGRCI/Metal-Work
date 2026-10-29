@@ -1,22 +1,13 @@
 'use client'
 
 import { Camera } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import {
-  SelectorFotos,
-  fotosParaEnviar,
-  haySubiendo,
-  quitarFotosSueltas,
-  quitarLasQueNadieNombre,
-  soltarMiniaturas,
-  type FotoLista,
-} from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { pudoHaberEntrado } from '@/lib/acciones'
 import { useEnvio } from '@/lib/envio'
 import { porcentaje } from '@/lib/format'
 
@@ -46,58 +37,29 @@ export function RegistrarAvance({
   compacto?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
   const [etapaId, setEtapaId] = useState('')
   const [aviso, setAviso] = useState<string | null>(null)
+  // Sin registrar, las fotos ya subidas no las nombra ningún avance: se quitan
+  // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas. Si se
+  // cierra mientras se envía, se quedan: el avance que está entrando las nombra,
+  // y quitarlas lo dejaba con fotos que no abren (vigesimosegunda pasada). Lo
+  // demás, en `useFotosDelEnvio`.
+  const envio = useFotosDelEnvio('fotos-avance')
+  const { fotos, setFotos } = envio
   // Al guardar, la ventana se cierra y la línea nueva aparece arriba del
   // diario; el aviso queda al lado del botón para que nadie dude de si entró.
   // Antes la ventana quedaba abierta con «Registrar» activo, y un segundo toque
   // era un segundo avance.
-  // Se cerró mientras se enviaba: las fotos quedaron en manos del envío.
-  const cerradaEnviando = useRef(false)
-  // Lo mismo, para pintar: el rechazo de un envío sin ventana se dice junto al botón.
-  const [sinVentana, setSinVentana] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(
-    async (previo: unknown, datos: FormData) => {
-      let r: Awaited<ReturnType<typeof registrarAvance>>
-      try {
-        r = await registrarAvance(previo, datos)
-      } catch (e) {
-        // Se cerró mientras iba y no volvió nada: nadie va a reintentar.
-        if (cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: true })
-        throw e
-      }
-      // Se cerró mientras iba y no volvió un sí: la ventana ya no está para
-      // quitarlas (vigesimotercera pasada). Sin respuesta, el avance pudo entrar
-      // con ellas: se espera y solo se va la que ningún avance nombra.
-      if (!r.ok && cerradaEnviando.current) quitarLasQueNadieNombre('fotos-avance', fotos, { pausa: pudoHaberEntrado(r.error) })
-      return r
-    },
-    (r) => {
-      // El avance entró sin sus fotos: ya subidas, ningún registro las nombra.
-      if (r.datos?.fotosSueltas) quitarFotosSueltas('fotos-avance', fotos)
-      setAbierto(false)
-      setAviso(r.mensaje ?? 'Avance registrado.')
-    },
-  )
+  const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(registrarAvance), (r) => {
+    if (!envio.seCerroAlEnviar()) setAbierto(false)
+    setAviso(r.mensaje ?? 'Avance registrado.')
+  })
 
   const enCurso = etapas.filter((e) => !['TERMINADA', 'OMITIDA'].includes(e.estado))
   const etapa = enCurso.find((e) => e.id === etapaId)
 
-  // Sin registrar, las fotos ya subidas no las nombra ningún avance: se quitan
-  // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas. Si se
-  // cierra mientras se envía, se quedan: el avance que está entrando las nombra,
-  // y quitarlas lo dejaba con fotos que no abren (vigesimosegunda pasada); si
-  // la base lo rechaza, las quita el envío.
   function cerrar() {
-    if (enviando) {
-      cerradaEnviando.current = true
-      setSinVentana(true)
-      soltarMiniaturas(fotos)
-    } else {
-      quitarFotosSueltas('fotos-avance', fotos)
-    }
-    setFotos([])
+    envio.cerrar()
     setAbierto(false)
   }
 
@@ -106,9 +68,7 @@ export function RegistrarAvance({
   function abrir() {
     limpiar()
     setAviso(null)
-    cerradaEnviando.current = false
-    setSinVentana(false)
-    setFotos([])
+    envio.abrir()
     setEtapaId('')
     setAbierto(true)
   }
@@ -126,9 +86,9 @@ export function RegistrarAvance({
           </span>
         )}
         {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-        {sinVentana && !abierto && error && (
+        {envio.desenlace && (
           <span role="alert" className="text-xs text-peligro">
-            El avance que se estaba enviando: {error}
+            El avance que se estaba enviando: {envio.desenlace}
           </span>
         )}
       </span>

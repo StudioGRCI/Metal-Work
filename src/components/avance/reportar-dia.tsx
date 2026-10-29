@@ -1,17 +1,16 @@
 'use client'
 
 import { CalendarDays, TrendingUp } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { reportarAvance } from '@/app/(app)/ordenes/[id]/acciones-actividades'
 import { CampoPorcentaje, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, retirarLasQueSuben, soltarMiniaturas, type FotoLista } from '@/components/avance/selector-fotos'
+import { SelectorFotos, fotosParaEnviar, hayFallidas, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
 import { numero } from '@/lib/format'
-import { createClient } from '@/lib/supabase/client'
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -49,51 +48,21 @@ export function ReportarDia({
   despachos?: { id: string; nombre: string; unidad: string; area: string; cantidad: number }[]
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
   const [aviso, setAviso] = useState<string | null>(null)
-  // Se cerró mientras se enviaba: la foto quedó en manos del envío.
-  const cerradaEnviando = useRef(false)
-  async function limpiarFotoPendiente() {
-    // La que todavía sube se quita sola al terminar: antes llegaba a Storage
-    // después de cancelar y quedaba suelta (vigesimotercera pasada).
-    retirarLasQueSuben(fotos)
-    const rutas = fotosParaEnviar(fotos).map(f => f.ruta_storage)
-    if (rutas.length > 0) {
-      const { error } = await createClient().storage.from('fotos-avance').remove(rutas)
-      if (error) {
-        setAviso('No se pudo retirar la foto pendiente. Intenta quitarla desde el selector.')
-        return
-      }
-    }
-    setFotos([])
-  }
-  async function enviarConLimpieza(previo: unknown, datos: FormData) {
-    try {
-      const resultado = await reportarAvance(previo, datos)
-      // Si se cerró mientras iba, nadie más las quita: la ventana ya no está.
-      if (!resultado.ok && (esNueva || cerradaEnviando.current)) await limpiarFotoPendiente()
-      return resultado
-    } catch (error) {
-      if (esNueva) await limpiarFotoPendiente()
-      throw error
-    }
-  }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(enviarConLimpieza, (r) => {
-    setFotos([])
-    setAbierto(false)
+  // Mientras se envía, la foto se queda: el reporte que está entrando la nombra,
+  // y la base exige que esté en Storage (`validar_reporte_taller`). Tampoco se
+  // quita si no se sabe si entró, ni tras un rechazo con la ventana abierta: se
+  // corrige el porcentaje y se vuelve a enviar sin tomarla de nuevo. Antes
+  // cualquier rechazo, o un corte de la señal, la quitaba en el acto
+  // (vigesimosexta pasada). Como en «Registrar avance» (`useFotosDelEnvio`).
+  const envio = useFotosDelEnvio('fotos-avance')
+  const { fotos, setFotos } = envio
+  const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(reportarAvance), (r) => {
+    if (!envio.seCerroAlEnviar()) setAbierto(false)
     setAviso(r.mensaje ?? 'Avance del día reportado.')
   })
-  // Mientras se envía, la foto se queda: el reporte que está entrando la nombra,
-  // y quitarla lo dejaba con una foto que no abre. Si la base lo rechaza, la
-  // quita el envío (`enviarConLimpieza`), como en «Registrar avance».
   function cancelar() {
-    if (enviando) {
-      cerradaEnviando.current = true
-      soltarMiniaturas(fotos)
-      setFotos([])
-    } else {
-      void limpiarFotoPendiente()
-    }
+    envio.cerrar()
     setAbierto(false)
   }
 
@@ -108,7 +77,7 @@ export function ReportarDia({
         onClick={() => {
           limpiar()
           setAviso(null)
-          cerradaEnviando.current = false
+          envio.abrir()
           setAbierto(true)
         }}
       >
@@ -122,6 +91,12 @@ export function ReportarDia({
       {aviso && !compacto && (
         <span role="status" className="text-xs font-medium text-exito">
           {aviso}
+        </span>
+      )}
+      {/* También en la lista apretada: si no entró, nadie más lo diría. */}
+      {envio.desenlace && (
+        <span role="alert" className="text-xs text-peligro">
+          El reporte que se estaba enviando: {envio.desenlace}
         </span>
       )}
 

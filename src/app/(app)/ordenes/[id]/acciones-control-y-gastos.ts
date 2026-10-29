@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion, mensajeDeArchivo } from '@/lib/acciones'
 import { moneda } from '@/lib/format'
-import { ocupada, subirARutaNueva } from '@/lib/ruta-nueva'
+import { ocupada, quitarEnElActo, subirARutaNueva } from '@/lib/ruta-nueva'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
@@ -78,13 +78,13 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
   }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`
   const cubeta = db.storage.from('gastos-ot')
-  let { error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf')
+  let { error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf', quitarEnElActo)
   // Ninguna fila nombra todavía la ruta de este gasto: lo que ocupa la ruta lo
   // dejó un intento anterior del mismo formulario (la subida llegó y la
   // respuesta no), `subirARutaNueva` ya lo quitó, y se sube otra vez. Antes
   // cada reintento chocaba con ese archivo para siempre. Quitarlo pide que su
   // dueño lo vea mientras ninguna fila lo nombra (migración 20261022193000).
-  if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf'))
+  if (ocupada(errorArchivo)) ({ error: errorArchivo } = await subirARutaNueva(cubeta, ruta, pdf.bytes, 'application/pdf', quitarEnElActo))
   if (errorArchivo) return { ok: false, error: `No se pudo subir el comprobante: ${mensajeDeArchivo(errorArchivo)}` }
   try {
     const { data, error } = await db.from('ot_gastos_areas').insert({
@@ -215,7 +215,7 @@ export async function adjuntarControlFirmado(_previo: unknown, datos: FormData):
   if (control?.escaneo_ruta) return { ok: false, error: 'La ficha ya tiene su escaneo firmado: recarga la pantalla para verlo. Solo se admite uno.' }
   if (!control?.salida_cerrada_en) return { ok: false, error: 'Cierra la salida antes de adjuntar el escaneo.' }
   const ruta = `ot/${ordenId.data}/control/${crypto.randomUUID()}.pdf`
-  const { error: subida } = await subirARutaNueva(db.storage.from('control-ot'), ruta, pdf.bytes, 'application/pdf')
+  const { error: subida } = await subirARutaNueva(db.storage.from('control-ot'), ruta, pdf.bytes, 'application/pdf', quitarEnElActo)
   if (subida) return { ok: false, error: `No se pudo subir el escaneo: ${mensajeDeArchivo(subida)}` }
   try {
     const { data, error } = await db.from('ot_control_vehicular').update({

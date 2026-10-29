@@ -1,5 +1,5 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
+import { cuandoVuelvaLaCuenta, laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, quitarConLaCuenta, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { noGuardoNada } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 
@@ -179,6 +179,17 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
   const documento = `${bucket}/${ruta.replace(/\.[^./]+$/, '')}`
   const este = { huella: huellaDe(archivo), nombre: archivo.name }
   const subir = () => supabase.storage.from(bucket).upload(ruta, archivo, { contentType, upsert: false })
+  // Lo que quita aquí se lee: vacío quiere decir que una fila lo nombra. Con la
+  // sesión de otra cuenta también vuelve vacío, y el 409 decía «quedó registrado
+  // la primera vez» sin que quedara nada (vigesimosexta pasada). Se mira la
+  // cuenta antes de pedirlo y al volver, por si entró mientras tanto: si cambió,
+  // la cadena se corta y no se lee nada en el vacío.
+  const quitarConEstaCuenta = async (cual: string) => {
+    seguirConLaCuentaDeLaPestana()
+    const quitado = await supabase.storage.from(bucket).remove([cual])
+    seguirConLaCuentaDeLaPestana()
+    return quitado
+  }
   const antes = intentados.get(clave)
   // Hasta que Storage conteste, no se sabe qué hay en la ruta: lo recordado no
   // coincide con ningún archivo, así el próximo 409 pasa por el reemplazo y no
@@ -198,7 +209,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
     // vacía no se toca.
     const otraClave = `${bucket}/${otraRuta}`
     if (otraRuta && otraRuta !== ruta && !vacias.has(otraClave)) {
-      const quitado = await supabase.storage.from(bucket).remove([otraRuta])
+      const quitado = await quitarConEstaCuenta(otraRuta)
       if (quitado.error) {
         return { ok: false, error: otroArchivoEnLaRuta(intentados.get(otraClave)?.nombre ?? este.nombre, false) }
       }
@@ -224,7 +235,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
       // contestó. Si ninguna fila lo nombra, la política deja quitarlo y el
       // elegido entra en su lugar; si una lo nombra, quedó: si es el elegido,
       // es el mismo envío y se anota; si no, se dice cuál.
-      const quitado = await supabase.storage.from(bucket).remove([ruta])
+      const quitado = await quitarConEstaCuenta(ruta)
       if (quitado.error) return { ok: false, error: otroArchivoEnLaRuta(antes.nombre, false) }
       if ((quitado.data?.length ?? 0) > 0) {
         confirmados.delete(clave)
@@ -275,7 +286,7 @@ export async function subirArchivoPrivado<T = never>({ bucket, ruta, archivo, co
   // puede, se queda como estaba.
   if (resultado.ok && deOtroTipo.length > 0) {
     porQuitarTrasOk.delete(documento)
-    void supabase.storage.from(bucket).remove(deOtroTipo).catch(() => null)
+    void quitarConLaCuenta(() => supabase.storage.from(bucket).remove(deOtroTipo))
   }
   return resultado
 }

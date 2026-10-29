@@ -765,6 +765,81 @@ let pagoId
   await contexto.close()
 }
 
+// ---------------------------------------------------------------- 3a'''. Entra otra cuenta mientras sube el voucher
+// La vigesimosexta pasada pagó con el voucher a medio subir y, en otra pestaña,
+// entró Logística: la cadena se cortaba sin anotar y la ventana seguía llena,
+// sin decir nada, con el cursor en la página. Ahora dice que no se guardó, el
+// cursor va a ese aviso al volver la cuenta, y el voucher, que nadie nombra, se
+// quita entonces (con la sesión de Logística, Storage no lo deja quitar).
+{
+  const { pagina, contexto } = await entrar('tesoreria')
+  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  const [{ desde }] = await consulta(`select now() as desde`)
+  const antes = (await consulta(`select id from pagos_orden_compra where orden_compra_id = $1`, [oc[0]])).map((p) => p.id)
+  const v = pagina.locator('[role="dialog"]', { has: pagina.locator('input[name="operacion"]') })
+  await pagina.locator(`article#compra-${oc[0]} [data-pagar-compra]`).click()
+  await v.waitFor()
+  await v.locator('input[name="monto"]').fill('15')
+  await v.locator('select[name="cancela"]').selectOption('no')
+  const valor = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+  await v.locator('select[name="caja_id"]').selectOption(valor)
+  await v.locator('input[name="archivo"]').setInputFiles(join(archivos, 'voucher.pdf'))
+  const retenida = { n: 0, soltar: null }
+  await pagina.route(`**/storage/v1/object/pagos-compras/${oc[0]}/**`, async (r) => {
+    if (r.request().method() !== 'POST' || retenida.n) return r.continue()
+    retenida.n++
+    await new Promise((listo) => (retenida.soltar = listo))
+    return r.continue()
+  })
+  /** En otra pestaña del mismo navegador se cierra la sesión y entra `puesto`: la sesión es de todas. */
+  const enOtraPestana = async (puesto) => {
+    const otra = esperarReactAlNavegar(await contexto.newPage())
+    await otra.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await Promise.all([
+      otra.waitForURL((u) => u.pathname.startsWith('/ingresar'), { timeout: 30000 }),
+      otra.evaluate(() => document.querySelector('form[action="/auth/salir"]')?.requestSubmit()),
+    ])
+    await otra.waitForLoadState('networkidle')
+    await otra.fill('input[type="email"]', CUENTAS[puesto])
+    await otra.fill('input[type="password"]', CLAVE)
+    await Promise.all([
+      otra.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
+      otra.click('button[type="submit"]'),
+    ])
+    await otra.waitForLoadState('networkidle')
+    await otra.close()
+  }
+  const trabada = () => pagina.locator('dialog[data-traba-otra-cuenta]').evaluate((d) => d.open).catch(() => false)
+  const vouchers = () => consulta(`select name from storage.objects where bucket_id = 'pagos-compras' and name like $1 and created_at >= $2`, [`${oc[0]}/%`, desde])
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => retenida.n, (n) => n === 1)
+  await enOtraPestana('logistica')
+  const conTraba = await hasta(trabada, Boolean, 10000)
+  retenida.soltar()
+  const dijo = limpio(await hasta(() => v.locator('[role="alert"]').textContent().catch(() => ''), (t) => /No se guardó/.test(t ?? ''), 15000))
+  await pagina.waitForTimeout(1500)
+  const subido = await vouchers()
+  const pagosConTraba = await consulta(`select id from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  await enOtraPestana('tesoreria')
+  const destrabada = await hasta(() => trabada().then((t) => !t), Boolean, 10000)
+  const cursor = await hasta(
+    () => pagina.evaluate(() => (document.activeElement?.textContent ?? '').replace(/\s+/g, ' ').trim()),
+    (t) => t.startsWith('No se guardó'), 8000,
+  )
+  const alVolver = await hasta(vouchers, (r) => r.length === 0)
+  const sigueLlena = (await v.locator('input[name="monto"]').inputValue()) === '15' && (await v.getByRole('button', { name: 'Registrar el pago' }).isEnabled())
+  comprobar(conTraba && dijo === 'No se guardó: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.' && pagosConTraba.length === 0
+      && subido.length === 1 && destrabada && cursor.startsWith('No se guardó') && alVolver.length === 0 && sigueLlena,
+    `entra Logística mientras sube el voucher: no se paga, la ventana lo dice y al volver Tesorería el cursor va al aviso y el voucher se quita («${dijo}»; ${pagosConTraba.length} pagos; voucher ${subido.length} con la traba → ${alVolver.length} al volver; cursor «${cursor.slice(0, 30)}»; llena ${sigueLlena})`)
+  // Ya de vuelta, el mismo envío entra una vez.
+  await v.getByRole('button', { name: 'Registrar el pago' }).click()
+  await hasta(() => v.count(), (n) => n === 0, 30000)
+  const pagos = await consulta(`select monto::float as monto from pagos_orden_compra where orden_compra_id = $1 and not (id = any($2::uuid[]))`, [oc[0], antes])
+  comprobar(pagos.length === 1 && pagos[0].monto === 15, `de vuelta, «Registrar el pago» lo envía y entra una vez (${pagos.map((p) => p.monto).join(', ')})`)
+  await pagina.unrouteAll({ behavior: 'ignoreErrors' })
+  await contexto.close()
+}
+
 // ---------------------------------------------------------------- 3b. La OC con boleta de antes que no se pagó
 {
   const { pagina, contexto } = await entrar('tesoreria')

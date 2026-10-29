@@ -1,15 +1,14 @@
 'use client'
 
 import { LogIn } from 'lucide-react'
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
 
 import {
   SelectorFotos,
   fotosParaEnviar,
   hayFallidas,
   haySubiendo,
-  quitarFotosSueltas,
-  soltarMiniaturas,
+  useFotosDelEnvio,
   type FotoLista,
 } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -17,7 +16,6 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
 import {
   BUCKET_FOTOS_VEHICULO,
@@ -31,19 +29,25 @@ import { useEnvio } from '@/lib/envio'
 import { registrarIngresoVehiculo } from './acciones'
 
 /**
- * El botón «Registrar ingreso» y su ventana. Las fotos viven aquí y no en el
- * formulario: si la ventana se cierra sin registrar, las que ya subieron se
- * retiran de Storage; si se registra, quedan con el ingreso.
+ * El botón «Registrar ingreso» y su ventana. Las fotos y el envío viven aquí y
+ * no en el formulario, que la ventana desmonta al cerrarse: si se cierra sin
+ * registrar, las fotos que ya subieron se retiran de Storage; si se registra,
+ * quedan con el ingreso. Si se cierra mientras se envía, se quedan con ese envío
+ * y lo que conteste se dice junto al botón. Antes se quitaban en el acto: la
+ * base rechazaba el ingreso («La foto 1 no terminó de subir…»), el vehículo
+ * quedaba sin registro y nada lo decía (vigesimosexta pasada).
  */
 export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; codigos: CodigoParaIngreso[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
-  // Sin registrar, las fotos subidas no las nombra nadie: se quitan.
+  const envio = useFotosDelEnvio(BUCKET_FOTOS_VEHICULO)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(registrarIngresoVehiculo), (r) => {
+    if (!envio.seCerroAlEnviar()) setAbierta(false)
+    setAviso(r.mensaje ?? 'Ingreso registrado.')
+  })
   function cerrar() {
-    quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
-    setFotos([])
+    envio.cerrar()
     setAbierta(false)
   }
   return (
@@ -51,8 +55,9 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
       <Boton
         type="button"
         onClick={() => {
+          limpiar()
           setAviso(null)
-          setFotos([])
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -63,6 +68,12 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
       {aviso && (
         <p role="status" className="basis-full text-sm text-exito">
           {aviso}
+        </p>
+      )}
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      {envio.desenlace && (
+        <p role="alert" className="basis-full text-sm text-peligro">
+          El ingreso que se estaba enviando: {envio.desenlace}
         </p>
       )}
       <Ventana
@@ -76,16 +87,12 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
           key={vez}
           cuentaId={cuentaId}
           codigos={codigos}
-          fotos={fotos}
-          setFotos={setFotos}
+          fotos={envio.fotos}
+          setFotos={envio.setFotos}
           alCancelar={cerrar}
-          alTerminar={(mensaje) => {
-            // Ya son parte del ingreso: solo se sueltan las miniaturas.
-            soltarMiniaturas(fotos)
-            setFotos([])
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
+          alEnviar={alEnviar}
+          enviando={enviando}
+          error={error}
         />
       </Ventana>
     </>
@@ -98,34 +105,26 @@ function FormularioIngreso({
   fotos,
   setFotos,
   alCancelar,
-  alTerminar,
+  alEnviar,
+  enviando,
+  error,
 }: {
   cuentaId: string
   codigos: CodigoParaIngreso[]
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
   alCancelar: () => void
-  alTerminar: (mensaje: string) => void
+  alEnviar: (evento: FormEvent<HTMLFormElement>, preparar?: (datos: FormData) => void) => void
+  enviando: boolean
+  error: string | null
 }) {
   // Decidido aquí: un reintento manda el mismo y la base no duplica el ingreso.
-  // Las fotos suben a la carpeta de este ingreso antes de registrarlo.
+  // Las fotos suben a la carpeta de este ingreso antes de registrarlo. Si ya
+  // había entrado la primera vez, las de este envío no las nombra nadie y se
+  // quitan (`useFotosDelEnvio`); las de la primera, la base no las deja quitar.
   const [id] = useState(() => crypto.randomUUID())
   const [motivo, setMotivo] = useState('')
   const [codigo, setCodigo] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(
-    async (previo: unknown, datos: FormData) => {
-      const r = await registrarIngresoVehiculo(previo, datos)
-      // El ingreso ya había entrado la primera vez: las fotos de este envío no
-      // las nombra nadie y se quitan ya (las de la primera vez, que el ingreso
-      // nombra, la base no las deja quitar).
-      if (!r.ok && yaEntroLaPrimeraVez(r.error)) {
-        quitarFotosSueltas(BUCKET_FOTOS_VEHICULO, fotos)
-        setFotos([])
-      }
-      return r
-    },
-    (r) => alTerminar(r.mensaje ?? 'Ingreso registrado.'),
-  )
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length

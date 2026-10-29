@@ -1,6 +1,6 @@
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
 import { BUCKET_SUBCONTRATOS, MAXIMO_MB_SUBCONTRATOS, TIPOS_ARCHIVO_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
-import { seguirConLaCuentaDeLaPestana, SIN_RESPUESTA } from '@/lib/envio'
+import { quitarConLaCuenta, seguirConLaCuentaDeLaPestana, SIN_RESPUESTA } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -30,7 +30,7 @@ export async function subirArchivoSubcontrato(
   // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la
   // de otra pestaña: el archivo saldría a su nombre (`seguirConLaCuentaDeLaPestana`).
   seguirConLaCuentaDeLaPestana()
-  const { error } = await subirARutaNueva(supabase.storage.from(BUCKET_SUBCONTRATOS), ruta, archivo, archivo.type)
+  const { error } = await subirARutaNueva(supabase.storage.from(BUCKET_SUBCONTRATOS), ruta, archivo, archivo.type, quitarConLaCuenta)
   if (error) {
     // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
     seguirConLaCuentaDeLaPestana()

@@ -367,9 +367,10 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
             </>
           )}
         </span>
-        {/* Se anuncia al elegir: el aviso de «no es un Excel» llega también a quien no ve la caja. */}
+        {/* Se anuncia al elegir: el aviso de «no es un Excel» llega también a quien no ve la caja.
+            El estado sin aviso no lo suma la traba al volver la cuenta: es lo que el cursor tiene delante. */}
         {pie && (
-          <span aria-live="polite" className={cn('block text-xs', aviso ? 'text-peligro' : 'text-texto-tenue')}>
+          <span aria-live="polite" data-no-anunciar={aviso ? undefined : ''} className={cn('block text-xs', aviso ? 'text-peligro' : 'text-texto-tenue')}>
             <ConPuntero texto={pie} />
           </span>
         )}

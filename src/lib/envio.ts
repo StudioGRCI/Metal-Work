@@ -17,8 +17,10 @@ export const SIN_RESPUESTA = 'No llegó la respuesta. Revisa la conexión y mira
 
 /**
  * Con lo que se frena el envío desde una pantalla que es de otra cuenta
- * (`laPestanaEsDeOtraCuenta`). En `useAccion` no se dice: lo dice la traba de la
- * pantalla, que se abre al mismo tiempo.
+ * (`laPestanaEsDeOtraCuenta`). Si frena el primer toque (`salio()`), en
+ * `useAccion` no se dice: no salió nada, y lo dice la traba de la pantalla, que
+ * se abre al mismo tiempo. Si corta una cadena a medias (subir y anotar), sí:
+ * `NO_SE_GUARDO_OTRA_CUENTA`.
  */
 export class OtraCuentaEnLaPestana extends Error {
   constructor() {
@@ -147,8 +149,19 @@ export function useAccion<T = never>(
         try {
           salida = await accion(null, datos)
         } catch (e) {
-          // Lo frenó `salio()`: no salió nada, y la traba de la pantalla ya lo dice.
-          if (e instanceof OtraCuentaEnLaPestana) return
+          // Lo frenó `salio()`, o cortó la cadena antes de anotar: no quedó nada.
+          // Se dice en la ventana, que sigue abierta y llena: con el botón apagado
+          // mientras enviaba, el cursor había caído a la página, y al volver la
+          // cuenta nada decía que no se guardó (vigesimosexta pasada, el pago de
+          // Tesorería). El aviso nace con la traba puesta: al volver, el cursor va
+          // a él. El primer toque con la traba ya puesta no llega aquí: se frena
+          // arriba, sin aviso.
+          if (e instanceof OtraCuentaEnLaPestana) {
+            const corte: ResultadoAccion<T> = { ok: false, error: NO_SE_GUARDO_OTRA_CUENTA }
+            setResultado(corte)
+            despuesDelRechazo(corte, ventana, false)
+            return
+          }
           let mensaje: string
           try {
             mensaje = explicarFallo(e)
@@ -677,6 +690,20 @@ export function cuandoVuelvaLaCuenta(hacer: () => void) {
 }
 
 /**
+ * Quita de Storage lo que esta pantalla subió y nadie va a nombrar. La política
+ * de cada bucket deja quitarlo solo a su dueño: con la traba puesta la sesión es
+ * de la otra cuenta, el borrado volvía vacío y sin error, y el archivo quedaba
+ * suelto para siempre (vigesimosexta pasada). Entonces se deja para cuando
+ * vuelva la cuenta de la pantalla. Si tampoco así se puede, se queda: nadie más
+ * lo ve.
+ */
+export async function quitarConLaCuenta(quitar: () => Promise<unknown>) {
+  const intentar = () => quitar().catch(() => null)
+  if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(() => void intentar())
+  else await intentar()
+}
+
+/**
  * Para seguir una cadena de pasos (subir y anotar, fila por fila, tanda por
  * tanda): lanza `OtraCuentaEnLaPestana` si la sesión ya es de otra cuenta. El
  * primer toque se mira en `useAccion` y `salio()`, pero lo que sigue sale con la
@@ -692,7 +719,8 @@ export const ENTRO_OTRA_CUENTA = 'En otra pestaña entró otra cuenta.'
 
 /**
  * Lo que dice una ventana cuya cadena cortó la traba sin que quedara nada (la
- * orden nueva, «Dar código y cargar la OT», la cotización). Con el botón apagado
+ * orden nueva, «Dar código y cargar la OT», la cotización, y toda cadena que va
+ * por `useAccion`: los pagos de Tesorería, las boletas…). Con el botón apagado
  * mientras enviaba, el cursor había caído a la página, y al volver la cuenta la
  * ventana seguía llena sin decir que no se guardó (vigesimoquinta pasada). El
  * aviso nace con la traba puesta: al volver, el cursor va a él.
