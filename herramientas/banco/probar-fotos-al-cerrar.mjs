@@ -474,6 +474,21 @@ if (corre('4')) {
 
 // ------------------------------------------- 5. El conteo inicial lleva el cursor al resumen (Almacén)
 if (corre('5')) {
+  // Un material propio: un conteo deja fuera de la planilla todo movimiento de antes,
+  // y contar uno del catálogo le quitaría la salida a las suites que lo usan.
+  const codigo = `QA-CIERRE-${sello}`
+  const [{ id: materialId }] = await consulta(
+    `insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+     values ($1, $2, (select id from public.categorias_material where activo and almacen = 'CONSUMIBLES' and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
+             (select id from public.unidades_medida where codigo = 'UND')) returning id`,
+    [codigo, `Trapo de cierre ${sello}`],
+  )
+  await consulta(
+    `insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, precio_unitario, moneda, registrado_en)
+     select gen_random_uuid(), 'INGRESO', $1, 5, 'INGRESO_GENERAL', 'Compra de banco', u.id, 2, 'PEN', now() - interval '1 hour'
+     from public.usuarios u where u.correo = $2`,
+    [materialId, CUENTAS.almacen],
+  )
   const { pagina, contexto, errores } = await entrar(CUENTAS.almacen)
   await ir(pagina, `${BASE}/almacen/kardex`)
   const libro = new ExcelJS.Workbook()
@@ -485,10 +500,9 @@ if (corre('5')) {
   })
   let elegida = 0
   for (let n = encabezado + 1; n <= hoja.rowCount; n++) {
-    const saldo = Number(hoja.getCell(n, 4).value)
-    if (!elegida && saldo > 0) {
+    if (String(hoja.getCell(n, 1).value) === codigo) {
       elegida = n
-      hoja.getCell(n, 5).value = saldo + 1
+      hoja.getCell(n, 5).value = Number(hoja.getCell(n, 4).value) + 1
     } else hoja.getCell(n, 5).value = null
   }
   const lleno = join(archivos, `conteo-cursor-${sello}.xlsx`)

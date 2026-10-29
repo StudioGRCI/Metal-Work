@@ -83,6 +83,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 /** Elige en el `SeleccionBuscable` de nombre accesible `etiqueta` la opción que empieza por `texto`. */
 async function elegir(pagina, etiqueta, texto) {
   await pagina.getByRole('combobox', { name: etiqueta }).click()
+  // Se escribe cuando la caja de búsqueda ya tiene el foco (como en
+  // probar-reporte-diario.mjs): el panel la enfoca en el cuadro siguiente y, si
+  // no, las primeras letras se pierden en el botón y la opción no aparece.
+  await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
   await pagina.keyboard.type(texto)
   await pagina.getByRole('option', { name: new RegExp(texto, 'i') }).first().click()
 }
