@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
  * ponerse al día, o la propia pestaña si es de otro despliegue (`useAvisos`).
  */
 export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: number }) {
-  const { abrir, marcarTodos, marcando, error, leido, sinLeer: quedan } = useAvisos(avisos, sinLeer)
+  const { abrir, marcarTodos, marcando, error, leido, sinLeer: quedan } = useAvisos(sinLeer)
 
   return (
     <div>

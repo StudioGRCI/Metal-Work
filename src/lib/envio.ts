@@ -141,12 +141,23 @@ export function alVolverACargar(quitar: () => unknown) {
  */
 let enviosEnCamino = 0
 let alVolverLosEnvios: Array<() => void> = []
+// Mientras «Volver a cargar» espera: si alguno vuelve sin `entro()`, no recarga.
+let esperaDeLaRecarga: { noEntro: boolean } | null = null
 
-export async function mientrasSeEnvia<T>(enviar: () => Promise<T>): Promise<T> {
+/**
+ * `enviar` llama a `entro()` cuando lo enviado entró: con un rechazo, sin
+ * respuesta o con un error, «Volver a cargar» no recarga encima de su aviso
+ * (trigesimosegunda pasada).
+ */
+export async function mientrasSeEnvia<T>(enviar: (entro: () => void) => Promise<T>): Promise<T> {
   enviosEnCamino++
+  let entro = false
   try {
-    return await enviar()
+    return await enviar(() => {
+      entro = true
+    })
   } finally {
+    if (!entro && esperaDeLaRecarga) esperaDeLaRecarga.noEntro = true
     enviosEnCamino--
     if (enviosEnCamino === 0) {
       const ahora = alVolverLosEnvios
@@ -168,17 +179,46 @@ function anotarQueSeVa() {
 }
 
 /**
- * Recarga la pantalla después de lo de `alVolverACargar`. Antes espera a los
- * envíos en camino; si uno entró y lleva a otra pantalla, le da tiempo a Next
- * para ir a ella. Todo con tope: sin red, recarga igual.
+ * Por qué «Volver a cargar» no recargó:
+ *
+ * · `se-va`: lo enviado entró y lleva a otra pantalla, y Next ya la está
+ *   cargando entera. Recargar encima la cortaba a los 4 s y dejaba la de antes,
+ *   vacía, con el reporte ya dentro (D13 e Importante 2 de la trigesimosegunda).
+ * · `no-entro`: algo de lo que esperó volvió rechazado, sin respuesta o con un
+ *   error. Su aviso está junto a su botón, y recargar se lo llevaba con lo
+ *   escrito: «Pon al menos a una persona…» se veía 90 ms.
  */
-export async function volverACargar() {
-  const tope = (ms: number) => new Promise((listo) => setTimeout(listo, ms))
-  await Promise.race([losEnviosVolvieron(), tope(10_000)])
-  if (seVaDeLaPantalla) await tope(4000)
+export type SinRecargar = 'se-va' | 'no-entro'
+
+/**
+ * Recarga la pantalla después de lo de `alVolverACargar`, cuando lo que está en
+ * camino ya volvió y entró. Si pasan 10 s, `alTardar`: la persona puede seguir
+ * esperando o volver a pedirlo con `igual`, que recarga sin esperar. Antes
+ * recargaba al tope con el envío en camino y la pantalla volvía vacía con el
+ * reporte dentro.
+ */
+export async function volverACargar({ igual = false, alTardar }: { igual?: boolean; alTardar?: () => void } = {}): Promise<SinRecargar | null> {
+  if (!igual) {
+    const espera = { noEntro: false }
+    esperaDeLaRecarga = espera
+    const tarda = setTimeout(() => alTardar?.(), 10_000)
+    try {
+      await losEnviosVolvieron()
+    } finally {
+      clearTimeout(tarda)
+      if (esperaDeLaRecarga === espera) esperaDeLaRecarga = null
+    }
+    // Si la ida no llega a irse, el toque siguiente recarga.
+    if (seVaDeLaPantalla) {
+      seVaDeLaPantalla = false
+      return 'se-va'
+    }
+    if (espera.noEntro) return 'no-entro'
+  }
   const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
-  await Promise.race([quitar, tope(4000)])
+  await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
   window.location.reload()
+  return null
 }
 
 /**
@@ -298,7 +338,7 @@ export function useAccion<T = never>(
     setResultado(null)
     const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
 
-    iniciar(() => mientrasSeEnvia(async () => {
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true
@@ -325,6 +365,7 @@ export function useAccion<T = never>(
             mensaje = explicarFallo(e)
           } catch (deNext) {
             soltar = false
+            entro()
             anotarQueSeVa()
             throw deNext
           }
@@ -336,6 +377,7 @@ export function useAccion<T = never>(
         // Una acción que redirige (abrir la orden desde la cotización) no
         // devuelve nada: Next ya está navegando a la pantalla nueva.
         if (!salida) {
+          entro()
           anotarQueSeVa()
           return
         }
@@ -345,6 +387,7 @@ export function useAccion<T = never>(
           return
         }
 
+        entro()
         alTerminar?.(salida)
         // El ok puede llegar con la traba ya puesta: salió antes del cambio de cuenta.
         if (refrescar) iniciar(() => refrescarSiEsDeLaPestana(router))
@@ -750,6 +793,16 @@ function preguntaDeLaSesion() {
  */
 function cuentaEnLaCookie(): string | undefined {
   try {
+    const id = idDeLaSesion(sesionEnLaCookie())
+    return id && ES_UUID.test(id) ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** La sesión que guarda la cookie, en JSON, o `undefined` si no se reconoce (`cuentaEnLaCookie`). */
+function sesionEnLaCookie(): unknown {
+  try {
     const trozos = new Map<string, Map<number, string>>()
     for (const par of document.cookie.split(';')) {
       const igual = par.indexOf('=')
@@ -770,8 +823,7 @@ function cuentaEnLaCookie(): string | undefined {
     }
     let texto = decodeURIComponent(valor)
     if (texto.startsWith(BASE64)) texto = desdeBase64Url(texto.slice(BASE64.length))
-    const id = idDeLaSesion(JSON.parse(texto))
-    return id && ES_UUID.test(id) ? id : undefined
+    return JSON.parse(texto) as unknown
   } catch {
     return undefined
   }
@@ -795,6 +847,79 @@ function desdeBase64Url(texto: string) {
   const base64 = texto.replace(/-/g, '+').replace(/_/g, '/')
   const binario = atob(base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '='))
   return new TextDecoder().decode(Uint8Array.from(binario, (c) => c.charCodeAt(0)))
+}
+
+/**
+ * La sesión se refresca fuera de las acciones (X8 de la crítica de la
+ * trigesimoprimera pasada). El proxy la refresca en cada pedido al que le
+ * quedan menos de 90 s, y si el pedido es una acción, Next cuenta esas cookies
+ * como cambiadas por ella y la responde revalidada: en una pestaña de otro
+ * despliegue eso recarga el documento entero aunque la acción no revalide (la
+ * pregunta de cada minuto, lo leído de la campana, el conteo del kardex). Una
+ * vez por hora, sin que nadie enviara nada, se perdía lo escrito y la foto
+ * quedaba suelta.
+ *
+ * Así que toda acción espera antes de salir a `sesionAlDia`: si a la sesión le
+ * quedan menos de diez minutos según su cookie, o si hace cinco que no se
+ * pregunta (el reloj del teléfono puede ir atrasado), se pide a `/auth/sesion`,
+ * un GET, que la refresque; ahí las cookies nuevas no repintan nada. Se mira en
+ * el `fetch` con que Next manda la acción, para que ninguna se quede fuera: la
+ * que se llama desde un `onClick`, las de un bucle, las que la pantalla pide
+ * sola. Sin señal, o pasados 4 s, la acción sale igual y dice lo suyo.
+ */
+const MARGEN_DE_LA_SESION_MS = 10 * 60_000
+const CADA_CUANTO_SE_PREGUNTA_MS = 5 * 60_000
+let preguntadaLaSesion = 0
+let sesionEnCamino: Promise<void> | null = null
+let vigilandoLasAcciones = false
+
+export function refrescarLaSesionAntesDeCadaAccion() {
+  if (vigilandoLasAcciones || typeof window === 'undefined') return
+  vigilandoLasAcciones = true
+  const pedir = window.fetch.bind(window)
+  window.fetch = (async (entrada: RequestInfo | URL, opciones?: RequestInit) => {
+    if (esUnaAccion(opciones)) await sesionAlDia(pedir)
+    return pedir(entrada, opciones)
+  }) as typeof fetch
+}
+
+function esUnaAccion(opciones?: RequestInit) {
+  const cabeceras = opciones?.headers
+  if (opciones?.method !== 'POST' || !cabeceras) return false
+  if (cabeceras instanceof Headers) return cabeceras.has('next-action')
+  const nombres = Array.isArray(cabeceras) ? cabeceras.map(([nombre]) => nombre) : Object.keys(cabeceras)
+  return nombres.some((nombre) => nombre.toLowerCase() === 'next-action')
+}
+
+function sesionAlDia(pedir: typeof fetch): Promise<void> {
+  if (sesionEnCamino) return sesionEnCamino
+  const ahora = Date.now()
+  const desde = ahora - preguntadaLaSesion
+  const vence = venceLaSesion()
+  // Recién preguntada, no: con el reloj adelantado, cada acción preguntaría.
+  const porVencer = vence !== undefined && vence - ahora < MARGEN_DE_LA_SESION_MS && desde > 30_000
+  if (!porVencer && desde < CADA_CUANTO_SE_PREGUNTA_MS) return Promise.resolve()
+  sesionEnCamino = (async () => {
+    const corte = new AbortController()
+    const tope = setTimeout(() => corte.abort(), 4000)
+    try {
+      if ((await pedir('/auth/sesion', { cache: 'no-store', signal: corte.signal })).ok) preguntadaLaSesion = Date.now()
+    } catch {
+      // Sin señal la acción tampoco llega: que lo diga ella.
+    } finally {
+      clearTimeout(tope)
+      sesionEnCamino = null
+    }
+  })()
+  return sesionEnCamino
+}
+
+/** Cuándo vence la sesión según su cookie, en ms, o `undefined` si no se sabe. */
+function venceLaSesion(): number | undefined {
+  const sesion = sesionEnLaCookie()
+  if (!sesion || typeof sesion !== 'object') return undefined
+  const { expires_at } = sesion as { expires_at?: unknown }
+  return typeof expires_at === 'number' && Number.isFinite(expires_at) ? expires_at * 1000 : undefined
 }
 
 /**

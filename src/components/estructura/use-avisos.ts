@@ -28,9 +28,21 @@ function suscribirse(avisar: () => void) {
   return () => void oyentes.delete(avisar)
 }
 
-export function useAvisos(avisos: Notificacion[], sinLeer: number, alAbrir?: () => void) {
+const useLeidosAqui = () => useSyncExternalStore(suscribirse, () => leidosAqui, () => NINGUNO)
+const quedanSinLeer = (aqui: LeidosAqui, sinLeer: number) => (aqui.todos ? 0 : Math.max(0, sinLeer - aqui.ids.size))
+
+/**
+ * Los sin leer de `sinLeer` (el número del servidor) menos lo leído desde esta
+ * pestaña: la pastilla «Sin leer» de /avisos seguía en 3 con la lista ya leída
+ * (D11 de la trigesimosegunda pasada).
+ */
+export function useSinLeer(sinLeer: number) {
+  return quedanSinLeer(useLeidosAqui(), sinLeer)
+}
+
+export function useAvisos(sinLeer: number, alAbrir?: () => void) {
   const router = useRouter()
-  const aqui = useSyncExternalStore(suscribirse, () => leidosAqui, () => NINGUNO)
+  const aqui = useLeidosAqui()
   // Sin repintar: la acción ya pone al día la pantalla, y donde no puede, la
   // recarga de `useAccion` se la llevaba entera (trigesimoprimera pasada).
   const accion = useAccion<{ destino: string | null; abrir: boolean }>(async (_, datos) => {
@@ -67,6 +79,6 @@ export function useAvisos(avisos: Notificacion[], sinLeer: number, alAbrir?: () 
     marcando: accion.enviando,
     error: accion.error,
     leido: (aviso: Notificacion) => Boolean(aviso.leida_en) || aqui.todos || aqui.ids.has(aviso.id),
-    sinLeer: aqui.todos ? 0 : Math.max(0, sinLeer - aqui.ids.size),
+    sinLeer: quedanSinLeer(aqui, sinLeer),
   }
 }

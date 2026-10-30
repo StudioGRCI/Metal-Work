@@ -198,6 +198,28 @@ En la misma migración que la crea, sin excepción:
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo
   cambia cuando uno entró (`alAdjuntar`).
+- **La sesión se refresca antes de una acción, no durante ella.** El proxy
+  (`src/lib/supabase/sesion-proxy.ts`) llama a `getUser` en cada pedido y, a
+  90 s de vencer, refresca la sesión y escribe cookies nuevas; si eso pasa en
+  una acción, Next las cuenta como de la acción y la responde revalidada, y en
+  una pestaña de otro despliegue eso recarga el documento entero aunque la
+  acción no revalide (X8 de la trigesimosegunda). `refrescarLaSesionAntesDeCadaAccion`
+  (`src/lib/envio.ts`, la monta `RefrescoAlVolver`) envuelve `window.fetch`:
+  antes de un POST con cabecera `next-action`, si a la sesión de la cookie le
+  quedan menos de 10 min (o cada 5 min, por si la cookie no se lee), pide
+  `/auth/sesion` con 4 s de tope, y la acción sale igual si no contesta. No
+  toca la cabecera ni el cuerpo de la acción. `/auth/sesion` es un GET que
+  refresca solo la sesión de quien llama, con su propio token de refresco, y
+  devuelve 204 sin cuerpo; de `getSession` mira solo cuándo vence: quién es lo
+  sigue diciendo `getUser`, en el proxy y en cada acción. Lo que el navegador
+  lee de la cookie (`sesionEnLaCookie`) sirve para decidir cuándo preguntar,
+  nunca para decidir permisos.
+- **La compilación que manda el navegador decide solo si se revalida.** La
+  planilla del kardex, el conteo inicial y los avisos mandan `compilacion`
+  (`laCompilacionDeLaPestana`) y el servidor no revalida si es de otro
+  despliegue (`esDeOtroDespliegue`). Un navegador que mienta ahí consigue, a lo
+  sumo, una pantalla sin poner al día o una recarga: el permiso, el RLS y lo
+  que se guarda no la miran.
 - **«El mismo envío» es todo lo que el envío lleva, no solo su id y su ruta.**
   Con la ruta fija de la ventana (corrección, guía, plano), tras una respuesta
   perdida la persona puede cambiar la cantidad, el motivo o la fecha y volver a

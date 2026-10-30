@@ -12,7 +12,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
-import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laCompilacionDeLaPestana, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -178,6 +178,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
         setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
         const datos = new FormData()
         datos.set('hoja', f.hoja)
+        datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
         datos.set('id', f.id)
         datos.set('material_id', f.materialId ?? '')
         datos.set('cantidad', String(f.cantidad ?? ''))

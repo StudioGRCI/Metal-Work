@@ -165,8 +165,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     setError(null)
     setErrorNumero(null)
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
-    // despliegue, espera a que la orden vuelva.
-    iniciar(() => mientrasSeEnvia(async () => {
+    // despliegue, espera a que la orden vuelva, y si no entró no recarga.
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       const supabase = createClient()
       // El PDF viaja a la carpeta de la orden antes de que exista; la base
       // registra la orden y su PDF juntos, o ninguno.
@@ -212,6 +212,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         }
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
+        entro()
         navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya

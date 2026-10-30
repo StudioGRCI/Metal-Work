@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laCompilacionDeLaPestana, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
@@ -142,6 +142,7 @@ export function ConteoInicial() {
         const tanda = pendientes.slice(i, i + TANDA_CONTEO)
         const datos = new FormData()
         datos.set('fecha', fechaLeida)
+        datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
         datos.set('filas', JSON.stringify(tanda.map((f) => ({
           id: f.id, material_id: f.materialId, contado: f.contado, precio: f.precio, moneda: f.moneda, via: f.via,
         }))))

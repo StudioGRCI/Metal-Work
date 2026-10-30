@@ -275,7 +275,7 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
   mira antes.
 - **Una pestaña de antes del último despliegue no se recarga sola, y lo dice
-  arriba** (vigesimonovena a trigesimoprimera). En esa pestaña `router.refresh()` no
+  arriba** (vigesimonovena a trigesimosegunda). En esa pestaña `router.refresh()` no
   repinta: recarga el documento entero (Next ve otra compilación), y se llevaba
   lo escrito y dejaba suelta la foto ya subida del reporte diario. Las acciones
   **casi siempre conservan su id** entre despliegues (la clave dura 14 días en
@@ -299,11 +299,21 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `Ventana` abierta o que se abre en la pestaña vieja lo dice arriba de su
   contenido (`data-ventana-vieja`), en una región si llega con ella abierta y
   en su `aria-describedby` si ya se sabía al abrirla; con una ventana abierta,
-  el aviso de arriba sale sin región, para que se oiga una vez. «Volver a
-  cargar» espera a que vuelva lo que está en camino (`mientrasSeEnvia`, hasta
-  10 s, y 4 s más si ese envío navega o recarga) y quita antes lo que la
-  pantalla subió y nadie va a nombrar (`alVolverACargar`, hasta 4 s): sin
-  esperar, borraba la foto del reporte que el servidor estaba guardando. Ya
+  el aviso de arriba sale sin región, para que se oiga una vez. Si el aviso
+  queda fuera de la vista, una franja fija bajo la cabecera lo dice corto, con
+  el mismo botón (`data-franja-pestana-vieja`; su `top` se mide de
+  `[data-barra-superior]`): en el teléfono, abajo de un formulario largo, nadie
+  lo veía (D12 de la trigesimosegunda). «Volver a cargar» espera a que vuelva
+  lo que está en camino (`mientrasSeEnvia`) y quita antes lo que la pantalla
+  subió y nadie va a nombrar (`alVolverACargar`, hasta 4 s): sin esperar,
+  borraba la foto del reporte que el servidor estaba guardando. Cada envío dice
+  cuándo entró (`entro()`); si alguno volvió rechazado, sin respuesta o con un
+  error, no recarga encima de su aviso (se llevaba «Pon al menos a una
+  persona…» a los 90 ms): dice arriba que se lea el aviso junto a su botón, y
+  el botón pasa a «Volver a cargar igual», que recarga sin esperar. A los 10 s
+  sin respuesta, lo mismo, diciendo que si entra la pantalla se recarga sola. Si
+  lo que entró lleva a otra pantalla, no recarga encima: la cortaba y dejaba la
+  de antes, vacía, con el reporte ya dentro (D13 e Importante 2). Ya
   sabida vieja, nada sube a Storage: los ayudantes del navegador
   (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
   nueva, la cotización, el plano por área, la salida de la planilla y las fotos
@@ -328,10 +338,19 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   que revalida entra y después Next recarga el documento: lo guardado está, y
   se pierden el verde y lo que hubiera a medio escribir en otra parte de la
   pantalla; solo Skew Protection de Vercel lo evita. Por eso lo que se envía
-  por partes no revalida en cada una: la planilla del kardex y el conteo
-  inicial ponen al día el kardex al cerrar su ventana (cortaban la planilla en
-  la primera fila), y la campana y la lista de avisos, en `nueva`, pintan lo
-  leído desde el navegador (`useAvisos`, la acción le dice `otroDespliegue`).
+  por partes no revalida en `nueva`: la planilla del kardex y el conteo inicial
+  mandan `compilacion` y, si el servidor es de otro despliegue, ponen al día el
+  kardex al cerrar su ventana (cortaban la planilla en la primera fila); en la
+  pestaña al día revalidan cada fila, porque sin eso «Atrás» al stock con la
+  ventana abierta traía el saldo de antes (trigesimosegunda). La campana y la
+  lista de avisos, en `nueva`, pintan lo leído desde el navegador (`useAvisos`,
+  la acción le dice `otroDespliegue`), y la pastilla «Sin leer» de /avisos
+  también (`useSinLeer`). Una acción que no revalida también recargaba si el
+  proxy refrescaba la sesión durante ella: Next cuenta esas cookies como de la
+  acción y la responde revalidada (X8). Por eso, antes de cada acción, la sesión
+  que vence en menos de 10 min se refresca en `/auth/sesion`, un GET que no
+  repinta nada (`refrescarLaSesionAntesDeCadaAccion`, que monta
+  `RefrescoAlVolver`, ver la skill `seguridad`).
 - **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
   uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
   subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que

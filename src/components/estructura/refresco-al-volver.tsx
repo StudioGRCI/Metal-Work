@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { startTransition, useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { cn } from '@/lib/utils'
 import { hayVentanaAbierta } from '@/lib/ventanas-abiertas'
 import {
   anotarLaCompilacionDeLaPestana,
@@ -12,6 +13,7 @@ import {
   esDeLaVersionAnterior,
   laPestanaEsDeOtraCuenta,
   laPestanaEsDeOtroDespliegue,
+  refrescarLaSesionAntesDeCadaAccion,
   useVersionDeLaPestana,
   volverACargar,
   type VersionDeLaPestana,
@@ -82,6 +84,9 @@ export function RefrescoAlVolver({
   }, [sinLeer])
 
   useEffect(() => anotarLaCompilacionDeLaPestana(deLaPestana), [deLaPestana])
+
+  // La sesión que está por vencer se refresca antes de cada acción, no durante (X8).
+  useEffect(() => refrescarLaSesionAntesDeCadaAccion(), [])
 
   useEffect(() => {
     const refrescar = () => {
@@ -166,6 +171,22 @@ const TEXTO = {
     'El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde aquí no va a entrar. Copia lo que tengas escrito y vuelve a cargar la pantalla.',
 }
 
+// Lo mismo en una línea, en la franja que queda a la vista bajo la cabecera.
+const CORTO = {
+  nueva: 'El sistema se actualizó: al enviar algo, la pantalla se vuelve a cargar.',
+  vieja: 'El sistema se actualizó: lo que envíes desde aquí no va a entrar.',
+}
+
+// Por qué «Volver a cargar» todavía no recargó (`volverACargar`).
+const SIN_RECARGAR = {
+  'en-camino':
+    'Lo que enviaste todavía no contesta. Si entra, la pantalla se vuelve a cargar sola; si la vuelves a cargar antes, no vas a saber si entró.',
+  'no-entro': 'Lo que enviaste no entró, o no se sabe si entró: lee el aviso junto a su botón antes de volver a cargar la pantalla.',
+}
+
+// Solo en el navegador: el aviso nunca sale en la pintada del servidor (la pestaña nace «al día»).
+const dondeTerminaLaCabecera = () => Math.max(0, Math.round(document.querySelector('[data-barra-superior]')?.getBoundingClientRect().bottom ?? 0))
+
 /**
  * Arriba de toda pantalla, solo después de un despliegue. Si nadie lo dijo
  * todavía (se supo al volver, en el sondeo o al abrir una ventana), va en una
@@ -175,6 +196,15 @@ const TEXTO = {
  * Y no está montada en las demás pestañas: una fija en toda pantalla quedaba
  * delante de la región de estado de cada una («Requerimiento registrado…»),
  * como la que `TrabaDeOtraCuenta` dejó de tener.
+ *
+ * Con la pantalla bajada, una franja de una línea bajo la cabecera dice lo
+ * mismo: arriba quedaba fuera de la vista, y el envío de más abajo recargaba
+ * sin que nadie la hubiera visto (D12 de la trigesimosegunda pasada). La franja
+ * no es una región: lo anunció ya la de arriba.
+ *
+ * «Volver a cargar» espera lo que está en camino y no recarga encima de lo que
+ * no entró: lo dice aquí y el botón pasa a «Volver a cargar igual», que recarga
+ * sin esperar (trigesimosegunda).
  */
 function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
   // Vieja con una ventana abierta: la ventana lo anuncia arriba de su contenido
@@ -183,35 +213,97 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
   const [anunciar] = useState(() => !version.callado && !(version.estado === 'vieja' && hayVentanaAbierta()))
   const [conTexto, setConTexto] = useState(!anunciar)
   const [recargando, setRecargando] = useState(false)
+  const [sinRecargar, setSinRecargar] = useState<keyof typeof SIN_RECARGAR | null>(null)
+  // Dónde termina la cabecera, y si el aviso de arriba quedó debajo de ella.
+  const [cabecera, setCabecera] = useState(dondeTerminaLaCabecera)
+  const [fuera, setFuera] = useState(false)
+  const caja = useRef<HTMLDivElement>(null)
+  const estado = version.estado === 'vieja' ? 'vieja' : 'nueva'
+
   useEffect(() => {
     if (conTexto) return
     const cuadro = requestAnimationFrame(() => setConTexto(true))
     return () => cancelAnimationFrame(cuadro)
   }, [conTexto])
 
-  const caja = conTexto && (
-    <div className="flex items-center gap-3 border-b border-borde bg-aviso-suave px-4 py-2.5" data-pestana-vieja={version.estado}>
-      <p className="min-w-0 flex-1 text-xs text-texto">{TEXTO[version.estado === 'vieja' ? 'vieja' : 'nueva']}</p>
-      <Boton
-        tamano="sm"
-        variante="secundario"
-        cargando={recargando}
-        onClick={() => {
-          // Antes, lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`).
-          setRecargando(true)
-          void volverACargar()
-        }}
-      >
-        <RotateCw aria-hidden className="size-3.5" />
-        Volver a cargar
-      </Boton>
+  // Al girar el teléfono la cabecera cambia de alto (el borde del iPhone).
+  useEffect(() => {
+    const medir = () => setCabecera(dondeTerminaLaCabecera())
+    window.addEventListener('resize', medir)
+    return () => window.removeEventListener('resize', medir)
+  }, [])
+
+  useEffect(() => {
+    const aviso = caja.current
+    if (!aviso || typeof IntersectionObserver === 'undefined') return
+    const mirar = new IntersectionObserver(([visto]) => setFuera(!visto.isIntersecting && visto.boundingClientRect.top < cabecera), {
+      rootMargin: `-${cabecera}px 0px 0px 0px`,
+    })
+    mirar.observe(aviso)
+    return () => mirar.disconnect()
+  }, [conTexto, cabecera])
+
+  function recargar() {
+    // Antes, lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`).
+    const igual = sinRecargar !== null
+    setRecargando(true)
+    setSinRecargar(null)
+    void volverACargar({
+      igual,
+      alTardar: () => {
+        setRecargando(false)
+        setSinRecargar('en-camino')
+      },
+    }).then((fin) => {
+      if (fin === 'no-entro') {
+        setRecargando(false)
+        setSinRecargar('no-entro')
+        return
+      }
+      // Recarga, o lo hace la ida a la otra pantalla; si no llega, se puede pedir otra vez.
+      setSinRecargar(null)
+      setRecargando(true)
+      if (fin === 'se-va') setTimeout(() => setRecargando(false), 15_000)
+    })
+  }
+
+  const boton = (
+    <Boton tamano="sm" variante="secundario" cargando={recargando} onClick={recargar} className="shrink-0">
+      <RotateCw aria-hidden className="size-3.5" />
+      {sinRecargar ? 'Volver a cargar igual' : 'Volver a cargar'}
+    </Boton>
+  )
+  const contenido = conTexto && (
+    <div ref={caja} className="flex items-center gap-3 border-b border-borde bg-aviso-suave px-4 py-2.5" data-pestana-vieja={version.estado}>
+      <div className="min-w-0 flex-1 space-y-1 text-xs text-texto">
+        <p>{TEXTO[estado]}</p>
+        {/* Montada desde antes, para que el lector oiga por qué no recargó. */}
+        <p role={anunciar ? undefined : 'status'} className={sinRecargar ? 'font-semibold' : 'sr-only'} data-sin-recargar={sinRecargar ?? undefined}>
+          {sinRecargar ? SIN_RECARGAR[sinRecargar] : ''}
+        </p>
+      </div>
+      {boton}
     </div>
   )
-  return anunciar ? (
-    <div role="status" className="print:hidden" data-region-pestana-vieja>
-      {caja}
-    </div>
-  ) : (
-    <div className="print:hidden">{caja}</div>
+  return (
+    <>
+      {anunciar ? (
+        <div role="status" className="print:hidden" data-region-pestana-vieja>
+          {contenido}
+        </div>
+      ) : (
+        <div className="print:hidden">{contenido}</div>
+      )}
+      {fuera && (
+        <div
+          className="fixed inset-x-0 z-20 flex items-center gap-3 border-b border-borde bg-aviso-suave px-4 py-1.5 shadow-[var(--sombra)] lg:left-64 print:hidden"
+          style={{ top: cabecera }}
+          data-franja-pestana-vieja={version.estado}
+        >
+          <p className={cn('min-w-0 flex-1 text-xs text-texto', sinRecargar && 'font-semibold')}>{sinRecargar ? SIN_RECARGAR[sinRecargar] : CORTO[estado]}</p>
+          {boton}
+        </div>
+      )}
+    </>
   )
 }

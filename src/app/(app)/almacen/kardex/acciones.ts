@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
+import { esDeOtroDespliegue } from '@/lib/compilacion'
 import { materialesDelKardex, materialesParaPlanilla, type MaterialParaPlanilla } from '@/lib/datos/kardex'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { DIAS_DEL_CONTEO, leerHojaConteo, motivoConteoInicial, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
@@ -516,12 +517,21 @@ export async function registrarFilaPlanilla(_previo: unknown, formulario: FormDa
   } else {
     return { ok: false, error: 'La fila no es de Ingresos ni de Salidas.' }
   }
-  // Sin revalidatePath: la planilla se registra fila por fila, y el kardex se
-  // pone al día al cerrar su ventana (`cerrar`, planilla.tsx). En una pestaña de
-  // después de un despliegue, cada fila que revalidaba hacía que Next recargara
-  // el documento entero en mitad de la planilla, y las filas que faltaban no
-  // salían nunca, sin aviso (trigesimoprimera pasada).
+  ponerAlDiaElKardex(formulario)
   return { ok: true }
+}
+
+/**
+ * La planilla y el conteo van fila por fila o por tandas. En una pantalla de
+ * otro despliegue no revalidan: Next recargaba el documento entero en mitad de
+ * la planilla y las filas que faltaban no salían nunca, sin aviso
+ * (trigesimoprimera pasada); ahí el kardex se pone al día al cerrar la ventana.
+ * En las demás sí: sin revalidar, Next no olvida las pantallas del historial, y
+ * «Atrás» al stock con la ventana abierta mostraba el saldo de antes
+ * (trigesimosegunda pasada).
+ */
+function ponerAlDiaElKardex(formulario: FormData) {
+  if (!esDeOtroDespliegue(formulario.get('compilacion'))) revalidatePath('/almacen/kardex')
 }
 
 // ------------------------------------------------------------ conteo inicial
@@ -694,8 +704,7 @@ export async function registrarConteoInicial(
     else if (data !== f.id) resultados.push({ id: f.id, error: NO_TOCO_NADA })
     else resultados.push({ id: f.id, error: null })
   }
-  // Sin revalidatePath, como `registrarFilaPlanilla`: va por tandas, y el kardex
-  // se pone al día al cerrar la ventana del conteo.
+  ponerAlDiaElKardex(datos)
   return { ok: true, datos: { resultados } }
 }
 

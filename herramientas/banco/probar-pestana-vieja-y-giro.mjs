@@ -102,9 +102,33 @@
  *       su foto no se quita ni dice «Se quitó», y debajo se pide buscarlo antes
  *       de subirlo otra vez.
  *
+ * Y lo que dejó la trigesimosegunda:
+ *
+ *   1o. Con la sesión vencida (la cookie dice que vence ya), la acción no la
+ *       refresca: antes pregunta `/auth/sesion`. Si el proxy la refrescaba en
+ *       la acción, Next la respondía revalidada y la pestaña «nueva» se
+ *       recargaba al descubrir el despliegue y al tocar un aviso. Con la
+ *       sesión al día, la acción siguiente no pregunta otra vez.
+ *   1o-conteo. El conteo inicial en «nueva», con la sesión vencida, entra sin
+ *       recargar.
+ *   1p. «Volver a cargar» no recarga encima de lo que no entró: el reporte en
+ *       camino que vuelve rechazado (1p-rechazo) o sin respuesta
+ *       (1p-sin-respuesta) deja su aviso y lo escrito, arriba se dice por qué
+ *       y el botón pasa a «Volver a cargar igual»; el que no contesta en 10 s
+ *       (1p-colgado) lo dice y deja recargar igual, también desde la franja
+ *       que queda fija bajo la cabecera al bajar a 390; y el que entró y lleva
+ *       a otra pantalla que tarda (1p-destino-lento, sin service worker) no se
+ *       corta con otra recarga.
+ *   1q. «Atrás» al stock con la ventana de la planilla abierta (Almacén a
+ *       1440) trae el saldo nuevo: sin revalidar, Next lo traía de su
+ *       historial.
+ *   1r. La pastilla «Sin leer» de /avisos baja con lo marcado leído en
+ *       «nueva»: seguía en el número de antes.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
- * SOLO=1a,2 corre solo esas partes (1i son 1i-volver, 1i-sondeo y 1i-sin-senal;
- * 1f también corre 1f-conserva).
+ * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
+ * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
+ * las cuatro de arriba).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -187,9 +211,10 @@ const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--n
 const CELULAR = { width: 390, height: 844 }
 const GIRADO = { width: 844, height: 390 }
 
-async function entrar(correo, viewport = { width: 1280, height: 900 }, { compilacion = false } = {}) {
+async function entrar(correo, viewport = { width: 1280, height: 900 }, { compilacion = false, sinSw = false } = {}) {
   const movil = viewport.width < 500
-  const contexto = await navegador.newContext({ viewport, isMobile: movil, hasTouch: movil, timezoneId: 'America/Lima' })
+  // `sinSw`: sin el service worker, el documento también pasa por CDP y se puede demorar (`lento`).
+  const contexto = await navegador.newContext({ viewport, isMobile: movil, hasTouch: movil, timezoneId: 'America/Lima', ...(sinSw ? { serviceWorkers: 'block' } : {}) })
   const pagina = await contexto.newPage()
   const errores = []
   pagina.on('console', (m) => {
@@ -227,11 +252,16 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   //
   // `perder`: la respuesta de la acción cuyo cuerpo lo lleva no llega, como
   // con la señal que se corta después de que el servidor guardó.
+  //
+  // `lento`: { patron, ms }, los pedidos (no acciones) cuya dirección calza se
+  // demoran `ms` antes de salir, como la pantalla de destino con poca señal.
+  // `sesion` cuenta los pedidos a /auth/sesion, donde la pantalla refresca la
+  // sesión antes de una acción.
   const cdp = await contexto.newCDPSession(pagina)
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0 }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, lento: null, demorados: 0, sesion: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -273,6 +303,11 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
       return responder({ responseCode: e.responseStatusCode, responseHeaders })
     }
     if (e.resourceType === 'Document') corte.documentos++
+    if (new URL(e.request.url).pathname === '/auth/sesion') corte.sesion++
+    if (corte.lento && !h['next-action'] && corte.lento.patron.test(e.request.url)) {
+      corte.demorados++
+      await new Promise((listo) => setTimeout(listo, corte.lento.ms))
+    }
     // El repintado, no lo que Next pide por adelantado de los enlaces.
     if (h.rsc === '1' && !h['next-action'] && !h['next-router-prefetch']) corte.rsc++
     const objeto = e.request.url.match(/\/storage\/v1\/object\/([^?]+)/)?.[1]
@@ -338,6 +373,43 @@ const salirYVolver = (pagina, ms = 31_000) =>
     const real = Date.now.bind(Date)
     Date.now = () => real() + ms
     window.dispatchEvent(new Event('focus'))
+  }, ms)
+/**
+ * La sesión vence a la hora de entrar (el banco firma por 3600 s, como Supabase):
+ * se adelanta `expires_at` de la sesión guardada en la cookie, y el token sigue
+ * firmado como estaba. Devuelve cuándo vencía, en segundos.
+ */
+async function vencerLaSesion(contexto) {
+  const partes = (await contexto.cookies()).filter((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name)).sort((a, b) => a.name.localeCompare(b.name))
+  if (partes.length === 0) throw new Error('No hay cookie de sesión')
+  const nombre = partes[0].name.replace(/\.\d+$/, '')
+  let valor = decodeURIComponent(partes.map((c) => c.value).join(''))
+  if (valor.startsWith('base64-')) valor = Buffer.from(valor.slice(7), 'base64url').toString('utf8')
+  const sesion = JSON.parse(valor)
+  const nueva = 'base64-' + Buffer.from(JSON.stringify({ ...sesion, expires_at: Math.floor(Date.now() / 1000) - 30 }), 'utf8').toString('base64url')
+  // Una sola cookie basta; los trozos que hubiera se borran para que no se mezclen.
+  await contexto.addCookies([
+    { ...partes[0], name: nombre, value: nueva },
+    ...partes.filter((c) => c.name !== nombre).map((c) => ({ ...c, value: '', expires: Math.floor(Date.now() / 1000) - 10 })),
+  ])
+  return sesion.expires_at
+}
+/** Cuándo vence la sesión que tiene ahora la cookie, en segundos (0 si no se lee). */
+async function venceLaSesion(contexto) {
+  const partes = (await contexto.cookies()).filter((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name) && c.value).sort((a, b) => a.name.localeCompare(b.name))
+  try {
+    let valor = decodeURIComponent(partes.map((c) => c.value).join(''))
+    if (valor.startsWith('base64-')) valor = Buffer.from(valor.slice(7), 'base64url').toString('utf8')
+    return Number(JSON.parse(valor).expires_at) || 0
+  } catch {
+    return 0
+  }
+}
+/** El reloj de la página, `ms` más tarde (sin salir ni volver). */
+const adelantarElReloj = (pagina, ms) =>
+  pagina.evaluate((ms) => {
+    const antes = Date.now.bind(Date)
+    Date.now = () => antes() + ms
   }, ms)
 /** Una marca en `window` que solo una recarga del documento borra. */
 const marcarDocumento = (pagina) => pagina.evaluate(() => { window.__mismoDocumento = 1 })
@@ -668,7 +740,7 @@ if (corre('1d')) {
 }
 
 // ------------------------------------------- 1e y 1i. El reporte diario a medio llenar (Maestranza, a 390)
-if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n'].some(corre)) {
+if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p-rechazo', '1p-sin-respuesta', '1p-colgado', '1p-destino-lento', '1r'].some(corre)) {
   // Una persona de Maestranza para el trabajo, como la dejaría RR. HH.; al
   // final se le pone su costo y se da de baja. Para enviar no hace falta.
   const persona = `Pedro ${sello}`
@@ -683,7 +755,8 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n'].some(corr
     (await consulta(`select name from storage.objects where bucket_id = 'fotos-reporte-diario' and owner_id = $1 and created_at >= $2 order by created_at`, [yo, desde])).map((o) => o.name)
   const asunto = `Pestaña vieja ${sello}`
   const reportes = async () => Number((await consulta(`select count(*) n from reportes_diarios where asunto = $1`, [asunto]))[0].n)
-  const llenar = async (pagina, conFoto) => {
+  // `sinPersona`: nadie elegido, y la acción lo rechaza («Pon al menos a una persona…»).
+  const llenar = async (pagina, conFoto, { sinPersona = false } = {}) => {
     await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
     await pagina.fill('#rd-codigo', 'PLANTA')
     await pagina.fill('#rd-asunto', asunto)
@@ -692,8 +765,10 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n'].some(corr
     await elegir(pagina, 'Trabajo 1: sobre qué', 'Tarea nueva')
     await t1.locator('textarea').fill('Soportes de la tolva')
     await t1.locator('input[type="number"]').first().fill('30')
-    await elegir(pagina, 'Personal del trabajo 1: persona 1', persona)
-    await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('2')
+    if (!sinPersona) {
+      await elegir(pagina, 'Personal del trabajo 1: persona 1', persona)
+      await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('2')
+    }
     if (conFoto) {
       await pagina.locator('input[type="file"]:not([capture])').first().setInputFiles(fotos.d)
       await esperarSubidas(pagina)
@@ -1060,6 +1135,247 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n'].some(corr
     await contexto.close()
   }
 
+  // 1o. La sesión que vence (X8 de la crítica de la trigesimoprimera): el proxy
+  // la refrescaba durante la acción, Next la respondía revalidada y, en la
+  // pestaña de otro despliegue, recargaba el documento sin que nadie enviara
+  // nada. Ahora se refresca antes, en un GET a /auth/sesion.
+  if (corre('1o')) {
+    const titulo = `Aviso de la sesión vencida ${sello}`
+    await sembrarAvisos(2, titulo)
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    await marcarDocumento(pagina)
+    const d0 = corte.documentos
+    // La primera pregunta tras el despliegue, al volver, con la sesión vencida:
+    // todavía no se sabe «nueva».
+    corte.despliegue = true
+    corte.conservaIds = true
+    let s0 = corte.sesion
+    let vencia = await vencerLaSesion(contexto)
+    await salirYVolver(pagina)
+    const arriba = limpio(await hasta(() => avisoDeArriba(pagina), Boolean, 15000))
+    await pagina.waitForTimeout(2000)
+    let mismo = await mismoDocumento(pagina)
+    comprobar(arriba.startsWith(TEXTO_NUEVA) && mismo && corte.documentos === d0 && (await pagina.inputValue('#rd-asunto')) === asunto && (await miniaturas(pagina)) === 1,
+      `[Maestranza 390] 1o. con la sesión vencida, la pregunta al volver descubre el despliegue sin recargar: arriba lo dice y lo escrito y la foto siguen (mismo documento ${mismo})`)
+    let ahora = await venceLaSesion(contexto)
+    comprobar(corte.sesion > s0 && ahora > vencia && ahora * 1000 > Date.now() + 50 * 60_000,
+      `[Maestranza 390] 1o. la sesión se refrescó antes de la pregunta, en /auth/sesion (${corte.sesion - s0} pedidos; vence en ${Math.round((ahora * 1000 - Date.now()) / 60_000)} min)`)
+    // Ya «nueva», otra vez vencida: lo leído de la campana. El reloj de la
+    // página se adelanta medio minuto: recién preguntada, la sesión no se
+    // vuelve a preguntar, y aquí venció de golpe.
+    s0 = corte.sesion
+    vencia = await vencerLaSesion(contexto)
+    await adelantarElReloj(pagina, 31_000)
+    const n0 = await sinLeer()
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: new RegExp(`^${titulo} 1`) }).click()
+    await hasta(sinLeer, (n) => n === n0 - 1, 10000)
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: 'Marcar todos leídos' }).click()
+    await hasta(sinLeer, (n) => n === 0, 10000)
+    await pagina.waitForTimeout(2000)
+    mismo = await mismoDocumento(pagina)
+    ahora = await venceLaSesion(contexto)
+    comprobar(mismo && corte.documentos === d0 && (await pagina.inputValue('#rd-asunto')) === asunto && (await existe('fotos-reporte-diario', ruta)) && corte.sesion > s0 && ahora > vencia,
+      `[Maestranza 390] 1o. en «nueva» y con la sesión vencida, tocar un aviso y «Marcar todos leídos» no recargan: la sesión se refrescó antes (${corte.sesion - s0} pedidos, mismo documento ${mismo})`)
+    await pagina.getByRole('button', { name: 'Cerrar notificaciones' }).click().catch(() => {})
+    // Y con la sesión al día no se pregunta en cada acción: una vez cada cinco
+    // minutos. Un aviso ya leído, tocado otra vez, también llama a la acción.
+    s0 = corte.sesion
+    const a0 = corte.acciones
+    await campana(pagina).click()
+    await pagina.locator('#panel-avisos').getByRole('button', { name: new RegExp(`^${titulo} 2`) }).click()
+    await hasta(() => corte.acciones, (n) => n > a0, 10000)
+    await pagina.waitForTimeout(1000)
+    comprobar(corte.acciones > a0 && corte.sesion === s0 && (await mismoDocumento(pagina)),
+      `[Maestranza 390] 1o. con la sesión al día, la acción siguiente no pregunta otra vez (${corte.acciones - a0} acciones, ${corte.sesion - s0} pedidos a /auth/sesion)`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1o. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // 1p. «Volver a cargar» con el reporte en camino, en sus otros desenlaces
+  // (D13 e Importante 2 de la trigesimosegunda): antes recargaba igual y el
+  // formulario volvía vacío con el reporte rechazado, sin respuesta, colgado o
+  // con la pantalla del reporte lenta.
+  const hastaLaPestanaNueva = async (pagina, corte) => {
+    corte.despliegue = true
+    corte.conservaIds = true
+    await salirYVolver(pagina)
+    await hasta(() => pagina.locator('[data-pestana-vieja="nueva"]').count(), (n) => n === 1, 15000)
+  }
+  const alertaDelFormulario = (pagina) => pagina.locator('main [role="alert"]').allInnerTexts().then((t) => limpio(t.join(' ')))
+  const sinRecargar = (pagina) => pagina.locator('[data-pestana-vieja] [data-sin-recargar]').innerText().then(limpio).catch(() => '')
+  const NO_ENTRO = 'Lo que enviaste no entró, o no se sabe si entró: lee el aviso junto a su botón antes de volver a cargar la pantalla.'
+  const EN_CAMINO = 'Lo que enviaste todavía no contesta. Si entra, la pantalla se vuelve a cargar sola; si la vuelves a cargar antes, no vas a saber si entró.'
+  const botonDeArriba = (pagina, nombre) => pagina.locator('[data-pestana-vieja]').getByRole('button', { name: nombre, exact: true })
+
+  if (corre('1p-rechazo')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true, { sinPersona: true })
+    const [ruta] = (await subidas()).slice(-1)
+    await hastaLaPestanaNueva(pagina, corte)
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    corte.marca = asunto
+    await subirReporte(pagina).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 15000)
+    await botonDeArriba(pagina, 'Volver a cargar').click()
+    corte.soltar()
+    const rechazo = await hasta(() => alertaDelFormulario(pagina), (t) => t?.includes('Pon al menos a una persona'), 15000)
+    const dice = await hasta(() => sinRecargar(pagina), (t) => t === NO_ENTRO, 10000)
+    await pagina.waitForTimeout(2000)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1p-rechazo.png'), fullPage: true })
+    const mismo = await mismoDocumento(pagina)
+    comprobar(mismo && rechazo?.includes('Pon al menos a una persona') && (await pagina.inputValue('#rd-asunto')) === asunto && (await existe('fotos-reporte-diario', ruta)) && (await reportes()) === n0,
+      `[Maestranza 390] 1p. «Volver a cargar» con el reporte en camino que vuelve rechazado no recarga: el rechazo y lo escrito siguen, y la foto también (mismo documento ${mismo}, «${rechazo}»)`)
+    comprobar(dice === NO_ENTRO && (await botonDeArriba(pagina, 'Volver a cargar igual').count()) === 1 && !(await botonDeArriba(pagina, 'Volver a cargar igual').isDisabled()),
+      `[Maestranza 390] 1p. arriba dice por qué no recargó, y el botón pasa a «Volver a cargar igual» («${dice}»)`)
+    await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), botonDeArriba(pagina, 'Volver a cargar igual').click()])
+    corte.despliegue = false
+    corte.conservaIds = false
+    await quieta(pagina)
+    comprobar(!(await mismoDocumento(pagina)) && !(await existe('fotos-reporte-diario', ruta)),
+      `[Maestranza 390] 1p. «Volver a cargar igual» recarga, y antes quita la foto que ningún reporte nombra`)
+    comprobar(errores.length === 0, `[Maestranza 390] 1p-rechazo. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  if (corre('1p-sin-respuesta')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    await hastaLaPestanaNueva(pagina, corte)
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    corte.marca = asunto
+    corte.perder = asunto
+    await subirReporte(pagina).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 15000)
+    await botonDeArriba(pagina, 'Volver a cargar').click()
+    corte.soltar()
+    const sinRespuesta = await hasta(() => alertaDelFormulario(pagina), (t) => SIN_RESPUESTA.test(t ?? ''), 15000)
+    const dice = await hasta(() => sinRecargar(pagina), (t) => t === NO_ENTRO, 10000)
+    await pagina.waitForTimeout(2000)
+    const mismo = await mismoDocumento(pagina)
+    const entro = (await hasta(reportes, (n) => n === n0 + 1, 10000)) === n0 + 1
+    comprobar(corte.perdidas === 1 && mismo && SIN_RESPUESTA.test(sinRespuesta ?? '') && dice === NO_ENTRO && (await pagina.inputValue('#rd-asunto')) === asunto && (await existe('fotos-reporte-diario', ruta)) && entro,
+      `[Maestranza 390] 1p. sin respuesta (y sí entró) tampoco recarga: «No llegó la respuesta…» sigue junto al botón y la pantalla no invita a subirlo otra vez (mismo documento ${mismo})`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1p-sin-respuesta. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // Desde abajo, junto a «Subir reporte»: arriba queda fuera de la vista, y la
+  // franja de una línea bajo la cabecera dice lo mismo (D12).
+  if (corre('1p-colgado')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    await subirReporte(pagina).scrollIntoViewIfNeeded()
+    comprobar((await pagina.locator('[data-franja-pestana-vieja]').count()) === 0, `[Maestranza 390] 1p. sin despliegue no hay franja`)
+    await hastaLaPestanaNueva(pagina, corte)
+    await subirReporte(pagina).scrollIntoViewIfNeeded()
+    const franja = pagina.locator('[data-franja-pestana-vieja="nueva"]')
+    await franja.waitFor({ timeout: 5000 }).catch(() => {})
+    const medida = await pagina.evaluate(() => {
+      const f = document.querySelector('[data-franja-pestana-vieja]')?.getBoundingClientRect()
+      const c = document.querySelector('[data-barra-superior]')?.getBoundingClientRect()
+      return { arriba: f?.top ?? null, alto: f?.height ?? null, cabecera: c?.bottom ?? null, ancho: document.documentElement.scrollWidth }
+    })
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1p-franja.png') })
+    const textoFranja = limpio(await franja.innerText().catch(() => ''))
+    comprobar(textoFranja === 'El sistema se actualizó: al enviar algo, la pantalla se vuelve a cargar. Volver a cargar' && Math.abs(medida.arriba - medida.cabecera) < 1 && medida.alto <= 60 && medida.ancho <= CELULAR.width,
+      `[Maestranza 390] 1p. con la pantalla bajada, la franja queda a la vista bajo la cabecera, baja y sin correr la pantalla de lado («${textoFranja}», arriba ${medida.arriba} y cabecera ${medida.cabecera}, alto ${medida.alto}, ancho ${medida.ancho})`)
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    corte.marca = asunto
+    await subirReporte(pagina).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 15000)
+    await franja.getByRole('button', { name: 'Volver a cargar', exact: true }).click()
+    await pagina.waitForTimeout(11_000)
+    const enLaFranja = limpio(await franja.locator('p').innerText().catch(() => ''))
+    const igual = franja.getByRole('button', { name: 'Volver a cargar igual', exact: true })
+    const mismo = await mismoDocumento(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1p-colgado.png') })
+    comprobar(mismo && enLaFranja === EN_CAMINO && (await igual.count()) === 1 && !(await igual.isDisabled()) && (await existe('fotos-reporte-diario', ruta)) && (await pagina.inputValue('#rd-asunto')) === asunto,
+      `[Maestranza 390] 1p. con el reporte colgado más de 10 s no recarga: la franja dice que todavía no contesta y ofrece «Volver a cargar igual» («${enLaFranja}», mismo documento ${mismo})`)
+    comprobar((await sinRecargar(pagina)) === EN_CAMINO, `[Maestranza 390] 1p. y arriba, en la región que el lector oye, lo mismo`)
+    await Promise.all([
+      pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {}),
+      corte.soltar(),
+    ])
+    await quieta(pagina)
+    const llego = new URL(pagina.url()).pathname
+    const [rd] = await consulta(`select r.id from reportes_diarios r join reporte_diario_fotos f on f.reporte_id = r.id and f.ruta = $2 where r.asunto = $1`, [asunto, ruta])
+    comprobar((await reportes()) === n0 + 1 && llego === `/reportes-diarios/${rd?.id}`, `[Maestranza 390] 1p. cuando contesta, el reporte entró con su foto y la pantalla lleva a él (${llego})`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1p-colgado. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // La pantalla del reporte tarda (poca señal): «Volver a cargar» no la corta.
+  // Sin el service worker, para que el documento también pase por aquí.
+  if (corre('1p-destino-lento')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true, sinSw: true })
+    await llenar(pagina, false)
+    await hastaLaPestanaNueva(pagina, corte)
+    const n0 = await reportes()
+    corte.marca = asunto
+    await subirReporte(pagina).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 15000)
+    await botonDeArriba(pagina, 'Volver a cargar').click()
+    corte.lento = { patron: /\/reportes-diarios\/[0-9a-f-]{36}/, ms: 6000 }
+    await Promise.all([
+      pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 40000 }).catch(() => {}),
+      corte.soltar(),
+    ])
+    await quieta(pagina)
+    await pagina.waitForTimeout(2000)
+    const llego = new URL(pagina.url()).pathname
+    const [rd] = await consulta(`select id from reportes_diarios where asunto = $1 order by creado_en desc limit 1`, [asunto])
+    comprobar((await reportes()) === n0 + 1 && corte.demorados > 0 && llego === `/reportes-diarios/${rd?.id}`,
+      `[Maestranza 390] 1p. con la pantalla del reporte lenta (${corte.demorados} pedidos de 6 s), «Volver a cargar» no la corta: termina en el reporte (${llego})`)
+    corte.lento = null
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1p-destino-lento. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // 1r. La pastilla «Sin leer (N)» de /avisos en la pestaña «nueva»: lo leído
+  // lo pinta la pestaña, y la pastilla seguía con el número del servidor (D11).
+  if (corre('1r')) {
+    const titulo = `Aviso de la pastilla ${sello}`
+    await sembrarAvisos(3, titulo)
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, { width: 1440, height: 900 }, { compilacion: true })
+    await ir(pagina, `${BASE}/avisos`)
+    await marcarDocumento(pagina)
+    const d0 = corte.documentos
+    await hastaLaPestanaNueva(pagina, corte)
+    const pastilla = () => pagina.getByRole('group', { name: 'Filtrar avisos' }).getByRole('link', { name: /^Sin leer/ }).innerText().then(limpio)
+    const n0 = await sinLeer()
+    const antes = await pastilla()
+    await pagina.locator('main').getByRole('button', { name: new RegExp(`^${titulo} 1`) }).click()
+    await hasta(sinLeer, (n) => n === n0 - 1, 10000)
+    const tras1 = await hasta(pastilla, (t) => t === `Sin leer (${n0 - 1})`, 5000)
+    await pagina.locator('main').getByRole('button', { name: `Marcar los ${n0 - 1} como leídos` }).click()
+    await hasta(sinLeer, (n) => n === 0, 10000)
+    const tras2 = await hasta(pastilla, (t) => t === 'Sin leer (0)', 5000)
+    const mismo = await mismoDocumento(pagina)
+    comprobar(antes === `Sin leer (${n0})` && tras1 === `Sin leer (${n0 - 1})` && tras2 === 'Sin leer (0)' && mismo && corte.documentos === d0,
+      `[Maestranza 1440] 1r. en /avisos de la pestaña «nueva», la pastilla baja con lo leído sin recargar («${antes}» → «${tras1}» → «${tras2}»)`)
+    corte.despliegue = false
+    corte.conservaIds = false
+    comprobar(errores.length === 0, `[Maestranza 1440] 1r. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
   // Su costo, como se lo pondría RR. HH.: las horas del reporte que entró pasan
   // al costeo, y el aviso de «Horas… que esperan su costo» no queda prendido
   // para probar-reporte-diario.
@@ -1203,6 +1519,111 @@ if (corre('1f-conserva')) {
   corte.despliegue = false
   corte.conservaIds = false
   comprobar(errores.length === 0, `[Almacén 1280] 1f-conserva. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1q. «Atrás» con la planilla registrada (Almacén, sin despliegue)
+// Las filas de la planilla no revalidaban (trigesimoprimera pasada), y Next
+// solo olvida las pantallas del historial cuando una acción revalida: «Atrás»
+// al stock, con la ventana todavía abierta, mostraba el saldo de antes (H-e1
+// de la trigesimosegunda). Ahora revalidan, salvo en una pestaña de otro despliegue.
+if (corre('1q')) {
+  const codigo = `QA-ATRAS-${sello}`
+  await materialPropio(codigo, `Perno del historial ${sello}`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.almacen, { width: 1440, height: 900 })
+  await ir(pagina, `${BASE}/almacen/kardex`)
+  const libro = new ExcelJS.Workbook()
+  await libro.xlsx.load(await (await pagina.request.get(`${BASE}/almacen/kardex/planilla`)).body())
+  const [a, m, d] = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }).split('-').map(Number)
+  const ingresos = libro.getWorksheet('Ingresos')
+  ingresos.getCell(5, 1).value = new Date(Date.UTC(a, m - 1, d))
+  ingresos.getCell(5, 3).value = codigo
+  ingresos.getCell(5, 6).value = 3
+  ingresos.getCell(5, 7).value = 'Ingreso general'
+  ingresos.getCell(5, 8).value = `Planilla del historial ${sello}`
+  const llena = join(archivos, `planilla-atras-${sello}.xlsx`)
+  await libro.xlsx.writeFile(llena)
+  await ir(pagina, `${BASE}/almacen/stock?q=${codigo}`)
+  const fila = () => pagina.locator('main tr', { hasText: codigo }).first().innerText().then(limpio).catch(() => '')
+  const antes = await fila()
+  // Al kardex por el menú, como Almacén: el stock queda en el historial del navegador.
+  await Promise.all([
+    pagina.waitForURL((u) => u.pathname === '/almacen/kardex', { timeout: 30000 }),
+    pagina.locator('aside').getByRole('link', { name: /^Kardex/ }).click(),
+  ])
+  await quieta(pagina)
+  await pagina.getByRole('button', { name: /sin internet/i }).first().click()
+  await pagina.getByRole('button', { name: /Cargar planilla/ }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('#planilla-archivo').setInputFiles(llena)
+  const boton = v.getByRole('button', { name: /^Registrar 1 movimiento/ })
+  await boton.waitFor({ timeout: 30000 })
+  await boton.click()
+  const resumen = limpio(await hasta(() => pagina.evaluate(() => (document.activeElement?.getAttribute('role') === 'status' ? document.activeElement.textContent : '')), Boolean, 30000))
+  const r0 = corte.rsc
+  await Promise.all([pagina.waitForURL((u) => u.pathname === '/almacen/stock', { timeout: 30000 }), pagina.goBack()])
+  await quieta(pagina)
+  // La fila del stock, no la del kardex que sigue a la vista mientras vuelve.
+  const delStock = (t) => Boolean(t) && t.startsWith(`Perno del historial ${sello} ${codigo} ·`)
+  const alVolver = await hasta(fila, (t) => delStock(t) && t !== antes, 10000)
+  const pidio = corte.rsc - r0
+  await ir(pagina, `${BASE}/almacen/stock?q=${codigo}`)
+  const recargada = await fila()
+  comprobar(resumen === 'Se registró 1 movimiento.' && delStock(antes) && recargada !== antes && alVolver === recargada && pidio > 0,
+    `[Almacén 1440] 1q. «Atrás» al stock con la ventana de la planilla abierta trae el saldo nuevo, como la pantalla recargada («${antes}» → «${alVolver}»; ${pidio} pedidos al volver)`)
+  comprobar(errores.length === 0, `[Almacén 1440] 1q. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1o-conteo. El conteo inicial con la sesión vencida, en «nueva» (Almacén)
+// La acción del conteo no revalida en «nueva», pero el proxy refrescaba la
+// sesión dentro de ella y Next la respondía revalidada: el conteo entraba y la
+// pantalla se recargaba, sin la ventana ni su resumen (X8 de la crítica).
+if (corre('1o-conteo')) {
+  const codigo = `QA-SESION-${sello}`
+  const materialId = await materialPropio(codigo, `Trapo de la sesión vencida ${sello}`)
+  const movimientos = async () => Number((await consulta(`select count(*) n from conteos_inventario where material_id = $1`, [materialId]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.almacen, undefined, { compilacion: true })
+  await ir(pagina, `${BASE}/almacen/kardex`)
+  const libro = new ExcelJS.Workbook()
+  await libro.xlsx.load(await (await pagina.request.get(`${BASE}/almacen/kardex/conteo-inicial`)).body())
+  const hoja = libro.getWorksheet('Conteo')
+  let encabezado = 0
+  hoja.eachRow((f, n) => {
+    if (!encabezado && f.values.includes('Cantidad contada')) encabezado = n
+  })
+  for (let n = encabezado + 1; n <= hoja.rowCount; n++) {
+    if (String(hoja.getCell(n, 1).value) === codigo) hoja.getCell(n, 5).value = Number(hoja.getCell(n, 4).value) + 1
+    else hoja.getCell(n, 5).value = null
+  }
+  const lleno = join(archivos, `conteo-sesion-${sello}.xlsx`)
+  await libro.xlsx.writeFile(lleno)
+  await marcarDocumento(pagina)
+  const d0 = corte.documentos
+  corte.despliegue = true
+  corte.conservaIds = true
+  await salirYVolver(pagina)
+  await hasta(() => pagina.locator('[data-pestana-vieja="nueva"]').count(), (n) => n === 1, 15000)
+  await pagina.getByRole('button', { name: 'Conteo inicial' }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('#conteo-inicial-archivo').setInputFiles(lleno)
+  const boton = v.getByRole('button', { name: 'Registrar 1 material' })
+  await boton.waitFor({ timeout: 30000 })
+  const m0 = await movimientos()
+  const s0 = corte.sesion
+  await vencerLaSesion(contexto)
+  await adelantarElReloj(pagina, 31_000)
+  await boton.click()
+  const resumen = limpio(await hasta(() => pagina.evaluate(() => (document.activeElement?.getAttribute('role') === 'status' ? document.activeElement.textContent : '')), Boolean, 30000))
+  await pagina.waitForTimeout(2000)
+  const mismo = await mismoDocumento(pagina)
+  comprobar(mismo && corte.documentos === d0 && (await v.count()) === 1 && /^Se registró 1 material/.test(resumen) && (await movimientos()) === m0 + 1 && corte.sesion > s0,
+    `[Almacén 1280] 1o. el conteo inicial con la sesión vencida, en «nueva», entra sin recargar: la ventana sigue con su resumen y la sesión se refrescó antes («${resumen}», ${corte.sesion - s0} pedidos a /auth/sesion, mismo documento ${mismo})`)
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Almacén 1280] 1o-conteo. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 
