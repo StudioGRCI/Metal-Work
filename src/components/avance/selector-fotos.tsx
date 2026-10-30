@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction 
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { comprimirFoto } from '@/lib/comprimir-foto'
 import {
+  dichoJuntoAlBoton,
   esDeLaVersionAnterior,
   FALLO_DEL_SERVIDOR,
   laPestanaEsDeLaVersionAnterior,
@@ -132,9 +133,10 @@ type Intento = { fotos: FotoLista[]; sinVentana: boolean; termino: boolean }
 /**
  * Cómo terminó el envío que salió con la ventana ya cerrada, cuando no entró:
  * no se registró (la base lo rechazó, o la traba lo cortó antes de salir), no
- * se sabe (no llegó la respuesta), o ya había quedado la primera vez.
+ * se sabe (no llegó la respuesta), o ya había quedado la primera vez. Y, donde
+ * nada más lo dice, que entró (`useEnvioDeLaVentana` con `alEntrar`).
  */
-export type Desenlace = { tono: 'no-entro' | 'en-duda' | 'ya-entro'; motivo: string }
+export type Desenlace = { tono: 'no-entro' | 'en-duda' | 'ya-entro' | 'entro'; motivo: string }
 
 const CORTADO_OTRA_CUENTA = 'en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.'
 
@@ -185,9 +187,11 @@ const entroSinFotos = (datos: unknown) =>
  * enviaba (`seCerroAlEnviar()`).
  *
  * `clave`: la misma ventana pintada dos veces (la tarjeta del teléfono y la fila
- * del monitor) comparte `sigue` y `desenlace` (`useEstadoCompartido`).
+ * del monitor) comparte `sigue` y `desenlace` (`useEstadoCompartido`); y con
+ * ella, `EstadoDelEnvio` puede ir lejos del botón (el renglón de estado del
+ * encabezado), con `idDelEstado` el que lleva allí.
  */
-export function useFotosDelEnvio(bucket: string, clave?: string) {
+export function useFotosDelEnvio(bucket: string, clave?: string, aparte?: string) {
   const [fotos, setFotos] = useState<FotoLista[]>([])
   // Cómo terminó el envío que salió con la ventana ya cerrada, si no entró.
   const [desenlace, setDesenlace] = useEstadoCompartido<Desenlace | null>(clave && `${clave}:desenlace`, null)
@@ -195,7 +199,8 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
   // encendido mientras la página se pone al día tras el ok, y junto al verde
   // asomaba «se sigue enviando» (vigesimoctava pasada).
   const [sigue, setSigue] = useEstadoCompartido(clave && `${clave}:sigue`, false)
-  const idDelEstado = useId()
+  const propio = useId()
+  const idDelEstado = aparte ?? propio
   // El envío en curso, o el último.
   const intento = useRef<Intento | null>(null)
   // Las rutas que salieron en un envío de esta ventana que no se sabe cómo terminó.
@@ -235,7 +240,8 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
   }
 
   function conFotos<T>(accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>) {
-    return async (previo: unknown, datos: FormData): Promise<ResultadoAccion<T>> => {
+    // Cómo terminó con la ventana cerrada lo dice `EstadoDelEnvio`: el aviso de arriba manda aquí.
+    return dichoJuntoAlBoton(async (previo: unknown, datos: FormData): Promise<ResultadoAccion<T>> => {
       const este: Intento = { fotos, sinVentana: false, termino: false }
       intento.current = este
       for (const f of fotos) enCamino.current.add(f)
@@ -283,7 +289,7 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
         for (const f of este.fotos) enCamino.current.delete(f)
         if (este.sinVentana) setSigue(false)
       }
-    }
+    })
   }
 
   function cerrar() {
@@ -329,27 +335,59 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
  * pasada). Ese desenlace se queda hasta que vuelve el envío siguiente: reabrir
  * la ventana no lo borra.
  *
+ * `clave` es la de esa ventana en la pantalla (`cronograma:<orden>`): lo del
+ * envío vive con ella y no con el botón. «Nueva tarea», una búsqueda o una
+ * pestaña de la orden desmontaban el botón con el envío en camino, y lo que
+ * contestaba no se decía en ningún lado (diseño H1 y crítica X2 de la
+ * trigesimoquinta pasada): ahora, cuando el botón vuelve, gira si sigue y dice
+ * cómo terminó. Si se desmonta con la ventana abierta, cuenta como cerrada.
+ * `alEntrar`, para la que no tiene otro aviso de que entró: lo que se dice
+ * junto al botón cuando entra con la ventana cerrada («La corrección que se
+ * estaba enviando quedó guardada…»; diseño H2 y funcionalidad H4).
+ *
  * Uso: `empezar()` al salir la cadena devuelve con qué decir cómo terminó
- * (`null` si entró); `cerrar()` va en el `alCerrar` de la ventana; el botón que
- * la abre lleva `ocupado` mientras `sigue` y `aria-describedby` con
- * `idDelEstado`.
+ * (`null` si entró); `cerrar()` va en todo lo que cierra la ventana (también su
+ * «Cancelar»: sin él, el desenlace se perdía; realización H1); el botón que la
+ * abre lleva `ocupado` mientras `sigue` y `aria-describedby` con `idDelEstado`.
+ * Si `EstadoDelEnvio` va en otro lugar (el renglón de estado del encabezado,
+ * con `useLoQueDiceLaVentana`), `idDelEstado` es el que lleva allí.
  */
-export function useEnvioDeLaVentana() {
-  const [desenlace, setDesenlace] = useState<Desenlace | null>(null)
-  const [sigue, setSigue] = useState(false)
-  const idDelEstado = useId()
-  const intento = useRef<{ sinVentana: boolean; termino: boolean } | null>(null)
+export function useEnvioDeLaVentana(clave: string, { alEntrar, idDelEstado: aparte }: { alEntrar?: string; idDelEstado?: string } = {}) {
+  const [desenlace, setDesenlace] = useEstadoCompartido<Desenlace | null>(`${clave}:desenlace`, null, { guardar: true })
+  const [sigue, setSigue] = useEstadoCompartido(`${clave}:sigue`, false, { guardar: true })
+  const propio = useId()
+  const idDelEstado = aparte ?? propio
+
+  // Se desmonta con el envío en camino y la ventana abierta: cuenta como
+  // cerrada, y el botón que vuelva a montarse gira hasta que conteste.
+  useEffect(
+    () => () => {
+      const enCurso = intentosDeLaVentana.get(clave)
+      if (!enCurso || enCurso.termino) return
+      enCurso.sinVentana = true
+      // Fuera de la pintada que lo desmonta: no se avisa a quien se va.
+      queueMicrotask(() => {
+        if (!enCurso.termino) setSigue(true)
+      })
+    },
+    [clave, setSigue],
+  )
 
   // El desenlace de antes se cambia cuando este vuelve, no al salir: lo de la
   // transición que envía React lo pinta recién después de ponerse al día, y el
   // verde de este salía junto al rechazo del anterior.
   function empezar() {
-    const este = { sinVentana: false, termino: false }
-    intento.current = este
+    const este: IntentoDeLaVentana = { sinVentana: false, termino: false }
+    intentosDeLaVentana.set(clave, este)
     return (motivo: string | null) => {
       este.termino = true
+      if (intentosDeLaVentana.get(clave) === este) intentosDeLaVentana.delete(clave)
       if (este.sinVentana) setSigue(false)
-      if (!este.sinVentana || !motivo) return setDesenlace(null)
+      if (!este.sinVentana) return setDesenlace(null)
+      if (!motivo) return setDesenlace(alEntrar ? { tono: 'entro', motivo: alEntrar } : null)
+      // La pestaña es de antes del último despliegue: «copia lo escrito» no
+      // tiene dónde, la ventana se abre vacía (funcionalidad H5).
+      if (motivo === SE_ACTUALIZO_EL_SISTEMA) return setDesenlace({ tono: 'no-entro', motivo: SE_ACTUALIZO_SIN_VENTANA })
       // Sin respuesta, o el servidor cayó a medio camino: pudo entrar.
       const enDuda = pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
       setDesenlace({ tono: enDuda ? 'en-duda' : 'no-entro', motivo })
@@ -357,7 +395,7 @@ export function useEnvioDeLaVentana() {
   }
 
   function cerrar() {
-    const enCurso = intento.current
+    const enCurso = intentosDeLaVentana.get(clave)
     if (!enCurso || enCurso.termino) return
     enCurso.sinVentana = true
     setSigue(true)
@@ -366,12 +404,24 @@ export function useEnvioDeLaVentana() {
   return { desenlace, sigue, idDelEstado, empezar, cerrar }
 }
 
+/** Lo que `useEnvioDeLaVentana(clave)` dice, para pintarlo lejos del botón (el encabezado). */
+export function useLoQueDiceLaVentana(clave: string) {
+  const [desenlace] = useEstadoCompartido<Desenlace | null>(`${clave}:desenlace`, null, { guardar: true })
+  const [sigue] = useEstadoCompartido(`${clave}:sigue`, false, { guardar: true })
+  return { desenlace, sigue }
+}
+
+type IntentoDeLaVentana = { sinVentana: boolean; termino: boolean }
+// El envío en curso de cada ventana, por su clave: el botón que la abre puede
+// desmontarse y volver mientras va.
+const intentosDeLaVentana = new Map<string, IntentoDeLaVentana>()
+
 /**
  * Junto al botón que abre la ventana, lo del envío que salió con ella cerrada:
  * que sigue en camino —y por eso el botón gira (`ocupado`)— y, si no entró,
  * cómo terminó. `registro` es lo que se envía, con su artículo («El reporte»,
  * «La salida»), y `femenino` concuerda el «registrado». Lo que sí entró lo dice
- * el aviso verde de cada pantalla.
+ * el aviso verde de cada pantalla, o este si no hay otro (`entro`).
  *
  * La región que avisa está siempre montada, vacía y fuera de la vista mientras
  * no hay nada que decir: una que nace con su texto el lector no la lee, y al
@@ -397,14 +447,21 @@ export function EstadoDelEnvio({
     ? `${registro} se sigue enviando: lo que conteste se dice aquí.`
     : desenlace?.tono === 'ya-entro'
       ? `${registro} ya había quedado ${femenino ? 'registrada' : 'registrado'} la primera vez: lo que cambiaste al reenviar no se guardó.`
-      : ''
+      : desenlace?.tono === 'entro'
+        ? `${registro} que se estaba enviando ${desenlace.motivo}`
+        : ''
   const alerta =
-    !sigue && desenlace && desenlace.tono !== 'ya-entro'
+    !sigue && desenlace && (desenlace.tono === 'no-entro' || desenlace.tono === 'en-duda')
       ? `${registro} que se estaba enviando${desenlace.tono === 'no-entro' ? ' no se registró' : ''}: ${desenlace.motivo}`
       : ''
+  const entro = !sigue && desenlace?.tono === 'entro'
   return (
     <>
-      <span id={id} role="status" className={estado ? cn('text-xs text-texto-suave', className) : 'sr-only'}>
+      <span
+        id={id}
+        role="status"
+        className={estado ? cn('text-xs', entro ? 'font-medium text-exito' : 'text-texto-suave', className) : 'sr-only'}
+      >
         {estado}
       </span>
       {alerta && (

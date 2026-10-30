@@ -6,7 +6,7 @@ import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
-import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, useEnvioDeLaVentana, useLoQueDiceLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -24,6 +24,7 @@ import {
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
 import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -50,6 +51,30 @@ type TipoDocumento = 'RUC' | 'DNI' | 'CE' | 'PASAPORTE'
  * anotación— y lo que ya se creó queda elegido: si algo falla después, el
  * reintento no duplica al cliente ni la carrocería.
  */
+// Lo de la ventana de la cotización nueva, que el botón y su renglón de estado comparten.
+const CLAVE = 'cotizacion-nueva'
+const AVISO = `${CLAVE}:aviso`
+const ID_DEL_ESTADO = 'estado-de-subir-cotizacion'
+
+/**
+ * Cómo va la cotización que se sube con `SubirCotizacion`: que sigue en camino,
+ * que entró o por qué no. Va en el renglón de estado del encabezado
+ * (`EncabezadoPagina`), montado siempre: el lector no oye una región que nace
+ * con su texto.
+ */
+export function EstadoDeSubirCotizacion() {
+  const [aviso] = useEstadoCompartido<string | null>(AVISO, null, { guardar: true })
+  const { sigue, desenlace } = useLoQueDiceLaVentana(CLAVE)
+  return (
+    <>
+      <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </span>
+      <EstadoDelEnvio id={ID_DEL_ESTADO} sigue={sigue} desenlace={desenlace} registro="La cotización" femenino />
+    </>
+  )
+}
+
 export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]; carrocerias: Carroceria[] }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -65,11 +90,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [error, setError] = useState<string | null>(null)
   // Por qué el archivo elegido no sirve: va en su campo, no con los errores de subir.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // Lo que entró, con la pantalla: si se va a otra mientras sube con la ventana
+  // cerrada, se dice cuando vuelve (`useEstadoCompartido` con `guardar`).
+  const [, setAviso] = useEstadoCompartido<string | null>(AVISO, null, { guardar: true })
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
-  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
-  const fuera = useEnvioDeLaVentana()
+  // Cerrada mientras va: el botón que la abre gira, y el desenlace se dice
+  // debajo, en el renglón de estado del encabezado.
+  const fuera = useEnvioDeLaVentana(CLAVE, { idDelEstado: ID_DEL_ESTADO })
   const campoArchivo = useRef<HTMLInputElement>(null)
   // Al volver de un rechazo, el cursor va al número repetido o al aviso.
   const campoNumero = useRef<HTMLInputElement>(null)
@@ -96,6 +124,12 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [carroceriaId, setCarroceriaId] = useState('')
   const [propuesta, setPropuesta] = useState<PropuestaCarroceria | null>(null)
   const [nombreCarroceria, setNombreCarroceria] = useState('')
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
     aMano.current.clear()
@@ -356,24 +390,15 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
   return (
     <>
-      <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
-          {!ocupado && <Upload aria-hidden className="size-4" />}
-          Subir cotización
-        </Boton>
-        {/* Montada siempre: cerrada en vuelo, es lo único que dice que entró. */}
-        <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
-          {aviso}
-        </span>
-        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La cotización" femenino />
-      </span>
+      {/* Cómo va, en el renglón de estado del encabezado (`EstadoDeSubirCotizacion`): junto al botón lo corría. */}
+      <Boton onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+        {!ocupado && <Upload aria-hidden className="size-4" />}
+        Subir cotización
+      </Boton>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => {
-          fuera.cerrar()
-          setAbierto(false)
-        }}
+        alCerrar={cerrar}
         titulo="Subir la cotización"
         descripcion="La que se le mandó al cliente, en PDF o en Word. Al elegirla se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
         ancho="panoramico"
@@ -689,7 +714,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           )}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">

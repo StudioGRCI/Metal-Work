@@ -10,6 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fechaHora } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -27,6 +28,9 @@ export type AdjuntoEnPantalla = {
   /** Si quien mira lo puede quitar: lo decide el servidor, igual que la política. */
   quitable: boolean
 }
+
+// Las órdenes cuyo PDF está subiendo: un solo envío por orden, aunque la tarjeta se desmonte y vuelva.
+const subidasEnCurso = new Set<string>()
 
 function tamano(bytes: number | null) {
   if (!bytes) return null
@@ -58,14 +62,16 @@ export function ArchivosDeOrden({
   children?: ReactNode
 }) {
   const router = useRouter()
-  const [subiendo, setSubiendo] = useState(false)
+  // Lo de la subida va con la orden y no con la tarjeta: cambiar de pestaña
+  // (?vista=) la desmonta mientras sube, y al volver no decía que seguía ni
+  // cómo terminó (X2 de la crítica de la trigesimoquinta pasada).
+  const [subiendo, setSubiendo] = useEstadoCompartido(`pdf-orden:${ordenId}:subiendo`, false, { guardar: true })
   // El PDF que se está subiendo, o el que no entró y por qué: se ven en su campo.
-  const [elegido, setElegido] = useState<File | null>(null)
-  const [avisoSubida, setAvisoSubida] = useState<string | null>(null)
+  const [elegido, setElegido] = useEstadoCompartido<File | null>(`pdf-orden:${ordenId}:elegido`, null, { guardar: true })
+  const [avisoSubida, setAvisoSubida] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso-subida`, null, { guardar: true })
   const [error, setError] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<string | null>(null)
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso`, null, { guardar: true })
   const [, iniciar] = useTransition()
-  const enCurso = useRef(false)
   // El PDF está pero este puesto no lo abre: se dice que está y no se ofrece subir otro.
   const pdfOculto = tienePdf && !adjuntos.some((a) => a.tipo === 'ORDEN')
   const sube = puedeSubir && !pdfOculto
@@ -114,7 +120,7 @@ export function ArchivosDeOrden({
   }
 
   async function subir(archivo: File | undefined) {
-    if (!archivo || enCurso.current) return
+    if (!archivo || subidasEnCurso.has(ordenId)) return
     setError(null)
     setAviso(null)
     // Se sube apenas se elige: el que no es un PDF de verdad o pasa del tope no sale.
@@ -125,7 +131,7 @@ export function ArchivosDeOrden({
     // Se sube al elegirlo, sin pasar por `useAccion`: se mira la sesión aquí. El
     // selector de archivos pudo quedar abierto mientras entraba otra cuenta.
     if (laPestanaEsDeOtraCuenta()) return setAvisoSubida(NO_SUBIO_OTRA_CUENTA)
-    enCurso.current = true
+    subidasEnCurso.add(ordenId)
     setSubiendo(true)
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que el PDF suba y quede anotado, y si no entró no
@@ -150,7 +156,7 @@ export function ArchivosDeOrden({
       } catch (e) {
         setAvisoSubida(e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
       } finally {
-        enCurso.current = false
+        subidasEnCurso.delete(ordenId)
         setSubiendo(false)
       }
     })

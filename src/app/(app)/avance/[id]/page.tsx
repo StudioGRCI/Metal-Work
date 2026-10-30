@@ -15,7 +15,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { esUuid } from '@/lib/utils'
 
-import { RegistrarAvance } from '../registrar-avance'
+import { EstadoDeRegistrarAvance, RegistrarAvance } from '../registrar-avance'
 
 export const metadata = { title: 'Avance de la unidad' }
 
@@ -65,9 +65,10 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
         descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
         acciones={
           registra && (
-            <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} />
+            <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} estadoAparte />
           )
         }
+        estado={registra && <EstadoDeRegistrarAvance ordenId={id} />}
       />
 
       <Tarjeta className="mb-4">

@@ -354,8 +354,13 @@ async function esperarVentana(pagina) {
 /** Elige en una lista con buscador, como la persona: escribe y toca la opción. */
 async function elegir(pagina, disparador, texto) {
   await disparador.click()
-  const buscador = pagina.getByRole('searchbox')
-  if (await buscador.isVisible().catch(() => false)) await buscador.fill(texto)
+  // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+  // tiene el foco. Mirarla con isVisible() en el acto podía darla por ausente
+  // antes de que se abriera la lista, y sin filtro el proveedor de la corrida
+  // no salía entre las primeras opciones.
+  const caja = pagina.locator('input[type="search"]:focus')
+  await caja.waitFor({ timeout: 10000 })
+  await caja.fill(texto)
   await pagina.locator('[role="option"]', { hasText: texto }).first().click()
 }
 

@@ -4,11 +4,12 @@ import { Camera } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio, type Desenlace } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { porcentaje } from '@/lib/format'
 
 import { registrarAvance } from './acciones'
@@ -24,27 +25,60 @@ export type EtapaElegible = { id: string; nombre: string; estado: string; avance
  * la unidad—, la fecha de hoy ya puesta, el porcentaje con un toque y la traba
  * de ayer escrita, para que un reporte nuevo no la quite sin que nadie lo diga.
  */
+const idDelEstadoDelAvance = (ordenId: string) => `estado-de-registrar-avance-${ordenId}`
+
+function EstadoDelAvance({ aviso, ...estado }: { aviso: string | null; id: string; sigue: boolean; desenlace: Desenlace | null }) {
+  return (
+    <>
+      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
+          tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
+      <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </span>
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      <EstadoDelEnvio {...estado} registro="El avance" />
+    </>
+  )
+}
+
+/**
+ * Cómo va el avance que se registra con `RegistrarAvance estadoAparte`, en el
+ * renglón de estado del encabezado (`EncabezadoPagina`).
+ */
+export function EstadoDeRegistrarAvance({ ordenId }: { ordenId: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(`avance:${ordenId}:aviso`, null)
+  const [desenlace] = useEstadoCompartido<Desenlace | null>(`avance:${ordenId}:desenlace`, null)
+  const [sigue] = useEstadoCompartido(`avance:${ordenId}:sigue`, false)
+  return <EstadoDelAvance aviso={aviso} id={idDelEstadoDelAvance(ordenId)} sigue={sigue} desenlace={desenlace} />
+}
+
 export function RegistrarAvance({
   ordenId,
   etapas,
   trabaActual = null,
   compacto = false,
+  estadoAparte = false,
 }: {
   ordenId: string
   etapas: EtapaElegible[]
   /** La traba del último avance, que sigue vigente mientras nadie la quite. */
   trabaActual?: string | null
   compacto?: boolean
+  /**
+   * Cómo va lo enviado se dice en otro lugar (`EstadoDeRegistrarAvance`, en el
+   * renglón de estado del encabezado): junto al botón lo corría de lugar.
+   */
+  estadoAparte?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
   const [etapaId, setEtapaId] = useState('')
-  const [aviso, setAviso] = useState<string | null>(null)
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`avance:${ordenId}:aviso`, null)
   // Sin registrar, las fotos ya subidas no las nombra ningún avance: se quitan
   // de Storage, como en el ingreso del vehículo. Antes quedaban sueltas. Si se
   // cierra mientras se envía, se quedan: el avance que está entrando las nombra,
   // y quitarlas lo dejaba con fotos que no abren (vigesimosegunda pasada). Lo
   // demás, en `useFotosDelEnvio`.
-  const envio = useFotosDelEnvio('fotos-avance')
+  const envio = useFotosDelEnvio('fotos-avance', `avance:${ordenId}`, estadoAparte ? idDelEstadoDelAvance(ordenId) : undefined)
   const { fotos, setFotos } = envio
   // Al guardar, la ventana se cierra y la línea nueva aparece arriba del
   // diario; el aviso queda al lado del botón para que nadie dude de si entró.
@@ -86,13 +120,7 @@ export function RegistrarAvance({
           {!ocupado && <Camera aria-hidden className={compacto ? 'size-3.5' : 'size-4'} />}
           Registrar avance
         </Boton>
-        {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
-            tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
-        <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
-          {aviso}
-        </span>
-        {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-        <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El avance" />
+        {!estadoAparte && <EstadoDelAvance aviso={aviso} id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} />}
       </span>
 
       <Ventana

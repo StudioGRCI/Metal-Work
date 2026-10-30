@@ -187,6 +187,11 @@ const SIN_RECARGAR = {
   'se-va': 'Lo que enviaste ya entró, y la pantalla a la que lleva tarda en abrir. Si no abre, vuelve a cargar: ya está guardado, no lo envíes de nuevo.',
 }
 
+// Lo que no entró y no se dice junto a ningún botón (la ventana de `useEnvio`
+// que se cerró mientras iba): el motivo va aquí, y no se manda a leer un aviso
+// que no existe (funcionalidad H1 de la trigesimoquinta pasada).
+const noEntroPorque = (motivo: string) => `Lo que enviaste no entró, o no se sabe si entró: ${motivo}`
+
 // Solo en el navegador: el aviso nunca sale en la pintada del servidor (la pestaña nace «al día»).
 const dondeTerminaLaCabecera = () => Math.max(0, Math.round(document.querySelector('[data-barra-superior]')?.getBoundingClientRect().bottom ?? 0))
 
@@ -220,6 +225,9 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
   const [idaDesde, setIdaDesde] = useState(desdeQueSeVa)
   const [recargando, setRecargando] = useState(idaDesde !== null)
   const [sinRecargar, setSinRecargar] = useState<keyof typeof SIN_RECARGAR | null>(null)
+  // El motivo del «no entró», si nada más lo dice.
+  const [motivo, setMotivo] = useState<string | null>(null)
+  const porQue = sinRecargar === 'no-entro' && motivo ? noEntroPorque(motivo) : sinRecargar ? SIN_RECARGAR[sinRecargar] : null
   // Dónde termina la cabecera, y si el aviso de arriba quedó debajo de ella.
   const [cabecera, setCabecera] = useState(dondeTerminaLaCabecera)
   const [fuera, setFuera] = useState(false)
@@ -282,15 +290,16 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
         setSinRecargar('en-camino')
       },
     }).then((fin) => {
-      if (fin === 'no-entro') {
+      if (fin?.sinRecargar === 'no-entro') {
         setRecargando(false)
+        setMotivo(fin.motivo)
         setSinRecargar('no-entro')
         return
       }
       // Recarga, o lo hace la ida a la otra pantalla.
       setSinRecargar(null)
       setRecargando(true)
-      if (fin === 'se-va') setIdaDesde(desdeQueSeVa())
+      if (fin?.sinRecargar === 'se-va') setIdaDesde(desdeQueSeVa())
     })
   }
 
@@ -306,7 +315,7 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
         <p>{TEXTO[estado]}</p>
         {/* Montada desde antes, para que el lector oiga por qué no recargó. */}
         <p role={anunciar ? undefined : 'status'} className={sinRecargar ? 'font-semibold' : 'sr-only'} data-sin-recargar={sinRecargar ?? undefined}>
-          {sinRecargar ? SIN_RECARGAR[sinRecargar] : ''}
+          {porQue ?? ''}
         </p>
       </div>
       {boton}
@@ -329,7 +338,7 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
           style={{ top: cabecera }}
           data-franja-pestana-vieja={version.estado}
         >
-          <p className={cn('min-w-0 flex-1 text-xs text-texto', sinRecargar && 'font-semibold')}>{sinRecargar ? SIN_RECARGAR[sinRecargar] : CORTO[estado]}</p>
+          <p className={cn('min-w-0 flex-1 text-xs text-texto', sinRecargar && 'font-semibold')}>{porQue ?? CORTO[estado]}</p>
           {boton}
         </div>
       )}

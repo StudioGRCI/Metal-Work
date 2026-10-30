@@ -4,11 +4,12 @@ import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio, type Desenlace } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { cambiarEstadoFlota, reportarFlota } from '../../acciones-flota'
 
@@ -63,6 +64,29 @@ export function AccionesTrabajo({
   )
 }
 
+const idDelEstadoDelReporte = (flotaId: string) => `estado-del-reporte-${flotaId}`
+
+/**
+ * Cómo va el reporte del día de un trabajo sin orden («Reportar»), en el
+ * renglón de estado del encabezado (`EncabezadoPagina`).
+ */
+export function EstadoDelReporte({ flotaId }: { flotaId: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(`flota:${flotaId}:aviso`, null)
+  const [desenlace] = useEstadoCompartido<Desenlace | null>(`flota:${flotaId}:desenlace`, null)
+  const [sigue] = useEstadoCompartido(`flota:${flotaId}:sigue`, false)
+  return (
+    <>
+      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
+          tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
+      <p role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </p>
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      <EstadoDelEnvio id={idDelEstadoDelReporte(flotaId)} sigue={sigue} desenlace={desenlace} registro="El reporte" />
+    </>
+  )
+}
+
 function Reportar({
   flotaId,
   areas,
@@ -75,15 +99,17 @@ function Reportar({
   traba: string | null
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // Lo que dice cómo va va en el renglón de estado del encabezado
+  // (`EstadoDelReporte`): junto al botón corría a los de al lado.
+  const [, setAviso] = useEstadoCompartido<string | null>(`flota:${flotaId}:aviso`, null)
   // Sin reportar, las fotos ya subidas no las nombra ningún reporte: se quitan
   // de Storage, como en «Registrar avance». Antes «Cancelar» solo cerraba y
   // quedaban sueltas (vigesimotercera pasada). Lo que se envía, o no se sabe
   // si entró, se queda (`useFotosDelEnvio`).
-  const envio = useFotosDelEnvio('fotos-avance')
+  const envio = useFotosDelEnvio('fotos-avance', `flota:${flotaId}`, idDelEstadoDelReporte(flotaId))
   const { fotos, setFotos } = envio
   // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
-  // el aviso queda al lado del botón para que nadie dude de si entró.
+  // el aviso queda bajo el encabezado para que nadie dude de si entró.
   const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(reportarFlota), (r) => {
     if (!envio.seCerroAlEnviar()) setAbierto(false)
     setAviso(r.mensaje ?? 'Reporte registrado.')
@@ -115,13 +141,6 @@ function Reportar({
         {!ocupado && <Camera aria-hidden className="size-4" />}
         Reportar
       </Boton>
-      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
-          tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
-      <p role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
-        {aviso}
-      </p>
-      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
-      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El reporte" />
 
       <Ventana
         abierta={abierto}

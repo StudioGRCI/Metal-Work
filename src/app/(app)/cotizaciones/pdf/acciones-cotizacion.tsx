@@ -17,7 +17,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, cuandoVuelvaLaCuenta, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { anotarQueSeVa, irCuandoQuedeLibre, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -151,8 +151,9 @@ export function CorregirCotizacion({
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
-  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
-  const fuera = useEnvioDeLaVentana()
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su
+  // lado, también que entró (no hay otro aviso: la tarjeta cambia callada).
+  const fuera = useEnvioDeLaVentana(`corregir-cotizacion:${id}`, { alEntrar: 'quedó guardada: Gerencia revisa esta versión.' })
   // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
   const ocupado = fuera.sigue || (enviando && !abierto)
   const campoArchivo = useRef<HTMLInputElement>(null)
@@ -161,6 +162,12 @@ export function CorregirCotizacion({
   useCursorAlRechazo(enviando, error, () => avisoError.current)
   // Lo que la persona escribió a mano: la lectura del archivo no lo pisa.
   const aMano = useRef(new Set<'monto' | 'moneda' | 'igv'>())
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
     aMano.current.clear()
@@ -329,10 +336,7 @@ export function CorregirCotizacion({
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => {
-          fuera.cerrar()
-          setAbierto(false)
-        }}
+        alCerrar={cerrar}
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
@@ -452,7 +456,7 @@ export function CorregirCotizacion({
           <Falla ref={avisoError} texto={error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
@@ -545,7 +549,7 @@ export function CargarCodigoYOt({
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
-  const fuera = useEnvioDeLaVentana()
+  const fuera = useEnvioDeLaVentana(`codigo-y-ot:${cotizacionId}`)
   // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
   const ocupado = fuera.sigue || (enviando && !abierto)
   // Al volver de un rechazo, el cursor va al número repetido o al código que no
@@ -566,6 +570,12 @@ export function CargarCodigoYOt({
   // Y la fecha de entrega escrita, si no es la del PDF.
   const otraFecha =
     !leyendo && datosLeidos?.fechaEntrega && fechaEntrega && fechaEntrega !== datosLeidos.fechaEntrega ? datosLeidos.fechaEntrega : null
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
     aMano.current.clear()
@@ -706,20 +716,19 @@ export function CargarCodigoYOt({
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
         // iba de la lista y no se veía que había quedado. Se carga entera para
         // que el navegador la resalte (`target:`) aunque la dirección no cambie.
-        // Con la sesión de otra cuenta, recargar pintaría su pantalla: espera a que vuelva la tuya.
-        const irASuTarjeta = () => {
+        // Cuando no queda nada en camino ni otra ventana abierta: recargaba
+        // encima de la OT de otra cotización, en camino o escrita en su ventana,
+        // y se perdía sin aviso (X1 de la crítica de la trigesimoquinta pasada).
+        // Con la sesión de otra cuenta, espera a que vuelva la tuya.
+        if (!laPestanaEsDeOtraCuenta()) anotarQueSeVa(`/cotizaciones/pdf#${cotizacionId}`)
+        irCuandoQuedeLibre(() => {
           if (window.location.pathname === '/cotizaciones/pdf' && window.location.search === '') {
             window.location.hash = cotizacionId
             window.location.reload()
           } else {
             window.location.assign(`/cotizaciones/pdf#${cotizacionId}`)
           }
-        }
-        if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(irASuTarjeta)
-        else {
-          anotarQueSeVa(`/cotizaciones/pdf#${cotizacionId}`)
-          irASuTarjeta()
-        }
+        })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
@@ -750,10 +759,7 @@ export function CargarCodigoYOt({
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => {
-          fuera.cerrar()
-          setAbierto(false)
-        }}
+        alCerrar={cerrar}
         titulo={`Código interno y OT de la ${numero}`}
         descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
         ancho="panoramico"
@@ -910,7 +916,7 @@ export function CargarCodigoYOt({
           <Falla ref={avisoError} texto={errorNumero || errorCodigo ? null : error} />
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">

@@ -153,19 +153,67 @@ export function alEmpezarUnEnvio(avisar: () => void) {
  * `enviar` llama a `entro()` cuando lo enviado entró: con un rechazo, sin
  * respuesta o con un error, «Volver a cargar» no recarga encima de su aviso
  * (trigesimosegunda pasada). Lo que sale después de un «no entró» se espera
- * también con «Volver a cargar igual» (`cuentaDeEnvios`).
+ * también con «Volver a cargar igual» (`cuentaDeEnvios`). `noEntro(motivo)`,
+ * para el rechazo que no se dice en ningún otro lado: el aviso de arriba lo
+ * dice en vez de mandar a leer uno que no existe (funcionalidad H1 de la
+ * trigesimoquinta pasada).
  */
-export async function mientrasSeEnvia<T>(enviar: (entro: () => void) => Promise<T>): Promise<T> {
+export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>): Promise<T> {
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   let entro = false
+  let motivo: string | null = null
   try {
-    return await enviar(() => {
-      entro = true
-    })
+    return await enviar(
+      () => {
+        entro = true
+      },
+      (porque) => {
+        motivo = porque
+      },
+    )
   } finally {
-    volvio(entro)
+    volvio(entro, motivo)
   }
+}
+
+/**
+ * Las acciones cuyo desenlace con la ventana cerrada ya se dice junto al botón
+ * que la abre (`useFotosDelEnvio`): `useAccion` no se lo da al aviso de arriba.
+ */
+const seDiceJuntoAlBoton = new WeakSet<object>()
+
+export function dichoJuntoAlBoton<F extends object>(accion: F): F {
+  seDiceJuntoAlBoton.add(accion)
+  return accion
+}
+
+// La última ida que espera a que no quede nada en camino (`irCuandoQuedeLibre`).
+let idaQueEspera: (() => void) | null = null
+
+/**
+ * Lleva a otra pantalla, o recarga, cuando ya no queda nada en camino ni
+ * ninguna ventana abierta: «Dar código y cargar la OT» recargaba para ir a su
+ * tarjeta con otra OT en camino o escrita en su ventana, y esa se perdía sin
+ * aviso, a veces con su PDF suelto (X1 de la crítica de la trigesimoquinta
+ * pasada). Si mientras tanto se pide otra, vale la última.
+ */
+export function irCuandoQuedeLibre(ir: () => void) {
+  idaQueEspera = ir
+  void (async () => {
+    for (;;) {
+      await envios.quedeNada()
+      if (idaQueEspera !== ir) return
+      if (!hayVentanaAbierta()) break
+      await new Promise<void>((listo) => {
+        if (!alCerrarLaVentana(listo)) listo()
+      })
+    }
+    idaQueEspera = null
+    // Con la sesión de otra cuenta, recargar pintaría su pantalla: espera a que vuelva la tuya.
+    if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(ir)
+    else ir()
+  })()
 }
 
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
@@ -215,18 +263,21 @@ export type SinRecargar = 'se-va' | 'no-entro'
  * camino (ni lo que no entró): solo lo que se envió después. Antes recargaba al
  * tope con el envío en camino y la pantalla volvía vacía con el reporte dentro.
  */
-export async function volverACargar({ igual = false, alTardar }: { igual?: boolean; alTardar?: () => void } = {}): Promise<SinRecargar | null> {
-  const noEntro = await envios.esperar({ igual, alTardar })
+export async function volverACargar({
+  igual = false,
+  alTardar,
+}: { igual?: boolean; alTardar?: () => void } = {}): Promise<{ sinRecargar: SinRecargar; motivo: string | null } | null> {
+  const { noEntro, motivo } = await envios.esperar({ igual, alTardar })
   // Si la ida no llega, el toque siguiente va a su destino (`irAlDestino`).
   if (seVaDeLaPantalla) {
     seVaDeLaPantalla = false
     idaDesde = Date.now()
     envios.ofrecer()
-    return 'se-va'
+    return { sinRecargar: 'se-va', motivo: null }
   }
   if (noEntro) {
     envios.ofrecer()
-    return 'no-entro'
+    return { sinRecargar: 'no-entro', motivo }
   }
   const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
   await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
@@ -323,11 +374,25 @@ export function useAccion<T = never>(
    * seguía con el saldo de antes y se pagaba dos veces (decimocuarta pasada). Con
    * la ventana abierta espera a que se cierre: antes la desmontaba con el aviso a
    * medio leer (`ventanas-abiertas.ts`). Sin ventana, el aviso se queda a la vista.
+   *
+   * Para «Volver a cargar», el del aviso de arriba tras un despliegue: lo que ya
+   * había quedado la primera vez entró, y recarga. El rechazo que volvió con su
+   * ventana ya cerrada no se ve en ningún lado —la ventana lo pinta adentro, y
+   * al reabrirla se limpia o se suelta—: el aviso de arriba dice su motivo en
+   * vez de mandar a leer un aviso que no existe (funcionalidad H1 de la
+   * trigesimoquinta pasada). Salvo que se diga junto al botón (`conFotos`).
    */
-  function despuesDelRechazo(salida: ResultadoAccion<T>, ventana: number | null, lanzo: boolean) {
+  function despuesDelRechazo(
+    salida: ResultadoAccion<T>,
+    ventana: number | null,
+    lanzo: boolean,
+    { entro, noEntro }: { entro: () => void; noEntro: (motivo: string) => void },
+  ) {
     if (salida.ok) return
     const desdeVentana = ventana !== null
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
+    if (yaEntro) entro()
+    else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)
     // La subida con su archivo no lanza: devuelve «No llegó la respuesta…» (`anotarSinDejarloSuelto`).
     const pudoEntrar = lanzo || pudoHaberEntrado(salida.error)
     const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
@@ -366,7 +431,8 @@ export function useAccion<T = never>(
     setResultado(null)
     const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
 
-    iniciar(() => mientrasSeEnvia(async (entro) => {
+    iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
+      const desenlace = { entro, noEntro }
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true
@@ -385,7 +451,7 @@ export function useAccion<T = never>(
           if (e instanceof OtraCuentaEnLaPestana) {
             const corte: ResultadoAccion<T> = { ok: false, error: NO_SE_GUARDO_OTRA_CUENTA }
             setResultado(corte)
-            despuesDelRechazo(corte, ventana, false)
+            despuesDelRechazo(corte, ventana, false, desenlace)
             return
           }
           let mensaje: string
@@ -399,7 +465,7 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          despuesDelRechazo(fallo, ventana, true)
+          despuesDelRechazo(fallo, ventana, true, desenlace)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -411,7 +477,7 @@ export function useAccion<T = never>(
         }
         setResultado(salida)
         if (!salida.ok) {
-          despuesDelRechazo(salida, ventana, false)
+          despuesDelRechazo(salida, ventana, false, desenlace)
           return
         }
 

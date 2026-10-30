@@ -13,6 +13,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, mientrasSeEnvia, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -56,15 +57,28 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [error, setError] = useState<string | null>(null)
   // Por qué el Excel elegido no se pudo leer: va en su campo, no con los errores de cargar.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // Lo que entró, con la pantalla de la orden: si «Nueva tarea» o una pestaña
+  // desmontan el botón con la ventana cerrada en vuelo, se dice cuando vuelve.
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
   // Lo del Excel va aparte: si no quedó, se lee como aviso y no como el éxito del cronograma.
-  const [excel, setExcel] = useState<{ ok: true } | { ok: false; error: string } | { ok: false; incierto: true } | null>(null)
+  const [excel, setExcel] = useEstadoCompartido<{ ok: true } | { ok: false; error: string } | { ok: false; incierto: true } | null>(
+    `cronograma:${ordenId}:excel`,
+    null,
+    { guardar: true },
+  )
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
-  const fuera = useEnvioDeLaVentana()
+  const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`)
   // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
   const ocupado = fuera.sigue || (enviando && !abierto)
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual, y si va en camino
+  // el desenlace se dice junto al botón.
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
     setArchivo(null)
@@ -216,10 +230,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => {
-          fuera.cerrar()
-          setAbierto(false)
-        }}
+        alCerrar={cerrar}
         titulo="Subir el cronograma"
         descripcion="Un Excel con una fila por actividad: Área, Actividad, Referencia, Peso (%), Inicio y Fin. Con las fechas, cada supervisor ve qué le toca reportar y qué se atrasó. Nada se carga hasta que confirmes."
         ancho="lg"
@@ -317,7 +328,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           {error && <Falla texto={error} />}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton

@@ -150,10 +150,28 @@
  *   1s-orden-pdf. El PDF de la orden, que sube al elegirlo (Administración):
  *       «Volver a cargar» espera a que quede anotado. Recargaba a los 180 ms.
  *
+ * Y lo que dejó la trigesimoquinta:
+ *
+ *   1s-reenvio, además: el estado de «Subir cotización» va bajo el
+ *       encabezado, y el botón no se mueve cuando aparece.
+ *   1t-cronograma. «Cancelar» con el cronograma en camino (Diseño): el botón
+ *       gira y dice que sigue; «Nueva tarea» se lleva el botón y su
+ *       «Cancelar» lo devuelve girando; el rechazo se dice a su lado, y otra
+ *       «Nueva tarea» no lo borra. Antes el envío y su desenlace se perdían.
+ *   1t-correccion. La corrección cerrada en vuelo que entra (Ventas): lo dice
+ *       en verde junto a su botón. Antes la tarjeta cambiaba callada.
+ *   1t-dos-tarjetas. «Dar código y cargar la OT» de una cotización entra con
+ *       la ventana de otra abierta y escrita (Administración): no recarga
+ *       encima; cuando la otra entra, va a su tarjeta, con las dos OT y nada
+ *       suelto. Antes recargaba y se perdía lo escrito o la otra OT.
+ *   1t-motivo-arriba. Una ventana de `useEnvio` cerrada en vuelo y rechazada
+ *       en «nueva» (Ventas, la unidad con una placa que ya está): arriba se
+ *       dice por qué, no se manda a leer un aviso que no existe.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
- * las cinco de arriba; 1s, las cinco).
+ * las cinco de arriba; 1s, las cinco; 1t, las cuatro).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -1922,7 +1940,18 @@ if (corre('1s-reenvio')) {
   await hastaLaPestanaNueva(pagina, corte)
   await marcarDocumento(pagina)
   const abrirla = pagina.getByRole('button', { name: 'Subir cotización' }).first()
-  const junto = abrirla.locator('xpath=..')
+  // Lo que dice cómo va está en el renglón de estado del encabezado, no al
+  // lado: junto al botón lo corría de sitio (diseño H3 de la trigesimoquinta).
+  const junto = pagina.locator('[data-estado-del-encabezado]')
+  // Respecto del título: el aviso de arriba crece con su frase y baja la página
+  // entera. Con la rueda el botón es 2 px más angosto: eso no es correrse.
+  const titulo = pagina.locator('main h1').first()
+  const donde = async () => {
+    const [caja, h1] = [await abrirla.boundingBox(), await titulo.boundingBox()]
+    return caja && h1 && { x: Math.round(caja.x + caja.width), y: Math.round(caja.y - h1.y) }
+  }
+  const quieto = (a, b) => a !== null && b !== null && Math.abs(a.x - b.x) <= 4 && a.y === b.y
+  const dondeAntes = await donde()
   const llenar = async (n) => {
     await abrirla.click()
     const d = pagina.getByRole('dialog').first()
@@ -1948,12 +1977,16 @@ if (corre('1s-reenvio')) {
   await d.getByRole('button', { name: 'Cerrar', exact: true }).click()
   const ocupadoEnVuelo = (await abrirla.getAttribute('aria-disabled')) === 'true'
   const sigue = await loQueDescribe(abrirla)
+  const dondeEnVuelo = await donde()
   await botonDeArriba(pagina, 'Volver a cargar').click()
   await pagina.waitForTimeout(1000)
   corte.soltar()
   const porque = await hasta(() => sinRecargar(pagina), (t) => t === NO_ENTRO, 20000)
   const alerta = limpio(await hasta(() => junto.locator('[role="alert"]').innerText().catch(() => ''), Boolean, 10000))
+  const dondeConAlerta = await donde()
   await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1s-reenvio-rechazo.png') })
+  comprobar(quieto(dondeAntes, dondeEnVuelo) && quieto(dondeAntes, dondeConAlerta),
+    `[Ventas 1280] 1s-reenvio. «Subir cotización» no se mueve cuando aparece su estado (borde derecho y alto desde el título: antes ${JSON.stringify(dondeAntes)}, en vuelo ${JSON.stringify(dondeEnVuelo)}, con el rechazo ${JSON.stringify(dondeConAlerta)})`)
   comprobar(ocupadoEnVuelo && sigue === 'La cotización se sigue enviando: lo que conteste se dice aquí.',
     `[Ventas 1280] 1s-reenvio. cerrada en vuelo, «Subir cotización» gira y dice que sigue (ocupado ${ocupadoEnVuelo}, «${sigue}»)`)
   comprobar(porque === NO_ENTRO && alerta.startsWith('La cotización que se estaba enviando no se registró: Ya hay una cotización con el número') && (await mismoDocumento(pagina)),
@@ -2101,6 +2134,246 @@ if (corre('1s-orden-pdf')) {
   corte.despliegue = false
   corte.conservaIds = false
   comprobar(errores.length === 0, `[Administración 1280] 1s-orden-pdf. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1t-cronograma. «Cancelar» en vuelo, y «Nueva tarea» se lleva el botón (Diseño)
+// «Cancelar» cerraba la ventana del cronograma sin decirle al envío que iba
+// sin ella: el botón no giraba y el rechazo no se decía (realización H1 de la
+// trigesimoquinta pasada). Y «Nueva tarea» desmonta «Subir cronograma»: el
+// envío en camino y su desenlace se iban con él (diseño H1). Ahora lo del
+// envío vive con la orden, no con el botón: al volver, gira si sigue y dice
+// por qué no entró. El Excel trae dos actividades de 60 % en Acabados: la
+// pantalla lo marca en rojo y deja cargar, y la base lo rechaza.
+if (corre('1t-cronograma')) {
+  const [orden] = await consulta(`select id, plan_etapas_manual from ordenes_trabajo
+                                  where cotizacion_pdf_id is null and estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR') order by numero limit 1`)
+  if (orden.plan_etapas_manual) {
+    await base.query('begin')
+    await base.query(`set local session_replication_role = replica`)
+    await base.query(`update ordenes_trabajo set plan_etapas_manual = false where id = $1`, [orden.id])
+    await base.query('commit')
+  }
+  const actividad = `Pasa de cien ${sello}`
+  const libro = new ExcelJS.Workbook()
+  const hoja = libro.addWorksheet('Cronograma')
+  hoja.addRow(['Área', 'Actividad', 'Referencia', 'Peso (%)', 'Inicio', 'Fin'])
+  hoja.addRow(['Acabados', actividad, null, 60, null, null])
+  hoja.addRow(['Acabados', `${actividad} B`, null, 60, null, null])
+  const excel = join(archivos, `cronograma-pasa-de-cien-${sello}.xlsx`)
+  await libro.xlsx.writeFile(excel)
+  const actividades = async () => Number((await consulta(`select count(*) n from ot_actividades where orden_id = $1 and nombre like $2`, [orden.id, `${actividad}%`]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=actividades`)
+  const abrirla = pagina.getByRole('button', { name: 'Subir cronograma' })
+  const junto = () => abrirla.locator('xpath=..')
+  const nuevaTarea = pagina.getByRole('button', { name: 'Nueva tarea', exact: true })
+  const cancelarTarea = pagina.locator('form').filter({ has: pagina.getByRole('button', { name: 'Agregar a la lista' }) }).getByRole('button', { name: 'Cancelar', exact: true })
+  await abrirla.click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor({ timeout: 20000 })
+  await v.locator(`#cronograma-${orden.id}`).setInputFiles(excel)
+  const cargar = v.getByRole('button', { name: 'Cargar 2 actividades' })
+  await cargar.waitFor({ timeout: 15000 })
+  await v.getByRole('checkbox').uncheck().catch(() => {})
+  corte.marca = actividad
+  await cargar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  // «Cancelar», no la X: es el que no avisaba.
+  await v.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await hasta(() => v.count(), (n) => n === 0, 5000)
+  const ocupadoAlCancelar = (await abrirla.getAttribute('aria-disabled')) === 'true'
+  const sigueAlCancelar = await loQueDescribe(abrirla)
+  // «Nueva tarea» se lleva «Subir cronograma»; su «Cancelar» lo devuelve.
+  await nuevaTarea.click()
+  await cancelarTarea.waitFor({ timeout: 10000 })
+  const sinBoton = (await abrirla.count()) === 0
+  await cancelarTarea.click()
+  await abrirla.waitFor({ timeout: 10000 })
+  const ocupadoAlVolver = (await abrirla.getAttribute('aria-disabled')) === 'true'
+  const sigueAlVolver = await loQueDescribe(abrirla)
+  corte.soltar()
+  const alerta = limpio(await hasta(() => junto().locator('[role="alert"]').innerText().catch(() => ''), Boolean, 20000))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-cronograma.png') })
+  comprobar(ocupadoAlCancelar && sigueAlCancelar === 'El cronograma se sigue enviando: lo que conteste se dice aquí.',
+    `[Diseño 1280] 1t-cronograma. «Cancelar» en vuelo: «Subir cronograma» gira y dice que sigue (ocupado ${ocupadoAlCancelar}, «${sigueAlCancelar}»)`)
+  comprobar(sinBoton && ocupadoAlVolver && sigueAlVolver === 'El cronograma se sigue enviando: lo que conteste se dice aquí.',
+    `[Diseño 1280] 1t-cronograma. tras «Nueva tarea» y su «Cancelar», el botón vuelve girando y dice que sigue (se fue ${sinBoton}, ocupado ${ocupadoAlVolver}, «${sigueAlVolver}»)`)
+  comprobar(alerta.startsWith('El cronograma que se estaba enviando no se registró: ') && alerta.includes('suman') && (await actividades()) === 0,
+    `[Diseño 1280] 1t-cronograma. el rechazo se dice junto al botón, y no entró nada: «${alerta}»`)
+  // Con el desenlace ya a la vista, «Nueva tarea» y «Cancelar» no lo borran.
+  await nuevaTarea.click()
+  await cancelarTarea.waitFor({ timeout: 10000 })
+  await cancelarTarea.click()
+  await abrirla.waitFor({ timeout: 10000 })
+  const alertaDespues = limpio(await junto().locator('[role="alert"]').innerText().catch(() => ''))
+  comprobar(alertaDespues !== '' && alertaDespues === alerta, `[Diseño 1280] 1t-cronograma. «Nueva tarea» y «Cancelar» no borran el rechazo ya dicho («${alertaDespues}»)`)
+  comprobar(errores.length === 0, `[Diseño 1280] 1t-cronograma. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1t-correccion. La corrección cerrada en vuelo que entra (Ventas)
+// «Lo que conteste se dice aquí», y cuando entraba no se decía nada: la
+// tarjeta cambiaba callada (diseño H2 y funcionalidad H4 de la trigesimoquinta).
+if (corre('1t-correccion')) {
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.ventas])
+  const [cot] = await consulta(`select id, numero, version from cotizaciones_pdf where registrado_por = $1 and estado = 'POR_REVISAR' order by creado_en desc limit 1`, [yo])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const sueltos = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'cotizaciones-pdf' and o.owner_id = $1 and o.created_at >= $2
+        and not exists (select 1 from cotizaciones_pdf c where c.ruta_storage = o.name)
+        and not exists (select 1 from cotizaciones_pdf_versiones v where v.ruta_storage = o.name)`, [yo, desde])).map((o) => o.name)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas, { width: 1280, height: 900 })
+  if (!cot) {
+    comprobar(false, '[Ventas 1280] 1t-correccion. hay una cotización de Ventas por revisar para corregir')
+  } else {
+    await ir(pagina, `${BASE}/cotizaciones/pdf`)
+    const abrirla = pagina.locator(`li[id="${cot.id}"]`).getByRole('button', { name: /Editar cotización|Subir corrección/ })
+    const junto = abrirla.locator('xpath=..')
+    await abrirla.click()
+    const e = pagina.getByRole('dialog').first()
+    await e.waitFor({ timeout: 20000 })
+    const motivo = `Corrección en vuelo ${sello}`
+    await e.locator(`#corregir-motivo-${cot.id}`).fill(motivo)
+    await e.locator(`#corregir-archivo-${cot.id}`).setInputFiles({ name: `${cot.numero}-en-vuelo.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${cot.numero}`, `En vuelo ${sello}`]) })
+    const guardar = e.getByRole('button', { name: 'Guardar versión y enviar a Gerencia' })
+    await pagina.waitForTimeout(1500)
+    await hasta(async () => !/Leyendo/.test(await e.innerText()) && (await guardar.isEnabled()), Boolean, 30000)
+    await e.locator('#corregir-monto').fill('1200')
+    await e.locator('#corregir-moneda').selectOption('USD')
+    await e.locator('#corregir-igv').selectOption('no')
+    corte.marca = motivo
+    await guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await e.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    const ocupado = (await abrirla.getAttribute('aria-disabled')) === 'true'
+    const sigue = await loQueDescribe(abrirla)
+    corte.soltar()
+    const verde = limpio(await hasta(() => junto.locator('[role="status"]').allInnerTexts().then((l) => l.join(' ')), (t) => t.includes('quedó guardada'), 20000))
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-correccion.png') })
+    const [ahora] = await consulta(`select version from cotizaciones_pdf where id = $1`, [cot.id])
+    comprobar(ocupado && sigue === 'La corrección se sigue enviando: lo que conteste se dice aquí.',
+      `[Ventas 1280] 1t-correccion. cerrada en vuelo, el botón gira y dice que sigue (ocupado ${ocupado}, «${sigue}»)`)
+    comprobar(verde === 'La corrección que se estaba enviando quedó guardada: Gerencia revisa esta versión.' && (await junto.locator('[role="alert"]').count()) === 0 && ahora.version === cot.version + 1,
+      `[Ventas 1280] 1t-correccion. cuando entra, lo dice en verde junto al botón, sin alerta («${verde}», versión ${cot.version} → ${ahora.version})`)
+    comprobar((await hasta(sueltos, (l) => l.length === 0, 10000)).length === 0, `[Ventas 1280] 1t-correccion. nada suelto`)
+  }
+  comprobar(errores.length === 0, `[Ventas 1280] 1t-correccion. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1t-dos-tarjetas. «Dar código y cargar la OT» de una, con la otra en su ventana (Administración)
+// La que entraba recargaba la pantalla para ir a su tarjeta: la ventana de la
+// otra cotización se cerraba con lo escrito, y si ya iba, su OT no entraba y
+// su PDF quedaba suelto (X1 de la crítica de la trigesimoquinta). Ahora espera
+// a que no quede nada en camino ni ventana abierta, y va a la última pedida.
+if (corre('1t-dos-tarjetas')) {
+  const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
+  const dos = await consulta(`select c.id from cotizaciones_pdf c where c.estado = 'APROBADA'
+                                and not exists (select 1 from ordenes_trabajo o where o.cotizacion_pdf_id = c.id) order by c.creado_en desc limit 2`)
+  const libres = (await consulta(`select n from generate_series(9100, 9999) n
+                                  where not exists (select 1 from ordenes_trabajo o where o.numero = n || '-' || $1) order by n desc limit 2`, [anio])).map((x) => x.n)
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.administracion])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const sueltos = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'adjuntos-ot' and o.owner_id = $1 and o.created_at >= $2
+        and not exists (select 1 from ot_adjuntos a where a.ruta_storage = o.name)`, [yo, desde])).map((o) => o.name)
+  const otDe = async (id) => Number((await consulta(`select count(*) n from ordenes_trabajo where cotizacion_pdf_id = $1`, [id]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (dos.length < 2 || libres.length < 2) {
+    comprobar(false, `[Administración 1280] 1t-dos-tarjetas. hay dos cotizaciones aprobadas sin OT (${dos.length}) y dos números libres`)
+  } else {
+    const [a, b] = dos.map((x) => x.id)
+    await ir(pagina, `${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`)
+    await marcarDocumento(pagina)
+    const llenar = async (id, codigo, n) => {
+      const boton = pagina.locator(`li[id="${id}"]`).getByRole('button', { name: 'Dar código y cargar la OT' })
+      await boton.scrollIntoViewIfNeeded().catch(() => {})
+      await boton.click()
+      const d = pagina.getByRole('dialog').first()
+      await d.waitFor({ timeout: 20000 })
+      await d.locator('#eo-codigo-interno').fill(codigo)
+      await d.locator(`#aprobar-pdf-${id}`).setInputFiles({ name: `OT-${n}.pdf`, mimeType: 'application/pdf',
+        buffer: pdfConTexto([`ORDEN DE TRABAJO N ${n}-${anio}`, `FECHA DE ENTREGA: 15/12/${anio}`]) })
+      const guardar = d.getByRole('button', { name: 'Guardar código y OT' })
+      await pagina.waitForTimeout(1500)
+      await hasta(async () => !/Leyendo/.test(await d.innerText()) && (await guardar.isEnabled()), Boolean, 30000)
+      await d.locator('#eo-numero').fill(String(n))
+      await d.locator('#eo-fecha').fill(`${anio}-12-15`)
+      await d.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
+      return { d, guardar }
+    }
+    // A: va, y la ventana se cierra en vuelo.
+    const codigoA = `QA_X1A_${sello}/26`
+    const ventanaA = await llenar(a, codigoA, libres[0])
+    corte.marca = `QA_X1A_${sello}`
+    await ventanaA.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await ventanaA.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    // B: su ventana abierta y escrita mientras A vuelve.
+    const codigoB = `QA_X1B_${sello}/26`
+    const ventanaB = await llenar(b, codigoB, libres[1])
+    corte.soltar()
+    await hasta(() => otDe(a), (n) => n === 1, 20000)
+    await pagina.waitForTimeout(3000)
+    const quieto = await mismoDocumento(pagina)
+    const escrito = await ventanaB.d.locator('#eo-codigo-interno').inputValue().catch(() => '')
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-dos-tarjetas-b-abierta.png') })
+    comprobar((await otDe(a)) === 1 && quieto && escrito === codigoB,
+      `[Administración 1280] 1t-dos-tarjetas. A entra con la ventana de B abierta, y la pantalla no se recarga encima (OT de A ${await otDe(a)}, mismo documento ${quieto}, B dice «${escrito}»)`)
+    // B también entra: ahora sí recarga, y nada queda suelto.
+    if (quieto && escrito === codigoB) {
+      await ventanaB.guardar.click()
+      await hasta(() => otDe(b), (n) => n === 1, 30000)
+      await hasta(() => mismoDocumento(pagina), (m) => !m, 15000)
+      await quieta(pagina)
+    }
+    const quedan = await hasta(sueltos, (l) => l.length === 0, 10000)
+    comprobar(!(await mismoDocumento(pagina)) && (await otDe(a)) === 1 && (await otDe(b)) === 1 && quedan.length === 0,
+      `[Administración 1280] 1t-dos-tarjetas. cuando B entra y no queda nada en camino ni abierto, va a su tarjeta: las dos OT y nada suelto (OT de B ${await otDe(b)}, ${quedan.length} sueltos, ${pagina.url().replace(BASE, '')})`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1t-dos-tarjetas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1t-motivo-arriba. El rechazo de una ventana de useEnvio cerrada en vuelo, en «nueva» (Ventas)
+// Nada lo pinta fuera de la ventana, y el aviso de arriba mandaba a leer «el
+// aviso junto a su botón», que no existía (funcionalidad H1 de la
+// trigesimoquinta): ahora dice el motivo. La placa repetida la rechaza la base.
+if (corre('1t-motivo-arriba')) {
+  const [unidad] = await consulta(`select u.cliente_id, u.placa from unidades u join clientes c on c.id = u.cliente_id
+                                   where u.placa is not null and u.activo and c.activo order by u.creado_en limit 1`)
+  const unidades = async () => Number((await consulta(`select count(*) n from unidades where cliente_id = $1`, [unidad.cliente_id]))[0].n)
+  const antes = await unidades()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas, { width: 1280, height: 900 }, { compilacion: true })
+  await ir(pagina, `${BASE}/clientes/${unidad.cliente_id}`)
+  await hastaLaPestanaNueva(pagina, corte)
+  await marcarDocumento(pagina)
+  await pagina.getByRole('button', { name: 'Nueva unidad', exact: true }).first().click()
+  const d = pagina.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  const modelo = `QA-MOTIVO ${sello}`
+  await d.locator('#nu-marca').fill('QA')
+  await d.locator('#nu-modelo').fill(modelo)
+  await d.locator('#nu-anio').fill('2020')
+  await d.locator('#nu-placa').fill(unidad.placa)
+  corte.marca = modelo
+  await d.getByRole('button', { name: 'Registrar unidad' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await d.getByRole('button', { name: 'Cancelar', exact: true }).click()
+  await botonDeArriba(pagina, 'Volver a cargar').click()
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  const porque = await hasta(() => sinRecargar(pagina), (t) => t.startsWith('Lo que enviaste no entró'), 20000)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-motivo-arriba.png') })
+  comprobar(porque.startsWith('Lo que enviaste no entró, o no se sabe si entró: ') && porque !== NO_ENTRO && /existe/i.test(porque) && (await mismoDocumento(pagina)) && (await unidades()) === antes,
+    `[Ventas 1280] 1t-motivo-arriba. la unidad rechazada con la ventana cerrada: arriba dice por qué, sin mandar a un aviso que no está, y no recarga («${porque}»)`)
+  const igual = botonDeArriba(pagina, 'Volver a cargar igual')
+  await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), igual.click()])
+  comprobar(!(await mismoDocumento(pagina)), `[Ventas 1280] 1t-motivo-arriba. «Volver a cargar igual» recarga`)
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Ventas 1280] 1t-motivo-arriba. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

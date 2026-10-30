@@ -336,7 +336,27 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   rechazo se quedaba dentro de la ventana cerrada, y arriba se mandaba a leer
   «el aviso junto a su botón», que no estaba (A, H7 y R2). Ese motivo no se
   borra al reabrir la ventana; lo cambia la vuelta del envío siguiente, no su
-  salida, que va en la transición y se pintaba tarde, junto al verde nuevo. El
+  salida, que va en la transición y se pintaba tarde, junto al verde nuevo.
+  Lo de cada ventana va por su `clave` (`useEnvioDeLaVentana(clave)`, con
+  `useEstadoCompartido(…, { guardar: true })`) y sobrevive a que su botón se
+  desmonte: «Nueva tarea», una búsqueda, las pastillas de estado o una pestaña
+  de la orden se llevaban el botón con el desenlace, y lo que contestaba no se
+  decía en ningún lado (diseño H1 y X2 de la trigesimoquinta). «Cancelar» y la
+  ✕ cierran por el mismo `cerrar()` del hook: «Cancelar» en vuelo dejaba el
+  botón sin girar y el rechazo sin decir (realización H1). Si lo que entró se
+  dice en la página y no en la ventana, `alEntrar` lo dice en verde junto al
+  botón («La corrección que se estaba enviando quedó guardada…»): la corrección
+  cerrada en vuelo que sí entraba no lo decía en ningún lado. Donde el botón
+  está en el encabezado de la página (subir cotización, registrar avance,
+  reportar un trabajo), su estado va en la fila `estado` de
+  `EncabezadoPagina`, debajo, no al lado: el texto que aparecía junto al botón
+  lo corría de sitio con el dedo encima (H3). Si el rechazo de una ventana de
+  `useAccion` cerrada en vuelo no se dice en ningún otro lado, `noEntro(motivo)`
+  lo lleva al aviso de arriba («Lo que enviaste no entró, o no se sabe si
+  entró: …»), en vez de mandar a leer un aviso que no está (funcionalidad H1).
+  La ida a la tarjeta de la OT recién cargada (`irCuandoQuedeLibre`) espera a
+  que no quede nada en camino ni ventana abierta: recargaba encima del envío de
+  otra tarjeta y dejaba su archivo suelto (X1). El
   aviso de arriba es una región no atómica (`aria-atomic="false"`): al cambiar
   por qué no recargó, el lector releía sus 53 palabras antes de la frase nueva
   (E de la trigesimocuarta). Ya
