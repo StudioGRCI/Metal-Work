@@ -243,10 +243,14 @@ export function FilaDePersona({
   // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
   const estado = useEnvio(
     cambiarEstado,
-    () => {
+    (_, desde) => {
       setVentana(null)
       const lista = persona.activo ? 'bajas' : 'activos'
-      navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+      const quien = `${persona.nombres} ${persona.apellidos}`
+      navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`, desde, {
+        dice: persona.activo ? `${quien} quedó de baja.` : `${quien} volvió a activos.`,
+        enlace: persona.activo ? 'Verla en Bajas' : 'Verla en Activos',
+      })
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
     { refrescar: false },

@@ -18,9 +18,15 @@ import { enviarPlanillaDiaria } from './acciones'
 export function EnviarPlanilla({ id, resumen }: { id: string; resumen: string }) {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
-  const { ejecutar, enviando, error } = useAccion(enviarPlanillaDiaria, (r) => navegarSiEsDeLaPestana(router, `/planilla-diaria/${r.datos?.id ?? id}`), {
-    refrescar: false,
-  })
+  const { ejecutar, enviando, error } = useAccion(
+    enviarPlanillaDiaria,
+    (r, desde) =>
+      navegarSiEsDeLaPestana(router, `/planilla-diaria/${r.datos?.id ?? id}`, desde, {
+        dice: 'La planilla quedó enviada a Tesorería.',
+        enlace: 'Ver la planilla',
+      }),
+    { refrescar: false },
+  )
   return (
     <>
       <Boton type="button" onClick={() => setAbierta(true)} data-enviar-planilla>

@@ -1,7 +1,6 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
@@ -29,7 +28,7 @@ function nulo(valor: string | undefined | null) {
   return t ? t : null
 }
 
-export async function guardarCliente(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+export async function guardarCliente(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   const analisis = esquemaCliente.safeParse(Object.fromEntries(datos))
 
@@ -90,7 +89,10 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath('/clientes')
-  redirect(`/clientes/${data.id}`)
+  // La ida a su ficha la hace el formulario (`navegarSiEsDeLaPestana`): un
+  // redirect de servidor salía aunque la persona ya hubiera pedido otra
+  // pantalla mientras se guardaba.
+  return { ok: true, datos: { id: data.id } }
 }
 
 const esquemaUnidad = z.object({

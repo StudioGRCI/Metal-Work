@@ -42,7 +42,11 @@ export function FormularioEvaluacion({ inicial, hoy, cargo, nombres }: {
   )
   const envio = useEnvio(
     guardarEvaluacionDiseno,
-    (resultado) => navegarSiEsDeLaPestana(router, `/diseno/evaluaciones/${resultado.datos?.id ?? id}`),
+    (resultado, desde) =>
+      navegarSiEsDeLaPestana(router, `/diseno/evaluaciones/${resultado.datos?.id ?? id}`, desde, {
+        dice: 'La evaluación quedó guardada.',
+        enlace: 'Ver la evaluación',
+      }),
     { refrescar: false },
   )
 

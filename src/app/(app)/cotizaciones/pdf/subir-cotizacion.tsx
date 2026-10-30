@@ -64,7 +64,9 @@ const ID_DEL_ESTADO = 'estado-de-subir-cotizacion'
  */
 export function EstadoDeSubirCotizacion() {
   const [aviso] = useEstadoCompartido<string | null>(AVISO, null)
-  const { sigue, desenlace } = useLoQueDiceLaVentana(CLAVE)
+  const { sigue, desenlace: dicho } = useLoQueDiceLaVentana(CLAVE)
+  // Con la frase del éxito a la vista, el «se subió» de la ventana cerrada no se repite.
+  const desenlace = aviso && dicho?.tono === 'entro' ? null : dicho
   return (
     <>
       <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
@@ -90,16 +92,18 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [error, setError] = useState<string | null>(null)
   // Por qué el archivo elegido no sirve: va en su campo, no con los errores de subir.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  // Lo que entró, mientras la persona siga en Cotización. Sin `guardar`: solo
-  // dice que se subió, y seguía junto a la cotización que Gerencia ya había
-  // rechazado (funcionalidad H5 de la trigesimoséptima pasada). Lo que no
-  // entró sí se queda (`useEnvioDeLaVentana`).
+  // Lo que entró, mientras la persona siga en Cotización. Sin `guardar`: decía
+  // que Gerencia la revisa, y seguía junto a la cotización que Gerencia ya
+  // había rechazado (funcionalidad H5 de la trigesimoséptima pasada). Lo que no
+  // entró sí se queda (`useEnvioDeLaVentana`), y lo que entró con la ventana
+  // cerrada también, en pasado (`alEntrar`): con la persona en Clientes al
+  // contestar, al volver nada decía que había entrado (F3 de la trigesimoctava).
   const [, setAviso] = useEstadoCompartido<string | null>(AVISO, null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira, y el desenlace se dice
   // debajo, en el renglón de estado del encabezado.
-  const fuera = useEnvioDeLaVentana(CLAVE, { idDelEstado: ID_DEL_ESTADO })
+  const fuera = useEnvioDeLaVentana(CLAVE, { idDelEstado: ID_DEL_ESTADO, alEntrar: { dice: 'se subió y se envió a Gerencia.' } })
   const campoArchivo = useRef<HTMLInputElement>(null)
   // Al volver de un rechazo, el cursor va al número repetido o al aviso.
   const campoNumero = useRef<HTMLInputElement>(null)

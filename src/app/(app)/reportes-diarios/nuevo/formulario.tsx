@@ -362,7 +362,11 @@ export function FormularioReporteDiario({
       }
       return salida
     },
-    (r) => navegarSiEsDeLaPestana(router, `/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`),
+    (r, desde) =>
+      navegarSiEsDeLaPestana(router, `/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`, desde, {
+        dice: 'El reporte quedó registrado.',
+        enlace: 'Ver el reporte',
+      }),
     { refrescar: false },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)

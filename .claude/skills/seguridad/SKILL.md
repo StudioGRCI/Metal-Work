@@ -157,9 +157,19 @@ En la misma migración que la crea, sin excepción:
   de esperar solo lo que ofreció no esperar, nunca lo que salió después
   (`cuentaDeEnvios`, F3). Una ida que la aplicación hace sola tras un envío
   no recarga y no espera: la de la tarjeta de la OT recién cargada sale en el
-  acto, sin recargar, solo si ese es el único envío en camino y la persona
-  sigue en Cotización con su ventana a la vista; si no, lo dice el
-  encabezado con «Ver su tarjeta» (`vaSolaALaTarjeta`). Recargar cortaba el
+  acto, sin recargar, solo si ese es el único envío en camino, la dirección
+  es la misma de la que salió (ni otra pantalla, ni «Atrás», ni un filtro) y
+  la persona no tocó nada después de cerrar su ventana; si no, y sigue en
+  Cotización, lo dice el encabezado con «Ver su tarjeta»
+  (`vaSolaALaTarjeta`); en otra pantalla lo dice la tarjeta misma. Las demás idas
+  tras un envío (subcontrato, planilla, evaluación, reporte, orden, trabajo,
+  personal, cliente, avisos) siguen la misma regla con
+  `navegarSiEsDeLaPestana(router, url, desde, siNoVa)`: no salen si cambió la
+  dirección, se pulsó un enlace, hay otra ventana abierta o la del envío se
+  cerró y se tocó algo, y entonces `IdaQueNoSalio` lo dice arriba con su
+  enlace (W1 de la trigesimoctava: se llevaba lo escrito en otra ventana, o
+  el menú pedido). Un `redirect()` de servidor tras guardar no sabe nada de
+  eso, y no se usa. Recargar cortaba el
   envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
   trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía
   minutos después desde otra pantalla y se llevaba lo escrito allí (Y1 de la
@@ -178,7 +188,9 @@ En la misma migración que la crea, sin excepción:
   «Cotización subida y enviada a Gerencia»: el éxito vive mientras su tarjeta
   o su pantalla siguen montadas, y de la llave del Excel se guarda solo la
   falla, que es lo que evita mandarlo dos veces (H4, H5 y realización H2 de la
-  trigesimoséptima). Que el id de la acción cambie no es lo de siempre: la clave dura
+  trigesimoséptima). Lo que entró con la ventana cerrada en vuelo sí queda
+  dicho, en pasado, por `alEntrar` («El cronograma que se estaba enviando se
+  cargó.»): dice lo que pasó, no cómo está ahora (F3 de la trigesimoctava). Que el id de la acción cambie no es lo de siempre: la clave dura
   14 días y Vercel la conserva, así que el despliegue de todos los días se
   reconoce por la compilación que contesta el servidor
   (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban

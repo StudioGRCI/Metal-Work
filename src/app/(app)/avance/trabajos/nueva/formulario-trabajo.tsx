@@ -22,8 +22,12 @@ export function FormularioTrabajo() {
   const router = useRouter()
   const { alEnviar, enviando, resultado, error } = useEnvio(
     registrarTrabajoSinOrden,
-    (r) => {
-      if (r.datos) navegarSiEsDeLaPestana(router, `/avance/trabajos/${r.datos.id}`)
+    (r, desde) => {
+      if (r.datos)
+        navegarSiEsDeLaPestana(router, `/avance/trabajos/${r.datos.id}`, desde, {
+          dice: 'El trabajo quedó registrado.',
+          enlace: 'Ver el trabajo',
+        })
     },
     { refrescar: false },
   )

@@ -103,7 +103,11 @@ function RecibirODevolver({ id }: { id: string }) {
 function Borrar({ id }: { id: string }) {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
-  const accion = useAccion(borrarEvaluacionDiseno, () => navegarSiEsDeLaPestana(router, '/diseno/evaluaciones'), { refrescar: false })
+  const accion = useAccion(
+    borrarEvaluacionDiseno,
+    (_, desde) => navegarSiEsDeLaPestana(router, '/diseno/evaluaciones', desde, { dice: 'El borrador se borró.', enlace: 'Ir a Evaluaciones' }),
+    { refrescar: false },
+  )
   return (
     <>
       <Boton type="button" variante="contornoPeligro" className="w-full justify-center" onClick={() => { accion.limpiar(); setAbierta(true) }}>

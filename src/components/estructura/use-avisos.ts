@@ -61,9 +61,10 @@ export function useAvisos(sinLeer: number, alAbrir?: () => void) {
     } catch (e) {
       return { ok: false, error: motivoDelFallo(e, 'No se pudo guardar la lectura. Comprueba tu conexión y vuelve a intentarlo.') }
     }
-  }, ({ datos }) => {
+  }, ({ datos }, desde) => {
     if (datos?.abrir) alAbrir?.()
-    if (datos?.destino) navegarSiEsDeLaPestana(router, datos.destino)
+    // Si mientras se marcaba la persona pidió otra cosa, no se la lleva ni se dice: abrir el aviso era lo pedido.
+    if (datos?.destino) navegarSiEsDeLaPestana(router, datos.destino, desde)
   }, { refrescar: false })
   function abrir(aviso: Notificacion) {
     const datos = new FormData()

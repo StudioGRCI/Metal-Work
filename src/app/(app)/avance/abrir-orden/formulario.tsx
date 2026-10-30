@@ -39,8 +39,12 @@ export function FormularioOrdenTaller() {
   const router = useRouter()
   const { alEnviar, enviando, resultado, error } = useEnvio(
     abrirOrdenDelTaller,
-    (r) => {
-      if (r.datos) navegarSiEsDeLaPestana(router, `/ordenes/${r.datos.id}?vista=actividades&abierta=1`)
+    (r, desde) => {
+      if (r.datos)
+        navegarSiEsDeLaPestana(router, `/ordenes/${r.datos.id}?vista=actividades&abierta=1`, desde, {
+          dice: 'La orden quedó abierta.',
+          enlace: 'Ver la orden',
+        })
     },
     { refrescar: false },
   )

@@ -1,10 +1,12 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
+
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarCliente } from './acciones'
@@ -16,8 +18,17 @@ const DEPARTAMENTOS = [
 ]
 
 export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> }) {
+  const router = useRouter()
   // useEnvio: un envío por toque y lo escrito a salvo si el servidor lo rechaza.
-  const { alEnviar, enviando, resultado } = useEnvio(guardarCliente)
+  // El cliente nuevo lleva a su ficha solo si la persona sigue aquí.
+  const { alEnviar, enviando, resultado } = useEnvio(guardarCliente, (r, desde) => {
+    if (r.datos) {
+      navegarSiEsDeLaPestana(router, `/clientes/${r.datos.id}`, desde, {
+        dice: 'El cliente quedó registrado.',
+        enlace: 'Ver el cliente',
+      })
+    }
+  })
   const editando = Boolean(cliente)
 
   return (

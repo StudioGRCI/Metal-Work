@@ -167,9 +167,14 @@ function FormularioSubcontrato({
   }
   const { alEnviar, enviando, error } = useEnvio(
     registrar,
-    (r) => {
+    (r, desde) => {
       alTerminar()
-      navegarSiEsDeLaPestana(router, `/subcontratos/${id}${r.datos?.contratoPendiente ? '?contrato=pendiente' : ''}`)
+      // Si la persona ya está en otra cosa (otra ventana, el menú), no se la lleva: se dice arriba.
+      const pendiente = Boolean(r.datos?.contratoPendiente)
+      navegarSiEsDeLaPestana(router, `/subcontratos/${id}${pendiente ? '?contrato=pendiente' : ''}`, desde, {
+        dice: pendiente ? 'El subcontrato quedó registrado, pero su contrato no se adjuntó.' : 'El subcontrato quedó registrado.',
+        enlace: pendiente ? 'Adjuntarlo en el subcontrato' : 'Ver el subcontrato',
+      })
     },
     // Sin `refrescar: false` aunque el ok navegue: tras «ya quedó» o sin respuesta
     // no se navega, y al cerrar la lista tiene que mostrar el subcontrato que

@@ -4,6 +4,7 @@ import { BarraLateral } from '@/components/estructura/barra-lateral'
 import { BarraSuperior } from '@/components/estructura/barra-superior'
 import { CuentaDeLaPestana } from '@/components/estructura/cuenta-de-la-pestana'
 import { PerfilMenu } from '@/components/estructura/perfil-menu'
+import { IdaQueNoSalio } from '@/components/estructura/ida-que-no-salio'
 import { AvisoInstalar } from '@/components/estructura/instalar-app'
 import { RefrescoAlVolver } from '@/components/estructura/refresco-al-volver'
 import { compilacionDelServidor } from '@/lib/compilacion'
@@ -27,6 +28,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <BarraSuperior />
       <AvisoInstalar />
       <RefrescoAlVolver sinLeer={sinLeer} compilacion={compilacionDelServidor()} contar={contarAvisosYDespliegue} />
+      <IdaQueNoSalio />
       <div className="flex flex-1">
         <BarraLateral permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta} sinComprobar={pendientes.sinComprobar}>
           <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />

@@ -211,6 +211,27 @@
  *   1v-subida-se-va. «Cotización subida y enviada a Gerencia…» se va al salir
  *       de Cotización (Ventas).
  *
+ * Y lo que dejó la trigesimoctava:
+ *
+ *   1v-ver-su-tarjeta-en-camino, además: el botón no se mueve al encenderse.
+ *   1w-ida-no-pisa-otra-ventana. «Nuevo subcontrato» cerrado en vuelo entra
+ *       con el siguiente abierto y escrito: no se lo lleva, y la línea de
+ *       arriba dice que quedó, con «Ver el subcontrato» (Administración).
+ *   1w-ida-no-pisa-el-menu. El subcontrato que entra después de tocar el menú
+ *       abre Órdenes, y arriba lo dice; la ✕ quita la línea.
+ *   1w-ida-sigue. Con la ventana abierta y nada tocado, el subcontrato va a su
+ *       pantalla; el cliente nuevo va a su ficha, o lo dice arriba si se tocó
+ *       el menú (antes, un `redirect()` del servidor iba igual).
+ *   1w-atras-cerrada y 1w-atras-abierta. La OT que entra después de «Atrás»,
+ *       con su ventana cerrada o abierta, no se lleva la lista pedida: lo dice
+ *       el encabezado con «Ver su tarjeta».
+ *   1w-cronograma-entro y 1w-subida-entro. El cronograma (Diseño) y la
+ *       cotización (Ventas) cerrados en vuelo que entran con la persona en
+ *       otra pestaña o pantalla: al volver se dice, en pasado, que entraron.
+ *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
+ *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
+ *       olvida al salir, algo que nadie alcanza con el dedo (R4).
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
@@ -222,6 +243,8 @@ import { join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+
+import { escribirCodigo } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -2803,8 +2826,7 @@ if (corre('1u-pdf-aviso')) {
       await quieta(pagina)
     }
     const fuera = async () => {
-      await porElMenu(pagina, '/ordenes')
-      await pagina.evaluate(() => window.history.back())
+      await irYVolver(pagina, '/ordenes')
       await pagina.waitForURL((u) => u.pathname === `/ordenes/${ot.id}`, { timeout: 20000 }).catch(() => {})
       await quieta(pagina)
       await pagina.getByRole('button', { name: 'Cambiar el PDF' }).waitFor({ timeout: 15000 }).catch(() => {})
@@ -2883,9 +2905,16 @@ if (corre('1v-ver-su-tarjeta-en-camino')) {
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-ver-su-tarjeta-en-camino.png') })
     comprobar(linea.includes(LINEA_A) && apagado && porque === 'Se puede ver cuando vuelva lo que se está enviando.' && dondeEnCamino === '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
       `[Administración 1280] 1v-ver-su-tarjeta-en-camino. A entra con B subiendo: el encabezado lo dice, y «Ver su tarjeta» está apagado y dice por qué (apagado ${apagado}, «${porque}», ${dondeEnCamino})`)
-    // B vuelve sin su PDF: el botón se enciende y lleva a la tarjeta de A, con un solo «#».
+    // B vuelve sin su PDF: el botón se enciende sin moverse (el motivo va en su
+    // renglón; al lado, el botón saltaba al encenderse; D2 de la trigesimoctava)
+    // y lleva a la tarjeta de A, con un solo «#».
+    const cajaApagado = await ver.boundingBox()
     corte.soltarLa('adjuntos-ot/ot/')
     const encendido = await hasta(() => ver.isEnabled().catch(() => false), Boolean, 20000)
+    await pagina.waitForTimeout(300)
+    const cajaEncendido = await ver.boundingBox()
+    comprobar(Boolean(cajaApagado && cajaEncendido) && Math.abs(cajaApagado.x - cajaEncendido.x) < 1 && Math.abs(cajaApagado.y - cajaEncendido.y) < 1,
+      `[Administración 1280] 1v-ver-su-tarjeta-en-camino. «Ver su tarjeta» no se mueve al encenderse (x ${cajaApagado?.x} → ${cajaEncendido?.x}, y ${cajaApagado?.y} → ${cajaEncendido?.y})`)
     await ver.click().catch(() => {})
     const marcada = await hasta(() => resaltada(pagina), (id) => id === a.id, 15000)
     const donde = pagina.url().replace(BASE, '')
@@ -3018,8 +3047,7 @@ if (corre('1v-cronograma-se-va')) {
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
   const renglon = () => pagina.locator('main [role="status"]').allInnerTexts().then((l) => limpio(l.join(' | '))).catch(() => '')
   const fuera = async () => {
-    await porElMenu(pagina, '/ordenes')
-    await pagina.evaluate(() => window.history.back())
+    await irYVolver(pagina, '/ordenes')
     await pagina.waitForURL((u) => u.pathname === `/ordenes/${orden.id}`, { timeout: 20000 }).catch(() => {})
     await quieta(pagina)
     await pagina.getByRole('button', { name: 'Subir cronograma' }).waitFor({ timeout: 15000 }).catch(() => {})
@@ -3090,8 +3118,7 @@ if (corre('1v-subida-se-va')) {
   if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
   await subir.click()
   const dicho = await hasta(encabezado, (t) => t.includes('Cotización subida'), 30000)
-  await porElMenu(pagina, '/clientes')
-  await pagina.evaluate(() => window.history.back())
+  await irYVolver(pagina, '/clientes')
   await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf', { timeout: 20000 }).catch(() => {})
   await quieta(pagina)
   const alVolver = await encabezado()
@@ -3101,6 +3128,327 @@ if (corre('1v-subida-se-va')) {
   comprobar(!alVolver.includes('Cotización subida') && (await mismoDocumento(pagina)),
     `[Ventas 1280] 1v-subida-se-va. al salir de Cotización y volver, ya no lo dice («${alVolver}»)`)
   comprobar(errores.length === 0, `[Ventas 1280] 1v-subida-se-va. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1w. La ida que la aplicación hace sola tras un envío no pisa lo que la persona hizo después
+// «Nuevo subcontrato» cerrado en vuelo iba solo al subcontrato al entrar: se
+// llevaba la segunda ventana con lo escrito, o la pantalla que la persona había
+// pedido en el menú (W1 de la crítica de la trigesimoctava). Toda ida tras un
+// envío sigue la regla de la OT (`navegarSiEsDeLaPestana` con
+// `laIdaSigueEnPie`): si la persona está en otra cosa, no va, y la línea de
+// arriba lo dice con su enlace. Y la ida a la tarjeta de la OT tampoco sale
+// tras «Atrás», con su ventana cerrada (F1 de funcionalidad) o abierta (W2).
+async function subcontratistaActivo() {
+  const activo = () => consulta(`select id, nombre from subcontratistas where activo order by nombre limit 1`)
+  const [hay] = await activo()
+  if (hay) return hay
+  await comoLaCuenta(CUENTAS.administracion, () =>
+    consulta(`select public.guardar_subcontratista(gen_random_uuid(), '10043200017', 'Subcontratista de la pestaña vieja', null, null, null, null, true)`))
+  return (await activo())[0]
+}
+const subcontratoDe = (marca) => consulta(`select id, numero from subcontratos where descripcion like $1`, [`${marca}%`])
+/** Abre «Nuevo subcontrato» y lo deja listo para registrar, con `marca` al empezar el trabajo. */
+async function llenarElSubcontrato(pagina, quien, marca) {
+  await pagina.locator('[data-nuevo-subcontrato]').click()
+  const v = pagina.getByRole('dialog').first()
+  await v.waitFor({ timeout: 20000 })
+  await v.getByRole('combobox', { name: 'Subcontratista' }).click()
+  await pagina.keyboard.type(quien.nombre.slice(0, 14))
+  await pagina.getByRole('option', { name: quien.nombre }).first().click()
+  await v.locator('textarea[name="descripcion"]').fill(`${marca} trabajo de prueba del banco`)
+  await escribirCodigo(v.locator('input[name="codigo_interno"]'), 'PLANTA')
+  await v.locator('select[name="area"]').selectOption('PRD')
+  await v.locator('input[name="monto"]').fill('100')
+  return { v, registrar: v.getByRole('button', { name: 'Registrar subcontrato' }) }
+}
+const idaQueNoSalio = (pagina) => pagina.locator('[data-ida-que-no-salio]').innerText().then(limpio).catch(() => '')
+/**
+ * Al menú `href` y «Atrás», como lo hace una persona: después de ver la otra
+ * pantalla. Pegado al commit de la otra, React vaciaba sus efectos en la misma
+ * microtarea del «Atrás», y lo que se olvida al salir seguía montado (R4 de la
+ * trigesimoctava: una carrera de la herramienta con la máquina cargada, que
+ * nadie alcanza con el dedo).
+ */
+async function irYVolver(pagina, href) {
+  const antes = await pagina.locator('main h1').first().innerText().catch(() => '')
+  await porElMenu(pagina, href)
+  await hasta(() => pagina.locator('main h1').first().innerText(), (t) => Boolean(t) && t !== antes, 15000)
+  await pagina.waitForTimeout(400)
+  await pagina.evaluate(() => window.history.back())
+}
+
+if (corre('1w-ida-no-pisa-otra-ventana')) {
+  const quien = await subcontratistaActivo()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/subcontratos`)
+  await marcarDocumento(pagina)
+  const marca = `QA_W1V_${sello}`
+  const primero = await llenarElSubcontrato(pagina, quien, marca)
+  corte.marca = marca
+  await primero.registrar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  // Se cierra con Escape mientras va, y se empieza a escribir el siguiente.
+  await pagina.keyboard.press('Escape')
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  await pagina.locator('[data-nuevo-subcontrato]').click()
+  const segunda = pagina.getByRole('dialog').first()
+  await segunda.waitFor({ timeout: 20000 })
+  const texto = `Lo que escribí para el siguiente subcontrato ${sello}`
+  await segunda.locator('textarea[name="descripcion"]').fill(texto)
+  corte.soltar()
+  await hasta(() => subcontratoDe(marca), (l) => l.length === 1, 30000)
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El subcontrato quedó registrado.'), 15000)
+  await pagina.waitForTimeout(2000)
+  const donde = pagina.url().replace(BASE, '')
+  const sigue = await segunda.locator('textarea[name="descripcion"]').inputValue().catch(() => '')
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1w-ida-no-pisa-otra-ventana.png') })
+  comprobar(donde === '/subcontratos' && sigue === texto && (await mismoDocumento(pagina)) && dice === 'El subcontrato quedó registrado. Ver el subcontrato',
+    `[Administración 1280] 1w-ida-no-pisa-otra-ventana. el subcontrato cerrado en vuelo entra con otra ventana abierta y escrita: no se la lleva, y arriba lo dice con su enlace (${donde}, «${sigue.slice(0, 40)}», «${dice}»)`)
+  // La segunda se cierra sin enviar, y el enlace lleva al que entró.
+  await pagina.keyboard.press('Escape')
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  const [sc] = await subcontratoDe(marca)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Ver el subcontrato' }).click().catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === `/subcontratos/${sc?.id}`, { timeout: 20000 }).catch(() => {})
+  const despues = await hasta(() => pagina.locator('[data-ida-que-no-salio]').count(), (n) => n === 0, 5000)
+  comprobar(pagina.url().replace(BASE, '') === `/subcontratos/${sc?.id}` && despues === 0 && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1w-ida-no-pisa-otra-ventana. «Ver el subcontrato» lleva a ${sc?.numero}, y la línea se va (${pagina.url().replace(BASE, '')})`)
+  comprobar(errores.length === 0, `[Administración 1280] 1w-ida-no-pisa-otra-ventana. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+if (corre('1w-ida-no-pisa-el-menu')) {
+  const quien = await subcontratistaActivo()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/subcontratos`)
+  await marcarDocumento(pagina)
+  const marca = `QA_W1M_${sello}`
+  const { registrar } = await llenarElSubcontrato(pagina, quien, marca)
+  corte.marca = marca
+  await registrar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.keyboard.press('Escape')
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  // El menú, con el subcontrato todavía en camino: Next lo deja en cola.
+  const enlaces = pagina.locator('a[href="/ordenes"]')
+  const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+  await enlaces.nth(Math.max(visible, 0)).click()
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  await hasta(() => subcontratoDe(marca), (l) => l.length === 1, 30000)
+  await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(3000)
+  const donde = pagina.url().replace(BASE, '')
+  const titulo = limpio(await pagina.locator('main h1').first().innerText().catch(() => ''))
+  const dice = await idaQueNoSalio(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1w-ida-no-pisa-el-menu.png') })
+  comprobar(donde === '/ordenes' && titulo === 'Órdenes de trabajo' && (await mismoDocumento(pagina)) && dice === 'El subcontrato quedó registrado. Ver el subcontrato',
+    `[Administración 1280] 1w-ida-no-pisa-el-menu. el subcontrato entra después de tocar el menú: abre Órdenes, no el subcontrato, y arriba lo dice con su enlace (${donde}, «${titulo}», «${dice}»)`)
+  // Quitarla con la ✕.
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('button', { name: 'Quitar este aviso' }).click().catch(() => {})
+  const quitada = await hasta(() => pagina.locator('[data-ida-que-no-salio]').count(), (n) => n === 0, 5000)
+  comprobar(quitada === 0, `[Administración 1280] 1w-ida-no-pisa-el-menu. la ✕ quita la línea`)
+  comprobar(errores.length === 0, `[Administración 1280] 1w-ida-no-pisa-el-menu. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Lo de siempre sigue: con la ventana abierta y nada tocado, el subcontrato va
+// a su pantalla; y el cliente nuevo, que antes iba con un `redirect()` del
+// servidor, va a su ficha, o lo dice arriba si se tocó el menú.
+if (corre('1w-ida-sigue')) {
+  const quien = await subcontratistaActivo()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/subcontratos`)
+  await marcarDocumento(pagina)
+  const marca = `QA_W1S_${sello}`
+  const { registrar } = await llenarElSubcontrato(pagina, quien, marca)
+  await registrar.click()
+  await hasta(() => subcontratoDe(marca), (l) => l.length === 1, 30000)
+  const [sc] = await subcontratoDe(marca)
+  await pagina.waitForURL((u) => u.pathname === `/subcontratos/${sc?.id}`, { timeout: 20000 }).catch(() => {})
+  comprobar(pagina.url().replace(BASE, '') === `/subcontratos/${sc?.id}` && (await pagina.locator('[data-ida-que-no-salio]').count()) === 0 && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1w-ida-sigue. el subcontrato con su ventana abierta y nada tocado va a su pantalla (${pagina.url().replace(BASE, '')})`)
+  // El cliente nuevo, quieto: va a su ficha.
+  const ruc = (n) => `20${String(Number(sello) * 7 + n).padStart(9, '0').slice(-9)}`
+  const clienteDe = (razon) => consulta(`select id from clientes where razon_social = $1`, [razon])
+  const nuevoCliente = async (razon, numero) => {
+    await porElMenu(pagina, '/clientes')
+    await porElMenu(pagina, '/clientes/nuevo')
+    await pagina.locator('[name="numero_documento"]').fill(numero)
+    await pagina.locator('[name="razon_social"]').fill(razon)
+    return pagina.getByRole('button', { name: 'Registrar cliente' })
+  }
+  const quieto = `QA_W1C_QUIETO_${sello}`
+  await (await nuevoCliente(quieto, ruc(1))).click()
+  await hasta(() => clienteDe(quieto), (l) => l.length === 1, 30000)
+  const [cq] = await clienteDe(quieto)
+  await pagina.waitForURL((u) => u.pathname === `/clientes/${cq?.id}`, { timeout: 20000 }).catch(() => {})
+  comprobar(pagina.url().replace(BASE, '') === `/clientes/${cq?.id}` && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1w-ida-sigue. el cliente nuevo va a su ficha (${pagina.url().replace(BASE, '')})`)
+  // Con el menú tocado mientras se guarda: abre Órdenes y lo dice arriba.
+  const conMenu = `QA_W1C_MENU_${sello}`
+  const boton = await nuevoCliente(conMenu, ruc(2))
+  corte.marca = conMenu
+  await boton.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  const enlaces = pagina.locator('a[href="/ordenes"]')
+  const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+  await enlaces.nth(Math.max(visible, 0)).click()
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  await hasta(() => clienteDe(conMenu), (l) => l.length === 1, 30000)
+  await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(3000)
+  const donde = pagina.url().replace(BASE, '')
+  const dice = await idaQueNoSalio(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1w-ida-sigue-cliente.png') })
+  comprobar(donde === '/ordenes' && dice === 'El cliente quedó registrado. Ver el cliente' && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1w-ida-sigue. el cliente que entra después de tocar el menú no se lleva Órdenes, y arriba lo dice (${donde}, «${dice}»)`)
+  comprobar(errores.length === 0, `[Administración 1280] 1w-ida-sigue. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// «Atrás» con la OT en camino cambia la lista sin que Next lo detenga: la ida
+// a la tarjeta salía igual y se llevaba la lista pedida (F1, con la ventana
+// cerrada; W2, con la ventana abierta, que se va con su tarjeta).
+for (const [parte, cerrada] of [['1w-atras-cerrada', true], ['1w-atras-abierta', false]]) {
+  if (!corre(parte)) continue
+  const [cot] = await aprobadasSinOt(1)
+  const [libre] = await numerosLibres(1)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (!cot || !libre) {
+    comprobar(false, `[Administración 1280] ${parte}. hay una cotización aprobada sin OT y un número libre`)
+  } else {
+    const LINEA = `Se cargó el código y la OT de la cotización ${cot.numero}.`
+    await ir(pagina, `${BASE}/cotizaciones/pdf?estado=POR_REVISAR`)
+    await marcarDocumento(pagina)
+    await pagina.getByRole('link', { name: /Aprobadas sin código/ }).first().click()
+    await pagina.waitForURL((u) => u.search === '?estado=APROBADA_SIN_OT', { timeout: 15000 })
+    await quieta(pagina)
+    const marca = `QA_W2${cerrada ? 'C' : 'A'}_${sello}`
+    const ventana = await llenarLaOt(pagina, cot.id, `${marca}/26`, libre)
+    corte.marca = marca
+    await ventana.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    if (cerrada) {
+      await ventana.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+      await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    }
+    await pagina.evaluate(() => window.history.back())
+    await pagina.waitForURL((u) => u.search === '?estado=POR_REVISAR', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForTimeout(1500)
+    corte.soltar()
+    await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
+    const linea = limpio(await hasta(() => pagina.locator('[data-estado-del-encabezado]').innerText(), (t) => limpio(t).includes(LINEA), 15000))
+    await pagina.waitForTimeout(2000)
+    const donde = pagina.url().replace(BASE, '')
+    const marcada = await resaltada(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-${parte}.png`) })
+    comprobar(donde === '/cotizaciones/pdf?estado=POR_REVISAR' && marcada === null && linea.includes(LINEA) && linea.includes('Ver su tarjeta') && (await mismoDocumento(pagina)) && (await otDe(cot.id)) === 1,
+      `[Administración 1280] ${parte}. la OT entra después de «Atrás» con su ventana ${cerrada ? 'cerrada' : 'abierta'}: se queda en la lista pedida, y el encabezado lo dice con «Ver su tarjeta» (${donde}, resaltada ${marcada}, «${linea}»)`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] ${parte}. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Su éxito ya no se guarda (1v-cronograma-se-va, 1v-subida-se-va): con la
+// ventana cerrada en vuelo y la persona en otra pestaña o pantalla al
+// contestar, al volver nada decía que entró, y el cronograma subido otra vez
+// dejaba su Excel dos veces (F3 de funcionalidad, trigesimoctava). Ahora lo
+// dice en pasado.
+if (corre('1w-cronograma-entro')) {
+  const orden = await ordenParaElCronograma()
+  const actividad = `Entró con la ventana cerrada ${sello}`
+  const actividades = async () => Number((await consulta(`select count(*) n from ot_actividades where orden_id = $1 and nombre = $2`, [orden.id, actividad]))[0].n)
+  const libro = new ExcelJS.Workbook()
+  const hoja = libro.addWorksheet('Cronograma')
+  hoja.addRow(['Área', 'Actividad', 'Referencia', 'Peso (%)', 'Inicio', 'Fin'])
+  hoja.addRow(['Acabados', actividad, null, 0, null, null])
+  const excel = join(archivos, `cronograma-entro-${sello}.xlsx`)
+  await libro.xlsx.writeFile(excel)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  const renglon = () => pagina.locator('main [role="status"]').allInnerTexts().then((l) => limpio(l.join(' | '))).catch(() => '')
+  const pestana = async (vista) => {
+    const enlaces = pagina.locator(`a[href="/ordenes/${orden.id}?vista=${vista}"]`)
+    const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+    await enlaces.nth(Math.max(visible, 0)).click()
+  }
+  await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=actividades`)
+  await marcarDocumento(pagina)
+  await pagina.getByRole('button', { name: 'Subir cronograma' }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor({ timeout: 20000 })
+  await v.locator(`#cronograma-${orden.id}`).setInputFiles(excel)
+  const cargar = v.getByRole('button', { name: 'Cargar 1 actividad' })
+  await cargar.waitFor({ timeout: 15000 })
+  corte.marca = actividad
+  await cargar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await v.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  await hasta(() => v.count(), (n) => n === 0, 5000)
+  // A Resumen con el cronograma en camino; entra con la persona allí.
+  await pestana('resumen')
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  await hasta(actividades, (n) => n === 1, 30000)
+  await pagina.waitForURL((u) => u.searchParams.get('vista') === 'resumen', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  await pagina.waitForTimeout(1500)
+  await pestana('actividades')
+  await pagina.waitForURL((u) => u.searchParams.get('vista') === 'actividades', { timeout: 20000 }).catch(() => {})
+  await pagina.getByRole('button', { name: 'Subir cronograma' }).waitFor({ timeout: 15000 }).catch(() => {})
+  const dice = await hasta(renglon, (t) => t.includes('El cronograma que se estaba enviando se cargó.'), 15000)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1w-cronograma-entro.png') })
+  comprobar(dice.includes('El cronograma que se estaba enviando se cargó.') && !dice.includes('Cronograma cargado') && (await mismoDocumento(pagina)) && (await actividades()) === 1,
+    `[Diseño 1280] 1w-cronograma-entro. el cronograma cerrado en vuelo entra con la persona en Resumen: de vuelta en su pestaña lo dice en pasado («${dice}»)`)
+  comprobar(errores.length === 0, `[Diseño 1280] 1w-cronograma-entro. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+if (corre('1w-subida-entro')) {
+  const numero = `QA-ENTRO-COT-${sello}`
+  const subida = async () => Number((await consulta(`select count(*) n from cotizaciones_pdf where numero = $1`, [numero]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/cotizaciones/pdf`)
+  await marcarDocumento(pagina)
+  const encabezado = () => pagina.locator('[data-estado-del-encabezado]').innerText().then(limpio).catch(() => '')
+  await pagina.getByRole('button', { name: 'Subir cotización' }).first().click()
+  const d = pagina.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#cot-archivo').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${numero}`, 'Semirremolque de banco']) })
+  const subir = d.getByRole('button', { name: 'Subir y mandar a Gerencia' })
+  await pagina.waitForTimeout(1500)
+  await hasta(async () => !/Leyendo/.test(await d.innerText()) && (await subir.isEnabled()), Boolean, 30000)
+  await d.locator('#cot-numero').fill(numero)
+  await d.locator('#cot-monto').fill('1000')
+  await d.locator('#cot-moneda').selectOption('USD')
+  await d.locator('#cot-igv').selectOption('no')
+  if (await d.locator('#cot-cliente').count()) await d.locator('#cot-cliente').selectOption({ index: 1 })
+  if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+  corte.marca = numero
+  await subir.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  // A Clientes con la subida en camino; entra con la persona allí, y vuelve.
+  const enlaces = pagina.locator('a[href="/clientes"]')
+  const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+  await enlaces.nth(Math.max(visible, 0)).click()
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  await hasta(subida, (n) => n === 1, 30000)
+  await pagina.waitForURL((u) => u.pathname === '/clientes', { timeout: 20000 }).catch(() => {})
+  await hasta(() => pagina.locator('main h1').first().innerText(), (t) => t === 'Clientes', 15000)
+  await pagina.waitForTimeout(400)
+  await pagina.evaluate(() => window.history.back())
+  await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const dice = await hasta(encabezado, (t) => t.includes('La cotización que se estaba enviando se subió y se envió a Gerencia.'), 15000)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1w-subida-entro.png') })
+  comprobar(dice.includes('La cotización que se estaba enviando se subió y se envió a Gerencia.') && !dice.includes('Cotización subida') && (await mismoDocumento(pagina)) && (await subida()) === 1,
+    `[Ventas 1280] 1w-subida-entro. la cotización cerrada en vuelo entra con la persona en Clientes: de vuelta en Cotización lo dice en pasado («${dice}»)`)
+  comprobar(errores.length === 0, `[Ventas 1280] 1w-subida-entro. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

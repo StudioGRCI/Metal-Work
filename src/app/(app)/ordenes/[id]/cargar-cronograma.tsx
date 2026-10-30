@@ -39,18 +39,23 @@ const idDelEstado = (ordenId: string) => `estado-del-cronograma-${ordenId}`
  * quedó guardado en la orden» seguía después de quitar ese Excel en Resumen
  * (funcionalidad H4 y realización H2 de la trigesimoséptima pasada). Se va al
  * salir de esta pestaña de la orden. Lo del Excel que no quedó, o que no se
- * sabe si quedó, sí se guarda: es lo que hay que hacer todavía.
+ * sabe si quedó, sí se guarda: es lo que hay que hacer todavía. Y si la
+ * ventana se cerró mientras iba, también que entró, en pasado y sin decir dónde
+ * está el Excel (`alEntrar`): con la persona en Resumen al contestar, al volver
+ * nada lo decía, y subirlo otra vez dejaba el Excel dos veces en la orden (F3
+ * de la trigesimoctava pasada). Mientras está el éxito con sus números, ese
+ * no se repite.
  */
 export function EstadoDelCronograma({ ordenId }: { ordenId: string }) {
   const [cargado] = useEstadoCompartido<CronogramaCargado | null>(`cronograma:${ordenId}:cargado`, null)
   const [excel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
-  const { sigue, desenlace } = useLoQueDiceLaVentana(`cronograma:${ordenId}`)
+  const { sigue, desenlace: dicho } = useLoQueDiceLaVentana(`cronograma:${ordenId}`)
+  const desenlace = cargado && dicho?.tono === 'entro' ? null : dicho
   const fallaDelExcel = excel && !excel.ok ? excel : null
   // Las regiones están siempre montadas: se ocultan, no se quitan.
   const hay = Boolean(cargado || fallaDelExcel || sigue || desenlace)
   return (
     <div className={hay ? 'mb-3 flex flex-col gap-1 text-pretty' : 'sr-only'}>
-      {/* Cerrada en vuelo, es lo único que dice que entró. */}
       <span role="status" className={cargado || fallaDelExcel ? 'text-xs' : 'sr-only'}>
         {cargado && <span className="font-medium text-exito">{cargado.dice}</span>}
         {cargado?.conExcel && (
@@ -125,7 +130,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira y el desenlace se dice en
   // el renglón de la tarjeta (`EstadoDelCronograma`).
-  const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`, { idDelEstado: idDelEstado(ordenId) })
+  const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`, { idDelEstado: idDelEstado(ordenId), alEntrar: { dice: 'se cargó.' } })
   // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
   const ocupado = fuera.sigue || (enviando && !abierto)
 

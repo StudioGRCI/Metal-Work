@@ -12,7 +12,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -164,6 +164,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     enCurso.current = true
     setError(null)
     setErrorNumero(null)
+    // Cómo estaba la pestaña: si al entrar la persona ya está en otra cosa, la orden no se la lleva.
+    const desde = partida()
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que la orden vuelva, y si no entró no recarga.
     iniciar(() => mientrasSeEnvia(async (entro) => {
@@ -213,7 +215,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
         entro()
-        navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`)
+        navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`, desde, {
+          dice: 'La orden quedó registrada.',
+          enlace: 'Ver la orden',
+        })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La

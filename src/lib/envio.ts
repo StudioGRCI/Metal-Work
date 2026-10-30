@@ -5,7 +5,7 @@ import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
-import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -217,6 +217,78 @@ export function useEnviosEnCamino() {
   )
 }
 
+// La última vez que la persona tocó la pantalla o una tecla, y la última que
+// pidió ir a otro lado con un enlace (el menú, una pastilla, un aviso): lo que
+// hizo después de que saliera un envío manda sobre la ida que el envío haría
+// solo al entrar (`laIdaSigueEnPie`).
+let tocoEn = -1
+let pidioIrEn = -1
+if (typeof window !== 'undefined') {
+  const anotar = (e: Event) => {
+    tocoEn = performance.now()
+    const pide = e.type === 'pointerdown' || (e as KeyboardEvent).key === 'Enter'
+    if (pide && e.target instanceof Element && e.target.closest('a[href]')) pidioIrEn = tocoEn
+  }
+  for (const tipo of ['pointerdown', 'keydown'] as const) window.addEventListener(tipo, anotar, true)
+}
+
+/** La última vez que la persona tocó la pantalla o una tecla (`performance.now()`). */
+export const ultimoToque = () => tocoEn
+
+/** Cómo estaba la pestaña cuando salió un envío que, si entra, lleva a otra pantalla (`partida()`). */
+export type Partida = { direccion: string; salioEn: number; ventana: number | null }
+
+export function partida(): Partida {
+  return {
+    direccion: window.location.pathname + window.location.search,
+    salioEn: performance.now(),
+    ventana: hayVentanaAbierta() ? vecesQueSeCerro() : null,
+  }
+}
+
+/** La persona sigue en la dirección de donde salió el envío: «Atrás», un filtro o una búsqueda la cambian. */
+export const sigueDondeSalio = (desde: Partida) => window.location.pathname + window.location.search === desde.direccion
+
+/**
+ * Si la ida que un envío hace solo al entrar (al subcontrato recién registrado,
+ * a la orden recién abierta) todavía es lo que la persona espera. No lo es si
+ * desde que salió: cambió la dirección («Atrás», un filtro, una búsqueda);
+ * pidió ir a otro lado con un enlace, que Next deja en cola hasta que el envío
+ * vuelve; hay otra ventana abierta, donde puede estar escribiendo; o cerró la
+ * ventana del envío y después tocó algo. La ida se llevaba la segunda ventana
+ * con lo escrito, o reemplazaba el menú pedido (W1 de la crítica de la
+ * trigesimoctava pasada; lo mismo que la OT de la cotización, Y1 y H2).
+ */
+export function laIdaSigueEnPie(desde: Partida): boolean {
+  if (!sigueDondeSalio(desde) || pidioIrEn > desde.salioEn) return false
+  if (desde.ventana === null) return !hayVentanaAbierta()
+  // Su ventana sigue abierta: la persona espera ahí.
+  if (vecesQueSeCerro() === desde.ventana) return true
+  return !hayVentanaAbierta() && tocoEn <= (cuandoSeCerro(desde.ventana) ?? Number.POSITIVE_INFINITY)
+}
+
+/** Lo que entró y adónde lleva, cuando su ida no salió (`navegarSiEsDeLaPestana`). */
+export type IdaQueNoSalio = { dice: string; enlace: string; url: string }
+let idaQueNoSalio: IdaQueNoSalio | null = null
+const alCambiarLaIda = new Set<() => void>()
+
+export function ponerIdaQueNoSalio(ida: IdaQueNoSalio | null) {
+  idaQueNoSalio = ida
+  for (const avisar of alCambiarLaIda) avisar()
+}
+
+/** La ida que no salió, para decirla con su enlace (`IdaQueNoSalio` del encabezado). */
+export function useIdaQueNoSalio() {
+  return useSyncExternalStore(
+    (avisar) => {
+      alCambiarLaIda.add(avisar)
+      return () => void alCambiarLaIda.delete(avisar)
+    },
+    () => idaQueNoSalio,
+    () => null,
+  )
+}
+
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
 // carga entera, y «Volver a cargar» no recarga encima la de antes. Se guarda
 // adónde: si la ida no llega, el toque siguiente va allí y no a la de antes,
@@ -352,7 +424,7 @@ type Opciones = {
  */
 export function useAccion<T = never>(
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>,
-  alTerminar?: (resultado: Exito<T>) => void,
+  alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
   const { refrescar = true, alYaEntrar } = opciones
@@ -430,7 +502,8 @@ export function useAccion<T = never>(
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setResultado(null)
-    const ventana = hayVentanaAbierta() ? vecesQueSeCerro() : null
+    const desde = partida()
+    const { ventana } = desde
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
       const desenlace = { entro, noEntro }
@@ -483,7 +556,7 @@ export function useAccion<T = never>(
         }
 
         entro()
-        alTerminar?.(salida)
+        alTerminar?.(salida, desde)
         // El ok puede llegar con la traba ya puesta: salió antes del cambio de cuenta.
         if (refrescar) iniciar(() => refrescarSiEsDeLaPestana(router))
       } finally {
@@ -536,7 +609,7 @@ export function useAccion<T = never>(
  */
 export function useEnvio<T = never>(
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>,
-  alTerminar?: (resultado: Exito<T>) => void,
+  alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
   const { ejecutar, ...resto } = useAccion(accion, alTerminar, opciones)
@@ -1043,8 +1116,8 @@ let preguntas = 0
 const vigias = new Set<() => void>()
 // Lo que se dejó para cuando la pantalla vuelva a ser de la sesión (`cuandoVuelvaLaCuenta`).
 const alVolver = new Set<() => void>()
-// De eso, lo que lleva a otra pantalla (`navegarSiEsDeLaPestana`).
-const navegaciones = new Set<() => void>()
+// De eso, lo que lleva a otra pantalla (`navegarSiEsDeLaPestana`), con cómo saber si todavía va.
+const navegaciones = new Map<() => void, () => boolean>()
 // La última vuelta de la cuenta llevó a otra pantalla: la traba no dice «puedes seguir donde estabas».
 let alVolverSeFue = false
 
@@ -1053,7 +1126,7 @@ function marcarOtraCuenta(texto: string | null) {
   const estabaTrabada = otraCuenta !== null
   otraCuenta = texto
   // Antes de avisar: la traba lo lee al quitarse.
-  if (texto === null && estabaTrabada) alVolverSeFue = [...alVolver].some((hacer) => navegaciones.has(hacer))
+  if (texto === null && estabaTrabada) alVolverSeFue = [...alVolver].some((hacer) => navegaciones.get(hacer)?.() ?? false)
   for (const avisar of vigias) avisar()
   if (texto !== null || !estabaTrabada) return
   const pendientes = [...alVolver]
@@ -1151,14 +1224,35 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  * Lo mismo para la pantalla a la que lleva un envío (la orden recién abierta, el
  * subcontrato recién registrado): con la traba puesta, se pintaría con la cuenta
  * que entró y se llevaría la traba. Espera a que vuelva la de la pantalla.
+ *
+ * Y va solo si la persona sigue esperando ese envío (`laIdaSigueEnPie`, con la
+ * `Partida` que `useAccion` le da a `alTerminar`). Si no, `siNoVa` lo dice
+ * arriba con su enlace (`IdaQueNoSalio`): «El subcontrato quedó registrado. Ver
+ * el subcontrato». Sin `siNoVa` no se dice: la ida era lo que la persona pidió
+ * (abrir un aviso), y ya pidió otra cosa.
  */
-export function navegarSiEsDeLaPestana(router: { push(url: string): void }, url: string) {
+export function navegarSiEsDeLaPestana(
+  router: { push(url: string): void },
+  url: string,
+  desde: Partida,
+  siNoVa?: { dice: string; enlace: string },
+) {
+  const siVa = () => {
+    if (laIdaSigueEnPie(desde)) return true
+    if (siNoVa) ponerIdaQueNoSalio({ ...siNoVa, url })
+    return false
+  }
   if (!laPestanaEsDeOtraCuenta()) {
+    if (!siVa()) return
     anotarQueSeVa(url)
     return router.push(url)
   }
-  const ir = () => startTransition(() => router.push(url))
-  navegaciones.add(ir)
+  // Cuando vuelva la cuenta se mira otra vez: la ida no sale minutos después
+  // encima de lo que la persona hizo entretanto.
+  const ir = () => {
+    if (siVa()) startTransition(() => router.push(url))
+  }
+  navegaciones.set(ir, () => laIdaSigueEnPie(desde))
   cuandoVuelvaLaCuenta(ir)
 }
 

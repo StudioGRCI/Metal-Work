@@ -17,7 +17,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio, useEnviosEnCamino } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -528,12 +528,6 @@ const TIPOS_UNIDAD = [
 const OT_CARGADA = 'codigo-y-ot:cargada'
 type OtCargada = { id: string; numero: string }
 
-// La última vez que la persona tocó la pantalla o una tecla: si fue después de
-// cerrar la ventana de la OT, ya está en otra cosa.
-let tocoEn = -1
-if (typeof window !== 'undefined')
-  for (const tipo of ['pointerdown', 'keydown'] as const) window.addEventListener(tipo, () => void (tocoEn = performance.now()), true)
-
 /**
  * La ida a la tarjeta de la OT que acaba de entrar sale en el acto o no sale.
  * Esperar a que no quedara nada en camino ni otra ventana abierta la dejaba
@@ -544,12 +538,14 @@ if (typeof window !== 'undefined')
  * entera con otra ventana abierta encima) y, si su ventana se cerró mientras
  * iba, si desde entonces no tocó nada: el menú o la búsqueda que pidió en ese
  * rato quedaban en cola, y la ida los reemplazaba (funcionalidad H2 de la
- * trigesimoséptima). Si no sale, lo dice el encabezado, con el camino a la tarjeta.
+ * trigesimoséptima). Y si sigue en la dirección de donde salió: «Atrás» no es
+ * un toque, y la ida se llevaba el filtro al que había vuelto (F1 y W2 de la
+ * trigesimoctava). Si no sale, lo dice el encabezado, con el camino a la tarjeta.
  */
-function vaSolaALaTarjeta(cerradaEn: number | null) {
-  if (window.location.pathname !== '/cotizaciones/pdf' || laPestanaEsDeOtraCuenta()) return false
+function vaSolaALaTarjeta(cerradaEn: number | null, desde: Partida) {
+  if (!sigueDondeSalio(desde) || laPestanaEsDeOtraCuenta()) return false
   if (enviosEnCamino() > 1) return false
-  return cerradaEn === null || tocoEn <= cerradaEn
+  return cerradaEn === null || ultimoToque() <= cerradaEn
 }
 
 /**
@@ -623,8 +619,9 @@ export function EstadoDeLaOt() {
           >
             Ver su tarjeta
           </Boton>
+          {/* En su línea, debajo: al lado corría el botón 294 px justo cuando se encendía (D2 de la trigesimoctava). */}
           {enCamino && (
-            <span id={id} className="text-xs text-texto-suave">
+            <span id={id} className="basis-full text-xs text-texto-suave sm:text-right">
               Se puede ver cuando vuelva lo que se está enviando.
             </span>
           )}
@@ -779,6 +776,8 @@ export function CargarCodigoYOt({
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
+    // De dónde sale: la ida a la tarjeta no sale si la persona ya no está ahí.
+    const desde = partida()
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que la OT vuelva; si no entró no recarga, y si entró
     // deja que vaya a su tarjeta (D17 de la trigesimotercera pasada).
@@ -838,7 +837,7 @@ export function CargarCodigoYOt({
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
         // iba de la lista y no se veía que había quedado. Si no puede ir sin
         // llevarse otra cosa, lo dice el encabezado.
-        if (vaSolaALaTarjeta(fuera.cerradaMientrasIba())) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
+        if (vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
         else setCargada({ id: cotizacionId, numero })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
