@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
-import { laCompilacionDeLaPestana, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laCompilacionDeLaPestana, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
@@ -129,48 +129,57 @@ export function ConteoInicial() {
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
-    try {
-      for (let i = 0; i < pendientes.length; i += TANDA_CONTEO) {
-        // Tanda por tanda, cada una sale con la sesión de ese momento. Si entró
-        // otra cuenta, lo que falta se queda con su motivo y sale cuando vuelva
-        // la tuya (vigesimotercera pasada).
-        if (laPestanaEsDeOtraCuenta()) {
-          const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
-          setResultados((previos) => ({ ...previos, ...quedan }))
-          break
-        }
-        const tanda = pendientes.slice(i, i + TANDA_CONTEO)
-        const datos = new FormData()
-        datos.set('fecha', fechaLeida)
-        datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
-        datos.set('filas', JSON.stringify(tanda.map((f) => ({
-          id: f.id, material_id: f.materialId, contado: f.contado, precio: f.precio, moneda: f.moneda, via: f.via,
-        }))))
-        let nuevos: Record<string, Resultado>
-        try {
-          const r = await registrarConteoInicial(null, datos)
-          nuevos = r.ok
-            ? Object.fromEntries((r.datos?.resultados ?? []).map((x) => [x.id, x.error ? { estado: 'error', mensaje: x.error } : { estado: 'ok' }]))
-            : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
-        } catch (e) {
-          // Una pestaña de antes del último despliegue: ni esta tanda ni las que
-          // siguen salen desde aquí (vigesimoctava pasada). La causa la dice una
-          // vez el resumen, no cada fila (vigesimonovena).
-          const mensaje = motivoDelFallo(e, 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.')
-          if (mensaje === SE_ACTUALIZO_EL_SISTEMA) {
-            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_SE_ACTUALIZO }]))
+    // Como en la planilla: «Volver a cargar» espera a la última tanda y no
+    // recarga encima de una fila que no entró (D17 de la trigesimotercera pasada).
+    await mientrasSeEnvia(async (entro) => {
+      try {
+        let todas = true
+        for (let i = 0; i < pendientes.length; i += TANDA_CONTEO) {
+          // Tanda por tanda, cada una sale con la sesión de ese momento. Si entró
+          // otra cuenta, lo que falta se queda con su motivo y sale cuando vuelva
+          // la tuya (vigesimotercera pasada).
+          if (laPestanaEsDeOtraCuenta()) {
+            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
             setResultados((previos) => ({ ...previos, ...quedan }))
+            todas = false
             break
           }
-          nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje }]))
+          const tanda = pendientes.slice(i, i + TANDA_CONTEO)
+          const datos = new FormData()
+          datos.set('fecha', fechaLeida)
+          datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
+          datos.set('filas', JSON.stringify(tanda.map((f) => ({
+            id: f.id, material_id: f.materialId, contado: f.contado, precio: f.precio, moneda: f.moneda, via: f.via,
+          }))))
+          let nuevos: Record<string, Resultado>
+          try {
+            const r = await registrarConteoInicial(null, datos)
+            nuevos = r.ok
+              ? Object.fromEntries((r.datos?.resultados ?? []).map((x) => [x.id, x.error ? { estado: 'error', mensaje: x.error } : { estado: 'ok' }]))
+              : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
+          } catch (e) {
+            // Una pestaña de antes del último despliegue: ni esta tanda ni las que
+            // siguen salen desde aquí (vigesimoctava pasada). La causa la dice una
+            // vez el resumen, no cada fila (vigesimonovena).
+            const mensaje = motivoDelFallo(e, 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.')
+            if (mensaje === SE_ACTUALIZO_EL_SISTEMA) {
+              const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_SE_ACTUALIZO }]))
+              setResultados((previos) => ({ ...previos, ...quedan }))
+              todas = false
+              break
+            }
+            nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje }]))
+          }
+          if (Object.values(nuevos).some((x) => x.estado !== 'ok')) todas = false
+          setResultados((previos) => ({ ...previos, ...nuevos }))
         }
-        setResultados((previos) => ({ ...previos, ...nuevos }))
+        if (todas) entro()
+      } finally {
+        setRegistrando(false)
+        setIntentos((n) => n + 1)
+        enCurso.current = false
       }
-    } finally {
-      setRegistrando(false)
-      setIntentos((n) => n + 1)
-      enCurso.current = false
-    }
+    })
   }
 
   const resumen = filas ? {

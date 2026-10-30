@@ -33,6 +33,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
+import { codigoSinUsar } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -147,7 +148,8 @@ const inicio = new Date()
 const sello = Date.now().toString().slice(-5)
 // El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
-const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
+// Uno que esta base no tiene: con el de otra corrida, su actividad sigue abierta.
+const codigo = await codigoSinUsar(consulta, 'PRB_SR_O4_1_26/', sello)
 const asuntoA = `Tolva de volquete ${sello}`
 const asuntoB = `Pintura del chasis ${sello}`
 const [elena, mario] = [`Elena ${sello}`, `Mario ${sello}`]

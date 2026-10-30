@@ -12,7 +12,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
-import { laCompilacionDeLaPestana, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
+import { laCompilacionDeLaPestana, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -151,90 +151,99 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
-    try {
-      const db = createClient()
-      const { data: sesion } = await db.auth.getUser()
-      const usuario = sesion.user?.id
-      // Primero todos los ingresos y después las salidas: así el saldo alcanza
-      // aunque la salida esté anotada antes que el ingreso del mismo día.
-      const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
-      // Fila por fila, cada una sale con la sesión de ese momento. Si entró otra
-      // cuenta, la que iba y las que siguen se quedan con su motivo, y salen
-      // cuando vuelva la tuya (vigesimotercera pasada).
-      const cortar = (desde: number, mensaje = NO_SALIO_OTRA_CUENTA) => {
-        const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje }]))
-        setResultados((r) => ({ ...r, ...quedan }))
-      }
-      for (const [i, f] of orden.entries()) {
-        if (laPestanaEsDeOtraCuenta()) {
-          cortar(i)
-          break
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a la última fila, y si alguna no entró no recarga
+    // encima de su motivo (D17 de la trigesimotercera pasada).
+    await mientrasSeEnvia(async (entro) => {
+      try {
+        const db = createClient()
+        const { data: sesion } = await db.auth.getUser()
+        const usuario = sesion.user?.id
+        // Primero todos los ingresos y después las salidas: así el saldo alcanza
+        // aunque la salida esté anotada antes que el ingreso del mismo día.
+        const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
+        // Fila por fila, cada una sale con la sesión de ese momento. Si entró otra
+        // cuenta, la que iba y las que siguen se quedan con su motivo, y salen
+        // cuando vuelva la tuya (vigesimotercera pasada).
+        let todas = true
+        const cortar = (desde: number, mensaje = NO_SALIO_OTRA_CUENTA) => {
+          todas = false
+          const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje }]))
+          setResultados((r) => ({ ...r, ...quedan }))
         }
-        // Ya se sabe vieja (otra acción lo dijo): ni se sube la foto.
-        if (laPestanaEsDeLaVersionAnterior()) {
-          cortar(i, NO_SALIO_SE_ACTUALIZO)
-          break
-        }
-        setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
-        const datos = new FormData()
-        datos.set('hoja', f.hoja)
-        datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
-        datos.set('id', f.id)
-        datos.set('material_id', f.materialId ?? '')
-        datos.set('cantidad', String(f.cantidad ?? ''))
-        datos.set('fecha', f.fecha ?? '')
-        let resultado: ResultadoAccion
-        try {
-          if (f.hoja === 'Ingresos') {
-            // Sin material del catálogo: el elegido por Almacén, o darlo de alta con su descripción.
-            const eleccion = elecciones[f.id]
-            const elegido = eleccion && eleccion !== NUEVO ? f.sugerencias.find((s) => s.id === eleccion) : undefined
-            const nuevo = !f.materialId && !elegido && f.nuevo
-            datos.set('material_id', f.materialId ?? elegido?.id ?? '')
-            datos.set('material_nuevo', nuevo ? nuevo.id : '')
-            datos.set('descripcion', f.descripcionEscrita)
-            datos.set('unidad_id', nuevo ? nuevo.unidadId : f.unidadId ?? '')
-            datos.set('origen', elegido?.origen ?? f.origen)
-            datos.set('documento', f.documento)
-            datos.set('precio', f.precio === null ? '' : String(f.precio))
-            datos.set('moneda', f.moneda)
-            resultado = await registrarFilaPlanilla(null, datos)
-          } else if (!usuario) {
-            resultado = { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
-          } else {
-            const foto = fotos[f.id]
-            const extension = foto.type === 'image/jpeg' ? 'jpg' : foto.type === 'image/png' ? 'png' : 'webp'
-            const ruta = `${usuario}/${f.id}.${extension}`
-            datos.set('unidad', f.unidad)
-            datos.set('motivo', f.documento)
-            datos.set('recibe', f.recibe)
-            datos.set('foto_ruta', ruta)
-            resultado = await subirArchivoPrivado({
-              bucket: 'evidencias-almacen', ruta, archivo: foto, contentType: foto.type,
-              registrar: () => registrarFilaPlanilla(null, datos),
-            })
-          }
-        } catch (e) {
-          if (e instanceof OtraCuentaEnLaPestana) {
+        for (const [i, f] of orden.entries()) {
+          if (laPestanaEsDeOtraCuenta()) {
             cortar(i)
             break
           }
-          resultado = { ok: false, error: motivoDelFallo(e, 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.') }
+          // Ya se sabe vieja (otra acción lo dijo): ni se sube la foto.
+          if (laPestanaEsDeLaVersionAnterior()) {
+            cortar(i, NO_SALIO_SE_ACTUALIZO)
+            break
+          }
+          setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
+          const datos = new FormData()
+          datos.set('hoja', f.hoja)
+          datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
+          datos.set('id', f.id)
+          datos.set('material_id', f.materialId ?? '')
+          datos.set('cantidad', String(f.cantidad ?? ''))
+          datos.set('fecha', f.fecha ?? '')
+          let resultado: ResultadoAccion
+          try {
+            if (f.hoja === 'Ingresos') {
+              // Sin material del catálogo: el elegido por Almacén, o darlo de alta con su descripción.
+              const eleccion = elecciones[f.id]
+              const elegido = eleccion && eleccion !== NUEVO ? f.sugerencias.find((s) => s.id === eleccion) : undefined
+              const nuevo = !f.materialId && !elegido && f.nuevo
+              datos.set('material_id', f.materialId ?? elegido?.id ?? '')
+              datos.set('material_nuevo', nuevo ? nuevo.id : '')
+              datos.set('descripcion', f.descripcionEscrita)
+              datos.set('unidad_id', nuevo ? nuevo.unidadId : f.unidadId ?? '')
+              datos.set('origen', elegido?.origen ?? f.origen)
+              datos.set('documento', f.documento)
+              datos.set('precio', f.precio === null ? '' : String(f.precio))
+              datos.set('moneda', f.moneda)
+              resultado = await registrarFilaPlanilla(null, datos)
+            } else if (!usuario) {
+              resultado = { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
+            } else {
+              const foto = fotos[f.id]
+              const extension = foto.type === 'image/jpeg' ? 'jpg' : foto.type === 'image/png' ? 'png' : 'webp'
+              const ruta = `${usuario}/${f.id}.${extension}`
+              datos.set('unidad', f.unidad)
+              datos.set('motivo', f.documento)
+              datos.set('recibe', f.recibe)
+              datos.set('foto_ruta', ruta)
+              resultado = await subirArchivoPrivado({
+                bucket: 'evidencias-almacen', ruta, archivo: foto, contentType: foto.type,
+                registrar: () => registrarFilaPlanilla(null, datos),
+              })
+            }
+          } catch (e) {
+            if (e instanceof OtraCuentaEnLaPestana) {
+              cortar(i)
+              break
+            }
+            resultado = { ok: false, error: motivoDelFallo(e, 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.') }
+          }
+          // Una pestaña de antes del último despliegue: ni esta ni las que siguen
+          // salen desde aquí (vigesimoctava pasada). La causa la dice una vez el
+          // resumen, no cada fila (vigesimonovena).
+          if (!resultado.ok && resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
+            cortar(i, NO_SALIO_SE_ACTUALIZO)
+            break
+          }
+          if (!resultado.ok) todas = false
+          setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
         }
-        // Una pestaña de antes del último despliegue: ni esta ni las que siguen
-        // salen desde aquí (vigesimoctava pasada). La causa la dice una vez el
-        // resumen, no cada fila (vigesimonovena).
-        if (!resultado.ok && resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
-          cortar(i, NO_SALIO_SE_ACTUALIZO)
-          break
-        }
-        setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
+        if (todas) entro()
+      } finally {
+        setRegistrando(false)
+        setIntentos((n) => n + 1)
+        enCurso.current = false
       }
-    } finally {
-      setRegistrando(false)
-      setIntentos((n) => n + 1)
-      enCurso.current = false
-    }
+    })
   }
 
   const resumen = filas ? {

@@ -16,7 +16,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { cuandoVuelvaLaCuenta, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { anotarQueSeVa, cuandoVuelvaLaCuenta, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -234,7 +234,10 @@ export function CorregirCotizacion({
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la corrección vuelva, y si no entró no recarga
+    // (D17 de la trigesimotercera pasada, en «Subir cotización»).
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       const supabase = createClient()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
@@ -282,6 +285,7 @@ export function CorregirCotizacion({
           return
         }
         setAbierto(false)
+        entro()
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
@@ -297,7 +301,7 @@ export function CorregirCotizacion({
       } finally {
         enCurso.current = false
       }
-    })
+    }))
   }
 
   return (
@@ -620,7 +624,10 @@ export function CargarCodigoYOt({
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la OT vuelva; si no entró no recarga, y si entró
+    // deja que vaya a su tarjeta (D17 de la trigesimotercera pasada).
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       const supabase = createClient()
       // El identificador de la orden se decide acá para que el PDF viaje a su
       // carpeta antes de que la orden exista: así la base las crea juntas.
@@ -665,6 +672,7 @@ export function CargarCodigoYOt({
           return
         }
         setAbierto(false)
+        entro()
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
         // iba de la lista y no se veía que había quedado. Se carga entera para
         // que el navegador la resalte (`target:`) aunque la dirección no cambie.
@@ -678,7 +686,10 @@ export function CargarCodigoYOt({
           }
         }
         if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(irASuTarjeta)
-        else irASuTarjeta()
+        else {
+          anotarQueSeVa(`/cotizaciones/pdf#${cotizacionId}`)
+          irASuTarjeta()
+        }
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
@@ -693,7 +704,7 @@ export function CargarCodigoYOt({
       } finally {
         enCurso.current = false
       }
-    })
+    }))
   }
 
   return (

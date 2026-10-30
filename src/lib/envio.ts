@@ -171,11 +171,31 @@ const losEnviosVolvieron = () =>
   enviosEnCamino === 0 ? Promise.resolve() : new Promise<void>((listo) => alVolverLosEnvios.push(listo))
 
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
-// carga entera, y «Volver a cargar» no recarga encima la de antes.
+// carga entera, y «Volver a cargar» no recarga encima la de antes. Se guarda
+// adónde: si la ida no llega, el toque siguiente va allí y no a la de antes,
+// que no sabe que lo enviado ya entró (F2 de la trigesimotercera pasada).
 let seVaDeLaPantalla = false
+let destinoDeLaIda: string | null = null
+// Desde cuándo «Volver a cargar» espera esa ida. Aquí y no en el aviso: si el
+// aviso se vuelve a montar mientras Next la carga, no pierde su espera de 15 s.
+let idaDesde: number | null = null
 
-function anotarQueSeVa() {
-  if (laPestanaEsDeOtroDespliegue()) seVaDeLaPantalla = true
+/** Desde cuándo «Volver a cargar» espera la ida a otra pantalla, o `null`. */
+export const desdeQueSeVa = () => idaDesde
+// Adónde redirigió la última acción que redirige (`x-action-redirect`), que
+// `useAccion` no ve: Next navega solo.
+let ultimaRedireccion: string | null = null
+
+/**
+ * Lo enviado entró y la pantalla se va a `destino` (o a donde la acción
+ * redirigió). Solo cuenta en la pestaña de otro despliegue: en las demás, Next
+ * cambia de pantalla sin recargar y el aviso de arriba no está.
+ */
+export function anotarQueSeVa(destino?: string) {
+  if (!laPestanaEsDeOtroDespliegue()) return
+  seVaDeLaPantalla = true
+  destinoDeLaIda = destino ?? ultimaRedireccion ?? destinoDeLaIda
+  ultimaRedireccion = null
 }
 
 /**
@@ -208,17 +228,29 @@ export async function volverACargar({ igual = false, alTardar }: { igual?: boole
       clearTimeout(tarda)
       if (esperaDeLaRecarga === espera) esperaDeLaRecarga = null
     }
-    // Si la ida no llega a irse, el toque siguiente recarga.
+    // Si la ida no llega, el toque siguiente va a su destino (`irAlDestino`).
     if (seVaDeLaPantalla) {
       seVaDeLaPantalla = false
+      idaDesde = Date.now()
       return 'se-va'
     }
     if (espera.noEntro) return 'no-entro'
   }
   const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
   await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
-  window.location.reload()
+  irAlDestino()
   return null
+}
+
+// A la pantalla de la ida, si la hubo; si es esta misma (la tarjeta de la
+// cotización, `#id`), se recarga con su marca: un `assign` que solo cambia lo de
+// después de `#` no recarga.
+function irAlDestino() {
+  const aqui = window.location
+  const ida = destinoDeLaIda ? new URL(destinoDeLaIda, aqui.href) : null
+  if (ida && (ida.origin !== aqui.origin || ida.pathname !== aqui.pathname || ida.search !== aqui.search)) return aqui.assign(ida.href)
+  if (ida?.hash && ida.hash !== aqui.hash) aqui.hash = ida.hash
+  aqui.reload()
 }
 
 /**
@@ -878,8 +910,16 @@ export function refrescarLaSesionAntesDeCadaAccion() {
   vigilandoLasAcciones = true
   const pedir = window.fetch.bind(window)
   window.fetch = (async (entrada: RequestInfo | URL, opciones?: RequestInit) => {
-    if (esUnaAccion(opciones)) await sesionAlDia(pedir)
-    return pedir(entrada, opciones)
+    if (!esUnaAccion(opciones)) return pedir(entrada, opciones)
+    // Quien envía ya miró la cuenta, pero la espera puede durar 4 s: si en ese
+    // rato entró otra en otra pestaña, la acción saldría a su nombre. Solo si
+    // antes era la de la pantalla: la pregunta de la traba sale igual.
+    const eraLaSuya = !laPestanaEsDeOtraCuenta()
+    if ((await sesionAlDia(pedir)) && eraLaSuya && laPestanaEsDeOtraCuenta()) throw new OtraCuentaEnLaPestana()
+    const respuesta = await pedir(entrada, opciones)
+    const ida = respuesta.headers.get('x-action-redirect')?.split(';')[0]
+    if (ida) ultimaRedireccion = ida
+    return respuesta
   }) as typeof fetch
 }
 
@@ -891,14 +931,15 @@ function esUnaAccion(opciones?: RequestInit) {
   return nombres.some((nombre) => nombre.toLowerCase() === 'next-action')
 }
 
-function sesionAlDia(pedir: typeof fetch): Promise<void> {
-  if (sesionEnCamino) return sesionEnCamino
+/** `true` si esperó a `/auth/sesion`: la cookie pudo cambiar en ese rato. */
+function sesionAlDia(pedir: typeof fetch): Promise<boolean> {
+  if (sesionEnCamino) return sesionEnCamino.then(() => true)
   const ahora = Date.now()
   const desde = ahora - preguntadaLaSesion
   const vence = venceLaSesion()
   // Recién preguntada, no: con el reloj adelantado, cada acción preguntaría.
   const porVencer = vence !== undefined && vence - ahora < MARGEN_DE_LA_SESION_MS && desde > 30_000
-  if (!porVencer && desde < CADA_CUANTO_SE_PREGUNTA_MS) return Promise.resolve()
+  if (!porVencer && desde < CADA_CUANTO_SE_PREGUNTA_MS) return Promise.resolve(false)
   sesionEnCamino = (async () => {
     const corte = new AbortController()
     const tope = setTimeout(() => corte.abort(), 4000)
@@ -911,7 +952,7 @@ function sesionAlDia(pedir: typeof fetch): Promise<void> {
       sesionEnCamino = null
     }
   })()
-  return sesionEnCamino
+  return sesionEnCamino.then(() => true)
 }
 
 /** Cuándo vence la sesión según su cookie, en ms, o `undefined` si no se sabe. */
@@ -1050,7 +1091,7 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  */
 export function navegarSiEsDeLaPestana(router: { push(url: string): void }, url: string) {
   if (!laPestanaEsDeOtraCuenta()) {
-    anotarQueSeVa()
+    anotarQueSeVa(url)
     return router.push(url)
   }
   const ir = () => startTransition(() => router.push(url))

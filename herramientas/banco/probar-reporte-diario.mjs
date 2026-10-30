@@ -28,6 +28,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { codigoSinUsar } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -135,7 +137,8 @@ const pesoGrande = (await import('node:fs')).statSync(join(fotos, 'tolva-grande.
 console.log(`  · foto grande de prueba: ${(pesoGrande / 1024 / 1024).toFixed(1)} MB`)
 
 const sello = Date.now().toString().slice(-5)
-const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
+// Uno que esta base no tiene: con el de otra corrida, su actividad sigue abierta.
+const codigo = await codigoSinUsar(consulta, 'PRB_SR_O4_1_26/', sello)
 const asunto1 = `Armado de tolva ${sello}`
 const asunto2 = `Planta general ${sello}`
 const [ana, bruno, carlos] = [`Ana ${sello}`, `Bruno ${sello}`, `Carlos ${sello}`]
@@ -355,7 +358,12 @@ let idReporte2 = null
   comprobar(carlosLinea?.hora === 7 && carlosLinea?.horas === 4, `al ponerle su costo, sus 4 h entran a S/ 7.00 la hora (${JSON.stringify(carlosLinea)})`)
   await pagina.goto(`${BASE}/rrhh/costeo`, { waitUntil: 'networkidle' })
   costeo = limpio(await pagina.locator('main').textContent())
-  comprobar(!costeo.includes('Horas de los reportes que esperan su costo'), 'el aviso de horas en espera desaparece')
+  // Lo que dice el aviso, si sigue: en un banco usado, otra suite puede haber
+  // dejado a alguien sin costo, y entonces el aviso se queda, sin Carlos.
+  const enEspera = costeo.includes('Horas de los reportes que esperan su costo')
+    ? costeo.slice(costeo.indexOf('Horas de los reportes que esperan su costo'), costeo.indexOf('Mano de obra por código interno'))
+    : ''
+  comprobar(!enEspera.includes(carlos), `las horas de Carlos salen del aviso de horas en espera (${enEspera ? 'el aviso sigue por otros' : 'el aviso desaparece'})`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

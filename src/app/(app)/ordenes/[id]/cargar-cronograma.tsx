@@ -11,7 +11,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
-import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
+import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, mientrasSeEnvia, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -109,7 +109,11 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que vuelvan el cronograma y su Excel, y si algo no
+    // entró no recarga encima de su aviso. Recargaba a los 180 ms y el Excel
+    // quedaba subido sin anotar (D17 y crítica de la trigesimotercera pasada).
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       try {
         const datos = new FormData()
         datos.set('orden_id', ordenId)
@@ -150,6 +154,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         setAviso(r.mensaje ?? 'Cronograma cargado.')
         setExcel(guardado)
         setAbierto(false)
+        if (!guardado || guardado.ok) entro()
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
         // Lo mismo que en useAccion: sin señal, la pantalla entera caía y se
@@ -158,7 +163,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
       } finally {
         enCurso.current = false
       }
-    })
+    }))
   }
 
   return (

@@ -22,7 +22,7 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
-import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, motivoDelFallo, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -221,7 +221,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la cotización vuelva, y si no entró no recarga.
+    // Recargaba a los 120 ms, con la subida o el registro en camino, y la
+    // cotización no quedaba sin que nada lo dijera (D17 de la trigesimotercera).
+    iniciar(() => mientrasSeEnvia(async (entro) => {
       const supabase = createClient()
       const id = crypto.randomUUID()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
@@ -313,6 +317,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         }
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
+        entro()
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
@@ -331,7 +336,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
       } finally {
         enCurso.current = false
       }
-    })
+    }))
   }
 
   const leido = lectura && (lectura.numero || lectura.cliente || lectura.documento || lectura.producto)

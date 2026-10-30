@@ -313,7 +313,15 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   el botón pasa a «Volver a cargar igual», que recarga sin esperar. A los 10 s
   sin respuesta, lo mismo, diciendo que si entra la pantalla se recarga sola. Si
   lo que entró lleva a otra pantalla, no recarga encima: la cortaba y dejaba la
-  de antes, vacía, con el reporte ya dentro (D13 e Importante 2). Ya
+  de antes, vacía, con el reporte ya dentro (D13 e Importante 2). Si a los 15 s
+  esa pantalla no abrió, lo dice («Lo que enviaste ya entró… ya está guardado,
+  no lo envíes de nuevo») y el toque siguiente va a ella (`anotarQueSeVa(destino)`,
+  o adonde redirigió la acción), no a la de antes, que ofrecía enviarlo otra
+  vez (F2 de la trigesimotercera). Toda cadena escrita a mano que envía por su
+  cuenta, fuera de `useAccion` (subir y anotar, una planilla fila por fila, un
+  conteo por tandas), va dentro de `mientrasSeEnvia(async (entro) => …)` y llama
+  a `entro()` solo si todo entró: si no, «Volver a cargar» recargaba en el acto
+  con la cotización o el Excel del cronograma subidos y sin anotar (D17). Ya
   sabida vieja, nada sube a Storage: los ayudantes del navegador
   (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
   nueva, la cotización, el plano por área, la salida de la planilla y las fotos

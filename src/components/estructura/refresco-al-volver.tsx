@@ -10,6 +10,7 @@ import { hayVentanaAbierta } from '@/lib/ventanas-abiertas'
 import {
   anotarLaCompilacionDeLaPestana,
   anotarQueHuboUnDespliegue,
+  desdeQueSeVa,
   esDeLaVersionAnterior,
   laPestanaEsDeOtraCuenta,
   laPestanaEsDeOtroDespliegue,
@@ -182,6 +183,7 @@ const SIN_RECARGAR = {
   'en-camino':
     'Lo que enviaste todavía no contesta. Si entra, la pantalla se vuelve a cargar sola; si la vuelves a cargar antes, no vas a saber si entró.',
   'no-entro': 'Lo que enviaste no entró, o no se sabe si entró: lee el aviso junto a su botón antes de volver a cargar la pantalla.',
+  'se-va': 'Lo que enviaste ya entró, y la pantalla a la que lleva tarda en abrir. Si no abre, vuelve a cargar: ya está guardado, no lo envíes de nuevo.',
 }
 
 // Solo en el navegador: el aviso nunca sale en la pintada del servidor (la pestaña nace «al día»).
@@ -212,7 +214,10 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
   // (trigesimoprimera pasada). Se mira al montarse: cada cambio es otra llave.
   const [anunciar] = useState(() => !version.callado && !(version.estado === 'vieja' && hayVentanaAbierta()))
   const [conTexto, setConTexto] = useState(!anunciar)
-  const [recargando, setRecargando] = useState(false)
+  // Con la ida a otra pantalla en camino (`desdeQueSeVa`), sigue girando hasta
+  // los 15 s también si el aviso se volvió a montar mientras Next la carga.
+  const [idaDesde, setIdaDesde] = useState(desdeQueSeVa)
+  const [recargando, setRecargando] = useState(idaDesde !== null)
   const [sinRecargar, setSinRecargar] = useState<keyof typeof SIN_RECARGAR | null>(null)
   // Dónde termina la cabecera, y si el aviso de arriba quedó debajo de ella.
   const [cabecera, setCabecera] = useState(dondeTerminaLaCabecera)
@@ -243,6 +248,17 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
     return () => mirar.disconnect()
   }, [conTexto, cabecera])
 
+  // Si a los 15 s la ida no llegó, lo dice, y el toque siguiente va a esa
+  // pantalla (F2 de la trigesimotercera).
+  useEffect(() => {
+    if (idaDesde === null) return
+    const tope = setTimeout(() => {
+      setRecargando(false)
+      setSinRecargar('se-va')
+    }, Math.max(0, idaDesde + 15_000 - Date.now()))
+    return () => clearTimeout(tope)
+  }, [idaDesde])
+
   function recargar() {
     // Antes, lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`).
     const igual = sinRecargar !== null
@@ -260,10 +276,10 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
         setSinRecargar('no-entro')
         return
       }
-      // Recarga, o lo hace la ida a la otra pantalla; si no llega, se puede pedir otra vez.
+      // Recarga, o lo hace la ida a la otra pantalla.
       setSinRecargar(null)
       setRecargando(true)
-      if (fin === 'se-va') setTimeout(() => setRecargando(false), 15_000)
+      if (fin === 'se-va') setIdaDesde(desdeQueSeVa())
     })
   }
 

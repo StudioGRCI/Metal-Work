@@ -32,6 +32,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { codigoSinUsar } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -455,7 +457,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await personaDeMaestranza(persona, 'Prueba Mismo Envío', `6${sello.padStart(7, '0')}`)
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
   const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
-  const codigo = `QA_SR_O4_1_26/${sello.slice(-2)}`
+  const codigo = await codigoSinUsar(consulta, 'QA_SR_O4_1_26/', sello)
   const asunto = `Armado de tolva ${sello}`
   await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
   await pagina.fill('#rd-codigo', codigo)
@@ -534,7 +536,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const [logistica] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.logistica])
   const asunto = `Cola de fotos ${sello}`
   await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
-  await pagina.fill('#rd-codigo', `QA_SR_O4_1_26/${sello.slice(-2)}`)
+  await pagina.fill('#rd-codigo', await codigoSinUsar(consulta, 'QA_SR_O4_1_26/', sello))
   await pagina.fill('#rd-asunto', asunto)
   await pagina.fill('#rd-descripcion', 'Se armó la cola de la tolva.')
   const elegir = async (etiqueta, texto) => {

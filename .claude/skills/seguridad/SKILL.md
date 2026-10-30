@@ -213,7 +213,10 @@ En la misma migración que la crea, sin excepción:
   devuelve 204 sin cuerpo; de `getSession` mira solo cuándo vence: quién es lo
   sigue diciendo `getUser`, en el proxy y en cada acción. Lo que el navegador
   lee de la cookie (`sesionEnLaCookie`) sirve para decidir cuándo preguntar,
-  nunca para decidir permisos.
+  nunca para decidir permisos. Si esperó a `/auth/sesion` y en ese rato la
+  cookie pasó a ser de otra cuenta, la acción no sale (`OtraCuentaEnLaPestana`):
+  quien envía miró la cuenta antes de la espera, y saldría a nombre de la otra.
+  La pregunta de la traba, que sale ya sabiendo que es otra, no se corta.
 - **La compilación que manda el navegador decide solo si se revalida.** La
   planilla del kardex, el conteo inicial y los avisos mandan `compilacion`
   (`laCompilacionDeLaPestana`) y el servidor no revalida si es de otro
