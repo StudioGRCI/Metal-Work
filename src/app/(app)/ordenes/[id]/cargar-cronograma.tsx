@@ -22,6 +22,8 @@ import { cargarCronograma } from './acciones-actividades'
 const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 type ExcelDelCronograma = { ok: true } | { ok: false; error: string } | { ok: false; incierto: true }
+// Lo que entró y si su Excel quedó guardado: solo dice que se hizo (`EstadoDelCronograma`).
+type CronogramaCargado = { dice: string; conExcel: boolean }
 
 // Donde se dice lo del envío (`EstadoDelCronograma`), al que apunta el botón ocupado.
 const idDelEstado = (ordenId: string) => `estado-del-cronograma-${ordenId}`
@@ -32,19 +34,26 @@ const idDelEstado = (ordenId: string) => `estado-del-cronograma-${ordenId}`
  * Al aparecer corría «Subir cronograma» 346 px y lo bajaba de línea (D3 de la
  * trigesimosexta pasada); y con «Nueva tarea» abierta el botón no está, pero
  * esto sí: arriba ya no se manda a leer un aviso que no se ve (D4).
+ *
+ * Lo que entró no se guarda (`guardar`): solo dice que se hizo, y «El Excel
+ * quedó guardado en la orden» seguía después de quitar ese Excel en Resumen
+ * (funcionalidad H4 y realización H2 de la trigesimoséptima pasada). Se va al
+ * salir de esta pestaña de la orden. Lo del Excel que no quedó, o que no se
+ * sabe si quedó, sí se guarda: es lo que hay que hacer todavía.
  */
 export function EstadoDelCronograma({ ordenId }: { ordenId: string }) {
-  const [aviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
+  const [cargado] = useEstadoCompartido<CronogramaCargado | null>(`cronograma:${ordenId}:cargado`, null)
   const [excel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
   const { sigue, desenlace } = useLoQueDiceLaVentana(`cronograma:${ordenId}`)
+  const fallaDelExcel = excel && !excel.ok ? excel : null
   // Las regiones están siempre montadas: se ocultan, no se quitan.
-  const hay = Boolean(aviso || sigue || desenlace)
+  const hay = Boolean(cargado || fallaDelExcel || sigue || desenlace)
   return (
     <div className={hay ? 'mb-3 flex flex-col gap-1 text-pretty' : 'sr-only'}>
       {/* Cerrada en vuelo, es lo único que dice que entró. */}
-      <span role="status" className={aviso ? 'text-xs' : 'sr-only'}>
-        {aviso && <span className="font-medium text-exito">{aviso}</span>}
-        {excel?.ok && (
+      <span role="status" className={cargado || fallaDelExcel ? 'text-xs' : 'sr-only'}>
+        {cargado && <span className="font-medium text-exito">{cargado.dice}</span>}
+        {cargado?.conExcel && (
           <>
             {' '}El Excel quedó guardado en la orden:{' '}
             <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
@@ -53,7 +62,7 @@ export function EstadoDelCronograma({ ordenId }: { ordenId: string }) {
             .
           </>
         )}
-        {excel && !excel.ok && 'incierto' in excel && (
+        {fallaDelExcel && 'incierto' in fallaDelExcel && (
           <span className="font-medium text-aviso">
             {' '}No se sabe si el Excel quedó guardado:{' '}
             <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
@@ -62,8 +71,8 @@ export function EstadoDelCronograma({ ordenId }: { ordenId: string }) {
             antes de volver a subirlo.
           </span>
         )}
-        {excel && !excel.ok && 'error' in excel && (
-          <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
+        {fallaDelExcel && 'error' in fallaDelExcel && (
+          <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {fallaDelExcel.error}</span>
         )}
       </span>
       <EstadoDelEnvio id={idDelEstado(ordenId)} sigue={sigue} desenlace={desenlace} registro="El cronograma" />
@@ -107,10 +116,10 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [error, setError] = useState<string | null>(null)
   // Por qué el Excel elegido no se pudo leer: va en su campo, no con los errores de cargar.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  // Lo que entró, con la pantalla de la orden: si «Nueva tarea» o una pestaña
-  // desmontan el botón con la ventana cerrada en vuelo, se dice cuando vuelve.
-  const [, setAviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
-  // Lo del Excel va aparte: si no quedó, se lee como aviso y no como el éxito del cronograma.
+  // Lo que entró, mientras la persona siga en esta pestaña de la orden
+  // (`EstadoDelCronograma`): con «Nueva tarea» abierta el renglón sigue ahí.
+  const [, setCargado] = useEstadoCompartido<CronogramaCargado | null>(`cronograma:${ordenId}:cargado`, null)
+  // Lo del Excel que no quedó va aparte y se guarda: se lee como aviso y no como el éxito del cronograma.
   const [, setExcel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -132,7 +141,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     setLectura(null)
     setError(null)
     setAvisoArchivo(null)
-    setAviso(null)
+    setCargado(null)
     setExcel(null)
     setGuardarExcel(true)
     setAbierto(true)
@@ -224,8 +233,8 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
             guardado = { ok: false, incierto: true }
           }
         }
-        setAviso(r.mensaje ?? 'Cronograma cargado.')
-        setExcel(guardado)
+        setCargado({ dice: r.mensaje ?? 'Cronograma cargado.', conExcel: Boolean(guardado?.ok) })
+        setExcel(guardado?.ok ? null : guardado)
         setAbierto(false)
         if (!guardado || guardado.ok) entro()
         iniciar(() => refrescarSiEsDeLaPestana(router))

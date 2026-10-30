@@ -84,7 +84,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
   const subida = async (): Promise<ResultadoAccion> => {
     const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
     revalidatePath('/cotizaciones/pdf')
-    return { ok: true, mensaje: `Cotización subida. Gerencia ya la tiene para revisar.${igv}` }
+    return { ok: true, mensaje: `Cotización subida y enviada a Gerencia para que la revise.${igv}` }
   }
   if (error) {
     // La misma subida otra vez: la primera respuesta se perdió y la pantalla

@@ -380,6 +380,7 @@ export function useEnvioDeLaVentana(
       const enCurso = intentosDeLaVentana.get(clave)
       if (!enCurso || enCurso.termino) return
       enCurso.sinVentana = true
+      enCurso.cerradaEn ??= performance.now()
       // Fuera de la pintada que lo desmonta: no se avisa a quien se va.
       queueMicrotask(() => {
         if (!enCurso.termino) setSigue(true)
@@ -420,6 +421,7 @@ export function useEnvioDeLaVentana(
     const enCurso = intentosDeLaVentana.get(clave)
     if (!enCurso || enCurso.termino) return
     enCurso.sinVentana = true
+    enCurso.cerradaEn = performance.now()
     setSigue(true)
   }
 
@@ -427,11 +429,11 @@ export function useEnvioDeLaVentana(
   // regresa a lo de antes.
   const vigente = desenlace?.tono === 'entro' && desenlace.mientras !== undefined && desenlace.mientras !== ahora ? null : desenlace
 
-  // Si la ventana del envío en curso se cerró mientras iba: lo que esté abierto
-  // o con el cursor ahora es de otra cosa.
-  const seCerroMientrasIba = () => Boolean(intentosDeLaVentana.get(clave)?.sinVentana)
+  // Cuándo se cerró la ventana del envío en curso (`performance.now()`), o
+  // `null` si sigue abierta: lo que la persona hizo después es de otra cosa.
+  const cerradaMientrasIba = () => intentosDeLaVentana.get(clave)?.cerradaEn ?? null
 
-  return { desenlace: vigente, sigue, idDelEstado, empezar, cerrar, seCerroMientrasIba }
+  return { desenlace: vigente, sigue, idDelEstado, empezar, cerrar, cerradaMientrasIba }
 }
 
 /** Lo que `useEnvioDeLaVentana(clave)` dice, para pintarlo lejos del botón (el encabezado). */
@@ -441,7 +443,7 @@ export function useLoQueDiceLaVentana(clave: string) {
   return { desenlace, sigue }
 }
 
-type IntentoDeLaVentana = { sinVentana: boolean; termino: boolean }
+type IntentoDeLaVentana = { sinVentana: boolean; termino: boolean; cerradaEn?: number }
 // El envío en curso de cada ventana, por su clave: el botón que la abre puede
 // desmontarse y volver mientras va.
 const intentosDeLaVentana = new Map<string, IntentoDeLaVentana>()

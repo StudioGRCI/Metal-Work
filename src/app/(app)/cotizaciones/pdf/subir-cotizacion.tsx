@@ -63,7 +63,7 @@ const ID_DEL_ESTADO = 'estado-de-subir-cotizacion'
  * con su texto.
  */
 export function EstadoDeSubirCotizacion() {
-  const [aviso] = useEstadoCompartido<string | null>(AVISO, null, { guardar: true })
+  const [aviso] = useEstadoCompartido<string | null>(AVISO, null)
   const { sigue, desenlace } = useLoQueDiceLaVentana(CLAVE)
   return (
     <>
@@ -90,9 +90,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [error, setError] = useState<string | null>(null)
   // Por qué el archivo elegido no sirve: va en su campo, no con los errores de subir.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  // Lo que entró, con la pantalla: si se va a otra mientras sube con la ventana
-  // cerrada, se dice cuando vuelve (`useEstadoCompartido` con `guardar`).
-  const [, setAviso] = useEstadoCompartido<string | null>(AVISO, null, { guardar: true })
+  // Lo que entró, mientras la persona siga en Cotización. Sin `guardar`: solo
+  // dice que se subió, y seguía junto a la cotización que Gerencia ya había
+  // rechazado (funcionalidad H5 de la trigesimoséptima pasada). Lo que no
+  // entró sí se queda (`useEnvioDeLaVentana`).
+  const [, setAviso] = useEstadoCompartido<string | null>(AVISO, null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira, y el desenlace se dice

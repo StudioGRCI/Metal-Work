@@ -366,8 +366,18 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   cargada sale en el acto o no sale, y nunca recarga: va con `router.push` y
   el resaltado (`target:`) se pone cambiando lo de después de «#»
   (`irALaTarjeta`). Si no puede ir sin llevarse otra cosa (otro envío en
-  camino, otra ventana abierta, el cursor en un campo, otra pantalla), el
-  encabezado lo dice con «Ver su tarjeta» (Y1, F1 y D6). El
+  camino, otra pantalla), el
+  encabezado lo dice con «Ver su tarjeta» (Y1, F1 y D6). Tampoco sale si la
+  persona tocó algo después de cerrar la ventana: lo que pidió después manda
+  (funcionalidad H2 de la trigesimoséptima). «Ver su tarjeta» está apagado,
+  con su motivo dicho, mientras haya algo en camino: React junta su ida con
+  la transición del otro envío y salía «#A#B», sin resaltar ninguna (Z2).
+  Cambiar lo de después de «#» deja la entrada del historial sin el estado de
+  Next, y «Atrás» cambiaba la dirección sin cambiar la pantalla: se guarda
+  `history.state` antes y se repone después (H1 de los tres auditores). El
+  encabezado dice lo que pasó, «Se cargó el código y la OT de la cotización
+  N.», no cómo está ahora: «ya tiene su OT» seguía después de que Gerencia la
+  anulara (H3). El
   aviso de arriba es una región no atómica (`aria-atomic="false"`): al cambiar
   por qué no recargó, el lector releía sus 53 palabras antes de la frase nueva
   (E de la trigesimocuarta). Ya

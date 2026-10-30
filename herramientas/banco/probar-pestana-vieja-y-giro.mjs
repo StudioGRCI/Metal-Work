@@ -190,10 +190,31 @@
  *   1u-pdf-aviso. «PDF corregido guardado.» y «Se quitó…» se dicen en la
  *       orden y se van al salir de ella (Administración). Antes volvían.
  *
+ * Y lo que dejó la trigesimoséptima:
+ *
+ *   1t-dos-tarjetas y 1u-rechazo-se-queda, además: desde la tarjeta a la que
+ *       se fue (sola o con «Ver su tarjeta»), al menú y «Atrás» vuelve a
+ *       Cotización en un paso, y «Adelante» y «Atrás» siguen. Antes la
+ *       dirección cambiaba y la pantalla no. En 1u-rechazo-se-queda la OT que
+ *       va detrás se detiene hasta que la rechazada quitó su PDF: si
+ *       contestara antes, habría dos en camino y no iría sola.
+ *   1v-ver-su-tarjeta-en-camino. Con otra OT en camino, «Ver su tarjeta» está
+ *       apagado y dice por qué; cuando vuelve, lleva a la tarjeta con un solo
+ *       «#» (Administración). Antes la línea se iba y no llevaba a ningún lado.
+ *   1v-ver-su-tarjeta-nueva. En «nueva», «Ver su tarjeta» y después «Volver a
+ *       cargar»: recarga, sin decir que algo enviado ya entró (Administración).
+ *   1v-ida-no-pisa-el-menu. La OT cerrada en vuelo entra después de tocar el
+ *       menú: abre Órdenes, no la tarjeta, y al volver a Cotización la línea
+ *       que lo decía ya no está (Administración).
+ *   1v-cronograma-se-va. Lo que entró del cronograma se va al salir de la
+ *       orden; el Excel que no quedó sigue dicho (Diseño).
+ *   1v-subida-se-va. «Cotización subida y enviada a Gerencia…» se va al salir
+ *       de Cotización (Ventas).
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
- * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro).
+ * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -2393,9 +2414,37 @@ if (corre('1t-correccion')) {
 // que no quedara nada abierto dejaba la ida armada, y salía minutos después
 // desde otra pantalla (Y1 de la trigesimosexta): ahora va en el acto, sin
 // recargar, o no va, y el encabezado dice que entró con el camino a su tarjeta.
-const aprobadasSinOt = (n) =>
-  consulta(`select c.id, c.numero from cotizaciones_pdf c where c.estado = 'APROBADA'
-              and not exists (select 1 from ordenes_trabajo o where o.cotizacion_pdf_id = c.id) order by c.creado_en desc limit $1`, [n])
+/**
+ * Las `n` cotizaciones aprobadas sin OT más nuevas. Cada corrida les carga OT a
+ * algunas: si el banco ya no tiene tantas, se siembran copiando una aprobada,
+ * con los disparadores apagados. Lo que se prueba aquí es la OT; la aprobación
+ * la prueba probar-gerencia-aprueba-y-administracion-carga-la-ot por su pantalla.
+ */
+let sembradas = 0
+async function aprobadasSinOt(n) {
+  const hay = () =>
+    consulta(`select c.id, c.numero from cotizaciones_pdf c where c.estado = 'APROBADA'
+                and not exists (select 1 from ordenes_trabajo o where o.cotizacion_pdf_id = c.id) order by c.creado_en desc limit $1`, [n])
+  const ya = await hay()
+  const [modelo] = await consulta(`select id from cotizaciones_pdf where estado = 'APROBADA' order by creado_en limit 1`)
+  if (ya.length >= n || !modelo) return ya
+  await consulta('begin')
+  try {
+    await consulta('set local session_replication_role = replica')
+    for (let i = ya.length; i < n; i++) {
+      // La ruta va dentro de la carpeta de su id (ck_cotizacion_pdf_ruta).
+      await consulta(`with nueva as (select gen_random_uuid() id)
+                      insert into cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, revisado_por, revisado_en, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por, monto_venta, moneda)
+                      select nueva.id, $2, c.cliente_id, c.tipo_carroceria_id, 'APROBADA', c.revisado_por, now(), c.nombre_archivo, 'cot/' || nueva.id || '/sembrada.pdf', c.mime_type, c.tamano_bytes, c.registrado_por, c.monto_venta, c.moneda
+                      from cotizaciones_pdf c, nueva where c.id = $1`, [modelo.id, `QA-SEMBRADA-${sello}-${sembradas++}`])
+    }
+    await consulta('commit')
+  } catch (e) {
+    await consulta('rollback')
+    throw e
+  }
+  return hay()
+}
 const anioDeLima = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
 const numerosLibres = async (n) =>
   (await consulta(`select n from generate_series(9100, 9999) n
@@ -2420,6 +2469,29 @@ async function llenarLaOt(pagina, id, codigo, n) {
   await d.locator('#eo-tipo').selectOption('SEMIRREMOLQUE')
   return { d, guardar }
 }
+/**
+ * Desde la tarjeta `id`, ya en /cotizaciones/pdf#id: al menú de Órdenes, y
+ * «Atrás» vuelve a Cotización en un paso; «Adelante» va a Órdenes y otro
+ * «Atrás» vuelve. Ir al ancla dejaba la entrada sin el estado de Next: la
+ * dirección cambiaba y la pantalla no (H1 de los tres auditores, trigesimoséptima).
+ */
+async function atrasDesdeLaTarjeta(pagina, id) {
+  const titulo = () => pagina.locator('main h1').first().innerText().then(limpio).catch(() => '')
+  const conEstado = await pagina.evaluate(() => window.history.state?.__NA === true)
+  await porElMenu(pagina, '/ordenes')
+  const pasos = []
+  for (const [mover, camino, h1] of [['back', `/cotizaciones/pdf#${id}`, 'Cotización'], ['forward', '/ordenes', 'Órdenes de trabajo'], ['back', `/cotizaciones/pdf#${id}`, 'Cotización']]) {
+    await pagina.evaluate((m) => window.history[m](), mover)
+    const visto = await hasta(titulo, (t) => t === h1, 10000)
+    const donde = pagina.url().replace(BASE, '')
+    pasos.push({ donde, visto, bien: donde === camino && visto === h1 })
+  }
+  const quieto = await mismoDocumento(pagina)
+  return {
+    bien: conEstado && quieto && pasos.every((p) => p.bien),
+    detalle: `estado de Next en la entrada ${conEstado}, ${pasos.map((p) => `${p.donde} «${p.visto}»`).join(' → ')}, mismo documento ${quieto}`,
+  }
+}
 /** Lo que Administración subió desde `desde` y ninguna fila de la orden nombra. */
 const sueltosDeLaOt = async (desde) =>
   (await consulta(`select o.name from storage.objects o where o.bucket_id = 'adjuntos-ot' and o.owner_id = (select id::text from usuarios where correo = $1) and o.created_at >= $2
@@ -2435,7 +2507,7 @@ if (corre('1t-dos-tarjetas')) {
   } else {
     const [a, b] = dos
     const encabezado = pagina.locator('[data-estado-del-encabezado]')
-    const LINEA_A = `La cotización ${a.numero} ya tiene su código y su OT.`
+    const LINEA_A = `Se cargó el código y la OT de la cotización ${a.numero}.`
     await ir(pagina, `${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`)
     await marcarDocumento(pagina)
     // A: va, y la ventana se cierra en vuelo con «Cancelar».
@@ -2464,7 +2536,7 @@ if (corre('1t-dos-tarjetas')) {
     comprobar((await otDe(a.id)) === 1 && quieto && dondeA === '/cotizaciones/pdf?estado=APROBADA_SIN_OT' && escrito === codigoB,
       `[Administración 1280] 1t-dos-tarjetas. A entra con la ventana de B abierta: no se recarga ni se va (OT de A ${await otDe(a.id)}, mismo documento ${quieto}, ${dondeA}, B dice «${escrito}»)`)
     comprobar(linea.includes(LINEA_A) && (await encabezado.getByRole('button', { name: 'Ver su tarjeta' }).count()) === 1,
-      `[Administración 1280] 1t-dos-tarjetas. el encabezado dice que A ya tiene su OT, con «Ver su tarjeta» («${linea}»)`)
+      `[Administración 1280] 1t-dos-tarjetas. el encabezado dice que se cargó la OT de A, con «Ver su tarjeta» («${linea}»)`)
     // B entra con su ventana abierta: va a su tarjeta, resaltada, sin recargar.
     if (quieto && escrito === codigoB) {
       await ventanaB.guardar.click()
@@ -2483,6 +2555,8 @@ if (corre('1t-dos-tarjetas')) {
       await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-dos-tarjetas-a.png') })
       comprobar(marcadaA === a.id && dondeVer === `/cotizaciones/pdf#${a.id}` && (await mismoDocumento(pagina)) && !lineaDespues.includes(LINEA_A),
         `[Administración 1280] 1t-dos-tarjetas. «Ver su tarjeta» lleva a la de A, resaltada, y la línea se va (resaltada ${marcadaA === a.id ? 'A' : marcadaA}, ${dondeVer}, «${lineaDespues}»)`)
+      const atras = await atrasDesdeLaTarjeta(pagina, a.id)
+      comprobar(atras.bien, `[Administración 1280] 1t-dos-tarjetas. desde la tarjeta de «Ver su tarjeta», al menú y «Atrás» vuelve a Cotización en un paso, y «Adelante» y «Atrás» siguen (${atras.detalle})`)
     }
     const quedan = await hasta(() => sueltosDeLaOt(desde), (l) => l.length === 0, 10000)
     comprobar((await otDe(a.id)) === 1 && (await otDe(b.id)) === 1 && quedan.length === 0,
@@ -2602,7 +2676,8 @@ if (corre('1u-rechazo-se-queda')) {
     await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
     // A va detrás, con su PDF ya subido, y su ventana también se cierra.
     const subidas = corte.storage.length
-    const ventanaA = await llenarLaOt(pagina, a.id, `QA_F1A_${sello}/26`, libre)
+    const marcaA = `QA_F1A_${sello}`
+    const ventanaA = await llenarLaOt(pagina, a.id, `${marcaA}/26`, libre)
     await ventanaA.guardar.click()
     await hasta(() => corte.storage.slice(subidas).some((x) => x.startsWith('POST adjuntos-ot/')), Boolean, 20000)
     await pagina.waitForTimeout(500)
@@ -2610,8 +2685,17 @@ if (corre('1u-rechazo-se-queda')) {
     await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
     const alertaDeB = () =>
       pagina.locator(`li[id="${b.id}"] [role="alert"]`).filter({ hasText: 'La OT que se estaba enviando' }).innerText().then(limpio).catch(() => '')
+    // A también se detiene cuando sale, detrás de B: vuelve cuando B ya quitó
+    // su PDF. Si A contestara antes, B seguiría en camino y A no iría sola
+    // (lo dice el encabezado), que no es lo que se mide aquí.
+    corte.marca = marcaA
+    const borrados = corte.storage.filter((x) => x.startsWith('DELETE')).length
     corte.soltar()
     const rechazo = await hasta(alertaDeB, (t) => t.includes('Ya hay una OT'), 20000)
+    await hasta(() => corte.retenidas, (n) => n >= 2, 20000)
+    await hasta(() => corte.storage.filter((x) => x.startsWith('DELETE')).length, (n) => n > borrados, 20000)
+    await pagina.waitForTimeout(500)
+    corte.soltar()
     await hasta(() => otDe(a.id), (n) => n === 1, 20000)
     await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf' && u.search === '' && u.hash === `#${a.id}`, { timeout: 20000 }).catch(() => {})
     const marcada = await hasta(() => resaltada(pagina), (id) => id === a.id, 15000)
@@ -2623,6 +2707,8 @@ if (corre('1u-rechazo-se-queda')) {
       `[Administración 1280] 1u-rechazo-se-queda. B, cerrada en vuelo con un número que ya existe: el rechazo se dice junto a su botón («${rechazo}»)`)
     comprobar(marcada === a.id && donde === `/cotizaciones/pdf#${a.id}` && (await mismoDocumento(pagina)) && sigue === rechazo,
       `[Administración 1280] 1u-rechazo-se-queda. A entra después y va a su tarjeta, resaltada, sin recargar, y el rechazo de B sigue dicho (resaltada ${marcada === a.id ? 'A' : marcada}, ${donde}, «${sigue}»)`)
+    const atras = await atrasDesdeLaTarjeta(pagina, a.id)
+    comprobar(atras.bien, `[Administración 1280] 1u-rechazo-se-queda. desde la tarjeta a la que fue sola, al menú y «Atrás» vuelve a Cotización en un paso, y «Adelante» y «Atrás» siguen (${atras.detalle})`)
     const quedan = await hasta(() => sueltosDeLaOt(desde), (l) => l.length === 0, 10000)
     comprobar((await otDe(a.id)) === 1 && (await otDe(b.id)) === 0 && quedan.length === 0,
       `[Administración 1280] 1u-rechazo-se-queda. A con su OT, B sin ella, y nada suelto (${quedan.length} sueltos)`)
@@ -2656,7 +2742,7 @@ if (corre('1u-ida-otra-pantalla')) {
     await hasta(() => corte.retenidas, (n) => n > 0, 30000)
     // Con el PDF subiendo, a Cotización: la OT entra con su ventana abierta.
     await porElMenu(pagina, '/cotizaciones/pdf')
-    const LINEA = `La cotización ${cot.numero} ya tiene su código y su OT.`
+    const LINEA = `Se cargó el código y la OT de la cotización ${cot.numero}.`
     const ventana = await llenarLaOt(pagina, cot.id, `QA_Y1_${sello}/26`, libre)
     await ventana.guardar.click()
     await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
@@ -2747,6 +2833,274 @@ if (corre('1u-pdf-aviso')) {
       `[Administración 1280] 1u-pdf-aviso. «Se quitó…» se dice, y al salir y volver ya no (${await pdfs()} PDF, «${alVolverDeQuitar}»)`)
   }
   comprobar(errores.length === 0, `[Administración 1280] 1u-pdf-aviso. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1v-ver-su-tarjeta-en-camino. «Ver su tarjeta» con otra OT en camino (Administración)
+// La navegación de Next espera a lo que va en transición: «Ver su tarjeta»
+// quitaba la línea y no llevaba a ningún lado mientras la otra OT subía su PDF,
+// y si esa entraba y se iba a su tarjeta, las dos idas salían juntas a
+// «#A#B» (Z2 de la crítica de la trigesimoséptima). Ahora está apagado y dice
+// por qué mientras algo va en camino. A entra con B todavía subiendo: no va
+// sola, porque no es lo único en camino.
+if (corre('1v-ver-su-tarjeta-en-camino')) {
+  const dos = await aprobadasSinOt(2)
+  const libres = await numerosLibres(2)
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (dos.length < 2 || libres.length < 2) {
+    comprobar(false, `[Administración 1280] 1v-ver-su-tarjeta-en-camino. hay dos cotizaciones aprobadas sin OT (${dos.length}) y dos números libres`)
+  } else {
+    const [a, b] = dos
+    const encabezado = pagina.locator('[data-estado-del-encabezado]')
+    const LINEA_A = `Se cargó el código y la OT de la cotización ${a.numero}.`
+    await ir(pagina, `${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`)
+    await marcarDocumento(pagina)
+    // A se detiene antes de anotar; su ventana se cierra en vuelo.
+    const marcaA = `QA_Z2A_${sello}`
+    const ventanaA = await llenarLaOt(pagina, a.id, `${marcaA}/26`, libres[0])
+    corte.marca = marcaA
+    await ventanaA.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await ventanaA.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    // B se detiene subiendo su PDF, como con poca señal; su ventana también se cierra.
+    const ventanaB = await llenarLaOt(pagina, b.id, `QA_Z2B_${sello}/26`, libres[1])
+    corte.cortarSubida = 'adjuntos-ot/ot/'
+    await ventanaB.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 1, 30000)
+    await ventanaB.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    // A entra con B en camino: lo dice el encabezado, y su botón está apagado.
+    corte.soltarLa(marcaA)
+    await hasta(() => otDe(a.id), (n) => n === 1, 30000)
+    const linea = limpio(await hasta(() => encabezado.innerText(), (t) => limpio(t).includes(LINEA_A), 15000))
+    const ver = encabezado.getByRole('button', { name: 'Ver su tarjeta' })
+    await pagina.waitForTimeout(1500)
+    const apagado = await ver.isDisabled().catch(() => false)
+    const porque = await loQueDescribe(ver).catch(() => null)
+    const dondeEnCamino = pagina.url().replace(BASE, '')
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-ver-su-tarjeta-en-camino.png') })
+    comprobar(linea.includes(LINEA_A) && apagado && porque === 'Se puede ver cuando vuelva lo que se está enviando.' && dondeEnCamino === '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
+      `[Administración 1280] 1v-ver-su-tarjeta-en-camino. A entra con B subiendo: el encabezado lo dice, y «Ver su tarjeta» está apagado y dice por qué (apagado ${apagado}, «${porque}», ${dondeEnCamino})`)
+    // B vuelve sin su PDF: el botón se enciende y lleva a la tarjeta de A, con un solo «#».
+    corte.soltarLa('adjuntos-ot/ot/')
+    const encendido = await hasta(() => ver.isEnabled().catch(() => false), Boolean, 20000)
+    await ver.click().catch(() => {})
+    const marcada = await hasta(() => resaltada(pagina), (id) => id === a.id, 15000)
+    const donde = pagina.url().replace(BASE, '')
+    const lineaDespues = limpio(await encabezado.innerText().catch(() => ''))
+    comprobar(encendido && marcada === a.id && donde === `/cotizaciones/pdf#${a.id}` && !lineaDespues.includes(LINEA_A) && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1v-ver-su-tarjeta-en-camino. cuando B vuelve, «Ver su tarjeta» se enciende y lleva a la de A, resaltada, con un solo «#» (resaltada ${marcada === a.id ? 'A' : marcada}, ${donde}, «${lineaDespues}»)`)
+    const quedan = await hasta(() => sueltosDeLaOt(desde), (l) => l.length === 0, 10000)
+    comprobar((await otDe(a.id)) === 1 && (await otDe(b.id)) === 0 && quedan.length === 0,
+      `[Administración 1280] 1v-ver-su-tarjeta-en-camino. A con su OT, B sin ella, y nada suelto (${quedan.length} sueltos)`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1v-ver-su-tarjeta-en-camino. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1v-ver-su-tarjeta-nueva. «Ver su tarjeta» no anota una ida, en «nueva» (Administración)
+// «Ver su tarjeta» anotaba la ida como la de un envío que entró: en la pestaña
+// de otro despliegue, «Volver a cargar» giraba 15 s y decía «Lo que enviaste
+// ya entró…» sin que se hubiera enviado nada (Z1 de la crítica de la
+// trigesimoséptima). La OT se cierra en vuelo y la persona toca otra cosa: no
+// va sola a su tarjeta, y el encabezado lo dice.
+if (corre('1v-ver-su-tarjeta-nueva')) {
+  const [cot] = await aprobadasSinOt(1)
+  const [libre] = await numerosLibres(1)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  if (!cot || !libre) {
+    comprobar(false, `[Administración 1280] 1v-ver-su-tarjeta-nueva. hay una cotización aprobada sin OT y un número libre`)
+  } else {
+    const encabezado = pagina.locator('[data-estado-del-encabezado]')
+    const LINEA = `Se cargó el código y la OT de la cotización ${cot.numero}.`
+    await ir(pagina, `${BASE}/cotizaciones/pdf`)
+    await marcarDocumento(pagina)
+    const marca = `QA_Z1_${sello}`
+    const ventana = await llenarLaOt(pagina, cot.id, `${marca}/26`, libre)
+    corte.marca = marca
+    await ventana.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await ventana.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    // Lo que la persona toca después de cerrar: la búsqueda, como en la crítica.
+    await pagina.getByRole('searchbox', { name: 'Buscar cotizaciones' }).click()
+    corte.soltar()
+    await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
+    const linea = limpio(await hasta(() => encabezado.innerText(), (t) => limpio(t).includes(LINEA), 15000))
+    const sinIr = pagina.url().replace(BASE, '')
+    comprobar(linea.includes(LINEA) && sinIr === '/cotizaciones/pdf',
+      `[Administración 1280] 1v-ver-su-tarjeta-nueva. cerrada en vuelo y tocada otra cosa, la OT no va sola a su tarjeta: lo dice el encabezado (${sinIr}, «${linea}»)`)
+    // El despliegue de todos los días: la pestaña queda «nueva», y la línea sigue.
+    await hastaLaPestanaNueva(pagina, corte)
+    const ver = encabezado.getByRole('button', { name: 'Ver su tarjeta' })
+    if (!(await ver.count())) {
+      comprobar(false, `[Administración 1280] 1v-ver-su-tarjeta-nueva. en «nueva», el encabezado ofrece «Ver su tarjeta» (no está: la OT se fue sola a ${limpio(pagina.url().replace(BASE, ''))})`)
+    } else {
+      await ver.click()
+      const marcada = await hasta(() => resaltada(pagina), (id) => id === cot.id, 15000)
+      const quieto = await mismoDocumento(pagina)
+      const dichos = []
+      const mirar = setInterval(() => sinRecargar(pagina).then((t) => t && dichos.push(t)), 250)
+      const [cargo] = await Promise.all([
+        pagina.waitForEvent('load', { timeout: 10000 }).then(() => true).catch(() => false),
+        botonDeArriba(pagina, 'Volver a cargar').click(),
+      ])
+      clearInterval(mirar)
+      await quieta(pagina)
+      await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-ver-su-tarjeta-nueva.png') })
+      comprobar(marcada === cot.id && quieto,
+        `[Administración 1280] 1v-ver-su-tarjeta-nueva. en «nueva», «Ver su tarjeta» lleva a la tarjeta, resaltada, sin recargar (resaltada ${marcada === cot.id ? 'la tarjeta' : marcada}, mismo documento ${quieto})`)
+      comprobar(cargo && !(await mismoDocumento(pagina)) && !dichos.includes(SE_VA),
+        `[Administración 1280] 1v-ver-su-tarjeta-nueva. después, «Volver a cargar» recarga: «Ver su tarjeta» no envió nada (recargó ${cargo}${dichos.length ? `, dijo «${dichos.at(-1)}»` : ''})`)
+    }
+  }
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Administración 1280] 1v-ver-su-tarjeta-nueva. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1v-ida-no-pisa-el-menu. La OT cerrada en vuelo no se lleva lo que la persona pidió después (Administración)
+// Con la OT en camino, el menú o la búsqueda que se tocaban quedaban en cola
+// detrás de su transición, y la ida a la tarjeta los reemplazaba: Órdenes no se
+// abría nunca (funcionalidad H2 de la trigesimoséptima). Ahora, si la ventana
+// se cerró y la persona tocó algo después, la OT no va sola.
+if (corre('1v-ida-no-pisa-el-menu')) {
+  const [cot] = await aprobadasSinOt(1)
+  const [libre] = await numerosLibres(1)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (!cot || !libre) {
+    comprobar(false, `[Administración 1280] 1v-ida-no-pisa-el-menu. hay una cotización aprobada sin OT y un número libre`)
+  } else {
+    await ir(pagina, `${BASE}/cotizaciones/pdf?estado=APROBADA_SIN_OT`)
+    await marcarDocumento(pagina)
+    const marca = `QA_H2_${sello}`
+    const ventana = await llenarLaOt(pagina, cot.id, `${marca}/26`, libre)
+    corte.marca = marca
+    await ventana.guardar.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await ventana.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    // El menú, con la OT todavía en camino: Next lo deja en cola.
+    const enlaces = pagina.locator('a[href="/ordenes"]')
+    const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+    await enlaces.nth(Math.max(visible, 0)).click()
+    await pagina.waitForTimeout(1000)
+    corte.soltar()
+    await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
+    await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(3000)
+    const donde = pagina.url().replace(BASE, '')
+    const titulo = limpio(await pagina.locator('main h1').first().innerText().catch(() => ''))
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-ida-no-pisa-el-menu.png') })
+    comprobar(donde === '/ordenes' && titulo === 'Órdenes de trabajo' && (await mismoDocumento(pagina)) && (await otDe(cot.id)) === 1,
+      `[Administración 1280] 1v-ida-no-pisa-el-menu. la OT entra después de tocar el menú: abre Órdenes y no la tarjeta (${donde}, «${titulo}», OT ${await otDe(cot.id)})`)
+    // Lo que la línea del encabezado decía se fue con la pantalla: de vuelta
+    // en Cotización por el menú, no dice que se cargó (sin `guardar`).
+    await porElMenu(pagina, '/cotizaciones/pdf')
+    const encabezado = limpio(await pagina.locator('[data-estado-del-encabezado]').innerText().catch(() => ''))
+    comprobar(!encabezado.includes('Se cargó el código y la OT') && !encabezado.includes(cot.numero),
+      `[Administración 1280] 1v-ida-no-pisa-el-menu. de vuelta en Cotización por el menú, el encabezado ya no dice que se cargó («${encabezado}»)`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1v-ida-no-pisa-el-menu. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1v-cronograma-se-va. Lo que entró del cronograma se va al salir de la orden (Diseño)
+// «Cronograma cargado… El Excel quedó guardado en la orden» se guardaba: seguía
+// después de quitar ese Excel en Resumen (funcionalidad H4 y realización H2
+// de la trigesimoséptima). Ahora se va al salir; el Excel que no quedó, que es
+// lo que falta hacer, sigue dicho.
+if (corre('1v-cronograma-se-va')) {
+  const orden = await ordenParaElCronograma()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  const renglon = () => pagina.locator('main [role="status"]').allInnerTexts().then((l) => limpio(l.join(' | '))).catch(() => '')
+  const fuera = async () => {
+    await porElMenu(pagina, '/ordenes')
+    await pagina.evaluate(() => window.history.back())
+    await pagina.waitForURL((u) => u.pathname === `/ordenes/${orden.id}`, { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    await pagina.getByRole('button', { name: 'Subir cronograma' }).waitFor({ timeout: 15000 }).catch(() => {})
+  }
+  const subir = async (actividad) => {
+    const libro = new ExcelJS.Workbook()
+    const hoja = libro.addWorksheet('Cronograma')
+    hoja.addRow(['Área', 'Actividad', 'Referencia', 'Peso (%)', 'Inicio', 'Fin'])
+    hoja.addRow(['Acabados', actividad, null, 0, null, null])
+    const excel = join(archivos, `${actividad}.xlsx`)
+    await libro.xlsx.writeFile(excel)
+    await pagina.getByRole('button', { name: 'Subir cronograma' }).click()
+    const v = pagina.getByRole('dialog')
+    await v.waitFor({ timeout: 20000 })
+    await v.locator(`#cronograma-${orden.id}`).setInputFiles(excel)
+    const cargar = v.getByRole('button', { name: 'Cargar 1 actividad' })
+    await cargar.waitFor({ timeout: 15000 })
+    await cargar.click()
+    await hasta(() => v.count(), (n) => n === 0, 30000)
+  }
+  await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=actividades`)
+  await marcarDocumento(pagina)
+  // El Excel se corta subiendo: el cronograma entró y el Excel no.
+  corte.cortarSubida = `adjuntos-ot/ot/${orden.id}/`
+  const subida = subir(`Se va el cronograma A ${sello}`)
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  corte.soltar()
+  await subida
+  const sinExcel = await hasta(renglon, (t) => t.includes('El Excel no quedó guardado en la orden.'), 20000)
+  await fuera()
+  const sinExcelAlVolver = await renglon()
+  comprobar(sinExcel.includes('Cronograma cargado') && sinExcelAlVolver.includes('El Excel no quedó guardado en la orden.') && !sinExcelAlVolver.includes('Cronograma cargado') && (await mismoDocumento(pagina)),
+    `[Diseño 1280] 1v-cronograma-se-va. el Excel que no quedó sigue dicho al salir de la orden y volver, y lo que entró ya no («${sinExcelAlVolver}»)`)
+  // Ahora entra con su Excel: al salir y volver, nada lo repite.
+  await subir(`Se va el cronograma B ${sello}`)
+  const conExcel = await hasta(renglon, (t) => t.includes('El Excel quedó guardado en la orden'), 20000)
+  await fuera()
+  const conExcelAlVolver = await renglon()
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-cronograma-se-va.png') })
+  comprobar(conExcel.includes('Cronograma cargado') && !conExcelAlVolver.includes('Cronograma cargado') && !conExcelAlVolver.includes('El Excel quedó guardado') && (await mismoDocumento(pagina)),
+    `[Diseño 1280] 1v-cronograma-se-va. «Cronograma cargado… El Excel quedó guardado en la orden» se dice, y al salir de la orden y volver ya no («${conExcelAlVolver}»)`)
+  comprobar(errores.length === 0, `[Diseño 1280] 1v-cronograma-se-va. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1v-subida-se-va. «Cotización subida…» se va al salir de Cotización (Ventas)
+// Se guardaba y decía «Gerencia ya la tiene para revisar» junto a la cotización
+// que Gerencia ya había rechazado (funcionalidad H5 de la trigesimoséptima).
+// Ahora dice lo que pasó, y se va al salir.
+if (corre('1v-subida-se-va')) {
+  const numero = `QA-SE-VA-COT-${sello}`
+  const { pagina, contexto, errores } = await entrar(CUENTAS.ventas, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/cotizaciones/pdf`)
+  await marcarDocumento(pagina)
+  const encabezado = () => pagina.locator('[data-estado-del-encabezado]').innerText().then(limpio).catch(() => '')
+  await pagina.getByRole('button', { name: 'Subir cotización' }).first().click()
+  const d = pagina.getByRole('dialog').first()
+  await d.waitFor({ timeout: 20000 })
+  await d.locator('#cot-archivo').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${numero}`, 'Semirremolque de banco']) })
+  const subir = d.getByRole('button', { name: 'Subir y mandar a Gerencia' })
+  await pagina.waitForTimeout(1500)
+  await hasta(async () => !/Leyendo/.test(await d.innerText()) && (await subir.isEnabled()), Boolean, 30000)
+  await d.locator('#cot-numero').fill(numero)
+  await d.locator('#cot-monto').fill('1000')
+  await d.locator('#cot-moneda').selectOption('USD')
+  await d.locator('#cot-igv').selectOption('no')
+  if (await d.locator('#cot-cliente').count()) await d.locator('#cot-cliente').selectOption({ index: 1 })
+  if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+  await subir.click()
+  const dicho = await hasta(encabezado, (t) => t.includes('Cotización subida'), 30000)
+  await porElMenu(pagina, '/clientes')
+  await pagina.evaluate(() => window.history.back())
+  await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const alVolver = await encabezado()
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1v-subida-se-va.png') })
+  comprobar(dicho.includes('Cotización subida y enviada a Gerencia para que la revise.') && !dicho.includes('ya la tiene'),
+    `[Ventas 1280] 1v-subida-se-va. dice lo que pasó, no cómo está la cotización («${dicho}»)`)
+  comprobar(!alVolver.includes('Cotización subida') && (await mismoDocumento(pagina)),
+    `[Ventas 1280] 1v-subida-se-va. al salir de Cotización y volver, ya no lo dice («${alVolver}»)`)
+  comprobar(errores.length === 0, `[Ventas 1280] 1v-subida-se-va. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

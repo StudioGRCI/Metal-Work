@@ -142,6 +142,11 @@ export function alVolverACargar(quitar: () => unknown) {
  */
 const envios = cuentaDeEnvios()
 const alEmpezar = new Set<() => void>()
+// Quien pinta cuántos van en camino (`useEnviosEnCamino`): se le avisa cuando sale o vuelve uno.
+const alCambiarLosEnvios = new Set<() => void>()
+const avisarQueCambiaron = () => {
+  for (const avisar of alCambiarLosEnvios) avisar()
+}
 
 /** Avisa cada vez que sale un envío (`mientrasSeEnvia`). Devuelve con qué dejar de avisar. */
 export function alEmpezarUnEnvio(avisar: () => void) {
@@ -161,6 +166,7 @@ export function alEmpezarUnEnvio(avisar: () => void) {
 export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>): Promise<T> {
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
+  avisarQueCambiaron()
   let entro = false
   let motivo: string | null = null
   try {
@@ -174,6 +180,7 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
     )
   } finally {
     volvio(entro, motivo)
+    avisarQueCambiaron()
   }
 }
 
@@ -193,6 +200,22 @@ export function dichoJuntoAlBoton<F extends object>(accion: F): F {
  * si va dentro de uno.
  */
 export const enviosEnCamino = () => envios.cuantos()
+
+/**
+ * `enviosEnCamino()` en la pantalla, que se vuelve a pintar cuando sale o
+ * vuelve uno. La navegación de Next espera a los que van en transición: «Ver su
+ * tarjeta» se apaga mientras haya alguno (Z2 de la crítica de la trigesimoséptima pasada).
+ */
+export function useEnviosEnCamino() {
+  return useSyncExternalStore(
+    (avisar) => {
+      alCambiarLosEnvios.add(avisar)
+      return () => void alCambiarLosEnvios.delete(avisar)
+    },
+    enviosEnCamino,
+    () => 0,
+  )
+}
 
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
 // carga entera, y «Volver a cargar» no recarga encima la de antes. Se guarda

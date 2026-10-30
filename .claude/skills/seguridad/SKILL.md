@@ -157,19 +157,28 @@ En la misma migración que la crea, sin excepción:
   de esperar solo lo que ofreció no esperar, nunca lo que salió después
   (`cuentaDeEnvios`, F3). Una ida que la aplicación hace sola tras un envío
   no recarga y no espera: la de la tarjeta de la OT recién cargada sale en el
-  acto, sin recargar, solo si ese es el único envío en camino, la persona sigue
-  en Cotización y nada más está abierto ni con el cursor; si no, lo dice el
+  acto, sin recargar, solo si ese es el único envío en camino y la persona
+  sigue en Cotización con su ventana a la vista; si no, lo dice el
   encabezado con «Ver su tarjeta» (`vaSolaALaTarjeta`). Recargar cortaba el
   envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
   trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía
   minutos después desde otra pantalla y se llevaba lo escrito allí (Y1 de la
-  trigesimosexta). El desenlace de un envío de ventana escrita a mano
+  trigesimosexta). Tampoco sale si la persona tocó algo después de cerrar la
+  ventana en vuelo (H2 de la trigesimoséptima). «Se va» (`anotarQueSeVa`) lo
+  anota solo la ida que sigue a un envío que entró, nunca «Ver su tarjeta»: con
+  la marca puesta sin envío, «Volver a cargar» no recargaba y decía «Lo que
+  enviaste ya entró… no lo envíes de nuevo» aunque la base hubiera rechazado
+  la OT que sí iba (Z1). El desenlace de un envío de ventana escrita a mano
   (`useEnvioDeLaVentana`) y el de la subida del PDF de la orden se guardan por
   su clave hasta que los reemplace otro o se recargue la pestaña
   (`useEstadoCompartido` con `guardar`): con el botón desmontado se perdía, y
   quien no lo vio lo enviaba de nuevo. Lo que solo dice que algo se hizo («PDF
   corregido guardado.») no se guarda: volvía horas después diciendo qué PDF
-  vale aunque otro hubiera subido uno (Y2). Que el id de la acción cambie no es lo de siempre: la clave dura
+  vale aunque otro hubiera subido uno (Y2). Tampoco «Cronograma cargado…» ni
+  «Cotización subida y enviada a Gerencia»: el éxito vive mientras su tarjeta
+  o su pantalla siguen montadas, y de la llave del Excel se guarda solo la
+  falla, que es lo que evita mandarlo dos veces (H4, H5 y realización H2 de la
+  trigesimoséptima). Que el id de la acción cambie no es lo de siempre: la clave dura
   14 días y Vercel la conserva, así que el despliegue de todos los días se
   reconoce por la compilación que contesta el servidor
   (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban

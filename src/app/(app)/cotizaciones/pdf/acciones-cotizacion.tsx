@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
+import { useId, useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
 import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -17,12 +17,11 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo, useEnvio, useEnviosEnCamino } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { createClient } from '@/lib/supabase/client'
-import { hayVentanaAbierta } from '@/lib/ventanas-abiertas'
 
 import { cargarCodigoYOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
@@ -529,6 +528,12 @@ const TIPOS_UNIDAD = [
 const OT_CARGADA = 'codigo-y-ot:cargada'
 type OtCargada = { id: string; numero: string }
 
+// La última vez que la persona tocó la pantalla o una tecla: si fue después de
+// cerrar la ventana de la OT, ya está en otra cosa.
+let tocoEn = -1
+if (typeof window !== 'undefined')
+  for (const tipo of ['pointerdown', 'keydown'] as const) window.addEventListener(tipo, () => void (tocoEn = performance.now()), true)
+
 /**
  * La ida a la tarjeta de la OT que acaba de entrar sale en el acto o no sale.
  * Esperar a que no quedara nada en camino ni otra ventana abierta la dejaba
@@ -537,15 +542,14 @@ type OtCargada = { id: string; numero: string }
  * sigue en Cotización con su cuenta, si este es el único envío en camino (la
  * navegación de Next espera a los que van en transición, y montaba la lista
  * entera con otra ventana abierta encima) y, si su ventana se cerró mientras
- * iba, si no hay otra abierta ni el cursor en un campo: la persona ya está en
- * otra cosa. Si no sale, lo dice el encabezado, con el camino a la tarjeta.
+ * iba, si desde entonces no tocó nada: el menú o la búsqueda que pidió en ese
+ * rato quedaban en cola, y la ida los reemplazaba (funcionalidad H2 de la
+ * trigesimoséptima). Si no sale, lo dice el encabezado, con el camino a la tarjeta.
  */
-function vaSolaALaTarjeta(seCerro: boolean) {
+function vaSolaALaTarjeta(cerradaEn: number | null) {
   if (window.location.pathname !== '/cotizaciones/pdf' || laPestanaEsDeOtraCuenta()) return false
   if (enviosEnCamino() > 1) return false
-  if (!seCerro) return true
-  const foco = document.activeElement
-  return !hayVentanaAbierta() && !(foco instanceof HTMLElement && foco.matches('input, textarea, select, [contenteditable]'))
+  return cerradaEn === null || tocoEn <= cerradaEn
 }
 
 /**
@@ -555,44 +559,76 @@ function vaSolaALaTarjeta(seCerro: boolean) {
  * de la lista: se va a la lista entera. Next la trae a la vista al pintarla,
  * pero el navegador la resalta solo cuando lo de después de «#» cambia por su
  * cuenta, no por `pushState`: se le quita y se le vuelve a poner.
+ *
+ * `trasEnviar`, la que sale sola al entrar la OT: si cambia la pantalla (desde
+ * un filtro o una búsqueda), en la pestaña de otro despliegue Next la carga
+ * entera, y «Volver a cargar» no recarga encima (`anotarQueSeVa`). «Ver su
+ * tarjeta» no envió nada: anotarla hacía decir arriba «Lo que enviaste ya
+ * entró» sin envío, o de una OT que la base rechazó (Z1 de la crítica de la
+ * trigesimoséptima pasada).
  */
-function irALaTarjeta(id: string, router: ReturnType<typeof useRouter>) {
+function irALaTarjeta(id: string, router: ReturnType<typeof useRouter>, { trasEnviar = false } = {}) {
   const destino = `/cotizaciones/pdf#${id}`
-  anotarQueSeVa(destino)
+  if (trasEnviar && window.location.search !== '') anotarQueSeVa(destino)
   router.push(destino)
   const hasta = performance.now() + 15_000
   const resaltar = () => {
     const aqui = window.location
     if (aqui.pathname === '/cotizaciones/pdf' && aqui.search === '' && aqui.hash === `#${id}` && document.getElementById(id)) {
       // Sin pasar por Next (lleva su estado): su dirección ya es esta.
-      window.history.replaceState(window.history.state, '', aqui.pathname)
+      const estado = window.history.state
+      window.history.replaceState(estado, '', aqui.pathname)
       aqui.replace(`#${id}`)
+      // Ir al ancla deja la entrada sin el estado de Next, y Next no atiende el
+      // «Atrás» o «Adelante» que llega a una entrada sin el suyo: cambiaba la
+      // dirección y no la pantalla (H1 de los tres auditores, trigesimoséptima pasada).
+      window.history.replaceState(estado, '', aqui.href)
     } else if (performance.now() < hasta) requestAnimationFrame(resaltar)
   }
   requestAnimationFrame(resaltar)
 }
 
-/** Junto a los estados del encabezado: la OT que entró sin ir a su tarjeta, y el camino a ella. */
+/**
+ * Junto a los estados del encabezado: la OT que entró sin ir a su tarjeta, y el
+ * camino a ella. Dice lo que pasó y no cómo quedó: Gerencia puede anular esa OT
+ * después, y «ya tiene su código y su OT» seguía (funcionalidad H3 de la
+ * trigesimoséptima pasada); la tarjeta dice cómo está. «Ver su tarjeta» se
+ * apaga mientras algo va en camino: la navegación esperaba a que volviera, la
+ * línea se iba sin llevar a ningún lado y con dos idas juntas quedaba «#A#B»
+ * (Z2 de la crítica).
+ */
 export function EstadoDeLaOt() {
   const router = useRouter()
   const [cargada, setCargada] = useEstadoCompartido<OtCargada | null>(OT_CARGADA, null)
+  const enCamino = useEnviosEnCamino() > 0
+  const id = useId()
   return (
     <div className={cargada ? 'flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end' : 'sr-only'}>
       <span role="status" className="text-xs font-medium text-exito">
-        {cargada && `La cotización ${cargada.numero} ya tiene su código y su OT.`}
+        {cargada && `Se cargó el código y la OT de la cotización ${cargada.numero}.`}
       </span>
       {cargada && (
-        <Boton
-          type="button"
-          tamano="sm"
-          variante="secundario"
-          onClick={() => {
-            setCargada(null)
-            irALaTarjeta(cargada.id, router)
-          }}
-        >
-          Ver su tarjeta
-        </Boton>
+        <>
+          <Boton
+            type="button"
+            tamano="sm"
+            variante="secundario"
+            disabled={enCamino}
+            aria-describedby={enCamino ? id : undefined}
+            onClick={() => {
+              if (enviosEnCamino() > 0) return
+              setCargada(null)
+              irALaTarjeta(cargada.id, router)
+            }}
+          >
+            Ver su tarjeta
+          </Boton>
+          {enCamino && (
+            <span id={id} className="text-xs text-texto-suave">
+              Se puede ver cuando vuelva lo que se está enviando.
+            </span>
+          )}
+        </>
       )}
     </div>
   )
@@ -802,7 +838,7 @@ export function CargarCodigoYOt({
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
         // iba de la lista y no se veía que había quedado. Si no puede ir sin
         // llevarse otra cosa, lo dice el encabezado.
-        if (vaSolaALaTarjeta(fuera.seCerroMientrasIba())) irALaTarjeta(cotizacionId, router)
+        if (vaSolaALaTarjeta(fuera.cerradaMientrasIba())) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
         else setCargada({ id: cotizacionId, numero })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
