@@ -6,6 +6,7 @@ import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
+import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -67,6 +68,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
+  const fuera = useEnvioDeLaVentana()
   const campoArchivo = useRef<HTMLInputElement>(null)
   // Al volver de un rechazo, el cursor va al número repetido o al aviso.
   const campoNumero = useRef<HTMLInputElement>(null)
@@ -226,6 +229,13 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     // Recargaba a los 120 ms, con la subida o el registro en camino, y la
     // cotización no quedaba sin que nada lo dijera (D17 de la trigesimotercera).
     iniciar(() => mientrasSeEnvia(async (entro) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar()
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       const id = crypto.randomUUID()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
@@ -239,7 +249,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           datos.set('razon_social', razonSocial.trim())
           const r = await crearClienteRapido(null, datos)
           if (!r.ok || !r.datos) {
-            setError(r.ok ? 'No se pudo registrar el cliente.' : r.error)
+            noEntro(r.ok ? 'No se pudo registrar el cliente.' : r.error)
             return
           }
           const creado = r.datos
@@ -263,7 +273,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           datos.set('nombre', nombreCarroceria.trim())
           const r = await crearCarroceria(null, datos)
           if (!r.ok || !r.datos) {
-            setError(r.ok ? 'No se pudo agregar la carrocería.' : r.error)
+            noEntro(r.ok ? 'No se pudo agregar la carrocería.' : r.error)
             return
           }
           const creada = r.datos
@@ -277,14 +287,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         // La pestaña ya se sabe de antes del último despliegue: lo que lo
         // registraría no va a entrar, así que ni se sube (trigésima pasada).
         if (laPestanaEsDeLaVersionAnterior()) {
-          setError(SE_ACTUALIZO_EL_SISTEMA)
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
           return
         }
         const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -312,7 +322,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         })
         subido = false
         if (!r.ok) {
-          setError(r.error)
+          noEntro(r.error)
           return
         }
         setAviso(r.mensaje ?? 'Cotización subida.')
@@ -324,7 +334,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
         // ventana dice que no se guardó: al volver, el cursor va ahí.
         if (e instanceof OtraCuentaEnLaPestana) {
-          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
           return
         }
         // Lo único que puede caerse acá es la carrocería nueva o la subida:
@@ -332,32 +342,38 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
         // Desde una pestaña de antes del último despliegue, reintentar no entra
         // nunca: se dice que hay que recargar (vigesimonovena pasada).
-        setError(motivoDelFallo(e, 'No se pudo registrar la cotización. Vuelve a intentar.'))
+        noEntro(motivoDelFallo(e, 'No se pudo registrar la cotización. Vuelve a intentar.'))
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
     }))
   }
 
   const leido = lectura && (lectura.numero || lectura.cliente || lectura.documento || lectura.producto)
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
 
   return (
     <>
       <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton onClick={abrir}>
-          <Upload aria-hidden className="size-4" />
+        <Boton onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <Upload aria-hidden className="size-4" />}
           Subir cotización
         </Boton>
-        {aviso && (
-          <span role="status" className="text-xs font-medium text-exito">
-            {aviso}
-          </span>
-        )}
+        {/* Montada siempre: cerrada en vuelo, es lo único que dice que entró. */}
+        <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+          {aviso}
+        </span>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La cotización" femenino />
       </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={() => {
+          fuera.cerrar()
+          setAbierto(false)
+        }}
         titulo="Subir la cotización"
         descripcion="La que se le mandó al cliente, en PDF o en Word. Al elegirla se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
         ancho="panoramico"

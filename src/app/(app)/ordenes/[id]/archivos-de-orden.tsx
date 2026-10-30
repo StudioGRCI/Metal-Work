@@ -9,7 +9,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeOtraCuenta, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
+import { laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 
@@ -127,25 +127,33 @@ export function ArchivosDeOrden({
     if (laPestanaEsDeOtraCuenta()) return setAvisoSubida(NO_SUBIO_OTRA_CUENTA)
     enCurso.current = true
     setSubiendo(true)
-    try {
-      const r = await subirAdjunto(ordenId, archivo, 'ORDEN')
-      if (!r.ok) {
-        // En la caja del campo se dice cómo volver a intentar, como los demás avisos.
-        setAvisoSubida(r.error === NO_QUEDO_SIN_RESPUESTA ? 'No quedó, no llegó la respuesta: toca para elegirlo otra vez' : r.error)
-        return
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que el PDF suba y quede anotado, y si no entró no
+    // recarga encima de su aviso. Recargaba a los 180 ms: la subida quedaba
+    // cortada o el PDF suelto, y al cambiarlo seguía el de antes sin que nada
+    // lo dijera (C, H5 y R1 de la trigesimocuarta pasada).
+    await mientrasSeEnvia(async (entro) => {
+      try {
+        const r = await subirAdjunto(ordenId, archivo, 'ORDEN')
+        if (!r.ok) {
+          // En la caja del campo se dice cómo volver a intentar, como los demás avisos.
+          setAvisoSubida(r.error === NO_QUEDO_SIN_RESPUESTA ? 'No quedó, no llegó la respuesta: toca para elegirlo otra vez' : r.error)
+          return
+        }
+        entro()
+        setElegido(null)
+        setCambiando(false)
+        focoA.current = 'boton'
+        // Qué falta quitar lo dice la nota de abajo, que se queda mientras haya dos.
+        setAviso(tieneOrden ? 'PDF corregido guardado.' : (r.mensaje ?? 'PDF guardado en la orden.'))
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        setAvisoSubida(e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
+      } finally {
+        enCurso.current = false
+        setSubiendo(false)
       }
-      setElegido(null)
-      setCambiando(false)
-      focoA.current = 'boton'
-      // Qué falta quitar lo dice la nota de abajo, que se queda mientras haya dos.
-      setAviso(tieneOrden ? 'PDF corregido guardado.' : (r.mensaje ?? 'PDF guardado en la orden.'))
-      iniciar(() => refrescarSiEsDeLaPestana(router))
-    } catch (e) {
-      setAvisoSubida(e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
-    } finally {
-      enCurso.current = false
-      setSubiendo(false)
-    }
+    })
   }
 
   return (

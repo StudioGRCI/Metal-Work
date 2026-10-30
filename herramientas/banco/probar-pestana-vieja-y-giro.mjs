@@ -136,10 +136,24 @@
  *       Diseño). Antes recargaba en el acto y el archivo quedaba subido sin
  *       anotar; ahora, cuando entra, recarga, y nada queda suelto.
  *
+ * Y lo que dejó la trigesimocuarta:
+ *
+ *   1s-reenvio. La cotización con un número que ya existe, cerrada en vuelo
+ *       (Ventas): el botón que abre la ventana gira, y el rechazo se dice a su
+ *       lado, como manda a leerlo el aviso de arriba; reabrir no lo borra.
+ *       Después el reenvío corregido, otra vez cerrado en vuelo: el aviso de
+ *       arriba vuelve a «Volver a cargar» y el toque lo espera. Antes se
+ *       quedaba en «igual», recargaba a los 160 ms y dejaba su PDF suelto.
+ *   1s-cronograma-sin-respuesta. El cronograma cerrado en vuelo cuya respuesta
+ *       no llega (Diseño, a 390): junto a «Subir cronograma», que no se sabe si
+ *       quedó.
+ *   1s-orden-pdf. El PDF de la orden, que sube al elegirlo (Administración):
+ *       «Volver a cargar» espera a que quede anotado. Recargaba a los 180 ms.
+ *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
- * las cinco de arriba; 1s, las dos).
+ * las cinco de arriba; 1s, las cinco).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -1884,6 +1898,209 @@ if (corre('1s-cronograma')) {
   corte.despliegue = false
   corte.conservaIds = false
   comprobar(errores.length === 0, `[Diseño 1280] 1s-cronograma. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1s-reenvio. «No entró», y el reenvío corregido en camino (Ventas)
+// La cotización con un número que ya existe, cerrada en vuelo: el rechazo se
+// quedaba dentro de la ventana cerrada, y arriba se mandaba a leer «el aviso
+// junto a su botón», que no estaba (A, H7 y R2 de la trigesimocuarta pasada).
+// Después, la persona corrige y la sube otra vez: «Volver a cargar igual» se
+// quedaba puesto, recargaba a los 160 ms con el reenvío en camino y dejaba su
+// PDF suelto (F3 de la crítica).
+if (corre('1s-reenvio')) {
+  const [{ numero: usado }] = await consulta(`select numero from cotizaciones_pdf order by creado_en limit 1`)
+  const numero = `QA-REENVIO-COT-${sello}`
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.ventas])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const sueltos = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'cotizaciones-pdf' and o.owner_id = $1 and o.created_at >= $2
+        and not exists (select 1 from cotizaciones_pdf c where c.ruta_storage = o.name)`, [yo, desde])).map((o) => o.name)
+  const cotizaciones = async () => Number((await consulta(`select count(*) n from cotizaciones_pdf where numero = $1`, [numero]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas, { width: 1280, height: 900 }, { compilacion: true })
+  await ir(pagina, `${BASE}/cotizaciones/pdf`)
+  await hastaLaPestanaNueva(pagina, corte)
+  await marcarDocumento(pagina)
+  const abrirla = pagina.getByRole('button', { name: 'Subir cotización' }).first()
+  const junto = abrirla.locator('xpath=..')
+  const llenar = async (n) => {
+    await abrirla.click()
+    const d = pagina.getByRole('dialog').first()
+    await d.waitFor({ timeout: 20000 })
+    await d.locator('#cot-archivo').setInputFiles({ name: `reenvio-${sello}-${n.length}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COTIZACION ${n}`, 'Semirremolque de banco']) })
+    const subir = d.getByRole('button', { name: 'Subir y mandar a Gerencia' })
+    await pagina.waitForTimeout(1500)
+    await hasta(async () => !/Leyendo/.test(await d.innerText()) && (await subir.isEnabled()), Boolean, 30000)
+    await d.locator('#cot-numero').fill(n)
+    await d.locator('#cot-monto').fill('1000')
+    await d.locator('#cot-moneda').selectOption('USD')
+    await d.locator('#cot-igv').selectOption('no')
+    if (await d.locator('#cot-cliente').count()) await d.locator('#cot-cliente').selectOption({ index: 1 })
+    if (await d.locator('#cot-carroceria').count()) await d.locator('#cot-carroceria').selectOption({ index: 1 })
+    return { d, subir }
+  }
+
+  // A. El número repetido, con la ventana cerrada mientras va.
+  let { d, subir } = await llenar(usado)
+  corte.marca = usado
+  await subir.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  const ocupadoEnVuelo = (await abrirla.getAttribute('aria-disabled')) === 'true'
+  const sigue = await loQueDescribe(abrirla)
+  await botonDeArriba(pagina, 'Volver a cargar').click()
+  await pagina.waitForTimeout(1000)
+  corte.soltar()
+  const porque = await hasta(() => sinRecargar(pagina), (t) => t === NO_ENTRO, 20000)
+  const alerta = limpio(await hasta(() => junto.locator('[role="alert"]').innerText().catch(() => ''), Boolean, 10000))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1s-reenvio-rechazo.png') })
+  comprobar(ocupadoEnVuelo && sigue === 'La cotización se sigue enviando: lo que conteste se dice aquí.',
+    `[Ventas 1280] 1s-reenvio. cerrada en vuelo, «Subir cotización» gira y dice que sigue (ocupado ${ocupadoEnVuelo}, «${sigue}»)`)
+  comprobar(porque === NO_ENTRO && alerta.startsWith('La cotización que se estaba enviando no se registró: Ya hay una cotización con el número') && (await mismoDocumento(pagina)),
+    `[Ventas 1280] 1s-reenvio. arriba manda a leer el aviso junto a su botón, y ese aviso está: «${alerta}»`)
+  comprobar((await hasta(sueltos, (l) => l.length === 0, 10000)).length === 0,
+    `[Ventas 1280] 1s-reenvio. el PDF del rechazo no queda suelto`)
+
+  // B. Reabrir no lo borra; el reenvío corregido, otra vez cerrado en vuelo.
+  ;({ d, subir } = await llenar(numero))
+  const sigueAlReabrir = await junto.locator('[role="alert"]').count()
+  corte.marca = numero
+  await subir.click()
+  await hasta(() => corte.retenidas, (n) => n > 1, 30000)
+  await d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  const boton = pagina.locator('[data-pestana-vieja]').getByRole('button').first()
+  const dice = limpio(await boton.innerText())
+  const porqueAhora = await sinRecargar(pagina)
+  await boton.click()
+  await pagina.waitForTimeout(3000)
+  const esperaba = await mismoDocumento(pagina)
+  const enCamino = (await sueltos()).length
+  await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), corte.soltar()])
+  await quieta(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1s-reenvio.png') })
+  comprobar(sigueAlReabrir === 1, `[Ventas 1280] 1s-reenvio. reabrir la ventana no borra el motivo (${sigueAlReabrir} aviso junto al botón)`)
+  comprobar(dice === 'Volver a cargar' && porqueAhora === '',
+    `[Ventas 1280] 1s-reenvio. con el reenvío en camino, el aviso de arriba ya no dice «no entró» y el botón vuelve a esperar («${dice}», «${porqueAhora}»)`)
+  comprobar(esperaba && enCamino === 1,
+    `[Ventas 1280] 1s-reenvio. el toque espera el reenvío (mismo documento ${esperaba}, PDF subido y sin anotar todavía: ${enCamino})`)
+  const quedan = await hasta(sueltos, (l) => l.length === 0, 10000)
+  comprobar(!(await mismoDocumento(pagina)) && (await cotizaciones()) === 1 && quedan.length === 0,
+    `[Ventas 1280] 1s-reenvio. cuando entra, recarga: la cotización quedó y nada suelto (${await cotizaciones()} cotización, ${quedan.length} sueltos)`)
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Ventas 1280] 1s-reenvio. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1s-cronograma-sin-respuesta. Cerrada en vuelo, la respuesta no llega (Diseño, a 390)
+// El mismo hallazgo en otra de las cuatro cadenas: sin respuesta, lo que dice
+// cómo terminó estaba dentro de la ventana cerrada. Ahora va junto a «Subir
+// cronograma», sin «no se registró»: pudo entrar.
+if (corre('1s-cronograma-sin-respuesta')) {
+  const [orden] = await consulta(`select id, plan_etapas_manual from ordenes_trabajo
+                                  where cotizacion_pdf_id is null and estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR') order by numero desc limit 1`)
+  if (orden.plan_etapas_manual) {
+    await base.query('begin')
+    await base.query(`set local session_replication_role = replica`)
+    await base.query(`update ordenes_trabajo set plan_etapas_manual = false where id = $1`, [orden.id])
+    await base.query('commit')
+  }
+  const actividad = `Sin respuesta del cronograma ${sello}`
+  const libro = new ExcelJS.Workbook()
+  const hoja = libro.addWorksheet('Cronograma')
+  hoja.addRow(['Área', 'Actividad', 'Referencia', 'Peso (%)', 'Inicio', 'Fin'])
+  hoja.addRow(['Acabados', actividad, null, 0, null, null])
+  const excel = join(archivos, `cronograma-sin-respuesta-${sello}.xlsx`)
+  await libro.xlsx.writeFile(excel)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, CELULAR, { compilacion: true })
+  await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=actividades`)
+  const abrirla = pagina.getByRole('button', { name: 'Subir cronograma' })
+  const junto = abrirla.locator('xpath=..')
+  await abrirla.click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor({ timeout: 20000 })
+  await v.locator(`#cronograma-${orden.id}`).setInputFiles(excel)
+  const cargar = v.getByRole('button', { name: 'Cargar 1 actividad' })
+  await cargar.waitFor({ timeout: 15000 })
+  await v.getByRole('checkbox').uncheck().catch(() => {})
+  corte.marca = actividad
+  corte.perder = actividad
+  await cargar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await v.getByRole('button', { name: 'Cerrar', exact: true }).click()
+  const ocupadoEnVuelo = (await abrirla.getAttribute('aria-disabled')) === 'true'
+  const sigue = await loQueDescribe(abrirla)
+  corte.soltar()
+  const alerta = limpio(await hasta(() => junto.locator('[role="alert"]').innerText().catch(() => ''), Boolean, 20000))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1s-cronograma-sin-respuesta-390.png') })
+  comprobar(ocupadoEnVuelo && sigue === 'El cronograma se sigue enviando: lo que conteste se dice aquí.',
+    `[Diseño 390] 1s-cronograma-sin-respuesta. cerrada en vuelo, «Subir cronograma» gira y dice que sigue (ocupado ${ocupadoEnVuelo}, «${sigue}»)`)
+  comprobar(corte.perdidas === 1 && alerta.startsWith('El cronograma que se estaba enviando: No llegó la respuesta'),
+    `[Diseño 390] 1s-cronograma-sin-respuesta. sin respuesta, junto a su botón dice que no se sabe si quedó, sin «no se registró»: «${alerta}»`)
+  comprobar((await abrirla.getAttribute('aria-disabled')) !== 'true',
+    `[Diseño 390] 1s-cronograma-sin-respuesta. ya contestó: el botón vuelve a abrir la ventana`)
+  // El envío siguiente, con la ventana abierta y la respuesta a tiempo: el motivo de antes se va.
+  hoja.getRow(2).getCell(2).value = `${actividad} otra vez`
+  await libro.xlsx.writeFile(excel)
+  await abrirla.click()
+  await v.waitFor({ timeout: 20000 })
+  const sigueAlReabrir = await junto.locator('[role="alert"]').count()
+  await v.locator(`#cronograma-${orden.id}`).setInputFiles(excel)
+  await cargar.waitFor({ timeout: 15000 })
+  await v.getByRole('checkbox').uncheck().catch(() => {})
+  await cargar.click()
+  const verde = limpio(await hasta(() => junto.locator('[role="status"]').allInnerTexts().then((l) => l.join(' ')), (t) => /Cronograma cargado|actividad/i.test(t), 30000))
+  const alertaDespues = await junto.locator('[role="alert"]').count()
+  comprobar(sigueAlReabrir === 1 && alertaDespues === 0 && verde !== '',
+    `[Diseño 390] 1s-cronograma-sin-respuesta. reabrir no borra el motivo; el envío siguiente, al entrar, sí (al reabrir ${sigueAlReabrir}, después ${alertaDespues}; «${verde}»)`)
+  comprobar(errores.length === 0, `[Diseño 390] 1s-cronograma-sin-respuesta. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1s-orden-pdf. El PDF de la orden, que sube al elegirlo (Administración)
+// Iba fuera de `mientrasSeEnvia`: «Volver a cargar» recargaba a los 180 ms, y
+// el PDF quedaba cortado o subido sin anotar (C, H5 y R1 de la trigesimocuarta).
+// Ahora espera a que quede anotado. Se detiene la acción que lo anota.
+if (corre('1s-orden-pdf')) {
+  const [ot] = await consulta(
+    `select o.id, o.numero from ordenes_trabajo o
+     where o.cotizacion_pdf_id is null and o.estado <> 'ANULADA'
+       and not exists (select 1 from ot_adjuntos a where a.orden_id = o.id and a.tipo = 'ORDEN') order by o.numero desc limit 1`,
+  )
+  const nombre = `orden-espera-${sello}.pdf`
+  const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.administracion])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const sueltos = async () =>
+    (await consulta(`select o.name from storage.objects o where o.bucket_id = 'adjuntos-ot' and o.owner_id = $1 and o.created_at >= $2
+        and not exists (select 1 from ot_adjuntos a where a.ruta_storage = o.name)`, [yo, desde])).map((o) => o.name)
+  const anotados = async () => Number((await consulta(`select count(*) n from ot_adjuntos where orden_id = $1 and tipo = 'ORDEN' and nombre_archivo = $2`, [ot?.id, nombre]))[0].n)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  await ir(pagina, `${BASE}/ordenes/${ot?.id}`)
+  const campo = pagina.locator(`input[type="file"]#subir-pdf-${ot?.id}, #subir-pdf-${ot?.id} input[type="file"]`).first()
+  if (!ot || (await campo.count()) === 0) {
+    comprobar(false, `[Administración 1280] 1s-orden-pdf. hay una orden sin PDF que ofrezca «Subir el PDF de la orden» (${ot?.numero ?? 'ninguna'})`)
+  } else {
+    await hastaLaPestanaNueva(pagina, corte)
+    await marcarDocumento(pagina)
+    corte.marca = nombre
+    await campo.setInputFiles({ name: nombre, mimeType: 'application/pdf', buffer: pdfConTexto([`Orden ${ot.numero}`, `Espera ${sello}`]) })
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await botonDeArriba(pagina, 'Volver a cargar').click()
+    await pagina.waitForTimeout(3000)
+    const esperaba = await mismoDocumento(pagina)
+    const enCamino = (await sueltos()).length
+    await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), corte.soltar()])
+    await quieta(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1s-orden-pdf.png') })
+    comprobar(esperaba && enCamino === 1,
+      `[Administración 1280] 1s-orden-pdf. con el PDF de la orden subido y sin anotar todavía, «Volver a cargar» espera (mismo documento ${esperaba}, sin anotar: ${enCamino})`)
+    const quedan = await hasta(sueltos, (l) => l.length === 0, 10000)
+    comprobar(!(await mismoDocumento(pagina)) && (await anotados()) === 1 && quedan.length === 0,
+      `[Administración 1280] 1s-orden-pdf. cuando queda anotado, recarga: la orden tiene su PDF y nada suelto (${await anotados()} anotado, ${quedan.length} sueltos)`)
+  }
+  corte.despliegue = false
+  corte.conservaIds = false
+  comprobar(errores.length === 0, `[Administración 1280] 1s-orden-pdf. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

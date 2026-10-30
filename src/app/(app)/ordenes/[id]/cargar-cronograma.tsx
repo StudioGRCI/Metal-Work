@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 
+import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -60,6 +61,10 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [excel, setExcel] = useState<{ ok: true } | { ok: false; error: string } | { ok: false; incierto: true } | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
+  const fuera = useEnvioDeLaVentana()
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
 
   function abrir() {
     setArchivo(null)
@@ -114,6 +119,13 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     // entró no recarga encima de su aviso. Recargaba a los 180 ms y el Excel
     // quedaba subido sin anotar (D17 y crítica de la trigesimotercera pasada).
     iniciar(() => mientrasSeEnvia(async (entro) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar()
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       try {
         const datos = new FormData()
         datos.set('orden_id', ordenId)
@@ -132,7 +144,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         )
         const r = await cargarCronograma(null, datos)
         if (!r.ok) {
-          setError(r.error)
+          noEntro(r.error)
           return
         }
 
@@ -159,9 +171,10 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
       } catch (e) {
         // Lo mismo que en useAccion: sin señal, la pantalla entera caía y se
         // perdía el Excel leído.
-        setError(explicarFallo(e))
+        noEntro(explicarFallo(e))
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
     }))
   }
@@ -169,41 +182,44 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   return (
     <>
       <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton variante="secundario" tamano="sm" onClick={abrir}>
-          <CalendarRange aria-hidden className="size-3.5" />
+        <Boton variante="secundario" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <CalendarRange aria-hidden className="size-3.5" />}
           Subir cronograma
         </Boton>
-        {aviso && (
-          <span role="status" className="text-xs">
-            <span className="font-medium text-exito">{aviso}</span>
-            {excel?.ok && (
-              <>
-                {' '}El Excel quedó guardado en la orden:{' '}
-                <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
-                  verlo en Resumen
-                </Link>
-                .
-              </>
-            )}
-            {excel && !excel.ok && 'incierto' in excel && (
-              <span className="font-medium text-aviso">
-                {' '}No se sabe si el Excel quedó guardado:{' '}
-                <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
-                  míralo en Resumen
-                </Link>{' '}
-                antes de volver a subirlo.
-              </span>
-            )}
-            {excel && !excel.ok && 'error' in excel && (
-              <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
-            )}
-          </span>
-        )}
+        {/* Montada siempre: cerrada en vuelo, es lo único que dice que entró. */}
+        <span role="status" className={aviso ? 'text-xs' : 'sr-only'}>
+          {aviso && <span className="font-medium text-exito">{aviso}</span>}
+          {excel?.ok && (
+            <>
+              {' '}El Excel quedó guardado en la orden:{' '}
+              <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
+                verlo en Resumen
+              </Link>
+              .
+            </>
+          )}
+          {excel && !excel.ok && 'incierto' in excel && (
+            <span className="font-medium text-aviso">
+              {' '}No se sabe si el Excel quedó guardado:{' '}
+              <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
+                míralo en Resumen
+              </Link>{' '}
+              antes de volver a subirlo.
+            </span>
+          )}
+          {excel && !excel.ok && 'error' in excel && (
+            <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
+          )}
+        </span>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="El cronograma" />
       </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={() => {
+          fuera.cerrar()
+          setAbierto(false)
+        }}
         titulo="Subir el cronograma"
         descripcion="Un Excel con una fila por actividad: Área, Actividad, Referencia, Peso (%), Inicio y Fin. Con las fechas, cada supervisor ve qué le toca reportar y qué se atrasó. Nada se carga hasta que confirmes."
         ancho="lg"

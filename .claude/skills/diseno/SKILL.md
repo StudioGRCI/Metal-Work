@@ -310,7 +310,13 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   cuándo entró (`entro()`); si alguno volvió rechazado, sin respuesta o con un
   error, no recarga encima de su aviso (se llevaba «Pon al menos a una
   persona…» a los 90 ms): dice arriba que se lea el aviso junto a su botón, y
-  el botón pasa a «Volver a cargar igual», que recarga sin esperar. A los 10 s
+  el botón pasa a «Volver a cargar igual», que ya no espera lo que estaba en
+  camino ni lo que no entró, pero sí lo que se envíe después (`cuentaDeEnvios`,
+  con sus pruebas en `envios-en-camino.test.mjs`): tras un «no entró», el
+  reenvío corregido recargaba a los 160 ms y dejaba su PDF suelto (F3 de la
+  trigesimocuarta). Un envío nuevo devuelve el aviso a «Volver a cargar»
+  (`alEmpezarUnEnvio`), fuera de la transición que envía: dentro, React lo
+  pintaba cuando el envío ya había vuelto. A los 10 s
   sin respuesta, lo mismo, diciendo que si entra la pantalla se recarga sola. Si
   lo que entró lleva a otra pantalla, no recarga encima: la cortaba y dejaba la
   de antes, vacía, con el reporte ya dentro (D13 e Importante 2). Si a los 15 s
@@ -319,9 +325,21 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   o adonde redirigió la acción), no a la de antes, que ofrecía enviarlo otra
   vez (F2 de la trigesimotercera). Toda cadena escrita a mano que envía por su
   cuenta, fuera de `useAccion` (subir y anotar, una planilla fila por fila, un
-  conteo por tandas), va dentro de `mientrasSeEnvia(async (entro) => …)` y llama
-  a `entro()` solo si todo entró: si no, «Volver a cargar» recargaba en el acto
-  con la cotización o el Excel del cronograma subidos y sin anotar (D17). Ya
+  conteo por tandas, el PDF de la orden que sube al elegirlo), va dentro de
+  `mientrasSeEnvia(async (entro) => …)` y llama a `entro()` solo si todo entró:
+  si no, «Volver a cargar» recargaba en el acto con la cotización, el Excel del
+  cronograma o el PDF de la orden subidos y sin anotar (D17; C, H5 y R1 de la
+  trigesimocuarta). Si esa cadena envía desde una ventana, lleva
+  `useEnvioDeLaVentana`, lo de `useFotosDelEnvio` sin fotos: cerrada en vuelo,
+  el botón que la abre gira y `EstadoDelEnvio` dice a su lado que sigue y, si no
+  entró, por qué («La cotización que se estaba enviando no se registró: …»). Su
+  rechazo se quedaba dentro de la ventana cerrada, y arriba se mandaba a leer
+  «el aviso junto a su botón», que no estaba (A, H7 y R2). Ese motivo no se
+  borra al reabrir la ventana; lo cambia la vuelta del envío siguiente, no su
+  salida, que va en la transición y se pintaba tarde, junto al verde nuevo. El
+  aviso de arriba es una región no atómica (`aria-atomic="false"`): al cambiar
+  por qué no recargó, el lector releía sus 53 palabras antes de la frase nueva
+  (E de la trigesimocuarta). Ya
   sabida vieja, nada sube a Storage: los ayudantes del navegador
   (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
   nueva, la cotización, el plano por área, la salida de la planilla y las fotos

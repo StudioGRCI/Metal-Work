@@ -8,6 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { cn } from '@/lib/utils'
 import { hayVentanaAbierta } from '@/lib/ventanas-abiertas'
 import {
+  alEmpezarUnEnvio,
   anotarLaCompilacionDeLaPestana,
   anotarQueHuboUnDespliegue,
   desdeQueSeVa,
@@ -259,6 +260,16 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
     return () => clearTimeout(tope)
   }, [idaDesde])
 
+  // Tras «no entró», la persona corrige y lo envía otra vez: el aviso ya no es
+  // de este envío, y el botón vuelve a esperar (F3 de la crítica de la
+  // trigesimocuarta pasada). Lo que sigue en camino o la ida que tarda, no.
+  // Fuera de la transición que envía: dentro, React lo pintaba cuando el envío
+  // ya había vuelto.
+  useEffect(
+    () => alEmpezarUnEnvio(() => queueMicrotask(() => setSinRecargar((antes) => (antes === 'no-entro' ? null : antes)))),
+    [],
+  )
+
   function recargar() {
     // Antes, lo que la pantalla subió y nadie va a nombrar (`alVolverACargar`).
     const igual = sinRecargar !== null
@@ -304,7 +315,9 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
   return (
     <>
       {anunciar ? (
-        <div role="status" className="print:hidden" data-region-pestana-vieja>
+        // No atómica: al cambiar por qué no recargó, el lector leía otra vez
+        // las 53 palabras de arriba antes de la frase nueva (E de la trigesimocuarta).
+        <div role="status" aria-atomic="false" className="print:hidden" data-region-pestana-vieja>
           {contenido}
         </div>
       ) : (

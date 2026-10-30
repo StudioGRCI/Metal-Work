@@ -7,6 +7,7 @@ import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/l
 import { comprimirFoto } from '@/lib/comprimir-foto'
 import {
   esDeLaVersionAnterior,
+  FALLO_DEL_SERVIDOR,
   laPestanaEsDeLaVersionAnterior,
   laPestanaEsDeOtraCuenta,
   OtraCuentaEnLaPestana,
@@ -316,6 +317,53 @@ export function useFotosDelEnvio(bucket: string, clave?: string) {
     idDelEstado,
     seCerroAlEnviar: () => Boolean(intento.current?.sinVentana),
   }
+}
+
+/**
+ * Lo de `useFotosDelEnvio` para una cadena escrita a mano que envía desde una
+ * ventana (subir y anotar la cotización, su corrección, el código y la OT, el
+ * cronograma): si la ventana se cierra mientras va, el botón que la abre gira y
+ * `EstadoDelEnvio` dice junto a él que sigue y, si no entró, por qué. Su rechazo
+ * se quedaba dentro de la ventana cerrada, y «Volver a cargar» mandaba a leer
+ * un aviso junto a su botón que no estaba (A, H7 y R2 de la trigesimocuarta
+ * pasada). Ese desenlace se queda hasta que vuelve el envío siguiente: reabrir
+ * la ventana no lo borra.
+ *
+ * Uso: `empezar()` al salir la cadena devuelve con qué decir cómo terminó
+ * (`null` si entró); `cerrar()` va en el `alCerrar` de la ventana; el botón que
+ * la abre lleva `ocupado` mientras `sigue` y `aria-describedby` con
+ * `idDelEstado`.
+ */
+export function useEnvioDeLaVentana() {
+  const [desenlace, setDesenlace] = useState<Desenlace | null>(null)
+  const [sigue, setSigue] = useState(false)
+  const idDelEstado = useId()
+  const intento = useRef<{ sinVentana: boolean; termino: boolean } | null>(null)
+
+  // El desenlace de antes se cambia cuando este vuelve, no al salir: lo de la
+  // transición que envía React lo pinta recién después de ponerse al día, y el
+  // verde de este salía junto al rechazo del anterior.
+  function empezar() {
+    const este = { sinVentana: false, termino: false }
+    intento.current = este
+    return (motivo: string | null) => {
+      este.termino = true
+      if (este.sinVentana) setSigue(false)
+      if (!este.sinVentana || !motivo) return setDesenlace(null)
+      // Sin respuesta, o el servidor cayó a medio camino: pudo entrar.
+      const enDuda = pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
+      setDesenlace({ tono: enDuda ? 'en-duda' : 'no-entro', motivo })
+    }
+  }
+
+  function cerrar() {
+    const enCurso = intento.current
+    if (!enCurso || enCurso.termino) return
+    enCurso.sinVentana = true
+    setSigue(true)
+  }
+
+  return { desenlace, sigue, idDelEstado, empezar, cerrar }
 }
 
 /**

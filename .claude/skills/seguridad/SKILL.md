@@ -149,7 +149,13 @@ En la misma migración que la crea, sin excepción:
   `subirAdjunto`, los archivos de subcontratos, planilla y finanzas, la orden
   nueva, la cotización, el plano, la salida de la planilla y las fotos) mira
   `laPestanaEsDeLaVersionAnterior()` antes de tocar Storage (vigesimonovena y
-  trigésima). Que el id de la acción cambie no es lo de siempre: la clave dura
+  trigésima). Toda cadena que sube y anota desde el navegador, también el PDF
+  de la orden que sube al elegirlo, va dentro de `mientrasSeEnvia` y llama a
+  `entro()` solo cuando quedó anotado: si no, «Volver a cargar», el del aviso de
+  la pestaña de otro despliegue, la cortaba y dejaba el archivo subido sin
+  anotar (D17; C, H5 y R1 de la trigesimocuarta). «Volver a cargar igual» deja
+  de esperar solo lo que ofreció no esperar, nunca lo que salió después
+  (`cuentaDeEnvios`, F3). Que el id de la acción cambie no es lo de siempre: la clave dura
   14 días y Vercel la conserva, así que el despliegue de todos los días se
   reconoce por la compilación que contesta el servidor
   (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban

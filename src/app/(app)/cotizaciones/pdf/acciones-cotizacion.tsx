@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } f
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
+import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -150,6 +151,10 @@ export function CorregirCotizacion({
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
+  const fuera = useEnvioDeLaVentana()
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
   const campoArchivo = useRef<HTMLInputElement>(null)
   // Al volver de un rechazo, el cursor va al aviso: la ventana estuvo trabada.
   const avisoError = useRef<HTMLParagraphElement>(null)
@@ -238,6 +243,13 @@ export function CorregirCotizacion({
     // despliegue, espera a que la corrección vuelva, y si no entró no recarga
     // (D17 de la trigesimotercera pasada, en «Subir cotización»).
     iniciar(() => mientrasSeEnvia(async (entro) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar()
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
@@ -245,14 +257,14 @@ export function CorregirCotizacion({
         // La pestaña ya se sabe de antes del último despliegue: lo que lo
         // registraría no va a entrar, así que ni se sube (trigésima pasada).
         if (laPestanaEsDeLaVersionAnterior()) {
-          setError(SE_ACTUALIZO_EL_SISTEMA)
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
           return
         }
         const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -281,7 +293,7 @@ export function CorregirCotizacion({
         })
         subido = false
         if (!r.ok) {
-          setError(r.error)
+          noEntro(r.error)
           return
         }
         setAbierto(false)
@@ -292,28 +304,35 @@ export function CorregirCotizacion({
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
         // ventana dice que no se guardó: al volver, el cursor va ahí.
         if (e instanceof OtraCuentaEnLaPestana) {
-          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
           return
         }
         // Lo que se cae acá es la subida: la corrección todavía no se anotó.
         if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
-        setError('No se pudo subir la corrección. Vuelve a intentar.')
+        noEntro('No se pudo subir la corrección. Vuelve a intentar.')
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
     }))
   }
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={abrir}>
-        <RefreshCw aria-hidden className="size-3.5" />
-        {rechazada ? 'Subir corrección' : 'Editar cotización'}
-      </Boton>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <RefreshCw aria-hidden className="size-3.5" />}
+          {rechazada ? 'Subir corrección' : 'Editar cotización'}
+        </Boton>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La corrección" femenino />
+      </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={() => {
+          fuera.cerrar()
+          setAbierto(false)
+        }}
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
@@ -525,6 +544,10 @@ export function CargarCodigoYOt({
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
+  const fuera = useEnvioDeLaVentana()
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
   // Al volver de un rechazo, el cursor va al número repetido o al código que no
   // sirve, que se dicen junto a su campo, o al aviso: la ventana estuvo trabada.
   // Lo del código salía en el aviso de abajo, lejos del campo (vigesimoquinta pasada).
@@ -628,6 +651,13 @@ export function CargarCodigoYOt({
     // despliegue, espera a que la OT vuelva; si no entró no recarga, y si entró
     // deja que vaya a su tarjeta (D17 de la trigesimotercera pasada).
     iniciar(() => mientrasSeEnvia(async (entro) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar()
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       // El identificador de la orden se decide acá para que el PDF viaje a su
       // carpeta antes de que la orden exista: así la base las crea juntas.
@@ -638,14 +668,14 @@ export function CargarCodigoYOt({
         // La pestaña ya se sabe de antes del último despliegue: lo que lo
         // registraría no va a entrar, así que ni se sube (trigésima pasada).
         if (laPestanaEsDeLaVersionAnterior()) {
-          setError(SE_ACTUALIZO_EL_SISTEMA)
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
           return
         }
         const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf', quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -668,7 +698,7 @@ export function CargarCodigoYOt({
         })
         subido = false
         if (!r.ok) {
-          setError(r.error)
+          noEntro(r.error)
           return
         }
         setAbierto(false)
@@ -695,28 +725,35 @@ export function CargarCodigoYOt({
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
         // ventana dice que no se guardó: al volver, el cursor va ahí.
         if (e instanceof OtraCuentaEnLaPestana) {
-          setError(NO_SE_GUARDO_OTRA_CUENTA)
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
           return
         }
         // Lo que se cae acá es la subida: todavía no se guardó.
         if (subido) await quitarConLaCuenta(() => supabase.storage.from('adjuntos-ot').remove([ruta]))
-        setError('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
+        noEntro('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
     }))
   }
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={abrir}>
-        <Hash aria-hidden className="size-3.5" />
-        Dar código y cargar la OT
-      </Boton>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <Hash aria-hidden className="size-3.5" />}
+          Dar código y cargar la OT
+        </Boton>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La OT" femenino />
+      </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={() => {
+          fuera.cerrar()
+          setAbierto(false)
+        }}
         titulo={`Código interno y OT de la ${numero}`}
         descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
         ancho="panoramico"

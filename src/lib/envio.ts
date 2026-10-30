@@ -4,6 +4,7 @@ import { startTransition, useEffect, useRef, useState, useSyncExternalStore, use
 import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
+import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
 import { alCerrarLaVentana, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
@@ -139,36 +140,33 @@ export function alVolverACargar(quitar: () => unknown) {
  * si entraba, la pantalla vacía invitaba a subirlo otra vez (trigesimoprimera
  * pasada).
  */
-let enviosEnCamino = 0
-let alVolverLosEnvios: Array<() => void> = []
-// Mientras «Volver a cargar» espera: si alguno vuelve sin `entro()`, no recarga.
-let esperaDeLaRecarga: { noEntro: boolean } | null = null
+const envios = cuentaDeEnvios()
+const alEmpezar = new Set<() => void>()
+
+/** Avisa cada vez que sale un envío (`mientrasSeEnvia`). Devuelve con qué dejar de avisar. */
+export function alEmpezarUnEnvio(avisar: () => void) {
+  alEmpezar.add(avisar)
+  return () => void alEmpezar.delete(avisar)
+}
 
 /**
  * `enviar` llama a `entro()` cuando lo enviado entró: con un rechazo, sin
  * respuesta o con un error, «Volver a cargar» no recarga encima de su aviso
- * (trigesimosegunda pasada).
+ * (trigesimosegunda pasada). Lo que sale después de un «no entró» se espera
+ * también con «Volver a cargar igual» (`cuentaDeEnvios`).
  */
 export async function mientrasSeEnvia<T>(enviar: (entro: () => void) => Promise<T>): Promise<T> {
-  enviosEnCamino++
+  const volvio = envios.salir()
+  for (const avisar of alEmpezar) avisar()
   let entro = false
   try {
     return await enviar(() => {
       entro = true
     })
   } finally {
-    if (!entro && esperaDeLaRecarga) esperaDeLaRecarga.noEntro = true
-    enviosEnCamino--
-    if (enviosEnCamino === 0) {
-      const ahora = alVolverLosEnvios
-      alVolverLosEnvios = []
-      for (const listo of ahora) listo()
-    }
+    volvio(entro)
   }
 }
-
-const losEnviosVolvieron = () =>
-  enviosEnCamino === 0 ? Promise.resolve() : new Promise<void>((listo) => alVolverLosEnvios.push(listo))
 
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
 // carga entera, y «Volver a cargar» no recarga encima la de antes. Se guarda
@@ -213,28 +211,22 @@ export type SinRecargar = 'se-va' | 'no-entro'
 /**
  * Recarga la pantalla después de lo de `alVolverACargar`, cuando lo que está en
  * camino ya volvió y entró. Si pasan 10 s, `alTardar`: la persona puede seguir
- * esperando o volver a pedirlo con `igual`, que recarga sin esperar. Antes
- * recargaba al tope con el envío en camino y la pantalla volvía vacía con el
- * reporte dentro.
+ * esperando o volver a pedirlo con `igual`, que ya no espera lo que estaba en
+ * camino (ni lo que no entró): solo lo que se envió después. Antes recargaba al
+ * tope con el envío en camino y la pantalla volvía vacía con el reporte dentro.
  */
 export async function volverACargar({ igual = false, alTardar }: { igual?: boolean; alTardar?: () => void } = {}): Promise<SinRecargar | null> {
-  if (!igual) {
-    const espera = { noEntro: false }
-    esperaDeLaRecarga = espera
-    const tarda = setTimeout(() => alTardar?.(), 10_000)
-    try {
-      await losEnviosVolvieron()
-    } finally {
-      clearTimeout(tarda)
-      if (esperaDeLaRecarga === espera) esperaDeLaRecarga = null
-    }
-    // Si la ida no llega, el toque siguiente va a su destino (`irAlDestino`).
-    if (seVaDeLaPantalla) {
-      seVaDeLaPantalla = false
-      idaDesde = Date.now()
-      return 'se-va'
-    }
-    if (espera.noEntro) return 'no-entro'
+  const noEntro = await envios.esperar({ igual, alTardar })
+  // Si la ida no llega, el toque siguiente va a su destino (`irAlDestino`).
+  if (seVaDeLaPantalla) {
+    seVaDeLaPantalla = false
+    idaDesde = Date.now()
+    envios.ofrecer()
+    return 'se-va'
+  }
+  if (noEntro) {
+    envios.ofrecer()
+    return 'no-entro'
   }
   const quitar = Promise.allSettled([...antesDeRecargar].map(async (q) => q()))
   await Promise.race([quitar, new Promise((listo) => setTimeout(listo, 4000))])
@@ -260,6 +252,10 @@ function irAlDestino() {
  */
 export const motivoDelFallo = (e: unknown, motivo: string) => (esDeLaVersionAnterior(e) ? SE_ACTUALIZO_EL_SISTEMA : motivo)
 
+/** El servidor cayó a medio envío: pudo entrar, y se pide mirar antes de repetirlo. */
+export const FALLO_DEL_SERVIDOR =
+  'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
+
 /**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
  * devolver su resultado. Sin esto la excepción llegaba al límite de error: la
@@ -275,7 +271,7 @@ export function explicarFallo(e: unknown): string {
   console.error(e)
   if (esDeLaVersionAnterior(e)) return SE_ACTUALIZO_EL_SISTEMA
   if (e instanceof TypeError || (typeof navigator !== 'undefined' && !navigator.onLine)) return SIN_RESPUESTA
-  return 'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
+  return FALLO_DEL_SERVIDOR
 }
 
 type Opciones = {
