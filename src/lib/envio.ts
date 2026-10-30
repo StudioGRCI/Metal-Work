@@ -188,33 +188,11 @@ export function dichoJuntoAlBoton<F extends object>(accion: F): F {
   return accion
 }
 
-// La última ida que espera a que no quede nada en camino (`irCuandoQuedeLibre`).
-let idaQueEspera: (() => void) | null = null
-
 /**
- * Lleva a otra pantalla, o recarga, cuando ya no queda nada en camino ni
- * ninguna ventana abierta: «Dar código y cargar la OT» recargaba para ir a su
- * tarjeta con otra OT en camino o escrita en su ventana, y esa se perdía sin
- * aviso, a veces con su PDF suelto (X1 de la crítica de la trigesimoquinta
- * pasada). Si mientras tanto se pide otra, vale la última.
+ * Cuántos envíos siguen en camino (`mientrasSeEnvia`), contando el que pregunta
+ * si va dentro de uno.
  */
-export function irCuandoQuedeLibre(ir: () => void) {
-  idaQueEspera = ir
-  void (async () => {
-    for (;;) {
-      await envios.quedeNada()
-      if (idaQueEspera !== ir) return
-      if (!hayVentanaAbierta()) break
-      await new Promise<void>((listo) => {
-        if (!alCerrarLaVentana(listo)) listo()
-      })
-    }
-    idaQueEspera = null
-    // Con la sesión de otra cuenta, recargar pintaría su pantalla: espera a que vuelva la tuya.
-    if (laPestanaEsDeOtraCuenta()) cuandoVuelvaLaCuenta(ir)
-    else ir()
-  })()
-}
+export const enviosEnCamino = () => envios.cuantos()
 
 // Un envío que entró y lleva a otra pantalla, después de un despliegue: Next la
 // carga entera, y «Volver a cargar» no recarga encima la de antes. Se guarda

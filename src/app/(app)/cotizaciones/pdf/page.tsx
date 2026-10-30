@@ -16,7 +16,7 @@ import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
-import { CargarCodigoYOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -193,7 +193,14 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         titulo="Cotización"
         ayuda="Ventas sube la cotización, Gerencia la aprueba y Administración le da el código interno de la unidad y sube su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
-        estado={puedeSubir && <EstadoDeSubirCotizacion />}
+        estado={
+          (puedeSubir || cargaOt) && (
+            <>
+              {puedeSubir && <EstadoDeSubirCotizacion />}
+              {cargaOt && <EstadoDeLaOt />}
+            </>
+          )
+        }
       />
 
       {params.descarga === 'fallo' && (

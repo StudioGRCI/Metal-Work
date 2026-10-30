@@ -155,14 +155,21 @@ En la misma migración que la crea, sin excepción:
   la pestaña de otro despliegue, la cortaba y dejaba el archivo subido sin
   anotar (D17; C, H5 y R1 de la trigesimocuarta). «Volver a cargar igual» deja
   de esperar solo lo que ofreció no esperar, nunca lo que salió después
-  (`cuentaDeEnvios`, F3). Lo que se va de la pantalla sin recargar también
-  espera: la ida a la tarjeta de la OT recién cargada (`irCuandoQuedeLibre`)
-  aguarda a que no quede nada en camino ni ventana abierta, y solo la última
-  ida pedida sale; antes cortaba el envío de otra tarjeta y dejaba su archivo
-  subido sin anotar (X1 de la trigesimoquinta). El desenlace de un envío de
-  ventana se guarda por su clave hasta que lo reemplace otro o se recargue la
-  pestaña (`useEstadoCompartido` con `guardar`): con el botón desmontado se
-  perdía, y quien no lo vio lo enviaba de nuevo. Que el id de la acción cambie no es lo de siempre: la clave dura
+  (`cuentaDeEnvios`, F3). Una ida que la aplicación hace sola tras un envío
+  no recarga y no espera: la de la tarjeta de la OT recién cargada sale en el
+  acto, sin recargar, solo si ese es el único envío en camino, la persona sigue
+  en Cotización y nada más está abierto ni con el cursor; si no, lo dice el
+  encabezado con «Ver su tarjeta» (`vaSolaALaTarjeta`). Recargar cortaba el
+  envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
+  trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía
+  minutos después desde otra pantalla y se llevaba lo escrito allí (Y1 de la
+  trigesimosexta). El desenlace de un envío de ventana escrita a mano
+  (`useEnvioDeLaVentana`) y el de la subida del PDF de la orden se guardan por
+  su clave hasta que los reemplace otro o se recargue la pestaña
+  (`useEstadoCompartido` con `guardar`): con el botón desmontado se perdía, y
+  quien no lo vio lo enviaba de nuevo. Lo que solo dice que algo se hizo («PDF
+  corregido guardado.») no se guarda: volvía horas después diciendo qué PDF
+  vale aunque otro hubiera subido uno (Y2). Que el id de la acción cambie no es lo de siempre: la clave dura
   14 días y Vercel la conserva, así que el despliegue de todos los días se
   reconoce por la compilación que contesta el servidor
   (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban

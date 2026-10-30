@@ -75,13 +75,13 @@ export function cuentaDeEnvios() {
     },
 
     /**
-     * Espera a que no quede nada en camino, también lo que salga mientras, sin
-     * ofrecer nada ni contar lo que no entró: es la ida a la tarjeta de la OT
-     * recién cargada, que recargaba encima de otro envío (X1 de la crítica de la
-     * trigesimoquinta pasada).
+     * Cuántos siguen en camino, contando el que pregunta si va dentro. La ida a
+     * la tarjeta de la OT recién cargada sale solo si va sola: esperar a que los
+     * demás volvieran la dejaba armada, y salía minutos después desde otra
+     * pantalla (Y1 de la crítica de la trigesimosexta pasada).
      */
-    async quedeNada() {
-      if (enCamino.size > 0) await new Promise<void>((listo) => esperan.push({ desde: 0, listo }))
+    cuantos() {
+      return enCamino.size
     },
 
     /** El aviso ofrece no esperar lo que ya salió («Volver a cargar igual»). */

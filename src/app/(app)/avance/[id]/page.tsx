@@ -59,10 +59,10 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
       {/* El título es el nombre de la unidad, no su placa: hay carrocerías que
           se construyen sobre chasis todavía sin matricular. El número de la
           orden queda a la vista en la descripción, que es como se pide por
-          teléfono. */}
+          teléfono. Sin `clientes.ver` el cliente no llega, y se leía «null». */}
       <EncabezadoPagina
         titulo={nombreDeUnidad(orden)}
-        descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
+        descripcion={[orden.numero, orden.cliente, orden.descripcion].filter(Boolean).join(' · ')}
         acciones={
           registra && (
             <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} estadoAparte />

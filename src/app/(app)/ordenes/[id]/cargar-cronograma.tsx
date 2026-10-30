@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 
-import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, useEnvioDeLaVentana, useLoQueDiceLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -20,6 +20,56 @@ import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 import { cargarCronograma } from './acciones-actividades'
 
 const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+type ExcelDelCronograma = { ok: true } | { ok: false; error: string } | { ok: false; incierto: true }
+
+// Donde se dice lo del envío (`EstadoDelCronograma`), al que apunta el botón ocupado.
+const idDelEstado = (ordenId: string) => `estado-del-cronograma-${ordenId}`
+
+/**
+ * Lo del cronograma que entró, o que salió con la ventana cerrada y cómo
+ * terminó: en su renglón, arriba del cuerpo de la tarjeta y no junto al botón.
+ * Al aparecer corría «Subir cronograma» 346 px y lo bajaba de línea (D3 de la
+ * trigesimosexta pasada); y con «Nueva tarea» abierta el botón no está, pero
+ * esto sí: arriba ya no se manda a leer un aviso que no se ve (D4).
+ */
+export function EstadoDelCronograma({ ordenId }: { ordenId: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
+  const [excel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
+  const { sigue, desenlace } = useLoQueDiceLaVentana(`cronograma:${ordenId}`)
+  // Las regiones están siempre montadas: se ocultan, no se quitan.
+  const hay = Boolean(aviso || sigue || desenlace)
+  return (
+    <div className={hay ? 'mb-3 flex flex-col gap-1 text-pretty' : 'sr-only'}>
+      {/* Cerrada en vuelo, es lo único que dice que entró. */}
+      <span role="status" className={aviso ? 'text-xs' : 'sr-only'}>
+        {aviso && <span className="font-medium text-exito">{aviso}</span>}
+        {excel?.ok && (
+          <>
+            {' '}El Excel quedó guardado en la orden:{' '}
+            <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
+              verlo en Resumen
+            </Link>
+            .
+          </>
+        )}
+        {excel && !excel.ok && 'incierto' in excel && (
+          <span className="font-medium text-aviso">
+            {' '}No se sabe si el Excel quedó guardado:{' '}
+            <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
+              míralo en Resumen
+            </Link>{' '}
+            antes de volver a subirlo.
+          </span>
+        )}
+        {excel && !excel.ok && 'error' in excel && (
+          <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
+        )}
+      </span>
+      <EstadoDelEnvio id={idDelEstado(ordenId)} sigue={sigue} desenlace={desenlace} registro="El cronograma" />
+    </div>
+  )
+}
 
 /**
  * Por qué no quedó el Excel, sin repetir «No se pudo subir el archivo» y
@@ -59,17 +109,14 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   // Lo que entró, con la pantalla de la orden: si «Nueva tarea» o una pestaña
   // desmontan el botón con la ventana cerrada en vuelo, se dice cuando vuelve.
-  const [aviso, setAviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
+  const [, setAviso] = useEstadoCompartido<string | null>(`cronograma:${ordenId}:aviso`, null, { guardar: true })
   // Lo del Excel va aparte: si no quedó, se lee como aviso y no como el éxito del cronograma.
-  const [excel, setExcel] = useEstadoCompartido<{ ok: true } | { ok: false; error: string } | { ok: false; incierto: true } | null>(
-    `cronograma:${ordenId}:excel`,
-    null,
-    { guardar: true },
-  )
+  const [, setExcel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
-  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
-  const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice en
+  // el renglón de la tarjeta (`EstadoDelCronograma`).
+  const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`, { idDelEstado: idDelEstado(ordenId) })
   // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
   const ocupado = fuera.sigue || (enviando && !abierto)
 
@@ -132,9 +179,9 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     // despliegue, espera a que vuelvan el cronograma y su Excel, y si algo no
     // entró no recarga encima de su aviso. Recargaba a los 180 ms y el Excel
     // quedaba subido sin anotar (D17 y crítica de la trigesimotercera pasada).
-    iniciar(() => mientrasSeEnvia(async (entro) => {
+    iniciar(() => mientrasSeEnvia(async (entro, decirArriba) => {
       // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
-      const terminar = fuera.empezar()
+      const terminar = fuera.empezar(decirArriba)
       let comoTermino: string | null = null
       const noEntro = (porque: string) => {
         comoTermino = porque
@@ -164,7 +211,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
         // El cronograma ya entró: lo del Excel es de más, y si falla se dice,
         // pero no se pierde el aviso de lo que sí quedó.
-        let guardado: typeof excel = null
+        let guardado: ExcelDelCronograma | null = null
         if (guardarExcel && archivo) {
           try {
             const subida = await pasoTrasLoQueQuedo(() => subirAdjunto(ordenId, archivo, 'CRONOGRAMA'))
@@ -195,38 +242,10 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
 
   return (
     <>
-      <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton variante="secundario" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
-          {!ocupado && <CalendarRange aria-hidden className="size-3.5" />}
-          Subir cronograma
-        </Boton>
-        {/* Montada siempre: cerrada en vuelo, es lo único que dice que entró. */}
-        <span role="status" className={aviso ? 'text-xs' : 'sr-only'}>
-          {aviso && <span className="font-medium text-exito">{aviso}</span>}
-          {excel?.ok && (
-            <>
-              {' '}El Excel quedó guardado en la orden:{' '}
-              <Link href={`/ordenes/${ordenId}?vista=resumen`} className="font-medium text-acento underline">
-                verlo en Resumen
-              </Link>
-              .
-            </>
-          )}
-          {excel && !excel.ok && 'incierto' in excel && (
-            <span className="font-medium text-aviso">
-              {' '}No se sabe si el Excel quedó guardado:{' '}
-              <Link href={`/ordenes/${ordenId}?vista=resumen`} className="underline">
-                míralo en Resumen
-              </Link>{' '}
-              antes de volver a subirlo.
-            </span>
-          )}
-          {excel && !excel.ok && 'error' in excel && (
-            <span className="font-medium text-aviso"> El Excel no quedó guardado en la orden. {excel.error}</span>
-          )}
-        </span>
-        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="El cronograma" />
-      </span>
+      <Boton variante="secundario" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+        {!ocupado && <CalendarRange aria-hidden className="size-3.5" />}
+        Subir cronograma
+      </Boton>
 
       <Ventana
         abierta={abierto}

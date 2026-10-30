@@ -136,7 +136,12 @@ type Intento = { fotos: FotoLista[]; sinVentana: boolean; termino: boolean }
  * se sabe (no llegó la respuesta), o ya había quedado la primera vez. Y, donde
  * nada más lo dice, que entró (`useEnvioDeLaVentana` con `alEntrar`).
  */
-export type Desenlace = { tono: 'no-entro' | 'en-duda' | 'ya-entro' | 'entro'; motivo: string }
+export type Desenlace = {
+  tono: 'no-entro' | 'en-duda' | 'ya-entro' | 'entro'
+  motivo: string
+  /** Lo que entró vale mientras la pantalla siga así (`useEnvioDeLaVentana` con `ahora`). */
+  mientras?: string
+}
 
 const CORTADO_OTRA_CUENTA = 'en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a enviarlo.'
 
@@ -343,7 +348,10 @@ export function useFotosDelEnvio(bucket: string, clave?: string, aparte?: string
  * cómo terminó. Si se desmonta con la ventana abierta, cuenta como cerrada.
  * `alEntrar`, para la que no tiene otro aviso de que entró: lo que se dice
  * junto al botón cuando entra con la ventana cerrada («La corrección que se
- * estaba enviando quedó guardada…»; diseño H2 y funcionalidad H4).
+ * estaba enviando quedó guardada…»; diseño H2 y funcionalidad H4), y
+ * `mientras`, cómo queda la pantalla con eso: el verde se calla en cuanto
+ * `ahora` dice otra cosa. «Gerencia revisa esta versión» seguía en verde junto a
+ * la cotización que Gerencia ya había rechazado (D1 de la trigesimosexta pasada).
  *
  * Uso: `empezar()` al salir la cadena devuelve con qué decir cómo terminó
  * (`null` si entró); `cerrar()` va en todo lo que cierra la ventana (también su
@@ -352,7 +360,14 @@ export function useFotosDelEnvio(bucket: string, clave?: string, aparte?: string
  * Si `EstadoDelEnvio` va en otro lugar (el renglón de estado del encabezado,
  * con `useLoQueDiceLaVentana`), `idDelEstado` es el que lleva allí.
  */
-export function useEnvioDeLaVentana(clave: string, { alEntrar, idDelEstado: aparte }: { alEntrar?: string; idDelEstado?: string } = {}) {
+export function useEnvioDeLaVentana(
+  clave: string,
+  {
+    alEntrar,
+    ahora,
+    idDelEstado: aparte,
+  }: { alEntrar?: { dice: string; mientras?: string }; ahora?: string; idDelEstado?: string } = {},
+) {
   const [desenlace, setDesenlace] = useEstadoCompartido<Desenlace | null>(`${clave}:desenlace`, null, { guardar: true })
   const [sigue, setSigue] = useEstadoCompartido(`${clave}:sigue`, false, { guardar: true })
   const propio = useId()
@@ -376,7 +391,12 @@ export function useEnvioDeLaVentana(clave: string, { alEntrar, idDelEstado: apar
   // El desenlace de antes se cambia cuando este vuelve, no al salir: lo de la
   // transición que envía React lo pinta recién después de ponerse al día, y el
   // verde de este salía junto al rechazo del anterior.
-  function empezar() {
+  //
+  // `decirArriba`, el `noEntro` de `mientrasSeEnvia`: lo que no entró con la
+  // ventana cerrada lo dice también el aviso de arriba, si espera para volver a
+  // cargar. Mandaba a leer «el aviso junto a su botón» con el botón desmontado
+  // por «Nueva tarea» o una búsqueda (D4 de la trigesimosexta pasada).
+  function empezar(decirArriba?: (motivo: string) => void) {
     const este: IntentoDeLaVentana = { sinVentana: false, termino: false }
     intentosDeLaVentana.set(clave, este)
     return (motivo: string | null) => {
@@ -384,10 +404,12 @@ export function useEnvioDeLaVentana(clave: string, { alEntrar, idDelEstado: apar
       if (intentosDeLaVentana.get(clave) === este) intentosDeLaVentana.delete(clave)
       if (este.sinVentana) setSigue(false)
       if (!este.sinVentana) return setDesenlace(null)
-      if (!motivo) return setDesenlace(alEntrar ? { tono: 'entro', motivo: alEntrar } : null)
+      if (!motivo) return setDesenlace(alEntrar ? { tono: 'entro', motivo: alEntrar.dice, mientras: alEntrar.mientras } : null)
       // La pestaña es de antes del último despliegue: «copia lo escrito» no
       // tiene dónde, la ventana se abre vacía (funcionalidad H5).
-      if (motivo === SE_ACTUALIZO_EL_SISTEMA) return setDesenlace({ tono: 'no-entro', motivo: SE_ACTUALIZO_SIN_VENTANA })
+      const dicho = motivo === SE_ACTUALIZO_EL_SISTEMA ? SE_ACTUALIZO_SIN_VENTANA : motivo
+      decirArriba?.(dicho)
+      if (motivo === SE_ACTUALIZO_EL_SISTEMA) return setDesenlace({ tono: 'no-entro', motivo: dicho })
       // Sin respuesta, o el servidor cayó a medio camino: pudo entrar.
       const enDuda = pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
       setDesenlace({ tono: enDuda ? 'en-duda' : 'no-entro', motivo })
@@ -401,7 +423,15 @@ export function useEnvioDeLaVentana(clave: string, { alEntrar, idDelEstado: apar
     setSigue(true)
   }
 
-  return { desenlace, sigue, idDelEstado, empezar, cerrar }
+  // Lo que entró ya no es como quedó: se calla. No vuelve, porque `ahora` no
+  // regresa a lo de antes.
+  const vigente = desenlace?.tono === 'entro' && desenlace.mientras !== undefined && desenlace.mientras !== ahora ? null : desenlace
+
+  // Si la ventana del envío en curso se cerró mientras iba: lo que esté abierto
+  // o con el cursor ahora es de otra cosa.
+  const seCerroMientrasIba = () => Boolean(intentosDeLaVentana.get(clave)?.sinVentana)
+
+  return { desenlace: vigente, sigue, idDelEstado, empezar, cerrar, seCerroMientrasIba }
 }
 
 /** Lo que `useEnvioDeLaVentana(clave)` dice, para pintarlo lejos del botón (el encabezado). */

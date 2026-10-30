@@ -262,9 +262,9 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     // despliegue, espera a que la cotización vuelva, y si no entró no recarga.
     // Recargaba a los 120 ms, con la subida o el registro en camino, y la
     // cotización no quedaba sin que nada lo dijera (D17 de la trigesimotercera).
-    iniciar(() => mientrasSeEnvia(async (entro) => {
+    iniciar(() => mientrasSeEnvia(async (entro, decirArriba) => {
       // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
-      const terminar = fuera.empezar()
+      const terminar = fuera.empezar(decirArriba)
       let comoTermino: string | null = null
       const noEntro = (porque: string) => {
         comoTermino = porque
@@ -707,12 +707,15 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             </div>
           )}
 
+          </fieldset>
+
           {error && !errorNumero && (
             <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
               {error}
             </p>
           )}
 
+          {/* Fuera de lo trabado: «Cancelar» cierra también mientras se envía, como la X (D2 de la trigesimosexta pasada). */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
@@ -721,7 +724,6 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               Subir y mandar a Gerencia
             </Boton>
           </div>
-          </fieldset>
           </div>
           <aside aria-label="Vista previa de la cotización" className="flex min-h-[22rem] flex-col overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie-2 lg:min-h-0">
             <div className="border-b border-borde px-4 py-3">

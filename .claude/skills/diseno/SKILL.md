@@ -343,20 +343,31 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   de la orden se llevaban el botón con el desenlace, y lo que contestaba no se
   decía en ningún lado (diseño H1 y X2 de la trigesimoquinta). «Cancelar» y la
   ✕ cierran por el mismo `cerrar()` del hook: «Cancelar» en vuelo dejaba el
-  botón sin girar y el rechazo sin decir (realización H1). Si lo que entró se
-  dice en la página y no en la ventana, `alEntrar` lo dice en verde junto al
-  botón («La corrección que se estaba enviando quedó guardada…»): la corrección
-  cerrada en vuelo que sí entraba no lo decía en ningún lado. Donde el botón
-  está en el encabezado de la página (subir cotización, registrar avance,
-  reportar un trabajo), su estado va en la fila `estado` de
-  `EncabezadoPagina`, debajo, no al lado: el texto que aparecía junto al botón
-  lo corría de sitio con el dedo encima (H3). Si el rechazo de una ventana de
-  `useAccion` cerrada en vuelo no se dice en ningún otro lado, `noEntro(motivo)`
-  lo lleva al aviso de arriba («Lo que enviaste no entró, o no se sabe si
-  entró: …»), en vez de mandar a leer un aviso que no está (funcionalidad H1).
-  La ida a la tarjeta de la OT recién cargada (`irCuandoQuedeLibre`) espera a
-  que no quede nada en camino ni ventana abierta: recargaba encima del envío de
-  otra tarjeta y dejaba su archivo suelto (X1). El
+  botón sin girar y el rechazo sin decir (realización H1); por eso el pie de
+  la ventana va fuera del `fieldset` trabado (D2 de la trigesimosexta). Si lo
+  que entró se dice en la página y no en la ventana, `alEntrar` lo dice en
+  verde junto al botón («La corrección que se estaba enviando quedó
+  guardada…»): la corrección cerrada en vuelo que sí entraba no lo decía en
+  ningún lado. Si ese verde afirma cómo está algo que otro puede cambiar
+  («Gerencia revisa esta versión»), lleva `mientras` y el hook `ahora`: se
+  calla en cuanto la pantalla dice otra cosa (la cotización ya rechazada
+  seguía con el verde; D1 de la trigesimosexta). Donde el botón está en el
+  encabezado de la página (subir cotización, registrar avance, reportar un
+  trabajo), su estado va en la fila `estado` de `EncabezadoPagina`, debajo, no
+  al lado: el texto que aparecía junto al botón lo corría de sitio con el dedo
+  encima (H3). Lo mismo en la cabecera de una tarjeta: el estado del
+  cronograma va en su renglón arriba del cuerpo (`EstadoDelCronograma`), que
+  además sigue a la vista con «Nueva tarea» abierta (D3 y D4). Si el rechazo
+  de una ventana cerrada en vuelo no se dice en ningún otro lado, va al aviso
+  de arriba («Lo que enviaste no entró, o no se sabe si entró: …»), en vez de
+  mandar a leer un aviso que no está: `noEntro(motivo)` en `useAccion`
+  (funcionalidad H1), y en las cadenas a mano `empezar(decirArriba)`, con el
+  `noEntro` de `mientrasSeEnvia` (D4). La ida a la tarjeta de la OT recién
+  cargada sale en el acto o no sale, y nunca recarga: va con `router.push` y
+  el resaltado (`target:`) se pone cambiando lo de después de «#»
+  (`irALaTarjeta`). Si no puede ir sin llevarse otra cosa (otro envío en
+  camino, otra ventana abierta, el cursor en un campo, otra pantalla), el
+  encabezado lo dice con «Ver su tarjeta» (Y1, F1 y D6). El
   aviso de arriba es una región no atómica (`aria-atomic="false"`): al cambiar
   por qué no recargó, el lector releía sus 53 palabras antes de la frase nueva
   (E de la trigesimocuarta). Ya

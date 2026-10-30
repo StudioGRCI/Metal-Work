@@ -70,7 +70,12 @@ export function ArchivosDeOrden({
   const [elegido, setElegido] = useEstadoCompartido<File | null>(`pdf-orden:${ordenId}:elegido`, null, { guardar: true })
   const [avisoSubida, setAvisoSubida] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso-subida`, null, { guardar: true })
   const [error, setError] = useState<string | null>(null)
-  const [aviso, setAviso] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso`, null, { guardar: true })
+  // Lo que se hizo («PDF corregido guardado.», «Se quitó…; vuelve a valer…»)
+  // no es de un envío en camino: se va al salir de la orden. Guardado, volvía
+  // horas después diciendo qué PDF vale aunque otro ya hubiera subido uno
+  // (Y2 de la crítica de la trigesimosexta pasada). Si la subida entra con la
+  // tarjeta desmontada, lo dice la lista, que ya lo trae.
+  const [aviso, setAviso] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso`, null)
   const [, iniciar] = useTransition()
   // El PDF está pero este puesto no lo abre: se dice que está y no se ofrece subir otro.
   const pdfOculto = tienePdf && !adjuntos.some((a) => a.tipo === 'ORDEN')

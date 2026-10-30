@@ -32,7 +32,7 @@ import {
   editarActividad,
   quitarActividad,
 } from './acciones-actividades'
-import { CargarCronograma } from './cargar-cronograma'
+import { CargarCronograma, EstadoDelCronograma } from './cargar-cronograma'
 
 function Error_({ texto }: { texto: string | null }) {
   if (!texto) return null
@@ -157,6 +157,7 @@ export function ActividadesDeOrden({
           }
         />
         <TarjetaCuerpo>
+          {puedeCargarCronograma && <EstadoDelCronograma ordenId={ordenId} />}
           {!esNueva && puedeArmar && !puedeCargarCronograma && (
             <p className="mb-3 text-sm text-texto-suave">
               La orden está cerrada: puedes consultar su avance, pero ya no cargar un cronograma.

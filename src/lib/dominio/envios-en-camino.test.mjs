@@ -141,22 +141,19 @@ test('el motivo de lo que ya se ofreció no esperar no llega a «igual»', async
   assert.deepEqual(await igual, { noEntro: false, motivo: null })
 })
 
-test('quedeNada espera todo lo que está en camino, también lo que sale mientras, y no toca lo ofrecido (X1)', async () => {
+test('cuantos cuenta lo que sigue en camino, también lo que no entró, hasta que vuelve (Y1)', async () => {
   const envios = cuentaDeEnvios()
-  assert.equal(await terminada(envios.quedeNada()), true, 'sin nada en camino no espera')
-
+  assert.equal(envios.cuantos(), 0)
   const a = envios.salir()
-  const libre = envios.quedeNada()
   const b = envios.salir()
+  assert.equal(envios.cuantos(), 2)
+  b(false, 'Ya hay una OT 0001-2026.')
+  assert.equal(envios.cuantos(), 1, 'el que volvió sin entrar ya no está en camino')
+  b(true)
+  assert.equal(envios.cuantos(), 1, 'volver dos veces no cuenta dos')
+  // Lo ofrecido no lo saca de la cuenta: sigue en camino.
+  envios.ofrecer()
+  assert.equal(envios.cuantos(), 1)
   a(true)
-  assert.equal(await terminada(libre), false, 'B salió después y sigue en camino')
-  b(false)
-  assert.equal(await terminada(libre), true)
-
-  // No es una espera de «Volver a cargar»: no ofrece nada ni junta el «no entró».
-  const c = envios.salir()
-  const igual = envios.esperar({ igual: true })
-  assert.equal(await terminada(igual), false, 'lo que salió después de quedeNada se sigue esperando')
-  c(true)
-  assert.deepEqual(await igual, { noEntro: false, motivo: null })
+  assert.equal(envios.cuantos(), 0)
 })
