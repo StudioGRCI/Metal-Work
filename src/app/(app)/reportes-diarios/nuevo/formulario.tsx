@@ -14,6 +14,7 @@ import {
   SE_ACTUALIZO_CON_FOTOS,
   type FotoLista,
 } from '@/components/avance/selector-fotos'
+import { YaQuedo } from '@/components/estructura/ida-que-no-salio'
 import { Boton } from '@/components/ui/boton'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -315,7 +316,7 @@ export function FormularioReporteDiario({
   const enCamino = useRef(new Set<FotoLista>())
   const enDuda = useRef(new Set<string>())
   const [enDudaElAnterior, setEnDudaElAnterior] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(
+  const { alEnviar, enviando, error, resultado } = useEnvio(
     async (previo: unknown, datos: FormData) => {
       const van = secciones.flatMap((s) => s.fotos)
       for (const f of van) enCamino.current.add(f)
@@ -362,14 +363,15 @@ export function FormularioReporteDiario({
       }
       return salida
     },
-    (r, desde) =>
-      navegarSiEsDeLaPestana(router, `/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`, desde, {
-        dice: 'El reporte quedó registrado.',
-        enlace: 'Ver el reporte',
-      }),
+    (r, desde) => {
+      const { url, ...dicho } = idaAlReporte(r.datos?.id ?? ids[0])
+      navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
+    },
     { refrescar: false },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)
+  // Subido, el formulario se traba y lo dice junto al botón, salga la ida o no (`YaQuedo`).
+  const entro = resultado?.ok ? idaAlReporte(resultado.datos?.id ?? ids[0]) : null
   const vieja = usePestanaDeLaVersionAnterior()
 
   // Las fotos ya subidas que nadie va a nombrar si la pantalla se recarga. Se
@@ -544,7 +546,7 @@ export function FormularioReporteDiario({
           Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada).
           Mientras se envía, también: lo elegido o quitado entonces no iba con el
           reporte (vigesimoséptima pasada). */}
-      <fieldset disabled={yaEntro || enviando} className="min-w-0 space-y-6">
+      <fieldset disabled={yaEntro || enviando || Boolean(entro)} className="min-w-0 space-y-6">
         <section aria-labelledby="rd-cabecera" className="space-y-4">
           <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
             El reporte
@@ -687,6 +689,7 @@ export function FormularioReporteDiario({
         )
       )}
       {repetidos.size > 0 && <p className="text-sm text-peligro">Un código va dos veces: junta sus trabajos en uno solo.</p>}
+      <YaQuedo ida={entro} />
       <div className="flex justify-end">
         {yaEntro ? (
           <EnlaceBoton href={`/reportes-diarios/${secciones[0]?.id ?? ids[0]}`} className="w-full sm:w-auto">
@@ -696,7 +699,7 @@ export function FormularioReporteDiario({
           <Boton
             type="submit"
             cargando={enviando}
-            disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0}
+            disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0 || Boolean(entro)}
             className="w-full sm:w-auto"
           >
             {subiendo
@@ -712,6 +715,8 @@ export function FormularioReporteDiario({
     </form>
   )
 }
+
+const idaAlReporte = (id: string) => ({ url: `/reportes-diarios/${id}?subido=1`, dice: 'El reporte quedó registrado.', enlace: 'Ver el reporte' })
 
 /**
  * Un código interno del reporte: el código, sus trabajos con su avance y su

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
+import { YaQuedo } from '@/components/estructura/ida-que-no-salio'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -55,6 +56,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const [numeroEscrito, setNumeroEscrito] = useState('')
   const numeroFinal = comoQuedaElNumero(numeroEscrito)
   const [pendiente, iniciar] = useTransition()
+  // Registrada, la orden queda dicha junto al botón y el formulario trabado,
+  // salga la ida o no: con otra ventana abierta al volver no salía, y el botón
+  // seguía vivo y mudo (`YaQuedo`).
+  const [quedo, setQuedo] = useState<ReturnType<typeof idaALaOrden> | null>(null)
   // Al volver de un rechazo, el cursor va al número o al aviso.
   const avisoError = useRef<HTMLParagraphElement>(null)
   useCursorAlRechazo(pendiente, errorNumero ?? error, () => (errorNumero ? campoNumero.current : avisoError.current))
@@ -215,10 +220,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
         entro()
-        navegarSiEsDeLaPestana(router, `/ordenes/${r.datos?.id ?? ordenId}?creada=1`, desde, {
-          dice: 'La orden quedó registrada.',
-          enlace: 'Ver la orden',
-        })
+        const ida = idaALaOrden(r.datos?.id ?? ordenId)
+        setQuedo(ida)
+        const { url, ...dicho } = ida
+        navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
@@ -238,7 +243,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   return (
     <form onSubmit={enviar} className="max-w-4xl space-y-4">
       {/* Mientras se registra, nada se cambia: la orden sale con lo que se envió. */}
-      <fieldset disabled={pendiente} className="min-w-0 space-y-4">
+      <fieldset disabled={pendiente || Boolean(quedo)} className="min-w-0 space-y-4">
         <Tarjeta>
           <TarjetaCabecera titulo="Cliente y unidad" />
           <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
@@ -499,17 +504,21 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         </p>
       )}
 
+      <YaQuedo ida={quedo} />
+
       <div className="flex justify-end gap-2">
         <EnlaceBoton href="/ordenes" variante="fantasma">
           Cancelar
         </EnlaceBoton>
-        <Boton type="submit" cargando={pendiente}>
+        <Boton type="submit" cargando={pendiente} disabled={Boolean(quedo)}>
           Registrar orden
         </Boton>
       </div>
     </form>
   )
 }
+
+const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
 
 /** Cómo guarda la base el número del papel (migración 20261021110000); `null` si todavía no es un número. */
 function comoQuedaElNumero(escrito: string): string | null {

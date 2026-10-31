@@ -228,6 +228,18 @@
  *   1w-cronograma-entro y 1w-subida-entro. El cronograma (Diseño) y la
  *       cotización (Ventas) cerrados en vuelo que entran con la persona en
  *       otra pestaña o pantalla: al volver se dice, en pasado, que entraron.
+ *   1x-la-que-sale-se-lleva-la-linea. La ida que sí sale se lleva la línea de
+ *       la que no salió antes (Administración, subcontratos).
+ *   1x-trabajo-con-mas y 1x-orden-con-mas. En el teléfono, el trabajo
+ *       (Supervisión) y la orden (Administración) que entran con «Más»
+ *       abierta: el formulario se traba y lo dice junto al botón, un segundo
+ *       toque no manda nada, en otra pantalla lo dice la línea, y llegar a la
+ *       orden por la lista se la lleva.
+ *   1x-clic-derecho y 1x-dedo-que-desplaza. Ni el clic derecho en el menú ni
+ *       el dedo que desplaza desde un enlace son pedir otra pantalla: el
+ *       cliente nuevo va a su ficha.
+ *   1x-enter-y-lector. El menú pedido con Enter o con el clic de un lector de
+ *       pantalla sí lo es: abre Órdenes y la línea lo dice.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
  *       olvida al salir, algo que nadie alcanza con el dedo (R4).
@@ -235,7 +247,8 @@
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
- * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco).
+ * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
+ * 1x, las seis).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -3449,6 +3462,282 @@ if (corre('1w-subida-entro')) {
   comprobar(dice.includes('La cotización que se estaba enviando se subió y se envió a Gerencia.') && !dice.includes('Cotización subida') && (await mismoDocumento(pagina)) && (await subida()) === 1,
     `[Ventas 1280] 1w-subida-entro. la cotización cerrada en vuelo entra con la persona en Clientes: de vuelta en Cotización lo dice en pasado («${dice}»)`)
   comprobar(errores.length === 0, `[Ventas 1280] 1w-subida-entro. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1x. La ida que no sale, del lado de quien la ve (trigesimonovena pasada)
+// La línea de arriba hablaba de A después de que B sí saliera (H1 de diseño),
+// y seguía al llegar a la orden por la lista, sin «?creada=1» (H2). Un
+// formulario de página entera quedaba lleno y con el botón vivo, y un segundo
+// toque registraba otro igual (X1 de la crítica). Y pedir otra pantalla era
+// cualquier `pointerdown` en un enlace: el dedo que desplaza o el clic derecho
+// dejaban la ida sin salir, y el clic de Enter o de un lector de pantalla no
+// contaba (H2 de funcionalidad, X1b y R1).
+const clientePor = (razon) => consulta(`select id from clientes where razon_social = $1`, [razon])
+const rucDe1x = (n) => `20${String(Number(sello) * 11 + n).padStart(9, '0').slice(-9)}`
+/** «Nuevo cliente» por el menú, lleno y sin enviar: su botón. */
+async function clienteLleno(pagina, razon, numero) {
+  await porElMenu(pagina, '/clientes')
+  await porElMenu(pagina, '/clientes/nuevo')
+  await pagina.locator('[name="numero_documento"]').fill(numero)
+  await pagina.locator('[name="razon_social"]').fill(razon)
+  return pagina.getByRole('button', { name: 'Registrar cliente' })
+}
+/** El enlace a `href` que se ve (el menú lateral o la barra de abajo). */
+async function enlaceVisible(pagina, href) {
+  const enlaces = pagina.locator(`a[href="${href}"]`)
+  const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
+  return enlaces.nth(Math.max(visible, 0))
+}
+const yaQuedo = (pagina) => pagina.locator('[data-ya-quedo]').innerText().then(limpio).catch(() => '')
+
+if (corre('1x-la-que-sale-se-lleva-la-linea')) {
+  const quien = await subcontratistaActivo()
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/subcontratos`)
+  await marcarDocumento(pagina)
+  const [marcaA, marcaB] = [`QA_X1A_${sello}`, `QA_X1B_${sello}`]
+  const a = await llenarElSubcontrato(pagina, quien, marcaA)
+  corte.marca = marcaA
+  await a.registrar.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.keyboard.press('Escape')
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  // A entra con B abierta: no se la lleva, lo dice arriba.
+  const b = await llenarElSubcontrato(pagina, quien, marcaB)
+  corte.soltar()
+  await hasta(() => subcontratoDe(marcaA), (l) => l.length === 1, 30000)
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El subcontrato quedó registrado.'), 15000)
+  comprobar(dice === 'El subcontrato quedó registrado. Ver el subcontrato',
+    `[Administración 1280] 1x-la-que-sale-se-lleva-la-linea. A entra con B abierta: arriba lo dice («${dice}»)`)
+  // B, con su ventana abierta y nada tocado, sí sale: la línea de A no la sigue.
+  await b.registrar.click()
+  await hasta(() => subcontratoDe(marcaB), (l) => l.length === 1, 30000)
+  const [scB] = await subcontratoDe(marcaB)
+  await pagina.waitForURL((u) => u.pathname === `/subcontratos/${scB?.id}`, { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  const queda = await idaQueNoSalio(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-la-que-sale-se-lleva-la-linea.png') })
+  comprobar(donde === `/subcontratos/${scB?.id}` && queda === '' && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1x-la-que-sale-se-lleva-la-linea. B sale a su pantalla y la línea de A se va con su salida (${donde}, «${queda}»)`)
+  comprobar(errores.length === 0, `[Administración 1280] 1x-la-que-sale-se-lleva-la-linea. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La crítica, X1a: Supervisión registra un trabajo en el teléfono y abre «Más»
+// mientras va. Antes, al cerrarla, el formulario seguía lleno y vivo, y el
+// segundo toque registraba otro trabajo igual.
+if (corre('1x-trabajo-con-mas')) {
+  const marca = `QA_X1T_${sello}`
+  const trabajos = () => consulta(`select id from flota_unidades where trabajo like $1`, [`${marca}%`])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/avance/trabajos/nueva`)
+  await marcarDocumento(pagina)
+  await pagina.locator('#descripcion').fill(`Cabina de pintura ${sello}`)
+  await pagina.locator('#trabajo').fill(`${marca} trabajo de prueba del banco`)
+  const boton = pagina.getByRole('button', { name: 'Registrar el trabajo' })
+  corte.marca = marca
+  await boton.tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+  const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+  await mas.waitFor({ timeout: 10000 })
+  corte.soltar()
+  await hasta(trabajos, (l) => l.length === 1, 30000)
+  const junto = await hasta(() => yaQuedo(pagina), (t) => t.includes('El trabajo quedó registrado.'), 15000)
+  await pagina.waitForTimeout(1500)
+  await mas.getByRole('button', { name: 'Cerrar', exact: true }).tap()
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  const donde = pagina.url().replace(BASE, '')
+  const arriba = await idaQueNoSalio(pagina)
+  const trabado = (await boton.isDisabled()) && (await pagina.locator('#trabajo').isDisabled())
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-trabajo-con-mas.png') })
+  comprobar(donde === '/avance/trabajos/nueva' && junto === 'El trabajo quedó registrado. Ver el trabajo' && arriba === '' && trabado && (await mismoDocumento(pagina)),
+    `[Supervisión 390] 1x-trabajo-con-mas. el trabajo entra con «Más» abierta: no se la lleva, junto al botón dice que quedó, el formulario se traba y arriba no lo repite (${donde}, «${junto}», arriba «${arriba}», trabado ${trabado})`)
+  // El segundo toque no manda nada.
+  const antes = corte.acciones
+  // Al centro: abajo, la barra de secciones lo tapa, y el toque forzado caía en ella.
+  await boton.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+  await boton.tap({ force: true, timeout: 3000 }).catch(() => {})
+  await pagina.waitForTimeout(4000)
+  const sigue = await yaQuedo(pagina)
+  comprobar(corte.acciones === antes && (await trabajos()).length === 1 && sigue === junto,
+    `[Supervisión 390] 1x-trabajo-con-mas. un segundo toque no manda nada ni registra otro, y lo de junto al botón sigue (${corte.acciones - antes} acciones, ${(await trabajos()).length} trabajo, ${pagina.url().replace(BASE, '')}, «${sigue}»)`)
+  const [t] = await trabajos()
+  await pagina.locator('[data-ya-quedo]').getByRole('link', { name: 'Ver el trabajo' }).tap()
+  await pagina.waitForURL((u) => u.pathname === `/avance/trabajos/${t?.id}`, { timeout: 20000 }).catch(() => {})
+  comprobar(pagina.url().replace(BASE, '') === `/avance/trabajos/${t?.id}` && (await idaQueNoSalio(pagina)) === '',
+    `[Supervisión 390] 1x-trabajo-con-mas. «Ver el trabajo» lleva al trabajo, sin línea arriba (${pagina.url().replace(BASE, '')})`)
+  comprobar(errores.length === 0, `[Supervisión 390] 1x-trabajo-con-mas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La orden, igual, y lo que pasa al irse: en otra pantalla la línea sí lo dice,
+// y llegar a la orden por la lista, sin «?creada=1», también es llegar.
+if (corre('1x-orden-con-mas')) {
+  const [libre] = await numerosLibres(1)
+  const marca = `QA_X1O_${sello}`
+  const ordenes = () => consulta(`select id from ordenes_trabajo where descripcion like $1`, [`${marca}%`])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/ordenes/nueva`)
+  await marcarDocumento(pagina)
+  await pagina.locator('#cliente_id').click()
+  await pagina.getByRole('option').first().click()
+  await pagina.locator('textarea[name="descripcion"]').fill(`${marca} orden de prueba del banco`)
+  await pagina.locator('input[type="file"]').first().setInputFiles({ name: `${marca}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}-${anioDeLima()}`, marca]) })
+  await pagina.waitForTimeout(1500)
+  await pagina.locator('input[name="numero"], #numero').first().fill(String(libre))
+  const boton = pagina.getByRole('button', { name: 'Registrar orden' })
+  corte.marca = marca
+  await boton.tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+  const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+  await mas.waitFor({ timeout: 10000 })
+  corte.soltar()
+  await hasta(ordenes, (l) => l.length === 1, 30000)
+  const junto = await hasta(() => yaQuedo(pagina), (t) => t.includes('La orden quedó registrada.'), 15000)
+  await pagina.waitForTimeout(1500)
+  await mas.getByRole('button', { name: 'Cerrar', exact: true }).tap()
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  const donde = pagina.url().replace(BASE, '')
+  const arriba = await idaQueNoSalio(pagina)
+  const trabado = (await boton.isDisabled()) && (await pagina.locator('textarea[name="descripcion"]').isDisabled())
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-orden-con-mas.png') })
+  comprobar(donde === '/ordenes/nueva' && junto === 'La orden quedó registrada. Ver la orden' && arriba === '' && trabado && (await mismoDocumento(pagina)),
+    `[Administración 390] 1x-orden-con-mas. la orden entra con «Más» abierta: junto al botón dice que quedó y el formulario se traba (${donde}, «${junto}», arriba «${arriba}», trabado ${trabado})`)
+  const antes = corte.acciones
+  // Al centro: abajo, la barra de secciones lo tapa, y el toque forzado caía en ella.
+  await boton.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+  await boton.tap({ force: true, timeout: 3000 }).catch(() => {})
+  await pagina.waitForTimeout(4000)
+  comprobar(corte.acciones === antes && (await ordenes()).length === 1,
+    `[Administración 390] 1x-orden-con-mas. un segundo toque no manda nada (${corte.acciones - antes} acciones, ${(await ordenes()).length} orden)`)
+  // En otra pantalla, la línea de arriba sí lo dice.
+  await porElMenu(pagina, '/ordenes')
+  const enLista = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('La orden quedó registrada.'), 10000)
+  comprobar(enLista === 'La orden quedó registrada. Ver la orden' && (await mismoDocumento(pagina)),
+    `[Administración 390] 1x-orden-con-mas. fuera del formulario, arriba lo dice con su enlace (${pagina.url().replace(BASE, '')}, «${enLista}»${enLista ? '' : `, regiones: ${limpio((await pagina.locator('[role="status"]').allInnerTexts()).join(' | ')).slice(0, 200)}, mismo documento ${await mismoDocumento(pagina)}`})`)
+  // Y llegar por la lista, sin «?creada=1», se la lleva. El banco tiene muchas
+  // órdenes de prueba: se busca por su número, como lo haría la persona.
+  const [o] = await ordenes()
+  await pagina.getByRole('searchbox', { name: 'Buscar órdenes' }).fill(`${libre}-${anioDeLima()}`)
+  await pagina.locator(`a[href="/ordenes/${o?.id}"]`).first().waitFor({ state: 'attached', timeout: 20000 }).catch(() => {})
+  const enBusqueda = await idaQueNoSalio(pagina)
+  await (await enlaceVisible(pagina, `/ordenes/${o?.id}`)).tap()
+  await pagina.waitForURL((u) => u.pathname === `/ordenes/${o?.id}`, { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const queda = await hasta(() => idaQueNoSalio(pagina), (t) => t === '', 5000)
+  comprobar(enBusqueda === 'La orden quedó registrada. Ver la orden' && pagina.url().replace(BASE, '') === `/ordenes/${o?.id}` && queda === '' && (await mismoDocumento(pagina)),
+    `[Administración 390] 1x-orden-con-mas. la línea sigue mientras se busca, y llegar a la orden por la lista se la lleva (${pagina.url().replace(BASE, '')}, buscando «${enBusqueda}», en la orden «${queda}»)`)
+  comprobar(errores.length === 0, `[Administración 390] 1x-orden-con-mas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Lo que no es pedir otra pantalla: el clic derecho en el menú (para abrirlo
+// en otra pestaña) y el dedo que empieza a desplazar sobre un enlace. La ida
+// sale igual.
+if (corre('1x-clic-derecho')) {
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/clientes`)
+  await marcarDocumento(pagina)
+  const razon = `QA_X1D_${sello}`
+  const boton = await clienteLleno(pagina, razon, rucDe1x(1))
+  corte.marca = razon
+  await boton.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await (await enlaceVisible(pagina, '/ordenes')).click({ button: 'right' })
+  await pagina.keyboard.press('Escape')
+  await pagina.waitForTimeout(500)
+  corte.soltar()
+  await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
+  const [c] = await clientePor(razon)
+  await pagina.waitForURL((u) => u.pathname === `/clientes/${c?.id}`, { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  comprobar(donde === `/clientes/${c?.id}` && (await idaQueNoSalio(pagina)) === '' && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1x-clic-derecho. un clic derecho en el menú mientras se guarda no es irse: el cliente va a su ficha (${donde})`)
+  comprobar(errores.length === 0, `[Administración 1280] 1x-clic-derecho. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+if (corre('1x-dedo-que-desplaza')) {
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/clientes`)
+  await marcarDocumento(pagina)
+  const razon = `QA_X1P_${sello}`
+  const boton = await clienteLleno(pagina, razon, rucDe1x(2))
+  // Lo que el navegador manda con el gesto: tiene que apoyar en el enlace y no ser clic.
+  await pagina.evaluate(() => {
+    window.__gesto = []
+    window.addEventListener('pointerdown', (e) => window.__gesto.push(`apoya:${e.target.closest?.('a[href]')?.getAttribute('href') ?? '-'}`), true)
+    window.addEventListener('click', () => window.__gesto.push('clic'), true)
+  })
+  corte.marca = razon
+  await boton.tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  // El dedo apoya en «Cancelar», que lleva a Clientes, y desplaza la pantalla.
+  await pagina.evaluate(() => { window.__gesto = [] })
+  const cancelar = pagina.getByRole('link', { name: 'Cancelar' })
+  const caja = await cancelar.boundingBox()
+  const toque = await contexto.newCDPSession(pagina)
+  const x = caja.x + caja.width / 2
+  const y = caja.y + caja.height / 2
+  await toque.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  for (let i = 1; i <= 10; i++) {
+    await toque.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - i * 30 }] })
+    await pagina.waitForTimeout(16)
+  }
+  await toque.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await pagina.waitForTimeout(500)
+  const gesto = await pagina.evaluate(() => window.__gesto.join(' '))
+  corte.soltar()
+  await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
+  const [c] = await clientePor(razon)
+  await pagina.waitForURL((u) => u.pathname === `/clientes/${c?.id}`, { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-dedo-que-desplaza.png') })
+  comprobar(gesto.includes('apoya:/clientes') && !gesto.includes('clic') && donde === `/clientes/${c?.id}` && (await idaQueNoSalio(pagina)) === '' && (await mismoDocumento(pagina)),
+    `[Administración 390] 1x-dedo-que-desplaza. el dedo que desplaza desde un enlace mientras se guarda no es irse: el cliente va a su ficha (${donde}, gesto «${gesto}»)`)
+  comprobar(errores.length === 0, `[Administración 390] 1x-dedo-que-desplaza. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Y lo que sí es: el clic en el menú con Enter, o el de un lector de pantalla
+// (`element.click()`, sin `pointerdown`). Antes la ida se llevaba la pantalla
+// pedida.
+if (corre('1x-enter-y-lector')) {
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/clientes`)
+  await marcarDocumento(pagina)
+  const modos = [
+    ['enter', async (enlace) => { await enlace.focus(); await pagina.keyboard.press('Enter') }],
+    ['lector', (enlace) => enlace.evaluate((a) => a.click())],
+  ]
+  for (const [modo, pedir] of modos) {
+    const razon = `QA_X1${modo === 'enter' ? 'E' : 'L'}_${sello}`
+    const boton = await clienteLleno(pagina, razon, rucDe1x(modo === 'enter' ? 3 : 4))
+    const antes = corte.retenidas
+    corte.marca = razon
+    await boton.click()
+    await hasta(() => corte.retenidas, (n) => n > antes, 30000)
+    await pedir(await enlaceVisible(pagina, '/ordenes'))
+    await pagina.waitForTimeout(1000)
+    corte.soltar()
+    await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
+    await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(3000)
+    const donde = pagina.url().replace(BASE, '')
+    const dice = await idaQueNoSalio(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-1x-${modo}.png`) })
+    comprobar(donde === '/ordenes' && dice === 'El cliente quedó registrado. Ver el cliente' && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1x-enter-y-lector. el menú pedido con ${modo === 'enter' ? 'Enter' : 'el clic de un lector de pantalla'} mientras se guarda abre Órdenes, y arriba lo dice (${donde}, «${dice}»)`)
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('button', { name: 'Quitar este aviso' }).click().catch(() => {})
+    await hasta(() => pagina.locator('[data-ida-que-no-salio]').count(), (n) => n === 0, 5000)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1x-enter-y-lector. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

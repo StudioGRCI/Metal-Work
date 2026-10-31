@@ -224,12 +224,29 @@ export function useEnviosEnCamino() {
 let tocoEn = -1
 let pidioIrEn = -1
 if (typeof window !== 'undefined') {
-  const anotar = (e: Event) => {
+  const anotar = () => {
     tocoEn = performance.now()
-    const pide = e.type === 'pointerdown' || (e as KeyboardEvent).key === 'Enter'
-    if (pide && e.target instanceof Element && e.target.closest('a[href]')) pidioIrEn = tocoEn
   }
   for (const tipo of ['pointerdown', 'keydown'] as const) window.addEventListener(tipo, anotar, true)
+  // Pedir otra pantalla es el clic que la abre en esta pestaña, también el de
+  // Enter y el de un lector de pantalla, que llega sin pointerdown. No lo es el
+  // dedo que desplaza empezando sobre un enlace, que no termina en clic
+  // (funcionalidad H2 de la trigesimonovena pasada), ni el clic derecho (X1 de
+  // su crítica), ni el que abre otra pestaña o un enlace a esta misma pantalla:
+  // la persona sigue aquí, esperando el envío.
+  window.addEventListener(
+    'click',
+    (e) => {
+      anotar()
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+      const enlace = e.target instanceof Element ? e.target.closest('a[href]') : null
+      if (!(enlace instanceof HTMLAnchorElement) || enlace.hasAttribute('download') || (enlace.target && enlace.target !== '_self')) return
+      const destino = new URL(enlace.href)
+      if (destino.origin === location.origin && destino.pathname === location.pathname && destino.search === location.search) return
+      pidioIrEn = tocoEn
+    },
+    true,
+  )
 }
 
 /** La última vez que la persona tocó la pantalla o una tecla (`performance.now()`). */
@@ -267,8 +284,12 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
   return !hayVentanaAbierta() && tocoEn <= (cuandoSeCerro(desde.ventana) ?? Number.POSITIVE_INFINITY)
 }
 
-/** Lo que entró y adónde lleva, cuando su ida no salió (`navegarSiEsDeLaPestana`). */
-export type IdaQueNoSalio = { dice: string; enlace: string; url: string }
+/**
+ * Lo que entró y adónde lleva, cuando su ida no salió (`navegarSiEsDeLaPestana`).
+ * `dichaEn`: la dirección del formulario de página entera que ya lo dice junto
+ * a su botón (`YaQuedo`); mientras la persona siga ahí, arriba no se repite.
+ */
+export type IdaQueNoSalio = { dice: string; enlace: string; url: string; dichaEn?: string }
 let idaQueNoSalio: IdaQueNoSalio | null = null
 const alCambiarLaIda = new Set<() => void>()
 
@@ -1229,17 +1250,29 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  * `Partida` que `useAccion` le da a `alTerminar`). Si no, `siNoVa` lo dice
  * arriba con su enlace (`IdaQueNoSalio`): «El subcontrato quedó registrado. Ver
  * el subcontrato». Sin `siNoVa` no se dice: la ida era lo que la persona pidió
- * (abrir un aviso), y ya pidió otra cosa.
+ * (abrir un aviso), y ya pidió otra cosa. Con `juntoAlBoton`, el formulario de
+ * página entera ya lo dice junto a su botón trabado (`YaQuedo`), y arriba se
+ * calla mientras la persona siga en él.
+ *
+ * La ida que sí sale se lleva la línea de antes: quedaba sobre la pantalla del
+ * segundo subcontrato hablando del primero, y se leía como suya (H1 de diseño y
+ * H3 de funcionalidad de la trigesimonovena pasada).
  */
 export function navegarSiEsDeLaPestana(
   router: { push(url: string): void },
   url: string,
   desde: Partida,
-  siNoVa?: { dice: string; enlace: string },
+  siNoVa?: { dice: string; enlace: string; juntoAlBoton?: boolean },
 ) {
   const siVa = () => {
-    if (laIdaSigueEnPie(desde)) return true
-    if (siNoVa) ponerIdaQueNoSalio({ ...siNoVa, url })
+    if (laIdaSigueEnPie(desde)) {
+      ponerIdaQueNoSalio(null)
+      return true
+    }
+    if (siNoVa) {
+      const { juntoAlBoton, ...dicho } = siNoVa
+      ponerIdaQueNoSalio({ ...dicho, url, dichaEn: juntoAlBoton ? desde.direccion : undefined })
+    }
     return false
   }
   if (!laPestanaEsDeOtraCuenta()) {

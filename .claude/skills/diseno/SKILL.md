@@ -387,16 +387,38 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `useAccion` y `useEnvio` le dan a `alTerminar` (o `partida()` tomada antes de
   una cadena a mano): sale solo si nada de lo que la persona hizo mientras se
   enviaba dice otra cosa (`laIdaSigueEnPie`). No sale si cambió la dirección
-  («Atrás», un filtro, una búsqueda), si pulsó un enlace (el menú, un aviso),
-  si hay otra ventana abierta, o si la ventana del envío se cerró y después
-  tocó algo. Antes salía igual: cerrar «Nuevo subcontrato» en vuelo y abrir
-  otro se llevaba lo escrito en el segundo, y el menú pedido terminaba en el
-  subcontrato (W1 de la trigesimoctava). Cuando no sale, `IdaQueNoSalio`, una
-  línea arriba de la página, dice lo que pasó con su enlace («El subcontrato
-  quedó registrado. Ver el subcontrato»); se va al seguir el enlace, al llegar
-  a esa pantalla por otro camino o al quitarla, y una recarga la olvida. Un
-  `redirect()` de servidor tras guardar no mira nada de eso: el cliente nuevo
-  devuelve su id y el formulario va con `navegarSiEsDeLaPestana`.
+  («Atrás», un filtro, una búsqueda), si hizo clic en un enlace a otra
+  pantalla en esta pestaña (el menú, un aviso; también con Enter o un lector
+  de pantalla), si hay otra ventana abierta, o si la ventana del envío se
+  cerró y después tocó algo. Pedir otra pantalla es ese clic, no el dedo que
+  apoya un enlace para desplazar ni el clic derecho ni abrir en otra pestaña:
+  con `pointerdown` cualquiera de esos dejaba la ida sin salir (H2 de
+  funcionalidad y X1b de la crítica de la trigesimonovena). Antes salía igual:
+  cerrar «Nuevo subcontrato» en vuelo y abrir otro se llevaba lo escrito en
+  el segundo, y el menú pedido terminaba en el subcontrato (W1 de la
+  trigesimoctava). Cuando no sale, `IdaQueNoSalio`, una línea arriba de la
+  página, dice lo que pasó con su enlace («El subcontrato quedó registrado.
+  Ver el subcontrato»); se va al seguir el enlace, al llegar a esa pantalla
+  por otro camino (sin contar lo que la ida le pone para esa vez, como
+  «?creada=1», ni la pestaña elegida: la orden abierta desde la lista también
+  es llegar), con la ida siguiente, salga o no, al quitarla, y una recarga la
+  olvida. La línea vieja seguía hablando de A después de que B sí saliera
+  (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
+  arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
+  trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está
+  haciendo, y nada flota sin que lo pidan; en los formularios de página entera
+  lo dice además `YaQuedo`, junto al botón que se tocó.
+- **Un formulario de página entera** (orden, orden abierta desde Avance,
+  trabajo, cliente, evaluación, reporte diario) se traba al entrar y lo dice
+  junto a su botón con `YaQuedo` («La orden quedó registrada. Ver la orden»),
+  salga la ida o no. Sin eso, con otra ventana abierta al volver («Más» en el
+  teléfono), la ida no salía, la persona volvía al formulario lleno con el
+  botón vivo y un segundo toque registraba otro trabajo igual (X1 de la
+  crítica de la trigesimonovena). Con `juntoAlBoton: true` la línea de arriba
+  calla mientras la persona siga en ese formulario: lo mismo dos veces no;
+  si se va a otra pantalla, la línea sí lo dice allí. Un `redirect()` de
+  servidor tras guardar no mira nada de eso: el cliente nuevo devuelve su id y
+  el formulario va con `navegarSiEsDeLaPestana`.
   Cambiar lo de después de «#» deja la entrada del historial sin el estado de
   Next, y «Atrás» cambiaba la dirección sin cambiar la pantalla: se guarda
   `history.state` antes y se repone después (H1 de los tres auditores). El
