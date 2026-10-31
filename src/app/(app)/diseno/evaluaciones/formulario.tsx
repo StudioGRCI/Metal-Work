@@ -49,7 +49,7 @@ export function FormularioEvaluacion({ inicial, hoy, cargo, nombres }: {
       const { url, ...dicho } = idaALaEvaluacion(resultado.datos?.id ?? id)
       navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
     },
-    { refrescar: false },
+    { refrescar: false, siSeVa: { que: 'la evaluación', enlace: 'Volver a la evaluación' } },
   )
   const entro = envio.resultado?.ok ? idaALaEvaluacion(envio.resultado.datos?.id ?? id) : null
 

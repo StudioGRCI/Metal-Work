@@ -176,7 +176,11 @@ En la misma migración que la crea, sin excepción:
   pasa `siNoVa`: si no sale calla, porque lo que entró ya lo dice el aviso
   (S1 de la trigesimonovena), y salga o no deja la línea que había. Un formulario de página entera, además, se traba al
   entrar y lo dice junto a su botón (`YaQuedo`), salga la ida o no: un
-  segundo toque registraba otro igual (X1 de su crítica). Un `redirect()` de
+  segundo toque registraba otro igual (X1 de su crítica). Y si la base lo
+  rechaza cuando la persona ya pidió otra pantalla, el rechazo lo dice esa
+  línea, en rojo (`decirElRechazoSiSeFue`; `siSeVa` en `useEnvio`): se pintaba
+  en el formulario unos milisegundos y se iba con él, y la persona creía que
+  había entrado (Y1 de la crítica de la cuadragésima primera). Un `redirect()` de
   servidor tras guardar no sabe nada de eso, y no se usa. Recargar cortaba el
   envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
   trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía

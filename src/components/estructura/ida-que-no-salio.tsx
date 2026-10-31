@@ -50,6 +50,9 @@ function comoDireccion(direccion: string) {
  * pestaña: una recarga lo olvida. Calla mientras la persona siga
  * en el formulario que ya lo dice junto a su botón (`YaQuedo`). La región está
  * siempre montada: una que nace con su texto el lector no la lee.
+ *
+ * También dice, en rojo, el rechazo que volvió cuando la persona ya se había
+ * ido del formulario (`decirElRechazoSiSeFue`), con el camino de vuelta.
  */
 export function IdaQueNoSalio() {
   const ida = useIdaQueNoSalio()
@@ -61,8 +64,12 @@ export function IdaQueNoSalio() {
   const aqui = `${ruta}?${busqueda}`
 
   // Ya en su pantalla calla desde la primera pintada: si esperara al efecto que
-  // la quita, la línea asomaba un instante en la pantalla a la que lleva.
-  const llego = ida ? yaEstaEn(ida, ruta, busqueda) : false
+  // la quita, la línea asomaba un instante en la pantalla a la que lleva. El
+  // rechazo no se va al volver al formulario: nace estando ahí, con la ida en
+  // cola, y en el formulario vacío su motivo es lo único que dice qué corregir.
+  // Se va al enviar otra vez (`mientrasSeEnvia`) o al quitarlo.
+  const ahi = ida ? yaEstaEn(ida, ruta, busqueda) : false
+  const llego = ahi && !ida?.rechazo
   useEffect(() => {
     if (llego) ponerIdaQueNoSalio(null)
   }, [llego])
@@ -71,16 +78,28 @@ export function IdaQueNoSalio() {
   return (
     <div
       role="status"
-      className={visible ? 'flex items-center gap-3 border-b border-borde bg-exito-suave px-4 py-1.5 print:hidden' : 'sr-only'}
-      data-ida-que-no-salio={visible ? '' : undefined}
+      className={
+        visible
+          ? `flex items-center gap-3 border-b border-borde px-4 py-1.5 print:hidden ${visible.rechazo ? 'bg-peligro-suave' : 'bg-exito-suave'}`
+          : 'sr-only'
+      }
+      data-ida-que-no-salio={visible ? (visible.rechazo ? 'rechazo' : '') : undefined}
     >
       {visible && (
         <>
           <p className="min-w-0 flex-1 text-xs text-texto text-pretty">
-            <span className="font-medium">{visible.dice}</span>{' '}
-            <Link href={visible.url} className="font-medium text-acento underline" onClick={() => ponerIdaQueNoSalio(null)}>
-              {visible.enlace}
-            </Link>
+            <span className={visible.rechazo ? 'font-medium text-peligro' : 'font-medium'}>{visible.dice}</span>{' '}
+            {!ahi && (
+              <Link
+                href={visible.url}
+                className="font-medium text-acento underline"
+                onClick={() => {
+                  if (!visible.rechazo) ponerIdaQueNoSalio(null)
+                }}
+              >
+                {visible.enlace}
+              </Link>
+            )}
           </p>
           <Boton type="button" variante="fantasma" tamano="icono" aria-label="Quitar este aviso" onClick={() => ponerIdaQueNoSalio(null)}>
             <X aria-hidden className="size-4" />

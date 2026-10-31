@@ -13,7 +13,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { decirElRechazoSiSeFue, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -184,13 +184,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // registraría no va a entrar, así que ni se sube (trigésima pasada).
         if (laPestanaEsDeLaVersionAnterior()) {
           setError(SE_ACTUALIZO_EL_SISTEMA)
+          decirElRechazoSiSeFue(desde, SE_ACTUALIZO_EL_SISTEMA, SI_SE_VA)
           return
         }
         const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf', quitarConLaCuenta)
         // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
         if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
+          const motivo = `No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`
+          setError(motivo)
+          decirElRechazoSiSeFue(desde, motivo, SI_SE_VA)
           return
         }
 
@@ -215,6 +218,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           } else {
             setError(r.error)
           }
+          decirElRechazoSiSeFue(desde, r.error, SI_SE_VA)
           return
         }
         // Registrada: el formulario queda trabado hasta que se abre la orden.
@@ -230,10 +234,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // ventana dice que no se guardó: al volver, el cursor va ahí.
         if (e instanceof OtraCuentaEnLaPestana) {
           setError(NO_SE_GUARDO_OTRA_CUENTA)
+          decirElRechazoSiSeFue(desde, NO_SE_GUARDO_OTRA_CUENTA, SI_SE_VA)
           return
         }
         // Lo que se cae acá es la subida: la orden todavía no se registró.
-        setError('No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.')
+        const motivo = 'No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.'
+        setError(motivo)
+        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA)
       } finally {
         if (!listo) enCurso.current = false
       }
@@ -519,6 +526,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 }
 
 const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
+// Si su rechazo vuelve cuando la persona ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
+const SI_SE_VA = { que: 'la orden', enlace: 'Volver a la orden nueva' }
 
 /** Cómo guarda la base el número del papel (migración 20261021110000); `null` si todavía no es un número. */
 function comoQuedaElNumero(escrito: string): string | null {

@@ -248,6 +248,14 @@
  *       ni dice «Se quitó», y «Volver a cargar» tampoco la toca.
  *   1y-la-ot-se-lleva-la-linea. La OT de «Dar código y cargar la OT» va a su
  *       tarjeta sin la línea de otro documento encima (Administración).
+ *   1z-rechazo-de-la-orden, 1z-rechazo-con-un-aviso, 1z-rechazo-del-trabajo y
+ *       1z-rechazo-del-reporte. El rechazo que vuelve cuando la persona ya pidió
+ *       otra pantalla (el menú, un aviso, «Más») lo dice arriba, en rojo y con
+ *       el camino de vuelta al formulario; ahí sigue el motivo, y al enviar otra
+ *       vez se va. 1z-rechazo-que-se-queda: sin pedir otra, va en el formulario.
+ *   1z-la-ot-y-la-linea. La OT que no va a su tarjeta porque la persona pidió
+ *       Órdenes deja la línea de otro documento; si se queda en Cotización, el
+ *       encabezado la dice y la línea se va.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
  *       olvida al salir, algo que nadie alcanza con el dedo (R4).
@@ -256,7 +264,7 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las seis; 1y, las tres).
+ * 1x, las seis; 1y, las tres; 1z, las seis).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -564,6 +572,8 @@ const mismoDocumento = (pagina) => pagina.evaluate(() => window.__mismoDocumento
 const avisoDeArriba = async (pagina) => limpio(await pagina.locator('[data-pestana-vieja]').innerText().catch(() => ''))
 /** Lo que dice junto al botón el formulario de página entera que ya entró (`YaQuedo`). */
 const yaQuedo = (pagina) => pagina.locator('[data-ya-quedo]').innerText().then(limpio).catch(() => '')
+/** La línea de arriba (`IdaQueNoSalio`): lo que entró y no llevó a su pantalla, o el rechazo que volvió con la persona ya en otra. */
+const idaQueNoSalio = (pagina) => pagina.locator('[data-ida-que-no-salio]').innerText().then(limpio).catch(() => '')
 /** Lo que pasa al volver a la pestaña después del despliegue de todos los días: queda «nueva». */
 const hastaLaPestanaNueva = async (pagina, corte) => {
   corte.despliegue = true
@@ -942,15 +952,21 @@ if (corre('1d')) {
 }
 
 // ------------------------------------------- 1e y 1i. El reporte diario a medio llenar (Maestranza, a 390)
-if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p-rechazo', '1p-sin-respuesta', '1p-colgado', '1p-destino-lento', '1p-se-va', '1r', '1y-reporte-que-entro'].some(corre)) {
+if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p-rechazo', '1p-sin-respuesta', '1p-colgado', '1p-destino-lento', '1p-se-va', '1r', '1y-reporte-que-entro', '1z-rechazo-del-reporte'].some(corre)) {
   // Una persona de Maestranza para el trabajo, como la dejaría RR. HH.; al
   // final se le pone su costo y se da de baja. Para enviar no hace falta.
   const persona = `Pedro ${sello}`
-  await consulta(
-    `insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
-     select $1, 'Prueba Pestaña Vieja', '5' || $2 || '01', 'Soldador', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3)`,
-    [persona, sello.slice(-5), CUENTAS.rrhh],
-  )
+  // 1y-reporte-que-entro va con otra: con la suite entera, Pedro ya llegaba a
+  // las 16 h del día y su reporte no entraba (R2 de realización, cuadragésima
+  // primera pasada).
+  const personaY = `Pablo ${sello}`
+  for (const [nombre, dni] of [[persona, '01'], [personaY, '02']]) {
+    await consulta(
+      `insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
+       select $1, 'Prueba Pestaña Vieja', '5' || $2 || $4, 'Soldador', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3)`,
+      [nombre, sello.slice(-5), CUENTAS.rrhh, dni],
+    )
+  }
   const [{ id: yo }] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
   const [{ t: desde }] = await consulta(`select now() as t`)
   const subidas = async () =>
@@ -958,8 +974,9 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
   const asunto = `Pestaña vieja ${sello}`
   const reportes = async () => Number((await consulta(`select count(*) n from reportes_diarios where asunto = $1`, [asunto]))[0].n)
   // `sinPersona`: nadie elegido, y la acción lo rechaza («Pon al menos a una persona…»).
-  const llenar = async (pagina, conFoto, { sinPersona = false } = {}) => {
-    await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
+  // `quien`: la persona del trabajo. `sinIr`: en el formulario que ya está abierto.
+  const llenar = async (pagina, conFoto, { sinPersona = false, quien = persona, sinIr = false } = {}) => {
+    if (!sinIr) await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
     await pagina.fill('#rd-codigo', 'PLANTA')
     await pagina.fill('#rd-asunto', asunto)
     await pagina.fill('#rd-descripcion', 'Se ordenó la planta y se soldaron los soportes.')
@@ -968,7 +985,7 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
     await t1.locator('textarea').fill('Soportes de la tolva')
     await t1.locator('input[type="number"]').first().fill('30')
     if (!sinPersona) {
-      await elegir(pagina, 'Personal del trabajo 1: persona 1', persona)
+      await elegir(pagina, 'Personal del trabajo 1: persona 1', quien)
       await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('2')
     }
     if (conFoto) {
@@ -1617,7 +1634,7 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
   // cuadragésima pasada).
   if (corre('1y-reporte-que-entro')) {
     const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
-    await llenar(pagina, true)
+    await llenar(pagina, true, { quien: personaY })
     const [ruta] = (await subidas()).slice(-1)
     await marcarDocumento(pagina)
     const n0 = await reportes()
@@ -1667,15 +1684,71 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
     await contexto.close()
   }
 
+  // 1z. El rechazo del reporte que vuelve cuando la persona ya pidió otra
+  // pantalla: Next deja esa ida en cola, y el rechazo se pintaba en el
+  // formulario unos milisegundos antes de irse con él. En la pantalla pedida
+  // nada decía que el reporte no había entrado (Y1 de la crítica, cuadragésima
+  // primera pasada). Arriba lo dice, en rojo y con el camino de vuelta.
+  if (corre('1z-rechazo-del-reporte')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
+    await llenar(pagina, false, { sinPersona: true })
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    const subir = subirReporte(pagina)
+    corte.marca = asunto
+    await subir.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+    await subir.tap()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    // Mientras va, «Más» y otra sección: Next la deja en cola detrás del envío.
+    await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+    const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+    await mas.waitFor({ timeout: 10000 })
+    await mas.locator('a[href="/reportes-diarios"]').first().tap()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/reportes-diarios', { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const tono = await pagina.locator('[data-ida-que-no-salio]').getAttribute('data-ida-que-no-salio').catch(() => null)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1z-rechazo-del-reporte.png') })
+    comprobar(donde === '/reportes-diarios' && dice.startsWith('El reporte no se guardó. Pon al menos a una persona') && dice.endsWith('Volver al reporte') && tono === 'rechazo' && (await reportes()) === n0 && (await mismoDocumento(pagina)),
+      `[Maestranza 390] 1z-rechazo-del-reporte. el rechazo que vuelve después de pedir otra sección lo dice arriba, en rojo y con el camino de vuelta (${donde}, «${dice}», ${tono}, ${(await reportes()) - n0} reportes)`)
+    // «Volver al reporte»: en el formulario vacío sigue el motivo, sin el enlace.
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al reporte' }).tap({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === '/reportes-diarios/nuevo', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    const enlaces = await pagina.locator('[data-ida-que-no-salio] a').count()
+    comprobar(pagina.url().replace(BASE, '') === '/reportes-diarios/nuevo' && alVolver === dice.replace(/ Volver al reporte$/, '') && enlaces === 0 && (await mismoDocumento(pagina)),
+      `[Maestranza 390] 1z-rechazo-del-reporte. de vuelta en el formulario, arriba sigue el motivo y ya no el enlace (${pagina.url().replace(BASE, '')}, «${alVolver}», ${enlaces} enlaces)`)
+    // Se envía otra vez, sin irse: el rechazo nuevo lo dice el formulario y el de arriba se va.
+    if (pagina.url().replace(BASE, '') === '/reportes-diarios/nuevo') {
+      await llenar(pagina, false, { sinPersona: true, sinIr: true })
+      await subir.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+      await subir.tap()
+      const abajo = await hasta(() => alertaDelFormulario(pagina), (t) => t?.includes('Pon al menos a una persona'), 15000)
+      const arriba = await idaQueNoSalio(pagina)
+      comprobar(abajo?.includes('Pon al menos a una persona') && arriba === '' && (await reportes()) === n0,
+        `[Maestranza 390] 1z-rechazo-del-reporte. al enviar otra vez desde el formulario, el rechazo nuevo va junto al botón y el de arriba se va («${abajo}», arriba «${arriba}»)`)
+    } else {
+      comprobar(false, `[Maestranza 390] 1z-rechazo-del-reporte. al enviar otra vez desde el formulario, el rechazo nuevo va junto al botón y el de arriba se va (no se volvió al formulario: ${pagina.url().replace(BASE, '')})`)
+    }
+    comprobar(errores.length === 0, `[Maestranza 390] 1z-rechazo-del-reporte. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
   // Su costo, como se lo pondría RR. HH.: las horas del reporte que entró pasan
   // al costeo, y el aviso de «Horas… que esperan su costo» no queda prendido
   // para probar-reporte-diario.
-  await consulta(
-    `insert into trabajador_costos (trabajador_id, costo_mensual) select id, 1680 from trabajadores where nombres = $1
-      and not exists (select 1 from trabajador_costos c where c.trabajador_id = trabajadores.id)`,
-    [persona],
-  )
-  await consulta(`update trabajadores set activo = false where nombres = $1`, [persona])
+  for (const nombre of [persona, personaY]) {
+    await consulta(
+      `insert into trabajador_costos (trabajador_id, costo_mensual) select id, 1680 from trabajadores where nombres = $1
+        and not exists (select 1 from trabajador_costos c where c.trabajador_id = trabajadores.id)`,
+      [nombre],
+    )
+    await consulta(`update trabajadores set activo = false where nombres = $1`, [nombre])
+  }
 }
 
 // ------------------------------------------- 1f. La planilla sin internet del kardex (Almacén)
@@ -3242,7 +3315,6 @@ async function llenarElSubcontrato(pagina, quien, marca) {
   await v.locator('input[name="monto"]').fill('100')
   return { v, registrar: v.getByRole('button', { name: 'Registrar subcontrato' }) }
 }
-const idaQueNoSalio = (pagina) => pagina.locator('[data-ida-que-no-salio]').innerText().then(limpio).catch(() => '')
 /**
  * Al menú `href` y «Atrás», como lo hace una persona: después de ver la otra
  * pantalla. Pegado al commit de la otra, React vaciaba sus efectos en la misma
@@ -3902,6 +3974,251 @@ if (corre('1y-la-ot-se-lleva-la-linea')) {
       `[Administración 1280] 1y-la-ot-se-lleva-la-linea. la OT entra y va a su tarjeta, resaltada, sin la línea del cliente encima (${donde}, resaltada ${marcada === cot.id}, «${queda}»)`)
   }
   comprobar(errores.length === 0, `[Administración 1280] 1y-la-ot-se-lleva-la-linea. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1z. Lo que la cuadragésima primera pasada dejó en pie de la ida
+// El rechazo de un formulario de página entera que vuelve cuando la persona ya
+// pidió otra pantalla se pintaba en el formulario unos milisegundos y se iba
+// con él: en la pantalla pedida nada decía que no había entrado (Y1 de la
+// crítica). Y la OT que no iba a su tarjeta porque la persona se fue de
+// Cotización borraba la línea de otro documento sin poner nada en su lugar
+// (H1 de funcionalidad).
+/** Un número de OT de este año que ya está tomado: la base rechaza otra con él. */
+const numeroTomado = async () =>
+  (await consulta(`select split_part(numero, '-', 1) n from ordenes_trabajo where numero like '%-' || $1 order by creado_en limit 1`, [anioDeLima()]))[0]?.n
+/** La orden sin cotización llena con `numero`, sin enviar: su botón. */
+async function ordenLlena(pagina, marca, numero) {
+  await pagina.locator('#cliente_id').click()
+  await pagina.getByRole('option').first().click()
+  await pagina.locator('textarea[name="descripcion"]').fill(`${marca} orden de prueba del banco`)
+  await pagina.locator('input[type="file"]').first().setInputFiles({ name: `${marca}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${numero}-${anioDeLima()}`, marca]) })
+  await pagina.waitForTimeout(1500)
+  await pagina.locator('input[name="numero"], #numero').first().fill(String(numero))
+  return pagina.getByRole('button', { name: 'Registrar orden' })
+}
+const tonoDeLaLinea = (pagina) => pagina.locator('[data-ida-que-no-salio]').getAttribute('data-ida-que-no-salio').catch(() => null)
+
+if (corre('1z-rechazo-de-la-orden')) {
+  const tomado = await numeroTomado()
+  const marca = `QA_Z1O_${sello}`
+  const ordenes = () => consulta(`select id from ordenes_trabajo where descripcion like $1`, [`${marca}%`])
+  const [{ t: desde }] = await consulta(`select now() as t`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (!tomado) {
+    comprobar(false, `[Administración 1280] 1z-rechazo-de-la-orden. hay una OT de este año para repetir su número`)
+  } else {
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await marcarDocumento(pagina)
+    const boton = await ordenLlena(pagina, marca, tomado)
+    corte.marca = marca
+    await boton.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    // Mientras va, el menú: Next lo deja en cola detrás de la orden.
+    await (await enlaceVisible(pagina, '/clientes')).click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/clientes', { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const tono = await tonoDeLaLinea(pagina)
+    const sueltos = await sueltosDeLaOt(desde)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1z-rechazo-de-la-orden.png') })
+    comprobar(donde === '/clientes' && dice === `La orden no se guardó. Ya hay una orden de trabajo ${tomado}-${anioDeLima()}: revisa el número del papel. Volver a la orden nueva` && tono === 'rechazo' && (await ordenes()).length === 0 && sueltos.length === 0 && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1z-rechazo-de-la-orden. la orden rechazada después de tocar el menú lo dice arriba, en rojo, con el camino de vuelta, y su PDF no queda suelto (${donde}, «${dice}», ${tono}, ${(await ordenes()).length} órdenes, ${sueltos.length} sueltos)`)
+    // La línea sigue mientras la persona anda por otras pantallas.
+    await porElMenu(pagina, '/ordenes')
+    const enOrdenes = await idaQueNoSalio(pagina)
+    // «Volver a la orden nueva»: el formulario, con el motivo arriba y sin el enlace.
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver a la orden nueva' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === '/ordenes/nueva', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    comprobar(enOrdenes === dice && pagina.url().replace(BASE, '') === '/ordenes/nueva' && alVolver === dice.replace(/ Volver a la orden nueva$/, '') && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1z-rechazo-de-la-orden. sigue en Órdenes, y de vuelta en el formulario dice el motivo sin el enlace (en Órdenes «${enOrdenes}», ${pagina.url().replace(BASE, '')}, «${alVolver}»)`)
+    // Otra vez el mismo número, sin irse: el rechazo va junto al número y el de arriba se va.
+    if (pagina.url().replace(BASE, '') === '/ordenes/nueva') {
+      const otra = await ordenLlena(pagina, marca, tomado)
+      await otra.click()
+      const junto = await hasta(() => pagina.locator('main [role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), (t) => t.includes('Ya hay una orden de trabajo'), 20000)
+      const arriba = await idaQueNoSalio(pagina)
+      comprobar(junto.includes(`Ya hay una orden de trabajo ${tomado}-${anioDeLima()}`) && arriba === '' && (await ordenes()).length === 0,
+        `[Administración 1280] 1z-rechazo-de-la-orden. al enviar otra vez desde el formulario, el rechazo va en el formulario y el de arriba se va («${junto}», arriba «${arriba}»)`)
+    } else {
+      comprobar(false, `[Administración 1280] 1z-rechazo-de-la-orden. al enviar otra vez desde el formulario, el rechazo va en el formulario y el de arriba se va (no se volvió al formulario: ${pagina.url().replace(BASE, '')})`)
+    }
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1z-rechazo-de-la-orden. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El cliente de Ventas en el teléfono, rechazado después de abrir un aviso, y
+// el trabajo de Supervisión, después de tocar el menú: los dos por `useEnvio`.
+if (corre('1z-rechazo-con-un-aviso')) {
+  const razon = `QA_Z1C_${sello}`
+  const titulo = `Aviso que lleva a Cotización ${sello}`
+  await consulta(
+    `insert into notificaciones (usuario_id, titulo, cuerpo, ruta) select id, $2, 'Sembrado por probar-pestana-vieja-y-giro', '/cotizaciones/pdf' from usuarios where correo = $1`,
+    [CUENTAS.ventas, titulo],
+  )
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.ventas, CELULAR)
+  await ir(pagina, `${BASE}/clientes`)
+  await marcarDocumento(pagina)
+  // Un RUC de diez dígitos: la acción lo rechaza.
+  const boton = await clienteLleno(pagina, razon, rucDe1x(6).slice(0, 10))
+  corte.marca = razon
+  await boton.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+  await boton.tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.getByRole('button', { name: /^Avisos/ }).first().tap()
+  await pagina.locator('#panel-avisos').waitFor({ timeout: 10000 })
+  await pagina.locator('#panel-avisos li button').filter({ hasText: titulo }).first().tap()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf', { timeout: 20000 }).catch(() => {})
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  const tono = await tonoDeLaLinea(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1z-rechazo-con-un-aviso.png') })
+  comprobar(donde === '/cotizaciones/pdf' && dice === 'El cliente no se guardó. El RUC debe tener 11 dígitos. Volver al cliente nuevo' && tono === 'rechazo' && (await clientePor(razon)).length === 0 && (await mismoDocumento(pagina)),
+    `[Ventas 390] 1z-rechazo-con-un-aviso. el cliente rechazado después de abrir un aviso lo dice arriba, en la pantalla del aviso (${donde}, «${dice}», ${tono})`)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al cliente nuevo' }).tap({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/clientes/nuevo', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const alVolver = await idaQueNoSalio(pagina)
+  // «Quitar este aviso» se lo lleva.
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('button', { name: 'Quitar este aviso' }).tap().catch(() => {})
+  const quitado = await hasta(() => idaQueNoSalio(pagina), (t) => t === '', 5000)
+  comprobar(pagina.url().replace(BASE, '') === '/clientes/nuevo' && alVolver === 'El cliente no se guardó. El RUC debe tener 11 dígitos.' && quitado === '',
+    `[Ventas 390] 1z-rechazo-con-un-aviso. de vuelta en el cliente nuevo dice el motivo, y «Quitar este aviso» se lo lleva («${alVolver}», después «${quitado}»)`)
+  comprobar(errores.length === 0, `[Ventas 390] 1z-rechazo-con-un-aviso. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+if (corre('1z-rechazo-del-trabajo')) {
+  const marca = `QA_Z1T_${sello}`
+  const trabajos = () => consulta(`select id from flota_unidades where trabajo like $1`, [`${marca}%`])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/avance/trabajos/nueva`)
+  await marcarDocumento(pagina)
+  // Sin qué es ni placa: la acción lo rechaza.
+  await pagina.locator('#trabajo').fill(`${marca} trabajo de prueba del banco`)
+  corte.marca = marca
+  await pagina.getByRole('button', { name: 'Registrar el trabajo' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await (await enlaceVisible(pagina, '/reportes-diarios')).click()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.pathname === '/reportes-diarios', { timeout: 20000 }).catch(() => {})
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  const tono = await tonoDeLaLinea(pagina)
+  comprobar(donde === '/reportes-diarios' && dice === 'El trabajo no se guardó. Escribe qué es el trabajo, o la placa si es una unidad. Volver al trabajo nuevo' && tono === 'rechazo' && (await trabajos()).length === 0 && (await mismoDocumento(pagina)),
+    `[Supervisión 1280] 1z-rechazo-del-trabajo. el trabajo rechazado después de tocar el menú lo dice arriba (${donde}, «${dice}», ${tono})`)
+  // De vuelta por su enlace y enviado bien: entra, va a su pantalla y el rechazo de arriba ya no está.
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al trabajo nuevo' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/avance/trabajos/nueva', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  // Sin el enlace (la versión de antes no lo pone), por la dirección: lo que importa aquí es lo de después.
+  if (pagina.url().replace(BASE, '') !== '/avance/trabajos/nueva') await ir(pagina, `${BASE}/avance/trabajos/nueva`)
+  await pagina.locator('#descripcion').fill(`Cabina de pintura ${sello}`)
+  await pagina.locator('#trabajo').fill(`${marca} trabajo de prueba del banco`)
+  await pagina.getByRole('button', { name: 'Registrar el trabajo' }).click()
+  await hasta(trabajos, (l) => l.length === 1, 30000)
+  const [t] = await trabajos()
+  await pagina.waitForURL((u) => u.pathname === `/avance/trabajos/${t?.id}`, { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const queda = await idaQueNoSalio(pagina)
+  comprobar(pagina.url().replace(BASE, '') === `/avance/trabajos/${t?.id}` && queda === '' && (await mismoDocumento(pagina)),
+    `[Supervisión 1280] 1z-rechazo-del-trabajo. el trabajo que sí entra va a su pantalla y el rechazo de arriba ya no está (${pagina.url().replace(BASE, '')}, «${queda}»)`)
+  comprobar(errores.length === 0, `[Supervisión 1280] 1z-rechazo-del-trabajo. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La condición de partida: la persona se queda en el formulario y el rechazo
+// va junto a su botón, como siempre; arriba no se dice.
+if (corre('1z-rechazo-que-se-queda')) {
+  const razon = `QA_Z1Q_${sello}`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/clientes`)
+  await marcarDocumento(pagina)
+  const boton = await clienteLleno(pagina, razon, rucDe1x(7).slice(0, 10))
+  corte.marca = razon
+  await boton.click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  const junto = await hasta(() => pagina.locator('main [role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), (t) => t.includes('El RUC debe tener 11 dígitos.'), 15000)
+  await pagina.waitForTimeout(1500)
+  const arriba = await idaQueNoSalio(pagina)
+  comprobar(pagina.url().replace(BASE, '') === '/clientes/nuevo' && junto.includes('El RUC debe tener 11 dígitos.') && arriba === '' && (await pagina.inputValue('[name="razon_social"]')) === razon && (await mismoDocumento(pagina)),
+    `[Administración 1280] 1z-rechazo-que-se-queda. sin pedir otra pantalla, el rechazo va en el formulario, con lo escrito, y arriba nada («${junto}», arriba «${arriba}»)`)
+  comprobar(errores.length === 0, `[Administración 1280] 1z-rechazo-que-se-queda. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La línea de otro documento y la OT cerrada en vuelo: si la persona pidió
+// Órdenes, la OT no va a su tarjeta y la línea se queda; si se queda en
+// Cotización y solo tocó la pantalla, el encabezado dice la OT y la línea se va.
+if (corre('1z-la-ot-y-la-linea')) {
+  const cots = await aprobadasSinOt(2)
+  const libres = await numerosLibres(2)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (cots.length < 2 || libres.length < 2) {
+    comprobar(false, `[Administración 1280] 1z-la-ot-y-la-linea. hay dos cotizaciones aprobadas sin OT y dos números libres`)
+  } else {
+    await ir(pagina, `${BASE}/clientes`)
+    await marcarDocumento(pagina)
+    for (const [i, pide] of [[0, 'ordenes'], [1, 'nada']]) {
+      const cot = cots[i]
+      // La línea: el cliente entra después de pedir Órdenes.
+      const razon = `QA_Z1L${i}_${sello}`
+      const boton = await clienteLleno(pagina, razon, rucDe1x(8 + i))
+      corte.marca = razon
+      await boton.click()
+      await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+      await (await enlaceVisible(pagina, '/ordenes')).click()
+      await pagina.waitForTimeout(1000)
+      corte.soltar()
+      await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
+      await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+      const linea = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El cliente quedó registrado.'), 15000)
+      await porElMenu(pagina, '/cotizaciones/pdf')
+      await pagina.locator('a[href="/cotizaciones/pdf?estado=APROBADA_SIN_OT"]').first().click()
+      await pagina.waitForURL((u) => u.search === '?estado=APROBADA_SIN_OT', { timeout: 20000 }).catch(() => {})
+      await quieta(pagina)
+      // La OT va retenida, su ventana se cierra y la persona pide Órdenes, o solo toca la pantalla.
+      const marca = `QA_Z1L${i}O_${sello}`
+      const ventana = await llenarLaOt(pagina, cot.id, `${marca}/26`, libres[i])
+      corte.marca = marca
+      await ventana.guardar.click()
+      await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+      await ventana.d.getByRole('button', { name: 'Cerrar', exact: true }).click()
+      await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+      if (pide === 'ordenes') await (await enlaceVisible(pagina, '/ordenes')).click()
+      else await pagina.locator('main h1').first().click()
+      await pagina.waitForTimeout(1000)
+      corte.soltar()
+      await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
+      if (pide === 'ordenes') await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+      await pagina.waitForTimeout(3000)
+      const donde = pagina.url().replace(BASE, '')
+      const queda = await idaQueNoSalio(pagina)
+      const encabezado = limpio(await pagina.locator('[data-estado-del-encabezado]').innerText().catch(() => ''))
+      await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-1z-la-ot-y-la-linea-${pide}.png`) })
+      if (pide === 'ordenes') {
+        comprobar(linea === 'El cliente quedó registrado. Ver el cliente' && donde === '/ordenes' && queda === linea && (await otDe(cot.id)) === 1 && (await mismoDocumento(pagina)),
+          `[Administración 1280] 1z-la-ot-y-la-linea. la OT entra después de pedir Órdenes: abre Órdenes y la línea del cliente se queda, porque nada la reemplaza (${donde}, «${queda}», OT ${await otDe(cot.id)})`)
+      } else {
+        comprobar(donde === '/cotizaciones/pdf?estado=APROBADA_SIN_OT' && encabezado.includes(`Se cargó el código y la OT de la cotización ${cot.numero}.`) && queda === '' && (await mismoDocumento(pagina)),
+          `[Administración 1280] 1z-la-ot-y-la-linea. la OT entra con la persona en Cotización: el encabezado la dice y la línea del cliente se va (${donde}, «${encabezado}», «${queda}»)`)
+      }
+    }
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1z-la-ot-y-la-linea. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

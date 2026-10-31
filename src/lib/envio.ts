@@ -164,6 +164,8 @@ export function alEmpezarUnEnvio(avisar: () => void) {
  * trigesimoquinta pasada).
  */
 export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>): Promise<T> {
+  // El rechazo de arriba es de este formulario, que sale otra vez: lo que conteste ahora lo dice él.
+  if (idaQueNoSalio?.rechazo && idaQueNoSalio.url === window.location.pathname + window.location.search) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -279,6 +281,12 @@ export function partida(): Partida {
 export const sigueDondeSalio = (desde: Partida) => window.location.pathname + window.location.search === desde.direccion
 
 /**
+ * Desde que salió el envío, la persona se fue o pidió irse: cambió la dirección,
+ * o tocó un enlace o un aviso, que Next deja en cola hasta que el envío vuelve.
+ */
+export const pidioOtraPantalla = (desde: Partida) => !sigueDondeSalio(desde) || pidioIrEn > desde.salioEn
+
+/**
  * Si la ida que un envío hace solo al entrar (al subcontrato recién registrado,
  * a la orden recién abierta) todavía es lo que la persona espera. No lo es si
  * desde que salió: cambió la dirección («Atrás», un filtro, una búsqueda);
@@ -289,7 +297,7 @@ export const sigueDondeSalio = (desde: Partida) => window.location.pathname + wi
  * trigesimoctava pasada; lo mismo que la OT de la cotización, Y1 y H2).
  */
 export function laIdaSigueEnPie(desde: Partida): boolean {
-  if (!sigueDondeSalio(desde) || pidioIrEn > desde.salioEn) return false
+  if (pidioOtraPantalla(desde)) return false
   if (desde.ventana === null) return !hayVentanaAbierta()
   // Su ventana sigue abierta: la persona espera ahí.
   if (vecesQueSeCerro() === desde.ventana) return true
@@ -302,14 +310,40 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * a su botón (`YaQuedo`); mientras la persona siga ahí, arriba no se repite.
  * `porOmision`: lo que la pantalla toma cuando su dirección no lo dice
  * (/personal sin «estado» es Activos), para saber que la persona llegó.
+ * `rechazo`: lo que no entró, y su enlace vuelve al formulario
+ * (`decirElRechazoSiSeFue`).
  */
-export type IdaQueNoSalio = { dice: string; enlace: string; url: string; dichaEn?: string; porOmision?: Record<string, string> }
+export type IdaQueNoSalio = {
+  dice: string
+  enlace: string
+  url: string
+  dichaEn?: string
+  porOmision?: Record<string, string>
+  rechazo?: boolean
+}
 let idaQueNoSalio: IdaQueNoSalio | null = null
 const alCambiarLaIda = new Set<() => void>()
 
 export function ponerIdaQueNoSalio(ida: IdaQueNoSalio | null) {
   idaQueNoSalio = ida
   for (const avisar of alCambiarLaIda) avisar()
+}
+
+/**
+ * El rechazo de un formulario de página entera que vuelve cuando la persona ya
+ * pidió otra pantalla: Next deja esa ida en cola hasta que el envío vuelve, y el
+ * rechazo se pintaba en el formulario unos milisegundos antes de irse con él.
+ * En la pantalla pedida nada decía que no había entrado, y lo escrito se perdía
+ * (Y1 de la crítica de la cuadragésima primera pasada). Lo dice arriba, con el
+ * camino de vuelta al formulario. Si la persona sigue ahí, ya lo dice el
+ * formulario y esto no hace nada.
+ */
+export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enlace }: { que: string; enlace: string }) {
+  if (!pidioOtraPantalla(desde)) return
+  const dice = pudoHaberEntrado(motivo)
+    ? `No se sabe si ${que} se guardó. ${motivo}`
+    : `${que.charAt(0).toUpperCase()}${que.slice(1)} no se guardó. ${motivo}`
+  ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true })
 }
 
 /** La ida que no salió, para decirla con su enlace (`IdaQueNoSalio` del encabezado). */
@@ -445,6 +479,12 @@ type Opciones = {
    * nuevo, no que lo borre, o esa ventana se queda sin id para enviar.
    */
   alYaEntrar?: () => void
+  /**
+   * Un formulario de página entera: si su rechazo vuelve cuando la persona ya
+   * pidió otra pantalla, arriba se dice qué no se guardó (`que`, «la orden») y
+   * `enlace` vuelve al formulario (`decirElRechazoSiSeFue`).
+   */
+  siSeVa?: { que: string; enlace: string }
 }
 
 /**
@@ -462,7 +502,7 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true, alYaEntrar } = opciones
+  const { refrescar = true, alYaEntrar, siSeVa } = opciones
   const router = useRouter()
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -492,11 +532,12 @@ export function useAccion<T = never>(
    */
   function despuesDelRechazo(
     salida: ResultadoAccion<T>,
-    ventana: number | null,
+    desde: Partida,
     lanzo: boolean,
     { entro, noEntro }: { entro: () => void; noEntro: (motivo: string) => void },
   ) {
     if (salida.ok) return
+    const { ventana } = desde
     const desdeVentana = ventana !== null
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
     if (yaEntro) entro()
@@ -506,6 +547,7 @@ export function useAccion<T = never>(
     const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
+      else if (siSeVa) decirElRechazoSiSeFue(desde, salida.error, siSeVa)
       if (ponerAlDia) iniciar(() => refrescarSiEsDeLaPestana(router))
       return
     }
@@ -538,7 +580,6 @@ export function useAccion<T = never>(
     enCurso.current = true
     setResultado(null)
     const desde = partida()
-    const { ventana } = desde
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
       const desenlace = { entro, noEntro }
@@ -560,7 +601,7 @@ export function useAccion<T = never>(
           if (e instanceof OtraCuentaEnLaPestana) {
             const corte: ResultadoAccion<T> = { ok: false, error: NO_SE_GUARDO_OTRA_CUENTA }
             setResultado(corte)
-            despuesDelRechazo(corte, ventana, false, desenlace)
+            despuesDelRechazo(corte, desde, false, desenlace)
             return
           }
           let mensaje: string
@@ -574,7 +615,7 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          despuesDelRechazo(fallo, ventana, true, desenlace)
+          despuesDelRechazo(fallo, desde, true, desenlace)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -586,7 +627,7 @@ export function useAccion<T = never>(
         }
         setResultado(salida)
         if (!salida.ok) {
-          despuesDelRechazo(salida, ventana, false, desenlace)
+          despuesDelRechazo(salida, desde, false, desenlace)
           return
         }
 

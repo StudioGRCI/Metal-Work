@@ -17,7 +17,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, pidioOtraPantalla, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -839,9 +839,12 @@ export function CargarCodigoYOt({
         // llevarse otra cosa, lo dice el encabezado. Las dos se llevan la línea
         // de arriba de otro documento, como las demás idas: «La orden quedó
         // registrada» seguía sobre la OT recién cargada (R2 de realización,
-        // cuadragésima pasada).
-        ponerIdaQueNoSalio(null)
-        if (vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
+        // cuadragésima pasada). Salvo que la persona haya pedido otra pantalla:
+        // el encabezado se va con Cotización, y la línea se iba sin nada en su
+        // lugar (H1 de funcionalidad, cuadragésima primera pasada).
+        const va = vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)
+        if (va || !pidioOtraPantalla(desde)) ponerIdaQueNoSalio(null)
+        if (va) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
         else setCargada({ id: cotizacionId, numero })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya

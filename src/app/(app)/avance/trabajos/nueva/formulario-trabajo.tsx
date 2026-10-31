@@ -30,7 +30,7 @@ export function FormularioTrabajo() {
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       }
     },
-    { refrescar: false },
+    { refrescar: false, siSeVa: { que: 'el trabajo', enlace: 'Volver al trabajo nuevo' } },
   )
   const sinAbrir = resultado?.ok && !resultado.datos
   const entro = resultado?.ok && resultado.datos ? idaAlTrabajo(resultado.datos.id) : null

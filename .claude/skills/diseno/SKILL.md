@@ -408,9 +408,18 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   igual, `porOmision`: /personal es Activos), al quitarla, o con la ida
   siguiente a otro documento: la que sale se la lleva, también la de la OT a
   su tarjeta (R2 de realización de la cuadragésima), y la que no sale pone la
-  suya. La de un aviso no la toca: lo que dice sigue siendo cierto, y si el
+  suya. La OT que no va a su tarjeta porque la persona pidió otra pantalla no
+  la toca: su encabezado se va con Cotización, y la línea se iba sin nada en
+  su lugar (H1 de funcionalidad de la cuadragésima primera). La de un aviso
+  no la toca: lo que dice sigue siendo cierto, y si el
   aviso se abrió mientras el formulario entraba, es lo único que lo dice. Una
-  recarga la olvida. La línea vieja seguía hablando de A después de que B sí
+  recarga la olvida. Dice también, en rojo, el rechazo de un formulario de
+  página entera que volvió cuando la persona ya había pedido otra pantalla
+  (`decirElRechazoSiSeFue`, con `siSeVa` en `useEnvio`): Next deja esa ida en
+  cola, y el rechazo se pintaba en el formulario unos milisegundos antes de
+  irse con él; nada decía que no había entrado (Y1 de la crítica de la
+  cuadragésima primera). Su enlace vuelve al formulario, y ahí sigue el
+  motivo, sin enlace, hasta que se envía otra vez o se quita. La línea vieja seguía hablando de A después de que B sí
   saliera (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
   arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
   trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está

@@ -374,7 +374,7 @@ export function FormularioReporteDiario({
       const { url, ...dicho } = idaAlReporte(r.datos?.id ?? ids[0])
       navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
     },
-    { refrescar: false },
+    { refrescar: false, siSeVa: { que: 'el reporte', enlace: 'Volver al reporte' } },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)
   // Subido, el formulario se traba y lo dice junto al botón, salga la ida o no (`YaQuedo`).

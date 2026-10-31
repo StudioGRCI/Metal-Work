@@ -23,13 +23,18 @@ export function FormularioCliente({ cliente }: { cliente?: Tablas<'clientes'> })
   // useEnvio: un envío por toque y lo escrito a salvo si el servidor lo rechaza.
   // El cliente nuevo lleva a su ficha solo si la persona sigue aquí, y el formulario
   // se traba: otro toque decía «Ya existe» de un cliente que sí quedó (`YaQuedo`).
-  const { alEnviar, enviando, resultado } = useEnvio(guardarCliente, (r, desde) => {
-    if (r.datos) {
-      const { url, ...dicho } = idaAlCliente(r.datos.id)
-      navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
-    }
-  })
   const editando = Boolean(cliente)
+  // Si el rechazo vuelve cuando ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
+  const { alEnviar, enviando, resultado } = useEnvio(
+    guardarCliente,
+    (r, desde) => {
+      if (r.datos) {
+        const { url, ...dicho } = idaAlCliente(r.datos.id)
+        navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
+      }
+    },
+    { siSeVa: { que: 'el cliente', enlace: editando ? 'Volver al cliente' : 'Volver al cliente nuevo' } },
+  )
   const entro = resultado?.ok && resultado.datos ? idaAlCliente(resultado.datos.id) : null
 
   return (

@@ -47,7 +47,7 @@ export function FormularioOrdenTaller() {
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       }
     },
-    { refrescar: false },
+    { refrescar: false, siSeVa: { que: 'la orden', enlace: 'Volver a abrir la orden' } },
   )
   const sinAbrir = resultado?.ok && !resultado.datos
   const entro = resultado?.ok && resultado.datos ? idaALaOrden(resultado.datos.id) : null
