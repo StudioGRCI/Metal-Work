@@ -365,7 +365,9 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   selector del encabezado, el mando que ese día no va guarda su sitio sin
   verse (`Reservado`, en la caja diaria): «Día siguiente» y «Hoy» aparecían
   al salir de hoy y corrían la flecha bajo el puntero (D3 de la cuadragésima
-  séptima). Si el rechazo
+  séptima). Solo donde corre algo: en un teléfono angosto «Hoy» baja a un
+  segundo renglón detrás de la flecha, y su sitio guardado era un renglón
+  vacío (D1 de la cuadragésima octava). Si el rechazo
   de una ventana cerrada en vuelo no se dice en ningún otro lado, va al aviso
   de arriba («Lo que enviaste no entró, o no se sabe si entró: …»), en vez de
   mandar a leer un aviso que no está: `noEntro(motivo)` en `useAccion`
@@ -461,10 +463,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   se la lleva (`yaSeResolvio`): el comprobante en borrador completado en su
   fila (F1), el PDF de la orden que su campo vuelve a decir al volver (F5).
   Lo que quedó a medias no se va con cualquier envío del mismo formulario:
-  solo cuando entra el del formulario que es de ese documento (el plano, con
-  su `documento`), que lo completa. No al salir: el que frena la validación
-  («Marca al menos un área») o el que vuelve a fallar con la persona ahí se
-  lo llevaban cuando seguía siendo cierto (R18 de la cuadragésima séptima).
+  solo con el del formulario que es de ese documento (el plano, con su
+  `documento`), cuando vuelve y entró, que lo completa, o dejó otra cosa a
+  medias (`arriba` en el resultado), que es lo que vale ahora. No al salir: el
+  que frena la validación («Marca al menos un área») o el que vuelve a fallar
+  con la persona ahí se lo llevaban cuando seguía siendo cierto (R18 de la
+  cuadragésima séptima). Y sin lo segundo, el reenvío que llegaba a Maestranza
+  y a Producción no dejaba arriba «Falta Maestranza», y seguirla le mandaba
+  otra revisión (R21 de la cuadragésima octava).
   El que registra uno nuevo cada vez no lo toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
   de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
   que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la
@@ -761,7 +767,11 @@ en un check con `set local role authenticated`.
   El buscador de una lista con pastillas es `BuscadorSimple`, que sigue a la
   URL y se lleva lo escrito en la pastilla: el de trabajos sin orden era un
   formulario sin control y quedaba con lo escrito sin buscar, o vacío, sobre
-  la lista de otro filtro (D4 de diseño de la cuadragésima séptima).
+  la lista de otro filtro (D4 de diseño de la cuadragésima séptima). Y busca
+  con `filtrosDeBusqueda`, sin tildes y por palabras, como las demás: el de
+  trabajos armaba su `ilike` y «pestana» no encontraba «pestaña» (F2 de
+  funcionalidad de la cuadragésima octava). Si no encuentra nada, el consejo
+  nombra las pestañas donde sí puede estar, no siempre la misma (D2).
 
 - **Lo que solo explica no va a la vista, y nada flota sin que lo pidan.** El
   2026-10-19 DKS lo corrigió por segunda vez: «cuadros flotantes que no dan o

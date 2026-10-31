@@ -18,7 +18,8 @@
  *   6. Una cuenta con movimientos ya no cambia de saldo inicial al corregirla.
  *   7. En el teléfono la pantalla entra sin desbordarse, y la flecha deja el
  *      selector en el día que muestra, con un día escrito o llegando por el menú.
- *      A lo ancho y a medio ancho, la flecha no se mueve al salir de hoy.
+ *      A lo ancho, a medio ancho y en el teléfono, la flecha no se mueve al
+ *      salir de hoy, y en hoy el selector va en un solo renglón.
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
@@ -494,13 +495,16 @@ const movimientos = (caja, fecha) =>
 // La flecha se queda bajo el puntero al salir de hoy: «Día siguiente» y «Hoy»,
 // que en hoy no van, aparecían y la corrían cien píxeles, y el segundo clic
 // caía en la fecha (D3 de diseño, cuadragésima séptima pasada). A medio ancho,
-// además, el selector bajaba a otro renglón.
-for (const vista of [{ width: 1440, height: 900 }, { width: 480, height: 900 }]) {
+// además, el selector bajaba a otro renglón. En hoy, el selector va en un solo
+// renglón: en un teléfono angosto el sitio guardado de «Hoy» bajaba solo a
+// otro, vacío (D1 de diseño, cuadragésima octava pasada).
+for (const vista of [{ width: 1440, height: 900 }, { width: 480, height: 900 }, { width: 390, height: 844 }, { width: 375, height: 812 }]) {
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria, vista)
   const anteayer = new Date(Date.parse(`${ayer}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
   const flecha = pagina.getByRole('link', { name: 'Día anterior' })
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
   const enHoy = await flecha.boundingBox()
+  const selectorEnHoy = await flecha.locator('xpath=ancestor::form').boundingBox()
   const punto = { x: enHoy.x + enHoy.width / 2, y: enHoy.y + enHoy.height / 2 }
   await pagina.mouse.click(punto.x, punto.y)
   await pagina.waitForURL((u) => u.searchParams.get('fecha') === ayer, { timeout: 20000 }).catch(() => {})
@@ -512,6 +516,8 @@ for (const vista of [{ width: 1440, height: 900 }, { width: 480, height: 900 }])
   const donde = (b) => (b ? `${Math.round(b.x)},${Math.round(b.y)}` : '—')
   comprobar(donde(enHoy) === donde(enAyer) && llego === anteayer,
     `a ${vista.width} px la flecha no se mueve al salir de hoy y el segundo clic en el mismo punto va a anteayer (hoy ${donde(enHoy)}, ayer ${donde(enAyer)}, llegó a ${llego})`)
+  comprobar(selectorEnHoy && selectorEnHoy.height < 2 * enHoy.height,
+    `a ${vista.width} px, en hoy el selector va en un solo renglón, sin uno vacío debajo (${selectorEnHoy ? `${Math.round(selectorEnHoy.width)}x${Math.round(selectorEnHoy.height)}` : '—'})`)
   comprobar(errores.length === 0, `a ${vista.width} px, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

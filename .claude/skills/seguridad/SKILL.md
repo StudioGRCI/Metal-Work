@@ -195,7 +195,9 @@ En la misma migración que la crea, sin excepción:
   en otro lado (`yaSeResolvio`). Lo que quedó a medias, solo el envío del
   formulario de ese documento (`documento` propio: el plano que vuelve a
   salir a Maestranza) y cuando entra, no al salir (R18 de la cuadragésima
-  séptima), ni el que registra uno nuevo cada vez (otro
+  séptima), o cuando vuelve con otra cosa a medias (R21 de la cuadragésima
+  octava: llegaba a Maestranza y no a Producción, y arriba seguía «Falta
+  Maestranza»), ni el que registra uno nuevo cada vez (otro
   comprobante se llevaba el del borrador: Y1 de la crítica de la
   cuadragésima quinta). El documento que elige la búsqueda (?codigo=,
   ?fecha=) lo pone `DelDocumento` para todos los formularios de la

@@ -632,6 +632,35 @@ for (const ancho of [390, 1280]) {
       `/avance/trabajos (sup.mtz): sin botón «Buscar» que apretar ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
   }
 
+  // Trabajos sin orden busca como las demás listas, sin tildes y por palabras
+  // en cualquier orden: con la frase entera en un `ilike`, «pestana» no
+  // encontraba «pestaña» (F2 de funcionalidad, cuadragésima octava pasada). Y
+  // sin nada, el consejo nombra las pestañas donde sí puede estar: decía
+  // siempre «Cerrados», también en Cerrados (D2 de diseño).
+  {
+    const { id } = await uno(
+      `insert into public.flota_unidades (trabajo, descripcion, cliente) values ($1, $2, $3) returning id`,
+      [`Trabajo del buscador ${sello}`, `Tolva de la pestaña vieja ${sello}`, `Transportes Núñez ${sello}`],
+    )
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const encontrado = {}
+    for (const texto of [`pestana ${sello}`, `PESTANA vieja ${sello}`, `vieja tolva ${sello}`, `tolva, vieja (${sello})`, `nunez ${sello}`]) {
+      await pagina.goto(`${BASE}/avance/trabajos?buscar=${encodeURIComponent(texto)}`, { waitUntil: 'networkidle' })
+      encontrado[texto] = await pagina.locator(`a[href="/avance/trabajos/${id}"]`).count()
+    }
+    comprobar(Object.values(encontrado).every((n) => n === 1),
+      `/avance/trabajos (sup.mtz): busca sin tildes y por palabras en cualquier orden (${JSON.stringify(encontrado)})`)
+    const consejo = {}
+    for (const [pestana, estado] of [['En curso', ''], ['Terminados', 'LISTA'], ['Cerrados', 'SALIO']]) {
+      await pagina.goto(`${BASE}/avance/trabajos?${estado ? `estado=${estado}&` : ''}buscar=zzqq${sello}`, { waitUntil: 'networkidle' })
+      consejo[pestana] = await pagina.getByText(/^La búsqueda mira solo la pestaña elegida/).innerText().catch(() => '')
+    }
+    comprobar(consejo['En curso'].endsWith('prueba en «Cerrados».') && consejo.Terminados.endsWith('prueba en «En curso» o en «Cerrados».') && consejo.Cerrados.endsWith('prueba en «En curso».'),
+      `/avance/trabajos (sup.mtz): sin resultados, el consejo nombra las otras pestañas (${JSON.stringify(consejo)})`)
+    comprobar(errores.length === 0, `/avance/trabajos (sup.mtz): al buscar, sin errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
   {
     const { pagina } = await sesion('gerencia')

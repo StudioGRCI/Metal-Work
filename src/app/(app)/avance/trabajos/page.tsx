@@ -32,6 +32,11 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
   const estado =
     params.estado === 'LISTA' || params.estado === 'SALIO' ? (params.estado as EstadoFlota) : null
   const buscar = typeof params.buscar === 'string' ? params.buscar.trim() : ''
+  // Dónde más buscar si en la pestaña elegida no está: «En curso» trae también
+  // los terminados. Decía siempre «prueba en Cerrados», también estando en
+  // Cerrados, y desde Terminados no mandaba a En curso (D2 de diseño,
+  // cuadragésima octava pasada).
+  const otrasPestanas = estado === 'SALIO' ? '«En curso»' : estado === 'LISTA' ? '«En curso» o en «Cerrados»' : '«Cerrados»'
 
   // Quien aprueba viene a eso: el trabajo con reportes por aprobar va primero y
   // lo dice en su tarjeta, para no tener que abrirlos todos a buscarlos.
@@ -102,7 +107,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
               }
               descripcion={
                 buscar
-                  ? 'La búsqueda mira solo la pestaña elegida: prueba en «Cerrados».'
+                  ? `La búsqueda mira solo la pestaña elegida: prueba en ${otrasPestanas}.`
                   : puedeRegistrar
                     ? 'Cuando empiece uno, regístralo con el botón de arriba.'
                     : 'Los registra el supervisor de cada área.'

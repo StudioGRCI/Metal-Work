@@ -444,12 +444,13 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   //
   // `cortarSubida`: la subida a Storage cuya ruta lo lleva se detiene como la
   // `marca`, y al soltarla se corta sin llegar, como la señal que se va.
+  // `saltarSubidas`: cuántas de las que calzan pasan antes de la que se corta.
   // `soltarLa(marca)` suelta solo la detenida con esa marca (o esa ruta).
   const cdp = await contexto.newCDPSession(pagina)
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, cortarSubida: null }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, cortarSubida: null, saltarSubidas: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -521,6 +522,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
     const objeto = e.request.url.match(/\/storage\/v1\/object\/([^?]+)/)?.[1]
     if (objeto && e.request.method !== 'GET' && e.request.method !== 'OPTIONS') corte.storage.push(`${e.request.method} ${objeto}`)
     if (objeto && e.request.method === 'POST' && corte.cortarSubida && objeto.includes(corte.cortarSubida)) {
+      if (corte.saltarSubidas > 0) {
+        corte.saltarSubidas--
+        return seguir()
+      }
       corte.cortarSubida = null
       corte.retenidas++
       await new Promise((listo) => corte.esperan.push(Object.assign(listo, { marca: objeto })))
@@ -4689,6 +4694,76 @@ if (corre('1zb-plano-a-medias')) {
   const enElFormulario = limpio((await formulario().locator('[role="status"]').allInnerTexts().catch(() => [])).join(' '))
   comprobar(despues?.[primera] === 1 && despues?.[segunda] === 1 && alFinal === '' && enElFormulario.includes(`Áreas: ${primera}.`),
     `[Diseño 1280] 1zb-plano-a-medias. enviada solo a ${primera}, cada área tiene una versión, sin duplicar, y la línea se va (${JSON.stringify(despues)}, al final «${alFinal}», «${enElFormulario}»)`)
+  // Reenviada a la que faltó y a otra, que llega a la que faltó y a la otra
+  // no, con la persona ahí: arriba seguía «Falta ${primera}… envíala solo a
+  // ${primera}», y seguirla le mandaba otra revisión. Lo de ahora lo dice el
+  // formulario, y reenviado sin cambiar el archivo no se duplica (R21 de
+  // realización y F1 de funcionalidad, cuadragésima octava pasada).
+  const tercero = await nuevoPlano(`QA-ZBP-C-${sello}`, 'Plano a medias que vuelve a medias')
+  const direccionTercero = `/ordenes/${orden.id}/planos?plano=${tercero.id}`
+  await ir(pagina, `${BASE}${direccionTercero}`)
+  await archivo(tercero.id).waitFor({ state: 'attached', timeout: 30000 })
+  await formulario(tercero.id).getByLabel(primera, { exact: true }).check()
+  await formulario(tercero.id).getByLabel(segunda, { exact: true }).check()
+  const pdfTercero = { name: `QA-ZBP-C-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZBP-C-${sello}`, 'Plano a medias que vuelve a medias']) }
+  await archivo(tercero.id).setInputFiles(pdfTercero)
+  let retenidasAntes = corte.retenidas
+  corte.cortarSubida = 'planos-privados'
+  await formulario(tercero.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
+  await (await enlaceVisible(pagina, '/')).click()
+  await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('llegó a'), 30000)
+  await quieta(pagina)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al plano' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname + u.search === direccionTercero, { timeout: 20000 }).catch(() => {})
+  await archivo(tercero.id).waitFor({ state: 'attached', timeout: 30000 })
+  await quieta(pagina)
+  const aMedias = await idaQueNoSalio(pagina)
+  // Otra área, que no es ninguna de las dos: la que se corta esta vez.
+  const otra = (await formulario(tercero.id).locator('input[name="area_id"]').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim())))
+    .find((nombre) => nombre !== primera && nombre !== segunda)
+  await formulario(tercero.id).getByLabel(primera, { exact: true }).check()
+  await formulario(tercero.id).getByLabel(otra, { exact: true }).check()
+  await archivo(tercero.id).setInputFiles(pdfTercero)
+  const marcadas = await formulario(tercero.id).locator('input[name="area_id"]:checked').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim()))
+  const rojoDelTercero = async () => limpio((await formulario(tercero.id).locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  retenidasAntes = corte.retenidas
+  corte.saltarSubidas = marcadas.indexOf(otra)
+  corte.cortarSubida = 'planos-privados'
+  await formulario(tercero.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
+  corte.soltar()
+  await hasta(rojoDelTercero, (t) => t.startsWith('Enviado a'), 30000)
+  await pagina.waitForTimeout(1500)
+  const avisoParte = await rojoDelTercero()
+  const lineaParte = await idaQueNoSalio(pagina)
+  const trasParte = await porArea(tercero.id)
+  comprobar(aMedias.startsWith(`La versión del plano llegó a ${segunda}. Falta ${primera}`) && avisoParte.startsWith(`Enviado a ${primera}. Falta ${otra}`) && lineaParte === '' && trasParte[primera] === 1 && trasParte[segunda] === 1 && !trasParte[otra],
+    `[Diseño 1280] 1zb-plano-a-medias. reenviada a ${primera} y a ${otra}, que llega a ${primera} y a ${otra} no, la línea de lo que faltaba se va y lo de ahora lo dice el formulario (antes «${aMedias}»; «${avisoParte}», línea «${lineaParte}», ${JSON.stringify(trasParte)})`)
+  // Lo de ${primera} va otra vez a la misma ruta, y Storage dice que ya está
+  // (400 «Duplicate»): es lo que lo deja sin duplicar, no un error. Se cuenta
+  // aparte y sale de los de consola; cualquier otro 400 se queda.
+  const yaEstaban = []
+  const alResponder = (r) => {
+    if (r.request().method() === 'POST' && r.status() === 400 && r.url().includes('/storage/v1/object/planos-privados/')) {
+      yaEstaban.push(r.json().then((b) => b?.error ?? null).catch(() => null))
+    }
+  }
+  pagina.on('response', alResponder)
+  const erroresAntes = errores.length
+  await formulario(tercero.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  const completo = await hasta(() => porArea(tercero.id), (x) => x?.[otra] === 1, 30000)
+  await pagina.waitForTimeout(1500)
+  pagina.off('response', alResponder)
+  const duplicados = (await Promise.all(yaEstaban)).filter((e) => e === 'Duplicate').length
+  const delDuplicado = errores.slice(erroresAntes).filter((t) => /status of 400/.test(t)).length
+  if (duplicados === 1 && delDuplicado === 1) errores.splice(errores.findIndex((t, i) => i >= erroresAntes && /status of 400/.test(t)), 1)
+  const alCompletar = await idaQueNoSalio(pagina)
+  comprobar(completo?.[primera] === 1 && completo?.[segunda] === 1 && completo?.[otra] === 1 && alCompletar === '' && duplicados === 1,
+    `[Diseño 1280] 1zb-plano-a-medias. reenviada sin cambiar el archivo, ${otra} la recibe y ${primera} no la recibe dos veces: Storage dice que ya estaba (${JSON.stringify(completo)}, línea «${alCompletar}», ${duplicados} «Duplicate», ${delDuplicado} 400 en consola)`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

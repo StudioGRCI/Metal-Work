@@ -161,9 +161,14 @@ export function alEmpezarUnEnvio(avisar: () => void) {
  * también con «Volver a cargar igual» (`cuentaDeEnvios`). `noEntro(motivo)`,
  * para el rechazo que no se dice en ningún otro lado: el aviso de arriba lo
  * dice en vez de mandar a leer uno que no existe (funcionalidad H1 de la
- * trigesimoquinta pasada).
+ * trigesimoquinta pasada). `otraVezAMedias()`, cuando lo enviado dejó otra
+ * cosa a medias (`arriba` en su resultado): lo que decía la línea ámbar de su
+ * formulario ya no es lo último.
  */
-export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>, de?: DeFormulario): Promise<T> {
+export async function mientrasSeEnvia<T>(
+  enviar: (entro: () => void, noEntro: (motivo: string) => void, otraVezAMedias: () => void) => Promise<T>,
+  de?: DeFormulario,
+): Promise<T> {
   // El rechazo de arriba es de este formulario (`de`), que sale otra vez: lo
   // que conteste ahora lo dice él. El envío de otro formulario de la misma
   // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
@@ -173,16 +178,23 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
   // que vuelve a salir solo a Maestranza—. Quitada al salir, también se iba con
   // el envío que la validación paraba antes de subir nada («Marca al menos un
   // área») y con el que volvía a fallar con la persona ahí, cuando lo que decía
-  // seguía siendo cierto (R18 de realización, cuadragésima séptima pasada). El
-  // que registra uno nuevo cada vez no la quita: el comprobante en borrador se
-  // iba al registrar otro y seguía sin su PDF (Y1 de la crítica, cuadragésima
-  // quinta pasada); se va al completarlo en su fila (`yaSeResolvio`) o al quitarlo.
+  // seguía siendo cierto (R18 de realización, cuadragésima séptima pasada).
+  // También se va cuando vuelve con otra cosa a medias (`otraVezAMedias`): el
+  // reenvío a Maestranza y a Producción que llega a Maestranza y a Producción
+  // no. Arriba seguía «Falta Maestranza… envíala solo a Maestranza», y
+  // seguirla le mandaba a Maestranza otra revisión; lo de ahora lo dice el
+  // formulario, o arriba si la persona ya se fue (R21 de realización y F1 de
+  // funcionalidad, cuadragésima octava pasada). El que registra uno nuevo cada
+  // vez no la quita: el comprobante en borrador se iba al registrar otro y
+  // seguía sin su PDF (Y1 de la crítica, cuadragésima quinta pasada); se va al
+  // completarlo en su fila (`yaSeResolvio`) o al quitarlo.
   const aMedias = de?.propio !== undefined && idaQueNoSalio?.rechazo && idaQueNoSalio.tono === 'aviso' && esDelFormulario(idaQueNoSalio, de) ? idaQueNoSalio : null
   if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.tono !== 'aviso' && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
   let entro = false
+  let otraVez = false
   let motivo: string | null = null
   try {
     return await enviar(
@@ -192,10 +204,13 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
       (porque) => {
         motivo = porque
       },
+      () => {
+        otraVez = true
+      },
     )
   } finally {
     // Solo si sigue arriba la misma: si este envío puso otra, es lo que dice ahora.
-    if (entro && aMedias && idaQueNoSalio === aMedias) ponerIdaQueNoSalio(null)
+    if ((entro || otraVez) && aMedias && idaQueNoSalio === aMedias) ponerIdaQueNoSalio(null)
     volvio(entro, motivo)
     avisarQueCambiaron()
   }
@@ -750,9 +765,10 @@ export function useAccion<T = never>(
     salida: ResultadoAccion<T>,
     desde: Partida,
     lanzo: boolean,
-    { entro, noEntro, de }: { entro: () => void; noEntro: (motivo: string) => void; de: DeFormulario },
+    { entro, noEntro, otraVezAMedias, de }: { entro: () => void; noEntro: (motivo: string) => void; otraVezAMedias: () => void; de: DeFormulario },
   ) {
     if (salida.ok) return
+    if (salida.arriba) otraVezAMedias()
     const { ventana } = desde
     const desdeVentana = ventana !== null
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
@@ -802,8 +818,8 @@ export function useAccion<T = never>(
     const desde = partida()
     const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento, propio: opciones.documento }
 
-    iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
-      const desenlace = { entro, noEntro, de }
+    iniciar(() => mientrasSeEnvia(async (entro, noEntro, otraVezAMedias) => {
+      const desenlace = { entro, noEntro, otraVezAMedias, de }
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true

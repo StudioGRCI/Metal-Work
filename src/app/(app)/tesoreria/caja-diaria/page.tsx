@@ -250,9 +250,9 @@ const cuantas = (n: number, una: string, varias: string) => (n === 0 ? null : `$
  * El sitio de un mando del selector que en este día no va: se guarda sin verse
  * ni recibir el cursor, con las mismas medidas que el mando.
  */
-function Reservado({ variante, tamano, children }: { variante: Variante; tamano: Tamano; children?: string }) {
+function Reservado({ variante, tamano, className, children }: { variante: Variante; tamano: Tamano; className?: string; children?: string }) {
   return (
-    <span aria-hidden className={cn(BASE_BOTON, VARIANTES[variante], TAMANOS[tamano], 'invisible')}>
+    <span aria-hidden className={cn(BASE_BOTON, VARIANTES[variante], TAMANOS[tamano], 'invisible', className)}>
       {children}
     </span>
   )
@@ -298,7 +298,13 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
           Hoy
         </EnlaceBoton>
       ) : (
-        <Reservado variante="fantasma" tamano="sm">
+        // En un teléfono angosto (360, 375) «Hoy» baja a un segundo renglón,
+        // detrás de la flecha, y su sitio guardado era un renglón vacío bajo el
+        // selector (D1 de diseño, cuadragésima octava pasada). Debajo de 400 px
+        // el selector va solo en su renglón en hoy y en otro día, y la flecha
+        // no se mueve. Más ancho sí lo guarda: entre 470 y 640 px el de hoy
+        // cabría junto al título sin él, y bajaría al salir de hoy.
+        <Reservado variante="fantasma" tamano="sm" className="max-[25rem]:hidden">
           Hoy
         </Reservado>
       )}
