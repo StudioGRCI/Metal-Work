@@ -1653,14 +1653,15 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
     const sigue = await yaQuedo(pagina)
     comprobar(Boolean(ruta) && borrados().length === 0 && seQuito === 0 && quitadas === '' && recargar === 0 && sigue === junto && (await miniaturas(pagina)) === 1,
       `[Maestranza 390] 1y-reporte-que-entro. al saberse vieja, la foto del reporte que entró no se quita ni dice «Se quitó», y abajo no pide volver a cargar para subirlo (${borrados().length} borrados, «Se quitó» ${seQuito}, «${quitadas}», volver a cargar ${recargar}, junto al botón «${sigue}»)`)
-    // «Volver a cargar», como pide el aviso de arriba: tampoco la toca.
-    const d0 = corte.documentos
+    // «Volver a cargar», como pide el aviso de arriba: tampoco la toca. La
+    // recarga pasa por el service worker y no por CDP: se ve en la marca, que
+    // se va con el documento.
     await botonDeArriba(pagina, 'Volver a cargar').click()
-    await hasta(() => corte.documentos, (n) => n > d0, 20000)
+    const recargo = !(await hasta(() => mismoDocumento(pagina), (v) => v === false, 20000))
     await quieta(pagina)
     const nombrada = Number((await consulta(`select count(*) n from reporte_diario_fotos f join reportes_diarios r on r.id = f.reporte_id where r.asunto = $1 and f.ruta = $2`, [asunto, ruta]))[0].n)
-    comprobar(corte.documentos > d0 && borrados().length === 0 && (await existe('fotos-reporte-diario', ruta)) && nombrada === 1,
-      `[Maestranza 390] 1y-reporte-que-entro. «Volver a cargar» recarga sin pedir que se quite la foto, que sigue con su reporte (${corte.documentos - d0} documentos, ${borrados().length} borrados, nombrada ${nombrada})`)
+    comprobar(recargo && borrados().length === 0 && (await existe('fotos-reporte-diario', ruta)) && nombrada === 1,
+      `[Maestranza 390] 1y-reporte-que-entro. «Volver a cargar» recarga sin pedir que se quite la foto, que sigue con su reporte (recargó ${recargo}, ${borrados().length} borrados, nombrada ${nombrada})`)
     corte.despliegue = false
     comprobar(errores.length === 0, `[Maestranza 390] 1y-reporte-que-entro. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
