@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 
-import { GenerarCompraDeInsumos, type InsumoParaCompra } from '@/app/(app)/compras/ordenes/formulario-directa'
+import { type Emitida, GenerarCompraDeInsumos, type InsumoParaCompra } from '@/app/(app)/compras/ordenes/formulario-directa'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
@@ -34,12 +34,12 @@ export function PorComprar({
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
 }) {
-  const [aviso, setAviso] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<Emitida | null>(null)
   return (
     <div className="space-y-4">
       {aviso && (
-        <p role="status" className="text-sm text-exito">
-          {aviso}
+        <p role="status" className={`text-sm ${aviso.aRevisar ? 'text-aviso' : 'text-exito'}`}>
+          {aviso.texto}
         </p>
       )}
       {grupos.map((g) => (
@@ -70,7 +70,7 @@ function GrupoDeInsumos({
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
-  alEmitir: (mensaje: string) => void
+  alEmitir: (emitida: Emitida) => void
 }) {
   const [marcados, setMarcados] = useState<Set<string>>(
     () => new Set(grupo.insumos.filter((i) => i.requerimiento_id === preseleccion).map((i) => i.id)),
@@ -105,13 +105,14 @@ function GrupoDeInsumos({
         descripcion={grupo.descripcion}
         acciones={
           <GenerarCompraDeInsumos
+            grupo={grupo.tipo}
             insumos={elegidos}
             proveedores={proveedores}
             materiales={materiales}
             puedeRegistrarProveedor={puedeRegistrarProveedor}
-            alEmitir={(mensaje) => {
+            alEmitir={(emitida) => {
               setMarcados(new Set())
-              alEmitir(mensaje)
+              alEmitir(emitida)
             }}
           />
         }

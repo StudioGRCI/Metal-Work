@@ -87,8 +87,8 @@ let oc2 = ''
   await ventana.locator('input[name="cantidad"]').nth(1).fill('6')
   await ventana.locator('select[name="categoria_id"]').nth(1).selectOption({ index: 1 })
   await ventana.getByRole('button', { name: /Registrar/ }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  const aviso = await pagina.locator('[role="status"]').innerText()
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   numeroRq = (aviso.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   comprobar(numeroRq !== '', `RQ registrado: «${aviso}»`)
   comprobar(errores.length === 0, `sin errores de consola (${errores.join(' | ')})`)
@@ -134,8 +134,8 @@ async function llenarOc(pagina, ventana, { desmarcar = [] } = {}) {
   await ventana.locator('[id^="ocd-precio-"]').first().fill('120.50')
   await ventana.getByRole('button', { name: 'Emitir orden de compra' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  const aviso = await pagina.locator('[role="status"]').innerText()
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   return { aviso, numero: (aviso.match(/OC-\d+-MW/) ?? [''])[0] }
 }
 

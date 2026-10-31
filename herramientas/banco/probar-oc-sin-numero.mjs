@@ -309,6 +309,10 @@ writeFileSync(
   await pagina.locator('p', { hasText: 'Leído' }).first().waitFor({ timeout: 60000 }).catch(() => {})
   await pagina.waitForTimeout(500)
   comprobar(await casilla.isChecked(), 'la factura que cita su referencia marca sola la OC sin número')
+  // Lo que marcó la lectura se va con su archivo (#148): marcada a mano, se queda al
+  // cambiar el PDF, y la otra que cita la factura nueva se ofrece con «Marcarla».
+  await casilla.uncheck()
+  await casilla.check()
   await pagina.locator('#adq-pdf').setInputFiles(PDF_CITA_DOS)
   const avisoOtra = pagina.locator('ul[role="status"] li', { hasText: `menciona la ${NOMBRE_2} y no está marcada` }).first()
   await avisoOtra.waitFor({ timeout: 60000 }).catch(() => {})
@@ -595,7 +599,7 @@ writeFileSync(
     comprobar(limpio(await entrega.textContent().catch(() => '')).includes(`Vacío: queda con ${NOMBRE_5}.`), 'y la ayuda dice con qué queda si la guía va en blanco')
     await entrega.getByRole('button', { name: 'Validar ingreso' }).click()
     await pagina.locator('[role="status"]', { hasText: `${NOMBRE_5}:` }).waitFor({ timeout: 30000 }).catch(() => {})
-    const aviso = limpio(await pagina.locator('[role="status"]').first().textContent().catch(() => ''))
+    const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
     comprobar(aviso.startsWith(`${NOMBRE_5}:`), `el aviso de validado la nombra: «${aviso.slice(0, 80)}»`)
     const guardado = await consulta(
       `select m.documento_referencia from ingresos_pendientes_almacen p join movimientos_materiales m on m.id = p.movimiento_id where p.orden_compra_id = $1`, [oc5])

@@ -89,7 +89,7 @@ async function emitir(pagina, { codigo, monto, detraccion, motivo, descripcion }
 async function guardar(pagina, ventana) {
   await ventana.getByRole('button', { name: 'Emitir orden de servicio' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
-  const aviso = await pagina.locator('[role="status"]').first().innerText()
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   return (aviso.match(/OS-\d+-MW/) ?? [''])[0]
 }
 
@@ -244,7 +244,8 @@ let previas = 0
   comprobar(/por aprobar \(S\/ [\d,]+\.\d{2}\)/.test(principal), 'arriba dice cuánto espera a Gerencia')
   await pagina.screenshot({ path: `${CAPTURAS}/servicios-costeo.png`, fullPage: true })
 
-  await pagina.goto(`${BASE}/codigos-internos`, { waitUntil: 'networkidle' })
+  // Buscado: la lista va de 50 en 50 y el banco con otras tandas tiene más abiertos.
+  await pagina.goto(`${BASE}/codigos-internos?${new URLSearchParams({ q: CODIGO })}`, { waitUntil: 'networkidle' })
   const filaCodigo = await texto(pagina.locator(`a[data-codigo="${CODIGO}"]`))
   comprobar(filaCodigo.includes('Servicios S/') && filaCodigo.includes('OS por aprobar'), `la lista de códigos muestra los servicios: «${filaCodigo.replace(/\s+/g, ' ').slice(0, 200)}»`)
   comprobar(errores.length === 0, `sin errores de consola en el costeo${errores.length ? `: ${errores[0]}` : ''}`)

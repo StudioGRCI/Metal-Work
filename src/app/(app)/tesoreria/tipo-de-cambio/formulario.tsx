@@ -7,7 +7,10 @@ import { useEnvio } from '@/lib/envio'
 import { registrarTipoDeCambio } from './acciones'
 
 export function FormularioTipoDeCambio({ hoy }: { hoy: string }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(registrarTipoDeCambio)
+  // Si el rechazo vuelve con la persona ya en otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
+  const { alEnviar, enviando, error, resultado } = useEnvio(registrarTipoDeCambio, undefined, {
+    siSeVa: { que: 'el tipo de cambio', enlace: 'Volver al tipo de cambio' },
+  })
   return (
     <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
       <Campo etiqueta="Fecha" htmlFor="tc-fecha" requerido>

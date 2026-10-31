@@ -6,6 +6,8 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
@@ -17,7 +19,7 @@ import {
   retencionYNeto,
 } from '@/lib/dominio/subcontratos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda as formatoMoneda } from '@/lib/format'
 
 import { anularRecibo, anularSubcontrato, cambiarEstadoSubcontrato, corregirSubcontrato, registrarRecibo } from '../acciones'
@@ -29,22 +31,28 @@ const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 function sacarArchivo(datos: FormData): File | null {
   const archivo = datos.get('archivo')
   datos.delete('archivo')
-  return archivo instanceof File && archivo.size > 0 ? archivo : null
+  // Uno vacío también cuenta como elegido: lo rechaza la subida diciendo que está vacío.
+  return archivo instanceof File && archivo.name !== '' ? archivo : null
 }
 
 /**
  * Administración sube un recibo por honorarios: su número, la fecha, el monto
  * bruto, si lleva retención y el archivo. El archivo sube primero a Storage y,
- * si el recibo no entra, se retira.
+ * si el recibo no entra, se retira. El id vive en el botón y no en el
+ * formulario, que se rehace al abrir (`useIdDelEnvio`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y si aquel entró, la
+ * ventana lo dice y el siguiente lleva otro.
  */
 export function SubirRecibo({ subcontratoId, hoy, moneda }: { subcontratoId: string; hoy: string; moneda: 'PEN' | 'USD' }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  const recibo = useIdDelEnvio('recibo_honorarios', undefined, subcontratoId)
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
+          recibo.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -60,25 +68,53 @@ export function SubirRecibo({ subcontratoId, hoy, moneda }: { subcontratoId: str
         descripcion="Copia los datos del recibo y adjúntalo. Tesorería recibe el aviso y lo paga a la cuenta del subcontratista."
         ancho="md"
       >
-        <FormularioRecibo key={vez} subcontratoId={subcontratoId} hoy={hoy} moneda={moneda} alTerminar={() => setAbierta(false)} />
+        <EnvioAnterior texto={recibo.anterior} />
+        {recibo.id && (
+          <FormularioRecibo
+            key={vez}
+            id={recibo.id}
+            subcontratoId={subcontratoId}
+            hoy={hoy}
+            moneda={moneda}
+            alSalir={recibo.salio}
+            alYaEntrar={recibo.otro}
+            alTerminar={() => {
+              setAbierta(false)
+              recibo.otro()
+            }}
+            alCancelar={() => setAbierta(false)}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioRecibo({
+  id,
   subcontratoId,
   hoy,
   moneda,
+  alSalir,
+  alYaEntrar,
   alTerminar,
+  alCancelar,
 }: {
+  /** Un reintento manda el mismo y la base no registra otro. */
+  id: string
   subcontratoId: string
   hoy: string
   moneda: 'PEN' | 'USD'
+  alSalir: () => void
+  alYaEntrar: () => void
   alTerminar: () => void
+  /**
+   * Cerrar sin enviar, o tras «No llegó la respuesta»: el id sigue hasta saber
+   * cómo terminó. «Cancelar» llamaba a `alTerminar`, que empezaba otro: al
+   * volver a abrir no se preguntaba si aquel entró (decimoséptima pasada).
+   */
+  alCancelar: () => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no registra otro.
-  const [id] = useState(() => crypto.randomUUID())
   const [bruto, setBruto] = useState('')
   // Mientras no la toquen, la casilla sigue al monto: pasa de S/ 1,500, lleva retención.
   const [retencionElegida, setRetencionElegida] = useState<boolean | null>(null)
@@ -90,12 +126,13 @@ function FormularioRecibo({
     const archivo = sacarArchivo(datos)
     if (!archivo) return { ok: false, error: 'Adjunta el recibo por honorarios.' }
     datos.set('retencion', retencion ? 'si' : 'no')
+    alSalir()
     return subirArchivoSubcontrato(subcontratoId, archivo, (ruta) => {
       datos.set('ruta', ruta)
       return registrarRecibo(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(subir, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(subir, alTerminar, { alYaEntrar })
   const prefijo = `rxh-${id.slice(0, 8)}`
 
   return (
@@ -169,19 +206,8 @@ function FormularioRecibo({
       <Campo etiqueta="Recibo por honorarios" htmlFor={`${prefijo}-archivo`} requerido ayuda="El PDF que emite SUNAT, o una foto.">
         <ElegirArchivo id={`${prefijo}-archivo`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_SUBCONTRATOS} required />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando}>
-          Registrar recibo
-        </Boton>
-      </div>
+      {/* Como las demás ventanas: el «ya quedó» sin rojo, con la ventana trabada y solo «Cerrar». */}
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar recibo" />
     </form>
   )
 }

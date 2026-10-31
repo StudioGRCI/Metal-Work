@@ -19,6 +19,7 @@ export const ACEPTA_CONTRATO = Object.keys(TIPOS_CONTRATO).join(',')
 /** Por qué no se puede subir ese archivo como contrato, o null si se puede. */
 export function problemaDeContrato(archivo: { type: string; size: number }): string | null {
   if (!TIPOS_CONTRATO[archivo.type]) return 'El contrato va en PDF o en foto (JPG, PNG o WEBP).'
+  if (archivo.size === 0) return 'El contrato está vacío: elige otro.'
   if (archivo.size > MAXIMO_MB_CONTRATO * 1024 * 1024) return `El contrato pesa más de ${MAXIMO_MB_CONTRATO} MB.`
   return null
 }

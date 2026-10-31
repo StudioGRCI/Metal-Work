@@ -41,7 +41,10 @@ En `src/components/ui/`:
   salta al primer campo vacío de abajo con el rojo fuera de la vista. Con dos
   documentos del mismo nombre, se distinguen por la hora (la nota, el
   `aria-label` de «Quitar» y su confirmación), y al quitar uno el foco vuelve
-  a la tarjeta. Lo único aparte es `SelectorFotos` (avance, vehículos,
+  a la tarjeta. Un campo opcional sin `archivo` lleva «Quitar» con el elegido
+  (la OC directa decía «Quítalo» y no había cómo): vacía el campo, la
+  pantalla se entera por su `onChange` con «nada» y vacía lo que leyó; el
+  obligatorio no lo lleva, se cambia eligiendo otro. Lo único aparte es `SelectorFotos` (avance, vehículos,
   reportes, trabajos): varias fotos a la vez, cada una con su miniatura, su
   subida y su «Reintentar», HEIC y achicadas en el teléfono, cámara y
   galería. Habla igual: formatos y tope antes de elegir, el motivo con las
@@ -136,10 +139,461 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   botón desactivado y el texto todavía en el campo.
 - `useActionState` sí desactiva su botón a tiempo, pero también vacía el
   formulario tras un rechazo. En formularios largos o del taller, `useEnvio`.
+- **El cursor vuelve a donde está el problema después del rechazo**, con
+  `useCursorAlRechazo` (`src/lib/envio.ts`): al campo que lo causó, o al aviso
+  (`tabIndex={-1}`) si no es de un campo. No se llama a `focus()` dentro del
+  `alEnviar`: mientras envía, el `<fieldset disabled>` no acepta el foco y se
+  pierde sin aviso (el banco de Administración lo vio el 2026-10-22). Por lo
+  mismo, `Ventana` da por enfocable solo lo que no está `:disabled` —un campo
+  dentro de un `fieldset disabled` no lleva el atributo propio— y, si ningún
+  campo toma el cursor al abrir, se lo queda ella: la que se abría trabada
+  dejaba el cursor detrás, sin Escape y con el tabulador por la página
+  (vigesimoctava).
+  El error de un campo (un número que ya existe) va en el `error` de su
+  `Campo`, que lo marca `aria-invalid`, y no se repite en el aviso de abajo; el
+  de un archivo («Falta el PDF»), en el `aviso` de su `ElegirArchivo`. Llevar
+  el cursor a un campo que no dice nada deja a la persona sin el porqué.
+  Tras un envío bien hecho que rehace el formulario sin ventana (el documento
+  del tablero de la OT), el cursor va al primer campo del siguiente cuando
+  deja de estar trabado, no dentro del `alTerminar`: el botón que lo tenía
+  desaparece y caía a la página. Si lo que se rehace es el botón que abrió la
+  ventana (otra llave, como el pago de la planilla), ponle
+  `data-cursor-vuelve="<nombre>"` y `Ventana` lleva el cursor al único que
+  quede con esa marca. Solo al que se rehace igual: un «Anular pago» por fila
+  con esa marca mandaba el cursor al de otra persona (decimonovena). Un aviso
+  de «listo» de un formulario que se rehace (`key`) va fuera de él y siempre
+  puesto (`role="status"` vacío): el que nace ya con su texto no se anuncia.
+  Se vacía en el `onSubmit`, antes de `alEnviar`, no dentro de la acción: ahí
+  corre en la transición, no se pinta, y el segundo «Documento adjuntado»
+  idéntico no se anunciaba (vigésima). Su `<p>` lleva `key` del envío.
+- **Una pantalla que ya no es de la sesión queda entera debajo de una traba**
+  (vigésima a vigesimosegunda): si en otra pestaña entró otra cuenta,
+  `CuentaDeLaPestana` abre un `<dialog>` modal por encima de todo —también de
+  la `Ventana` abierta—, con el puesto de las dos cuentas (y el nombre si son
+  del mismo puesto), el cursor en el aviso y solo «Recargar la pantalla». Dice
+  primero lo que conserva lo escrito (volver a entrar con la primera en la otra
+  pestaña) y que recargar lo pierde. Escape no la cierra. El aviso no lleva
+  `aria-describedby`: ya tiene el cursor, y con los dos se leía dos veces. Ni
+  pinta anillo: es texto donde la traba pone el cursor, no un mando, y la regla
+  global de `:focus-visible` respeta `outline-none` (`globals.css`,
+  vigesimotercera). Lo de detrás no se
+  toca ni se pierde: si la primera cuenta vuelve, se destraba con lo escrito,
+  el cursor vuelve donde estaba y se anuncia («Volvió la cuenta de…»). Lo de
+  detrás que cambió con la traba puesta —el aviso de una cadena que terminó en
+  ese rato— no lo leyó nadie: si el cursor vuelve donde estaba, el anuncio lo
+  suma («Mientras tanto: …»); si no puede —la ventana se cerró, el botón tocado
+  sigue apagado—, el cursor va a ese aviso, como `AvisoEnfocado`, y el anuncio
+  no dice «puedes seguir donde estabas» (vigesimocuarta). Los otros que
+  cambiaron (hasta tres: la OS emitida, cuando el que falló es su contrato) los
+  suma el anuncio sin repetir el que lee el cursor. Un aviso solo para el
+  lector (`sr-only`, un píxel al fondo) no recibe el cursor —la página saltaba
+  al fondo—: dice dónde se ve con `data-se-ve-en`, el id del mando visible (el
+  botón de la caja), y el cursor va ahí. Si lo enviado lleva a la pantalla que
+  sigue, el anuncio dice «Se abre la pantalla que sigue a lo que enviaste.» en
+  vez de mandar al cursor a lo que se va (vigesimoquinta). Antes la
+  traba iba en el pie de cada ventana: dejaba fuera las que no lo usan, los
+  botones de la pantalla y la ventana de una pregunta. Mientras dure, la
+  pantalla no se refresca sola (`RefrescoAlVolver`), ni tras un envío que salió
+  antes del cambio, ni lleva a la pantalla que sigue: lo hace cuando vuelve la
+  cuenta (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`). Refrescar con
+  la otra sesión pintaba su pantalla y se llevaba la traba sin que nadie
+  recargara (vigesimotercera). Recargar con una cuenta
+  sin permiso lleva a `/sin-permiso`, que dice con qué cuenta está la sesión y
+  ofrece «Salir y entrar con otra cuenta».
+- **Las notas de lo que entró se dicen una vez** (`contarLoQueEntro`): varias de
+  la misma clase van en una frase con su plural; lo que salió de esta pestaña a
+  nombre de otra cuenta, con su número y el puesto de quien tenía la sesión, y
+  su nombre si es del mismo puesto que quien lee (`comoSeNombra`), como en la
+  traba: «a nombre de Logística», dicho a otra persona de Logística, no decía
+  quién fue (vigesimoquinta).
+- **Una cola de fotos se corta con la traba** (`SelectorFotos`): cada foto mira
+  la sesión antes de subir, no solo la primera. La que se cortó y las que
+  esperaban quedan en la lista con «Reintentar» y su vista previa, y se achican
+  al reintentar; antes, las que seguían en la cola subían a nombre de la cuenta
+  que entró y volvían con «No tienes permiso», que no era cierto. Quitar con ✕
+  una foto que todavía sube, o cerrar la ventana mientras sube, la quita en
+  cuanto termina: quedaba en Storage sin fila que la nombrara (reporte diario,
+  «Reportar» de un trabajo sin orden, «Reportar día», vigesimotercera).
+- **Una foto subida se quita solo cuando se sabe que nadie la va a nombrar**
+  (`useFotosDelEnvio`, en toda ventana que sube fotos al elegirlas: «Reportar»,
+  «Registrar avance», «Reportar día», el ingreso y la salida del vehículo). Se
+  quita al cerrar sin enviar, tras un rechazo de la base con la ventana ya
+  cerrada, y si el registro entró sin ella o ya había entrado la primera vez.
+  **Si no se sabe cómo terminó** —no llegó la respuesta, el servidor cayó—, **se
+  queda**, también al cerrar después: el registro pudo entrar con ella, y
+  Storage solo protege la que una fila ya nombra. Una pausa ciega antes de
+  quitarla borraba la foto de un reporte que sí entró si el servidor tardaba;
+  una foto suelta no la ve nadie, un reporte con su foto borrada sí
+  (vigesimosexta). Cerrar mientras se envía deja las fotos con ese envío: quitarlas
+  en el acto hacía que la base rechazara el ingreso del vehículo («La foto 1 no
+  terminó de subir…») sin que nada lo dijera. Lo de cada envío va con él, no con
+  la ventana —volver a abrirla mientras el anterior seguía en camino lo
+  soltaba—. **Mientras siga en camino, el botón que abre la ventana gira y no
+  la abre** (`Boton ocupado`, que no suelta el cursor: apagado, la ventana no
+  podía devolvérselo al cerrarse), y al lado se dice que sigue enviándose
+  (`EstadoDelEnvio`): la ventana vuelta a abrir salía vacía, con «Registrar»
+  girando sin decir por qué, y tapaba el «Reporte registrado.» del primero
+  (vigesimoséptima). Ese «sigue» es el `sigue` del hook, que se apaga cuando la
+  acción contesta, no el `enviando` de `useEnvio`: ese sigue encendido mientras
+  la página se pone al día tras el ok, y «se sigue enviando» asomaba junto al
+  verde (vigesimoctava). El botón sí gira, sin texto al lado, mientras dura esa
+  puesta al día (`ocupado={sigue || (enviando && !abierto)}`): la ventana abierta
+  entonces salía trabada y girando. Mientras `sigue`, el botón lleva
+  `aria-describedby` con el `idDelEstado` del hook, y la región de
+  `EstadoDelEnvio` está siempre montada (vacía, `sr-only`): la que nace con su
+  texto no se anuncia, y al llegar al botón el lector decía «no disponible» sin
+  el porqué. En una fila con varios botones que abren ventanas (el vehículo:
+  salida, arenado y anular), cada envío lleva su hook y su `EstadoDelEnvio`, y
+  todos los botones giran mientras cualquiera siga: la anulación cerrada en
+  vuelo cerraba al contestar la ventana de la salida abierta entretanto. Si la
+  misma ventana se pinta dos veces (la tarjeta del teléfono y la fila del
+  monitor de la orden), las dos comparten el envío con una `clave`
+  (`useFotosDelEnvio(bucket, clave)`, y el aviso verde con
+  `useEstadoCompartido`): al girar el teléfono, el botón a la vista no sabía del
+  envío en camino (vigesimoctava). El verde de esas ventanas («Reporte
+  registrado.», «Ingreso registrado…», «Avance del día reportado.») también está
+  siempre montado (`className={aviso ? '…' : 'sr-only'}`): cerrada en vuelo, es
+  lo único que dice que entró, y el que nacía con su texto no se oía. En
+  «Reportar día» el aviso es de la actividad (`reportar-dia:<id>:aviso`), no del
+  día: al entrar el de hoy, la página cambia el botón por «Corregir el de hoy» y
+  «Otro día», y `useEstadoCompartido` le deja el valor al que monta en la misma
+  pintada; el verde duraba 0,3 s (vigesimonovena). Cómo terminó se dice ahí mismo: «El reporte que se estaba
+  enviando no se registró: …», o, si no se sabe, «…: No llegó la respuesta…»;
+  si ya había quedado la primera vez, sin rojo y diciendo que lo cambiado al
+  reenviar no se guardó. Desde una pestaña de antes del último despliegue (la
+  acción ya no existe en el servidor), «no se registró» y que hay que recargar,
+  no «revisa la conexión»; sus fotos se quitan, también las de la ventana
+  abierta, y la ventana pide elegirlas otra vez (lo de toda la pestaña, en el
+  punto que sigue). **Mientras se envía, la ventana traba sus campos y el
+  selector de fotos** (`fieldset disabled`, con el pie fuera para que
+  «Cancelar» siga): una foto elegida entonces no iba con el registro y se
+  quitaba sin aviso, y la ✕ quitaba de Storage la que el envío nombraba. El
+  envío vive con la ventana, no dentro: la `Ventana` desmonta lo suyo al
+  cerrarse, y un `useEnvio` adentro se llevaba el rechazo con él. Ningún
+  borrado de Storage sale del navegador con la sesión de otra cuenta, que
+  vuelve vacío y sin error: `quitarConLaCuenta` lo deja para cuando vuelva, y
+  donde el vacío se lee (`quitarSiSuelto`, `quitarConEstaCuenta`) la cuenta se
+  mira antes.
+- **Una pestaña de antes del último despliegue no se recarga sola, y lo dice
+  arriba** (vigesimonovena a trigesimosegunda). En esa pestaña `router.refresh()` no
+  repinta: recarga el documento entero (Next ve otra compilación), y se llevaba
+  lo escrito y dejaba suelta la foto ya subida del reporte diario. Las acciones
+  **casi siempre conservan su id** entre despliegues (la clave dura 14 días en
+  `.next/cache` y Vercel la conserva), así que no basta con esperar un 404: la
+  pregunta por los avisos (`contarAvisosYDespliegue`, al volver tras 30 s y cada
+  minuto) trae de qué despliegue es el servidor (`compilacionDelServidor`) y
+  `RefrescoAlVolver` la compara con la de la pantalla. La pestaña queda en uno de
+  tres estados (`useVersionDeLaPestana`): `al-dia`; `nueva`, otro despliegue con
+  las acciones vivas, que dice arriba «El sistema se actualizó… Lo que envíes
+  todavía entra, pero al enviarlo la pantalla se vuelve a cargar y se pierde lo
+  que tengas a medio escribir en otra parte de ella. Envía una cosa a la vez…»
+  (no «Termina lo que estás haciendo»: terminar una cosa se llevaba la otra); y `vieja`,
+  la acción ya no existe (el primer `UnrecognizedActionError` pasa por
+  `esDeLaVersionAnterior`, el único camino: nunca la función de Next directo),
+  «…lo que envíes desde aquí no va a entrar…». En los dos deja de repintar.
+  Sin respuesta a la pregunta, tampoco: sin red Next pedía la pantalla entera
+  al navegador y salía la página sin conexión. El aviso de arriba se monta solo
+  entonces, vacío y con el texto en la pintada siguiente (uno fijo en toda
+  pantalla quedaba delante de la región de estado de cada una); si lo descubrió
+  un envío que ya lo dice junto a su botón, sin región: se oía dos veces. Una
+  `Ventana` abierta o que se abre en la pestaña vieja lo dice arriba de su
+  contenido (`data-ventana-vieja`), en una región si llega con ella abierta y
+  en su `aria-describedby` si ya se sabía al abrirla; con una ventana abierta,
+  el aviso de arriba sale sin región, para que se oiga una vez. Si el aviso
+  queda fuera de la vista, una franja fija bajo la cabecera lo dice corto, con
+  el mismo botón (`data-franja-pestana-vieja`; su `top` se mide de
+  `[data-barra-superior]`): en el teléfono, abajo de un formulario largo, nadie
+  lo veía (D12 de la trigesimosegunda). «Volver a cargar» espera a que vuelva
+  lo que está en camino (`mientrasSeEnvia`) y quita antes lo que la pantalla
+  subió y nadie va a nombrar (`alVolverACargar`, hasta 4 s): sin esperar,
+  borraba la foto del reporte que el servidor estaba guardando. Cada envío dice
+  cuándo entró (`entro()`); si alguno volvió rechazado, sin respuesta o con un
+  error, no recarga encima de su aviso (se llevaba «Pon al menos a una
+  persona…» a los 90 ms): dice arriba que se lea el aviso junto a su botón, y
+  el botón pasa a «Volver a cargar igual», que ya no espera lo que estaba en
+  camino ni lo que no entró, pero sí lo que se envíe después (`cuentaDeEnvios`,
+  con sus pruebas en `envios-en-camino.test.mjs`): tras un «no entró», el
+  reenvío corregido recargaba a los 160 ms y dejaba su PDF suelto (F3 de la
+  trigesimocuarta). Un envío nuevo devuelve el aviso a «Volver a cargar»
+  (`alEmpezarUnEnvio`), fuera de la transición que envía: dentro, React lo
+  pintaba cuando el envío ya había vuelto. A los 10 s
+  sin respuesta, lo mismo, diciendo que si entra la pantalla se recarga sola. Si
+  lo que entró lleva a otra pantalla, no recarga encima: la cortaba y dejaba la
+  de antes, vacía, con el reporte ya dentro (D13 e Importante 2). Si a los 15 s
+  esa pantalla no abrió, lo dice («Lo que enviaste ya entró… ya está guardado,
+  no lo envíes de nuevo») y el toque siguiente va a ella (`anotarQueSeVa(destino)`,
+  o adonde redirigió la acción), no a la de antes, que ofrecía enviarlo otra
+  vez (F2 de la trigesimotercera). Toda cadena escrita a mano que envía por su
+  cuenta, fuera de `useAccion` (subir y anotar, una planilla fila por fila, un
+  conteo por tandas, el PDF de la orden que sube al elegirlo), va dentro de
+  `mientrasSeEnvia(async (entro) => …)` y llama a `entro()` solo si todo entró:
+  si no, «Volver a cargar» recargaba en el acto con la cotización, el Excel del
+  cronograma o el PDF de la orden subidos y sin anotar (D17; C, H5 y R1 de la
+  trigesimocuarta). Si esa cadena envía desde una ventana, lleva
+  `useEnvioDeLaVentana`, lo de `useFotosDelEnvio` sin fotos: cerrada en vuelo,
+  el botón que la abre gira y `EstadoDelEnvio` dice a su lado que sigue y, si no
+  entró, por qué («La cotización que se estaba enviando no se registró: …»). Su
+  rechazo se quedaba dentro de la ventana cerrada, y arriba se mandaba a leer
+  «el aviso junto a su botón», que no estaba (A, H7 y R2). Ese motivo no se
+  borra al reabrir la ventana; lo cambia la vuelta del envío siguiente, no su
+  salida, que va en la transición y se pintaba tarde, junto al verde nuevo.
+  Lo de cada ventana va por su `clave` (`useEnvioDeLaVentana(clave)`, con
+  `useEstadoCompartido(…, { guardar: true })`) y sobrevive a que su botón se
+  desmonte: «Nueva tarea», una búsqueda, las pastillas de estado o una pestaña
+  de la orden se llevaban el botón con el desenlace, y lo que contestaba no se
+  decía en ningún lado (diseño H1 y X2 de la trigesimoquinta). «Cancelar» y la
+  ✕ cierran por el mismo `cerrar()` del hook: «Cancelar» en vuelo dejaba el
+  botón sin girar y el rechazo sin decir (realización H1); por eso el pie de
+  la ventana va fuera del `fieldset` trabado (D2 de la trigesimosexta). Si lo
+  que entró se dice en la página y no en la ventana, `alEntrar` lo dice en
+  verde junto al botón («La corrección que se estaba enviando quedó
+  guardada…»): la corrección cerrada en vuelo que sí entraba no lo decía en
+  ningún lado. El cronograma y «Subir cotización» también: su éxito no se
+  guarda, y con la ventana cerrada en vuelo y la persona fuera, al volver solo
+  quedaba el desenlace, que callaba lo que entró (F3 de la trigesimoctava);
+  `alEntrar` lo dice en pasado («El cronograma que se estaba enviando se
+  cargó.») y se calla cuando la tarjeta ya lo dice. Si ese verde afirma cómo está algo que otro puede cambiar
+  («Gerencia revisa esta versión»), lleva `mientras` y el hook `ahora`: se
+  calla en cuanto la pantalla dice otra cosa (la cotización ya rechazada
+  seguía con el verde; D1 de la trigesimosexta). Donde el botón está en el
+  encabezado de la página (subir cotización, registrar avance, reportar un
+  trabajo), su estado va en la fila `estado` de `EncabezadoPagina`, debajo, no
+  al lado: el texto que aparecía junto al botón lo corría de sitio con el dedo
+  encima (H3). Lo mismo en la cabecera de una tarjeta: el estado del
+  cronograma va en su renglón arriba del cuerpo (`EstadoDelCronograma`), que
+  además sigue a la vista con «Nueva tarea» abierta (D3 y D4). Y en un
+  selector del encabezado, el mando que ese día no va guarda su sitio sin
+  verse (`Reservado`, en la caja diaria): «Día siguiente» y «Hoy» aparecían
+  al salir de hoy y corrían la flecha bajo el puntero (D3 de la cuadragésima
+  séptima). Si el rechazo
+  de una ventana cerrada en vuelo no se dice en ningún otro lado, va al aviso
+  de arriba («Lo que enviaste no entró, o no se sabe si entró: …»), en vez de
+  mandar a leer un aviso que no está: `noEntro(motivo)` en `useAccion`
+  (funcionalidad H1), y en las cadenas a mano `empezar(decirArriba)`, con el
+  `noEntro` de `mientrasSeEnvia` (D4). La ida a la tarjeta de la OT recién
+  cargada sale en el acto o no sale, y nunca recarga: va con `router.push` y
+  el resaltado (`target:`) se pone cambiando lo de después de «#»
+  (`irALaTarjeta`). Si no puede ir sin llevarse otra cosa (otro envío en
+  camino, o la persona cambió la dirección dentro de Cotización con «Atrás»,
+  una pastilla o una búsqueda), el encabezado lo dice con «Ver su tarjeta»
+  (Y1, F1 y D6; F1 y W2 de la trigesimoctava: tras «Atrás» la ida se llevaba
+  la lista pedida). Si se fue a otra pantalla, la línea se va con Cotización,
+  porque no se guarda, y lo que entró lo dice la tarjeta misma, que ya no
+  ofrece cargar la OT (D5). Tampoco sale si la
+  persona tocó algo después de cerrar la ventana: lo que pidió después manda
+  (funcionalidad H2 de la trigesimoséptima). «Ver su tarjeta» está apagado,
+  con su motivo dicho, mientras haya algo en camino: React junta su ida con
+  la transición del otro envío y salía «#A#B», sin resaltar ninguna (Z2). El
+  motivo va en su propio renglón debajo (`basis-full`): al lado, el botón se
+  corría al encenderse, con el dedo encima (D2 de la trigesimoctava).
+- **Toda ida que la aplicación hace sola tras un envío** pasa por
+  `navegarSiEsDeLaPestana(router, url, desde, siNoVa)`, con la `desde` que
+  `useAccion` y `useEnvio` le dan a `alTerminar` (o `partida()` tomada antes de
+  una cadena a mano): sale solo si nada de lo que la persona hizo mientras se
+  enviaba dice otra cosa (`laIdaSigueEnPie`). No sale si cambió la dirección
+  («Atrás», un filtro, una búsqueda), si hizo clic en un enlace a otra
+  pantalla en esta pestaña (el menú, una pastilla; también con Enter o un
+  lector de pantalla) o abrió un aviso de la campana, que es un botón y
+  pide su pantalla con `anotarQuePidioIr` (X2 de la crítica de la
+  cuadragésima: la persona terminaba en el aviso sin saber que lo suyo
+  había entrado), si hay otra ventana abierta, o si la ventana del envío se
+  cerró y después tocó algo. Pedir otra pantalla es ese clic, no el dedo que
+  apoya un enlace para desplazar ni el clic derecho ni abrir en otra pestaña:
+  con `pointerdown` cualquiera de esos dejaba la ida sin salir (H2 de
+  funcionalidad y X1b de la crítica de la trigesimonovena). Antes salía igual:
+  cerrar «Nuevo subcontrato» en vuelo y abrir otro se llevaba lo escrito en
+  el segundo, y el menú pedido terminaba en el subcontrato (W1 de la
+  trigesimoctava). Cuando no sale, `IdaQueNoSalio`, una línea arriba de la
+  página, dice lo que pasó con su enlace («El subcontrato quedó registrado.
+  Ver el subcontrato»); se va al seguir el enlace, al llegar a esa pantalla
+  por otro camino (sin contar lo que la ida le pone para esa vez, como
+  «?creada=1», ni la pestaña elegida: la orden abierta desde la lista también
+  es llegar; y lo que la pantalla toma sin que la dirección lo diga cuenta
+  igual, `porOmision`: /personal es Activos), al quitarla, o con la ida
+  siguiente a otro documento: la que sale se la lleva, también la de la OT a
+  su tarjeta (R2 de realización de la cuadragésima), y la que no sale pone la
+  suya. La OT que no va a su tarjeta porque la persona pidió otra pantalla no
+  la toca: su encabezado se va con Cotización, y la línea se iba sin nada en
+  su lugar (H1 de funcionalidad de la cuadragésima primera). La de un aviso
+  no la toca: lo que dice sigue siendo cierto, y si el
+  aviso se abrió mientras el formulario entraba, es lo único que lo dice. Una
+  recarga la olvida. Dice también, en rojo, el rechazo de un formulario que
+  no va en una ventana y volvió cuando la persona ya había pedido otra
+  pantalla (`decirElRechazoSiSeFue`, con `siSeVa` en `useEnvio`): Next deja
+  esa ida en cola, y el rechazo se pintaba en el formulario unos milisegundos
+  antes de irse con él; nada decía que no había entrado (Y1 de la crítica de
+  la cuadragésima primera). Vale para todos, no solo los de página entera: el
+  que no nombra lo suyo dice «Lo que enviaste no se guardó… Volver adonde lo
+  enviaste» (`SI_SE_VA_DE_LA_PANTALLA`; el tipo de cambio callaba, Z1 de la
+  crítica de la cuadragésima segunda), y el que lleva dinero o un documento
+  lo nombra. Lo que pudo entrar (sin respuesta, o el servidor caído a medio
+  envío: un 502 de la pasarela) no se dice «no se guardó» sino «No se sabe
+  si … se guardó»: decía lo contrario de lo que pasó, y su enlace llevaba a
+  registrarlo dos veces (H1 de funcionalidad de la cuadragésima segunda). Y
+  lo que ya había quedado la primera vez se dice igual arriba, con el enlace
+  a lo que quedó (`siSeVa.yaEntro`, H3), en azul de información y no en el
+  verde de lo que entró (H2 de diseño de la cuadragésima tercera). Lo que
+  quedó a medias —el comprobante en borrador, el plano que llegó a un área y
+  a otra no— no lleva «no se guardó» delante: el envío dice qué decir
+  (`arriba` en su resultado) y la línea lo dice tal cual, en ámbar (R7 y N2
+  de esa pasada; el plano decía «vuelve a enviar sin cambiar el archivo» y,
+  de vuelta con el formulario vacío, la persona lo mandaba repetido al área
+  a la que ya había llegado). Su enlace vuelve al formulario, y
+  ahí sigue el motivo, sin enlace, hasta que ese mismo formulario se envía
+  otra vez o se quita: el envío de una ventana de la misma pantalla (la
+  unidad nueva en la orden nueva) no se lo lleva (H2). «Ese mismo» es el
+  formulario, no su texto (`DeFormulario`: la vez que está montado y sus
+  campos): dos sin nombre de una pantalla se quitaban el motivo uno al otro
+  (R8 de la cuadragésima tercera). Vuelto a montar se lo reconoce en su ruta,
+  aunque la pestaña de su lista sea otra, por los nombres de sus campos,
+  marcados o no, y el que tiene nombre («el comprobante») también por él,
+  porque sus campos cambian con lo que se elige: reenviado con otra casilla
+  o sin la OC que había marcado, entraba y arriba seguía «no se guardó» (R10
+  y F3 de la cuadragésima cuarta). El que la pantalla pinta una vez por
+  fila, tarjeta o documento fuera de una ventana (la versión de cada plano,
+  la revisión de cada gasto, cada fila de compras, cada casilla de la ficha
+  del taller, cada feriado) dice de cuál es (`documento` en `useEnvio` y
+  `useAccion`): el envío del plano B se llevaba la línea del plano A (F2), y
+  el de otra fila cualquiera la de esta. Dos formularios distintos de una
+  pantalla con los mismos campos (repartir el peso y dar por entregados en la
+  OT, las dos revisiones de una versión) dicen cuál son con lo mismo. Uno
+  compartido por todas las filas no puede: cada fila lleva el suyo. Y lo que se resuelve en otro lado
+  se la lleva (`yaSeResolvio`): el comprobante en borrador completado en su
+  fila (F1), el PDF de la orden que su campo vuelve a decir al volver (F5).
+  Lo que quedó a medias no se va con cualquier envío del mismo formulario:
+  solo cuando entra el del formulario que es de ese documento (el plano, con
+  su `documento`), que lo completa. No al salir: el que frena la validación
+  («Marca al menos un área») o el que vuelve a fallar con la persona ahí se
+  lo llevaban cuando seguía siendo cierto (R18 de la cuadragésima séptima).
+  El que registra uno nuevo cada vez no lo toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
+  de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
+  que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la
+  cuadragésima sexta). Cuando el documento lo elige la búsqueda (?codigo=,
+  ?semana=, ?fecha= de la caja), lo dice la pantalla para todos sus
+  formularios con `DelDocumento` (ver Trampas).
+  Si la dirección cambió y el formulario
+  sigue a la vista (una pestaña de la lista que lo pinta encima, como
+  Facturas y Por pagar en Adquisiciones), lo dice él y arriba no se repite;
+  y al reenviarlo, la línea se va aunque la dirección sea otra: el
+  comprobante corregido entraba y arriba seguía «no se guardó» (W1 de su
+  crítica). Si sigue montado se mira después de que React desmonta la
+  pantalla que se va, no al pintar la nueva: al pintar, el formulario que se
+  iba todavía contaba, y el rechazo que llegaba antes que la pantalla pedida
+  (el plano con su subida, la tarea del informe al Dashboard) se borraba sin
+  decirse. «La dirección cambió» es la del formulario, no la del enlace: lo
+  que ya había quedado lleva al reporte, y con la ida todavía en cola se
+  borraba en el mismo formulario que la puso. Si al aparecer queda debajo de la barra de arriba —la página
+  venía bajada unos píxeles y el navegador la baja lo que mide la línea—,
+  sube lo justo para verse, una vez (A y R6). La línea vieja seguía hablando de A después de que B sí
+  saliera (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
+  arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
+  trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está
+  haciendo, y nada flota sin que lo pidan; en los formularios de página entera
+  lo dice además `YaQuedo`, junto al botón que se tocó.
+- **Un formulario de página entera** (orden, orden abierta desde Avance,
+  trabajo, cliente, evaluación, reporte diario) se traba al entrar y lo dice
+  junto a su botón con `YaQuedo` («La orden quedó registrada. Ver la orden»),
+  salga la ida o no. Sin eso, con otra ventana abierta al volver («Más» en el
+  teléfono), la ida no salía, la persona volvía al formulario lleno con el
+  botón vivo y un segundo toque registraba otro trabajo igual (X1 de la
+  crítica de la trigesimonovena). Con `juntoAlBoton: true` la línea de arriba
+  calla mientras la persona siga en ese formulario: lo mismo dos veces no;
+  si se va a otra pantalla, la línea sí lo dice allí. Un `redirect()` de
+  servidor tras guardar no mira nada de eso: el cliente nuevo devuelve su id y
+  el formulario va con `navegarSiEsDeLaPestana`.
+  Cambiar lo de después de «#» deja la entrada del historial sin el estado de
+  Next, y «Atrás» cambiaba la dirección sin cambiar la pantalla: se guarda
+  `history.state` antes y se repone después (H1 de los tres auditores). El
+  encabezado dice lo que pasó, «Se cargó el código y la OT de la cotización
+  N.», no cómo está ahora: «ya tiene su OT» seguía después de que Gerencia la
+  anulara (H3). El
+  aviso de arriba es una región no atómica (`aria-atomic="false"`): al cambiar
+  por qué no recargó, el lector releía sus 53 palabras antes de la frase nueva
+  (E de la trigesimocuarta). Ya
+  sabida vieja, nada sube a Storage: los ayudantes del navegador
+  (`subirArchivoPrivado`, adjuntos, subcontratos, planilla, finanzas), la orden
+  nueva, la cotización, el plano por área, la salida de la planilla y las fotos
+  miran `laPestanaEsDeLaVersionAnterior()` antes de tocarlo. La foto que se
+  elige dice «No se subió: el sistema se actualizó. Vuelve a cargar la pantalla y
+  elígela otra vez.», sin «Reintentar», y las ya subidas se quitan en el acto
+  (`quitarAlSaberseVieja`): quedan en la lista con su miniatura del disco y
+  «Se quitó» encima, sin «Reintentar», con una sola alerta para todas, y debajo
+  «Vuelve a cargar la pantalla para subir el reporte.» en vez de «Quita o
+  vuelve a subir». El reporte diario, que no pasa por `conFotos`, al enviar
+  quita sus fotos y pide elegirlas otra vez (`SE_ACTUALIZO_CON_FOTOS`); las de
+  un envío en camino o en duda no se quitan nunca (`esDeUnEnvio`), y si el
+  último quedó en duda dice «No se sabe si entró el reporte que enviaste:
+  búscalo en Reportes diarios…» en vez de pedirlas otra vez. Una tanda cortada (el conteo inicial, la planilla)
+  dice la causa una vez, en el resumen que recibe el cursor; cada fila, «No
+  salió: el sistema se actualizó.» sin alerta propia (eran N alertas iguales a
+  la vez), y en vez de «Registrar», que fallaría igual, «Volver a cargar la
+  pantalla». Una cadena por áreas (el plano) se corta en la primera y no pide a
+  la vez recargar y «vuelve a enviar sin cambiar el archivo». Un `catch` con su
+  propio «Vuelve a intentar» pasa por `motivoDelFallo`: reintentar desde esa
+  pestaña no entra nunca (la cotización con cliente nuevo). En `nueva`, un envío
+  que revalida entra y después Next recarga el documento: lo guardado está, y
+  se pierden el verde y lo que hubiera a medio escribir en otra parte de la
+  pantalla; solo Skew Protection de Vercel lo evita. Por eso lo que se envía
+  por partes no revalida en `nueva`: la planilla del kardex y el conteo inicial
+  mandan `compilacion` y, si el servidor es de otro despliegue, ponen al día el
+  kardex al cerrar su ventana (cortaban la planilla en la primera fila); en la
+  pestaña al día revalidan cada fila, porque sin eso «Atrás» al stock con la
+  ventana abierta traía el saldo de antes (trigesimosegunda). La campana y la
+  lista de avisos, en `nueva`, pintan lo leído desde el navegador (`useAvisos`,
+  la acción le dice `otroDespliegue`), y la pastilla «Sin leer» de /avisos
+  también (`useSinLeer`). Una acción que no revalida también recargaba si el
+  proxy refrescaba la sesión durante ella: Next cuenta esas cookies como de la
+  acción y la responde revalidada (X8). Por eso, antes de cada acción, la sesión
+  que vence en menos de 10 min se refresca en `/auth/sesion`, un GET que no
+  repinta nada (`refrescarLaSesionAntesDeCadaAccion`, que monta
+  `RefrescoAlVolver`, ver la skill `seguridad`).
+- **Una cadena cortada por la traba dice qué falta.** Si el paso cortado sigue a
+  uno que ya quedó (el comprobante tras la OC, el contrato tras la OS o el
+  subcontrato, el Excel tras el cronograma), la ventana se cierra con lo que
+  quedó y dice qué falta y dónde hacerlo: «…no se adjuntó: en otra pestaña
+  entró otra cuenta. Adjúntala desde la lista.» (`pasoTrasLoQueQuedo`):
+  callado, la ventana seguiría abierta como si nada hubiera entrado. En lo que sale fila
+  por fila (planilla y conteo del kardex, planos por área) lo que no salió se
+  queda con su motivo y su botón para enviarlo cuando vuelva la cuenta, y el
+  resumen de lo que queda recibe el cursor (`AvisoEnfocado` con `key` por
+  intento; en el conteo faltaba hasta la vigesimosexta, y tras «Registrar 1
+  material» el cursor caía a la página). Si no quedó nada, la ventana lo dice
+  con `NO_SE_GUARDO_OTRA_CUENTA` («No se guardó: en otra pestaña entró otra
+  cuenta. Cuando vuelva la tuya, vuelve a enviarlo.»): callada, al volver la
+  cuenta nadie sabía si lo enviado había salido (vigesimoquinta). `useAccion`
+  lo dice solo cuando la cadena lanza `OtraCuentaEnLaPestana` a medias: el pago
+  de Tesorería cortado mientras subía el voucher quedaba con la ventana llena y
+  muda (vigesimosexta).
+- **La pantalla que se abre tras un envío dice qué pasó.** Su franja
+  (`?creada=1` en la orden nueva) es un `AvisoEnfocado`: un `<p>` sin rol no se
+  anunciaba y el cursor quedaba en la página (vigesimosexta).
+- **El anuncio al volver la cuenta lee lo que se ve** (`innerText`, no
+  `textContent`): con `textContent` sumaba «tocahaz clic» de los dos textos por
+  puntero de `ElegirArchivo`. El pie de un campo que solo dice su estado
+  («1 KB · toca para cambiarlo») lleva `data-no-anunciar`: el cursor ya lo
+  tiene delante (vigesimosexta).
+- **Lo que se lee de un archivo no pisa lo que la persona escribió.** La
+  lectura tarda (un escaneo, segundos): quien escribe el número mientras tanto
+  lo perdía al terminar. Se guarda qué campos tocó (un `useRef` con un `Set`,
+  vaciado al abrir) y la lectura llena solo los demás; si lo escrito no calza
+  con lo leído, se avisa bajo el campo en una línea ámbar con `role="status"`
+  («El PDF dice la OT …», «El documento dice US$ 1,180.00: revisa el total»),
+  no en su ayuda gris, que se lee como un dato más. «Detectado en el
+  documento» se dice solo mientras es lo que se leyó (`ayudaDelMonto`). Lo que el
+  documento no trae no pisa lo que sí trae lo escrito: «390-2025» no pasa a
+  «390» porque el PDF no dice el año. Al quitar el archivo se va lo que puso
+  él, no lo escrito.
 - **Prohibido cerrar o resetear con `useEffect` sobre el resultado** — la
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
   lugar de «Cancelar» tras el éxito.
+- **Un rechazo que deja el registro creado** (el comprobante que entró en
+  borrador y su PDF no subió) vacía el formulario como al registrar, con el
+  aviso donde estaba y el cursor en él, hasta que se empieza el siguiente: lo
+  escrito ya está en el borrador, y volver a enviarlo choca con su propio
+  número. Lleno, invitaba a «Registrar» otra vez después de completarlo en la
+  lista (`adquisiciones/formulario.tsx`). Se detecta envolviendo la acción que
+  recibe `useEnvio`, no con un efecto sobre el resultado.
 - Marcar de a uno (un check, un V°B°) es un `<form>` mínimo por casilla con
   campos ocultos — sin modal, sin recargar el formulario entero (ver
   `ficha-taller.tsx`).
@@ -170,14 +624,23 @@ se queda donde ninguna fila lo nombra, y ahí solo lo ve quien lo subió (en
 `adjuntos-ot`, por `owner_id` desde la migración `20261017402000`; antes no lo
 veía nadie y hubo que sacar a mano el Excel de un cronograma).
 
-La forma correcta es la de `src/lib/adjuntos.ts`: si la anotación devuelve
-`!ok`, `storage.remove([ruta])`. Si **no llega la respuesta** (excepción, señal
-cortada), el archivo **no se toca**: la fila pudo entrar, y quitarlo deja una
-orden que nombra un archivo que no existe —el banco lo mostró el 2026-10-19 con
-«Subir PDF»—. La pantalla dice «No llegó la respuesta: mira si quedó antes de
-volver a subirlo», porque reintentar a ciegas lo sube dos veces. Y si la subida
-es opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no
-puede tragarse el aviso de lo que sí entró.
+La forma correcta es anotar con `anotarSinDejarloSuelto`
+(`src/lib/subida-privada.ts`), como ya hacen `subirArchivoPrivado`,
+`adjuntos.ts` y las demás: si la anotación devuelve `!ok`, quita el archivo. Si
+**no llega la respuesta**, no lo quita a ciegas —la fila pudo entrar, y quitarlo
+deja una orden que nombra un archivo que no existe; el banco lo mostró el
+2026-10-19 con «Subir PDF»—: pregunta otra vez con la misma ruta y el mismo id.
+Para eso **la acción tiene que contestar `ok` cuando es el mismo pedido otra
+vez**: o por id (`if exists … then return p_id` en la función), o, ante el
+duplicado, releyendo la fila por su ruta —un uuid de esa subida— y comparando
+quién y para qué documento (`registrarAdjunto`, `crearOrden`, las tres de la
+cotización, `registrarDocumentoCompra`). Si contesta «duplicado» o «ya quedó
+registrada», la pantalla dice en rojo «mira si quedó» aunque quedó (lo vio la
+auditoría del 2026-10-22). Si ni la segunda vez hay un sí, intenta quitarlo: la
+política del bucket deja quitar solo el que ninguna fila nombra. Lo que queda sin
+saber se dice: «mira si quedó antes de volver a subirlo». Y si la subida es
+opcional —el Excel que acompaña a un cronograma ya cargado—, su fallo no puede
+tragarse el aviso de lo que sí entró.
 
 Para que el archivo pueda viajar a `ot/{orden}/…` antes de que la orden exista,
 el identificador se decide en el navegador con `crypto.randomUUID()` y la base
@@ -279,6 +742,26 @@ en un check con `set local role authenticated`.
 ## Trampas
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
+
+- **Cambiar solo la búsqueda no vuelve a montar la pantalla.** En Next 16, ir
+  de `?codigo=A` a `?codigo=B` (un enlace, el aviso de la campana, Atrás, la
+  flecha del día) deja montado el segmento, y cada formulario se quedaba con
+  lo escrito, lo elegido y los ids del primero: el plano de un código salía
+  en el otro, y el cierre de una caja con el día de otra (X1 de la crítica de
+  la cuadragésima quinta). Lo que es de ese documento va dentro de
+  `DelDocumento` (`components/estructura/del-documento.tsx`): lo monta de
+  nuevo con cada uno (`key`) y le dice a cada formulario de cuál es
+  (`DocumentoDeLaPantalla`), para que la línea de arriba no tome el envío del
+  código B por el del A. Un formulario suelto que depende de la búsqueda lleva
+  su propia `key` (el gasto del mes, el pago de la oficina, el filtro del
+  kardex), y lo que va fuera de `DelDocumento` también: el selector de día de
+  la caja, sin control, se quedaba con el día escrito a mano o con el de la
+  entrada, debajo de los saldos de otro (H3 de diseño de la cuadragésima
+  sexta). La `key` va en lo que tiene que olvidar, no en lo que tiene el foco.
+  El buscador de una lista con pastillas es `BuscadorSimple`, que sigue a la
+  URL y se lleva lo escrito en la pastilla: el de trabajos sin orden era un
+  formulario sin control y quedaba con lo escrito sin buscar, o vacío, sobre
+  la lista de otro filtro (D4 de diseño de la cuadragésima séptima).
 
 - **Lo que solo explica no va a la vista, y nada flota sin que lo pidan.** El
   2026-10-19 DKS lo corrigió por segunda vez: «cuadros flotantes que no dan o

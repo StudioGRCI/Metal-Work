@@ -4,11 +4,12 @@ import { Camera, CheckCircle2, Lock, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { CampoPorcentaje, CampoTraba, FechaDelReporte } from '@/components/avance/campos-reporte'
-import { SelectorFotos, fotosParaEnviar, haySubiendo, type FotoLista } from '@/components/avance/selector-fotos'
+import { EstadoDelEnvio, SelectorFotos, fotosParaEnviar, haySubiendo, useFotosDelEnvio, type Desenlace } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { cambiarEstadoFlota, reportarFlota } from '../../acciones-flota'
 
@@ -63,6 +64,29 @@ export function AccionesTrabajo({
   )
 }
 
+const idDelEstadoDelReporte = (flotaId: string) => `estado-del-reporte-${flotaId}`
+
+/**
+ * Cómo va el reporte del día de un trabajo sin orden («Reportar»), en el
+ * renglón de estado del encabezado (`EncabezadoPagina`).
+ */
+export function EstadoDelReporte({ flotaId }: { flotaId: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(`flota:${flotaId}:aviso`, null)
+  const [desenlace] = useEstadoCompartido<Desenlace | null>(`flota:${flotaId}:desenlace`, null)
+  const [sigue] = useEstadoCompartido(`flota:${flotaId}:sigue`, false)
+  return (
+    <>
+      {/* Montada siempre: el verde que nace con su texto no lo oye el lector, y
+          tras cerrar en vuelo es lo único que dice que entró (vigesimonovena pasada). */}
+      <p role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </p>
+      {/* Con la ventana cerrada mientras se enviaba, su aviso no lo vería nadie. */}
+      <EstadoDelEnvio id={idDelEstadoDelReporte(flotaId)} sigue={sigue} desenlace={desenlace} registro="El reporte" />
+    </>
+  )
+}
+
 function Reportar({
   flotaId,
   areas,
@@ -75,39 +99,52 @@ function Reportar({
   traba: string | null
 }) {
   const [abierto, setAbierto] = useState(false)
-  const [fotos, setFotos] = useState<FotoLista[]>([])
-  const [aviso, setAviso] = useState<string | null>(null)
+  // Lo que dice cómo va va en el renglón de estado del encabezado
+  // (`EstadoDelReporte`): junto al botón corría a los de al lado.
+  const [, setAviso] = useEstadoCompartido<string | null>(`flota:${flotaId}:aviso`, null)
+  // Sin reportar, las fotos ya subidas no las nombra ningún reporte: se quitan
+  // de Storage, como en «Registrar avance». Antes «Cancelar» solo cerraba y
+  // quedaban sueltas (vigesimotercera pasada). Lo que se envía, o no se sabe
+  // si entró, se queda (`useFotosDelEnvio`).
+  const envio = useFotosDelEnvio('fotos-avance', `flota:${flotaId}`, idDelEstadoDelReporte(flotaId))
+  const { fotos, setFotos } = envio
   // Al guardar, la ventana se cierra y el reporte aparece arriba de la lista;
-  // el aviso queda al lado del botón para que nadie dude de si entró.
-  const { alEnviar, enviando, error, limpiar } = useEnvio(reportarFlota, (r) => {
-    setAbierto(false)
+  // el aviso queda bajo el encabezado para que nadie dude de si entró.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(envio.conFotos(reportarFlota), (r) => {
+    if (!envio.seCerroAlEnviar()) setAbierto(false)
     setAviso(r.mensaje ?? 'Reporte registrado.')
   })
+
+  function cerrar() {
+    envio.cerrar()
+    setAbierto(false)
+  }
 
   const areaInicial = areas.some((a) => a.id === areaPropia) ? areaPropia : areas[0]?.id
 
   function abrir() {
     limpiar()
     setAviso(null)
-    setFotos([])
+    envio.abrir()
     setAbierto(true)
   }
 
+  // Cerrada mientras el reporte va en camino: no se abre otra hasta que conteste.
+  // Tampoco mientras la página se pone al día tras el ok: salía trabada y
+  // girando (vigesimoctava pasada).
+  const { sigue, idDelEstado } = envio
+  const ocupado = sigue || (enviando && !abierto)
+
   return (
     <>
-      <Boton onClick={abrir}>
-        <Camera aria-hidden className="size-4" />
+      <Boton onClick={abrir} ocupado={ocupado} aria-describedby={sigue ? idDelEstado : undefined}>
+        {!ocupado && <Camera aria-hidden className="size-4" />}
         Reportar
       </Boton>
-      {aviso && (
-        <p role="status" className="text-xs font-medium text-exito">
-          {aviso}
-        </p>
-      )}
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo="Qué se hizo hoy"
         descripcion="Lo del día, con la foto de cómo quedó. Si recién empieza, cuenta cómo está: esa foto es la que vale después."
         ancho="lg"
@@ -118,63 +155,68 @@ function Reportar({
         >
           <input type="hidden" name="flota_id" value={flotaId} />
 
-          {/* La foto primero: es lo que se hace parado frente al trabajo. La
-              ruta empieza por flota/{trabajo}: la base comprueba que cada foto
-              cuelgue de este trabajo y las políticas de Storage la dejan ver a
-              quien ve el taller. */}
-          <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`flota/${flotaId}`} />
+          {/* Trabado mientras se envía: lo que va en camino no cambia, y una
+              foto elegida o quitada entonces no iba con el reporte (se perdía
+              sin aviso) o le quitaba la suya. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
+            {/* La foto primero: es lo que se hace parado frente al trabajo. La
+                ruta empieza por flota/{trabajo}: la base comprueba que cada foto
+                cuelgue de este trabajo y las políticas de Storage la dejan ver a
+                quien ve el taller. */}
+            <SelectorFotos fotos={fotos} alCambiar={setFotos} prefijoRuta={`flota/${flotaId}`} />
 
-          <Campo etiqueta="Qué se hizo" htmlFor="rf-descripcion" requerido>
-            <AreaTexto
-              id="rf-descripcion"
-              name="descripcion"
-              rows={3}
-              required
-              placeholder="Se desmontó la compuerta y se cortó el refuerzo rajado. Mañana va la nueva."
-            />
-          </Campo>
-
-          <FechaDelReporte id="rf-fecha" />
-
-          {/* El supervisor reporta en su área y en ninguna otra: si solo hay
-              una, se dice cuál y no se pregunta. El desplegable queda para
-              quien responde por todo el taller. */}
-          {areas.length === 1 ? (
-            <p className="text-sm text-texto-suave">
-              <input type="hidden" name="area_id" value={areas[0].id} />
-              Área: <span className="font-medium text-texto">{areas[0].nombre}</span>
-            </p>
-          ) : (
-            <Campo etiqueta="Área" htmlFor="rf-area" requerido>
-              <Seleccion id="rf-area" name="area_id" required defaultValue={areaInicial ?? ''}>
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nombre}
-                  </option>
-                ))}
-              </Seleccion>
+            <Campo etiqueta="Qué se hizo" htmlFor="rf-descripcion" requerido>
+              <AreaTexto
+                id="rf-descripcion"
+                name="descripcion"
+                rows={3}
+                required
+                placeholder="Se desmontó la compuerta y se cortó el refuerzo rajado. Mañana va la nueva."
+              />
             </Campo>
-          )}
 
-          <CampoPorcentaje
-            id="rf-avance"
-            name="avance_porcentaje"
-            etiqueta="Cuánto va"
-            ayuda="Como lo ves. No hace falta afinar."
-          />
+            <FechaDelReporte id="rf-fecha" />
 
-          <CampoTraba
-            id="rf-impedimento"
-            actual={traba}
-            ayuda="Material que falta, decisión del cliente, pieza en el proveedor"
-          />
+            {/* El supervisor reporta en su área y en ninguna otra: si solo hay
+                una, se dice cuál y no se pregunta. El desplegable queda para
+                quien responde por todo el taller. */}
+            {areas.length === 1 ? (
+              <p className="text-sm text-texto-suave">
+                <input type="hidden" name="area_id" value={areas[0].id} />
+                Área: <span className="font-medium text-texto">{areas[0].nombre}</span>
+              </p>
+            ) : (
+              <Campo etiqueta="Área" htmlFor="rf-area" requerido>
+                <Seleccion id="rf-area" name="area_id" required defaultValue={areaInicial ?? ''}>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nombre}
+                    </option>
+                  ))}
+                </Seleccion>
+              </Campo>
+            )}
+
+            <CampoPorcentaje
+              id="rf-avance"
+              name="avance_porcentaje"
+              etiqueta="Cuánto va"
+              ayuda="Como lo ves. No hace falta afinar."
+            />
+
+            <CampoTraba
+              id="rf-impedimento"
+              actual={traba}
+              ayuda="Material que falta, decisión del cliente, pieza en el proveedor"
+            />
+          </fieldset>
 
           <Error_ texto={error} />
 
           {/* En el teléfono, «Registrar» ocupa todo el ancho y queda arriba de
               «Cancelar»: es el que se busca con el pulgar. */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton

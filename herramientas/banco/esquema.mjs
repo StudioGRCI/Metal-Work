@@ -7,10 +7,11 @@
  * se lee lo mismo del catálogo de Postgres para poder hacer esa deducción.
  */
 
-/** Columnas, claves primarias y claves foráneas del esquema `public`. */
+/** Columnas (y cuáles son json/jsonb), claves primarias y claves foráneas del esquema `public`. */
 export async function leerEsquema(cliente) {
   const columnas = await cliente.query(`
-    select c.relname as tabla, a.attname as columna
+    select c.relname as tabla, a.attname as columna,
+           a.atttypid in ('json'::regtype, 'jsonb'::regtype) as es_json
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
@@ -49,9 +50,10 @@ export async function leerEsquema(cliente) {
   const relaciones = new Map()
   for (const fila of columnas.rows) {
     if (!relaciones.has(fila.tabla)) {
-      relaciones.set(fila.tabla, { nombre: fila.tabla, columnas: [], primaria: [] })
+      relaciones.set(fila.tabla, { nombre: fila.tabla, columnas: [], primaria: [], json: new Set() })
     }
     relaciones.get(fila.tabla).columnas.push(fila.columna)
+    if (fila.es_json) relaciones.get(fila.tabla).json.add(fila.columna)
   }
   for (const fila of primarias.rows) {
     relaciones.get(fila.tabla)?.primaria.push(fila.columna)

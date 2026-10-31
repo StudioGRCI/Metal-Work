@@ -65,14 +65,29 @@ async function menu(pagina) {
   )
 }
 
+/**
+ * Espera a que la fila deje de decir lo que decía antes del paso. Cada paso
+ * revalida la bandeja en el servidor, y con muchas filas eso pasa del segundo
+ * (2,8 s en el banco del hilo con 113 RQ): una espera fija de 800 ms daba un
+ * FALLA que no era del código. Si la fila sale de la vista, también vale.
+ */
+async function esperarFila(pagina, fila, antes) {
+  for (let i = 0; i < 80; i++) {
+    const ahora = await fila.innerText().catch(() => null)
+    if (ahora === null || ahora !== antes) return
+    await pagina.waitForTimeout(250)
+  }
+}
+
 /** Abre la ventana del paso y la manda con la nota. */
 async function paso(pagina, fila, boton, nota) {
+  const antes = await fila.innerText().catch(() => null)
   await fila.getByRole('button', { name: boton, exact: true }).click()
   const v = pagina.locator('[role="dialog"]')
   if (nota) await v.locator('textarea[name="nota"]').fill(nota)
   await v.getByRole('button', { name: /Marcar|Dejar listo|Registrar entrega/ }).click()
   await v.waitFor({ state: 'detached', timeout: 20000 })
-  await pagina.waitForTimeout(800)
+  await esperarFila(pagina, fila, antes)
 }
 
 /**
@@ -80,6 +95,7 @@ async function paso(pagina, fila, boton, nota) {
  * `nada` usan los atajos de la ventana; un arreglo pone cada cantidad a mano.
  */
 async function revisarStock(pagina, fila, cuanto, nota) {
+  const antes = await fila.innerText().catch(() => null)
   await fila.getByRole('button', { name: 'Revisar stock' }).click()
   const v = pagina.locator('[role="dialog"]')
   if (cuanto === 'todo') await v.getByRole('button', { name: 'Tengo todo' }).click()
@@ -88,7 +104,7 @@ async function revisarStock(pagina, fila, cuanto, nota) {
   if (nota) await v.locator('textarea[name="nota"]').fill(nota)
   await v.getByRole('button', { name: 'Guardar la revisión' }).click()
   await v.waitFor({ state: 'detached', timeout: 20000 })
-  await pagina.waitForTimeout(800)
+  await esperarFila(pagina, fila, antes)
 }
 
 const sello = Date.now().toString().slice(-6)
@@ -118,7 +134,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('[id^="rq-cant-"]').fill('3')
   await ventana.locator('[id^="rq-cat-"]').selectOption({ index: 1 })
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
   const fila = pagina.locator('[data-rq]', { hasText: codigo })
   await fila.waitFor({ timeout: 20000 })
   comprobar((await fila.innerText()).includes('Por revisar'), 'el RQ nace «Por revisar» (Almacén)')

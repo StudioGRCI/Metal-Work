@@ -1451,6 +1451,7 @@ export type Database = {
           corregido_por: string
           corregido_en: string
           actualizado_en: string
+          huella_del_envio: string | null
         }
         Insert: {
           id?: string
@@ -1467,6 +1468,7 @@ export type Database = {
           corregido_por: string
           corregido_en?: string
           actualizado_en?: string
+          huella_del_envio?: string | null
         }
         Update: {
           id?: string
@@ -1483,6 +1485,7 @@ export type Database = {
           corregido_por?: string
           corregido_en?: string
           actualizado_en?: string
+          huella_del_envio?: string | null
         }
         Relationships: [
           {
@@ -3297,6 +3300,27 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      }
+      huellas_de_envio: {
+        Row: {
+          registro: string
+          momento: string
+          huella: string
+          anotado_en: string
+        }
+        Insert: {
+          registro: string
+          momento: string
+          huella: string
+          anotado_en?: string
+        }
+        Update: {
+          registro?: string
+          momento?: string
+          huella?: string
+          anotado_en?: string
+        }
+        Relationships: []
       }
       ingresos_pendientes_almacen: {
         Row: {
@@ -11611,6 +11635,14 @@ export type Database = {
           orden_compra_id: string | null
         }[]
       }
+      anotar_envio: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_envio: Json | null
+        }
+        Returns: string
+      }
       anotar_salidas_de_antes: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -13214,6 +13246,12 @@ export type Database = {
           orden_id: string | null
         }[]
       }
+      comprobante_de_gasto_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       comprobante_en_camino: {
         Args: {
           p_compra: string | null
@@ -13884,6 +13922,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      escaneo_de_control_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       estado_del_plazo: {
         Args: {
           p_fin_programada: string | null
@@ -14240,6 +14284,13 @@ export type Database = {
           codigos: number | null
         }[]
       }
+      huella_del_envio_de_correccion: {
+        Args: {
+          p_motivo: string | null
+          p_cambios: Json | null
+        }
+        Returns: string
+      }
       identificacion_ot_diseno: {
         Args: {
           p_ordenes: string[] | null
@@ -14524,6 +14575,14 @@ export type Database = {
           p_nombre_uno: string | null
           p_ruc_otro: string | null
           p_nombre_otro: string | null
+        }
+        Returns: boolean
+      }
+      mismo_envio: {
+        Args: {
+          p_registro: string | null
+          p_momento: string | null
+          p_envio: Json | null
         }
         Returns: boolean
       }

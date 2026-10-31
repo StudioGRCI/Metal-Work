@@ -2,8 +2,9 @@
 
 import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition, type FormEvent } from 'react'
+import { useId, useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
+import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -11,19 +12,24 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
+import { fecha } from '@/lib/format'
 import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
-import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { useEnvio } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, pidioOtraPantalla, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { createClient } from '@/lib/supabase/client'
 
 import { cargarCodigoYOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
-function Falla({ texto }: { texto: string | null }) {
+/** El rechazo de un envío; con `ref`, recibe el cursor al volver (`useCursorAlRechazo`). */
+function Falla({ texto, ref }: { texto: string | null; ref?: Ref<HTMLParagraphElement> }) {
   if (!texto) return null
   return (
-    <p role="alert" className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+    <p ref={ref} role="alert" tabIndex={-1} className="w-full rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
       {texto}
     </p>
   )
@@ -36,8 +42,8 @@ function Falla({ texto }: { texto: string | null }) {
  */
 export function RevisarCotizacion({ id, conOrden }: { id: string; conOrden: boolean }) {
   const [rechazando, setRechazando] = useState(false)
-  const aprobar = useEnvio(revisarCotizacionPdf)
-  const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false))
+  const aprobar = useEnvio(revisarCotizacionPdf, undefined, { documento: id })
+  const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false), { documento: id })
 
   if (rechazando) {
     return (
@@ -133,6 +139,8 @@ export function CorregirCotizacion({
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Una versión nueva vuelve a preguntar por el IGV: el PDF corregido puede decir otra cosa.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [cliente, setCliente] = useState(clienteId)
@@ -144,14 +152,37 @@ export function CorregirCotizacion({
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su
+  // lado, también que entró (no hay otro aviso: la tarjeta cambia callada).
+  // Ese verde dura lo que la versión que dejó por revisar: cuando Gerencia la
+  // aprueba o la rechaza, ya no la «revisa» (D1 de la trigesimosexta pasada).
+  const fuera = useEnvioDeLaVentana(`corregir-cotizacion:${id}`, {
+    alEntrar: { dice: 'quedó guardada: Gerencia revisa esta versión.', mientras: `por-revisar:${version + 1}` },
+    ahora: `${rechazada || aprobada ? 'decidida' : 'por-revisar'}:${version}`,
+  })
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al aviso: la ventana estuvo trabada.
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => avisoError.current)
+  // Lo que la persona escribió a mano: la lectura del archivo no lo pisa.
+  const aMano = useRef(new Set<'monto' | 'moneda' | 'igv'>())
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setDice(null)
     setError(null)
     setAvisoArchivo(null)
     setTotal({ monto: null, moneda: null })
+    setTotalLeido(null)
     setIncluyeIgv('')
     setCliente(clienteId)
     setCarroceria(carroceriaId)
@@ -163,6 +194,7 @@ export function CorregirCotizacion({
   async function elegir(elegido: File | undefined) {
     if (!elegido) return
     setDice(null)
+    setTotalLeido(null)
     setError(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
@@ -172,8 +204,11 @@ export function CorregirCotizacion({
     try {
       const lectura = await leerCabeceraDeArchivo(elegido, setProgreso)
       setDice(lectura.cabecera.numero)
-      setTotal(lectura.total)
-      setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
+      setTotalLeido(lectura.total)
+      const montoAMano = aMano.current.has('monto')
+      const monedaAMano = aMano.current.has('moneda')
+      setTotal((v) => ({ monto: montoAMano ? v.monto : lectura.total.monto, moneda: monedaAMano ? v.moneda : lectura.total.moneda }))
+      if (!aMano.current.has('igv')) setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
     } finally {
       setLeyendo(false)
     }
@@ -213,18 +248,36 @@ export function CorregirCotizacion({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la corrección vuelva, y si no entró no recarga
+    // (D17 de la trigesimotercera pasada, en «Subir cotización»).
+    iniciar(() => mientrasSeEnvia(async (entro, decirArriba) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar(decirArriba)
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        // La pestaña ya se sabe de antes del último despliegue: lo que lo
+        // registraría no va a entrar, así que ni se sube (trigésima pasada).
+        if (laPestanaEsDeLaVersionAnterior()) {
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
+          return
+        }
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -243,37 +296,53 @@ export function CorregirCotizacion({
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await corregirCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la corrección no quedó, el
+        // archivo nuevo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => corregirCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la corrección quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
-          setError(r.error)
+          noEntro(r.error)
           return
         }
-        subido = false
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
-        // Si la anotación se cae, el archivo nuevo se quita: uno que ninguna
-        // fila nombra no lo ve nadie y no lo borra nadie.
-        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-        setError('No se pudo subir la corrección. Vuelve a intentar.')
+        entro()
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
+        // Lo que se cae acá es la subida: la corrección todavía no se anotó.
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
+        noEntro('No se pudo subir la corrección. Vuelve a intentar.')
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
-    })
+    }))
   }
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={abrir}>
-        <RefreshCw aria-hidden className="size-3.5" />
-        {rechazada ? 'Subir corrección' : 'Editar cotización'}
-      </Boton>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <RefreshCw aria-hidden className="size-3.5" />}
+          {rechazada ? 'Subir corrección' : 'Editar cotización'}
+        </Boton>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La corrección" femenino />
+      </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
@@ -283,6 +352,8 @@ export function CorregirCotizacion({
         ancho="md"
       >
         <form onSubmit={enviar} className="space-y-4">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           {observacion && (
             <div className="flex items-start gap-2 rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-sm text-peligro">
               <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -327,12 +398,38 @@ export function CorregirCotizacion({
             />
           </Campo>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
-              <Entrada id="corregir-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" required />
-            </Campo>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {/* El monto, en su propia fila: la ventana es angosta y en un tercio su
+                ayuda y su aviso se partían en tres renglones. El aviso va pegado a él. */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Campo etiqueta="Monto total de venta" htmlFor="corregir-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada
+                  id="corregir-monto"
+                  value={total.monto ?? ''}
+                  onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }}
+                  inputMode="decimal"
+                  required
+                />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-pretty text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="corregir-moneda" requerido>
-              <Seleccion id="corregir-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+              <Seleccion
+                id="corregir-moneda"
+                value={total.moneda ?? ''}
+                onChange={(e) => {
+                  aMano.current.add('moneda')
+                  setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))
+                }}
+                required
+              >
                 <option value="" disabled>Confirma</option>
                 <option value="PEN">Soles (S/)</option>
                 <option value="USD">Dólares (US$)</option>
@@ -342,7 +439,10 @@ export function CorregirCotizacion({
               <Seleccion
                 id="corregir-igv"
                 value={incluyeIgv}
-                onChange={(e) => setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')}
+                onChange={(e) => {
+                  aMano.current.add('igv')
+                  setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')
+                }}
                 required
               >
                 <option value="" disabled>Confirma</option>
@@ -359,10 +459,13 @@ export function CorregirCotizacion({
             </p>
           )}
 
-          <Falla texto={error} />
+          </fieldset>
 
+          <Falla ref={avisoError} texto={error} />
+
+          {/* Fuera de lo trabado: «Cancelar» cierra también mientras se envía, como la X (D2 de la trigesimosexta pasada). */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
@@ -378,7 +481,7 @@ export function CorregirCotizacion({
 /** Quitar la que se subió mal, mientras nadie la revisó y nunca tuvo orden (migraciones 102 y 20261020161000). La rechazada se corrige: no se quita. */
 export function QuitarCotizacion({ id, numero }: { id: string; numero: string }) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf, undefined, { documento: id })
 
   if (!confirmando) {
     return (
@@ -419,6 +522,115 @@ const TIPOS_UNIDAD = [
   ['CARROCERIA_MONTADA', 'Carrocería montada'],
 ] as const
 
+// La OT que entró y no fue a su tarjeta (`vaSolaALaTarjeta`): la dice el
+// encabezado (`EstadoDeLaOt`). Sin `guardar`: al salir de Cotización ya no se
+// dice, como el «PDF guardado» que se iba de la orden (Y2 de la trigesimosexta pasada).
+const OT_CARGADA = 'codigo-y-ot:cargada'
+type OtCargada = { id: string; numero: string }
+
+/**
+ * La ida a la tarjeta de la OT que acaba de entrar sale en el acto o no sale.
+ * Esperar a que no quedara nada en camino ni otra ventana abierta la dejaba
+ * armada: salía minutos después, desde otra pantalla, y se llevaba lo escrito
+ * allí (Y1 de la crítica de la trigesimosexta pasada). Sale si la persona
+ * sigue en Cotización con su cuenta, si este es el único envío en camino (la
+ * navegación de Next espera a los que van en transición, y montaba la lista
+ * entera con otra ventana abierta encima) y, si su ventana se cerró mientras
+ * iba, si desde entonces no tocó nada: el menú o la búsqueda que pidió en ese
+ * rato quedaban en cola, y la ida los reemplazaba (funcionalidad H2 de la
+ * trigesimoséptima). Y si sigue en la dirección de donde salió: «Atrás» no es
+ * un toque, y la ida se llevaba el filtro al que había vuelto (F1 y W2 de la
+ * trigesimoctava). Si no sale, lo dice el encabezado, con el camino a la tarjeta.
+ */
+function vaSolaALaTarjeta(cerradaEn: number | null, desde: Partida) {
+  if (!sigueDondeSalio(desde) || laPestanaEsDeOtraCuenta()) return false
+  if (enviosEnCamino() > 1) return false
+  return cerradaEn === null || ultimoToque() <= cerradaEn
+}
+
+/**
+ * A la tarjeta de la cotización, resaltada (`target:`), sin recargar: la
+ * recarga se llevaba el rechazo de otra OT que se acababa de decir (F1 de la
+ * trigesimosexta pasada). En «Aprobadas sin código» la recién cargada se iba
+ * de la lista: se va a la lista entera. Next la trae a la vista al pintarla,
+ * pero el navegador la resalta solo cuando lo de después de «#» cambia por su
+ * cuenta, no por `pushState`: se le quita y se le vuelve a poner.
+ *
+ * `trasEnviar`, la que sale sola al entrar la OT: si cambia la pantalla (desde
+ * un filtro o una búsqueda), en la pestaña de otro despliegue Next la carga
+ * entera, y «Volver a cargar» no recarga encima (`anotarQueSeVa`). «Ver su
+ * tarjeta» no envió nada: anotarla hacía decir arriba «Lo que enviaste ya
+ * entró» sin envío, o de una OT que la base rechazó (Z1 de la crítica de la
+ * trigesimoséptima pasada).
+ */
+function irALaTarjeta(id: string, router: ReturnType<typeof useRouter>, { trasEnviar = false } = {}) {
+  const destino = `/cotizaciones/pdf#${id}`
+  if (trasEnviar && window.location.search !== '') anotarQueSeVa(destino)
+  router.push(destino)
+  const hasta = performance.now() + 15_000
+  const resaltar = () => {
+    const aqui = window.location
+    if (aqui.pathname === '/cotizaciones/pdf' && aqui.search === '' && aqui.hash === `#${id}` && document.getElementById(id)) {
+      // Sin pasar por Next (lleva su estado): su dirección ya es esta.
+      const estado = window.history.state
+      window.history.replaceState(estado, '', aqui.pathname)
+      aqui.replace(`#${id}`)
+      // Ir al ancla deja la entrada sin el estado de Next, y Next no atiende el
+      // «Atrás» o «Adelante» que llega a una entrada sin el suyo: cambiaba la
+      // dirección y no la pantalla (H1 de los tres auditores, trigesimoséptima pasada).
+      window.history.replaceState(estado, '', aqui.href)
+    } else if (performance.now() < hasta) requestAnimationFrame(resaltar)
+  }
+  requestAnimationFrame(resaltar)
+}
+
+/**
+ * Junto a los estados del encabezado: la OT que entró sin ir a su tarjeta, y el
+ * camino a ella. Dice lo que pasó y no cómo quedó: Gerencia puede anular esa OT
+ * después, y «ya tiene su código y su OT» seguía (funcionalidad H3 de la
+ * trigesimoséptima pasada); la tarjeta dice cómo está. «Ver su tarjeta» se
+ * apaga mientras algo va en camino: la navegación esperaba a que volviera, la
+ * línea se iba sin llevar a ningún lado y con dos idas juntas quedaba «#A#B»
+ * (Z2 de la crítica).
+ */
+export function EstadoDeLaOt() {
+  const router = useRouter()
+  const [cargada, setCargada] = useEstadoCompartido<OtCargada | null>(OT_CARGADA, null)
+  const enCamino = useEnviosEnCamino() > 0
+  const id = useId()
+  return (
+    <div className={cargada ? 'flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end' : 'sr-only'}>
+      <span role="status" className="text-xs font-medium text-exito">
+        {cargada && `Se cargó el código y la OT de la cotización ${cargada.numero}.`}
+      </span>
+      {cargada && (
+        <>
+          <Boton
+            type="button"
+            tamano="sm"
+            variante="secundario"
+            disabled={enCamino}
+            aria-describedby={enCamino ? id : undefined}
+            onClick={() => {
+              if (enviosEnCamino() > 0) return
+              setCargada(null)
+              irALaTarjeta(cargada.id, router)
+            }}
+          >
+            Ver su tarjeta
+          </Boton>
+          {/* En su línea, debajo: al lado corría el botón 294 px justo cuando se encendía (D2 de la trigesimoctava). */}
+          {enCamino && (
+            <span id={id} className="basis-full text-xs text-texto-suave sm:text-right">
+              Se puede ver cuando vuelva lo que se está enviando.
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 /**
  * Administración, con la cotización ya aprobada por Gerencia, le da el código
  * interno que tendrá la unidad —nuevo, o uno que ya existe del mismo cliente— y
@@ -437,6 +649,7 @@ export function CargarCodigoYOt({
   numero: string
   tipoUnidad?: string | null
 }) {
+  const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
   // El que no sirve se queda a la vista en su campo, con el motivo; `archivo` es solo el que sí.
@@ -453,8 +666,38 @@ export function CargarCodigoYOt({
   const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
+  const fuera = useEnvioDeLaVentana(`codigo-y-ot:${cotizacionId}`)
+  const [, setCargada] = useEstadoCompartido<OtCargada | null>(OT_CARGADA, null)
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
+  // Al volver de un rechazo, el cursor va al número repetido o al código que no
+  // sirve, que se dicen junto a su campo, o al aviso: la ventana estuvo trabada.
+  // Lo del código salía en el aviso de abajo, lejos del campo (vigesimoquinta pasada).
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  const campoNumero = useRef<HTMLInputElement>(null)
+  const campoCodigo = useRef<HTMLInputElement>(null)
+  const errorNumero = error && /^(Ya hay una OT|El número de la OT)/.test(error) ? error : null
+  const errorCodigo = error && /^(Escribe el código interno|El código interno|PLANTA no es una unidad)/.test(error) ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : avisoError.current))
+  // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
+  // después o sea de otro PDF, no lo pisa.
+  const aMano = useRef(new Set<'numero' | 'fecha' | 'tipo'>())
+  // Si el número escrito no es el del PDF, se dice.
+  const otroNumero =
+    !leyendo && datosLeidos?.numero && numeroOrden.trim() && !mismaOt(numeroOrden, datosLeidos.numero) ? datosLeidos.numero : null
+  // Y la fecha de entrega escrita, si no es la del PDF.
+  const otraFecha =
+    !leyendo && datosLeidos?.fechaEntrega && fechaEntrega && fechaEntrega !== datosLeidos.fechaEntrega ? datosLeidos.fechaEntrega : null
+
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
 
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setRechazado(null)
     setFaltaPdf(false)
@@ -482,9 +725,20 @@ export function CargarCodigoYOt({
     try {
       const datos = await leerArchivoOrden(elegido, setAvisoLectura)
       setDatosLeidos(datos)
-      if (datos.numero) setNumeroOrden(datos.numero)
-      if (datos.fechaEntrega) setFechaEntrega(datos.fechaEntrega)
-      if (datos.tipoUnidad) setTipo(datos.tipoUnidad)
+      // El número escrito a mano se queda, salvo que sea la misma OT: entonces
+      // va el del PDF, que trae el año. Si el año lo trae solo lo escrito, se
+      // queda lo escrito: la base completaría el del PDF con el año de hoy.
+      const leido = datos.numero
+      const numeroAMano = aMano.current.has('numero')
+      if (leido) {
+        setNumeroOrden((escrito) => {
+          if (!numeroAMano || !escrito.trim()) return leido
+          if (!mismaOt(escrito, leido)) return escrito
+          return conAnio(escrito) && !conAnio(leido) ? escrito : leido
+        })
+      }
+      if (datos.fechaEntrega && !aMano.current.has('fecha')) setFechaEntrega(datos.fechaEntrega)
+      if (datos.tipoUnidad && !aMano.current.has('tipo')) setTipo(datos.tipoUnidad)
       setAvisoLectura(datos.numero || datos.fechaEntrega ? 'Datos leídos del PDF. Confírmalos antes de guardar.' : 'No se reconocieron los datos. Complétalos mirando el PDF.')
     } catch {
       setAvisoLectura('No se pudo leer el PDF. Completa los datos mirando la vista previa.')
@@ -500,6 +754,7 @@ export function CargarCodigoYOt({
     const datos = new FormData(evento.currentTarget)
     if (codigo.trim().length < 2) {
       setError('Escribe el código interno que tendrá la unidad.')
+      campoCodigo.current?.focus()
       return
     }
     if (!archivo) {
@@ -517,9 +772,23 @@ export function CargarCodigoYOt({
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // De dónde sale: la ida a la tarjeta no sale si la persona ya no está ahí.
+    const desde = partida()
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la OT vuelva; si no entró no recarga, y si entró
+    // deja que vaya a su tarjeta (D17 de la trigesimotercera pasada).
+    iniciar(() => mientrasSeEnvia(async (entro, decirArriba) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar(decirArriba)
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       // El identificador de la orden se decide acá para que el PDF viaje a su
       // carpeta antes de que la orden exista: así la base las crea juntas.
@@ -527,11 +796,17 @@ export function CargarCodigoYOt({
       const ruta = `ot/${ordenId}/${crypto.randomUUID()}.pdf`
       let subido = false
       try {
-        const { error: falla } = await supabase.storage
-          .from('adjuntos-ot')
-          .upload(ruta, archivo, { contentType: 'application/pdf', upsert: false })
+        // La pestaña ya se sabe de antes del último despliegue: lo que lo
+        // registraría no va a entrar, así que ni se sube (trigésima pasada).
+        if (laPestanaEsDeLaVersionAnterior()) {
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
+          return
+        }
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, 'application/pdf', quitarConLaCuenta)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -542,46 +817,66 @@ export function CargarCodigoYOt({
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
 
-        const r = await cargarCodigoYOt(null, datos)
+        // Si no se guardó, el PDF que ya viajó se quita, para que no quede un
+        // archivo que ninguna OT nombra. Sin respuesta se pregunta otra vez con
+        // la misma orden: si la primera entró, la base no crea otra, y el PDF
+        // que una OT nombra la política no lo deja quitar.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'adjuntos-ot',
+          ruta,
+          anotar: () => cargarCodigoYOt(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la página y mira si la cotización ya tiene su código antes de volver a intentar.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('adjuntos-ot').remove([ruta])
-          subido = false
-          setError(r.error)
+          noEntro(r.error)
           return
         }
-        subido = false
         setAbierto(false)
+        entro()
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
-        // iba de la lista y no se veía que había quedado. Se carga entera para
-        // que el navegador la resalte (`target:`) aunque la dirección no cambie.
-        if (window.location.pathname === '/cotizaciones/pdf' && window.location.search === '') {
-          window.location.hash = cotizacionId
-          window.location.reload()
-        } else {
-          window.location.assign(`/cotizaciones/pdf#${cotizacionId}`)
+        // iba de la lista y no se veía que había quedado. Si no puede ir sin
+        // llevarse otra cosa, lo dice el encabezado. Las dos se llevan la línea
+        // de arriba de otro documento, como las demás idas: «La orden quedó
+        // registrada» seguía sobre la OT recién cargada (R2 de realización,
+        // cuadragésima pasada). Salvo que la persona haya pedido otra pantalla:
+        // el encabezado se va con Cotización, y la línea se iba sin nada en su
+        // lugar (H1 de funcionalidad, cuadragésima primera pasada).
+        const va = vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)
+        if (va || !pidioOtraPantalla(desde)) ponerIdaQueNoSalio(null)
+        if (va) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
+        else setCargada({ id: cotizacionId, numero })
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
+          return
         }
-      } catch {
-        // Sin respuesta no se sabe si la base la guardó: el PDF no se toca
-        // (quitarlo dejaría una OT nombrando un archivo que no existe), y
-        // reintentar a ciegas cargaría otra.
-        if (subido) setError('No llegó la respuesta. Recarga la página y mira si la cotización ya tiene su código antes de volver a intentar.')
-        else setError('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
+        // Lo que se cae acá es la subida: todavía no se guardó.
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('adjuntos-ot').remove([ruta]))
+        noEntro('No se pudo subir el PDF de la orden. Revisa la conexión y vuelve a intentar.')
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
-    })
+    }))
   }
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={abrir}>
-        <Hash aria-hidden className="size-3.5" />
-        Dar código y cargar la OT
-      </Boton>
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+          {!ocupado && <Hash aria-hidden className="size-3.5" />}
+          Dar código y cargar la OT
+        </Boton>
+        <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La OT" femenino />
+      </span>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo={`Código interno y OT de la ${numero}`}
         descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
         ancho="panoramico"
@@ -589,13 +884,17 @@ export function CargarCodigoYOt({
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
             ayuda="El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad."
+            error={errorCodigo ?? undefined}
             requerido
           >
             <Entrada
+              ref={campoCodigo}
               id="eo-codigo-interno"
               name="codigo_interno"
               autoComplete="off"
@@ -604,7 +903,10 @@ export function CargarCodigoYOt({
               minLength={2}
               maxLength={40}
               value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
+              onChange={(e) => {
+                if (errorCodigo) setError(null)
+                setCodigo(e.target.value)
+              }}
               className="font-mono"
             />
           </Campo>
@@ -637,9 +939,11 @@ export function CargarCodigoYOt({
             etiqueta="N.º de la OT"
             htmlFor="eo-numero"
             ayuda="El que trae su PDF: 2922, o 2922-2026 si quieres escribir el año"
+            error={errorNumero ?? undefined}
             requerido
           >
             <Entrada
+              ref={campoNumero}
               id="eo-numero"
               name="numero"
               autoComplete="off"
@@ -648,10 +952,19 @@ export function CargarCodigoYOt({
               required
               maxLength={11}
               value={numeroOrden}
-              onChange={(e) => setNumeroOrden(e.target.value)}
+              onChange={(e) => {
+                aMano.current.add('numero')
+                if (errorNumero) setError(null)
+                setNumeroOrden(e.target.value)
+              }}
               placeholder="2922"
             />
           </Campo>
+          {otroNumero && (
+            <p role="status" className="-mt-2 text-xs text-aviso">
+              El PDF dice la OT {otroNumero}: revisa el número.
+            </p>
+          )}
 
           <div className="grid gap-4">
             <Campo
@@ -665,7 +978,10 @@ export function CargarCodigoYOt({
                 name="tipo_unidad"
                 required
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
+                onChange={(e) => {
+                  aMano.current.add('tipo')
+                  setTipo(e.target.value)
+                }}
               >
                 <option value="" disabled>
                   Elige el tipo
@@ -696,13 +1012,31 @@ export function CargarCodigoYOt({
             ayuda="El día prometido al cliente para entregarle la unidad, según la OT"
             requerido
           >
-            <Entrada id="eo-fecha" name="fecha_entrega" type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} />
+            <Entrada
+              id="eo-fecha"
+              name="fecha_entrega"
+              type="date"
+              required
+              value={fechaEntrega}
+              onChange={(e) => {
+                aMano.current.add('fecha')
+                setFechaEntrega(e.target.value)
+              }}
+            />
           </Campo>
+          {otraFecha && (
+            <p role="status" className="-mt-2 text-xs text-aviso">
+              El PDF dice la entrega el {fecha(otraFecha)}: revisa la fecha.
+            </p>
+          )}
 
-          <Falla texto={error} />
+          </fieldset>
 
+          <Falla ref={avisoError} texto={errorNumero || errorCodigo ? null : error} />
+
+          {/* Fuera de lo trabado: «Cancelar» cierra también mientras se envía, como la X (D2 de la trigesimosexta pasada). */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">
@@ -721,4 +1055,16 @@ export function CargarCodigoYOt({
       </Ventana>
     </>
   )
+}
+
+/** «390-2025» trae el año; «390» no. */
+const conAnio = (t: string) => /-\d{4}$/.test(t.trim())
+
+/** 390, 0390 y 0390-2026 son la misma OT; el año, si se escribe en los dos, se compara. */
+function mismaOt(a: string, b: string) {
+  const partes = (t: string) => /^0*(\d+)(?:-(\d{4}))?$/.exec(t.trim())
+  const x = partes(a)
+  const y = partes(b)
+  if (!x || !y) return a.trim() === b.trim()
+  return x[1] === y[1] && (!x[2] || !y[2] || x[2] === y[2])
 }

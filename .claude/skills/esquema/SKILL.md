@@ -288,6 +288,17 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   queda (anular, corregir) y dejarlo fuera de la regla en la misma expresión
   (`anulado_en is not null or …`), con su prueba en el check sobre una fila
   insertada como era antes.
+  Y cuando todo `update` de la fila vieja es legítimo, no hay qué dejar fuera:
+  en la `20261022141500` el «archivo de 0 bytes no entra» como CHECK dejó la
+  cotización vieja con PDF vacío sin poder rechazarse, aprobarse ni corregirse,
+  aunque el UPDATE no tocara esa columna (lo vieron los auditores el
+  2026-10-22). Entonces va como disparador `before insert or update of
+  <columnas>` que juzga solo el valor nuevo o el que cambió
+  (`fn_archivo_no_vacio`), y el check prueba con una fila vieja sembrada con
+  `session_replication_role = replica`. El tamaño que juzga es el que guardó
+  Storage (`storage.objects.metadata->>'size'`), no el que manda el navegador:
+  quien llama a la función puede declarar 4096 bytes de un archivo vacío, o no
+  declarar nada. El disparador anota el tamaño real encima del declarado.
 
 - **Una línea de RQ no es de un solo material.** `requerimiento_lineas.material_id`
   es lo que se pidió, pero Logística puede comprar otro
@@ -304,6 +315,12 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   RQ, incluir siempre una línea comprada y entregada con un material distinto
   del pedido.
 
+- **Redefinir una función que producción pudo cambiar a mano.** Una migración
+  que lleva la función entera pisa sin aviso un arreglo pegado en el editor de
+  Supabase. Antes de reemplazarla, mirar `md5(replace(prosrc, E'\r', ''))`
+  contra el texto que el repositorio conoce (antes o después del cambio) y
+  detenerse con un mensaje si no es ninguno (`20261022160000`). `prosrc` se
+  guarda tal cual, y `create or replace` conserva los permisos.
 - **Una función que nombra una OC no da `coalesce(numero, referencia)`.** La OC de
   antes de la serie OC-…-MW no tiene número de la casa, y su referencia es la
   cotización del proveedor, con la forma de un número de OC («OC-0621»). Diez

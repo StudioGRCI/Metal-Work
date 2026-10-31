@@ -437,7 +437,7 @@ function Verificacion({
  * qué paso era.
  */
 function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
-  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar)
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar, { documento: paso.id })
 
   return (
     <form onSubmit={alEnviar} className="mt-1 space-y-1">
@@ -497,6 +497,7 @@ function Casilla({
         etiqueta={etiqueta}
         className="mx-auto"
         accion={marcarVerificacion}
+        documento={`${pasoId}:${avance}`}
         datos={(marcar) => {
           const datos = new FormData()
           datos.set('id', pasoId)
@@ -533,6 +534,7 @@ function Visto({
   etiqueta,
   accion,
   datos,
+  documento,
   className,
 }: {
   marcado: boolean
@@ -541,11 +543,13 @@ function Visto({
   /** La acción que marca o desmarca, y los datos que le van según el sentido. */
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
   datos: (marcar: boolean) => FormData
+  /** De cuál casilla es (`documento` de `useAccion`): el toque de otra no se lleva la línea de esta. */
+  documento: string
   className?: string
 }) {
   // useAccion: un toque en vuelo a la vez y el repintado al terminar, sin el
   // par `useState(enviando)` + `router.refresh()` a mano que tenía antes.
-  const { ejecutar, enviando, error } = useAccion(accion)
+  const { ejecutar, enviando, error } = useAccion(accion, undefined, { documento })
 
   return (
     <>
@@ -595,8 +599,10 @@ function Accesorios({
   const { alEnviar, enviando, resultado } = useEnvio(agregarAccesorioOT)
   // El resultado de quitar se muestra: antes se descartaba y, si la base
   // rechazaba, el accesorio seguía ahí sin que nadie supiera por qué.
-  const quitar = useAccion(quitarAccesorioOT)
+  // La confirmación se queda abierta hasta el ok: si la base dice que no, lo
+  // dice dentro. Cerrándola al confirmar, el aviso se iba con ella.
   const [porQuitar, setPorQuitar] = useState<AccesorioOT | null>(null)
+  const quitar = useAccion(quitarAccesorioOT, () => setPorQuitar(null))
 
   const puestos = accesorios.filter((a) => a.verificado).length
 
@@ -610,7 +616,6 @@ function Accesorios({
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
     quitar.ejecutar(datos)
-    setPorQuitar(null)
   }
 
   return (
@@ -691,6 +696,7 @@ function Accesorios({
                     puedeEditar={puedeEditar}
                     etiqueta={`Visto bueno de ${a.descripcion}`}
                     accion={marcarAccesorio}
+                    documento={a.id}
                     datos={(marcar) => {
                       const datos = new FormData()
                       datos.set('id', a.id)
@@ -736,12 +742,14 @@ function Accesorios({
           </ul>
         )}
 
-        {quitar.error && <Aviso resultado={quitar.resultado} />}
+        {quitar.error && porQuitar === null && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}
           alCerrar={() => setPorQuitar(null)}
           alConfirmar={quitarAccesorio}
+          trabajando={quitar.enviando}
+          error={quitar.error}
           titulo="¿Quitar el accesorio?"
           detalle={
             porQuitar
@@ -769,8 +777,8 @@ function Repuestos({
 }) {
   const [abierto, setAbierto] = useState(false)
   const { alEnviar, enviando, resultado } = useEnvio(agregarRepuesto)
-  const quitar = useAccion(quitarRepuesto)
   const [porQuitar, setPorQuitar] = useState<RepuestoOT | null>(null)
+  const quitar = useAccion(quitarRepuesto, () => setPorQuitar(null))
 
   // Mismo caso que los accesorios: el borrado es definitivo y el icono es un
   // blanco grande. Se pregunta nombrando el repuesto que se va.
@@ -781,7 +789,6 @@ function Repuestos({
     datos.set('id', porQuitar.id)
     datos.set('orden_id', ordenId)
     quitar.ejecutar(datos)
-    setPorQuitar(null)
   }
 
   return (
@@ -874,12 +881,14 @@ function Repuestos({
           </ul>
         )}
 
-        {quitar.error && <Aviso resultado={quitar.resultado} />}
+        {quitar.error && porQuitar === null && <Aviso resultado={quitar.resultado} />}
 
         <ConfirmarAccion
           abierta={porQuitar !== null}
           alCerrar={() => setPorQuitar(null)}
           alConfirmar={quitarElRepuesto}
+          trabajando={quitar.enviando}
+          error={quitar.error}
           titulo="¿Quitar el repuesto?"
           detalle={
             porQuitar

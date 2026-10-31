@@ -173,9 +173,12 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
     fila.observado_en
       ? supabase.from('reportes_diarios').select('id').eq('reemplaza_a', id).limit(1).maybeSingle()
       : Promise.resolve({ data: null }),
-    // Una corrección entra sola: no tiene hermanos. Los del día de esa persona
-    // son pocos; el instante se compara aquí, al milisegundo: igualarlo en la
-    // consulta depende de cuántos decimales devuelve la API.
+    // Una corrección entra sola: no tiene hermanos. El instante se compara
+    // aquí, al milisegundo: igualarlo en la consulta depende de cuántos
+    // decimales devuelve la API. La consulta solo trae el segundo de alrededor:
+    // con todo el día, el tope de 50 dejaba fuera al hermano cuyo código iba
+    // después de los otros reportes de esa persona ese día, y el detalle no lo
+    // enlazaba (banco, cuadragésima sexta pasada).
     fila.reemplaza_a
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -183,6 +186,8 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
           .select('id, codigo_interno, anulado_en, creado_en')
           .eq('registrado_por', fila.registrado_por)
           .eq('fecha', fila.fecha)
+          .gte('creado_en', new Date(Date.parse(fila.creado_en) - 1000).toISOString())
+          .lte('creado_en', new Date(Date.parse(fila.creado_en) + 1000).toISOString())
           .neq('id', id)
           .order('codigo_interno')
           .limit(50),

@@ -1,33 +1,92 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useSyncExternalStore } from 'react'
 import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
-import { useAccion } from '@/lib/envio'
+import { anotarQueHuboUnDespliegue, anotarQuePidioIr, laCompilacionDeLaPestana, motivoDelFallo, navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
 import { destinoAviso } from '@/lib/dominio/destino-aviso'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 
-export function useAvisos(alAbrir?: () => void) {
+/**
+ * Lo leído desde una pantalla de otro despliegue. Ahí repintar recargaría el
+ * documento entero (`marcarAvisoLeido` no revalida), así que la campana y la
+ * lista lo pintan leído desde aquí. Solo guarda los que el servidor tenía sin
+ * leer: así el número baja una vez por aviso, en las dos.
+ */
+type LeidosAqui = { todos: boolean; ids: ReadonlySet<string> }
+const NINGUNO: LeidosAqui = { todos: false, ids: new Set() }
+let leidosAqui = NINGUNO
+const oyentes = new Set<() => void>()
+
+function leerAqui(id: string | null) {
+  leidosAqui = id === null ? { ...leidosAqui, todos: true } : { ...leidosAqui, ids: new Set([...leidosAqui.ids, id]) }
+  for (const avisar of oyentes) avisar()
+}
+
+function suscribirse(avisar: () => void) {
+  oyentes.add(avisar)
+  return () => void oyentes.delete(avisar)
+}
+
+const useLeidosAqui = () => useSyncExternalStore(suscribirse, () => leidosAqui, () => NINGUNO)
+const quedanSinLeer = (aqui: LeidosAqui, sinLeer: number) => (aqui.todos ? 0 : Math.max(0, sinLeer - aqui.ids.size))
+
+/**
+ * Los sin leer de `sinLeer` (el número del servidor) menos lo leído desde esta
+ * pestaña: la pastilla «Sin leer» de /avisos seguía en 3 con la lista ya leída
+ * (D11 de la trigesimosegunda pasada).
+ */
+export function useSinLeer(sinLeer: number) {
+  return quedanSinLeer(useLeidosAqui(), sinLeer)
+}
+
+export function useAvisos(sinLeer: number, alAbrir?: () => void) {
   const router = useRouter()
+  const aqui = useLeidosAqui()
+  // Sin repintar: la acción ya pone al día la pantalla, y donde no puede, la
+  // recarga de `useAccion` se la llevaba entera (trigesimoprimera pasada). Su
+  // rechazo se queda en la campana o en la lista, que siguen a la vista: arriba
+  // no se repite.
   const accion = useAccion<{ destino: string | null; abrir: boolean }>(async (_, datos) => {
     try {
       const id = datos.get('id')
-      const resultado = typeof id === 'string' ? await marcarAvisoLeido(id) : await marcarTodosLeidos()
+      const deLaPestana = laCompilacionDeLaPestana()
+      const resultado = typeof id === 'string' ? await marcarAvisoLeido(id, deLaPestana) : await marcarTodosLeidos(deLaPestana)
       if (!resultado.ok) return resultado
+      if (resultado.datos?.otroDespliegue) {
+        anotarQueHuboUnDespliegue()
+        if (typeof id !== 'string') leerAqui(null)
+        else if (datos.get('sin_leer')) leerAqui(id)
+      }
       const ruta = datos.get('ruta')
       return { ok: true, datos: { destino: typeof ruta === 'string' ? destinoAviso(ruta, null) : null, abrir: typeof id === 'string' } }
-    } catch {
-      return { ok: false, error: 'No se pudo guardar la lectura. Comprueba tu conexión y vuelve a intentarlo.' }
+    } catch (e) {
+      return { ok: false, error: motivoDelFallo(e, 'No se pudo guardar la lectura. Comprueba tu conexión y vuelve a intentarlo.') }
     }
-  }, ({ datos }) => {
+  }, ({ datos }, desde) => {
     if (datos?.abrir) alAbrir?.()
-    if (datos?.destino) router.push(datos.destino)
-  })
+    // Si mientras se marcaba la persona pidió otra cosa, no se la lleva ni se dice: abrir el aviso era lo pedido.
+    if (datos?.destino) navegarSiEsDeLaPestana(router, datos.destino, desde)
+  }, { refrescar: false, siSeVa: null })
   function abrir(aviso: Notificacion) {
     const datos = new FormData()
     datos.set('id', aviso.id)
+    if (!aviso.leida_en) datos.set('sin_leer', '1')
     const destino = destinoAviso(aviso.ruta, aviso.origen_id)
-    if (destino) datos.set('ruta', destino)
+    if (destino) {
+      datos.set('ruta', destino)
+      // Abrir un aviso que lleva a otra pantalla es pedirla, como un enlace: la
+      // ida de lo que estaba entrando ya no sale, y la línea de arriba lo dice.
+      anotarQuePidioIr()
+    }
     accion.ejecutar(datos)
   }
-  return { abrir, marcarTodos: () => accion.ejecutar(new FormData()), marcando: accion.enviando, error: accion.error }
+  return {
+    abrir,
+    marcarTodos: () => accion.ejecutar(new FormData()),
+    marcando: accion.enviando,
+    error: accion.error,
+    leido: (aviso: Notificacion) => Boolean(aviso.leida_en) || aqui.todos || aqui.ids.has(aviso.id),
+    sinLeer: quedanSinLeer(aqui, sinLeer),
+  }
 }

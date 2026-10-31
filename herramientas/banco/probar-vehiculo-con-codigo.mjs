@@ -154,7 +154,8 @@ let registroId = null
   await esperarSubidas(pagina)
   await pagina.screenshot({ path: join(CAPTURAS, 'vehiculo-ingreso-con-codigo.png'), fullPage: true })
   await v.getByRole('button', { name: 'Registrar ingreso' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
+  // La fila y el formulario tienen su región de estado montada y vacía: se espera la que dice algo.
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
 
   const [reg] = await consulta(
     `select id, unidad_id, orden_id, empresa, unidad, placa from public.registro_vehiculos
@@ -203,7 +204,7 @@ let registroId = null
   await v.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
   await esperarSubidas(pagina)
   await v.getByRole('button', { name: 'Registrar ingreso' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
   await pagina.reload({ waitUntil: 'networkidle' })
   const filaCochera = pagina.locator('tbody tr', { hasText: placaCochera })
   await filaCochera.first().waitFor({ timeout: 15000 }).catch(() => {})
@@ -251,7 +252,7 @@ let registroId = null
   await v.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
   await esperarSubidas(pagina)
   await v.getByRole('button', { name: 'Registrar salida al arenado' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 }).catch(() => {})
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 }).catch(() => {})
   const [r] = await consulta('select salida_en, sale_al_arenado from public.registro_vehiculos where id = $1', [registroId])
   comprobar(r.salida_en !== null && r.sale_al_arenado === true, 'en la base: salió, y al arenado, sin el 100 % ni Tesorería')
   await pagina.reload({ waitUntil: 'networkidle' })
@@ -268,7 +269,7 @@ let registroId = null
   await w.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
   await esperarSubidas(pagina)
   await w.getByRole('button', { name: 'Registrar ingreso' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 }).catch(() => {})
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 }).catch(() => {})
   const [vuelta] = await consulta(
     `select motivo from public.registro_vehiculos where codigo_interno = $1 and salida_en is null and anulado_en is null`,
     [CODIGO],

@@ -204,6 +204,26 @@ const desborde = (pagina) => pagina.evaluate(() => document.documentElement.scro
 /** Que el control del navegador no se vea: transparente y tapando la caja. */
 const oculto = (input) => input.evaluate((e) => getComputedStyle(e).opacity === '0')
 
+// La salida de Almacén necesita un material con saldo de los que lista su
+// planilla (activos y con su unidad). En una base recién armada no hay ninguno:
+// se ingresa como Almacén, con su permiso, como en probar-documentos-en-el-borde.mjs.
+if (!(await uno(`select 1 as hay from public.v_existencias_materiales e join public.materiales m on m.id = e.material_id
+                  where e.disponible >= 2 and m.activo and not m.unidad_pendiente limit 1`))) {
+  const material = await uno(`select id from public.materiales where activo and not unidad_pendiente order by codigo limit 1`)
+  const { id: almacenero } = await uno(`select id from public.usuarios where lower(correo) = 'almacen.local@metalwork.test'`)
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+                             set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [almacenero])
+    await base.query('set local role authenticated')
+    await base.query(`select public.registrar_ingreso_almacen(gen_random_uuid(), $1, 10, 'INGRESO_GENERAL', 'Ingreso del banco', 1, 'PEN')`, [material.id])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+}
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   const movil = viewport.width < 500
   const tam = movil ? '390' : '1440'
@@ -433,7 +453,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       await esperarQueDiga(plano, listo, 5000)
       comprobar(listo.test(await dice(plano)) && !(await invalido(plano)), `[Diseño ${tam}] y un PDF de verdad queda en verde`)
     } else {
-      comprobar(false, `[Diseño ${tam}] el código ${conCodigo?.codigo_interno} ofrece cargar un plano`)
+      // Una orden abierta con código la deja, en una base recién armada, probar-gerencia-aprueba-y-administracion-carga-la-ot.mjs.
+      comprobar(false, `[Diseño ${tam}] el código ${conCodigo?.codigo_interno ?? '(ninguna orden abierta tiene código: corre antes probar-gerencia-aprueba-y-administracion-carga-la-ot.mjs)'} ofrece cargar un plano`)
     }
     await contexto.close()
   }

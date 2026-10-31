@@ -1,9 +1,10 @@
 'use client'
 
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, RotateCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, avisoDeArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -11,6 +12,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { normalizarNombre } from '@/lib/dominio/planilla-almacen'
+import { laCompilacionDeLaPestana, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { NO_SE_CARGO_EL_ARCHIVO, subirArchivoPrivado } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +25,8 @@ const MAXIMO_MB_EXCEL = 8
 const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp'
 const MAXIMO_MB_FOTO = 10
 type Resultado = { estado: 'enviando' } | { estado: 'ok' } | { estado: 'error'; mensaje: string }
+
+const NO_SALIO_OTRA_CUENTA = 'No se envió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, usa «Registrar lo que falta».'
 /** Lo que eligió Almacén para una fila sin material: uno del catálogo o darlo de alta. */
 const NUEVO = 'NUEVO'
 
@@ -67,12 +71,16 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   const faltan = porRegistrar.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
+  // Las que no salieron porque la pestaña es de antes del despliegue: desde aquí no van a salir.
+  const porLaVersion = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_SE_ACTUALIZO).length
   const empezado = intentos > 0
   // Terminado es que no quede nada por registrar, no que algo ya haya entrado:
   // si no, la salida cuya foto no subió se quedaba sin botón para volver a intentarlo.
   const terminado = !registrando && empezado && faltan.length === 0
   // Lo que queda sin entrar, para no cerrar en verde con una salida sin foto encima.
-  const queda = fallidas
+  const queda = porLaVersion
+    ? `${porLaVersion === 1 ? '1 no salió' : `${porLaVersion} no salieron`} porque el sistema se actualizó mientras tenías la pantalla abierta${fallidas > porLaVersion ? ` (${fallidas - porLaVersion} más, por el motivo de cada uno)` : ''}. Vuelve a cargar la pantalla y elige la planilla y sus fotos otra vez: lo registrado no se duplica`
+    : fallidas
     ? `${fallidas} no: revisa el mensaje de cada uno`
     : faltan.length
       ? faltan.length === 1 ? 'falta 1' : `faltan ${faltan.length}`
@@ -95,7 +103,7 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
   function cerrar() {
     if (registrando) return
     alCerrar()
-    if (Object.keys(resultados).length > 0) router.refresh()
+    if (Object.keys(resultados).length > 0) refrescarSiEsDeLaPestana(router)
     reiniciar()
   }
 
@@ -121,8 +129,8 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
       if (esta !== vuelta.current) return
       if (!r.ok) setAvisoArchivo(r.error)
       else setFilas(r.datos?.filas ?? [])
-    } catch {
-      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer la planilla: revisa la conexión y elígela otra vez')
+    } catch (e) {
+      if (esta === vuelta.current) setAvisoArchivo(motivoDelFallo(e, 'No se pudo leer la planilla: revisa la conexión y elígela otra vez'))
     } finally {
       setLeyendo(false)
       enCurso.current = false
@@ -139,64 +147,103 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
 
   async function registrar() {
     if (enCurso.current || faltan.length === 0) return
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
-    try {
-      const db = createClient()
-      const { data: sesion } = await db.auth.getUser()
-      const usuario = sesion.user?.id
-      // Primero todos los ingresos y después las salidas: así el saldo alcanza
-      // aunque la salida esté anotada antes que el ingreso del mismo día.
-      const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
-      for (const f of orden) {
-        setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
-        const datos = new FormData()
-        datos.set('hoja', f.hoja)
-        datos.set('id', f.id)
-        datos.set('material_id', f.materialId ?? '')
-        datos.set('cantidad', String(f.cantidad ?? ''))
-        datos.set('fecha', f.fecha ?? '')
-        let resultado: ResultadoAccion
-        try {
-          if (f.hoja === 'Ingresos') {
-            // Sin material del catálogo: el elegido por Almacén, o darlo de alta con su descripción.
-            const eleccion = elecciones[f.id]
-            const elegido = eleccion && eleccion !== NUEVO ? f.sugerencias.find((s) => s.id === eleccion) : undefined
-            const nuevo = !f.materialId && !elegido && f.nuevo
-            datos.set('material_id', f.materialId ?? elegido?.id ?? '')
-            datos.set('material_nuevo', nuevo ? nuevo.id : '')
-            datos.set('descripcion', f.descripcionEscrita)
-            datos.set('unidad_id', nuevo ? nuevo.unidadId : f.unidadId ?? '')
-            datos.set('origen', elegido?.origen ?? f.origen)
-            datos.set('documento', f.documento)
-            datos.set('precio', f.precio === null ? '' : String(f.precio))
-            datos.set('moneda', f.moneda)
-            resultado = await registrarFilaPlanilla(null, datos)
-          } else if (!usuario) {
-            resultado = { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
-          } else {
-            const foto = fotos[f.id]
-            const extension = foto.type === 'image/jpeg' ? 'jpg' : foto.type === 'image/png' ? 'png' : 'webp'
-            const ruta = `${usuario}/${f.id}.${extension}`
-            datos.set('unidad', f.unidad)
-            datos.set('motivo', f.documento)
-            datos.set('recibe', f.recibe)
-            datos.set('foto_ruta', ruta)
-            resultado = await subirArchivoPrivado({
-              bucket: 'evidencias-almacen', ruta, archivo: foto, contentType: foto.type,
-              registrar: () => registrarFilaPlanilla(null, datos),
-            })
-          }
-        } catch {
-          resultado = { ok: false, error: 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.' }
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a la última fila, y si alguna no entró no recarga
+    // encima de su motivo (D17 de la trigesimotercera pasada).
+    await mientrasSeEnvia(async (entro) => {
+      try {
+        const db = createClient()
+        const { data: sesion } = await db.auth.getUser()
+        const usuario = sesion.user?.id
+        // Primero todos los ingresos y después las salidas: así el saldo alcanza
+        // aunque la salida esté anotada antes que el ingreso del mismo día.
+        const orden = [...faltan.filter((f) => f.hoja === 'Ingresos'), ...faltan.filter((f) => f.hoja === 'Salidas')]
+        // Fila por fila, cada una sale con la sesión de ese momento. Si entró otra
+        // cuenta, la que iba y las que siguen se quedan con su motivo, y salen
+        // cuando vuelva la tuya (vigesimotercera pasada).
+        let todas = true
+        const cortar = (desde: number, mensaje = NO_SALIO_OTRA_CUENTA) => {
+          todas = false
+          const quedan: Record<string, Resultado> = Object.fromEntries(orden.slice(desde).map((q) => [q.id, { estado: 'error', mensaje }]))
+          setResultados((r) => ({ ...r, ...quedan }))
         }
-        setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
+        for (const [i, f] of orden.entries()) {
+          if (laPestanaEsDeOtraCuenta()) {
+            cortar(i)
+            break
+          }
+          // Ya se sabe vieja (otra acción lo dijo): ni se sube la foto.
+          if (laPestanaEsDeLaVersionAnterior()) {
+            cortar(i, NO_SALIO_SE_ACTUALIZO)
+            break
+          }
+          setResultados((r) => ({ ...r, [f.id]: { estado: 'enviando' } }))
+          const datos = new FormData()
+          datos.set('hoja', f.hoja)
+          datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
+          datos.set('id', f.id)
+          datos.set('material_id', f.materialId ?? '')
+          datos.set('cantidad', String(f.cantidad ?? ''))
+          datos.set('fecha', f.fecha ?? '')
+          let resultado: ResultadoAccion
+          try {
+            if (f.hoja === 'Ingresos') {
+              // Sin material del catálogo: el elegido por Almacén, o darlo de alta con su descripción.
+              const eleccion = elecciones[f.id]
+              const elegido = eleccion && eleccion !== NUEVO ? f.sugerencias.find((s) => s.id === eleccion) : undefined
+              const nuevo = !f.materialId && !elegido && f.nuevo
+              datos.set('material_id', f.materialId ?? elegido?.id ?? '')
+              datos.set('material_nuevo', nuevo ? nuevo.id : '')
+              datos.set('descripcion', f.descripcionEscrita)
+              datos.set('unidad_id', nuevo ? nuevo.unidadId : f.unidadId ?? '')
+              datos.set('origen', elegido?.origen ?? f.origen)
+              datos.set('documento', f.documento)
+              datos.set('precio', f.precio === null ? '' : String(f.precio))
+              datos.set('moneda', f.moneda)
+              resultado = await registrarFilaPlanilla(null, datos)
+            } else if (!usuario) {
+              resultado = { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' }
+            } else {
+              const foto = fotos[f.id]
+              const extension = foto.type === 'image/jpeg' ? 'jpg' : foto.type === 'image/png' ? 'png' : 'webp'
+              const ruta = `${usuario}/${f.id}.${extension}`
+              datos.set('unidad', f.unidad)
+              datos.set('motivo', f.documento)
+              datos.set('recibe', f.recibe)
+              datos.set('foto_ruta', ruta)
+              resultado = await subirArchivoPrivado({
+                bucket: 'evidencias-almacen', ruta, archivo: foto, contentType: foto.type,
+                registrar: () => registrarFilaPlanilla(null, datos),
+              })
+            }
+          } catch (e) {
+            if (e instanceof OtraCuentaEnLaPestana) {
+              cortar(i)
+              break
+            }
+            resultado = { ok: false, error: motivoDelFallo(e, 'No se confirmó: vuelve a intentar con «Registrar lo que falta»; lo registrado no se duplica.') }
+          }
+          // Una pestaña de antes del último despliegue: ni esta ni las que siguen
+          // salen desde aquí (vigesimoctava pasada). La causa la dice una vez el
+          // resumen, no cada fila (vigesimonovena).
+          if (!resultado.ok && resultado.error === SE_ACTUALIZO_EL_SISTEMA) {
+            cortar(i, NO_SALIO_SE_ACTUALIZO)
+            break
+          }
+          if (!resultado.ok) todas = false
+          setResultados((r) => ({ ...r, [f.id]: resultado.ok ? { estado: 'ok' } : { estado: 'error', mensaje: resultado.error } }))
+        }
+        if (todas) entro()
+      } finally {
+        setRegistrando(false)
+        setIntentos((n) => n + 1)
+        enCurso.current = false
       }
-    } finally {
-      setRegistrando(false)
-      setIntentos((n) => n + 1)
-      enCurso.current = false
-    }
+    })
   }
 
   const resumen = filas ? {
@@ -278,7 +325,9 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
                           </Seleccion>
                         </div>
                       )}
-                      {r?.estado === 'error' && !avisoFoto && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                      {r?.estado === 'error' && !avisoFoto && (
+                        <p role={r.mensaje === NO_SALIO_SE_ACTUALIZO ? undefined : 'alert'} className="mt-1 text-xs text-peligro">{r.mensaje}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 sm:justify-end">
                       {f.estado === 'CARGADA' && <Insignia tono="neutro">Ya cargada</Insignia>}
@@ -303,14 +352,23 @@ export function CargarPlanilla({ abierta, alCerrar }: { abierta: boolean; alCerr
             {sinFoto.length > 0 && (
               <p className="text-sm text-aviso">{sinFoto.length === 1 ? 'Una salida no tiene foto y no se registrará' : `${sinFoto.length} salidas no tienen foto y no se registrarán`} hasta que la adjuntes.</p>
             )}
+            {/* Se lleva el cursor en cada vuelta: el botón que se tocó se apagó mientras
+                registraba, o se fue si ya no falta nada, y el cursor caía a la página. Y
+                el aviso que nace con su texto no se anunciaba (vigesimoquinta pasada). */}
             {empezado && !registrando && (
-              <p role="status" className={queda ? 'text-sm text-aviso' : 'text-sm text-exito'}>
+              <AvisoEnfocado key={intentos} aviso={Boolean(queda)}>
                 {hechas === 0 ? 'No se registró ninguno' : hechas === 1 ? 'Se registró 1 movimiento' : `Se registraron ${hechas} movimientos`}
                 {queda ? `; ${queda}.` : '.'}
-              </p>
+              </AvisoEnfocado>
             )}
             <div className="flex flex-wrap gap-2">
-              {!terminado && (
+              {/* Desde una pestaña vieja, «Registrar lo que falta» volvería a fallar igual. */}
+              {porLaVersion > 0 && !registrando && (
+                <Boton onClick={() => window.location.reload()}>
+                  <RotateCw aria-hidden className="size-4" />Volver a cargar la pantalla
+                </Boton>
+              )}
+              {!terminado && !(porLaVersion > 0 && !registrando) && (
                 <Boton onClick={registrar} cargando={registrando} disabled={faltan.length === 0}>
                   {empezado
                     ? `Registrar lo que falta (${faltan.length})`

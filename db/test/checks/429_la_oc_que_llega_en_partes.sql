@@ -39,6 +39,13 @@ begin
   end loop;
   perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 429') = 6,
     'se crearon los seis usuarios del check, uno por puesto');
+  -- Otra persona de Tesorería, para el mismo id desde otra cuenta.
+  v_id := gen_random_uuid();
+  insert into auth.users (id, email) values (v_id, 'tesoreria2.429@prueba.local');
+  insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+  select v_id, 'TESORERIA', 'Check 429 bis', 'tesoreria2.429@prueba.local', r.id, (select id from public.areas where codigo = 'TES')
+    from public.roles r where r.codigo = 'TESORERIA';
+  perform set_config('prueba.tesoreria2', v_id::text, true);
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.und', (select id::text from public.unidades_medida where codigo = 'UND'), true);
   perform set_config('prueba.cat', (select id::text from public.categorias_material
@@ -149,6 +156,7 @@ select public.aprobar_compra(pg_temp.id('oc' || n)) from generate_series(1, 3) n
  where (select aprobacion from public.ordenes_compra_materiales where id = pg_temp.id('oc' || n)) = 'POR_APROBAR';
 reset role;
 select set_config('prueba.caja', test.crear_caja('PEN')::text, true);
+select set_config('prueba.caja2', test.crear_caja('PEN')::text, true);
 select test.afirmar(public.total_orden_compra(pg_temp.id('oc1')) = 354 and public.total_orden_compra(pg_temp.id('oc3')) = 300,
   'la OC con factura suma con IGV (S/ 354) y la de boleta sin él (S/ 300)');
 
@@ -213,6 +221,22 @@ select test.afirmar(pg_temp.pagar_parte('p1', 'b1', 50, current_setting('prueba.
   'el mismo envío dos veces entra una vez');
 select test.debe_fallar($$ select pg_temp.pagar_parte('p1', 'b1', 40, current_setting('prueba.v1')) $$,
   'con otro monto y el mismo id, se rechaza', 'ya quedó registrado');
+-- La cuenta de la que salió también es parte del envío (20261023100000).
+select test.debe_fallar($$ select public.registrar_pago_parte_con_boleta(pg_temp.id('p1'), pg_temp.id('b1'),
+                                    current_setting('prueba.hoy')::date, 50, 'OP-429', current_setting('prueba.v1'),
+                                    current_setting('prueba.caja2')::uuid, null) $$,
+  'desde otra cuenta y con el mismo id, ya no es el mismo envío: dice que el primero ya quedó', 'la primera vez que lo enviaste');
+reset role;
+select pg_temp.como('tesoreria2');
+set local role authenticated;
+select test.debe_fallar($$ select pg_temp.pagar_parte('p1', 'b1', 50, current_setting('prueba.v1')) $$,
+  'el mismo id desde otra cuenta de Tesorería no es su envío: ya existe con otros datos', 'ya existe con otros datos');
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select count(*) = 1 and min(monto) = 50 from public.movimientos_caja
+                      where origen = 'PAGO_PARTE_BOLETA' and origen_id = pg_temp.id('p1')),
+  'y la caja sigue con un solo egreso de ese pago, en la cuenta de la primera vez');
 select set_config('prueba.v2', pg_temp.subir('pagos-compras', 'oc1'), true);
 select test.debe_fallar($$ select pg_temp.pagar_parte('p2', 'b1', 80, current_setting('prueba.v2')) $$,
   'no se paga más que la boleta', 'le quedan S/ 68.00');

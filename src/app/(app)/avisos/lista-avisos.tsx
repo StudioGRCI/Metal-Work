@@ -10,12 +10,11 @@ import { cn } from '@/lib/utils'
 
 /**
  * La lista de la página de avisos: la misma que la campana, a ancho completo
- * y con «Marcar todos leídos» arriba. Lo tocado se pinta leído al instante y
- * el refresco lo confirma.
+ * y con «Marcar todos leídos» arriba. Lo leído lo pinta la pantalla al
+ * ponerse al día, o la propia pestaña si es de otro despliegue (`useAvisos`).
  */
 export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: number }) {
-  const { abrir, marcarTodos, marcando, error } = useAvisos()
-  const quedan = sinLeer
+  const { abrir, marcarTodos, marcando, error, leido, sinLeer: quedan } = useAvisos(sinLeer)
 
   return (
     <div>
@@ -41,15 +40,14 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
       ) : (
         <ul className="divide-y divide-borde">
           {avisos.map((a) => {
-            const leido = Boolean(a.leida_en)
             const contenido = (
               <>
-                <p className={cn('text-sm', leido ? 'text-texto-suave' : 'font-semibold text-texto')}>{a.titulo}</p>
+                <p className={cn('text-sm', leido(a) ? 'text-texto-suave' : 'font-semibold text-texto')}>{a.titulo}</p>
                 {a.cuerpo && <p className="mt-0.5 text-xs leading-snug text-texto-suave">{a.cuerpo}</p>}
                 <p className="mt-0.5 text-[11px] text-texto-tenue">{fechaHora(a.creado_en)}</p>
               </>
             )
-            const clase = cn('block w-full px-4 py-3 text-left hover:bg-superficie-2', !leido && 'bg-acento-suave/40')
+            const clase = cn('block w-full px-4 py-3 text-left hover:bg-superficie-2', !leido(a) && 'bg-acento-suave/40')
             return (
               <li key={a.id}>
                   <button type="button" disabled={marcando} onClick={() => abrir(a)} className={clase}>

@@ -6,6 +6,7 @@ import { useRef, useState, useTransition, type FormEvent } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
+import { EstadoDelEnvio, useEnvioDeLaVentana, useLoQueDiceLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
@@ -13,7 +14,7 @@ import { Ventana } from '@/components/ui/ventana'
 import { VistaPreviaPdf } from '@/components/ui/vista-previa-pdf'
 import { motivoDeSubida } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { ACEPTA_COTIZACION, leerCabeceraDeArchivo, tipoDeCotizacion } from '@/lib/archivo-cotizacion'
+import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import {
   buscarCliente,
   nombreParaCatalogo,
@@ -22,6 +23,10 @@ import {
   type CabeceraCotizacion,
   type PropuestaCarroceria,
 } from '@/lib/cotizacion-pdf'
+import { laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, useCursorAlRechazo } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
+import { subirARutaNueva } from '@/lib/ruta-nueva'
+import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
 
 import { registrarCotizacionPdf } from './acciones'
@@ -46,6 +51,32 @@ type TipoDocumento = 'RUC' | 'DNI' | 'CE' | 'PASAPORTE'
  * anotación— y lo que ya se creó queda elegido: si algo falla después, el
  * reintento no duplica al cliente ni la carrocería.
  */
+// Lo de la ventana de la cotización nueva, que el botón y su renglón de estado comparten.
+const CLAVE = 'cotizacion-nueva'
+const AVISO = `${CLAVE}:aviso`
+const ID_DEL_ESTADO = 'estado-de-subir-cotizacion'
+
+/**
+ * Cómo va la cotización que se sube con `SubirCotizacion`: que sigue en camino,
+ * que entró o por qué no. Va en el renglón de estado del encabezado
+ * (`EncabezadoPagina`), montado siempre: el lector no oye una región que nace
+ * con su texto.
+ */
+export function EstadoDeSubirCotizacion() {
+  const [aviso] = useEstadoCompartido<string | null>(AVISO, null)
+  const { sigue, desenlace: dicho } = useLoQueDiceLaVentana(CLAVE)
+  // Con la frase del éxito a la vista, el «se subió» de la ventana cerrada no se repite.
+  const desenlace = aviso && dicho?.tono === 'entro' ? null : dicho
+  return (
+    <>
+      <span role="status" className={aviso ? 'text-xs font-medium text-exito' : 'sr-only'}>
+        {aviso}
+      </span>
+      <EstadoDelEnvio id={ID_DEL_ESTADO} sigue={sigue} desenlace={desenlace} registro="La cotización" femenino />
+    </>
+  )
+}
+
 export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]; carrocerias: Carroceria[] }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
@@ -53,16 +84,36 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [leyendo, setLeyendo] = useState(false)
   const [lectura, setLectura] = useState<CabeceraCotizacion | null>(null)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
+  const [totalLeido, setTotalLeido] = useState<TotalCotizacion | null>(null)
+  const totalDelDocumento = totalDelDocumentoSiNoCalza(total, totalLeido)
   // Si el total trae IGV: sin ese dato el margen de la OT saldría inflado en el 18 % de la venta.
   const [incluyeIgv, setIncluyeIgv] = useState<'' | 'si' | 'no'>('')
   const [progreso, setProgreso] = useState('')
   const [error, setError] = useState<string | null>(null)
   // Por qué el archivo elegido no sirve: va en su campo, no con los errores de subir.
   const [avisoArchivo, setAvisoArchivo] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<string | null>(null)
+  // Lo que entró, mientras la persona siga en Cotización. Sin `guardar`: decía
+  // que Gerencia la revisa, y seguía junto a la cotización que Gerencia ya
+  // había rechazado (funcionalidad H5 de la trigesimoséptima pasada). Lo que no
+  // entró sí se queda (`useEnvioDeLaVentana`), y lo que entró con la ventana
+  // cerrada también, en pasado (`alEntrar`): con la persona en Clientes al
+  // contestar, al volver nada decía que había entrado (F3 de la trigesimoctava).
+  const [, setAviso] = useEstadoCompartido<string | null>(AVISO, null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Cerrada mientras va: el botón que la abre gira, y el desenlace se dice
+  // debajo, en el renglón de estado del encabezado.
+  const fuera = useEnvioDeLaVentana(CLAVE, { idDelEstado: ID_DEL_ESTADO, alEntrar: { dice: 'se subió y se envió a Gerencia.' } })
   const campoArchivo = useRef<HTMLInputElement>(null)
+  // Al volver de un rechazo, el cursor va al número repetido o al aviso.
+  const campoNumero = useRef<HTMLInputElement>(null)
+  const avisoError = useRef<HTMLParagraphElement>(null)
+  // El número repetido se dice junto a su campo, que se marca; lo demás, abajo.
+  const errorNumero = error?.startsWith('Ya hay una cotización con el número') ? error : null
+  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
+  // Lo que la persona escribió o eligió a mano: la lectura del archivo, aunque
+  // termine después o sea de otro archivo, no lo pisa.
+  const aMano = useRef(new Set<'numero' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
 
@@ -80,10 +131,18 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [propuesta, setPropuesta] = useState<PropuestaCarroceria | null>(null)
   const [nombreCarroceria, setNombreCarroceria] = useState('')
 
+  // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
+  function cerrar() {
+    fuera.cerrar()
+    setAbierto(false)
+  }
+
   function abrir() {
+    aMano.current.clear()
     setArchivo(null)
     setLectura(null)
     setTotal({ monto: null, moneda: null })
+    setTotalLeido(null)
     setIncluyeIgv('')
     setProgreso('')
     setError(null)
@@ -105,35 +164,40 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setAbierto(true)
   }
 
-  /** Lo que se leyó llena el formulario; lo que no, se deja como estaba. */
+  /** Lo que se leyó llena el formulario; lo que no, o lo que la persona ya puso a mano, se deja como estaba. */
   function aplicar(r: CabeceraCotizacion) {
     setLectura(r)
-    if (r.numero) setNumero(r.numero)
+    if (r.numero && !aMano.current.has('numero')) setNumero(r.numero)
 
-    const registrado = buscarCliente(r, listaClientes)
-    setReconocido(Boolean(registrado))
-    if (registrado) {
-      setClienteNuevo(false)
-      setClienteId(registrado.id)
-    } else if (r.cliente || r.documento) {
-      setClienteNuevo(true)
-      setClienteId('')
-      setTipoDoc(r.documento?.tipo ?? 'RUC')
-      setNumeroDoc(r.documento?.numero ?? '')
-      setRazonSocial(r.cliente ?? '')
+    if (!aMano.current.has('cliente')) {
+      const registrado = buscarCliente(r, listaClientes)
+      setReconocido(Boolean(registrado))
+      if (registrado) {
+        setClienteNuevo(false)
+        setClienteId(registrado.id)
+      } else if (r.cliente || r.documento) {
+        setClienteNuevo(true)
+        setClienteId('')
+        setTipoDoc(r.documento?.tipo ?? 'RUC')
+        setNumeroDoc(r.documento?.numero ?? '')
+        setRazonSocial(r.cliente ?? '')
+      }
     }
 
     const prop = proponerCarroceria(r.producto, listaCarrocerias)
     setPropuesta(prop)
-    setCarroceriaNueva(false)
-    setCarroceriaId(prop?.id ?? '')
-    setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    if (!aMano.current.has('carroceria')) {
+      setCarroceriaNueva(false)
+      setCarroceriaId(prop?.id ?? '')
+      setNombreCarroceria(r.producto ? nombreParaCatalogo(r.producto) : '')
+    }
   }
 
   async function elegirArchivo(elegido: File | undefined) {
     if (!elegido) return
     setError(null)
     setLectura(null)
+    setTotalLeido(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoArchivo(noSirve)
@@ -143,8 +207,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     try {
       const resultado = await leerCabeceraDeArchivo(elegido, setProgreso)
       aplicar(resultado.cabecera)
-      setTotal(resultado.total)
-      setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
+      setTotalLeido(resultado.total)
+      const montoAMano = aMano.current.has('monto')
+      const monedaAMano = aMano.current.has('moneda')
+      setTotal((v) => ({
+        monto: montoAMano ? v.monto : resultado.total.monto,
+        moneda: monedaAMano ? v.moneda : resultado.total.moneda,
+      }))
+      if (!aMano.current.has('igv')) setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
     } finally {
       setLeyendo(false)
     }
@@ -190,9 +260,22 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
       return
     }
 
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
-    iniciar(async () => {
+    // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
+    // despliegue, espera a que la cotización vuelva, y si no entró no recarga.
+    // Recargaba a los 120 ms, con la subida o el registro en camino, y la
+    // cotización no quedaba sin que nada lo dijera (D17 de la trigesimotercera).
+    iniciar(() => mientrasSeEnvia(async (entro, decirArriba) => {
+      // Cómo terminó, por si la ventana se cierra mientras va (`useEnvioDeLaVentana`).
+      const terminar = fuera.empezar(decirArriba)
+      let comoTermino: string | null = null
+      const noEntro = (porque: string) => {
+        comoTermino = porque
+        setError(porque)
+      }
       const supabase = createClient()
       const id = crypto.randomUUID()
       const ruta = `cot/${id}/${crypto.randomUUID()}.${tipo.extension}`
@@ -206,7 +289,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           datos.set('razon_social', razonSocial.trim())
           const r = await crearClienteRapido(null, datos)
           if (!r.ok || !r.datos) {
-            setError(r.ok ? 'No se pudo registrar el cliente.' : r.error)
+            noEntro(r.ok ? 'No se pudo registrar el cliente.' : r.error)
             return
           }
           const creado = r.datos
@@ -224,11 +307,13 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
 
         let carroceria = carroceriaId
         if (carroceriaNueva) {
+          // Cada paso sale con la sesión de ese momento: se mira antes de cada uno.
+          seguirConLaCuentaDeLaPestana()
           const datos = new FormData()
           datos.set('nombre', nombreCarroceria.trim())
           const r = await crearCarroceria(null, datos)
           if (!r.ok || !r.datos) {
-            setError(r.ok ? 'No se pudo agregar la carrocería.' : r.error)
+            noEntro(r.ok ? 'No se pudo agregar la carrocería.' : r.error)
             return
           }
           const creada = r.datos
@@ -238,11 +323,18 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           setCarroceriaNueva(false)
         }
 
-        const { error: falla } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .upload(ruta, archivo, { contentType: tipo.mime, upsert: false })
+        seguirConLaCuentaDeLaPestana()
+        // La pestaña ya se sabe de antes del último despliegue: lo que lo
+        // registraría no va a entrar, así que ni se sube (trigésima pasada).
+        if (laPestanaEsDeLaVersionAnterior()) {
+          noEntro(SE_ACTUALIZO_EL_SISTEMA)
+          return
+        }
+        const { error: falla } = await subirARutaNueva(supabase.storage.from('cotizaciones-pdf'), ruta, archivo, tipo.mime, quitarConLaCuenta)
+        // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+        if (falla) seguirConLaCuentaDeLaPestana()
         if (falla) {
-          setError(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
+          noEntro(`No se pudo subir el ${tipo.etiqueta}. ${motivoDeSubida(falla)}`)
           return
         }
         subido = true
@@ -260,47 +352,59 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         datos.set('moneda', total.moneda ?? '')
         datos.set('incluye_igv', incluyeIgv)
 
-        const r = await registrarCotizacionPdf(null, datos)
+        // Si la base dice que no, o no responde y la cotización no quedó, el
+        // archivo se quita: uno que ninguna fila nombra no lo ve nadie.
+        const r = await anotarSinDejarloSuelto({
+          bucket: 'cotizaciones-pdf',
+          ruta,
+          anotar: () => registrarCotizacionPdf(null, datos),
+          sinRespuesta: 'No llegó la respuesta. Recarga la lista y mira si la cotización quedó antes de volver a subirla.',
+        })
+        subido = false
         if (!r.ok) {
-          await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-          subido = false
-          setError(r.error)
+          noEntro(r.error)
           return
         }
-        subido = false
         setAviso(r.mensaje ?? 'Cotización subida.')
         setAbierto(false)
-        iniciar(() => router.refresh())
-      } catch {
-        // Si la anotación se cae por el camino, el archivo se quita: uno que
-        // ninguna fila nombra no lo ve nadie y no lo borra nadie.
-        if (subido) await supabase.storage.from('cotizaciones-pdf').remove([ruta])
-        setError('No se pudo registrar la cotización. Vuelve a intentar.')
+        entro()
+        iniciar(() => refrescarSiEsDeLaPestana(router))
+      } catch (e) {
+        // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
+        // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
+        // ventana dice que no se guardó: al volver, el cursor va ahí.
+        if (e instanceof OtraCuentaEnLaPestana) {
+          noEntro(NO_SE_GUARDO_OTRA_CUENTA)
+          return
+        }
+        // Lo único que puede caerse acá es la carrocería nueva o la subida:
+        // la cotización todavía no se anotó.
+        if (subido) await quitarConLaCuenta(() => supabase.storage.from('cotizaciones-pdf').remove([ruta]))
+        // Desde una pestaña de antes del último despliegue, reintentar no entra
+        // nunca: se dice que hay que recargar (vigesimonovena pasada).
+        noEntro(motivoDelFallo(e, 'No se pudo registrar la cotización. Vuelve a intentar.'))
       } finally {
         enCurso.current = false
+        terminar(comoTermino)
       }
-    })
+    }))
   }
 
   const leido = lectura && (lectura.numero || lectura.cliente || lectura.documento || lectura.producto)
+  // Cerrada mientras va, o mientras la página se pone al día tras el ok: no se abre otra.
+  const ocupado = fuera.sigue || (enviando && !abierto)
 
   return (
     <>
-      <span className="inline-flex flex-wrap items-center gap-2">
-        <Boton onClick={abrir}>
-          <Upload aria-hidden className="size-4" />
-          Subir cotización
-        </Boton>
-        {aviso && (
-          <span role="status" className="text-xs font-medium text-exito">
-            {aviso}
-          </span>
-        )}
-      </span>
+      {/* Cómo va, en el renglón de estado del encabezado (`EstadoDeSubirCotizacion`): junto al botón lo corría. */}
+      <Boton onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
+        {!ocupado && <Upload aria-hidden className="size-4" />}
+        Subir cotización
+      </Boton>
 
       <Ventana
         abierta={abierto}
-        alCerrar={() => setAbierto(false)}
+        alCerrar={cerrar}
         titulo="Subir la cotización"
         descripcion="La que se le mandó al cliente, en PDF o en Word. Al elegirla se leen su número, el cliente y qué se fabrica: revisa que esté bien y súbela."
         ancho="panoramico"
@@ -308,6 +412,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
           {/* Con margen a la izquierda: la columna corta lo que sale de ella, y el anillo de foco sale 5 px. */}
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
+          {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
+          <fieldset disabled={enviando} className="min-w-0 space-y-4">
           <Campo etiqueta="La cotización" htmlFor="cot-archivo" requerido>
             <ElegirArchivo
               ref={campoArchivo}
@@ -362,11 +468,16 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             </div>
           )}
 
-          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" requerido>
+          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" error={errorNumero ?? undefined} requerido>
             <Entrada
+              ref={campoNumero}
               id="cot-numero"
               value={numero}
-              onChange={(e) => setNumero(e.target.value)}
+              onChange={(e) => {
+                aMano.current.add('numero')
+                if (errorNumero) setError(null)
+                setNumero(e.target.value)
+              }}
               required
               maxLength={40}
               placeholder="3522-2025"
@@ -375,11 +486,25 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
           </Campo>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
-            <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={total.monto ? 'Detectado en el documento; confirma o corrige el total final.' : 'No se encontró el total automáticamente; escríbelo como aparece en la cotización.'} requerido>
-              <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => setTotal((v) => ({ ...v, monto: e.target.value }))} inputMode="decimal" placeholder="0.00" required />
-            </Campo>
+            {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}
+            <div className="space-y-1.5">
+              <Campo etiqueta="Monto total de venta" htmlFor="cot-monto" ayuda={ayudaDelMonto(total, totalLeido)} requerido>
+                <Entrada id="cot-monto" value={total.monto ?? ''} onChange={(e) => {
+                    aMano.current.add('monto')
+                    setTotal((v) => ({ ...v, monto: e.target.value }))
+                  }} inputMode="decimal" placeholder="0.00" required />
+              </Campo>
+              {totalDelDocumento && (
+                <p role="status" className="text-xs text-pretty text-aviso">
+                  El documento dice {totalDelDocumento}: revisa el total.
+                </p>
+              )}
+            </div>
             <Campo etiqueta="Moneda" htmlFor="cot-moneda" requerido>
-              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))} required>
+              <Seleccion id="cot-moneda" value={total.moneda ?? ''} onChange={(e) => {
+                  aMano.current.add('moneda')
+                  setTotal((v) => ({ ...v, moneda: e.target.value === 'PEN' || e.target.value === 'USD' ? e.target.value : null }))
+                }} required>
                 <option value="" disabled>Confirma</option>
                 <option value="PEN">Soles (S/)</option>
                 <option value="USD">Dólares (US$)</option>
@@ -389,7 +514,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               <Seleccion
                 id="cot-igv"
                 value={incluyeIgv}
-                onChange={(e) => setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')}
+                onChange={(e) => {
+                  aMano.current.add('igv')
+                  setIncluyeIgv(e.target.value === 'si' || e.target.value === 'no' ? e.target.value : '')
+                }}
                 required
               >
                 <option value="" disabled>Confirma</option>
@@ -408,7 +536,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
               </p>
               <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
                 <Campo etiqueta="Documento" htmlFor="cot-tipo-doc" requerido>
-                  <Seleccion id="cot-tipo-doc" value={tipoDoc} onChange={(e) => setTipoDoc(e.target.value as TipoDocumento)}>
+                  <Seleccion
+                    id="cot-tipo-doc"
+                    value={tipoDoc}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setTipoDoc(e.target.value as TipoDocumento)
+                    }}
+                  >
                     <option value="RUC">RUC</option>
                     <option value="DNI">DNI</option>
                     <option value="CE">CE</option>
@@ -419,7 +554,10 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   <Entrada
                     id="cot-num-doc"
                     value={numeroDoc}
-                    onChange={(e) => setNumeroDoc(e.target.value)}
+                    onChange={(e) => {
+                      aMano.current.add('cliente')
+                      setNumeroDoc(e.target.value)
+                    }}
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={20}
@@ -430,12 +568,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-razon"
                   value={razonSocial}
-                  onChange={(e) => setRazonSocial(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('cliente')
+                    setRazonSocial(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={200}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setClienteNuevo(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('cliente')
+                  setClienteNuevo(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir uno registrado
               </Boton>
@@ -452,6 +601,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   id="cot-cliente"
                   value={clienteId}
                   onChange={(e) => {
+                    aMano.current.add('cliente')
                     setClienteId(e.target.value)
                     setReconocido(false)
                   }}
@@ -471,6 +621,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 variante="fantasma"
                 tamano="sm"
                 onClick={() => {
+                  aMano.current.add('cliente')
                   setClienteNuevo(true)
                   if (!razonSocial && lectura?.cliente) setRazonSocial(lectura.cliente)
                 }}
@@ -492,12 +643,23 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 <Entrada
                   id="cot-carroceria-nueva"
                   value={nombreCarroceria}
-                  onChange={(e) => setNombreCarroceria(e.target.value)}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setNombreCarroceria(e.target.value)
+                  }}
                   autoComplete="off"
                   maxLength={120}
                 />
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(false)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(false)
+                }}
+              >
                 <Undo2 aria-hidden className="size-3.5" />
                 Elegir del catálogo
               </Boton>
@@ -518,7 +680,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 }
                 requerido
               >
-                <Seleccion id="cot-carroceria" value={carroceriaId} onChange={(e) => setCarroceriaId(e.target.value)}>
+                <Seleccion
+                  id="cot-carroceria"
+                  value={carroceriaId}
+                  onChange={(e) => {
+                    aMano.current.add('carroceria')
+                    setCarroceriaId(e.target.value)
+                  }}
+                >
                   <option value="" disabled>
                     Elige la carrocería
                   </option>
@@ -529,21 +698,32 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                   ))}
                 </Seleccion>
               </Campo>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setCarroceriaNueva(true)}>
+              <Boton
+                type="button"
+                variante="fantasma"
+                tamano="sm"
+                onClick={() => {
+                  aMano.current.add('carroceria')
+                  setCarroceriaNueva(true)
+                }}
+              >
                 <Plus aria-hidden className="size-3.5" />
                 No está en el catálogo
               </Boton>
             </div>
           )}
 
-          {error && (
-            <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
+          </fieldset>
+
+          {error && !errorNumero && (
+            <p ref={avisoError} role="alert" tabIndex={-1} className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
               {error}
             </p>
           )}
 
+          {/* Fuera de lo trabado: «Cancelar» cierra también mientras se envía, como la X (D2 de la trigesimosexta pasada). */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} disabled={leyendo} className="w-full sm:w-auto">

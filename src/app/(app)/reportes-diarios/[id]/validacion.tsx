@@ -17,7 +17,7 @@ import { observarReporteDiario, validarReporteDiario } from '../acciones'
  */
 export function ValidarReporte({ id, lado, yaDioVisto }: { id: string; lado: LadoValidacion; yaDioVisto: boolean }) {
   const [abierta, setAbierta] = useState(false)
-  const visto = useAccion(validarReporteDiario)
+  const visto = useAccion(validarReporteDiario, undefined, { documento: `${id}:${lado}` })
   const observar = useEnvio(observarReporteDiario, () => setAbierta(false))
   const area = AREA_QUE_VALIDA[lado]
 

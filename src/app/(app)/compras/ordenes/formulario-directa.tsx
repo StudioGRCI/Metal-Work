@@ -1,24 +1,27 @@
 'use client'
 
 import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { registrarDocumentoCompra } from '@/app/(app)/materiales/atencion/acciones-documentos'
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { CODIGOS_FIJOS, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useEnvio } from '@/lib/envio'
+import { pasoTrasLoQueQuedo, useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { cantidad as formatoCantidad, moneda as formatoMoneda } from '@/lib/format'
-import { subirArchivoPrivado } from '@/lib/subida-privada'
+import { NO_QUEDO_SIN_RESPUESTA, NO_SE_CONFIRMO, esOtroArchivoEnLaRuta, subirArchivoPrivado } from '@/lib/subida-privada'
 
 import { SelectorProveedor } from '../selector-proveedor'
 import { emitirCompraDeInsumos, emitirCompraDirecta } from './acciones'
@@ -26,6 +29,9 @@ import { AvisoFacturaDeLaOrden, CamposDeLaFactura, faltaEnLaFactura, useDatosDeF
 
 /** Una línea de la orden: un material, y los insumos de RQ que compra (vacío en la directa). */
 type Linea = { clave: string; material_id: string; cantidad: string; precio: string; insumos: InsumoParaCompra[] }
+
+/** Lo que se dice al emitir; `aRevisar` si la orden salió pero su comprobante no quedó, o no se sabe. */
+export type Emitida = { texto: string; aRevisar: boolean }
 
 /** Un insumo de un RQ que espera su compra: lo que falta de él, y de qué RQ y código interno es. */
 export type InsumoParaCompra = {
@@ -69,6 +75,31 @@ function lineasDeInsumos(insumos: InsumoParaCompra[], delCatalogo: Set<string>):
 
 const ACEPTA_PDF = 'application/pdf,.pdf'
 
+/**
+ * «No se pudo cargar el archivo. No tienes permiso…» → «no se pudo cargar el
+ * archivo. No tienes permiso…», para ir detrás de «no se adjuntó:» sin perder el
+ * motivo, que es lo que dice qué hacer.
+ */
+function dentroDeOtraOracion(texto: string) {
+  const t = /[.!?]$/.test(texto.trim()) ? texto.trim() : `${texto.trim()}.`
+  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t
+}
+
+/**
+ * Por qué no se adjuntó el comprobante, con una sola indicación de qué hacer:
+ * sin permiso, desde la lista tampoco entra, así que se avisa al administrador;
+ * lo que pide volver a intentar se vuelve a intentar desde la lista.
+ */
+function noSeAdjunto(nombre: string, o: 'a' | 'o', error: string) {
+  if (error === NO_QUEDO_SIN_RESPUESTA) return `${nombre} no se adjuntó: no llegó la respuesta. Adjúntal${o} desde la lista.`
+  const motivo = dentroDeOtraOracion(error)
+  if (/\bpermisos?\b/i.test(motivo)) return `${nombre} no se adjuntó: ${motivo} Avisa al administrador.`
+  const insiste = / Inténtalo de nuevo; si vuelve a pasar, avisa al administrador\.$/
+  const sinReintento = motivo.replace(insiste, '').replace(/ y vuelve a intentar\.$/, '.')
+  const siVuelve = insiste.test(motivo) ? '; si vuelve a pasar, avisa al administrador' : ''
+  return `${nombre} no se adjuntó: ${sinReintento} Adjúntal${o} desde la lista${siVuelve}.`
+}
+
 async function esPdf(archivo: File) {
   return archivo.size > 0 && archivo.size <= 20 * 1024 * 1024 && (await archivo.slice(0, 5).text()) === '%PDF-'
 }
@@ -93,15 +124,17 @@ export function NuevaCompraDirecta({
   puedeRegistrarProveedor: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  // Cada apertura es una orden nueva; el formulario se monta de cero.
+  // Cada apertura monta el formulario de cero; los ids, no (`useIdsDeLaCompra`).
   const [vez, setVez] = useState(0)
-  const [aviso, setAviso] = useState<string | null>(null)
+  const ids = useIdsDeLaCompra('directa')
+  const [aviso, setAviso] = useState<Emitida | null>(null)
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
           setAviso(null)
+          ids.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -110,8 +143,8 @@ export function NuevaCompraDirecta({
         Nueva OC directa
       </Boton>
       {aviso && (
-        <p role="status" className="basis-full text-sm text-exito">
-          {aviso}
+        <p role="status" className={`basis-full text-sm ${aviso.aRevisar ? 'text-aviso' : 'text-exito'}`}>
+          {aviso.texto}
         </p>
       )}
       <Ventana
@@ -121,17 +154,23 @@ export function NuevaCompraDirecta({
         descripcion="Sin requerimiento: para el almacén. El número OC-…-MW lo pone el sistema y Gerencia la aprueba antes de que el conductor la recoja."
         ancho="xl"
       >
-        <FormularioCompraDirecta
-          key={vez}
-          proveedores={proveedores}
-          materiales={materiales}
-          codigos={codigos}
-          puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
-        />
+        <EnvioAnterior texto={ids.anterior} />
+        {ids.listos && (
+          <FormularioCompraDirecta
+            key={vez}
+            ids={ids}
+            alCancelar={() => setAbierta(false)}
+            proveedores={proveedores}
+            materiales={materiales}
+            codigos={codigos}
+            puedeRegistrarProveedor={puedeRegistrarProveedor}
+            alTerminar={(emitida) => {
+              setAbierta(false)
+              ids.otros()
+              setAviso(emitida)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
@@ -144,21 +183,25 @@ export function NuevaCompraDirecta({
  * insumo sigue con su RQ y su código interno; el motivo lo pone la base.
  */
 export function GenerarCompraDeInsumos({
+  grupo,
   insumos,
   proveedores,
   materiales,
   puedeRegistrarProveedor,
   alEmitir,
 }: {
+  /** El grupo de «Por comprar»: el envío pendiente de uno no lo toma la ventana de otro. */
+  grupo: string
   insumos: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
   materiales: MaterialParaConteo[]
   puedeRegistrarProveedor: boolean
   /** Al emitirla: la lista desmarca lo que ya va en la orden. */
-  alEmitir: (mensaje: string) => void
+  alEmitir: (emitida: Emitida) => void
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  const ids = useIdsDeLaCompra(`insumos:${grupo}`)
   const rqs = new Set(insumos.map((i) => i.requerimiento_id)).size
   return (
     <>
@@ -166,6 +209,7 @@ export function GenerarCompraDeInsumos({
         type="button"
         disabled={insumos.length === 0}
         onClick={() => {
+          ids.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -186,23 +230,62 @@ export function GenerarCompraDeInsumos({
         descripcion="Una línea por material, con lo que falta de él en cada requerimiento. Gerencia la aprueba y el conductor la deja en almacén; Almacén la recepciona y cada requerimiento queda listo."
         ancho="xl"
       >
-        <FormularioCompraDirecta
-          key={vez}
-          insumos={insumos}
-          proveedores={proveedores}
-          materiales={materiales}
-          puedeRegistrarProveedor={puedeRegistrarProveedor}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            alEmitir(mensaje)
-          }}
-        />
+        <EnvioAnterior texto={ids.anterior} />
+        {ids.listos && (
+          <FormularioCompraDirecta
+            key={vez}
+            ids={ids}
+            alCancelar={() => setAbierta(false)}
+            insumos={insumos}
+            proveedores={proveedores}
+            materiales={materiales}
+            puedeRegistrarProveedor={puedeRegistrarProveedor}
+            alTerminar={(emitida) => {
+              setAbierta(false)
+              ids.otros()
+              alEmitir(emitida)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
+/**
+ * Los ids de la orden y de su comprobante viven en el botón que abre la
+ * ventana, no en el formulario que se rehace al abrirla: tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva los mismos, y la base no emite
+ * otra OC numerada con lo mismo (decimoquinta pasada). Se renuevan con el ok,
+ * cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
+ * que aquella orden entró (`anterior`).
+ */
+function useIdsDeLaCompra(donde: string) {
+  const factura = useIdDelEnvio(undefined, undefined, `factura-de-la-orden:${donde}`)
+  const orden = useIdDelEnvio('orden_compra', (cuentas) => factura.otro(cuentas), donde)
+  return {
+    listos: Boolean(orden.id && factura.id),
+    orden: orden.id ?? '',
+    factura: factura.id ?? '',
+    anterior: orden.anterior,
+    abrir() {
+      orden.abrir()
+      factura.abrir()
+    },
+    salio() {
+      orden.salio()
+      factura.salio()
+    },
+    otros() {
+      orden.otro()
+      factura.otro()
+    },
+  }
+}
+
 function FormularioCompraDirecta({
+  ids,
+  alCancelar,
   insumos,
   proveedores,
   materiales,
@@ -210,6 +293,8 @@ function FormularioCompraDirecta({
   puedeRegistrarProveedor,
   alTerminar,
 }: {
+  ids: ReturnType<typeof useIdsDeLaCompra>
+  alCancelar: () => void
   /** Los insumos de RQ que compra la orden; sin ellos, es la directa. */
   insumos?: InsumoParaCompra[]
   proveedores: ProveedorParaCompra[]
@@ -217,12 +302,13 @@ function FormularioCompraDirecta({
   /** La lista del código interno de la directa; la de insumos lleva el de cada RQ. */
   codigos?: CodigoParaElegir[] | null
   puedeRegistrarProveedor: boolean
-  alTerminar: (mensaje: string) => void
+  alTerminar: (emitida: Emitida) => void
 }) {
-  // Los dos identificadores se deciden aquí: un reintento manda los mismos y la
-  // base devuelve la misma orden y el mismo documento, sin duplicar.
-  const [id] = useState(() => crypto.randomUUID())
-  const [idFactura] = useState(() => crypto.randomUUID())
+  // Un reintento manda los mismos y la base devuelve la misma orden y el mismo
+  // documento, sin duplicar.
+  const { orden: id, factura: idFactura } = ids
+  // La orden salió pero su comprobante no quedó, o no se sabe: el aviso no va en verde.
+  const aRevisar = useRef(false)
   const [proveedorId, setProveedorId] = useState('')
   const [condicion, setCondicion] = useState('CONTADO')
   const [dias, setDias] = useState(0)
@@ -262,16 +348,23 @@ function FormularioCompraDirecta({
     setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, [campo]: valor } : l)))
   }
 
-  const { alEnviar, enviando, error } = useEnvio(
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
     async (_previo, datos) => {
       const factura = datos.get('factura')
       datos.delete('factura')
       datos.delete('factura_numero')
       datos.delete('factura_fecha')
       const nombre = conFactura ? 'La factura' : 'El comprobante'
-      const adjuntando = factura instanceof File && factura.size > 0
+      const o = conFactura ? 'a' : 'o'
+      aRevisar.current = false
+      // Un archivo elegido cuenta aunque pese 0 bytes: tomarlo por «sin
+      // archivo» emitía la orden sin decir que el PDF se quedó fuera.
+      const adjuntando = factura instanceof File && factura.name !== ''
+      if (adjuntando && factura.size === 0) {
+        return { ok: false, error: `${nombre} está vací${o}: elige otr${o} o quítal${o} para adjuntarl${o} después.` }
+      }
       if (adjuntando && !(await esPdf(factura))) {
-        return { ok: false, error: `${nombre} debe ser un PDF de hasta 20 MB. Quítalo para adjuntarlo después.` }
+        return { ok: false, error: `${nombre} debe ser un PDF de hasta 20 MB. Quítal${o} para adjuntarl${o} después.` }
       }
       // Antes de emitir: la orden no sale con una factura sin su número o su fecha.
       const falta = adjuntando && conFactura ? faltaEnLaFactura(datosFactura.numero, datosFactura.fecha) : null
@@ -287,7 +380,16 @@ function FormularioCompraDirecta({
           })),
         ),
       )
+      ids.salio()
       const emitida = deInsumos ? await emitirCompraDeInsumos(null, datos) : await emitirCompraDirecta(null, datos)
+      // La orden ya había entrado y su archivo no: sin respuesta de la primera
+      // vez, el comprobante nunca se envió. Se dice dónde adjuntarlo, como en la OS.
+      if (!emitida.ok && adjuntando && yaEntroLaPrimeraVez(emitida.error)) {
+        return {
+          ok: false,
+          error: `${yaEntroEnLaVentana(emitida.error)} ${nombre} que elegiste no se adjuntó: adjúntal${o} desde la fila de la orden, con «Adjuntar».`,
+        }
+      }
       if (!emitida.ok || !adjuntando) return emitida
 
       const documento = new FormData()
@@ -299,23 +401,40 @@ function FormularioCompraDirecta({
         documento.set('factura_numero', datosFactura.numero)
         documento.set('factura_fecha', datosFactura.fecha)
       }
-      const adjunta = await subirArchivoPrivado({
-        bucket: 'documentos-compras',
-        ruta: `compra/${id}/${idFactura}.pdf`,
-        archivo: factura,
-        contentType: 'application/pdf',
-        registrar: () => registrarDocumentoCompra(null, documento),
-      })
-      // La orden ya quedó: si el comprobante no subió, se dice y se adjunta desde la lista.
+      const adjunta = await pasoTrasLoQueQuedo(() =>
+        subirArchivoPrivado({
+          bucket: 'documentos-compras',
+          ruta: `compra/${id}/${idFactura}.pdf`,
+          archivo: factura,
+          contentType: 'application/pdf',
+          registrar: () => registrarDocumentoCompra(null, documento),
+        }),
+      )
+      // La orden ya quedó y la ventana se cierra: si el comprobante no subió, se
+      // dice, en el color de lo que falta, y se adjunta desde la lista. Si no se
+      // sabe, se mira antes: desde la lista va con otro id y, si había quedado,
+      // saldría dos veces. Si entró otra cuenta a media subida, no sale a su
+      // nombre: se dice que falta (`pasoTrasLoQueQuedo`).
       if (!adjunta.ok) {
-        return { ok: true, mensaje: `${emitida.mensaje} ${nombre} no se adjuntó (${adjunta.error}); adjúntalo desde la lista.` }
+        aRevisar.current = true
+        if (adjunta.error.startsWith(NO_SE_CONFIRMO) || esOtroArchivoEnLaRuta(adjunta.error)) {
+          return {
+            ok: true,
+            mensaje: `${emitida.mensaje} No se sabe si ${nombre.toLowerCase()} quedó adjunt${o}: recarga la lista y mira si está antes de adjuntarl${o} otra vez.`,
+          }
+        }
+        return { ok: true, mensaje: `${emitida.mensaje} ${noSeAdjunto(nombre, o, adjunta.error)}` }
       }
       return { ok: true, mensaje: `${emitida.mensaje} ${conFactura ? 'Factura adjunta.' : 'Comprobante adjunto.'}` }
     },
-    (r) => alTerminar(r.mensaje ?? 'Orden emitida.'),
+    (r) => alTerminar({ texto: r.mensaje ?? 'Orden emitida.', aRevisar: aRevisar.current }),
+    { alYaEntrar: ids.otros },
   )
 
   const listas = lineas.every((l) => l.material_id && Number(l.cantidad) > 0 && l.precio !== '')
+  // Al volver de un rechazo por el archivo, el cursor va a él; si no, al aviso (`PieDeVentana`).
+  const campoFactura = useRef<HTMLInputElement>(null)
+  useCursorAlRechazo(enviando, error, () => (/ está vací|debe ser un PDF/.test(error ?? '') ? campoFactura.current : null))
 
   return (
     <form onSubmit={alEnviar} className="space-y-6">
@@ -508,6 +627,7 @@ function FormularioCompraDirecta({
           }
         >
           <ElegirArchivo
+            ref={campoFactura}
             id="ocd-factura"
             name="factura"
             accept={ACEPTA_PDF}
@@ -517,13 +637,17 @@ function FormularioCompraDirecta({
             estado={conFactura ? detector.leyendo : null}
             onChange={(e) => {
               const archivo = e.target.files?.[0]
-              setHayFactura(Boolean(archivo))
+              // Uno vacío no pide su número ni su fecha: primero se cambia.
+              setHayFactura(Boolean(archivo && archivo.size > 0))
+              limpiar()
+              // Lo leído del archivo anterior se va con él; lo escrito a mano se queda.
+              datosFactura.soltarLeido()
               // El comprobante sin factura también se revisa, pero no se lee.
               void detector.leer(archivo, !conFactura).then(datosFactura.completar)
             }}
           />
         </Campo>
-        {conFactura && hayFactura && (
+        {conFactura && hayFactura && !detector.aviso && (
           <div className="grid gap-4 sm:grid-cols-2">
             <CamposDeLaFactura id="ocd-factura" datos={datosFactura} requerido disabled={enviando} />
           </div>
@@ -533,19 +657,11 @@ function FormularioCompraDirecta({
             lectura={detector.lectura}
             total={total > 0 ? Math.round((total + igvCompra(total)) * 100) / 100 : null}
             moneda={divisa}
+            anotada={datosFactura.numero}
           />
         )}
 
-        {error && (
-          <p role="alert" className="text-sm text-peligro">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end">
-          <Boton type="submit" cargando={enviando} disabled={!proveedorId || !listas}>
-            Emitir orden de compra
-          </Boton>
-        </div>
+        <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Emitir orden de compra" disabled={!proveedorId || !listas} />
       </form>
   )
 }

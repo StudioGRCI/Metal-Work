@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useId, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
+import { useCursorAlRechazo, useVersionDeLaPestana } from '@/lib/envio'
 import { cn } from '@/lib/utils'
+import { abrioVentana, cerroVentana, esLaUltimaVentana } from '@/lib/ventanas-abiertas'
 
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
@@ -24,6 +26,16 @@ const ENFOCABLES = [
 ]
   .map((s) => `${s}:not([tabindex="-1"])`)
   .join(', ')
+
+/**
+ * Que de verdad pueda llevar el cursor: un campo dentro de un `<fieldset
+ * disabled>` no lleva `disabled` propio y el selector lo daba por enfocable. La
+ * ventana que se abría con su envío todavía en camino dejaba el cursor detrás:
+ * Escape no cerraba y el tabulador recorría la página (vigesimoctava pasada).
+ */
+const llevaElCursor = (e: HTMLElement) => !e.matches(':disabled')
+const enfocablesDe = (raiz: HTMLElement | null) =>
+  [...(raiz?.querySelectorAll<HTMLElement>(ENFOCABLES) ?? [])].filter(llevaElCursor)
 
 const ANCHOS = {
   sm: 'max-w-md',
@@ -86,8 +98,23 @@ export function Ventana({
   // ella: se abría la ventana, el teclado del teléfono no subía, y un Enter
   // distraído la cerraba en vez de escribir.
   const contenido = useRef<HTMLDivElement>(null)
+  // Para el Escape que llega con el cursor fuera de la ventana: el efecto no
+  // vuelve a correr con cada render, y `alCerrar` cambia.
+  const cerrar = useRef(alCerrar)
+  useEffect(() => {
+    cerrar.current = alCerrar
+  })
   const idTitulo = useId()
   const idDescripcion = useId()
+  const idVieja = useId()
+  // Si la pestaña ya se sabía vieja al abrir: el aviso de dentro se lee con la ventana.
+  const vieja = useVersionDeLaPestana().estado === 'vieja'
+  const [abiertaAntes, setAbiertaAntes] = useState(abierta)
+  const [viejaAlAbrir, setViejaAlAbrir] = useState(abierta && vieja)
+  if (abierta !== abiertaAntes) {
+    setAbiertaAntes(abierta)
+    setViejaAlAbrir(abierta && vieja)
+  }
   // En el servidor no hay documento al que colgar el portal, así que la
   // ventana no se pinta hasta que la página está hidratada. Una que nace
   // abierta (la salida que llega desde un RQ, `/almacen/kardex?rq=`) se pintaba
@@ -101,6 +128,8 @@ export function Ventana({
   useEffect(() => {
     if (!abierta || !hidratada) return
 
+    const marca = {}
+    abrioVentana(marca)
     const veniaDe = document.activeElement as HTMLElement | null
     const rodadoPrevio = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -108,15 +137,30 @@ export function Ventana({
     // El foco va al primer campo, no a la «i» de su ayuda: con el foco en la
     // «i» el texto de ayuda se abría solo y tapaba el campo («Importar del
     // Excel», 2026-10-20).
-    const primerCampo = (raiz: HTMLElement | null) =>
-      [...(raiz?.querySelectorAll<HTMLElement>(ENFOCABLES) ?? [])].find((e) => !e.hasAttribute('data-ayuda'))
+    const primerCampo = (raiz: HTMLElement | null) => enfocablesDe(raiz).find((e) => !e.hasAttribute('data-ayuda'))
     const primero = primerCampo(contenido.current) ?? primerCampo(caja.current)
     ;(primero ?? caja.current)?.focus()
+    // Si el campo no lo tomó, la ventana: el cursor no se queda detrás de ella.
+    if (!caja.current?.contains(document.activeElement)) caja.current?.focus()
+
+    // Escape cierra también cuando el cursor cayó a la página: un botón que se
+    // apaga mientras envía lo suelta en el <body>, fuera de la ventana, y Escape
+    // ya no cerraba (decimoquinta pasada). Solo la de encima y solo si el cursor
+    // no está en otra parte que escuche su tecla.
+    const escapeSuelto = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || !esLaUltimaVentana(marca)) return
+      if (document.activeElement && document.activeElement !== document.body) return
+      cerrar.current()
+    }
+    document.addEventListener('keydown', escapeSuelto)
 
     return () => {
+      document.removeEventListener('keydown', escapeSuelto)
       document.body.style.overflow = rodadoPrevio
       // Una ventana que nace abierta no tiene botón al que volver.
-      if (veniaDe && veniaDe !== document.body) veniaDe.focus()
+      if (veniaDe && veniaDe !== document.body) devolverElCursor(veniaDe)
+      // Lo que esperaba a que se cerrara: la pantalla de detrás, al día.
+      cerroVentana(marca)
     }
   }, [abierta, hidratada])
 
@@ -131,13 +175,17 @@ export function Ventana({
 
     if (e.key !== 'Tab') return
 
-    const enfocables = caja.current?.querySelectorAll<HTMLElement>(ENFOCABLES)
-    if (!enfocables || enfocables.length === 0) return
+    const enfocables = enfocablesDe(caja.current)
+    if (enfocables.length === 0) return
 
     const primero = enfocables[0]
     const ultimo = enfocables[enfocables.length - 1]
 
-    if (e.shiftKey && document.activeElement === primero) {
+    // Con el cursor en la ventana misma, Mayús+Tab salía a la página de detrás.
+    if (document.activeElement === caja.current) {
+      e.preventDefault()
+      ;(e.shiftKey ? ultimo : primero).focus()
+    } else if (e.shiftKey && document.activeElement === primero) {
       e.preventDefault()
       ultimo.focus()
     } else if (!e.shiftKey && document.activeElement === ultimo) {
@@ -149,6 +197,12 @@ export function Ventana({
   return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-black/50 p-0 sm:items-start sm:p-4 sm:py-10"
+      // El envío de un formulario de la ventana es solo suyo: React lo deja
+      // subir por el portal hasta el formulario de la pantalla que la abre, y
+      // «Registrar unidad» en la orden nueva registraba también la orden, sin
+      // su unidad y con el número del papel gastado (R3 de realización,
+      // cuadragésima segunda pasada).
+      onSubmit={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
         // Solo el fondo, no un arrastre que empezó dentro y terminó afuera al
         // seleccionar texto.
@@ -160,7 +214,7 @@ export function Ventana({
         role="dialog"
         aria-modal="true"
         aria-labelledby={idTitulo}
-        aria-describedby={descripcion ? idDescripcion : undefined}
+        aria-describedby={[descripcion && idDescripcion, viejaAlAbrir && idVieja].filter(Boolean).join(' ') || undefined}
         tabIndex={-1}
         onKeyDown={alTeclado}
         className={cn(
@@ -194,12 +248,78 @@ export function Ventana({
         </div>
 
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
           {children}
         </div>
       </div>
     </div>,
     document.body,
   )
+}
+
+/**
+ * Arriba de la ventana, en una pestaña de antes del último despliegue: lo que
+ * se envíe desde ella no va a entrar. El aviso de arriba de la pantalla queda
+ * detrás del fondo, y la persona escribía la ventana entera para enterarse al
+ * enviar (trigésima pasada). Si ya se sabía al abrir, se lee con la ventana
+ * (`aria-describedby`). Si se sabe con ella abierta y nadie lo dijo (la
+ * pregunta del envío anterior, al abrir), se anuncia: nace vacío y el texto
+ * llega en la pintada siguiente. Si lo dijo el envío de la ventana, junto a su
+ * botón, no se repite.
+ */
+function SeActualizoEnLaVentana({ id, alAbrir }: { id: string; alAbrir: boolean }) {
+  const version = useVersionDeLaPestana()
+  const [conTexto, setConTexto] = useState(alAbrir)
+  const vieja = version.estado === 'vieja' && (alAbrir || !version.callado)
+  useEffect(() => {
+    if (!vieja || conTexto) return
+    const cuadro = requestAnimationFrame(() => setConTexto(true))
+    return () => cancelAnimationFrame(cuadro)
+  }, [vieja, conTexto])
+  if (!vieja) return null
+
+  const texto = conTexto && (
+    <p id={id} className="mb-4 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-texto" data-ventana-vieja>
+      El sistema se actualizó mientras tenías la pantalla abierta: lo que envíes desde esta ventana no va a entrar. Copia lo que tengas escrito y vuelve a cargar la
+      pantalla.
+    </p>
+  )
+  return alAbrir ? texto : <div role="status">{texto}</div>
+}
+
+/**
+ * El cursor vuelve al botón que abrió la ventana. Ese botón puede irse justo
+ * después, cuando la pantalla se pone al día al cerrarla: la OC que se sacó de
+ * la lista, la factura que quedó completa. El cursor caía entonces al <body> y
+ * el teclado y el lector de pantalla volvían al principio de todo (decimosexta
+ * pasada). Si el botón desaparece con el cursor encima, el cursor va al
+ * contenido de la página.
+ *
+ * A veces el botón no se va: se rehace igual, con otra llave (el pago de la
+ * planilla, cuando cambia la gente por pagar). Ese lo pide con
+ * `data-cursor-vuelve`, y si en la página queda uno solo con la misma marca, el
+ * cursor va a ese (decimoctava pasada). Solo el que lo pide: con cualquier
+ * `data-…`, el «Anular pago» de una fila que se iba mandaba el cursor al de la
+ * otra persona, que tiene la misma marca (decimonovena pasada).
+ */
+function devolverElCursor(boton: HTMLElement) {
+  const marca = boton.dataset.cursorVuelve
+  const alContenido = () => {
+    if (document.activeElement && document.activeElement !== document.body) return
+    const iguales = marca ? document.querySelectorAll<HTMLElement>(`[data-cursor-vuelve="${CSS.escape(marca)}"]`) : []
+    if (iguales.length === 1) return iguales[0].focus()
+    document.querySelector<HTMLElement>('main[tabindex]')?.focus({ preventScroll: true })
+  }
+  if (!boton.isConnected) return alContenido()
+  boton.focus()
+  const vigia = new MutationObserver(() => {
+    if (boton.isConnected) return
+    vigia.disconnect()
+    alContenido()
+  })
+  vigia.observe(document.body, { childList: true, subtree: true })
+  // La pantalla al día llega en segundos; después, quien mueve el cursor es la persona.
+  setTimeout(() => vigia.disconnect(), 15000)
 }
 
 /**
@@ -219,6 +339,7 @@ export function ConfirmarAccion({
   detalle,
   etiquetaConfirmar = 'Sí, quitar',
   trabajando = false,
+  error,
 }: {
   abierta: boolean
   alCerrar: () => void
@@ -228,10 +349,24 @@ export function ConfirmarAccion({
   detalle: string
   etiquetaConfirmar?: string
   trabajando?: boolean
+  /**
+   * Por qué no se hizo. Va dentro y se lleva el cursor: la pantalla lo pintaba
+   * detrás, y el aviso se va con la ventana al cerrarla, así que «El conductor
+   * ya salió» no se veía en ninguna parte (decimoquinta pasada). La ventana se
+   * cierra sola con el ok, no al confirmar.
+   */
+  error?: string | null
 }) {
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(trabajando, error ?? null, () => aviso.current)
   return (
     <Ventana abierta={abierta} alCerrar={alCerrar} titulo={titulo} ancho="sm" cerrarAlTocarFuera>
       <p className="text-sm text-texto-suave">{detalle}</p>
+      {error && (
+        <p ref={aviso} role="alert" tabIndex={-1} className="mt-3 text-sm text-peligro">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button

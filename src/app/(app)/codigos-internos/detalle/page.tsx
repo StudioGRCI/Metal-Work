@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Download, FileText } from 'lucide-react'
 
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
@@ -148,65 +149,69 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
-        <div className="space-y-5">
-          {otros.length > 0 && (
-            <Tarjeta className="border-aviso">
-              <TarjetaCuerpo className="text-sm">
-                <p className="font-medium text-texto">¿Es el mismo código que {otros.length === 1 ? 'este' : 'estos'}?</p>
-                <p className="text-texto-suave">
-                  Se escribe casi igual que{' '}
-                  {otros.map((o, i) => (
-                    <span key={o}>
-                      {i > 0 && ', '}
-                      <Link href={enlaceCodigo(o, vista)} className="font-mono text-acento hover:underline">
-                        {o}
-                      </Link>
-                    </span>
-                  ))}
-                  . Si es el mismo, cada uno lleva su parte del avance y del costo por separado: hay que pedir que se corrija donde se escribió.
-                </p>
-              </TarjetaCuerpo>
-            </Tarjeta>
-          )}
+        // El código lo elige la búsqueda: con otro, la ficha y lo demás se montan
+        // de nuevo y no se llevan lo escrito para el anterior (X1, cuadragésima quinta pasada).
+        <DelDocumento documento={`codigo:${codigo}`}>
+          <div className="space-y-5">
+            {otros.length > 0 && (
+              <Tarjeta className="border-aviso">
+                <TarjetaCuerpo className="text-sm">
+                  <p className="font-medium text-texto">¿Es el mismo código que {otros.length === 1 ? 'este' : 'estos'}?</p>
+                  <p className="text-texto-suave">
+                    Se escribe casi igual que{' '}
+                    {otros.map((o, i) => (
+                      <span key={o}>
+                        {i > 0 && ', '}
+                        <Link href={enlaceCodigo(o, vista)} className="font-mono text-acento hover:underline">
+                          {o}
+                        </Link>
+                      </span>
+                    ))}
+                    . Si es el mismo, cada uno lleva su parte del avance y del costo por separado: hay que pedir que se corrija donde se escribió.
+                  </p>
+                </TarjetaCuerpo>
+              </Tarjeta>
+            )}
 
-          {aTodos ? (
-            <CifrasDelReparto filas={reparto} />
-          ) : (
-            <>
-              <ComoVa
-                c={resumen}
-                avance={avance}
-                facturado={facturado}
-                codigo={codigo}
-                verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
-                cierra={cierra}
-                esperaElMes={esperaElMes}
-                faltaOficina={faltaOficina}
-                faltaPlanilla={faltaPlanilla}
-                ajuste={ajuste}
-              />
-              <LineaDeDiseno d={diseno} />
-            </>
-          )}
+            {aTodos ? (
+              <CifrasDelReparto filas={reparto} />
+            ) : (
+              <>
+                <ComoVa
+                  c={resumen}
+                  avance={avance}
+                  facturado={facturado}
+                  codigo={codigo}
+                  verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
+                  cierra={cierra}
+                  esperaElMes={esperaElMes}
+                  faltaOficina={faltaOficina}
+                  faltaPlanilla={faltaPlanilla}
+                  ajuste={ajuste}
+                />
+                <LineaDeDiseno d={diseno} />
+              </>
+            )}
 
-          <PastillaFiltro
-            ruta="/codigos-internos/detalle"
-            clave="vista"
-            params={params}
-            activo={vista === 'avance' ? null : vista}
-            etiqueta="Secciones del código"
-            opciones={vistas.map((v) => ({
-              valor: v.valor === 'avance' ? null : v.valor,
-              etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
-            }))}
-          />
+            <PastillaFiltro
+              ruta="/codigos-internos/detalle"
+              clave="vista"
+              params={params}
+              activo={vista === 'avance' ? null : vista}
+              etiqueta="Secciones del código"
+              opciones={vistas.map((v) => ({
+                valor: v.valor === 'avance' ? null : v.valor,
+                etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+              }))}
+            />
 
-          {aTodos && vista === 'avance' ? (
-            <RepartoPorMes filas={reparto} c={resumen} />
-          ) : (
-            <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
-          )}
-        </div>
+            {aTodos && vista === 'avance' ? (
+              <RepartoPorMes filas={reparto} c={resumen} />
+            ) : (
+              <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+            )}
+          </div>
+        </DelDocumento>
       )}
     </>
   )

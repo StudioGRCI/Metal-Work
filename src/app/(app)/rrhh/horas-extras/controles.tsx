@@ -15,7 +15,7 @@ import { anularDecisionHorasExtras, anularUsoSaldo, decidirHorasExtras, guardarR
  * id llega del servidor: un segundo toque manda el mismo y no decide dos veces.
  */
 export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabajadorId: string; fecha: string }) {
-  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras)
+  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras, undefined, { documento: `${trabajadorId}:${fecha}` })
   const [elegida, setElegida] = useState<'PAGAR' | 'RESERVAR' | null>(null)
   function decidir(decision: 'PAGAR' | 'RESERVAR') {
     setElegida(decision)

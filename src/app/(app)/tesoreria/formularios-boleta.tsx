@@ -9,6 +9,8 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
@@ -21,7 +23,7 @@ import {
   topeDeLaDevolucion,
   type BoletaParaDevolver,
 } from '@/lib/dominio/pago-de-boleta'
-import { useEnvio } from '@/lib/envio'
+import { refrescarSiEsDeLaPestana, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
 import { anularDevolucionCompra, registrarDevolucionCompra, soltarPagoDeLaBoleta, tomarPagoDeLaBoleta } from './acciones'
@@ -76,8 +78,9 @@ const leerMonto = (texto: string) => {
  * `pagos-compras/{oc}/…`. Mientras se escribe el monto dice cómo queda la OC.
  * Sin factura, si queda algo pagado sin llegar al total, pregunta si con eso
  * la OC queda pagada: el proveedor cobró de más o entregó menos, aunque el
- * material ya esté en el almacén. El id se decide al abrir la ventana: un
- * reintento no registra otra.
+ * material ya esté en el almacén. El id vive fuera de la ventana
+ * (`useIdDelEnvio`): un reintento no registra otra, y si aquella entró, la
+ * ventana lo dice al volver a abrirse y la siguiente lleva otro.
  */
 export function RegistrarDevolucion({
   ordenCompraId,
@@ -102,7 +105,8 @@ export function RegistrarDevolucion({
   /** Con algo pagado de más es lo que la tarjeta le pide a Tesorería: va como botón principal. */
   principal: boolean
 }) {
-  const [devolucionId, setDevolucionId] = useState<string | null>(null)
+  const devolucion = useIdDelEnvio('devolucion_compra', undefined, ordenCompraId)
+  const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
   const [deja, setDeja] = useState('')
@@ -124,7 +128,8 @@ export function RegistrarDevolucion({
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
-    if (!devolucionId) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    if (!devolucion.id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    devolucion.salio()
     const r = await subirArchivoFinanzas(BUCKET_PAGOS_COMPRAS, ordenCompraId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarDevolucionCompra(null, datos)
@@ -136,10 +141,15 @@ export function RegistrarDevolucion({
     }
     return r
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setDevolucionId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      devolucion.otro()
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: devolucion.otro },
+  )
 
   function abrir() {
     avisar(null)
@@ -147,13 +157,14 @@ export function RegistrarDevolucion({
     setDia(hoy)
     setMonto(sugerido)
     setDeja('')
-    setDevolucionId(crypto.randomUUID())
+    devolucion.abrir()
+    setAbierta(true)
   }
   // Cerrada sin registrar después de corregirse, la tarjeta de atrás todavía dice lo de antes: se repinta ahora,
   // que la ventana ya no se pierde si la tarjeta cambia de lista.
   function cerrar() {
-    setDevolucionId(null)
-    if (rechazo?.para === boleta) router.refresh()
+    setAbierta(false)
+    if (rechazo?.para === boleta) refrescarSiEsDeLaPestana(router)
   }
   useAbrirDesdeOtraVentana('devolucion', ordenCompraId, abrir)
 
@@ -180,18 +191,19 @@ export function RegistrarDevolucion({
         Registrar devolución
       </Boton>
       <Ventana
-        abierta={devolucionId !== null}
+        abierta={abierta}
         alCerrar={cerrar}
         titulo={`Devolución de la ${numero}`}
         descripcion={`${conPunto(proveedor)} Lo que el proveedor te devolvió de lo pagado por la boleta: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(tope, codigoMoneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={devolucion.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
           <p className="text-sm text-texto-suave">
             Regístrala aquí el día que entra, no en Caja diaria: la caja la toma sola. Si ya la anotaste a mano, anula antes ese movimiento.
           </p>
-          <input type="hidden" name="id" value={devolucionId ?? ''} />
+          <input type="hidden" name="id" value={devolucion.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día en que entró" htmlFor={campo('fecha')} requerido>
@@ -257,29 +269,24 @@ export function RegistrarDevolucion({
           <p role="status" aria-live="polite" className="text-sm text-texto">
             {enVivo}
           </p>
-          {corregida !== null ? (
-            <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
-              {corregida === 'llego'
-                ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
-                : corregida === 'se-fue'
-                  ? 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'
-                  : 'Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día y vuelve a registrar la devolución.'}
-            </p>
-          ) : (
-            error && (
-              <p role="alert" className="text-sm text-peligro">
-                {error}
-              </p>
-            )
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={cerrar}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0 || corregida === 'otro'}>
-              Registrar la devolución
-            </Boton>
-          </div>
+          <PieDeVentana
+            error={error}
+            enviando={enviando}
+            alCancelar={cerrar}
+            texto="Registrar la devolución"
+            disabled={cuentas.length === 0 || corregida === 'otro'}
+            enLugarDelError={
+              corregida !== null && (
+                <p role="status" data-ventana-corregida className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto">
+                  {corregida === 'llego'
+                    ? 'Mientras escribías, le llegó su factura a la OC: cuánto se le paga lo dice la factura, así que ya no se pregunta si queda pagada. Revisa lo escrito y registra la devolución.'
+                    : corregida === 'se-fue'
+                      ? 'Mientras escribías, la OC se quedó sin su factura y se paga por su boleta: di si con lo que queda pagado queda pagada y registra la devolución.'
+                      : 'Mientras escribías, cambió lo pagado de la OC: cierra esta ventana para verla al día y vuelve a registrar la devolución.'}
+                </p>
+              )
+            }
+          />
         </form>
       </Ventana>
     </>
@@ -345,19 +352,7 @@ export function AnularDevolucion({
             <Campo etiqueta="Motivo" htmlFor={`anular-devolucion-${devolucionId}`} requerido>
               <AreaTexto id={`anular-devolucion-${devolucionId}`} name="motivo" required minLength={10} maxLength={500} />
             </Campo>
-            {error && (
-              <p role="alert" className="text-sm text-peligro">
-                {error}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-                Cancelar
-              </Boton>
-              <Boton type="submit" variante="peligro" cargando={enviando}>
-                Anular
-              </Boton>
-            </div>
+            <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
           </form>
         )}
       </Ventana>
@@ -397,7 +392,8 @@ export function TomarAlCambio({
   cambio: number | null
   diaDelCambio: string | null
 }) {
-  const [tomaId, setTomaId] = useState<string | null>(null)
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `cambio:${ordenCompraId}:${factura.id}`)
+  const [abierta, setAbierta] = useState(false)
   const sugeridoFactura = (() => {
     if (!cambio) return ''
     const enFactura = factura.moneda === 'USD' ? sinTomar / cambio : sinTomar * cambio
@@ -411,14 +407,23 @@ export function TomarAlCambio({
     avisar(null)
     setDeLaBoleta(sinTomar.toFixed(2))
     setEnLaFactura(sugeridoFactura)
-    setTomaId(crypto.randomUUID())
+    toma.abrir()
+    setAbierta(true)
   }
   useAbrirDesdeOtraVentana('al-cambio', ordenCompraId, abrir)
 
-  const { alEnviar, enviando, error } = useEnvio(tomarPagoDeLaBoleta, (r) => {
-    setTomaId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      toma.salio()
+      return tomarPagoDeLaBoleta(previo, datos)
+    },
+    (r) => {
+      setAbierta(false)
+      toma.otro()
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: toma.otro },
+  )
   const campo = (nombre: string) => `${nombre}-al-cambio-${ordenCompraId}`
   const boleta = leerMonto(deLaBoleta)
   const enFactura = leerMonto(enLaFactura)
@@ -436,14 +441,15 @@ export function TomarAlCambio({
         La factura lo toma al cambio
       </Boton>
       <Ventana
-        abierta={tomaId !== null}
-        alCerrar={() => setTomaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`La factura ${factura.numero} toma lo pagado por la boleta`}
         descripcion={`${conPunto(proveedor)} Lo que el proveedor tomó de lo pagado por la boleta de la ${numero}, a su cambio, a cuenta de la factura ${factura.numero} en ${nombreMoneda(factura.moneda)}. No mueve la caja: el dinero ya salió con el pago de la boleta.`}
         ancho="md"
       >
+        <EnvioAnterior texto={toma.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           <input type="hidden" name="factura_id" value={factura.id} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -491,19 +497,7 @@ export function TomarAlCambio({
                 ? `Con esos montos el dólar sale a S/ ${tipo.toFixed(3)}: revisa los dos montos.`
                 : `Sale a S/ ${tipo.toFixed(3)} por dólar. La factura queda debiendo ${moneda(Math.max(factura.saldo - enFactura, 0), factura.moneda)}.`)}
           </p>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Pasar a la factura
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Pasar a la factura" />
         </form>
       </Ventana>
     </>
@@ -535,7 +529,8 @@ export function DescontarDeOtraFactura({
   monedaOc: CodigoMoneda
   facturas: FacturaParaDescontar[]
 }) {
-  const [tomaId, setTomaId] = useState<string | null>(null)
+  const toma = useIdDelEnvio('toma_de_la_boleta', undefined, `descuento:${ordenCompraId}`)
+  const [abierta, setAbierta] = useState(false)
   const [elegida, setElegida] = useState(facturas.length === 1 ? facturas[0].id : '')
   const [deLaBoleta, setDeLaBoleta] = useState(deMas.toFixed(2))
   const avisar = useAvisoDeLaCaja()
@@ -548,15 +543,21 @@ export function DescontarDeOtraFactura({
     if (!(archivo instanceof File) || archivo.size === 0) {
       return { ok: false, error: 'Adjunta la nota de crédito o el documento donde el proveedor descontó lo pagado de más.' }
     }
+    toma.salio()
     return subirArchivoFinanzas(BUCKET_PAGOS_FACTURAS, facturaId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return tomarPagoDeLaBoleta(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(descontar, (r) => {
-    setTomaId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error } = useEnvio(
+    descontar,
+    (r) => {
+      setAbierta(false)
+      toma.otro()
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: toma.otro },
+  )
   const factura = facturas.find((f) => f.id === elegida)
   const otraMoneda = !!factura && factura.moneda !== monedaOc
   const campo = (nombre: string) => `${nombre}-descontar-${ordenCompraId}`
@@ -570,7 +571,8 @@ export function DescontarDeOtraFactura({
         onClick={() => {
           avisar(null)
           setDeLaBoleta(deMas.toFixed(2))
-          setTomaId(crypto.randomUUID())
+          toma.abrir()
+          setAbierta(true)
         }}
         data-descontar-de-otra={numero}
       >
@@ -578,14 +580,15 @@ export function DescontarDeOtraFactura({
         Lo descuenta de otra factura
       </Boton>
       <Ventana
-        abierta={tomaId !== null}
-        alCerrar={() => setTomaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Lo pagado de más de la ${numero}, a otra factura`}
         descripcion={`${conPunto(proveedor)} El proveedor no devuelve los ${moneda(deMas, monedaOc)}: los descuenta de otra factura suya. Esa factura los toma como pagados, sin mover la caja.`}
         ancho="md"
       >
+        <EnvioAnterior texto={toma.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={tomaId ?? ''} />
+          <input type="hidden" name="id" value={toma.id ?? ''} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
           {facturas.length === 0 ? (
             <p role="status" className="text-sm text-aviso">
@@ -650,19 +653,7 @@ export function DescontarDeOtraFactura({
               </Campo>
             </div>
           )}
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setTomaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={facturas.length === 0}>
-              Descontar
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Descontar" disabled={facturas.length === 0} />
         </form>
       </Ventana>
     </>
@@ -721,19 +712,7 @@ export function SoltarToma({
           <Campo etiqueta="Motivo" htmlFor={id} requerido>
             <AreaTexto id={id} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Deshacer
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Deshacer" variante="peligro" />
         </form>
       </Ventana>
     </>

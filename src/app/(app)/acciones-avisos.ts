@@ -4,8 +4,24 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { compilacionDelServidor, esDeOtroDespliegue } from '@/lib/compilacion'
 import { exigirSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+
+type Leido = ResultadoAccion<{ otroDespliegue: boolean }>
+
+/**
+ * Pone al día la campana y la lista con lo leído, salvo en una pantalla de otro
+ * despliegue (`deLaPestana`): ahí Next no repinta, recarga el documento entero,
+ * y «Marcar todos leídos» se llevaba el reporte diario a medio llenar y dejaba
+ * suelta su foto (trigesimoprimera pasada). Entonces lo leído lo pinta la
+ * propia pestaña (`useAvisos`).
+ */
+function ponerAlDia(deLaPestana: unknown): Leido {
+  const otroDespliegue = esDeOtroDespliegue(deLaPestana)
+  if (!otroDespliegue) revalidatePath('/', 'layout')
+  return { ok: true, datos: { otroDespliegue } }
+}
 
 /**
  * Marcar un aviso como leído.
@@ -15,7 +31,7 @@ import { createClient } from '@/lib/supabase/server'
  * justamente para notarlo —un UPDATE que no afecta a nadie no es un error en
  * Postgres, y sin esto la pantalla diría «listo» sin haber hecho nada—.
  */
-export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
+export async function marcarAvisoLeido(id: string, deLaPestana?: string | null): Promise<Leido> {
   await exigirSesion()
   if (!z.guid().safeParse(id).success) return { ok: false, error: 'El aviso no es válido.' }
   const supabase = await createClient()
@@ -36,16 +52,22 @@ export async function marcarAvisoLeido(id: string): Promise<ResultadoAccion> {
     if (!existente?.leida_en) return { ok: false, error: 'Este aviso ya no está disponible para tu cuenta.' }
   }
 
-  revalidatePath('/', 'layout')
-  return { ok: true }
+  return ponerAlDia(deLaPestana)
 }
 
 /**
- * Cuántos avisos sin leer tiene esta cuenta ahora mismo. Lo pregunta la
- * pantalla cada minuto (`RefrescoAlVolver`) para saber si vale la pena
- * repintar: es una cuenta de cabecera, no trae filas.
+ * Cuántos avisos sin leer tiene esta cuenta ahora mismo, y de qué despliegue es
+ * el servidor. Lo pregunta la pantalla cada minuto y al volver
+ * (`RefrescoAlVolver`) para saber si vale la pena repintar, y si todavía se
+ * puede: es una cuenta de cabecera, no trae filas.
+ *
+ * Con otro nombre que la de antes (`contarAvisosSinLeer`, que devolvía solo el
+ * número): una pestaña de antes de este cambio llamaba a la misma acción, el
+ * objeto siempre era distinto de su número y la recargaba entera en el primer
+ * minuto. Ahora esa pestaña recibe que la acción no existe, y lo calla
+ * (trigesimoprimera pasada).
  */
-export async function contarAvisosSinLeer(): Promise<number> {
+export async function contarAvisosYDespliegue(): Promise<{ sinLeer: number; compilacion: string | null }> {
   await exigirSesion()
   const supabase = await createClient()
   const { count, error } = await supabase
@@ -53,11 +75,11 @@ export async function contarAvisosSinLeer(): Promise<number> {
     .select('id', { count: 'exact', head: true })
     .is('leida_en', null)
   if (error) throw new Error(mensajeDeError(error))
-  return count ?? 0
+  return { sinLeer: count ?? 0, compilacion: compilacionDelServidor() }
 }
 
 /** Todos de una vez, que es lo que se hace después de mirarlos por encima. */
-export async function marcarTodosLeidos(): Promise<ResultadoAccion> {
+export async function marcarTodosLeidos(deLaPestana?: string | null): Promise<Leido> {
   await exigirSesion()
   const supabase = await createClient()
 
@@ -68,6 +90,5 @@ export async function marcarTodosLeidos(): Promise<ResultadoAccion> {
 
   if (error) return { ok: false, error: mensajeDeError(error) }
 
-  revalidatePath('/', 'layout')
-  return { ok: true }
+  return ponerAlDia(deLaPestana)
 }

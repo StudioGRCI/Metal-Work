@@ -23,7 +23,7 @@ export function EliminarReporte({
   conFotos?: boolean
 }) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(eliminarReporte)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(eliminarReporte, undefined, { documento: `${clase}:${id}` })
 
   if (!confirmando) {
     return (

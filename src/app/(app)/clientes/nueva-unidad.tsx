@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { TIPOS_VEHICULO } from '@/lib/dominio/unidades'
-import { useEnvio } from '@/lib/envio'
+import { esPlacaRepetida, TIPOS_VEHICULO } from '@/lib/dominio/unidades'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
@@ -46,6 +46,15 @@ export function NuevaUnidad({
     },
     { refrescar: !onCreada },
   )
+  // La placa que el cliente ya tiene es de su campo: lo marca y el cursor va
+  // ahí, con dónde está la que ya existe. Abajo mandaba a buscarla en la ficha,
+  // y en la orden nueva estaba en «Unidad», detrás de la ventana (D5 de
+  // diseño, cuadragésima cuarta pasada).
+  const campoPlaca = useRef<HTMLInputElement>(null)
+  const errorPlaca = esPlacaRepetida(error)
+    ? `${error}${unidad || / desactivada/.test(error ?? '') ? '' : onCreada ? ' Elígela en «Unidad», detrás de esta ventana.' : ' Está en sus unidades, detrás de esta ventana.'}`
+    : null
+  useCursorAlRechazo(enviando, error, () => (errorPlaca ? campoPlaca.current : null))
 
   function abrir() {
     limpiar()
@@ -149,12 +158,14 @@ export function NuevaUnidad({
             etiqueta="Placa"
             htmlFor="nu-placa"
             ayuda="Déjala vacía si el chasis todavía no está matriculado: la unidad se nombra sola con el chasis o el código interno hasta que tenga placa."
+            error={errorPlaca ?? undefined}
           >
             {/* La placa se escribe en mayúsculas y nunca la sabe el
                 navegador: sin esto el teclado del teléfono la empieza en
                 minúscula y el corrector la "arregla". Teclado normal, que la
                 placa peruana lleva letras. */}
             <Entrada
+              ref={campoPlaca}
               id="nu-placa"
               name="placa"
               autoComplete="off"
@@ -203,7 +214,7 @@ export function NuevaUnidad({
             <AreaTexto id="nu-observaciones" name="observaciones" rows={2} defaultValue={unidad?.observaciones ?? ''} />
           </Campo>
 
-          {error && (
+          {error && !errorPlaca && (
             <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">
               {error}
             </p>

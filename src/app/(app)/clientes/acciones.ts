@@ -1,12 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { placaRepetida } from '@/lib/dominio/unidades'
 
 const esquemaCliente = z.object({
   id: z.guid().optional().or(z.literal('')),
@@ -29,7 +29,7 @@ function nulo(valor: string | undefined | null) {
   return t ? t : null
 }
 
-export async function guardarCliente(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+export async function guardarCliente(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   const analisis = esquemaCliente.safeParse(Object.fromEntries(datos))
 
@@ -90,7 +90,10 @@ export async function guardarCliente(_previo: unknown, datos: FormData): Promise
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   revalidatePath('/clientes')
-  redirect(`/clientes/${data.id}`)
+  // La ida a su ficha la hace el formulario (`navegarSiEsDeLaPestana`): un
+  // redirect de servidor salía aunque la persona ya hubiera pedido otra
+  // pantalla mientras se guardaba.
+  return { ok: true, datos: { id: data.id } }
 }
 
 const esquemaUnidad = z.object({
@@ -182,6 +185,15 @@ export async function guardarUnidad(
     ? await supabase.from('unidades').update(fila).eq('id', v.id!).select('id, placa, codigo_interno, numero_chasis, marca, modelo').maybeSingle()
     : await supabase.from('unidades').insert(fila).select('id, placa, codigo_interno, numero_chasis, marca, modelo').single()
 
+  // La placa repetida en el mismo cliente decía «Ya existe un registro con esos
+  // datos», sin decir cuál (cuadragésima tercera pasada). La desactivada choca
+  // igual y no está en ninguna lista: se dice dónde se reactiva (D5 de diseño,
+  // cuadragésima cuarta pasada). Lo que hacer con la que está a la vista lo
+  // dice el campo, que sabe dónde está la ventana.
+  if (error?.code === '23505' && /uq_unidades_cliente_placa/.test(error.message)) {
+    const { data: otra } = await supabase.from('unidades').select('activo').eq('cliente_id', v.cliente_id).eq('placa', fila.placa ?? '').maybeSingle()
+    return { ok: false, error: placaRepetida(fila.placa ?? '', { editando, desactivada: otra?.activo === false }) }
+  }
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!creada) return { ok: false, error: NO_TOCO_NADA }
 

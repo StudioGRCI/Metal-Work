@@ -12,12 +12,14 @@ import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cantidad, fecha as formatearFecha, porcentaje as fmtPorcentaje } from '@/lib/format'
-import { SIN_RESPUESTA, useAccion, useEnvio } from '@/lib/envio'
+import { SIN_RESPUESTA, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import type {
   AreaMaterial,
   CompraMaterialPendiente,
@@ -72,6 +74,7 @@ function estadoOperativo(linea: LineaAtencionMaterial): string {
 }
 
 export function TableroMateriales({
+  ordenId,
   lineas,
   existencias,
   compras,
@@ -92,6 +95,8 @@ export function TableroMateriales({
   puedeVerAdquisiciones = false,
   codigos = null,
 }: {
+  /** La OT del tablero: lo pendiente de su orden de compra nueva no lo toma el tablero de otra. */
+  ordenId: string
   lineas: LineaAtencionMaterial[]
   existencias: ExistenciaMaterial[]
   compras: CompraMaterialPendiente[]
@@ -118,6 +123,11 @@ export function TableroMateriales({
 }) {
   const [compraAbierta,setCompraAbierta]=useState(false)
   const [avisoCompra,setAvisoCompra]=useState<string|null>(null)
+  // El id de la orden vive aquí y no en el formulario, que se rehace al abrir:
+  // tras «No llegó la respuesta», cancelar y volver a abrir lleva el mismo, y la
+  // base no emite otra OC numerada con lo mismo (decimoquinta pasada). Si al
+  // volver a abrir la base dice que aquella entró, la ventana lo dice y lleva otro.
+  const ordenNueva = useIdDelEnvio('orden_compra_del_tablero', undefined, ordenId)
   const [filtro, setFiltro] = useState<Filtro>('TODOS')
   const agrupados = useMemo(() => {
     const grupos = new Map<string, LineaAtencionMaterial[]>()
@@ -141,11 +151,12 @@ export function TableroMateriales({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-lg font-semibold text-texto">Solicitudes y entregas</h2>
           <p className="mt-1 text-sm text-texto-suave">{porRevisar} por revisar · {porComprar} por comprar · {enAlmacen} por despachar · {completos} entregadas</p></div>
-        {puedeCrearCompra && <Boton onClick={()=>{setAvisoCompra(null);setCompraAbierta(true)}} disabled={porComprar===0}><ShoppingCart aria-hidden className="size-4" />Nueva orden de compra</Boton>}
+        {puedeCrearCompra && <Boton onClick={()=>{setAvisoCompra(null);ordenNueva.abrir();setCompraAbierta(true)}} disabled={porComprar===0}><ShoppingCart aria-hidden className="size-4" />Nueva orden de compra</Boton>}
       </div>
       {avisoCompra && <p role="status" className="rounded-md bg-exito-suave px-3 py-2 text-sm text-exito">{avisoCompra}</p>}
       <Ventana abierta={compraAbierta} alCerrar={()=>setCompraAbierta(false)} titulo="Orden de compra" descripcion="Selecciona los insumos, registra sus precios y define el pago. Cada línea conserva su OT." ancho="xl">
-        <FormularioCompra lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);setAvisoCompra(mensaje??null)}} />
+        <EnvioAnterior texto={ordenNueva.anterior} />
+        {ordenNueva.id&&<FormularioCompra id={ordenNueva.id} alSalir={ordenNueva.salio} alYaEntrar={ordenNueva.otro} alCancelar={()=>setCompraAbierta(false)} lineas={lineas.filter(l=>l.aprobacion_diseno==='APROBADO'&&l.decision_almacen==='COMPRA'&&Number(l.cantidad_solicitada)-Number(l.cantidad_stock??0)>Number(l.cantidad_comprada))} proveedores={proveedores} puedeRegistrarProveedor={puedeRegistrarProveedor} codigos={codigos} alTerminar={(mensaje)=>{setCompraAbierta(false);ordenNueva.otro();setAvisoCompra(mensaje??null)}} />}
       </Ventana>
       {lineas.length > 0 && (
         <Tarjeta>
@@ -271,7 +282,9 @@ export function TableroMateriales({
 
 /** Existencias globales y conteo físico, fuera del circuito de una OT. */
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
+  // Lleva dinero: su rechazo con la persona ya en otra pantalla lo nombra arriba
+  // (H5 de diseño, cuadragésima tercera pasada), como los demás de este tablero.
+  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra, undefined, { siSeVa: { que: 'el precio de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
@@ -296,7 +309,7 @@ function detalleDelRecojo(compra: CompraMaterialPendiente): string {
  * aprobación. «Mandar a recojo» queda para las compras de antes.
  */
 function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const envio = useAccion(mandarARecojo)
+  const envio = useAccion(mandarARecojo, undefined, { documento: compra.orden_compra_id ?? undefined })
   // En qué va ya lo dice la cabecera de la tarjeta.
   if (!puedeIrARecojo(compra)) return null
   return <div className="flex flex-wrap items-center gap-2">
@@ -312,7 +325,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
 }
 
 function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra)
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra, undefined, { siSeVa: { que: 'el pago de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago: {condicionDePago(compra.condicion_pago, compra.dias_credito)} · {compra.moneda === 'USD' ? 'Dólares' : 'Soles'}</p>
   return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
@@ -432,7 +445,7 @@ function LineaMaterial({
 }
 
 function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
-  const { alEnviar, enviando, error } = useEnvio(revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-center gap-2">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <input type="hidden" name="decision" value="STOCK" />
@@ -443,7 +456,7 @@ function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
 }
 
 function DecisionMaterial({ linea, tipo }: { linea: LineaAtencionMaterial; tipo: 'diseno' | 'almacen' }) {
-  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-end gap-2 border-t border-borde pt-3">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <Campo etiqueta={tipo === 'diseno' ? 'Decisión de Diseño' : 'Revisión de Almacén'} htmlFor={`decision-${tipo}-${linea.detalle_id}`}>
@@ -462,8 +475,7 @@ function CantidadMini({ nombre, valor, unidad }: { nombre: string; valor: number
   return <div className="rounded-md bg-superficie-2 px-2 py-1.5"><p className="text-texto-suave">{nombre}</p><p className="tabular mt-0.5 font-semibold text-texto">{cantidad(valor)} {unidad}</p></div>
 }
 
-function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,alTerminar}:{lineas:LineaAtencionMaterial[];proveedores:ProveedorParaCompra[];puedeRegistrarProveedor:boolean;codigos:CodigoParaElegir[]|null;alTerminar:(mensaje?:string)=>void}) {
- const [id]=useState(()=>crypto.randomUUID())
+function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,puedeRegistrarProveedor,codigos,alTerminar}:{id:string;alSalir:()=>void;alYaEntrar:()=>void;alCancelar:()=>void;lineas:LineaAtencionMaterial[];proveedores:ProveedorParaCompra[];puedeRegistrarProveedor:boolean;codigos:CodigoParaElegir[]|null;alTerminar:(mensaje?:string)=>void}) {
  const [seleccionados,setSeleccionados]=useState<string[]>([])
  // El que se registra desde aquí se suma a la lista sin esperar a que la
  // pantalla se vuelva a cargar, y queda elegido.
@@ -475,7 +487,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,al
  const [avisoAlta,setAvisoAlta]=useState<string|null>(null)
  const [conFactura,setConFactura]=useState(true)
  const padron=useMemo(()=>{const vistos=new Set(proveedores.map(p=>p.id));return [...proveedores,...nuevos.filter(n=>!vistos.has(n.id))]},[proveedores,nuevos])
- const {alEnviar,enviando,error}=useEnvio(crearOrdenCompra,(r)=>alTerminar(r.mensaje))
+ const {alEnviar,enviando,error}=useEnvio((previo,datos)=>{alSalir();return crearOrdenCompra(previo,datos)},(r)=>alTerminar(r.mensaje),{alYaEntrar})
  // Si la pantalla se refresca con la ventana abierta, una línea elegida que otra
  // compra acaba de cubrir desaparece de la lista: deja de contar como elegida.
  const elegidas=seleccionados.filter(id=>lineas.some(l=>l.detalle_id===id))
@@ -512,8 +524,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,al
      </div>})}
      {lineas.length===0&&<p className="text-sm text-texto-suave">Almacén aún no derivó insumos pendientes de compra.</p>}
    </fieldset>
-   {error&&<p role="alert" className="text-sm text-peligro">{error}</p>}
-   <Boton type="submit" cargando={enviando} disabled={!elegidas.length||!proveedorId}>Crear orden de compra</Boton>
+   <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Crear orden de compra" disabled={!elegidas.length||!proveedorId}/>
  </form>
  <Ventana abierta={altaAbierta} alCerrar={()=>setAltaAbierta(false)} titulo="Nuevo proveedor" descripcion="Queda en el padrón y elegido para esta compra. Lo demás se completa en Proveedores." ancho="md">
    <FormularioProveedor breve alTerminar={(creado,mensaje)=>{
@@ -528,7 +539,7 @@ function FormularioCompra({lineas,proveedores,puedeRegistrarProveedor,codigos,al
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion)
+  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion, undefined, { siSeVa: { que: 'la llegada a almacén', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   const restante = Number(compra.cantidad_pendiente ?? 0)
   return (
     <form onSubmit={alEnviar} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-2">
@@ -571,7 +582,7 @@ function FormularioDespacho({
     const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension
     datos.delete('foto');datos.set('foto_ruta',ruta)
     return subirArchivoPrivado({bucket:'evidencias-almacen',ruta,archivo,contentType:archivo.type,registrar:()=>despacharMaterial(null,datos)})
-  })
+  }, undefined, { siSeVa: { que: 'la entrega con su foto', enlace: 'Volver a la entrega' }, documento: linea.detalle_id ?? undefined })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />

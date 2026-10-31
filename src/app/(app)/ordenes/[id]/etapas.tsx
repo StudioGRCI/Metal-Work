@@ -328,7 +328,7 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
   etapa: Etapa
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar, { documento: etapa.etapa_id ?? undefined })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid min-w-0 gap-3 border-t border-borde pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="orden_id" value={ordenId} />

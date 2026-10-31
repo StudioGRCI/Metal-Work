@@ -10,7 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
-import { useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { cambiarClave, cambiarEstado, darDeAltaPersona, guardarPersona } from './acciones'
@@ -243,13 +243,18 @@ export function FilaDePersona({
   // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
   const estado = useEnvio(
     cambiarEstado,
-    () => {
+    (_, desde) => {
       setVentana(null)
       const lista = persona.activo ? 'bajas' : 'activos'
-      router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+      const quien = `${persona.nombres} ${persona.apellidos}`
+      navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`, desde, {
+        dice: persona.activo ? `${quien} quedó de baja.` : `${quien} volvió a activos.`,
+        enlace: persona.activo ? 'Verla en Bajas' : 'Verla en Activos',
+        porOmision: { estado: 'activos' },
+      })
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
-    { refrescar: false },
+    { refrescar: false, documento: persona.id },
   )
 
   const alcance = (

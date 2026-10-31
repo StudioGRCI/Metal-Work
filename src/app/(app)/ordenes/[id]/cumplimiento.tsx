@@ -272,7 +272,9 @@ function Cifra({ titulo, children }: { titulo: string; children: React.ReactNode
 /** Repartir el 100 % en partes iguales entre los planos; pregunta antes porque pisa los pesos puestos. */
 function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(repartirPesoDePlanos, () => setConfirmando(false))
+  // Manda solo la orden, como «Dar por entregados»: sin decir cuál es, el envío
+  // de uno se llevaba la línea de arriba del otro.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(repartirPesoDePlanos, () => setConfirmando(false), { documento: `repartir-peso:${ordenId}` })
 
   if (!confirmando) {
     return (
@@ -308,7 +310,7 @@ function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }
 /** Entregar de una vez todos los planos que faltan, con la misma fecha. */
 function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
   const [abierto, setAbierto] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(entregarPlanosPendientes, () => setAbierto(false))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(entregarPlanosPendientes, () => setAbierto(false), { documento: `entregar-pendientes:${ordenId}` })
 
   if (!abierto) {
     return (
@@ -617,7 +619,7 @@ function FormularioEntrega({
   planoId: string
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(entregarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(entregarPlano, alTerminar, { documento: planoId })
 
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
@@ -650,7 +652,7 @@ function FormularioPlano({
   etapas: { id: string; nombre: string }[]
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar, { documento: plano.plano_id ?? undefined })
   const id = plano.plano_id ?? ''
 
   return (
@@ -718,7 +720,7 @@ function ConfirmarQuitar({
   texto: string
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(accion, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(accion, alTerminar, { documento: id })
 
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-3 border-t border-borde bg-peligro-suave px-4 py-3">

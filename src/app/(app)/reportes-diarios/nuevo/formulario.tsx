@@ -2,17 +2,21 @@
 
 import { Plus, Trash2, Users, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   SelectorFotos,
   fotosParaEnviar,
   hayFallidas,
   haySubiendo,
+  quitarAlSaberseVieja,
   quitarFotosSueltas,
+  SE_ACTUALIZO_CON_FOTOS,
   type FotoLista,
 } from '@/components/avance/selector-fotos'
+import { YaQuedo } from '@/components/estructura/ida-que-no-salio'
 import { Boton } from '@/components/ui/boton'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Progreso } from '@/components/ui/progreso'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
@@ -23,10 +27,23 @@ import {
   MAXIMO_MB_FOTO_REPORTE,
   MAXIMO_TRABAJOS_REPORTE,
 } from '@/lib/dominio/reporte-diario'
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { horasCortas } from '@/lib/dominio/rrhh'
 import type { OpcionDeTrabajo } from '@/lib/datos/reportes-diarios'
-import { useEnvio } from '@/lib/envio'
+import {
+  alVolverACargar,
+  esDeLaVersionAnterior,
+  laPestanaEsDeLaVersionAnterior,
+  motivoDelFallo,
+  navegarSiEsDeLaPestana,
+  OtraCuentaEnLaPestana,
+  SE_ACTUALIZO_EL_SISTEMA,
+  useCursorAlRechazo,
+  useEnvio,
+  usePestanaDeLaVersionAnterior,
+  vigilarLaVersion,
+} from '@/lib/envio'
 import { fecha as fechaCorta } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -148,6 +165,16 @@ function trabajosParaEnviar(s: Seccion) {
   })
 }
 
+/** Las que ya están en Storage o van en camino: si nadie las nombra, quedan sueltas. */
+function fotosSubidas(s: Seccion) {
+  return s.fotos.filter((f) => f.ruta || f.subiendo)
+}
+
+/** La foto va en un envío que sigue en camino, o en uno que no se sabe cómo terminó. */
+function esDeUnEnvio(f: FotoLista, enCamino: Set<FotoLista>, enDuda: Set<string>) {
+  return enCamino.has(f) || Boolean(f.ruta && enDuda.has(f.ruta))
+}
+
 function fotosDe(s: Seccion) {
   return [...s.fotosPrevias.map((f) => f.ruta), ...fotosParaEnviar(s.fotos).map((f) => f.ruta_storage)]
 }
@@ -158,17 +185,11 @@ function fotosDe(s: Seccion) {
  */
 function conOpciones(
   s: Seccion,
-  r: Awaited<ReturnType<typeof opcionesDelCodigo>> | null,
+  r: Awaited<ReturnType<typeof opcionesDelCodigo>>,
   codigo: string,
   fecha: string,
 ): Seccion {
-  if (!r || !r.ok) {
-    return {
-      ...s,
-      leyendo: false,
-      errorOpciones: r && !r.ok ? r.error : 'No llegó la respuesta. Revisa la conexión y vuelve a escribir el código.',
-    }
-  }
+  if (!r.ok) return { ...s, leyendo: false, errorOpciones: r.error }
   const nuevas = r.datos ?? []
   const validas = new Set(nuevas.map(claveDe))
   const anteriores = new Map(s.opciones.map((o) => [claveDe(o), o.etiqueta]))
@@ -286,11 +307,124 @@ export function FormularioReporteDiario({
   const [libres, setLibres] = useState(() => ids.slice(1))
   const espera = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const pedido = useRef(new Map<string, number>())
-  const { alEnviar, enviando, error } = useEnvio(
-    corrige ? registrarReporteCorregido : registrarReportesDiarios,
-    (r) => router.push(`/reportes-diarios/${r.datos?.id ?? ids[0]}?subido=1`),
-    { refrescar: false },
+  // Las fotos del envío que sigue en camino, y las rutas del que no se sabe
+  // cómo terminó (no llegó la respuesta): pudo nombrarlas. Ni al saberse vieja
+  // la pestaña ni con «Volver a cargar» se quitan, como en `useFotosDelEnvio`.
+  // Se quitaban: el reporte en camino no entraba porque su foto ya no estaba, y
+  // del que sí había entrado se decía «Se quitó… elígela otra vez», y subirlo
+  // otra vez lo duplicaba con sus horas (trigesimoprimera pasada).
+  const enCamino = useRef(new Set<FotoLista>())
+  const enDuda = useRef(new Set<string>())
+  // Las del reporte que ya entró: las nombra él, y el formulario queda trabado
+  // con ellas a la vista. Al saberse vieja la pestaña se daban por sueltas: la
+  // foto decía «Se quitó» (la base no la dejaba quitar) y abajo se pedía volver
+  // a cargar para subir el reporte, junto a «El reporte quedó registrado» (H3 de
+  // funcionalidad, cuadragésima pasada).
+  const nombradas = useRef(new Set<string>())
+  const [enDudaElAnterior, setEnDudaElAnterior] = useState(false)
+  const { alEnviar, enviando, error, resultado } = useEnvio(
+    async (previo: unknown, datos: FormData) => {
+      const van = secciones.flatMap((s) => s.fotos)
+      for (const f of van) enCamino.current.add(f)
+      const dudar = () => {
+        for (const f of van) if (f.ruta) enDuda.current.add(f.ruta)
+        setEnDudaElAnterior(true)
+      }
+      let salida: ResultadoAccion<{ id: string }>
+      try {
+        salida = await (corrige ? registrarReporteCorregido : registrarReportesDiarios)(previo, datos)
+      } catch (e) {
+        if (!esDeLaVersionAnterior(e)) {
+          // Lo cortó la traba antes de salir: no se envió nada. Lo demás no se sabe.
+          if (!(e instanceof OtraCuentaEnLaPestana)) dudar()
+          throw e
+        }
+        // Una pestaña de antes del último despliegue: la acción no corrió, y al
+        // recargar el formulario sale con otros ids. Las fotos ya subidas no las
+        // nombraría nadie: se quitan, y se dice que hay que elegirlas otra vez
+        // (vigesimonovena pasada; como `conFotos` en las demás ventanas). Las de
+        // un envío anterior en duda se quedan, y lo dice el texto de abajo.
+        const sueltas = (s: Seccion) => s.fotos.filter((f) => !(f.ruta && enDuda.current.has(f.ruta)))
+        const habia = secciones.some((s) => sueltas(s).length > 0)
+        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, sueltas(s))
+        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: s.fotos.filter((f) => f.ruta && enDuda.current.has(f.ruta)) })))
+        return { ok: false, error: habia && !enDudaElAnterior ? SE_ACTUALIZO_CON_FOTOS : SE_ACTUALIZO_EL_SISTEMA }
+      } finally {
+        for (const f of van) enCamino.current.delete(f)
+      }
+      if (!salida.ok && pudoHaberEntrado(salida.error)) {
+        dudar()
+        return salida
+      }
+      // Con los mismos ids, cualquier otra respuesta dice también cómo terminó el anterior.
+      enDuda.current.clear()
+      setEnDudaElAnterior(false)
+      if (salida.ok) for (const f of van) if (f.ruta) nombradas.current.add(f.ruta)
+      // El reporte ya había entrado la primera vez: lo de este envío no se
+      // guardó, y sus fotos nuevas no las nombra nadie. Se quitan (las de la
+      // primera vez, que su reporte nombra, la base no las deja quitar), y la
+      // pantalla lleva al reporte en vez de ofrecer subirlo otra vez.
+      if (!salida.ok && yaEntroLaPrimeraVez(salida.error)) {
+        for (const s of secciones) quitarFotosSueltas(BUCKET_FOTOS_REPORTE, s.fotos)
+        setSecciones((ss) => ss.map((s) => ({ ...s, fotos: [] })))
+      }
+      return salida
+    },
+    (r, desde) => {
+      const { url, ...dicho } = idaAlReporte(r.datos?.id ?? ids[0])
+      navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
+    },
+    {
+      refrescar: false,
+      // Lo que ya había quedado la primera vez se ve en el reporte (`decirQueYaHabiaEntradoSiSeFue`).
+      siSeVa: { que: 'el reporte', enlace: 'Volver al reporte', yaEntro: () => ({ url: `/reportes-diarios/${secciones[0]?.id ?? ids[0]}`, enlace: 'Ver el reporte' }) },
+      // La corrección de otro observado no se lleva la línea del rechazo de este
+      // (H1 de funcionalidad, cuadragésima quinta pasada).
+      documento: corrige ? `corrige:${corrige.reemplaza}` : undefined,
+    },
   )
+  const yaEntro = yaEntroLaPrimeraVez(error)
+  // Subido, el formulario se traba y lo dice junto al botón, salga la ida o no (`YaQuedo`).
+  const entro = resultado?.ok ? idaAlReporte(resultado.datos?.id ?? ids[0]) : null
+  const vieja = usePestanaDeLaVersionAnterior()
+
+  // Las fotos ya subidas que nadie va a nombrar si la pantalla se recarga. Se
+  // leen de aquí, no del pintado en que se pidió quitarlas.
+  const actuales = useRef(secciones)
+  useEffect(() => {
+    actuales.current = secciones
+  })
+  // Al saberse vieja la pestaña, como venga, sus fotos ya subidas se quitan en
+  // el acto (`quitarAlSaberseVieja`): desde aquí el reporte ya no entra, y al
+  // recargar, como pide el aviso de arriba, quedaban sueltas. Las de la
+  // corrección (`fotosPrevias`) son del reporte que ya está y no se tocan.
+  useEffect(
+    () =>
+      vigilarLaVersion(() => {
+        if (!laPestanaEsDeLaVersionAnterior()) return
+        const libres = actuales.current.flatMap((s) => s.fotos).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current) && !(f.ruta && nombradas.current.has(f.ruta)))
+        const marcar = quitarAlSaberseVieja(BUCKET_FOTOS_REPORTE, libres)
+        if (marcar) setSecciones((ss) => ss.map((s) => ({ ...s, fotos: marcar(s.fotos) })))
+      }),
+    [],
+  )
+  // Y «Volver a cargar», el del aviso de arriba después de un despliegue, las
+  // quita antes de recargar: antes quedaban sueltas (trigésima pasada).
+  useEffect(
+    () =>
+      alVolverACargar(() =>
+        Promise.all(
+          actuales.current.map((s) =>
+            quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current) && !(f.ruta && nombradas.current.has(f.ruta)))),
+          ),
+        ),
+      ),
+    [],
+  )
+
+  // El cursor va al aviso, al final de un formulario largo: caía a la página.
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
 
   const nombres = new Map(personal.map((p) => [p.valor, p.etiqueta]))
   // Lo que cada persona suma en todo el día, en todos los códigos: el tope es 16 horas.
@@ -345,7 +479,10 @@ export function FormularioReporteDiario({
     espera.current.set(
       s.clave,
       setTimeout(async () => {
-        const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch(() => null)
+        const r = await opcionesDelCodigo(codigo, corrige?.reemplaza ?? null, fecha).catch((e: unknown) => ({
+          ok: false as const,
+          error: motivoDelFallo(e, 'No llegó la respuesta. Revisa la conexión y vuelve a escribir el código.'),
+        }))
         if (numero !== pedido.current.get(s.clave)) return
         cambiar(s.clave, (actual) => conOpciones(actual, r, codigo, fecha))
       }, 400),
@@ -419,149 +556,181 @@ export function FormularioReporteDiario({
       }
       className="space-y-6"
     >
-      <section aria-labelledby="rd-cabecera" className="space-y-4">
-        <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
-          El reporte
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
-          <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
-            <Entrada
-              id="rd-fecha"
-              name="fecha"
-              type="date"
-              required
-              value={dia}
-              onChange={(e) => {
-                setDia(e.target.value)
-                for (const s of secciones) leerCodigo(s, s.codigo, e.target.value)
-              }}
-              min={minimo}
-              max={hoy}
-            />
-          </Campo>
-          <Campo etiqueta="Asunto" htmlFor="rd-asunto" requerido>
-            <Entrada
-              id="rd-asunto"
-              name="asunto"
+      {/* Tras «ya quedó», lo de arriba ya no se envía: queda a la vista y trabado.
+          Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada).
+          Mientras se envía, también: lo elegido o quitado entonces no iba con el
+          reporte (vigesimoséptima pasada). */}
+      <fieldset disabled={yaEntro || enviando || Boolean(entro)} className="min-w-0 space-y-6">
+        <section aria-labelledby="rd-cabecera" className="space-y-4">
+          <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
+            El reporte
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <Campo etiqueta="Día" htmlFor="rd-fecha" requerido>
+              <Entrada
+                id="rd-fecha"
+                name="fecha"
+                type="date"
+                required
+                value={dia}
+                onChange={(e) => {
+                  setDia(e.target.value)
+                  for (const s of secciones) leerCodigo(s, s.codigo, e.target.value)
+                }}
+                min={minimo}
+                max={hoy}
+              />
+            </Campo>
+            <Campo etiqueta="Asunto" htmlFor="rd-asunto" requerido>
+              <Entrada
+                id="rd-asunto"
+                name="asunto"
+                required
+                minLength={3}
+                maxLength={120}
+                placeholder="Por ejemplo: armado de la tolva"
+                defaultValue={corrige?.asunto}
+                autoComplete="off"
+              />
+            </Campo>
+          </div>
+          <Campo etiqueta="Breve descripción" htmlFor="rd-descripcion" requerido>
+            <AreaTexto
+              id="rd-descripcion"
+              name="descripcion"
               required
               minLength={3}
-              maxLength={120}
-              placeholder="Por ejemplo: armado de la tolva"
-              defaultValue={corrige?.asunto}
-              autoComplete="off"
+              maxLength={1000}
+              rows={2}
+              placeholder="Lo que pasó hoy: qué se avanzó, qué falta, si algo trabó el trabajo."
+              defaultValue={corrige?.descripcion}
             />
           </Campo>
-        </div>
-        <Campo etiqueta="Breve descripción" htmlFor="rd-descripcion" requerido>
-          <AreaTexto
-            id="rd-descripcion"
-            name="descripcion"
-            required
-            minLength={3}
-            maxLength={1000}
-            rows={2}
-            placeholder="Lo que pasó hoy: qué se avanzó, qué falta, si algo trabó el trabajo."
-            defaultValue={corrige?.descripcion}
-          />
-        </Campo>
-      </section>
+        </section>
 
-      <section aria-labelledby="rd-codigos-titulo" className="space-y-4">
-        <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
-          {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
-        </h2>
-        {secciones.map((s, n) => (
-          <SeccionDelCodigo
-            key={s.clave}
-            seccion={s}
-            numero={n + 1}
-            varios={varios}
-            repetido={repetidos.has(s.clave)}
-            dia={dia}
-            hoy={hoy}
-            corrige={corrige !== null}
-            cuentaId={cuentaId}
-            codigos={codigos}
-            personal={personal}
-            sinPersonal={sinPersonal}
-            alCambiar={(cambio) => cambiar(s.clave, cambio)}
-            alEscribirCodigo={(texto) => {
-              cambiar(s.clave, { codigo: texto })
-              leerCodigo(s, texto, dia)
-            }}
-            alQuitar={varios ? () => quitarCodigo(s) : null}
-          />
-        ))}
+        <section aria-labelledby="rd-codigos-titulo" className="space-y-4">
+          <h2 id="rd-codigos-titulo" className="text-sm font-semibold text-texto">
+            {corrige ? 'Código interno' : varios ? `Códigos internos (${secciones.length})` : 'Código interno'}
+          </h2>
+          {secciones.map((s, n) => (
+            <SeccionDelCodigo
+              key={s.clave}
+              seccion={s}
+              numero={n + 1}
+              varios={varios}
+              repetido={repetidos.has(s.clave)}
+              dia={dia}
+              hoy={hoy}
+              corrige={corrige !== null}
+              cuentaId={cuentaId}
+              codigos={codigos}
+              personal={personal}
+              sinPersonal={sinPersonal}
+              alCambiar={(cambio) => cambiar(s.clave, cambio)}
+              alEscribirCodigo={(texto) => {
+                cambiar(s.clave, { codigo: texto })
+                leerCodigo(s, texto, dia)
+              }}
+              alQuitar={varios ? () => quitarCodigo(s) : null}
+            />
+          ))}
 
-        {!corrige && (
-          <Boton type="button" variante="contorno" disabled={libres.length === 0} onClick={agregarCodigo} className="w-full sm:w-auto">
-            <Plus aria-hidden className="size-4" />
-            Agregar otro código interno
-          </Boton>
-        )}
-        {!corrige && libres.length === 0 && (
-          <p className="text-xs text-texto-suave">Un reporte lleva hasta {MAXIMO_CODIGOS_REPORTE} códigos: el resto, en otro reporte.</p>
-        )}
-      </section>
+          {!corrige && (
+            <Boton type="button" variante="contorno" disabled={libres.length === 0} onClick={agregarCodigo} className="w-full sm:w-auto">
+              <Plus aria-hidden className="size-4" />
+              Agregar otro código interno
+            </Boton>
+          )}
+          {!corrige && libres.length === 0 && (
+            <p className="text-xs text-texto-suave">Un reporte lleva hasta {MAXIMO_CODIGOS_REPORTE} códigos: el resto, en otro reporte.</p>
+          )}
+        </section>
 
-      <section aria-labelledby="rd-personal" className="space-y-3">
-        <h2 id="rd-personal" className="text-sm font-semibold text-texto">
-          Tu gente en el día
-        </h2>
-        {sinPersonal ? (
-          <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
-            No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
-            a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
-          </p>
-        ) : porPersona.size === 0 ? (
-          <p className="text-xs text-texto-suave">Aquí se suman las horas de cada persona en todos los códigos del reporte.</p>
-        ) : (
-          <div className="rounded-lg bg-superficie-2 px-3 py-2 text-xs text-texto-suave" aria-live="polite" data-resumen-personal>
-            <p className="font-medium text-texto">
-              <Users aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
-              {porPersona.size} {porPersona.size === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(totalHoras)}</span> en
-              total
+        <section aria-labelledby="rd-personal" className="space-y-3">
+          <h2 id="rd-personal" className="text-sm font-semibold text-texto">
+            Tu gente en el día
+          </h2>
+          {sinPersonal ? (
+            <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
+              No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
+              a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
             </p>
-            <ul className="mt-1 space-y-0.5">
-              {[...porPersona.entries()].map(([persona, horas]) => (
-                <li key={persona} className={cn(horas > 16 && 'font-medium text-peligro')}>
-                  {nombres.get(persona) ?? 'Persona'}: <span className="tabular">{horasCortas(horas)}</span>
-                  {horas > 16 && ' — pasa de 16 horas en el día'}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+          ) : porPersona.size === 0 ? (
+            <p className="text-xs text-texto-suave">Aquí se suman las horas de cada persona en todos los códigos del reporte.</p>
+          ) : (
+            <div className="rounded-lg bg-superficie-2 px-3 py-2 text-xs text-texto-suave" aria-live="polite" data-resumen-personal>
+              <p className="font-medium text-texto">
+                <Users aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
+                {porPersona.size} {porPersona.size === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(totalHoras)}</span> en
+                total
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {[...porPersona.entries()].map(([persona, horas]) => (
+                  <li key={persona} className={cn(horas > 16 && 'font-medium text-peligro')}>
+                    {nombres.get(persona) ?? 'Persona'}: <span className="tabular">{horasCortas(horas)}</span>
+                    {horas > 16 && ' — pasa de 16 horas en el día'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      </fieldset>
 
       {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
+        <p
+          ref={aviso}
+          tabIndex={-1}
+          role="alert"
+          data-ya-entro={yaEntro || undefined}
+          className={yaEntro ? 'rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'text-sm text-peligro'}
+        >
+          {yaEntro
+            ? 'Este reporte ya quedó registrado la primera vez que lo enviaste, y lo que cambiaste después no se guardó. Ábrelo con «Ver el reporte»: ahí está lo que quedó y, si hay que cambiar algo, cómo corregirlo.'
+            : error}
         </p>
       )}
-      {fallidas && !subiendo && (
-        <p className="text-sm text-peligro">Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.</p>
+      {vieja && enDudaElAnterior ? (
+        <p className="text-sm text-peligro">
+          No se sabe si entró el reporte que enviaste: búscalo en Reportes diarios antes de volver a cargar la pantalla y subirlo otra vez.
+        </p>
+      ) : (
+        fallidas &&
+        !subiendo && (
+          <p className="text-sm text-peligro">
+            {vieja ? 'Vuelve a cargar la pantalla para subir el reporte.' : 'Quita o vuelve a subir las fotos que no entraron antes de subir el reporte.'}
+          </p>
+        )
       )}
       {repetidos.size > 0 && <p className="text-sm text-peligro">Un código va dos veces: junta sus trabajos en uno solo.</p>}
+      <YaQuedo ida={entro} />
       <div className="flex justify-end">
-        <Boton
-          type="submit"
-          cargando={enviando}
-          disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0}
-          className="w-full sm:w-auto"
-        >
-          {subiendo
-            ? 'Esperando las fotos…'
-            : corrige
-              ? 'Subir el reporte corregido'
-              : varios
-                ? `Subir reporte de ${secciones.length} códigos`
-                : 'Subir reporte'}
-        </Boton>
+        {yaEntro ? (
+          <EnlaceBoton href={`/reportes-diarios/${secciones[0]?.id ?? ids[0]}`} className="w-full sm:w-auto">
+            Ver el reporte
+          </EnlaceBoton>
+        ) : (
+          <Boton
+            type="submit"
+            cargando={enviando}
+            disabled={(sinPersonal && !soloSubcontratos) || subiendo || fallidas || repetidos.size > 0 || Boolean(entro)}
+            className="w-full sm:w-auto"
+          >
+            {subiendo
+              ? 'Esperando las fotos…'
+              : corrige
+                ? 'Subir el reporte corregido'
+                : varios
+                  ? `Subir reporte de ${secciones.length} códigos`
+                  : 'Subir reporte'}
+          </Boton>
+        )}
       </div>
     </form>
   )
 }
+
+const idaAlReporte = (id: string) => ({ url: `/reportes-diarios/${id}?subido=1`, dice: 'El reporte quedó registrado.', enlace: 'Ver el reporte' })
 
 /**
  * Un código interno del reporte: el código, sus trabajos con su avance y su

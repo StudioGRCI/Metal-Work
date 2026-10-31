@@ -1,8 +1,9 @@
 import { ChevronLeft, ChevronRight, Landmark } from 'lucide-react'
 import Link from 'next/link'
 
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Boton } from '@/components/ui/boton'
+import { BASE_BOTON, Boton, TAMANOS, VARIANTES, type Tamano, type Variante } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -13,8 +14,9 @@ import { cajaDelDia, type CajaDelDia, type CierreReabierto, type CuentaDelDia, t
 import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esExtorno, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
-import { AnularMovimiento, CerrarDia, EditarCuenta, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
+import { AnularMovimiento, CerrarDia, EditarCuenta, EnviosDeLaCaja, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
 
 export const metadata = { title: 'Caja diaria' }
 
@@ -62,7 +64,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const bancosSinCaptura = caja.cuentas.filter((c) => c.activa && c.tipo === 'BANCO' && !c.apertura_ruta).length
 
   return (
-    <>
+    <EnviosDeLaCaja>
       <EncabezadoPagina
         titulo="Caja diaria"
         ayuda="El saldo de cada cuenta día por día, como el estado de caja: lo que salió, lo que entró y el cierre contra el estado de cuenta del banco. Los pagos y cobros del sistema entran solos."
@@ -83,7 +85,9 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
-        <>
+        // Lo de cada día se vuelve a montar con otro día: lo escrito para el A no
+        // pasa al B, y cada formulario dice de cuál día es (X1, cuadragésima quinta pasada).
+        <DelDocumento documento={`caja:${dia}`}>
           {pendientes.length > 0 && (
             <div role="status" className="mb-5 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3 text-sm text-texto">
               <p className="font-medium">Días sin cerrar</p>
@@ -167,7 +171,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
               />
             ))}
           </div>
-        </>
+        </DelDocumento>
       )}
 
       {caja.cuentas.length > 0 && (
@@ -235,26 +239,50 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           </div>
         </SeccionDesplegable>
       )}
-    </>
+    </EnviosDeLaCaja>
   )
 }
 
 /** «3 activas», «1 desactivada»; nada si no hay ninguna. */
 const cuantas = (n: number, una: string, varias: string) => (n === 0 ? null : `${n} ${n === 1 ? una : varias}`)
 
+/**
+ * El sitio de un mando del selector que en este día no va: se guarda sin verse
+ * ni recibir el cursor, con las mismas medidas que el mando.
+ */
+function Reservado({ variante, tamano, children }: { variante: Variante; tamano: Tamano; children?: string }) {
+  return (
+    <span aria-hidden className={cn(BASE_BOTON, VARIANTES[variante], TAMANOS[tamano], 'invisible')}>
+      {children}
+    </span>
+  )
+}
+
 function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   const siguiente = sumarDias(dia, 1)
+  // Cada mando guarda su sitio aunque ese día no vaya: a lo ancho el selector
+  // va pegado a la derecha del encabezado, y «Día siguiente» y «Hoy», que en
+  // hoy no están, al aparecer corrían la flecha cien píxeles; el segundo clic
+  // en «Día anterior» caía en la fecha (D3 de diseño, cuadragésima séptima
+  // pasada). A medio ancho, además, bajaba el selector a otro renglón.
   return (
     <form method="get" action={RUTA} className="flex flex-wrap items-center gap-2">
-      {dia > PRIMER_DIA && (
+      {dia > PRIMER_DIA ? (
         <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
           <ChevronLeft aria-hidden className="size-4" />
         </EnlaceBoton>
+      ) : (
+        <Reservado variante="contorno" tamano="icono" />
       )}
       <label htmlFor="caja-dia" className="sr-only">
         Día de la caja
       </label>
-      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
+      {/* Uno por día: las flechas cambian solo la búsqueda y Next deja montada la
+          pantalla; sin control, se quedaba con el día escrito a mano o con el de
+          la entrada, debajo de los saldos de otro (H3 de diseño, cuadragésima
+          sexta pasada). La key va aquí y no en el formulario: el foco sigue en
+          la flecha. */}
+      <Entrada key={dia} id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
@@ -262,11 +290,17 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
         <EnlaceBoton href={enlaceDia(siguiente, hoy)} variante="contorno" tamano="icono" aria-label="Día siguiente">
           <ChevronRight aria-hidden className="size-4" />
         </EnlaceBoton>
-      ) : null}
-      {dia !== hoy && (
+      ) : (
+        <Reservado variante="contorno" tamano="icono" />
+      )}
+      {dia !== hoy ? (
         <EnlaceBoton href={RUTA} variante="fantasma" tamano="sm">
           Hoy
         </EnlaceBoton>
+      ) : (
+        <Reservado variante="fantasma" tamano="sm">
+          Hoy
+        </Reservado>
       )}
     </form>
   )

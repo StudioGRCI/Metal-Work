@@ -8,12 +8,14 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { BUCKET_NOTAS_CREDITO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda, type CodigoMoneda } from '@/lib/format'
 
 import {
@@ -139,35 +141,52 @@ export function DescontarNota({ nota, facturas }: { nota: NotaParaUsar; facturas
 /**
  * El proveedor devolvió el dinero de la nota: el día que entró, cuánto, la
  * operación, la cuenta de la caja a la que entró —la caja diaria se mueve
- * sola— y la constancia, que sube primero a `notas-credito/{nota}/…`. El id se
- * decide al abrir la ventana: un reintento del mismo envío no registra otra.
+ * sola— y la constancia, que sube primero a `notas-credito/{nota}/…`. El id vive
+ * fuera de la ventana (`useIdDelEnvio`): un reintento del mismo envío no
+ * registra otra, y si aquella entró, la ventana lo dice al volver a abrirse y
+ * la siguiente lleva otro.
  */
 export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy: string; cuentas: CuentaParaPagar[] }) {
-  const [id, setId] = useState<string | null>(null)
+  const reembolso = useIdDelEnvio('reembolso_nota_credito', undefined, nota.id)
+  const [abierta, setAbierta] = useState(false)
   const [dia, setDia] = useState(hoy)
   const [monto, setMonto] = useState('')
+  // Si la ventana se abrió antes de que la pantalla se pusiera al día, lo que queda a favor cambia el
+  // propuesto, pero no lo que la persona ya escribió: un refresco tardío lo cambiaba por el total.
+  const [aFavorVisto, setAFavorVisto] = useState(nota.aFavor)
+  if (aFavorVisto !== nota.aFavor) {
+    setAFavorVisto(nota.aFavor)
+    if (monto === aFavorVisto.toFixed(2)) setMonto(nota.aFavor.toFixed(2))
+  }
   const avisar = useAvisoDeLaCaja()
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la constancia de la devolución.' }
-    if (!id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    if (!reembolso.id) return { ok: false, error: 'Vuelve a abrir el formulario de la devolución.' }
+    reembolso.salio()
     return subirArchivoFinanzas(BUCKET_NOTAS_CREDITO, nota.id, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarReembolsoNotaCredito(null, datos)
     })
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setId(null)
-    avisar(r.mensaje ?? null)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      reembolso.otro()
+      avisar(r.mensaje ?? null)
+    },
+    { alYaEntrar: reembolso.otro },
+  )
   function abrir() {
     avisar(null)
     limpiar()
     setDia(hoy)
     setMonto(nota.aFavor.toFixed(2))
-    setId(crypto.randomUUID())
+    reembolso.abrir()
+    setAbierta(true)
   }
   const campo = (n: string) => `${n}-reembolso-${nota.id}`
   return (
@@ -179,15 +198,16 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
         El proveedor lo devolvió
       </Boton>
       <Ventana
-        abierta={id !== null}
-        alCerrar={() => setId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Devolución de la nota ${nota.numero}`}
         descripcion={`${conPunto(nota.proveedor)} Lo que el proveedor te devolvió de lo que la nota tiene a favor: entra a la cuenta que elijas en la caja diaria. Como mucho, ${moneda(nota.aFavor, nota.moneda)}.`}
         ancho="md"
       >
+        <EnvioAnterior texto={reembolso.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
           <SinCuentasEnLaCaja cuentas={cuentas} tipo="devolucion" />
-          <input type="hidden" name="id" value={id ?? ''} />
+          <input type="hidden" name="id" value={reembolso.id ?? ''} />
           <input type="hidden" name="nota" value={nota.id} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Día en que entró" htmlFor={campo('fecha')} requerido>
@@ -216,19 +236,8 @@ export function DevolvioLaNota({ nota, hoy, cuentas }: { nota: NotaParaUsar; hoy
           <Campo etiqueta="Constancia de la devolución" htmlFor={campo('archivo')} requerido ayuda="La transferencia, el voucher del depósito o la foto del recibo firmado.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-              Registrar la devolución
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la devolución"
+            disabled={cuentas.length === 0} />
         </form>
       </Ventana>
     </>

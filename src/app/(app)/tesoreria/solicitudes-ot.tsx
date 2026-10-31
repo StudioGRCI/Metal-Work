@@ -18,7 +18,7 @@ export function SolicitudesOT({ solicitudes }: { solicitudes: Solicitud[] }) {
 }
 
 function SolicitudPendiente({ solicitud: s }: { solicitud: Solicitud }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(responderSolicitudTesoreria)
+  const { alEnviar, enviando, error, resultado } = useEnvio(responderSolicitudTesoreria, undefined, { documento: s.id })
   return <article className="rounded-[var(--radius-base)] border border-borde p-4">
     <div className="flex flex-wrap justify-between gap-2"><p className="font-semibold text-texto">{s.tipo === 'MATERIALES' ? 'Pago de materiales' : 'Revisión de salida'} · OT {s.orden?.numero ?? '—'}</p><Link className="text-sm text-acento hover:underline" href={`/ordenes/${s.orden_id}?vista=entrega`}>Abrir OT</Link></div>
     <p className="mt-2 whitespace-pre-wrap text-sm">{s.concepto}</p>

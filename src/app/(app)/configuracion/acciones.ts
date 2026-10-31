@@ -136,9 +136,15 @@ const esquemaCarroceria = z
     nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
     descripcion: z.string().trim().optional(),
     // Semirremolque o carrocería montada: el SR/CM de su código de producto.
-    tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA']).optional(),
+    // «Sin definir» llega vacío: es lo que trae la ventana y la carrocería
+    // entra sin tipo. El enum solo aceptaba la falta del campo, y la ventana
+    // decía «Invalid input» (H4 de diseño, cuadragésima tercera pasada).
+    tipo_unidad: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA'], 'Elige si es semirremolque o carrocería montada, o déjalo sin definir.').optional(),
+    ),
     // La habitual de esta carrocería, escrita como la escriben ellos.
-    capacidad: z.string().trim().max(60).optional(),
+    capacidad: z.string().trim().max(60, 'La capacidad va en 60 caracteres como máximo.').optional(),
   })
 
 /**

@@ -14,7 +14,7 @@ import { fechaHora, numero, porcentaje } from '@/lib/format'
 import { areasDeSuMano, exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
-import { AccionesTrabajo } from './acciones-trabajo'
+import { AccionesTrabajo, EstadoDelReporte } from './acciones-trabajo'
 
 export const metadata = { title: 'Trabajo sin orden' }
 
@@ -63,6 +63,7 @@ export default async function PaginaTrabajoSinOrden({ params }: PageProps<'/avan
             puedeArmar={puede(perfil, 'produccion.actividades')}
           />
         }
+        estado={<EstadoDelReporte flotaId={trabajo.id} />}
       />
 
       <Tarjeta className="mb-4">

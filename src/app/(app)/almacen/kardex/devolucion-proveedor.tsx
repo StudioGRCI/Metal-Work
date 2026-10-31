@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { redondearCantidad } from '@/lib/dominio/almacen'
 import { cantidad, fechaHora } from '@/lib/format'
@@ -36,19 +38,46 @@ function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
  */
 export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolver[] }) {
   const [abierta, setAbierta] = useState(false)
-  const [id, setId] = useState(() => crypto.randomUUID())
   const [elegido, setElegido] = useState('')
   const [repone, setRepone] = useState('')
-  const envio = useEnvio(devolverAlProveedor, () => {
-    setId(crypto.randomUUID())
+  // El envío vive fuera de la ventana: el id se conserva hasta saber cómo
+  // terminó (`useIdDelEnvio`). Con un ok o un «ya quedó» se empieza otra; tras
+  // «No llegó la respuesta» sigue el mismo, y la devolución repetida no entra dos
+  // veces. Si al volver a abrir la base dice que aquella entró, la ventana lo
+  // dice y se empieza otra: se suelta lo elegido para aquella, no lo que se
+  // eligió después de abrir, y el formulario no se rehace, que borraba el motivo
+  // ya escrito (decimoséptima pasada).
+  const enviado = useRef({ elegido: '', repone: '' })
+  const devolucion = useIdDelEnvio('movimiento_almacen', () => {
+    const aquella = enviado.current
+    setElegido((e) => (e === aquella.elegido ? '' : e))
+    setRepone((r) => (r === aquella.repone ? '' : r))
+  }, 'devolucion')
+  const empezarOtra = () => {
+    devolucion.otro()
     setElegido('')
     setRepone('')
-    setAbierta(false)
-  })
+  }
+  const envio = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      devolucion.salio()
+      enviado.current = { elegido, repone }
+      return devolverAlProveedor(previo, datos)
+    },
+    () => {
+      empezarOtra()
+      setAbierta(false)
+    },
+    { alYaEntrar: empezarOtra },
+  )
+  function abrir() {
+    devolucion.abrir()
+    setAbierta(true)
+  }
   const ingreso = ingresos.find((i) => i.ingreso_id === elegido)
   return (
     <>
-      <Boton variante="secundario" onClick={() => setAbierta(true)}>
+      <Boton variante="secundario" onClick={abrir}>
         Devolver al proveedor
       </Boton>
       <Ventana
@@ -58,13 +87,14 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
         descripcion="Lo que llegó malo de una compra sale del kardex. No vuelve atrás."
         ancho="lg"
       >
+        <EnvioAnterior texto={devolucion.anterior} />
         {ingresos.length === 0 ? (
           <p className="text-sm text-texto-suave">
             No hay ingresos de compra con material en el almacén. Lo que ya salió al taller vuelve primero como devolución del taller.
           </p>
         ) : (
-          <form key={id} onSubmit={envio.alEnviar} className="space-y-4">
-            <input type="hidden" name="id" value={id} />
+          <form onSubmit={envio.alEnviar} className="space-y-4">
+            <input type="hidden" name="id" value={devolucion.id ?? ''} />
             <Campo etiqueta="Qué llegó de la compra" htmlFor="dev-ingreso" requerido>
               <Seleccion id="dev-ingreso" name="ingreso" required value={elegido} onChange={(e) => setElegido(e.target.value)}>
                 <option value="">Elige el ingreso</option>
@@ -112,19 +142,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
                 <option value="no">No lo repone</option>
               </Seleccion>
             </Campo>
-            {envio.error && (
-              <p role="alert" className="text-sm text-peligro">
-                {envio.error}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Boton type="submit" cargando={envio.enviando}>
-                Devolver
-              </Boton>
-              <Boton type="button" variante="secundario" onClick={() => setAbierta(false)} disabled={envio.enviando}>
-                Cancelar
-              </Boton>
-            </div>
+            <PieDeVentana error={envio.error} enviando={envio.enviando} alCancelar={() => setAbierta(false)} texto="Devolver" />
           </form>
         )}
       </Ventana>
@@ -176,6 +194,10 @@ function Devolucion({
   alTerminar: (mensaje: string) => void
 }) {
   const [abierta, setAbierta] = useState<'llego' | 'ya-no' | null>(null)
+  // El id de la reposición vive en la fila y no en el formulario, que se rehace
+  // al abrir: tras «No llegó la respuesta», cancelar y volver a abrir lleva el
+  // mismo, y la base no la recibe dos veces (decimosexta pasada).
+  const reposicion = useIdDelEnvio('movimiento_almacen', undefined, `reposicion:${d.devolucion_id}`)
   // En metros, 5.3 − 2.1 da 3.1999999999999997 en el navegador, y la base no lo acepta.
   const falta = redondearCantidad(Number(d.devuelto) - Number(d.repuesto))
   const unidad = d.unidad ?? ''
@@ -202,7 +224,15 @@ function Devolucion({
       {(puedeRecibir || puedeDejar) && (
         <div className="flex flex-wrap gap-2">
           {puedeRecibir && (
-            <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierta('llego')}>
+            <Boton
+              type="button"
+              variante="secundario"
+              tamano="sm"
+              onClick={() => {
+                reposicion.abrir()
+                setAbierta('llego')
+              }}
+            >
               Llegó la reposición
             </Boton>
           )}
@@ -221,9 +251,11 @@ function Devolucion({
           ? `Faltan ${cantidad(falta)} ${unidad} de lo devuelto de la ${d.compra}. Entra al kardex.`
           : `Los ${cantidad(falta)} ${unidad} que faltan vuelven a la lista de Logística para comprarlos en otra OC, y Contabilidad espera la nota de crédito. No vuelve atrás.`}
       >
-        {abierta === 'llego' && (
-          <Reposicion devolucion={d} falta={falta} alCancelar={() => setAbierta(null)}
-            alTerminar={(m) => { setAbierta(null); alTerminar(m) }} />
+        {abierta === 'llego' && <EnvioAnterior texto={reposicion.anterior} />}
+        {abierta === 'llego' && reposicion.id && (
+          <Reposicion devolucion={d} falta={falta} id={reposicion.id} alSalir={reposicion.salio} alYaEntrar={reposicion.otro}
+            alCancelar={() => setAbierta(null)}
+            alTerminar={(m) => { setAbierta(null); reposicion.otro(); alTerminar(m) }} />
         )}
         {abierta === 'ya-no' && (
           <YaNoRepone devolucion={d} alCancelar={() => setAbierta(null)}
@@ -234,14 +266,23 @@ function Devolucion({
   )
 }
 
-function Reposicion({ devolucion: d, falta, alCancelar, alTerminar }: {
+function Reposicion({ devolucion: d, falta, id, alSalir, alYaEntrar, alCancelar, alTerminar }: {
   devolucion: DevolucionPorReponer
   falta: number
+  id: string
+  alSalir: () => void
+  alYaEntrar: () => void
   alCancelar: () => void
   alTerminar: (mensaje: string) => void
 }) {
-  const [id] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(recibirReposicion, (r) => alTerminar(r.mensaje ?? 'Recibido.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      alSalir()
+      return recibirReposicion(previo, datos)
+    },
+    (r) => alTerminar(r.mensaje ?? 'Recibido.'),
+    { alYaEntrar },
+  )
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
@@ -255,19 +296,7 @@ function Reposicion({ devolucion: d, falta, alCancelar, alTerminar }: {
           <Entrada id="rep-documento" name="documento" required minLength={2} maxLength={100} />
         </Campo>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Boton type="submit" cargando={enviando}>
-          Recibir
-        </Boton>
-        <Boton type="button" variante="secundario" onClick={alCancelar} disabled={enviando}>
-          Cancelar
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Recibir" />
     </form>
   )
 }

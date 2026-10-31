@@ -32,7 +32,7 @@ export function AvanceServicio({
   anular: boolean
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
-  const inicio = useAccion(avanzarOrdenServicio)
+  const inicio = useAccion(avanzarOrdenServicio, undefined, { documento: id })
   const cierre = useEnvio(avanzarOrdenServicio, () => setPaso(null))
 
   return (

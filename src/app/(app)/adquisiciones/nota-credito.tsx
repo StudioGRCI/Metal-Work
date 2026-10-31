@@ -7,11 +7,13 @@ import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { BUCKET_NOTAS_CREDITO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 
 import { anularNotaCredito, registrarNotaCredito } from './acciones-nota-credito'
@@ -43,8 +45,9 @@ function useAvisar() {
  * (decisiones de DKS del 22/10, migración 20261022190000): por lo que Almacén
  * devolvió, ligada a esa devolución, o por un descuento. El PDF sube primero a
  * `notas-credito/{factura}/…`. La factura baja sola; lo que no cabe en ella
- * queda a favor y le llega a Tesorería. El id se decide al abrir la ventana: un
- * reintento del mismo envío no registra otra.
+ * queda a favor y le llega a Tesorería. El id vive fuera de la ventana
+ * (`useIdDelEnvio`): un reintento del mismo envío no registra otra, y si aquella
+ * entró, la ventana lo dice al volver a abrirse y la siguiente lleva otro.
  */
 export function RegistrarNotaCredito({
   factura,
@@ -61,7 +64,8 @@ export function RegistrarNotaCredito({
   principal?: boolean
 }) {
   const m = factura.moneda === 'USD' ? 'USD' : 'PEN'
-  const [notaId, setNotaId] = useState<string | null>(null)
+  const nota = useIdDelEnvio('nota_credito', undefined, factura.id)
+  const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState<'DEVOLUCION' | 'DESCUENTO'>('DEVOLUCION')
   const [devolucion, setDevolucion] = useState('')
   const { avisar, aviso } = useAvisar()
@@ -70,23 +74,30 @@ export function RegistrarNotaCredito({
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta la nota de crédito.' }
-    if (!notaId) return { ok: false, error: 'Vuelve a abrir el formulario de la nota.' }
+    if (!nota.id) return { ok: false, error: 'Vuelve a abrir el formulario de la nota.' }
+    nota.salio()
     return subirArchivoFinanzas(BUCKET_NOTAS_CREDITO, factura.id, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return registrarNotaCredito(null, datos)
     })
   }
-  const { alEnviar, enviando, error, limpiar } = useEnvio(registrar, (r) => {
-    setNotaId(null)
-    if (r.mensaje) avisar(r.mensaje)
-  })
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    registrar,
+    (r) => {
+      setAbierta(false)
+      nota.otro()
+      if (r.mensaje) avisar(r.mensaje)
+    },
+    { alYaEntrar: nota.otro },
+  )
 
   function abrir() {
     limpiar()
     const inicial = devolucionInicial ?? (devoluciones.length === 1 ? devoluciones[0].id : '')
     setTipo(devolucionInicial || devoluciones.length > 0 ? 'DEVOLUCION' : 'DESCUENTO')
     setDevolucion(inicial)
-    setNotaId(crypto.randomUUID())
+    nota.abrir()
+    setAbierta(true)
   }
   const campo = (nombre: string) => `${nombre}-nota-${factura.id}${devolucionInicial ? `-${devolucionInicial}` : ''}`
   const elegida = devoluciones.find((d) => d.id === devolucion)
@@ -106,14 +117,15 @@ export function RegistrarNotaCredito({
         Nota de crédito
       </Boton>
       <Ventana
-        abierta={notaId !== null}
-        alCerrar={() => setNotaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Nota de crédito de la factura ${factura.numero}`}
         descripcion={`${conPunto(factura.proveedor)} La factura baja sola por el total de la nota; si ya estaba pagada, lo que sobra queda a favor y Tesorería lo descuenta de otra factura o registra que el proveedor lo devolvió.`}
         ancho="md"
       >
+        <EnvioAnterior texto={nota.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={notaId ?? ''} />
+          <input type="hidden" name="id" value={nota.id ?? ''} />
           <input type="hidden" name="factura" value={factura.id} />
           <Campo etiqueta="Es por" htmlFor={campo('tipo')} requerido>
             <Seleccion
@@ -168,19 +180,7 @@ export function RegistrarNotaCredito({
           <Campo etiqueta="La nota de crédito" htmlFor={campo('archivo')} requerido ayuda="El PDF que envió el proveedor, o una foto legible.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setNotaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Registrar la nota
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la nota" />
         </form>
       </Ventana>
     </>

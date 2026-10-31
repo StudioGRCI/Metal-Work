@@ -1,10 +1,10 @@
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoTope } from '@/components/estructura/paginacion'
-import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { avisosSinLeer, misNotificaciones } from '@/lib/datos/notificaciones'
 import { exigirSesion } from '@/lib/sesion'
 
+import { FiltroAvisos } from './filtro-avisos'
 import { ListaAvisos } from './lista-avisos'
 
 export const metadata = { title: 'Avisos' }
@@ -33,18 +33,7 @@ export default async function PaginaAvisos({ searchParams }: PageProps<'/avisos'
         ayuda="Lo que el circuito te fue dejando: cada uno lleva a la pantalla donde se resuelve."
       />
 
-      <PastillaFiltro
-        ruta="/avisos"
-        clave="ver"
-        opciones={[
-          { valor: null, etiqueta: 'Todos' },
-          { valor: 'sin-leer', etiqueta: `Sin leer (${sinLeer})` },
-        ]}
-        params={params}
-        activo={ver}
-        etiqueta="Filtrar avisos"
-        className="mb-4"
-      />
+      <FiltroAvisos sinLeer={sinLeer} params={params} activo={ver} />
 
       <Tarjeta className="overflow-hidden">
         <ListaAvisos avisos={avisos} sinLeer={sinLeer} />
