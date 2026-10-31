@@ -295,10 +295,17 @@ let idB = null
 {
   const { pagina, contexto } = await entrar(CUENTAS.mtz, CELULAR)
   await pagina.goto(`${BASE}/reportes-diarios/nuevo`, { waitUntil: 'networkidle' })
-  await pagina.getByRole('combobox', { name: 'Personal del trabajo 1: persona 1' }).click()
-  await pagina.keyboard.type(JUAN)
-  await pagina.waitForTimeout(500)
-  comprobar((await pagina.getByRole('option', { name: new RegExp(JUAN) }).count()) === 0, 'el supervisor ya no encuentra a Juan en el personal del reporte')
+  const persona = pagina.getByRole('combobox', { name: 'Personal del trabajo 1: persona 1' })
+  if (await persona.isEnabled()) {
+    await persona.click()
+    await pagina.keyboard.type(JUAN)
+    await pagina.waitForTimeout(500)
+    comprobar((await pagina.getByRole('option', { name: new RegExp(JUAN) }).count()) === 0, 'el supervisor ya no encuentra a Juan en el personal del reporte')
+  } else {
+    // En una base recién hecha Juan era el único de taller: la lista queda vacía y lo dice.
+    const aviso = limpio(await pagina.locator('[role="alert"]').filter({ hasText: 'No hay nadie de planilla de taller' }).innerText())
+    comprobar(aviso.length > 0, 'el supervisor ya no encuentra a Juan: no queda nadie de taller y el reporte lo dice')
+  }
   await contexto.close()
 }
 
