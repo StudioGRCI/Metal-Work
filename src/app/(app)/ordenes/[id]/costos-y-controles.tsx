@@ -164,7 +164,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
     const salida = await registrarGastoArea(previo, datos)
     if (!salida.ok && yaEntroLaPrimeraVez(salida.error)) vaciar()
     return salida
-  }, vaciar)
+  }, vaciar, { siSeVa: { que: 'el gasto', enlace: 'Volver al gasto' } })
   const yaEntro = yaEntroLaPrimeraVez(error)
   // El cursor va al aviso: con el formulario vacío, caía a la página y el «ya
   // quedó» no se anunciaba (decimotercera pasada).
@@ -203,7 +203,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
 }
 
 function RevisionGasto({ id, ordenId }: { id: string; ordenId: string }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea)
+  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea, undefined, { siSeVa: { que: 'la revisión del gasto', enlace: 'Volver al gasto' } })
   return <form onSubmit={alEnviar} className="mt-3 space-y-2 border-t border-borde pt-3">
     <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
     <Campo etiqueta="Decisión de Administración" htmlFor={'decision-' + id}><Seleccion id={'decision-' + id} name="estado" defaultValue="APROBADO"><option value="APROBADO">Aprobar</option><option value="OBSERVADO">Observar</option></Seleccion></Campo>
@@ -223,8 +223,8 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
   const c = datos.control
   const ingresoCerrado = Boolean(c?.ingreso_cerrado_en)
   const salidaCerrada = Boolean(c?.salida_cerrada_en)
-  const { alEnviar, enviando, resultado, error } = useEnvio(guardarControlVehicular)
-  const escaneo = useEnvio(adjuntarControlFirmado)
+  const { alEnviar, enviando, resultado, error } = useEnvio(guardarControlVehicular, undefined, { siSeVa: { que: 'el control vehicular', enlace: 'Volver al control' } })
+  const escaneo = useEnvio(adjuntarControlFirmado, undefined, { siSeVa: { que: 'el escaneo firmado', enlace: 'Volver al control' } })
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     const boton = (evento.nativeEvent as SubmitEvent).submitter
     const accion = boton instanceof HTMLButtonElement ? boton.value : 'GUARDAR'
@@ -299,7 +299,7 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
 
 /** Solo se pinta con la salida cerrada y su escaneo firmado adjunto. */
 function NuevaSolicitud({ ordenId }: { ordenId: string }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(solicitarTesoreria)
+  const { alEnviar, enviando, resultado, error } = useEnvio(solicitarTesoreria, undefined, { siSeVa: { que: 'el pedido a Tesorería', enlace: 'Volver al pedido' } })
   return <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-4">
     <input type="hidden" name="orden_id" value={ordenId} />
     <p className="text-xs text-texto-suave">Lista de salida completada.</p>

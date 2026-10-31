@@ -413,13 +413,24 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   su lugar (H1 de funcionalidad de la cuadragésima primera). La de un aviso
   no la toca: lo que dice sigue siendo cierto, y si el
   aviso se abrió mientras el formulario entraba, es lo único que lo dice. Una
-  recarga la olvida. Dice también, en rojo, el rechazo de un formulario de
-  página entera que volvió cuando la persona ya había pedido otra pantalla
-  (`decirElRechazoSiSeFue`, con `siSeVa` en `useEnvio`): Next deja esa ida en
-  cola, y el rechazo se pintaba en el formulario unos milisegundos antes de
-  irse con él; nada decía que no había entrado (Y1 de la crítica de la
-  cuadragésima primera). Su enlace vuelve al formulario, y ahí sigue el
-  motivo, sin enlace, hasta que se envía otra vez o se quita. La línea vieja seguía hablando de A después de que B sí
+  recarga la olvida. Dice también, en rojo, el rechazo de un formulario que
+  no va en una ventana y volvió cuando la persona ya había pedido otra
+  pantalla (`decirElRechazoSiSeFue`, con `siSeVa` en `useEnvio`): Next deja
+  esa ida en cola, y el rechazo se pintaba en el formulario unos milisegundos
+  antes de irse con él; nada decía que no había entrado (Y1 de la crítica de
+  la cuadragésima primera). Vale para todos, no solo los de página entera: el
+  que no nombra lo suyo dice «Lo que enviaste no se guardó… Volver adonde lo
+  enviaste» (`SI_SE_VA_DE_LA_PANTALLA`; el tipo de cambio callaba, Z1 de la
+  crítica de la cuadragésima segunda), y el que lleva dinero o un documento
+  lo nombra. Lo que pudo entrar (sin respuesta, o el servidor caído a medio
+  envío: un 502 de la pasarela) no se dice «no se guardó» sino «No se sabe
+  si … se guardó»: decía lo contrario de lo que pasó, y su enlace llevaba a
+  registrarlo dos veces (H1 de funcionalidad de la cuadragésima segunda). Y
+  lo que ya había quedado la primera vez se dice igual arriba, con el enlace
+  a lo que quedó (`siSeVa.yaEntro`, H3). Su enlace vuelve al formulario, y
+  ahí sigue el motivo, sin enlace, hasta que ese mismo formulario se envía
+  otra vez o se quita: el envío de una ventana de la misma pantalla (la
+  unidad nueva en la orden nueva) no se lo lleva (H2). La línea vieja seguía hablando de A después de que B sí
   saliera (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
   arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
   trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está

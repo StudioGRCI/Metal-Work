@@ -180,7 +180,16 @@ En la misma migración que la crea, sin excepción:
   rechaza cuando la persona ya pidió otra pantalla, el rechazo lo dice esa
   línea, en rojo (`decirElRechazoSiSeFue`; `siSeVa` en `useEnvio`): se pintaba
   en el formulario unos milisegundos y se iba con él, y la persona creía que
-  había entrado (Y1 de la crítica de la cuadragésima primera). Un `redirect()` de
+  había entrado (Y1 de la crítica de la cuadragésima primera). Vale para todo
+  formulario fuera de una ventana, con o sin `siSeVa` (Z1 de la crítica de la
+  cuadragésima segunda). Lo que pudo entrar —sin respuesta, o un 502 de la
+  pasarela con la base ya escrita— dice «No se sabe si … se guardó», nunca
+  «no se guardó»: su enlace llevaba a registrarlo dos veces (H1 de esa
+  pasada). Un formulario dentro de una `Ventana` es solo suyo: React deja
+  subir su envío por el portal hasta el formulario de la pantalla que la
+  abre, y «Registrar unidad» en la orden nueva registraba también la orden,
+  con el número del papel gastado (R3). La `Ventana` corta ese envío en su
+  borde. Un `redirect()` de
   servidor tras guardar no sabe nada de eso, y no se usa. Recargar cortaba el
   envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
   trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía

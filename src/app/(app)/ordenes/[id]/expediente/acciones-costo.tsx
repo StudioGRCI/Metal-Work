@@ -15,7 +15,7 @@ import { cerrarCosto, confirmarIgv, fijarPresupuesto } from './acciones'
  * botón que envió, así que se agrega a mano.
  */
 export function ConfirmarIgv({ cotizacionId, ordenId }: { cotizacionId: string; ordenId: string }) {
-  const { alEnviar, enviando, error } = useEnvio(confirmarIgv)
+  const { alEnviar, enviando, error } = useEnvio(confirmarIgv, undefined, { siSeVa: { que: 'el IGV de la cotización', enlace: 'Volver al expediente' } })
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
     const boton = (evento.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
@@ -51,7 +51,7 @@ export function ConfirmarIgv({ cotizacionId, ordenId }: { cotizacionId: string; 
  * vez por OT y no se deshace.
  */
 export function CerrarCosto({ ordenId }: { ordenId: string }) {
-  const { alEnviar, enviando, error } = useEnvio(cerrarCosto)
+  const { alEnviar, enviando, error } = useEnvio(cerrarCosto, undefined, { siSeVa: { que: 'el cierre del costo', enlace: 'Volver al expediente' } })
 
   return (
     <Pliegue titulo="Cerrar el costo de esta OT" enCaja className="print:hidden">
@@ -85,7 +85,9 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
   // Al guardar, la tarjeta de arriba cambia sola; el mensaje dice que ya pasó
   // (el auditor de funcionalidad halló el 27/10/2026 que no se veía nada).
   const [mensaje, setMensaje] = useState<string | null>(null)
-  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto, (r) => setMensaje(r.mensaje ?? 'Presupuesto guardado.'))
+  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto, (r) => setMensaje(r.mensaje ?? 'Presupuesto guardado.'), {
+    siSeVa: { que: 'el presupuesto', enlace: 'Volver al expediente' },
+  })
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
     setMensaje(null)

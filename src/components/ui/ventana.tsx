@@ -197,6 +197,12 @@ export function Ventana({
   return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-black/50 p-0 sm:items-start sm:p-4 sm:py-10"
+      // El envío de un formulario de la ventana es solo suyo: React lo deja
+      // subir por el portal hasta el formulario de la pantalla que la abre, y
+      // «Registrar unidad» en la orden nueva registraba también la orden, sin
+      // su unidad y con el número del papel gastado (R3 de realización,
+      // cuadragésima segunda pasada).
+      onSubmit={(e) => e.stopPropagation()}
       onMouseDown={(e) => {
         // Solo el fondo, no un arrastre que empezó dentro y terminó afuera al
         // seleccionar texto.

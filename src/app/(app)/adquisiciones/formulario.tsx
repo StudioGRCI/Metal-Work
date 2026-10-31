@@ -212,6 +212,7 @@ function Formulario({
       return resultado
     },
     (r) => alRegistrar(r.mensaje ?? 'Comprobante registrado.'),
+    { siSeVa: { que: 'el comprobante', enlace: 'Volver al comprobante' } },
   )
   const campoPdf = useRef<HTMLInputElement>(null)
   const avisoError = useRef<HTMLParagraphElement>(null)
@@ -1015,7 +1016,9 @@ function AvisoDeMonto({
 
 /** `pideRuc`: la factura de compra que quedó en borrador sin RUC no se registra sin él. */
 export function CompletarAdquisicion({ id, pideRuc = false }: { id: string; pideRuc?: boolean }) {
-  const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion)
+  const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion, undefined, {
+    siSeVa: { que: 'lo que completaste del comprobante', enlace: 'Volver al comprobante' },
+  })
   // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)
   const [leyendo, setLeyendo] = useState<string | null>(null)

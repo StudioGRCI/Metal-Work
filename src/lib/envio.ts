@@ -163,9 +163,12 @@ export function alEmpezarUnEnvio(avisar: () => void) {
  * dice en vez de mandar a leer uno que no existe (funcionalidad H1 de la
  * trigesimoquinta pasada).
  */
-export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>): Promise<T> {
-  // El rechazo de arriba es de este formulario, que sale otra vez: lo que conteste ahora lo dice él.
-  if (idaQueNoSalio?.rechazo && idaQueNoSalio.url === window.location.pathname + window.location.search) ponerIdaQueNoSalio(null)
+export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>, de?: string): Promise<T> {
+  // El rechazo de arriba es de este formulario (`de`), que sale otra vez: lo
+  // que conteste ahora lo dice él. El envío de otro formulario de la misma
+  // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
+  // motivo de la orden (H2 de funcionalidad, cuadragésima segunda pasada).
+  if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.de === de && idaQueNoSalio.url === window.location.pathname + window.location.search) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -311,7 +314,8 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * `porOmision`: lo que la pantalla toma cuando su dirección no lo dice
  * (/personal sin «estado» es Activos), para saber que la persona llegó.
  * `rechazo`: lo que no entró, y su enlace vuelve al formulario
- * (`decirElRechazoSiSeFue`).
+ * (`decirElRechazoSiSeFue`). `de`: el formulario que lo dijo; solo su envío
+ * siguiente lo quita.
  */
 export type IdaQueNoSalio = {
   dice: string
@@ -320,6 +324,7 @@ export type IdaQueNoSalio = {
   dichaEn?: string
   porOmision?: Record<string, string>
   rechazo?: boolean
+  de?: string
 }
 let idaQueNoSalio: IdaQueNoSalio | null = null
 const alCambiarLaIda = new Set<() => void>()
@@ -330,20 +335,59 @@ export function ponerIdaQueNoSalio(ida: IdaQueNoSalio | null) {
 }
 
 /**
- * El rechazo de un formulario de página entera que vuelve cuando la persona ya
- * pidió otra pantalla: Next deja esa ida en cola hasta que el envío vuelve, y el
- * rechazo se pintaba en el formulario unos milisegundos antes de irse con él.
- * En la pantalla pedida nada decía que no había entrado, y lo escrito se perdía
- * (Y1 de la crítica de la cuadragésima primera pasada). Lo dice arriba, con el
- * camino de vuelta al formulario. Si la persona sigue ahí, ya lo dice el
- * formulario y esto no hace nada.
+ * Qué no se guardó, dicho arriba (`decirElRechazoSiSeFue`): `que`, «la orden»;
+ * `enlace`, el que vuelve a su formulario. `yaEntro`: adónde se ve lo que ya
+ * había quedado la primera vez (`decirQueYaHabiaEntradoSiSeFue`).
  */
-export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enlace }: { que: string; enlace: string }) {
+export type SiSeVa = { que: string; enlace: string; yaEntro?: () => { url: string; enlace: string } }
+
+/**
+ * Lo de un formulario que no es de página entera ni va en una ventana (el tipo
+ * de cambio, el gasto de la OT, la factura): su rechazo, con la persona ya en
+ * otra pantalla, se perdía igual que el de la orden (Z1 de la crítica de la
+ * cuadragésima segunda pasada).
+ */
+export const SI_SE_VA_DE_LA_PANTALLA: SiSeVa = { que: 'lo que enviaste', enlace: 'Volver adonde lo enviaste' }
+
+const conMayuscula = (texto: string) => `${texto.charAt(0).toUpperCase()}${texto.slice(1)}`
+
+/**
+ * El rechazo de un formulario que vuelve cuando la persona ya pidió otra
+ * pantalla: Next deja esa ida en cola hasta que el envío vuelve, y el rechazo se
+ * pintaba en el formulario unos milisegundos antes de irse con él. En la
+ * pantalla pedida nada decía que no había entrado, y lo escrito se perdía (Y1 de
+ * la crítica de la cuadragésima primera pasada). Lo dice arriba, con el camino
+ * de vuelta al formulario. Si la persona sigue ahí, ya lo dice el formulario y
+ * esto no hace nada.
+ *
+ * Lo que pudo entrar no se dice «no se guardó»: sin respuesta, o con el servidor
+ * caído a medio envío, la base pudo haberlo registrado, y un 502 con la persona
+ * fuera decía lo contrario de lo que pasó y su enlace llevaba a registrarlo dos
+ * veces (H1 de funcionalidad, cuadragésima segunda pasada).
+ */
+export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enlace }: SiSeVa) {
   if (!pidioOtraPantalla(desde)) return
-  const dice = pudoHaberEntrado(motivo)
-    ? `No se sabe si ${que} se guardó. ${motivo}`
-    : `${que.charAt(0).toUpperCase()}${que.slice(1)} no se guardó. ${motivo}`
-  ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true })
+  // «No se guardó: en otra pestaña…» ya lo dice la frase de delante.
+  const porque = conMayuscula(motivo.replace(/^No se guardó: /, ''))
+  const dice =
+    pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR ? `No se sabe si ${que} se guardó. ${porque}` : `${conMayuscula(que)} no se guardó. ${porque}`
+  ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true, de: que })
+}
+
+/**
+ * Lo enviado ya había entrado la primera vez y lo de esta vez no se guardó,
+ * con la persona ya en otra pantalla: el formulario lo decía y se iba con él, y
+ * la corrección se perdía sin que nada lo dijera (H3 de funcionalidad,
+ * cuadragésima segunda pasada). `ida`: adónde se ve lo que quedó; sin ella,
+ * la pantalla del formulario, que ya lo muestra.
+ */
+export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: SiSeVa, ida?: { url: string; enlace: string }) {
+  if (!pidioOtraPantalla(desde)) return
+  ponerIdaQueNoSalio({
+    dice: `${conMayuscula(que)} ya había quedado la primera vez que lo enviaste; lo que cambiaste después no se guardó.`,
+    enlace: ida?.enlace ?? enlace,
+    url: ida?.url ?? desde.direccion,
+  })
 }
 
 /** La ida que no salió, para decirla con su enlace (`IdaQueNoSalio` del encabezado). */
@@ -480,11 +524,13 @@ type Opciones = {
    */
   alYaEntrar?: () => void
   /**
-   * Un formulario de página entera: si su rechazo vuelve cuando la persona ya
-   * pidió otra pantalla, arriba se dice qué no se guardó (`que`, «la orden») y
-   * `enlace` vuelve al formulario (`decirElRechazoSiSeFue`).
+   * Si su rechazo vuelve cuando la persona ya pidió otra pantalla, arriba se
+   * dice qué no se guardó (`que`, «la orden») y `enlace` vuelve al formulario
+   * (`decirElRechazoSiSeFue`). Sin decirlo, «lo que enviaste»
+   * (`SI_SE_VA_DE_LA_PANTALLA`); `null`, lo que sigue a la vista aunque la
+   * persona cambie de pantalla (los avisos de la campana).
    */
-  siSeVa?: { que: string; enlace: string }
+  siSeVa?: SiSeVa | null
 }
 
 /**
@@ -502,7 +548,7 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true, alYaEntrar, siSeVa } = opciones
+  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA } = opciones
   const router = useRouter()
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
@@ -547,7 +593,10 @@ export function useAccion<T = never>(
     const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
-      else if (siSeVa) decirElRechazoSiSeFue(desde, salida.error, siSeVa)
+      if (siSeVa) {
+        if (yaEntro) decirQueYaHabiaEntradoSiSeFue(desde, siSeVa, siSeVa.yaEntro?.())
+        else decirElRechazoSiSeFue(desde, salida.error, siSeVa)
+      }
       if (ponerAlDia) iniciar(() => refrescarSiEsDeLaPestana(router))
       return
     }
@@ -638,7 +687,7 @@ export function useAccion<T = never>(
       } finally {
         if (soltar) enCurso.current = false
       }
-    }))
+    }, desde.ventana === null ? siSeVa?.que : undefined))
   }
 
   return {

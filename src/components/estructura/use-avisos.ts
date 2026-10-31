@@ -44,7 +44,9 @@ export function useAvisos(sinLeer: number, alAbrir?: () => void) {
   const router = useRouter()
   const aqui = useLeidosAqui()
   // Sin repintar: la acción ya pone al día la pantalla, y donde no puede, la
-  // recarga de `useAccion` se la llevaba entera (trigesimoprimera pasada).
+  // recarga de `useAccion` se la llevaba entera (trigesimoprimera pasada). Su
+  // rechazo se queda en la campana o en la lista, que siguen a la vista: arriba
+  // no se repite.
   const accion = useAccion<{ destino: string | null; abrir: boolean }>(async (_, datos) => {
     try {
       const id = datos.get('id')
@@ -65,7 +67,7 @@ export function useAvisos(sinLeer: number, alAbrir?: () => void) {
     if (datos?.abrir) alAbrir?.()
     // Si mientras se marcaba la persona pidió otra cosa, no se la lleva ni se dice: abrir el aviso era lo pedido.
     if (datos?.destino) navegarSiEsDeLaPestana(router, datos.destino, desde)
-  }, { refrescar: false })
+  }, { refrescar: false, siSeVa: null })
   function abrir(aviso: Notificacion) {
     const datos = new FormData()
     datos.set('id', aviso.id)

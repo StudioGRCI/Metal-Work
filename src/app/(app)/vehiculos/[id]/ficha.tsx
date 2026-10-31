@@ -55,7 +55,7 @@ export function FichaDelVehiculo({
   const codigos = puntos.map((p) => p.codigo)
   const faltanIngreso = puntosSinMarcar(ficha?.items, codigos, 'ingreso')
   const faltanSalida = puntosSinMarcar(ficha?.items, codigos, 'salida')
-  const { alEnviar, enviando, error, resultado } = useEnvio(guardarFichaVehiculo)
+  const { alEnviar, enviando, error, resultado } = useEnvio(guardarFichaVehiculo, undefined, { siSeVa: { que: 'la ficha', enlace: 'Volver a la ficha' } })
 
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     const boton = (evento.nativeEvent as SubmitEvent).submitter
@@ -261,6 +261,7 @@ export function AdjuntarEscaneo({ registro }: { registro: string }) {
       })
     },
     () => setArchivoId(crypto.randomUUID()),
+    { siSeVa: { que: 'el escaneo firmado', enlace: 'Volver a la ficha' } },
   )
   return (
     <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -294,7 +295,9 @@ export function DescargarFicha({ registro }: { registro: string }) {
 /** El pedido a Tesorería: qué tiene que revisar antes de que el vehículo salga. */
 export function PedirRevision({ registro, solicitud }: { registro: string; solicitud: string }) {
   const [id, setId] = useState(solicitud)
-  const { alEnviar, enviando, error, resultado } = useEnvio(pedirRevisionSalida, () => setId(crypto.randomUUID()))
+  const { alEnviar, enviando, error, resultado } = useEnvio(pedirRevisionSalida, () => setId(crypto.randomUUID()), {
+    siSeVa: { que: 'el pedido de revisión', enlace: 'Volver al pedido' },
+  })
   return (
     <form onSubmit={alEnviar} className="grid gap-3">
       <input type="hidden" name="id" value={id} />

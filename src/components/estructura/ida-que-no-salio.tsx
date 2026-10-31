@@ -68,7 +68,9 @@ export function IdaQueNoSalio() {
   // rechazo no se va al volver al formulario: nace estando ahí, con la ida en
   // cola, y en el formulario vacío su motivo es lo único que dice qué corregir.
   // Se va al enviar otra vez (`mientrasSeEnvia`) o al quitarlo.
-  const ahi = ida ? yaEstaEn(ida, ruta, busqueda) : false
+  // El rechazo es de su formulario, en su dirección exacta: en la OT, «vista»
+  // elige la pestaña, y en la de Taller el formulario del gasto no está.
+  const ahi = ida ? (ida.rechazo ? comoDireccion(ida.url) === aqui : yaEstaEn(ida, ruta, busqueda)) : false
   const llego = ahi && !ida?.rechazo
   useEffect(() => {
     if (llego) ponerIdaQueNoSalio(null)

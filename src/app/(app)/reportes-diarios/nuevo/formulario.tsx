@@ -374,7 +374,11 @@ export function FormularioReporteDiario({
       const { url, ...dicho } = idaAlReporte(r.datos?.id ?? ids[0])
       navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
     },
-    { refrescar: false, siSeVa: { que: 'el reporte', enlace: 'Volver al reporte' } },
+    {
+      refrescar: false,
+      // Lo que ya había quedado la primera vez se ve en el reporte (`decirQueYaHabiaEntradoSiSeFue`).
+      siSeVa: { que: 'el reporte', enlace: 'Volver al reporte', yaEntro: () => ({ url: `/reportes-diarios/${secciones[0]?.id ?? ids[0]}`, enlace: 'Ver el reporte' }) },
+    },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)
   // Subido, el formulario se traba y lo dice junto al botón, salga la ida o no (`YaQuedo`).
