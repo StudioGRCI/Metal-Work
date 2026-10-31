@@ -168,11 +168,13 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
   // que conteste ahora lo dice él. El envío de otro formulario de la misma
   // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
   // motivo de la orden (H2 de funcionalidad, cuadragésima segunda pasada).
-  // Lo que quedó a medias (`aviso`) no lo quita ningún envío: el comprobante en
-  // borrador se iba al registrar otro con el mismo formulario y seguía sin su
-  // PDF (Y1 de la crítica, cuadragésima quinta pasada). Se va al completarlo
+  // Lo que quedó a medias (`aviso`) solo lo quita el envío del formulario de
+  // ese documento (`propio`): el plano que vuelve a salir solo a Maestranza lo
+  // completa. El que registra uno nuevo cada vez no: el comprobante en borrador
+  // se iba al registrar otro y seguía sin su PDF (Y1 de la crítica,
+  // cuadragésima quinta pasada); se va al completarlo en su fila
   // (`yaSeResolvio`) o al quitarlo.
-  if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.tono !== 'aviso' && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
+  if (de && idaQueNoSalio?.rechazo && (idaQueNoSalio.tono !== 'aviso' || de.propio !== undefined) && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -321,10 +323,12 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * el motivo uno al otro (R8 de realización); por la dirección, el comprobante
  * corregido después de cambiar de pestaña entraba y arriba seguía «no se
  * guardó» (W1 de la crítica, cuadragésima tercera pasada). `documento`: de
- * cuál era cuando se envió (`Opciones`): el mismo formulario, ya con otro
- * documento, no es el que lo dijo.
+ * cuál era cuando se envió, con el de la pantalla (`DocumentoDeLaPantalla`): el
+ * mismo formulario, ya con otro documento, no es el que lo dijo. `propio`: el
+ * del formulario solo (`Opciones`), sin el de la pantalla; sin él, cada envío
+ * es de un documento nuevo (`mientrasSeEnvia`).
  */
-export type DeFormulario = { instancia: string; campos: string; nombre?: string; documento?: string }
+export type DeFormulario = { instancia: string; campos: string; nombre?: string; documento?: string; propio?: string }
 
 /**
  * Cómo se reconoce el mismo formulario vuelto a montar (`DeFormulario`): los
@@ -790,7 +794,7 @@ export function useAccion<T = never>(
     enCurso.current = true
     setResultado(null)
     const desde = partida()
-    const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento }
+    const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento, propio: opciones.documento }
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
       const desenlace = { entro, noEntro, de }
