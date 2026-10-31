@@ -250,6 +250,7 @@ export function FilaDePersona({
       navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`, desde, {
         dice: persona.activo ? `${quien} quedó de baja.` : `${quien} volvió a activos.`,
         enlace: persona.activo ? 'Verla en Bajas' : 'Verla en Activos',
+        porOmision: { estado: 'activos' },
       })
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.

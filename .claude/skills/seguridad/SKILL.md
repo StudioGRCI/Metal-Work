@@ -166,12 +166,15 @@ En la misma migración que la crea, sin excepción:
   personal, cliente, y la de un aviso) siguen la misma regla con
   `navegarSiEsDeLaPestana(router, url, desde, siNoVa)`: no salen si cambió la
   dirección, se hizo clic en un enlace a otra pantalla en esta pestaña (no
-  cuentan desplazar con el dedo, el clic derecho ni abrir en otra pestaña),
-  hay otra ventana abierta o la del envío se cerró y se tocó algo, y entonces
-  `IdaQueNoSalio` lo dice arriba con su enlace (W1 de la trigesimoctava: se
-  llevaba lo escrito en otra ventana, o el menú pedido). La ida de un aviso no
-  pasa `siNoVa` y calla: lo que entró ya lo dice el aviso (S1 de la
-  trigesimonovena). Un formulario de página entera, además, se traba al
+  cuentan desplazar con el dedo, el clic derecho ni abrir en otra pestaña) o
+  se abrió un aviso de la campana (`anotarQuePidioIr`: es un botón, y la ida
+  del formulario salía y la del aviso la pisaba, X2 de la crítica de la
+  cuadragésima), hay otra ventana abierta o la del envío se cerró y se tocó
+  algo, y entonces `IdaQueNoSalio` lo dice arriba con su enlace (W1 de la
+  trigesimoctava: se llevaba lo escrito en otra ventana, o el menú pedido).
+  La ida que sale a otro documento se lleva esa línea; la de un aviso no
+  pasa `siNoVa`: si no sale calla, porque lo que entró ya lo dice el aviso
+  (S1 de la trigesimonovena), y salga o no deja la línea que había. Un formulario de página entera, además, se traba al
   entrar y lo dice junto a su botón (`YaQuedo`), salga la ida o no: un
   segundo toque registraba otro igual (X1 de su crítica). Un `redirect()` de
   servidor tras guardar no sabe nada de eso, y no se usa. Recargar cortaba el

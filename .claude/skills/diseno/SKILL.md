@@ -388,8 +388,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   una cadena a mano): sale solo si nada de lo que la persona hizo mientras se
   enviaba dice otra cosa (`laIdaSigueEnPie`). No sale si cambió la dirección
   («Atrás», un filtro, una búsqueda), si hizo clic en un enlace a otra
-  pantalla en esta pestaña (el menú, un aviso; también con Enter o un lector
-  de pantalla), si hay otra ventana abierta, o si la ventana del envío se
+  pantalla en esta pestaña (el menú, una pastilla; también con Enter o un
+  lector de pantalla) o abrió un aviso de la campana, que es un botón y
+  pide su pantalla con `anotarQuePidioIr` (X2 de la crítica de la
+  cuadragésima: la persona terminaba en el aviso sin saber que lo suyo
+  había entrado), si hay otra ventana abierta, o si la ventana del envío se
   cerró y después tocó algo. Pedir otra pantalla es ese clic, no el dedo que
   apoya un enlace para desplazar ni el clic derecho ni abrir en otra pestaña:
   con `pointerdown` cualquiera de esos dejaba la ida sin salir (H2 de
@@ -401,9 +404,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   Ver el subcontrato»); se va al seguir el enlace, al llegar a esa pantalla
   por otro camino (sin contar lo que la ida le pone para esa vez, como
   «?creada=1», ni la pestaña elegida: la orden abierta desde la lista también
-  es llegar), con la ida siguiente, salga o no, al quitarla, y una recarga la
-  olvida. La línea vieja seguía hablando de A después de que B sí saliera
-  (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
+  es llegar; y lo que la pantalla toma sin que la dirección lo diga cuenta
+  igual, `porOmision`: /personal es Activos), al quitarla, o con la ida
+  siguiente a otro documento: la que sale se la lleva, también la de la OT a
+  su tarjeta (R2 de realización de la cuadragésima), y la que no sale pone la
+  suya. La de un aviso no la toca: lo que dice sigue siendo cierto, y si el
+  aviso se abrió mientras el formulario entraba, es lo único que lo dice. Una
+  recarga la olvida. La línea vieja seguía hablando de A después de que B sí
+  saliera (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
   arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
   trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está
   haciendo, y nada flota sin que lo pidan; en los formularios de página entera

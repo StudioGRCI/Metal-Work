@@ -315,6 +315,12 @@ export function FormularioReporteDiario({
   // otra vez lo duplicaba con sus horas (trigesimoprimera pasada).
   const enCamino = useRef(new Set<FotoLista>())
   const enDuda = useRef(new Set<string>())
+  // Las del reporte que ya entró: las nombra él, y el formulario queda trabado
+  // con ellas a la vista. Al saberse vieja la pestaña se daban por sueltas: la
+  // foto decía «Se quitó» (la base no la dejaba quitar) y abajo se pedía volver
+  // a cargar para subir el reporte, junto a «El reporte quedó registrado» (H3 de
+  // funcionalidad, cuadragésima pasada).
+  const nombradas = useRef(new Set<string>())
   const [enDudaElAnterior, setEnDudaElAnterior] = useState(false)
   const { alEnviar, enviando, error, resultado } = useEnvio(
     async (previo: unknown, datos: FormData) => {
@@ -353,6 +359,7 @@ export function FormularioReporteDiario({
       // Con los mismos ids, cualquier otra respuesta dice también cómo terminó el anterior.
       enDuda.current.clear()
       setEnDudaElAnterior(false)
+      if (salida.ok) for (const f of van) if (f.ruta) nombradas.current.add(f.ruta)
       // El reporte ya había entrado la primera vez: lo de este envío no se
       // guardó, y sus fotos nuevas no las nombra nadie. Se quitan (las de la
       // primera vez, que su reporte nombra, la base no las deja quitar), y la
@@ -388,7 +395,7 @@ export function FormularioReporteDiario({
     () =>
       vigilarLaVersion(() => {
         if (!laPestanaEsDeLaVersionAnterior()) return
-        const libres = actuales.current.flatMap((s) => s.fotos).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current))
+        const libres = actuales.current.flatMap((s) => s.fotos).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current) && !(f.ruta && nombradas.current.has(f.ruta)))
         const marcar = quitarAlSaberseVieja(BUCKET_FOTOS_REPORTE, libres)
         if (marcar) setSecciones((ss) => ss.map((s) => ({ ...s, fotos: marcar(s.fotos) })))
       }),
@@ -401,7 +408,7 @@ export function FormularioReporteDiario({
       alVolverACargar(() =>
         Promise.all(
           actuales.current.map((s) =>
-            quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current))),
+            quitarFotosSueltas(BUCKET_FOTOS_REPORTE, fotosSubidas(s).filter((f) => !esDeUnEnvio(f, enCamino.current, enDuda.current) && !(f.ruta && nombradas.current.has(f.ruta)))),
           ),
         ),
       ),

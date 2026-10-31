@@ -240,6 +240,14 @@
  *       cliente nuevo va a su ficha.
  *   1x-enter-y-lector. El menú pedido con Enter o con el clic de un lector de
  *       pantalla sí lo es: abre Órdenes y la línea lo dice.
+ *   1y-aviso-mientras-entra. Abrir un aviso de la campana mientras entra el
+ *       trabajo (Supervisión, a 1280 y a 390) también es pedir su pantalla:
+ *       lleva a ella, y la línea dice que el trabajo quedó, con su enlace.
+ *   1y-reporte-que-entro. El reporte que entra con «Más» abierta se queda
+ *       trabado con su foto; al saberse vieja la pestaña, la foto no se quita
+ *       ni dice «Se quitó», y «Volver a cargar» tampoco la toca.
+ *   1y-la-ot-se-lleva-la-linea. La OT de «Dar código y cargar la OT» va a su
+ *       tarjeta sin la línea de otro documento encima (Administración).
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
  *       olvida al salir, algo que nadie alcanza con el dedo (R4).
@@ -248,7 +256,7 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las seis).
+ * 1x, las seis; 1y, las tres).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -554,6 +562,8 @@ const adelantarElReloj = (pagina, ms) =>
 const marcarDocumento = (pagina) => pagina.evaluate(() => { window.__mismoDocumento = 1 })
 const mismoDocumento = (pagina) => pagina.evaluate(() => window.__mismoDocumento === 1).catch(() => false)
 const avisoDeArriba = async (pagina) => limpio(await pagina.locator('[data-pestana-vieja]').innerText().catch(() => ''))
+/** Lo que dice junto al botón el formulario de página entera que ya entró (`YaQuedo`). */
+const yaQuedo = (pagina) => pagina.locator('[data-ya-quedo]').innerText().then(limpio).catch(() => '')
 /** Lo que pasa al volver a la pestaña después del despliegue de todos los días: queda «nueva». */
 const hastaLaPestanaNueva = async (pagina, corte) => {
   corte.despliegue = true
@@ -932,7 +942,7 @@ if (corre('1d')) {
 }
 
 // ------------------------------------------- 1e y 1i. El reporte diario a medio llenar (Maestranza, a 390)
-if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p-rechazo', '1p-sin-respuesta', '1p-colgado', '1p-destino-lento', '1p-se-va', '1r'].some(corre)) {
+if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p-rechazo', '1p-sin-respuesta', '1p-colgado', '1p-destino-lento', '1p-se-va', '1r', '1y-reporte-que-entro'].some(corre)) {
   // Una persona de Maestranza para el trabajo, como la dejaría RR. HH.; al
   // final se le pone su costo y se da de baja. Para enviar no hace falta.
   const persona = `Pedro ${sello}`
@@ -1597,6 +1607,62 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
     corte.despliegue = false
     corte.conservaIds = false
     comprobar(errores.length === 0, `[Maestranza 1440] 1r. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
+  // 1y. El reporte que entra con «Más» abierta queda en el formulario, trabado
+  // y con su foto a la vista. Al saberse vieja la pestaña, la foto se daba por
+  // suelta: decía «Se quitó» y abajo se pedía volver a cargar para subir el
+  // reporte, junto a «El reporte quedó registrado» (H3 de funcionalidad,
+  // cuadragésima pasada).
+  if (corre('1y-reporte-que-entro')) {
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR, { compilacion: true })
+    await llenar(pagina, true)
+    const [ruta] = (await subidas()).slice(-1)
+    await marcarDocumento(pagina)
+    const n0 = await reportes()
+    const subir = subirReporte(pagina)
+    corte.marca = asunto
+    await subir.evaluate((b) => b.scrollIntoView({ block: 'center' }))
+    await subir.tap()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+    const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+    await mas.waitFor({ timeout: 10000 })
+    corte.soltar()
+    await hasta(reportes, (n) => n === n0 + 1, 40000)
+    const junto = await hasta(() => yaQuedo(pagina), (t) => t.includes('El reporte quedó registrado.'), 15000)
+    await pagina.waitForTimeout(1500)
+    await mas.getByRole('button', { name: 'Cerrar', exact: true }).tap()
+    await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+    const donde = pagina.url().replace(BASE, '')
+    const trabado = (await subir.isDisabled()) && (await pagina.locator('#rd-asunto').isDisabled())
+    comprobar(donde === '/reportes-diarios/nuevo' && junto === 'El reporte quedó registrado. Ver el reporte' && trabado && (await miniaturas(pagina)) === 1 && (await mismoDocumento(pagina)),
+      `[Maestranza 390] 1y-reporte-que-entro. el reporte entra con «Más» abierta: se queda, trabado, con su foto y lo dice junto al botón (${donde}, «${junto}», trabado ${trabado})`)
+    // La pestaña se sabe vieja: la foto es del reporte que entró, y no se toca.
+    const s0 = corte.storage.length
+    corte.despliegue = true
+    await salirYVolver(pagina)
+    await hasta(() => pagina.locator('[data-pestana-vieja="vieja"]').count(), (n) => n === 1, 20000)
+    await pagina.waitForTimeout(4000)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1y-reporte-que-entro.png'), fullPage: true })
+    const borrados = () => corte.storage.slice(s0).filter((s) => s.startsWith('DELETE'))
+    const seQuito = await pagina.locator('main').getByText('Se quitó', { exact: true }).count()
+    const quitadas = limpio(await pagina.locator('[data-fotos-quitadas]').innerText({ timeout: 500 }).catch(() => ''))
+    const recargar = await pagina.getByText('Vuelve a cargar la pantalla para subir el reporte.', { exact: true }).count()
+    const sigue = await yaQuedo(pagina)
+    comprobar(Boolean(ruta) && borrados().length === 0 && seQuito === 0 && quitadas === '' && recargar === 0 && sigue === junto && (await miniaturas(pagina)) === 1,
+      `[Maestranza 390] 1y-reporte-que-entro. al saberse vieja, la foto del reporte que entró no se quita ni dice «Se quitó», y abajo no pide volver a cargar para subirlo (${borrados().length} borrados, «Se quitó» ${seQuito}, «${quitadas}», volver a cargar ${recargar}, junto al botón «${sigue}»)`)
+    // «Volver a cargar», como pide el aviso de arriba: tampoco la toca.
+    const d0 = corte.documentos
+    await botonDeArriba(pagina, 'Volver a cargar').click()
+    await hasta(() => corte.documentos, (n) => n > d0, 20000)
+    await quieta(pagina)
+    const nombrada = Number((await consulta(`select count(*) n from reporte_diario_fotos f join reportes_diarios r on r.id = f.reporte_id where r.asunto = $1 and f.ruta = $2`, [asunto, ruta]))[0].n)
+    comprobar(corte.documentos > d0 && borrados().length === 0 && (await existe('fotos-reporte-diario', ruta)) && nombrada === 1,
+      `[Maestranza 390] 1y-reporte-que-entro. «Volver a cargar» recarga sin pedir que se quite la foto, que sigue con su reporte (${corte.documentos - d0} documentos, ${borrados().length} borrados, nombrada ${nombrada})`)
+    corte.despliegue = false
+    comprobar(errores.length === 0, `[Maestranza 390] 1y-reporte-que-entro. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }
 
@@ -3489,7 +3555,6 @@ async function enlaceVisible(pagina, href) {
   const visible = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility()))
   return enlaces.nth(Math.max(visible, 0))
 }
-const yaQuedo = (pagina) => pagina.locator('[data-ya-quedo]').innerText().then(limpio).catch(() => '')
 
 if (corre('1x-la-que-sale-se-lleva-la-linea')) {
   const quien = await subcontratistaActivo()
@@ -3738,6 +3803,104 @@ if (corre('1x-enter-y-lector')) {
     await hasta(() => pagina.locator('[data-ida-que-no-salio]').count(), (n) => n === 0, 5000)
   }
   comprobar(errores.length === 0, `[Administración 1280] 1x-enter-y-lector. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1y. Lo que la cuadragésima pasada dejó en pie de la ida
+// Un aviso de la campana es un botón: abrirlo mientras el formulario entraba no
+// contaba como pedir otra pantalla, la ida del formulario salía y la del aviso
+// la pisaba, y la persona terminaba en el aviso sin saber que lo suyo había
+// entrado (X2 de la crítica). Y «Dar código y cargar la OT» iba a su tarjeta
+// con la línea de otro documento encima (R2 de realización).
+if (corre('1y-aviso-mientras-entra')) {
+  for (const viewport of [{ width: 1280, height: 900 }, CELULAR]) {
+    const ancho = viewport.width
+    const marca = `QA_Y1A_${ancho}_${sello}`
+    const titulo = `Aviso que lleva a Reportes diarios ${ancho} ${sello}`
+    const trabajos = () => consulta(`select id from flota_unidades where trabajo like $1`, [`${marca}%`])
+    // Los avisos los dejan los disparadores; este se siembra, con su pantalla.
+    await consulta(
+      `insert into notificaciones (usuario_id, titulo, cuerpo, ruta) select id, $2, 'Sembrado por probar-pestana-vieja-y-giro', '/reportes-diarios' from usuarios where correo = $1`,
+      [CUENTAS.mtz, titulo],
+    )
+    const leido = async () => (await consulta(`select leida_en from notificaciones where titulo = $1`, [titulo]))[0]?.leida_en ?? null
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, viewport)
+    await ir(pagina, `${BASE}/avance/trabajos/nueva`)
+    await marcarDocumento(pagina)
+    await pagina.locator('#descripcion').fill(`Cabina de pintura ${sello}`)
+    await pagina.locator('#trabajo').fill(`${marca} trabajo de prueba del banco`)
+    corte.marca = marca
+    await pagina.getByRole('button', { name: 'Registrar el trabajo' }).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    // Mientras va, la campana y el aviso, que esperan detrás del trabajo.
+    await pagina.getByRole('button', { name: /^Avisos/ }).first().click()
+    await pagina.locator('#panel-avisos').waitFor({ timeout: 10000 })
+    await pagina.locator('#panel-avisos li button').filter({ hasText: titulo }).first().click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await hasta(trabajos, (l) => l.length === 1, 30000)
+    await pagina.waitForURL((u) => u.pathname === '/reportes-diarios', { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El trabajo quedó registrado.'), 15000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-1y-aviso-mientras-entra-${ancho}.png`) })
+    comprobar(donde === '/reportes-diarios' && dice === 'El trabajo quedó registrado. Ver el trabajo' && Boolean(await leido()) && (await mismoDocumento(pagina)),
+      `[Supervisión ${ancho}] 1y-aviso-mientras-entra. el aviso abierto mientras entra el trabajo lleva a su pantalla, y arriba dice que el trabajo quedó (${donde}, «${dice}», aviso leído ${Boolean(await leido())})`)
+    // El enlace de la línea lleva al trabajo, y la línea se va.
+    const [t] = await trabajos()
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Ver el trabajo' }).click().catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === `/avance/trabajos/${t?.id}`, { timeout: 20000 }).catch(() => {})
+    const queda = await hasta(() => idaQueNoSalio(pagina), (x) => x === '', 5000)
+    comprobar(pagina.url().replace(BASE, '') === `/avance/trabajos/${t?.id}` && queda === '' && (await mismoDocumento(pagina)),
+      `[Supervisión ${ancho}] 1y-aviso-mientras-entra. «Ver el trabajo» lleva al trabajo y la línea se va (${pagina.url().replace(BASE, '')}, «${queda}»)`)
+    comprobar(errores.length === 0, `[Supervisión ${ancho}] 1y-aviso-mientras-entra. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+}
+
+// La línea de otro documento, de pie, y la OT que se carga después: se la lleva
+// al ir a su tarjeta.
+if (corre('1y-la-ot-se-lleva-la-linea')) {
+  const [cot] = await aprobadasSinOt(1)
+  const [libre] = await numerosLibres(1)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  if (!cot || !libre) {
+    comprobar(false, `[Administración 1280] 1y-la-ot-se-lleva-la-linea. hay una cotización aprobada sin OT y un número libre`)
+  } else {
+    await ir(pagina, `${BASE}/clientes`)
+    await marcarDocumento(pagina)
+    // La línea: el cliente entra después de pedir Órdenes.
+    const razon = `QA_Y1C_${sello}`
+    const boton = await clienteLleno(pagina, razon, rucDe1x(5))
+    corte.marca = razon
+    await boton.click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await (await enlaceVisible(pagina, '/ordenes')).click()
+    await pagina.waitForTimeout(1000)
+    corte.soltar()
+    await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
+    await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El cliente quedó registrado.'), 15000)
+    // A Cotización por el menú y a «Aprobadas sin código» por su pastilla: sigue.
+    await porElMenu(pagina, '/cotizaciones/pdf')
+    await pagina.locator('a[href="/cotizaciones/pdf?estado=APROBADA_SIN_OT"]').first().click()
+    await pagina.waitForURL((u) => u.search === '?estado=APROBADA_SIN_OT', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const enCotizacion = await idaQueNoSalio(pagina)
+    comprobar(dice === 'El cliente quedó registrado. Ver el cliente' && enCotizacion === dice && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1y-la-ot-se-lleva-la-linea. la línea del cliente sigue en Cotización («${dice}», en Cotización «${enCotizacion}», ${pagina.url().replace(BASE, '')})`)
+    const ventana = await llenarLaOt(pagina, cot.id, `QA_Y1C_${sello}/26`, libre)
+    await ventana.guardar.click()
+    await hasta(() => otDe(cot.id), (n) => n === 1, 30000)
+    const marcada = await hasta(() => resaltada(pagina), (id) => id === cot.id, 20000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const queda = await idaQueNoSalio(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1y-la-ot-se-lleva-la-linea.png') })
+    comprobar((await otDe(cot.id)) === 1 && marcada === cot.id && donde === `/cotizaciones/pdf#${cot.id}` && queda === '' && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1y-la-ot-se-lleva-la-linea. la OT entra y va a su tarjeta, resaltada, sin la línea del cliente encima (${donde}, resaltada ${marcada === cot.id}, «${queda}»)`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1y-la-ot-se-lleva-la-linea. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useSyncExternalStore } from 'react'
 import { marcarAvisoLeido, marcarTodosLeidos } from '@/app/(app)/acciones-avisos'
-import { anotarQueHuboUnDespliegue, laCompilacionDeLaPestana, motivoDelFallo, navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
+import { anotarQueHuboUnDespliegue, anotarQuePidioIr, laCompilacionDeLaPestana, motivoDelFallo, navegarSiEsDeLaPestana, useAccion } from '@/lib/envio'
 import { destinoAviso } from '@/lib/dominio/destino-aviso'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 
@@ -71,7 +71,12 @@ export function useAvisos(sinLeer: number, alAbrir?: () => void) {
     datos.set('id', aviso.id)
     if (!aviso.leida_en) datos.set('sin_leer', '1')
     const destino = destinoAviso(aviso.ruta, aviso.origen_id)
-    if (destino) datos.set('ruta', destino)
+    if (destino) {
+      datos.set('ruta', destino)
+      // Abrir un aviso que lleva a otra pantalla es pedirla, como un enlace: la
+      // ida de lo que estaba entrando ya no sale, y la línea de arriba lo dice.
+      anotarQuePidioIr()
+    }
     accion.ejecutar(datos)
   }
   return {

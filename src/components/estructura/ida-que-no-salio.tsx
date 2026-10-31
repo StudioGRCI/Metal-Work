@@ -16,11 +16,18 @@ import { type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, useIdaQueNoSalio } from 
 // es Bajas.
 const DE_UNA_VEZ = new Set(['creada', 'subido', 'abierta', 'contrato', 'vista', 'q'])
 
-/** La persona está en la pantalla a la que lleva `url`, haya llegado como haya llegado. */
-function yaEstaEn(url: string, ruta: string, busqueda: URLSearchParams) {
+/**
+ * La persona está en la pantalla a la que lleva la ida, haya llegado como haya
+ * llegado. Lo que la pantalla toma cuando la dirección no lo dice (`porOmision`)
+ * cuenta igual: la vuelta a Activos no se iba al llegar a /personal desde el
+ * menú (H4 de funcionalidad, cuadragésima pasada).
+ */
+function yaEstaEn({ url, porOmision }: Ida, ruta: string, busqueda: URLSearchParams) {
   const destino = new URL(url, 'http://pantalla')
   if (destino.pathname !== ruta) return false
-  for (const [clave, valor] of destino.searchParams) if (!DE_UNA_VEZ.has(clave) && busqueda.get(clave) !== valor) return false
+  for (const [clave, valor] of destino.searchParams) {
+    if (!DE_UNA_VEZ.has(clave) && (busqueda.get(clave) ?? porOmision?.[clave]) !== valor) return false
+  }
   return true
 }
 
@@ -38,8 +45,9 @@ function comoDireccion(direccion: string) {
  * eso lo dice su pantalla.
  *
  * Se va al seguir el enlace, al llegar a esa pantalla por otro camino, al
- * quitarlo, con la ida siguiente que salga o con la siguiente que no salga. No
- * se guarda en la pestaña: una recarga lo olvida. Calla mientras la persona siga
+ * quitarlo o con la ida siguiente a otro documento: la que sale se lo lleva y
+ * la que no sale pone lo suyo. La de un aviso no lo toca. No se guarda en la
+ * pestaña: una recarga lo olvida. Calla mientras la persona siga
  * en el formulario que ya lo dice junto a su botón (`YaQuedo`). La región está
  * siempre montada: una que nace con su texto el lector no la lee.
  */
@@ -54,7 +62,7 @@ export function IdaQueNoSalio() {
 
   // Ya en su pantalla calla desde la primera pintada: si esperara al efecto que
   // la quita, la línea asomaba un instante en la pantalla a la que lleva.
-  const llego = ida ? yaEstaEn(ida.url, ruta, busqueda) : false
+  const llego = ida ? yaEstaEn(ida, ruta, busqueda) : false
   useEffect(() => {
     if (llego) ponerIdaQueNoSalio(null)
   }, [llego])

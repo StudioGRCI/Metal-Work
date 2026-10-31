@@ -218,9 +218,9 @@ export function useEnviosEnCamino() {
 }
 
 // La última vez que la persona tocó la pantalla o una tecla, y la última que
-// pidió ir a otro lado con un enlace (el menú, una pastilla, un aviso): lo que
-// hizo después de que saliera un envío manda sobre la ida que el envío haría
-// solo al entrar (`laIdaSigueEnPie`).
+// pidió ir a otro lado (un enlace del menú o de una pastilla, un aviso de la
+// campana): lo que hizo después de que saliera un envío manda sobre la ida que
+// el envío haría solo al entrar (`laIdaSigueEnPie`).
 let tocoEn = -1
 let pidioIrEn = -1
 if (typeof window !== 'undefined') {
@@ -251,6 +251,18 @@ if (typeof window !== 'undefined') {
 
 /** La última vez que la persona tocó la pantalla o una tecla (`performance.now()`). */
 export const ultimoToque = () => tocoEn
+
+/**
+ * Pedir otra pantalla sin un enlace: un aviso de la campana es un botón que
+ * marca el aviso y después lleva a su pantalla. No contaba, y la ida del
+ * formulario que estaba entrando salía, se llevaba la línea y la del aviso la
+ * pisaba: la persona terminaba en el aviso sin saber que lo suyo había entrado
+ * (X2 de la crítica de la cuadragésima pasada).
+ */
+export function anotarQuePidioIr() {
+  tocoEn = performance.now()
+  pidioIrEn = tocoEn
+}
 
 /** Cómo estaba la pestaña cuando salió un envío que, si entra, lleva a otra pantalla (`partida()`). */
 export type Partida = { direccion: string; salioEn: number; ventana: number | null }
@@ -288,8 +300,10 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * Lo que entró y adónde lleva, cuando su ida no salió (`navegarSiEsDeLaPestana`).
  * `dichaEn`: la dirección del formulario de página entera que ya lo dice junto
  * a su botón (`YaQuedo`); mientras la persona siga ahí, arriba no se repite.
+ * `porOmision`: lo que la pantalla toma cuando su dirección no lo dice
+ * (/personal sin «estado» es Activos), para saber que la persona llegó.
  */
-export type IdaQueNoSalio = { dice: string; enlace: string; url: string; dichaEn?: string }
+export type IdaQueNoSalio = { dice: string; enlace: string; url: string; dichaEn?: string; porOmision?: Record<string, string> }
 let idaQueNoSalio: IdaQueNoSalio | null = null
 const alCambiarLaIda = new Set<() => void>()
 
@@ -1254,19 +1268,22 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  * página entera ya lo dice junto a su botón trabado (`YaQuedo`), y arriba se
  * calla mientras la persona siga en él.
  *
- * La ida que sí sale se lleva la línea de antes: quedaba sobre la pantalla del
- * segundo subcontrato hablando del primero, y se leía como suya (H1 de diseño y
- * H3 de funcionalidad de la trigesimonovena pasada).
+ * La ida que sí sale a otro documento se lleva la línea de antes: quedaba sobre
+ * la pantalla del segundo subcontrato hablando del primero, y se leía como suya
+ * (H1 de diseño y H3 de funcionalidad de la trigesimonovena pasada); la que no
+ * sale pone la suya. La de un aviso (sin `siNoVa`) no la toca, salga o no: lo
+ * que dice sigue siendo cierto y nada lo reemplaza, y si la persona abrió el
+ * aviso mientras su formulario entraba, es lo único que se lo dice.
  */
 export function navegarSiEsDeLaPestana(
   router: { push(url: string): void },
   url: string,
   desde: Partida,
-  siNoVa?: { dice: string; enlace: string; juntoAlBoton?: boolean },
+  siNoVa?: { dice: string; enlace: string; juntoAlBoton?: boolean; porOmision?: Record<string, string> },
 ) {
   const siVa = () => {
     if (laIdaSigueEnPie(desde)) {
-      ponerIdaQueNoSalio(null)
+      if (siNoVa) ponerIdaQueNoSalio(null)
       return true
     }
     if (siNoVa) {

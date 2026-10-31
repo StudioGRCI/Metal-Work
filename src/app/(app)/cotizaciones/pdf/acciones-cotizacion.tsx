@@ -17,7 +17,7 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -836,7 +836,11 @@ export function CargarCodigoYOt({
         entro()
         // A su tarjeta, ya con el código y la OT: en «Aprobadas sin código» se
         // iba de la lista y no se veía que había quedado. Si no puede ir sin
-        // llevarse otra cosa, lo dice el encabezado.
+        // llevarse otra cosa, lo dice el encabezado. Las dos se llevan la línea
+        // de arriba de otro documento, como las demás idas: «La orden quedó
+        // registrada» seguía sobre la OT recién cargada (R2 de realización,
+        // cuadragésima pasada).
+        ponerIdaQueNoSalio(null)
         if (vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
         else setCargada({ id: cotizacionId, numero })
       } catch (e) {
