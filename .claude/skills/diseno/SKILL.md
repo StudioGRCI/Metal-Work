@@ -456,6 +456,15 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   compartido por todas las filas no puede: cada fila lleva el suyo. Y lo que se resuelve en otro lado
   se la lleva (`yaSeResolvio`): el comprobante en borrador completado en su
   fila (F1), el PDF de la orden que su campo vuelve a decir al volver (F5).
+  Lo que quedó a medias no se va con cualquier envío del mismo formulario:
+  solo con el del formulario que es de ese documento (el plano, con su
+  `documento`), que lo completa. El que registra uno nuevo cada vez no lo
+  toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
+  de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
+  que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la
+  cuadragésima sexta). Cuando el documento lo elige la búsqueda (?codigo=,
+  ?semana=, ?fecha= de la caja), lo dice la pantalla para todos sus
+  formularios con `DelDocumento` (ver Trampas).
   Si la dirección cambió y el formulario
   sigue a la vista (una pestaña de la lista que lo pinta encima, como
   Facturas y Por pagar en Adquisiciones), lo dice él y arriba no se repite;
@@ -727,6 +736,22 @@ en un check con `set local role authenticated`.
 ## Trampas
 
 *(Sección viva: aquí se anota lo que salió mal al construir pantallas. Ver `aprender`.)*
+
+- **Cambiar solo la búsqueda no vuelve a montar la pantalla.** En Next 16, ir
+  de `?codigo=A` a `?codigo=B` (un enlace, el aviso de la campana, Atrás, la
+  flecha del día) deja montado el segmento, y cada formulario se quedaba con
+  lo escrito, lo elegido y los ids del primero: el plano de un código salía
+  en el otro, y el cierre de una caja con el día de otra (X1 de la crítica de
+  la cuadragésima quinta). Lo que es de ese documento va dentro de
+  `DelDocumento` (`components/estructura/del-documento.tsx`): lo monta de
+  nuevo con cada uno (`key`) y le dice a cada formulario de cuál es
+  (`DocumentoDeLaPantalla`), para que la línea de arriba no tome el envío del
+  código B por el del A. Un formulario suelto que depende de la búsqueda lleva
+  su propia `key` (el gasto del mes, el pago de la oficina, el filtro del
+  kardex), y lo que va fuera de `DelDocumento` también: el selector de día de
+  la caja, sin control, se quedaba con el día escrito a mano o con el de la
+  entrada, debajo de los saldos de otro (H3 de diseño de la cuadragésima
+  sexta). La `key` va en lo que tiene que olvidar, no en lo que tiene el foco.
 
 - **Lo que solo explica no va a la vista, y nada flota sin que lo pidan.** El
   2026-10-19 DKS lo corrigió por segunda vez: «cuadros flotantes que no dan o

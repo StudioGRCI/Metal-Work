@@ -192,7 +192,14 @@ En la misma migración que la crea, sin excepción:
   cuadragésima tercera). El rechazo es de su formulario (`DeFormulario`), no
   de su texto: solo su envío siguiente lo quita (el mismo formulario en su
   ruta, por sus campos o por su nombre y su `documento`), o que se resuelva
-  en otro lado (`yaSeResolvio`). Un formulario dentro de una `Ventana` es solo suyo: React deja
+  en otro lado (`yaSeResolvio`). Lo que quedó a medias, solo el envío del
+  formulario de ese documento (`documento` propio: el plano que vuelve a
+  salir a Maestranza), no el que registra uno nuevo cada vez (otro
+  comprobante se llevaba el del borrador: Y1 de la crítica de la
+  cuadragésima quinta). El documento que elige la búsqueda (?codigo=,
+  ?fecha=) lo pone `DelDocumento` para todos los formularios de la
+  pantalla: la ruta es la misma, Next no la vuelve a montar, y el envío del
+  código B se llevaba el rechazo del A (H1 de esa pasada). Un formulario dentro de una `Ventana` es solo suyo: React deja
   subir su envío por el portal hasta el formulario de la pantalla que la
   abre, y «Registrar unidad» en la orden nueva registraba también la orden,
   con el número del papel gastado (R3). La `Ventana` corta ese envío en su

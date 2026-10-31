@@ -16,7 +16,8 @@
  *   5. Hoy anula un egreso con su motivo, cierra el día y lo reabre: el cierre
  *      queda tachado con quién y por qué.
  *   6. Una cuenta con movimientos ya no cambia de saldo inicial al corregirla.
- *   7. En el teléfono la pantalla entra sin desbordarse.
+ *   7. En el teléfono la pantalla entra sin desbordarse, y la flecha deja el
+ *      selector en el día que muestra, con un día escrito o llegando por el menú.
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
@@ -462,6 +463,29 @@ const movimientos = (caja, fecha) =>
       `un día que no existe en la URL (${raro}) abre la caja de hoy`)
   }
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-04-telefono.png'), fullPage: true })
+  // La flecha cambia solo la búsqueda y Next deja montada la pantalla: el
+  // selector, sin control, se quedaba con el día escrito a mano, o con el de
+  // la entrada si se llegó por el menú, debajo de los saldos de otro (H3 de
+  // diseño, cuadragésima sexta pasada).
+  const anteayer = new Date(Date.parse(`${ayer}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  const selectorTras = async (fecha) => {
+    await pagina.waitForURL((u) => u.searchParams.get('fecha') === fecha, { timeout: 20000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    for (let i = 0; i < 20 && (await pagina.locator('#caja-dia').inputValue()) !== fecha; i++) await pagina.waitForTimeout(250)
+    return pagina.locator('#caja-dia').inputValue()
+  }
+  await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
+  await pagina.locator('#caja-dia').fill(hoy)
+  await pagina.getByRole('link', { name: 'Día anterior' }).click()
+  const trasEscribir = await selectorTras(anteayer)
+  comprobar(trasEscribir === anteayer, `con un día escrito sin «Ver», la flecha deja el selector en el día que muestra (${trasEscribir}, se ve ${anteayer})`)
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.locator('nav[aria-label="Secciones"] a[href="/tesoreria/caja-diaria"]').click()
+  await pagina.waitForURL(/\/tesoreria\/caja-diaria$/, { timeout: 20000 })
+  await pagina.waitForLoadState('networkidle')
+  await pagina.getByRole('link', { name: 'Día anterior' }).click()
+  const trasElMenu = await selectorTras(ayer)
+  comprobar(trasElMenu === ayer, `llegando por el menú, la flecha también (${trasElMenu}, se ve ${ayer})`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

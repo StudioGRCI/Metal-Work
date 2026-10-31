@@ -257,7 +257,12 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
       <label htmlFor="caja-dia" className="sr-only">
         Día de la caja
       </label>
-      <Entrada id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
+      {/* Uno por día: las flechas cambian solo la búsqueda y Next deja montada la
+          pantalla; sin control, se quedaba con el día escrito a mano o con el de
+          la entrada, debajo de los saldos de otro (H3 de diseño, cuadragésima
+          sexta pasada). La key va aquí y no en el formulario: el foco sigue en
+          la flecha. */}
+      <Entrada key={dia} id="caja-dia" type="date" name="fecha" defaultValue={dia} min={PRIMER_DIA} max={hoy} className="w-auto" />
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
