@@ -214,7 +214,7 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     const arriba = enviadas.length || enDuda.length
       ? [
           enviadas.length ? `La versión del plano llegó a ${enviadas.join(' y ')}.` : '',
-          `Falta: ${fallidas.join('; ')}.`,
+          `Falta ${fallidas.join('; ')}.`,
           noLlego.length ? `Vuelve y envíala solo a ${noLlego.join(' y ')}.` : '',
           enDuda.length ? `Antes de enviársela a ${enDuda.join(' y ')}, mira en el plano si ya le llegó.` : '',
         ].filter(Boolean).join(' ')
@@ -223,7 +223,7 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     if (viejaEn !== null) {
       const antes = [
         enviadas.length ? `Enviado a ${enviadas.join(' y ')}.` : '',
-        fallidas.length ? `Falta: ${fallidas.join('; ')}.` : '',
+        fallidas.length ? `Falta ${fallidas.join('; ')}.` : '',
         enviadas.length || fallidas.length ? `No salió a ${areas.slice(viejaEn).map(nombre).join(' ni a ')}.` : '',
       ].filter(Boolean)
       return {
@@ -234,13 +234,20 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     }
     if (fallidas.length > 0) {
       // Volver a elegir el archivo cambia la solicitud: se reenvía sin tocarlo.
-      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.`, arriba }
+      // Si no llegó a ninguna ni quedó nada en duda, no hay nada que duplicar:
+      // con la persona ya en otra pantalla, la línea pedía reenviar «sin
+      // cambiar el archivo» un formulario que vuelve vacío (V3 de la crítica,
+      // cuadragésima cuarta pasada).
+      const reenviar = arriba ? 'Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.' : 'Vuelve a enviarla.'
+      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta ${fallidas.join('; ')}. ${reenviar}`, arriba }
     }
     return { ok: true, mensaje: `${mensaje ?? 'PDF registrado.'} Áreas: ${enviadas.join(', ')}.` }
   }
   // Lleva un documento: si se rechaza con la persona ya en otra pantalla, la
-  // línea de arriba lo nombra (R9 de realización, cuadragésima tercera pasada).
-  const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'), { siSeVa: { que: 'la versión del plano', enlace: 'Volver al plano' } })
+  // línea de arriba lo nombra (R9 de realización, cuadragésima tercera pasada). Es
+  // de su plano: el envío de otro plano no se lleva su línea (F2 de
+  // funcionalidad, cuadragésima cuarta pasada).
+  const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'), { siSeVa: { que: 'la versión del plano', enlace: 'Volver al plano' }, documento: planoId })
   return <Tarjeta>
     <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" ayuda="Marca las áreas que reciben este PDF: si Maestranza y Producción llevan planos distintos, súbelos por separado. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; una corrección se adjunta como revisión nueva de esa área." />
     <TarjetaCuerpo>
@@ -254,11 +261,12 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
               </label>)}
             </div>
           </fieldset>
-          <Campo etiqueta="Observación para la revisión" htmlFor="version-nota" ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
-            <AreaTexto id="version-nota" name="nota_envio" maxLength={1000} disabled={enviando} />
+          {/* Un formulario por plano en la misma pantalla: con el mismo id, la etiqueta de cada uno llevaba al campo del primero. */}
+          <Campo etiqueta="Observación para la revisión" htmlFor={`version-nota-${planoId}`} ayuda="Indica qué cambió o qué debe revisar el área destinataria.">
+            <AreaTexto id={`version-nota-${planoId}`} name="nota_envio" maxLength={1000} disabled={enviando} />
           </Campo>
-          <Campo etiqueta="Plano en PDF" htmlFor="version-archivo">
-            <ElegirArchivo id="version-archivo" name="archivo" accept="application/pdf,.pdf" hastaMb={20} required disabled={enviando} onChange={() => { setSolicitudes({}); setAviso(null) }} />
+          <Campo etiqueta="Plano en PDF" htmlFor={`version-archivo-${planoId}`}>
+            <ElegirArchivo id={`version-archivo-${planoId}`} name="archivo" accept="application/pdf,.pdf" hastaMb={20} required disabled={enviando} onChange={() => { setSolicitudes({}); setAviso(null) }} />
           </Campo>
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           {aviso && <p role="status" className="text-sm text-exito">{aviso}</p>}
@@ -301,8 +309,10 @@ export function PdfPorArea({ versiones, areas }: { versiones: VersionEnPantalla[
 
 export function Version({ version: v, ordenId }: { version: VersionEnPantalla; ordenId: string }) {
   const [aviso, setAviso] = useState<string | null>(null)
-  const { alEnviar, enviando, error } = useEnvio(resolverVersionPlano, r => setAviso(r.mensaje ?? 'Cambio registrado.'))
-  const revisionDiseno = useEnvio(resolverRevisionDiseno, r => setAviso(r.mensaje ?? 'Revisión de Diseño registrada.'))
+  // Una por versión, y las dos revisiones de la versión mandan los mismos
+  // campos: cada una dice cuál es, o el envío de otra se llevaba su línea.
+  const { alEnviar, enviando, error } = useEnvio(resolverVersionPlano, r => setAviso(r.mensaje ?? 'Cambio registrado.'), { documento: `area:${v.id}` })
+  const revisionDiseno = useEnvio(resolverRevisionDiseno, r => setAviso(r.mensaje ?? 'Revisión de Diseño registrada.'), { documento: `diseno:${v.id}` })
   const estadoDiseno = v.revision_diseno === 'PENDIENTE' ? 'Pendiente de Jefatura de Diseño'
     : v.revision_diseno === 'OBSERVADO' ? 'Observado por Jefatura de Diseño'
       : v.revision_diseno_por ? 'Aprobado por Jefatura de Diseño' : null

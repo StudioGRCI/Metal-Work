@@ -546,9 +546,9 @@ function AccionesActividad({
   corregibleHoy: boolean
 }) {
   const [modo, setModo] = useState<'nada' | 'peso' | 'editar' | 'quitar'>('nada')
-  const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'))
-  const editar = useEnvio(editarActividad, () => setModo('nada'))
-  const quitar = useEnvio(quitarActividad, () => setModo('nada'))
+  const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'), { documento: actividad.id })
+  const editar = useEnvio(editarActividad, () => setModo('nada'), { documento: actividad.id })
+  const quitar = useEnvio(quitarActividad, () => setModo('nada'), { documento: actividad.id })
 
   if (modo === 'editar') {
     return (

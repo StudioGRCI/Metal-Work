@@ -9,7 +9,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, partida, refrescarSiEsDeLaPestana, type SiSeVa, useEnvio, useFormularioMontado } from '@/lib/envio'
+import { decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, partida, refrescarSiEsDeLaPestana, type SiSeVa, useEnvio, useFormularioMontado, yaSeResolvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fechaHora } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
@@ -90,6 +90,11 @@ export function ArchivosDeOrden({
   const tieneOrden = adjuntos.some((a) => a.tipo === 'ORDEN')
   const [cambiando, setCambiando] = useState(false)
   const pide = sube && (!tieneOrden || cambiando || Boolean(elegido))
+  // De vuelta en la orden, el campo dice por qué no entró: arriba se decía dos
+  // veces (F5 de funcionalidad, cuadragésima cuarta pasada).
+  useEffect(() => {
+    if (pide && avisoSubida) yaSeResolvio(`pdf-orden:${ordenId}`, instancia)
+  }, [pide, avisoSubida, ordenId, instancia])
   const textoCampo = tieneOrden ? 'Subir el PDF corregido' : 'Subir el PDF de la orden'
   // Subir el corregido no quita el anterior (el último PDF lo cuida la base):
   // con dos, el más nuevo es el que vale y se dice que el otro hay que quitarlo.
@@ -144,7 +149,7 @@ export function ArchivosDeOrden({
     subidasEnCurso.add(ordenId)
     setSubiendo(true)
     const desde = partida()
-    const de: DeFormulario = { instancia, campos: 'pdf-orden' }
+    const de: DeFormulario = { instancia, campos: `pdf-orden:${ordenId}` }
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que el PDF suba y quede anotado, y si no entró no
     // recarga encima de su aviso. Recargaba a los 180 ms: la subida quedaba
@@ -156,7 +161,7 @@ export function ArchivosDeOrden({
         if (!r.ok) {
           // En la caja del campo se dice cómo volver a intentar, como los demás avisos.
           setAvisoSubida(r.error === NO_QUEDO_SIN_RESPUESTA ? 'No quedó, no llegó la respuesta: toca para elegirlo otra vez' : r.error)
-          decirElRechazoSiSeFue(desde, r.error === NO_QUEDO_SIN_RESPUESTA ? 'La respuesta no llegó y no quedó: elígelo otra vez.' : r.error, SI_SE_VA, { de })
+          decirElRechazoSiSeFue(desde, r.error === NO_QUEDO_SIN_RESPUESTA ? 'La respuesta no llegó y no quedó: elígelo otra vez.' : r.error, SI_SE_VA, { de, documento: `pdf-orden:${ordenId}` })
           return
         }
         entro()
@@ -169,7 +174,7 @@ export function ArchivosDeOrden({
       } catch (e) {
         const motivo = e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.'
         setAvisoSubida(motivo)
-        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA, { de })
+        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA, { de, documento: `pdf-orden:${ordenId}` })
       } finally {
         subidasEnCurso.delete(ordenId)
         setSubiendo(false)
@@ -312,7 +317,7 @@ function FilaAdjunto({
   const { alEnviar, enviando, error, limpiar } = useEnvio(quitarAdjunto, (r) => {
     if (r.datos?.archivoQuedo && r.mensaje) alQuedarArchivo(r.mensaje)
     alQuitar(a, quedaria)
-  })
+  }, { documento: a.id })
   // Al abrir la pregunta, el foco va a «No», que es lo seguro, y la pregunta se
   // lee con él; al decir que no, vuelve al tacho. Antes caía al <body>.
   const tacho = useRef<HTMLButtonElement>(null)

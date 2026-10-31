@@ -254,7 +254,7 @@ export function FilaDePersona({
       })
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
-    { refrescar: false },
+    { refrescar: false, documento: persona.id },
   )
 
   const alcance = (

@@ -440,7 +440,23 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   unidad nueva en la orden nueva) no se lo lleva (H2). «Ese mismo» es el
   formulario, no su texto (`DeFormulario`: la vez que está montado y sus
   campos): dos sin nombre de una pantalla se quitaban el motivo uno al otro
-  (R8 de la cuadragésima tercera). Si la dirección cambió y el formulario
+  (R8 de la cuadragésima tercera). Vuelto a montar se lo reconoce en su ruta,
+  aunque la pestaña de su lista sea otra, por los nombres de sus campos,
+  marcados o no, y el que tiene nombre («el comprobante») también por él,
+  porque sus campos cambian con lo que se elige: reenviado con otra casilla
+  o sin la OC que había marcado, entraba y arriba seguía «no se guardó» (R10
+  y F3 de la cuadragésima cuarta). El que la pantalla pinta una vez por
+  fila, tarjeta o documento fuera de una ventana (la versión de cada plano,
+  la revisión de cada gasto, cada fila de compras, cada casilla de la ficha
+  del taller, cada feriado) dice de cuál es (`documento` en `useEnvio` y
+  `useAccion`): el envío del plano B se llevaba la línea del plano A (F2), y
+  el de otra fila cualquiera la de esta. Dos formularios distintos de una
+  pantalla con los mismos campos (repartir el peso y dar por entregados en la
+  OT, las dos revisiones de una versión) dicen cuál son con lo mismo. Uno
+  compartido por todas las filas no puede: cada fila lleva el suyo. Y lo que se resuelve en otro lado
+  se la lleva (`yaSeResolvio`): el comprobante en borrador completado en su
+  fila (F1), el PDF de la orden que su campo vuelve a decir al volver (F5).
+  Si la dirección cambió y el formulario
   sigue a la vista (una pestaña de la lista que lo pinta encima, como
   Facturas y Por pagar en Adquisiciones), lo dice él y arriba no se repite;
   y al reenviarlo, la línea se va aunque la dirección sea otra: el

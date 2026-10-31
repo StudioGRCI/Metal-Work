@@ -110,7 +110,6 @@ export function Feriados({
 }) {
   const siembra = useEnvio(sembrarFeriados)
   const alta = useEnvio(agregarFeriado)
-  const alternar = useEnvio(alternarFeriadoLaborable)
 
   return (
     <Tarjeta>
@@ -131,7 +130,6 @@ export function Feriados({
       />
       <TarjetaCuerpo className="space-y-3">
         <Aviso resultado={siembra.resultado} />
-        {alternar.error && <Aviso resultado={alternar.resultado} />}
 
         {puedeEditar && (
           <form onSubmit={alta.alEnviar} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-base)] bg-superficie-2 p-3">
@@ -190,31 +188,48 @@ export function Feriados({
                     {f.ambito === 'NACIONAL' ? 'nacional' : 'de la empresa'}
                   </span>
                 </span>
-                {puedeEditar && (
-                  <form onSubmit={alternar.alEnviar}>
-                    <input type="hidden" name="fecha" value={f.fecha} />
-                    <input type="hidden" name="laborable" value={f.laborable ? 'no' : 'si'} />
-                    {/* El texto solo dice «Se trabaja»: con veinte filas
-                        iguales, el lector de pantalla necesita saber de cuál. */}
-                    <button
-                      type="submit"
-                      disabled={alternar.enviando}
-                      aria-label={
-                        f.laborable
-                          ? `Volver a marcar ${f.nombre} como feriado`
-                          : `Marcar que el día de ${f.nombre} se trabaja`
-                      }
-                      className="inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
-                    >
-                      {f.laborable ? 'Volver a feriado' : 'Se trabaja'}
-                    </button>
-                  </form>
-                )}
+                {puedeEditar && <AlternarFeriado feriado={f} />}
               </li>
             ))}
           </ul>
         )}
       </TarjetaCuerpo>
     </Tarjeta>
+  )
+}
+
+/**
+ * «Se trabaja» o «Volver a feriado», uno por fila y con su propio envío: con
+ * uno solo para todas, el rechazo de un día salía arriba de la lista sin decir
+ * de cuál, y el envío de otro día se llevaba la línea de arriba del primero.
+ */
+function AlternarFeriado({ feriado: f }: { feriado: Feriado }) {
+  const alternar = useEnvio(alternarFeriadoLaborable, undefined, { documento: f.fecha })
+  return (
+    <>
+      <form onSubmit={alternar.alEnviar}>
+        <input type="hidden" name="fecha" value={f.fecha} />
+        <input type="hidden" name="laborable" value={f.laborable ? 'no' : 'si'} />
+        {/* El texto solo dice «Se trabaja»: con veinte filas
+            iguales, el lector de pantalla necesita saber de cuál. */}
+        <button
+          type="submit"
+          disabled={alternar.enviando}
+          aria-label={
+            f.laborable
+              ? `Volver a marcar ${f.nombre} como feriado`
+              : `Marcar que el día de ${f.nombre} se trabaja`
+          }
+          className="inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
+        >
+          {f.laborable ? 'Volver a feriado' : 'Se trabaja'}
+        </button>
+      </form>
+      {alternar.error && (
+        <p role="alert" className="basis-full text-xs text-peligro">
+          {alternar.error}
+        </p>
+      )}
+    </>
   )
 }

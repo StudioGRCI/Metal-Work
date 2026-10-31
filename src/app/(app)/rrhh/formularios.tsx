@@ -24,7 +24,7 @@ export function NuevaPlanilla() {
 export function AgregarPersona({planillaId,tipo}:{planillaId:string;tipo:string}) {
   // Vacío al entrar: sin documento, un segundo toque la agregaba dos veces.
   const formulario=useRef<HTMLFormElement>(null)
-  const {alEnviar,enviando,error,resultado}=useEnvio(agregarPersona,()=>formulario.current?.reset())
+  const {alEnviar,enviando,error,resultado}=useEnvio(agregarPersona,()=>formulario.current?.reset(),{documento:planillaId})
   return <form ref={formulario} onSubmit={alEnviar} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="planilla_id" value={planillaId} />
     <Campo etiqueta={tipo==='SUBCONTRATOS'?'Proveedor o subcontrato':'Nombre completo'} htmlFor={`pl-nom-${planillaId}`} requerido><Entrada id={`pl-nom-${planillaId}`} name="nombre" minLength={3} maxLength={160} required /></Campo>

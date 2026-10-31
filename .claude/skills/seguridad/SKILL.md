@@ -190,7 +190,9 @@ En la misma migración que la crea, sin excepción:
   línea lo dice tal cual; con la persona fuera, «vuelve a enviar sin cambiar
   el archivo» ya no se podía y el plano llegaba repetido (N2 de la
   cuadragésima tercera). El rechazo es de su formulario (`DeFormulario`), no
-  de su texto: solo su envío siguiente lo quita. Un formulario dentro de una `Ventana` es solo suyo: React deja
+  de su texto: solo su envío siguiente lo quita (el mismo formulario en su
+  ruta, por sus campos o por su nombre y su `documento`), o que se resuelva
+  en otro lado (`yaSeResolvio`). Un formulario dentro de una `Ventana` es solo suyo: React deja
   subir su envío por el portal hasta el formulario de la pantalla que la
   abre, y «Registrar unidad» en la orden nueva registraba también la orden,
   con el número del papel gastado (R3). La `Ventana` corta ese envío en su

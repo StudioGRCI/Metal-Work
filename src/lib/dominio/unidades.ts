@@ -114,3 +114,17 @@ export function tipoDeVehiculo(codigo: string | null | undefined): string | null
   if (!codigo) return null
   return NOMBRE_DE_TIPO[codigo] ?? codigo
 }
+
+/**
+ * Lo que se dice cuando el cliente ya tiene una unidad con esa placa
+ * (`uq_unidades_cliente_placa`). La desactivada choca igual y no sale en
+ * ninguna lista: se dice dónde se reactiva. Va en el campo de la placa
+ * (`esPlacaRepetida`), que agrega dónde está la que se ve.
+ */
+export function placaRepetida(placa: string, { editando, desactivada }: { editando: boolean; desactivada: boolean }) {
+  const cual = `Este cliente ya tiene ${editando ? 'otra unidad' : 'una unidad'} con la placa ${placa}`
+  if (!desactivada) return `${cual}.`
+  return editando ? `${cual}, desactivada.` : `${cual}, desactivada: Ventas o Diseño la reactivan en Unidades, sin registrarla otra vez.`
+}
+
+export const esPlacaRepetida = (texto: string | null) => Boolean(texto && /^Este cliente ya tiene (una|otra) unidad con la placa /.test(texto))

@@ -353,7 +353,7 @@ export function AnularPlano({ plano, numero }: { plano: string; numero: string }
 
 /** El supervisor marca que recibió la revisión vigente. Un toque, sin ventana. */
 export function RecibirPlano({ revision, numero }: { revision: string; numero: string }) {
-  const { ejecutar, enviando, error } = useAccion(recibirPlano)
+  const { ejecutar, enviando, error } = useAccion(recibirPlano, undefined, { documento: revision })
   return (
     <div className="space-y-1">
       {/* Dice lo que hace, no un estado: «✓ Recibido» junto a «Por recibir» se leía como que ya estaba (auditoría del 27/10/2026). */}
@@ -638,7 +638,7 @@ export function CorregirEtapa({ codigo, areas, etapa }: { codigo: string; areas:
 }
 
 export function MoverEtapa({ id, nombre, primera, ultima }: { id: string; nombre: string; primera: boolean; ultima: boolean }) {
-  const { ejecutar, enviando, error } = useAccion(moverEtapa)
+  const { ejecutar, enviando, error } = useAccion(moverEtapa, undefined, { documento: id })
   const mover = (arriba: boolean) => {
     const datos = new FormData()
     datos.set('id', id)

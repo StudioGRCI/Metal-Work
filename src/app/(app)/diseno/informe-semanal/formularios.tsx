@@ -129,7 +129,7 @@ export function FormularioEntregaPlanos({ ordenes, personas, inicio, fin }: {
 
 /** Quitar una fila propia mientras la semana está abierta. */
 export function QuitarRegistro({ id, tabla, descripcion }: { id: string; tabla: 'tarea' | 'entrega'; descripcion: string }) {
-  const accion = useAccion(quitarRegistroInforme)
+  const accion = useAccion(quitarRegistroInforme, undefined, { documento: `${tabla}:${id}` })
   return <span className="inline-flex items-center gap-2">
     <button type="button" aria-label={`Quitar ${descripcion}`} title="Quitar" disabled={accion.enviando}
       onClick={() => { const d = new FormData(); d.set('id', id); d.set('tabla', tabla); accion.ejecutar(d) }}

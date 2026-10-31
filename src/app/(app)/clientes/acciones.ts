@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
+import { placaRepetida } from '@/lib/dominio/unidades'
 
 const esquemaCliente = z.object({
   id: z.guid().optional().or(z.literal('')),
@@ -185,9 +186,13 @@ export async function guardarUnidad(
     : await supabase.from('unidades').insert(fila).select('id, placa, codigo_interno, numero_chasis, marca, modelo').single()
 
   // La placa repetida en el mismo cliente decía «Ya existe un registro con esos
-  // datos», sin decir cuál (cuadragésima tercera pasada).
+  // datos», sin decir cuál (cuadragésima tercera pasada). La desactivada choca
+  // igual y no está en ninguna lista: se dice dónde se reactiva (D5 de diseño,
+  // cuadragésima cuarta pasada). Lo que hacer con la que está a la vista lo
+  // dice el campo, que sabe dónde está la ventana.
   if (error?.code === '23505' && /uq_unidades_cliente_placa/.test(error.message)) {
-    return { ok: false, error: `Este cliente ya tiene una unidad con la placa ${fila.placa}. Búscala en su ficha en vez de registrarla otra vez.` }
+    const { data: otra } = await supabase.from('unidades').select('activo').eq('cliente_id', v.cliente_id).eq('placa', fila.placa ?? '').maybeSingle()
+    return { ok: false, error: placaRepetida(fila.placa ?? '', { editando, desactivada: otra?.activo === false }) }
   }
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!creada) return { ok: false, error: NO_TOCO_NADA }

@@ -26,8 +26,8 @@ export function AccionesCatalogo({
   esAdmin: boolean
 }) {
   const [confirmar, setConfirmar] = useState(false)
-  const estado = useAccion(cambiarEstadoCatalogo)
-  const borrado = useAccion(eliminarCatalogo)
+  const estado = useAccion(cambiarEstadoCatalogo, undefined, { documento: `${tipo}:${id}` })
+  const borrado = useAccion(eliminarCatalogo, undefined, { documento: `${tipo}:${id}` })
   const datos = (incluyeActivo: boolean) => {
     const form = new FormData()
     form.set('tipo', tipo)

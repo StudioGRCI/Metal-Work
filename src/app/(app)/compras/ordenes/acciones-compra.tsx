@@ -70,7 +70,7 @@ export function AccionesCompra({
   // ruta del primero. Al volver a abrir tras «No llegó la respuesta», la base
   // dice si aquel entró (`useIdDelEnvio`).
   const documento = useIdDelEnvio('documento_compra', undefined, id)
-  const envio = useAccion(mandarARecojo)
+  const envio = useAccion(mandarARecojo, undefined, { documento: id })
   // En la OC sin número, el título dice eso y la referencia va en la línea de
   // abajo: con todo en el título, en el teléfono ocupaba tres líneas.
   const { numero: titulo, referencia } = partesDeNombreDeOc(oc.nombre)

@@ -1896,7 +1896,7 @@ async function planoSinRespuesta(viewport) {
                            values ($1, $2, 'Plano de banco sin respuesta', $3, $4) returning id`, [orden.id, `QA-SUELTO-PL-${sello}`, orden.etapa_id, integrante])
   const { pagina: p, contexto } = await entrar('diseno.local@metalwork.test', viewport)
   await ir(p, `/ordenes/${orden.id}/planos?plano=${plano.id}`)
-  const archivo = p.locator('#version-archivo')
+  const archivo = p.locator(`#version-archivo-${plano.id}`)
   await archivo.waitFor({ state: 'attached', timeout: 30000 })
   const formulario = archivo.locator('xpath=ancestor::form')
   await formulario.locator('input[name="area_id"]').first().check()

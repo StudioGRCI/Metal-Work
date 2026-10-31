@@ -203,7 +203,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
 }
 
 function RevisionGasto({ id, ordenId }: { id: string; ordenId: string }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea, undefined, { siSeVa: { que: 'la revisión del gasto', enlace: 'Volver al gasto' } })
+  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea, undefined, { siSeVa: { que: 'la revisión del gasto', enlace: 'Volver al gasto' }, documento: id })
   return <form onSubmit={alEnviar} className="mt-3 space-y-2 border-t border-borde pt-3">
     <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
     <Campo etiqueta="Decisión de Administración" htmlFor={'decision-' + id}><Seleccion id={'decision-' + id} name="estado" defaultValue="APROBADO"><option value="APROBADO">Aprobar</option><option value="OBSERVADO">Observar</option></Seleccion></Campo>

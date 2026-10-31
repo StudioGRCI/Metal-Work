@@ -267,7 +267,15 @@
  *   1za-tipo-de-cambio y 1za-lo-que-enviaste. El rechazo de un formulario de
  *       pantalla (el tipo de cambio, Contabilidad) y el «no se sabe» de uno sin
  *       nombre (la regla de tardanzas, RR. HH.) también se dicen arriba.
- *   En las 1z y las 1za, la línea dicha en otra pantalla llega a la vista.
+ *   1zb. Lo que vuelve a medias o se resuelve en otro lado: el plano que
+ *       llega a un área y no a otra (la versión de otro plano no se lleva su
+ *       línea), el comprobante en borrador (completarlo en su fila la quita),
+ *       el PDF de la orden (de vuelta lo dice el campo, y el segundo rechazo
+ *       también sube a la vista), la sub-vista, dos formularios sin nombre, el
+ *       reenvío con otra casilla y el que vuelve por otra pestaña de su lista
+ *       con otros campos: los dos entran y se llevan su línea. Y la fila de
+ *       una lista: quitar otra fila no se lleva su línea, y su propio envío sí.
+ *   En las 1z, las 1za y las 1zb, la línea dicha en otra pantalla llega a la vista.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
  *       olvida al salir, algo que nadie alcanza con el dedo (R4).
@@ -276,7 +284,7 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las seis; 1y, las tres; 1z, las seis y las cinco 1za).
+ * 1x, las seis; 1y, las tres; 1z, las seis, las cinco 1za y las nueve 1zb).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -353,6 +361,20 @@ async function hasta(leer, cumple, ms = 20000) {
     ultimo = await Promise.resolve().then(leer).catch(() => null)
   }
   return ultimo
+}
+// La OT de un formulario del informe semanal con colaboradores en su equipo.
+// Recién vuelta a pintar, la pantalla puede no tener todavía sus OT en la
+// lista, o no haber despertado: se leen y se eligen otra vez.
+async function elegirOtConColaboradores(pagina, prefijo) {
+  for (let vez = 0; vez < 3; vez++) {
+    const ots = await hasta(() => pagina.locator(`#${prefijo}-ot option`).evaluateAll((l) => l.map((o) => o.value).filter(Boolean)), (l) => l?.length > 0, 10000)
+    for (const ot of ots ?? []) {
+      await pagina.locator(`#${prefijo}-ot`).selectOption('')
+      await pagina.locator(`#${prefijo}-ot`).selectOption(ot)
+      if ((await hasta(() => pagina.locator(`#${prefijo}-persona option`).count(), (n) => n > 1, 2000)) > 1) return ot
+    }
+  }
+  return null
 }
 const esperarSubidas = (pagina) => pagina.waitForFunction(() => !document.body.innerText.includes('subiendo…'), null, { timeout: 60000 })
 
@@ -2157,7 +2179,7 @@ if (corre('1h')) {
   const versiones = async () => Number((await consulta(`select count(*) n from ot_plano_versiones where plano_id = $1`, [plano.id]))[0].n)
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno)
   await ir(pagina, `${BASE}/ordenes/${orden.id}/planos?plano=${plano.id}`)
-  const archivo = pagina.locator('#version-archivo')
+  const archivo = pagina.locator(`#version-archivo-${plano.id}`)
   await archivo.waitFor({ state: 'attached', timeout: 30000 })
   const formulario = archivo.locator('xpath=ancestor::form')
   await formulario.getByLabel('Maestranza', { exact: true }).check()
@@ -2874,7 +2896,7 @@ if (corre('1t-motivo-arriba')) {
   corte.soltar()
   const porque = await hasta(() => sinRecargar(pagina), (t) => t.startsWith('Lo que enviaste no entró'), 20000)
   await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1t-motivo-arriba.png') })
-  comprobar(porque.startsWith('Lo que enviaste no entró, o no se sabe si entró: ') && porque !== NO_ENTRO && /existe/i.test(porque) && (await mismoDocumento(pagina)) && (await unidades()) === antes,
+  comprobar(porque.startsWith('Lo que enviaste no entró, o no se sabe si entró: ') && porque !== NO_ENTRO && /ya tiene una unidad con la placa/.test(porque) && (await mismoDocumento(pagina)) && (await unidades()) === antes,
     `[Ventas 1280] 1t-motivo-arriba. la unidad rechazada con la ventana cerrada: arriba dice por qué, sin mandar a un aviso que no está, y no recarga («${porque}»)`)
   const igual = botonDeArriba(pagina, 'Volver a cargar igual')
   await Promise.all([pagina.waitForEvent('load', { timeout: 30000 }).catch(() => {}), igual.click()])
@@ -4424,10 +4446,14 @@ if (corre('1za-la-ventana-de-la-orden')) {
       await unidadNueva()
       const enLaVentana = await hasta(() => v.locator('[role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), Boolean, 15000)
       const trasElRechazo = await idaQueNoSalio(pagina)
-      // Dice cuál placa, no «Ya existe un registro con esos datos» (cuadragésima tercera pasada).
+      // Dice cuál placa, no «Ya existe un registro con esos datos» (cuadragésima
+      // tercera pasada), en el campo de la placa, con el cursor ahí y dónde está
+      // la que ya existe: en «Unidad», detrás de la ventana (D5 de diseño,
+      // cuadragésima cuarta pasada).
       const [{ placa: guardada } = {}] = await unidades().then((l) => consulta(`select placa from unidades where id = $1`, [l[0]?.id ?? null]))
-      comprobar(enLaVentana === `Este cliente ya tiene una unidad con la placa ${guardada}. Búscala en su ficha en vez de registrarla otra vez.` && trasElRechazo === motivo && (await unidades()).length === 1 && (await ordenes()).length === 0,
-        `[Administración 1280] 1za-la-ventana-de-la-orden. la ventana rechazada dice dentro qué placa ya tiene el cliente y no se lleva el rechazo de la orden («${enLaVentana}», arriba «${trasElRechazo}»)`)
+      const campoPlaca = await v.locator('#nu-placa').evaluate((e) => ({ invalido: e.getAttribute('aria-invalid'), cursor: document.activeElement === e }))
+      comprobar(enLaVentana === `Este cliente ya tiene una unidad con la placa ${guardada}. Elígela en «Unidad», detrás de esta ventana.` && campoPlaca.invalido === 'true' && campoPlaca.cursor && trasElRechazo === motivo && (await unidades()).length === 1 && (await ordenes()).length === 0,
+        `[Administración 1280] 1za-la-ventana-de-la-orden. la ventana rechazada dice en el campo de la placa cuál tiene ya el cliente y dónde está, con el cursor ahí, y no se lleva el rechazo de la orden («${enLaVentana}», campo ${JSON.stringify(campoPlaca)}, arriba «${trasElRechazo}»)`)
       await v.getByRole('button', { name: 'Cerrar', exact: true }).click()
       await hasta(() => v.count(), (n) => n === 0, 5000)
       // La orden misma, enviada: entra con su unidad, y el rechazo de arriba se va.
@@ -4554,6 +4580,8 @@ if (corre('1zb-carroceria-sin-definir')) {
 // a enviar sin cambiar el archivo», que ya no se podía, y con las dos marcadas
 // otra vez la primera lo recibía repetido (N2 de funcionalidad). Dice, en
 // ámbar, a cuál llegó y a cuál volver a enviarla, y haciéndolo no se duplica.
+// Es de su plano: la versión de otro plano de la misma orden, enviada antes,
+// se la llevaba (F2 de funcionalidad, cuadragésima cuarta pasada).
 if (corre('1zb-plano-a-medias')) {
   const [orden] = await consulta(`select o.id, e.id as etapa_id, o.plan_etapas_manual from ordenes_trabajo o join ot_etapas e on e.orden_id = o.id
                                   where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
@@ -4561,22 +4589,26 @@ if (corre('1zb-plano-a-medias')) {
     ? (await consulta(`insert into ot_equipo_diseno (orden_id, nombre, funcion) values ($1, 'QA banco Diseño', 'COLABORADOR')
                        on conflict (orden_id, lower(btrim(nombre))) do update set nombre = excluded.nombre returning id`, [orden.id]))[0].id
     : null
-  const [plano] = await consulta(`insert into ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
-                                  values ($1, $2, 'Plano a medias del banco', $3, $4) returning id`, [orden.id, `QA-ZBP-${sello}`, orden.etapa_id, integrante])
-  const porArea = async () =>
-    Object.fromEntries((await consulta(`select a.nombre, count(*)::int n from ot_plano_versiones v join areas a on a.id = v.area_id where v.plano_id = $1 group by a.nombre`, [plano.id])).map((x) => [x.nombre, x.n]))
+  const nuevoPlano = async (numero, nombre) =>
+    (await consulta(`insert into ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
+                     values ($1, $2, $3, $4, $5) returning id`, [orden.id, numero, nombre, orden.etapa_id, integrante]))[0]
+  const plano = await nuevoPlano(`QA-ZBP-${sello}`, 'Plano a medias del banco')
+  const otro = await nuevoPlano(`QA-ZBP-B-${sello}`, 'Otro plano de la misma orden')
+  const porArea = async (id = plano.id) =>
+    Object.fromEntries((await consulta(`select a.nombre, count(*)::int n from ot_plano_versiones v join areas a on a.id = v.area_id where v.plano_id = $1 group by a.nombre`, [id])).map((x) => [x.nombre, x.n]))
   const pdf = { name: `QA-ZBP-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZBP-${sello}`, 'Plano a medias del banco']) }
   const direccion = `/ordenes/${orden.id}/planos?plano=${plano.id}`
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
   await ir(pagina, `${BASE}${direccion}`)
   await marcarDocumento(pagina)
-  const formulario = () => pagina.locator('#version-archivo').locator('xpath=ancestor::form')
-  await pagina.locator('#version-archivo').waitFor({ state: 'attached', timeout: 30000 })
+  const archivo = (id = plano.id) => pagina.locator(`#version-archivo-${id}`)
+  const formulario = (id = plano.id) => archivo(id).locator('xpath=ancestor::form')
+  await archivo().waitFor({ state: 'attached', timeout: 30000 })
   await formulario().getByLabel('Maestranza', { exact: true }).check()
   await formulario().getByLabel('Producción', { exact: true }).check()
   // La primera que sale es la que no llega: la que va primero en la lista.
   const [primera, segunda] = await formulario().locator('input[name="area_id"]:checked').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim()))
-  await pagina.locator('#version-archivo').setInputFiles(pdf)
+  await archivo().setInputFiles(pdf)
   corte.cortarSubida = 'planos-privados'
   await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
   await hasta(() => corte.retenidas, (n) => n > 0, 30000)
@@ -4595,23 +4627,36 @@ if (corre('1zb-plano-a-medias')) {
   const aLaVista = await lineaALaVista(pagina)
   const antes = await porArea()
   await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-plano-a-medias.png') })
-  comprobar(donde === '/' && dice === `La versión del plano llegó a ${segunda}. Falta: ${primera}: no se pudo cargar el PDF. Vuelve y envíala solo a ${primera}. Volver al plano` && tono === 'a-medias' && aLaVista && antes[segunda] === 1 && !antes[primera] && (await mismoDocumento(pagina)),
+  comprobar(donde === '/' && dice === `La versión del plano llegó a ${segunda}. Falta ${primera}: no se pudo cargar el PDF. Vuelve y envíala solo a ${primera}. Volver al plano` && tono === 'a-medias' && aLaVista && antes[segunda] === 1 && !antes[primera] && (await mismoDocumento(pagina)),
     `[Diseño 1280] 1zb-plano-a-medias. el PDF que llega a ${segunda} y no a ${primera} después de tocar el menú lo dice arriba en ámbar, sin «no se guardó», con a cuál volver a enviarla (${donde}, «${dice}», ${tono}, a la vista ${aLaVista}, ${JSON.stringify(antes)})`)
   // Hace lo que dice: vuelve y la envía solo a la que faltó.
   await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al plano' }).click({ timeout: 5000 }).catch(() => {})
   await pagina.waitForURL((u) => u.pathname + u.search === direccion, { timeout: 20000 }).catch(() => {})
-  await pagina.locator('#version-archivo').waitFor({ state: 'attached', timeout: 30000 })
+  await archivo().waitFor({ state: 'attached', timeout: 30000 })
   await quieta(pagina)
   const alVolver = await idaQueNoSalio(pagina)
+  // Antes, una versión del otro plano de la orden, a la que sí llegó: la línea
+  // del primero sigue, porque a ese todavía le falta.
+  const tarjetaOtro = pagina.locator(`#plano-${otro.id}`)
+  if ((await archivo(otro.id).count()) === 0) await tarjetaOtro.getByRole('button', { name: /^PDF y revisiones/ }).click()
+  await archivo(otro.id).waitFor({ state: 'attached', timeout: 15000 })
+  await formulario(otro.id).getByLabel(segunda, { exact: true }).check()
+  await archivo(otro.id).setInputFiles({ name: `QA-ZBP-B-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZBP-B-${sello}`, 'Otro plano de la misma orden']) })
+  await formulario(otro.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  const delOtro = await hasta(() => porArea(otro.id), (x) => x?.[segunda] === 1, 30000)
+  await pagina.waitForTimeout(1500)
+  const trasElOtro = await idaQueNoSalio(pagina)
+  comprobar(alVolver === dice.replace(/ Volver al plano$/, '') && delOtro?.[segunda] === 1 && trasElOtro === alVolver,
+    `[Diseño 1280] 1zb-plano-a-medias. de vuelta dice lo mismo sin el enlace, y la versión de otro plano de la orden, que entra, no se lleva la línea del que sigue a medias (otro ${JSON.stringify(delOtro)}, al volver «${alVolver}», tras el otro «${trasElOtro}»)`)
   await formulario().getByLabel(primera, { exact: true }).check()
-  await pagina.locator('#version-archivo').setInputFiles(pdf)
+  await archivo().setInputFiles(pdf)
   await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
   const despues = await hasta(porArea, (x) => x?.[primera] === 1, 30000)
   await pagina.waitForTimeout(1500)
   const alFinal = await idaQueNoSalio(pagina)
   const enElFormulario = limpio((await formulario().locator('[role="status"]').allInnerTexts().catch(() => [])).join(' '))
-  comprobar(alVolver === dice.replace(/ Volver al plano$/, '') && despues?.[primera] === 1 && despues?.[segunda] === 1 && alFinal === '' && enElFormulario.includes(`Áreas: ${primera}.`),
-    `[Diseño 1280] 1zb-plano-a-medias. de vuelta dice lo mismo sin el enlace; enviada solo a ${primera}, cada área tiene una versión, sin duplicar, y la línea se va (${JSON.stringify(despues)}, al volver «${alVolver}», al final «${alFinal}», «${enElFormulario}»)`)
+  comprobar(despues?.[primera] === 1 && despues?.[segunda] === 1 && alFinal === '' && enElFormulario.includes(`Áreas: ${primera}.`),
+    `[Diseño 1280] 1zb-plano-a-medias. enviada solo a ${primera}, cada área tiene una versión, sin duplicar, y la línea se va (${JSON.stringify(despues)}, al final «${alFinal}», «${enElFormulario}»)`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -4620,6 +4665,9 @@ if (corre('1zb-plano-a-medias')) {
 // persona ya en otra pantalla: arriba decía «El comprobante no se guardó»
 // aunque había quedado (R7 de realización). Lo dice como lo dice la acción, en
 // ámbar. Storage dice que no por un disparador propio, que se quita al final.
+// Completado en su fila, como pide la línea, la línea se va: seguía pidiendo
+// completarlo (F1 de funcionalidad y R11 de realización, cuadragésima cuarta
+// pasada).
 if (corre('1zb-comprobante-en-borrador')) {
   const proveedor = `QA_ZBB proveedor ${sello}`
   const numero = `F777-${sello}`
@@ -4665,6 +4713,21 @@ if (corre('1zb-comprobante-en-borrador')) {
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-comprobante-en-borrador.png') })
     comprobar(donde === '/tesoreria/tipo-de-cambio' && dice.startsWith(`El comprobante ${numero} quedó en borrador sin su PDF`) && dice.endsWith(' Volver al comprobante') && !dice.includes('El comprobante no se guardó') && tono === 'a-medias' && aLaVista && quedo.length === 1 && quedo[0].estado === 'BORRADOR' && (await mismoDocumento(pagina)),
       `[Contabilidad 1280] 1zb-comprobante-en-borrador. el comprobante que queda en borrador sin su PDF después de tocar el menú lo dice arriba en ámbar, como quedó, y no «no se guardó» (${donde}, «${dice}», ${tono}, a la vista ${aLaVista}, ${JSON.stringify(quedo)})`)
+    // Hace lo que dice: vuelve y lo completa en su fila, ya con Storage de acuerdo.
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al comprobante' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === '/adquisiciones', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    await consulta(`drop trigger if exists qa_zbb_storage_dice_que_no on storage.objects`)
+    const fila = pagina.locator('tr, li, article').filter({ hasText: numero }).filter({ has: pagina.getByRole('button', { name: 'Completar comprobante' }) }).filter({ visible: true }).first()
+    await fila.locator('input[type="file"][name="pdf"]').setInputFiles({ name: `QA-ZBB-${sello}-b.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto(['FACTURA ELECTRONICA', numero, 'IMPORTE TOTAL: S/ 59.00']) })
+    await hasta(() => fila.getByText('Leyendo la factura…').count(), (n) => n === 0, 20000)
+    await fila.getByRole('button', { name: 'Completar comprobante' }).click()
+    const completo = await hasta(filas, (l) => l?.[0]?.estado !== 'BORRADOR', 30000)
+    await pagina.waitForTimeout(1500)
+    const alFinal = await idaQueNoSalio(pagina)
+    comprobar(alVolver === dice.replace(/ Volver al comprobante$/, '') && completo?.[0]?.estado === 'REGISTRADA' && alFinal === '',
+      `[Contabilidad 1280] 1zb-comprobante-en-borrador. de vuelta lo sigue diciendo, y completado en su fila la línea se va (${pagina.url().replace(BASE, '')}, al volver «${alVolver}», ${JSON.stringify(completo)}, al final «${alFinal}»)`)
     comprobar(errores.length === 0, `[Contabilidad 1280] 1zb-comprobante-en-borrador. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   } finally {
     await consulta(`drop trigger if exists qa_zbb_storage_dice_que_no on storage.objects`)
@@ -4739,11 +4802,7 @@ if (corre('1zb-dos-sin-nombre')) {
   // Una OT con colaboradores en su equipo, y la tarea con la entrega antes del inicio: la acción la rechaza sin escribir.
   const tarea = pagina.locator('form', { has: pagina.locator('#tarea-componente') })
   const llenarLaTarea = async () => {
-    const ots = await pagina.locator('#tarea-ot option').evaluateAll((l) => l.map((o) => o.value).filter(Boolean))
-    for (const ot of ots) {
-      await pagina.locator('#tarea-ot').selectOption(ot)
-      if ((await pagina.locator('#tarea-persona option').count()) > 1) break
-    }
+    await elegirOtConColaboradores(pagina, 'tarea')
     await pagina.locator('#tarea-persona').selectOption({ index: 1 })
     await pagina.locator('#tarea-tipo').selectOption({ index: 1 })
     await pagina.locator('#tarea-componente').fill(componente)
@@ -4805,6 +4864,10 @@ if (corre('1zb-dos-sin-nombre')) {
 // El PDF de la orden se sube al elegirlo, fuera de `useAccion`: si Storage no
 // lo recibe con la persona ya en otra pantalla, no lo decía nadie hasta volver
 // a la orden (N3 de funcionalidad). Arriba lo dice, con el camino de vuelta.
+// De vuelta en la orden lo dice el campo, y arriba ya no: era el mismo motivo
+// dos veces (F5 de funcionalidad). Y el segundo rechazo del mismo PDF, el del
+// reintento, con la página bajada, sube a la vista como el primero: quedaba
+// debajo de la barra (V1 de la crítica, cuadragésima cuarta pasada).
 if (corre('1zb-pdf-de-la-orden')) {
   const [ot] = await consulta(
     `select o.id, o.numero from ordenes_trabajo o
@@ -4836,11 +4899,217 @@ if (corre('1zb-pdf-de-la-orden')) {
     await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver a la orden' }).click({ timeout: 5000 }).catch(() => {})
     await pagina.waitForURL((u) => u.pathname === `/ordenes/${ot.id}`, { timeout: 20000 }).catch(() => {})
     await quieta(pagina)
+    await pagina.waitForTimeout(800)
+    const motivo = dice.replace(/^El PDF de la orden no se guardó\. /, '').replace(/ Volver a la orden$/, '')
     const alVolver = await idaQueNoSalio(pagina)
-    comprobar(new URL(pagina.url()).pathname === `/ordenes/${ot.id}` && alVolver === dice.replace(/ Volver a la orden$/, ''),
-      `[Administración 1280] 1zb-pdf-de-la-orden. de vuelta en la orden dice el motivo, sin el enlace (${pagina.url().replace(BASE, '')}, «${alVolver}»)`)
+    const enElCampo = limpio(await campo.locator('xpath=..').innerText().catch(() => ''))
+    comprobar(new URL(pagina.url()).pathname === `/ordenes/${ot.id}` && alVolver === '' && enElCampo.includes(motivo),
+      `[Administración 1280] 1zb-pdf-de-la-orden. de vuelta en la orden el motivo lo dice el campo, y arriba ya no (${pagina.url().replace(BASE, '')}, arriba «${alVolver}», campo «${enElCampo}»)`)
+    // Otra vez, como pide el campo, y otra vez se va; ahora baja un poco la lista antes de que vuelva el rechazo.
+    const r0 = corte.retenidas
+    corte.cortarSubida = 'adjuntos-ot'
+    await campo.setInputFiles({ name: `QA-ZBO-${sello}-2.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`Orden ${ot.numero}`, `QA_ZBO ${sello} 2`]) })
+    await hasta(() => corte.retenidas, (n) => n > r0, 30000)
+    await (await enlaceVisible(pagina, '/ordenes')).click()
+    await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    // Next sube la pantalla nueva al llegar: la rueda, antes, se perdía.
+    await pagina.waitForTimeout(1500)
+    await pagina.mouse.move(640, 500)
+    await pagina.mouse.wheel(0, 60)
+    await pagina.waitForTimeout(800)
+    const bajada = await pagina.evaluate(() => Math.round(window.scrollY))
+    corte.soltar()
+    const otraVez = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 20000)
+    await pagina.waitForTimeout(1500)
+    const otraVezALaVista = await lineaALaVista(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-pdf-de-la-orden-otra-vez.png') })
+    comprobar(otraVez === dice && bajada > 0 && otraVezALaVista && (await pdfs()) === 0,
+      `[Administración 1280] 1zb-pdf-de-la-orden. el segundo rechazo del mismo PDF, con la lista bajada ${bajada} px, sube a la vista como el primero («${otraVez}», a la vista ${otraVezALaVista})`)
   }
   comprobar(errores.length === 0, `[Administración 1280] 1zb-pdf-de-la-orden. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El mismo formulario enviado otra vez con otra casilla marcada: se lo
+// reconocía por las claves del envío, y una casilla de más lo hacía otro; el
+// reenvío entraba y arriba seguía «no se guardó» (R10 de realización,
+// cuadragésima cuarta pasada).
+if (corre('1zb-otra-casilla')) {
+  const entrega = `QA_ZBC entrega ${sello}`
+  const entregas = async () => (await consulta(`select count(*)::int n from diseno_entregas_planos where tipo_plano = $1`, [entrega]))[0].n
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.colaborador, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/diseno/informe-semanal`)
+  await marcarDocumento(pagina)
+  const formEntrega = pagina.locator('form', { has: pagina.locator('#entrega-tipo') })
+  const casillas = formEntrega.locator('input[name="entregado_a"]')
+  // Una OT con colaboradores en su equipo.
+  const llenar = async () => {
+    await elegirOtConColaboradores(pagina, 'entrega')
+    await pagina.locator('#entrega-persona').selectOption({ index: 1 })
+    await pagina.locator('#entrega-tipo').fill(entrega)
+    await pagina.locator('#entrega-planos').fill('1')
+  }
+  // Sin ninguna área marcada: la acción la rechaza sin escribir.
+  await llenar()
+  for (const c of await casillas.all()) if (await c.isChecked()) await c.uncheck()
+  corte.marca = entrega
+  await formEntrega.getByRole('button', { name: 'Registrar entrega' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await (await enlaceVisible(pagina, '/')).click()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+  await quieta(pagina)
+  const aLaVista = await lineaALaVista(pagina)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver adonde lo enviaste' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/diseno/informe-semanal', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const alVolver = await idaQueNoSalio(pagina)
+  // Otra vez, ahora con un área: las que vuelvan marcadas o, si no vuelve ninguna, la primera.
+  await llenar()
+  const marcadas = await casillas.evaluateAll((l) => l.filter((c) => c.checked).length)
+  if (marcadas === 0) await casillas.first().check()
+  await formEntrega.getByRole('button', { name: 'Registrar entrega' }).click()
+  const entro = await hasta(entregas, (n) => n === 1, 30000)
+  await pagina.waitForTimeout(1500)
+  const alFinal = await idaQueNoSalio(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-otra-casilla.png') })
+  comprobar(/^Lo que enviaste no se guardó\. .+ Volver adonde lo enviaste$/.test(dice) && aLaVista && alVolver === dice.replace(/ Volver adonde lo enviaste$/, '') && entro === 1 && alFinal === '' && (await mismoDocumento(pagina)),
+    `[Diseño colaborador 1280] 1zb-otra-casilla. la entrega rechazada sin áreas, enviada otra vez con ${Math.max(marcadas, 1)} marcada(s), entra y se lleva su línea («${dice}», al volver «${alVolver}», ${entro} entregas, al final «${alFinal}»)`)
+  comprobar(errores.length === 0, `[Diseño colaborador 1280] 1zb-otra-casilla. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Una fila de una lista con su propio envío, rechazado con la persona ya en
+// otra pantalla: todas las filas mandan los mismos campos, y quitar otra fila
+// se llevaba la línea de la primera, que seguía sin quitarse (la clase de F2
+// de funcionalidad, cuadragésima cuarta pasada). Cada fila dice cuál es, y
+// solo su propio envío se la lleva. La A se rechaza porque, mientras tanto,
+// pasó a ser de otra persona; vuelve a ser suya antes de quitarla otra vez.
+if (corre('1zb-otra-fila')) {
+  const [a, b] = [`QA_ZBF A ${sello}`, `QA_ZBF B ${sello}`]
+  const tarea = (componente) => consulta(`select id, creado_por from diseno_tareas where componente = $1`, [componente])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.colaborador, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/diseno/informe-semanal`)
+    const formTarea = pagina.locator('form', { has: pagina.locator('#tarea-componente') })
+    // Dos tareas de la semana, registradas por la misma persona.
+    for (const componente of [a, b]) {
+      await elegirOtConColaboradores(pagina, 'tarea')
+      await pagina.locator('#tarea-persona').selectOption({ index: 1 })
+      await pagina.locator('#tarea-tipo').selectOption({ index: 1 })
+      await pagina.locator('#tarea-componente').fill(componente)
+      await pagina.locator('#tarea-inicio').fill(diaDeLima())
+      await pagina.locator('#tarea-fin').fill(diaDeLima())
+      await formTarea.getByRole('button', { name: 'Registrar tarea' }).click()
+      await hasta(() => tarea(componente), (l) => l?.length === 1, 30000)
+    }
+    const quitar = (componente) => pagina.getByRole('button', { name: `Quitar la tarea ${componente}` })
+    await quitar(b).waitFor({ timeout: 20000 })
+    await quieta(pagina)
+    await marcarDocumento(pagina)
+    const [filaA] = await tarea(a)
+    await consulta(`update diseno_tareas set creado_por = (select id from usuarios where id <> $2 order by id limit 1) where id = $1`, [filaA.id, filaA.creado_por])
+    corte.marca = filaA.id
+    await quitar(a).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await (await enlaceVisible(pagina, '/')).click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+    await quieta(pagina)
+    const aLaVista = await lineaALaVista(pagina)
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver adonde lo enviaste' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === '/diseno/informe-semanal', { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    // La A vuelve a ser suya. Quitar la B entra y no se lleva la línea de la A.
+    await consulta(`update diseno_tareas set creado_por = $2 where id = $1`, [filaA.id, filaA.creado_por])
+    await quitar(b).click()
+    const sinB = await hasta(() => tarea(b), (l) => l?.length === 0, 30000)
+    await quitar(a).waitFor({ timeout: 20000 })
+    await pagina.waitForTimeout(1500)
+    const trasLaOtra = await idaQueNoSalio(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-otra-fila.png') })
+    comprobar(/^Lo que enviaste no se guardó\. No se quitó: .+ Volver adonde lo enviaste$/.test(dice) && aLaVista && alVolver === dice.replace(/ Volver adonde lo enviaste$/, '') && sinB?.length === 0 && trasLaOtra === alVolver,
+      `[Diseño colaborador 1280] 1zb-otra-fila. quitar otra fila de la lista, que entra, no se lleva la línea de la fila rechazada («${dice}», al volver «${alVolver}», tras la otra «${trasLaOtra}»)`)
+    // La A, quitada otra vez: entra y se lleva su línea.
+    await quitar(a).click()
+    const sinA = await hasta(() => tarea(a), (l) => l?.length === 0, 30000)
+    await pagina.waitForTimeout(1500)
+    const alFinal = await idaQueNoSalio(pagina)
+    comprobar(sinA?.length === 0 && alFinal === '' && (await mismoDocumento(pagina)),
+      `[Diseño colaborador 1280] 1zb-otra-fila. la fila rechazada, quitada otra vez, entra y se lleva su línea (${sinA?.length ?? '?'} filas, al final «${alFinal}»)`)
+    comprobar(errores.length === 0, `[Diseño colaborador 1280] 1zb-otra-fila. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    await consulta(`delete from diseno_tareas where componente = any($1)`, [[a, b]])
+    await contexto.close()
+  }
+}
+
+// El comprobante rechazado en una pestaña de Facturas, con la persona ya en
+// otra pantalla, y corregido de vuelta por el menú, en otra pestaña de la
+// lista y sin la OC que había marcado (otros campos: sin «solo una parte»):
+// entraba y arriba seguía «no se guardó» (F3 de funcionalidad, cuadragésima
+// cuarta pasada). Se reconoce por su ruta y por su nombre, y su envío se la lleva.
+if (corre('1zb-otra-pestana-de-la-lista')) {
+  const [malo, bueno] = [`QA-ZBL-${sello}`, `QA-ZBL-B-${sello}`]
+  const filas = (numero) => consulta(`select estado from adquisiciones where numero_documento = $1`, [numero])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.contabilidad, { width: 1280, height: 900 })
+  const llenar = async (numero, vencimiento) => {
+    await pagina.locator('#adq-tipo').selectOption('OTRO')
+    await pagina.locator('#adq-proveedor').fill(`QA_ZBL proveedor ${sello}`)
+    await pagina.locator('#adq-pdf').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COMPROBANTE ${numero}`, 'Prueba del banco']) })
+    await hasta(() => pagina.getByText('Leyendo la factura…').count(), (n) => n === 0, 20000)
+    await pagina.waitForTimeout(500)
+    await pagina.locator('#adq-numero').fill(numero)
+    await pagina.locator('#adq-emision').fill(diaDeLima())
+    await pagina.locator('#adq-condicion').selectOption('CREDITO')
+    await pagina.locator('#adq-vencimiento').fill(vencimiento)
+    await pagina.locator('#adq-total').fill('100')
+  }
+  await ir(pagina, `${BASE}/adquisiciones?vista=sin-factura`)
+  await marcarDocumento(pagina)
+  // Una OC que espera su factura, marcada: suma al formulario «solo una parte».
+  const oc = pagina.locator('#nuevo-comprobante input[name="ordenes_compra"]:not([disabled])').first()
+  const conOc = (await oc.count()) > 0
+  if (conOc) await oc.check()
+  await llenar(malo, diaDeLima(-1))
+  const camposAntes = await pagina.locator('#adq-numero').evaluate((e) => [...new Set([...e.form.elements].map((x) => x.name).filter(Boolean))].sort().join(','))
+  corte.marca = malo
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await (await enlaceVisible(pagina, '/tesoreria/tipo-de-cambio')).click()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.pathname === '/tesoreria/tipo-de-cambio', { timeout: 30000 }).catch(() => {})
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 30000)
+  await quieta(pagina)
+  const aLaVista = await lineaALaVista(pagina)
+  // De vuelta por el menú y «Registrar factura»: otra pestaña de la lista.
+  await (await enlaceVisible(pagina, '/adquisiciones')).click()
+  await pagina.waitForURL((u) => u.pathname === '/adquisiciones', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  await (await enlaceVisible(pagina, '/adquisiciones?vista=facturas#nuevo-comprobante')).click()
+  await pagina.waitForURL((u) => u.search.includes('vista=facturas'), { timeout: 20000 }).catch(() => {})
+  await pagina.locator('#adq-numero').waitFor({ timeout: 20000 })
+  await quieta(pagina)
+  const alVolver = await idaQueNoSalio(pagina)
+  await llenar(bueno, diaDeLima())
+  const camposDespues = await pagina.locator('#adq-numero').evaluate((e) => [...new Set([...e.form.elements].map((x) => x.name).filter(Boolean))].sort().join(','))
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  const entro = await hasta(() => filas(bueno), (l) => l?.length === 1, 30000)
+  await pagina.waitForTimeout(2000)
+  const alFinal = await idaQueNoSalio(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-otra-pestana-de-la-lista.png') })
+  comprobar(conOc, `[Contabilidad 1280] 1zb-otra-pestana-de-la-lista. hay una OC que espera su factura para cambiar los campos del formulario`)
+  comprobar(dice.startsWith('El comprobante no se guardó. ') && dice.endsWith(' Volver al comprobante') && aLaVista && (await filas(malo)).length === 0 && alVolver === dice &&
+    (!conOc || camposAntes !== camposDespues) && entro?.length === 1 && alFinal === '' && (await mismoDocumento(pagina)),
+    `[Contabilidad 1280] 1zb-otra-pestana-de-la-lista. el comprobante rechazado en «Sin factura», corregido de vuelta por el menú en «Facturas» con otros campos, entra y se lleva su línea («${dice}», al volver «${alVolver}», campos ${camposAntes === camposDespues ? 'iguales' : 'distintos'}, ${entro?.length ?? 0} comprobantes, al final «${alFinal}»)`)
+  comprobar(errores.length === 0, `[Contabilidad 1280] 1zb-otra-pestana-de-la-lista. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

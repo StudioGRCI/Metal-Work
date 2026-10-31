@@ -126,7 +126,7 @@ function TarjetaPersona({ persona: p, marcas, marca, anula }: { persona: Persona
   const envio = useEnvio(marcarAsistencia, (r) => {
     setMarcaId(crypto.randomUUID())
     setAviso(r.mensaje ?? null)
-  })
+  }, { documento: p.id })
   const vigentes = marcas.filter((m) => m.anulado_en === null)
   const ingreso = vigentes.find((m) => m.tipo === 'INGRESO')
   const salida = vigentes.find((m) => m.tipo === 'SALIDA')

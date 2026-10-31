@@ -17,6 +17,12 @@ export type ResultadoAccion<T = never> =
        * otra no. «No se guardó» delante mentía (cuadragésima tercera pasada).
        */
       arriba?: string
+      /**
+       * De qué documento es lo que quedó a medias: lo que lo resuelve en otro
+       * lado (completar el comprobante en su fila) quita la línea
+       * (`yaSeResolvio`).
+       */
+      documento?: string
     }
 
 /**

@@ -135,7 +135,7 @@ export function SubirDocumentoCompra({ ordenCompraId, solicitudId, tipoInicial, 
     setAvisaTesoreria(r.datos?.avisaTesoreria ?? false)
     if (!alCerrar) enfocarTipo.current = true
     empezarOtro()
-  }, { alYaEntrar: empezarOtro, siSeVa: { que: 'el documento de la compra', enlace: 'Volver a la compra' } })
+  }, { alYaEntrar: empezarOtro, siSeVa: { que: 'el documento de la compra', enlace: 'Volver a la compra' }, documento: ordenCompraId })
   const yaEntro = yaEntroLaPrimeraVez(error)
   const trabado = yaEntro && entroCon === id
   // El botón se apaga mientras envía y el cursor caía a la página: Tab salía de

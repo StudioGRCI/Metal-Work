@@ -284,7 +284,7 @@ export function TableroMateriales({
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
   // Lleva dinero: su rechazo con la persona ya en otra pantalla lo nombra arriba
   // (H5 de diseño, cuadragésima tercera pasada), como los demás de este tablero.
-  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra, undefined, { siSeVa: { que: 'el precio de la compra', enlace: 'Volver a la compra' } })
+  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra, undefined, { siSeVa: { que: 'el precio de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
@@ -309,7 +309,7 @@ function detalleDelRecojo(compra: CompraMaterialPendiente): string {
  * aprobación. «Mandar a recojo» queda para las compras de antes.
  */
 function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const envio = useAccion(mandarARecojo)
+  const envio = useAccion(mandarARecojo, undefined, { documento: compra.orden_compra_id ?? undefined })
   // En qué va ya lo dice la cabecera de la tarjeta.
   if (!puedeIrARecojo(compra)) return null
   return <div className="flex flex-wrap items-center gap-2">
@@ -325,7 +325,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
 }
 
 function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra, undefined, { siSeVa: { que: 'el pago de la compra', enlace: 'Volver a la compra' } })
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra, undefined, { siSeVa: { que: 'el pago de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago: {condicionDePago(compra.condicion_pago, compra.dias_credito)} · {compra.moneda === 'USD' ? 'Dólares' : 'Soles'}</p>
   return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
@@ -445,7 +445,7 @@ function LineaMaterial({
 }
 
 function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
-  const { alEnviar, enviando, error } = useEnvio(revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-center gap-2">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <input type="hidden" name="decision" value="STOCK" />
@@ -456,7 +456,7 @@ function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
 }
 
 function DecisionMaterial({ linea, tipo }: { linea: LineaAtencionMaterial; tipo: 'diseno' | 'almacen' }) {
-  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-end gap-2 border-t border-borde pt-3">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <Campo etiqueta={tipo === 'diseno' ? 'Decisión de Diseño' : 'Revisión de Almacén'} htmlFor={`decision-${tipo}-${linea.detalle_id}`}>
@@ -539,7 +539,7 @@ function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,p
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion, undefined, { siSeVa: { que: 'la llegada a almacén', enlace: 'Volver a la compra' } })
+  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion, undefined, { siSeVa: { que: 'la llegada a almacén', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   const restante = Number(compra.cantidad_pendiente ?? 0)
   return (
     <form onSubmit={alEnviar} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-2">
@@ -582,7 +582,7 @@ function FormularioDespacho({
     const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension
     datos.delete('foto');datos.set('foto_ruta',ruta)
     return subirArchivoPrivado({bucket:'evidencias-almacen',ruta,archivo,contentType:archivo.type,registrar:()=>despacharMaterial(null,datos)})
-  }, undefined, { siSeVa: { que: 'la entrega con su foto', enlace: 'Volver a la entrega' } })
+  }, undefined, { siSeVa: { que: 'la entrega con su foto', enlace: 'Volver a la entrega' }, documento: linea.detalle_id ?? undefined })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />

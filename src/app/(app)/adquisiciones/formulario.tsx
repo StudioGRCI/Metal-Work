@@ -9,7 +9,7 @@ import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisici
 import { nombreDeOc, ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
 import { avisosDelDetector, numeroDeFactura, numeroDeOc, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio, yaSeResolvio } from '@/lib/envio'
 import { fecha as dia, moneda as dinero } from '@/lib/format'
 import { ACEPTA_XML_FACTURA, camposDeLectura, leerFactura, leerFacturaDeEnlace } from '@/lib/leer-factura'
 
@@ -144,6 +144,7 @@ export function FormularioAdquisicion({ borradores, ...props }: Props & { borrad
 
 /** Cómo se reconoce un comprobante en la lista: proveedor y número son únicos juntos. */
 const claveDeBorrador = (proveedor: string, numero: string) => `${proveedor.trim()}|${numero.trim()}`
+const documentoDelBorrador = (proveedor: string, numero: string) => `comprobante:${claveDeBorrador(proveedor, numero)}`
 
 /** Los avisos de la acción que dejan el comprobante creado, en borrador. */
 const quedoEnBorrador = (error: string) => /\bborrador\b/.test(error)
@@ -207,11 +208,13 @@ function Formulario({
     async (previo: unknown, datos: FormData) => {
       const resultado = await registrarAdquisicion(previo, datos)
       if (!resultado.ok && quedoEnBorrador(resultado.error)) {
-        alQuedarEnBorrador(resultado.error, String(datos.get('proveedor') ?? ''), String(datos.get('numero_documento') ?? ''))
+        const [proveedor, numero] = [String(datos.get('proveedor') ?? ''), String(datos.get('numero_documento') ?? '')]
+        alQuedarEnBorrador(resultado.error, proveedor, numero)
         // Quedó creado: con la persona ya en otra pantalla, la línea de arriba
         // lo dice tal cual y no «El comprobante no se guardó» (R7 de
-        // realización, cuadragésima tercera pasada).
-        return { ...resultado, arriba: resultado.error }
+        // realización, cuadragésima tercera pasada), hasta que se complete en
+        // su fila (`CompletarAdquisicion`).
+        return { ...resultado, arriba: resultado.error, documento: documentoDelBorrador(proveedor, numero) }
       }
       return resultado
     },
@@ -1018,10 +1021,18 @@ function AvisoDeMonto({
   )
 }
 
-/** `pideRuc`: la factura de compra que quedó en borrador sin RUC no se registra sin él. */
-export function CompletarAdquisicion({ id, pideRuc = false }: { id: string; pideRuc?: boolean }) {
-  const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion, undefined, {
+/**
+ * `pideRuc`: la factura de compra que quedó en borrador sin RUC no se registra
+ * sin él. `proveedor` y `numero`: los del borrador, para quitar la línea de
+ * arriba que pedía completarlo (F1 de funcionalidad y R11 de realización,
+ * cuadragésima cuarta pasada).
+ */
+export function CompletarAdquisicion({ id, proveedor, numero, pideRuc = false }: { id: string; proveedor: string; numero: string; pideRuc?: boolean }) {
+  const completado = () => yaSeResolvio(documentoDelBorrador(proveedor, numero))
+  const { alEnviar, enviando, error, resultado, limpiar } = useEnvio(completarAdquisicion, completado, {
     siSeVa: { que: 'lo que completaste del comprobante', enlace: 'Volver al comprobante' },
+    alYaEntrar: completado,
+    documento: id,
   })
   // El detector también lee el PDF pendiente; el aviso sale en la lista al registrarlo.
   const [lectura, setLectura] = useState<LecturaFactura | null>(null)

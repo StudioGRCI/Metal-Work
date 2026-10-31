@@ -146,7 +146,7 @@ export function FilaMaterial({
   puedeEditar: boolean
 }) {
   const [editando, setEditando] = useState(false)
-  const estado = useEnvio(cambiarEstadoMaterial)
+  const estado = useEnvio(cambiarEstadoMaterial, undefined, { documento: material.id })
 
   return (
     <TR className={material.activo ? undefined : 'opacity-60'}>

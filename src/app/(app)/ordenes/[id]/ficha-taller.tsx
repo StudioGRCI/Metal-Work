@@ -437,7 +437,7 @@ function Verificacion({
  * qué paso era.
  */
 function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
-  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar)
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar, { documento: paso.id })
 
   return (
     <form onSubmit={alEnviar} className="mt-1 space-y-1">
@@ -497,6 +497,7 @@ function Casilla({
         etiqueta={etiqueta}
         className="mx-auto"
         accion={marcarVerificacion}
+        documento={`${pasoId}:${avance}`}
         datos={(marcar) => {
           const datos = new FormData()
           datos.set('id', pasoId)
@@ -533,6 +534,7 @@ function Visto({
   etiqueta,
   accion,
   datos,
+  documento,
   className,
 }: {
   marcado: boolean
@@ -541,11 +543,13 @@ function Visto({
   /** La acción que marca o desmarca, y los datos que le van según el sentido. */
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
   datos: (marcar: boolean) => FormData
+  /** De cuál casilla es (`documento` de `useAccion`): el toque de otra no se lleva la línea de esta. */
+  documento: string
   className?: string
 }) {
   // useAccion: un toque en vuelo a la vez y el repintado al terminar, sin el
   // par `useState(enviando)` + `router.refresh()` a mano que tenía antes.
-  const { ejecutar, enviando, error } = useAccion(accion)
+  const { ejecutar, enviando, error } = useAccion(accion, undefined, { documento })
 
   return (
     <>
@@ -692,6 +696,7 @@ function Accesorios({
                     puedeEditar={puedeEditar}
                     etiqueta={`Visto bueno de ${a.descripcion}`}
                     accion={marcarAccesorio}
+                    documento={a.id}
                     datos={(marcar) => {
                       const datos = new FormData()
                       datos.set('id', a.id)

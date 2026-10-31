@@ -42,8 +42,8 @@ function Falla({ texto, ref }: { texto: string | null; ref?: Ref<HTMLParagraphEl
  */
 export function RevisarCotizacion({ id, conOrden }: { id: string; conOrden: boolean }) {
   const [rechazando, setRechazando] = useState(false)
-  const aprobar = useEnvio(revisarCotizacionPdf)
-  const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false))
+  const aprobar = useEnvio(revisarCotizacionPdf, undefined, { documento: id })
+  const rechazar = useEnvio(revisarCotizacionPdf, () => setRechazando(false), { documento: id })
 
   if (rechazando) {
     return (
@@ -481,7 +481,7 @@ export function CorregirCotizacion({
 /** Quitar la que se subió mal, mientras nadie la revisó y nunca tuvo orden (migraciones 102 y 20261020161000). La rechazada se corrige: no se quita. */
 export function QuitarCotizacion({ id, numero }: { id: string; numero: string }) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(quitarCotizacionPdf, undefined, { documento: id })
 
   if (!confirmando) {
     return (

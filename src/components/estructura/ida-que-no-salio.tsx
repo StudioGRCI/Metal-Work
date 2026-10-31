@@ -84,6 +84,12 @@ export function IdaQueNoSalio() {
   // la del formulario, no la del enlace: lo que ya había quedado lleva al
   // reporte, y con la ida todavía en cola, en el formulario, se quitaba.
   const pareceSuya = Boolean(ida?.de && !ahi && comoDireccion(ida.desde ?? ida.url) !== aqui && sigueMontado(ida.de))
+  // Con la pantalla pedida todavía en camino, el rechazo nace en la dirección
+  // de su formulario, que sigue montado y lo dice junto a su botón: arriba se
+  // asomaba hasta que llegaba la otra, y el lector lo decía dos veces (H1 de la
+  // crítica, cuadragésima cuarta pasada). Solo calla: al llegar la pantalla
+  // pedida, si el formulario se fue con la vieja, la línea lo dice.
+  const loDiceEl = Boolean(ida?.rechazo && ahi && sigueMontado(ida.de))
   const [, repintar] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
     if (llego) return ponerIdaQueNoSalio(null)
@@ -92,7 +98,7 @@ export function IdaQueNoSalio() {
     else repintar()
   }, [llego, pareceSuya, ida])
 
-  const visible = ida && !llego && !pareceSuya && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
+  const visible = ida && !llego && !pareceSuya && !loDiceEl && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
 
   // La línea nace en el flujo, debajo de la barra pegada de arriba. Si la
   // página estaba bajada unos pocos píxeles, el navegador la baja lo que mide
@@ -100,21 +106,23 @@ export function IdaQueNoSalio() {
   // de la pantalla nueva se ve: quedaba entera debajo de la barra (A de diseño
   // y R6 de realización, cuadragésima segunda y tercera pasadas). Hasta que se
   // vea una vez, se sube lo justo; si la persona bajó más que eso, no se la
-  // mueve.
+  // mueve. Cada línea nueva cuenta, aunque diga lo mismo: el segundo rechazo
+  // del mismo PDF, el del reintento que la línea pide, quedaba debajo de la
+  // barra (V1 de la crítica, cuadragésima cuarta pasada).
   const region = useRef<HTMLDivElement>(null)
-  const vista = useRef<string | null>(null)
+  const vista = useRef<Ida | null>(null)
   useEffect(() => {
-    if (!visible || vista.current === visible.dice) return
+    if (!visible || vista.current === visible) return
     const cuadro = requestAnimationFrame(() => {
       const linea = region.current?.getBoundingClientRect()
       if (!linea) return
       const barra = document.querySelector('[data-barra-superior]')?.getBoundingClientRect().bottom ?? 0
       if (linea.top >= barra) {
-        vista.current = visible.dice
+        vista.current = visible
         return
       }
       if (window.scrollY > linea.height + 80) return
-      vista.current = visible.dice
+      vista.current = visible
       window.scrollTo({ top: Math.max(0, window.scrollY - (barra - linea.top)) })
     })
     return () => cancelAnimationFrame(cuadro)

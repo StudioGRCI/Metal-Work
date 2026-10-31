@@ -297,7 +297,7 @@ export function NuevoProveedor() {
 
 export function AccionesProveedor({ proveedor, cuentasVisibles }: { proveedor: Proveedor; cuentasVisibles: boolean }) {
   const [editando, setEditando] = useState(false)
-  const estado = useAccion(cambiarEstadoProveedor)
+  const estado = useAccion(cambiarEstadoProveedor, undefined, { documento: proveedor.id })
 
   function cambiarEstado() {
     const datos = new FormData()

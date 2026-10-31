@@ -740,7 +740,7 @@ function DatosDeFactura({
       <div className="max-w-64">
         <AvisosDelDetector avisos={avisos} />
       </div>
-      {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} pideRuc={f.tipo === 'FACTURA_COMPRA' && !f.ruc_proveedor} />}
+      {f.estado === 'BORRADOR' && propia && <CompletarAdquisicion id={f.id} proveedor={f.proveedor} numero={f.numero_documento} pideRuc={f.tipo === 'FACTURA_COMPRA' && !f.ruc_proveedor} />}
       <HistorialDeCorrecciones correcciones={correcciones} />
       {notas.length > 0 && (
         <ul className="mt-1 max-w-72 space-y-1 text-xs" aria-label={`Notas de crédito de la factura ${f.numero_documento}`}>
