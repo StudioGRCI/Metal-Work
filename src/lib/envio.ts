@@ -168,13 +168,17 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
   // que conteste ahora lo dice él. El envío de otro formulario de la misma
   // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
   // motivo de la orden (H2 de funcionalidad, cuadragésima segunda pasada).
-  // Lo que quedó a medias (`aviso`) solo lo quita el envío del formulario de
-  // ese documento (`propio`): el plano que vuelve a salir solo a Maestranza lo
-  // completa. El que registra uno nuevo cada vez no: el comprobante en borrador
-  // se iba al registrar otro y seguía sin su PDF (Y1 de la crítica,
-  // cuadragésima quinta pasada); se va al completarlo en su fila
-  // (`yaSeResolvio`) o al quitarlo.
-  if (de && idaQueNoSalio?.rechazo && (idaQueNoSalio.tono !== 'aviso' || de.propio !== undefined) && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
+  // Lo que quedó a medias (`aviso`) no se va al salir: solo cuando entra el
+  // envío del formulario de ese documento (`propio`), que lo completa —el plano
+  // que vuelve a salir solo a Maestranza—. Quitada al salir, también se iba con
+  // el envío que la validación paraba antes de subir nada («Marca al menos un
+  // área») y con el que volvía a fallar con la persona ahí, cuando lo que decía
+  // seguía siendo cierto (R18 de realización, cuadragésima séptima pasada). El
+  // que registra uno nuevo cada vez no la quita: el comprobante en borrador se
+  // iba al registrar otro y seguía sin su PDF (Y1 de la crítica, cuadragésima
+  // quinta pasada); se va al completarlo en su fila (`yaSeResolvio`) o al quitarlo.
+  const aMedias = de?.propio !== undefined && idaQueNoSalio?.rechazo && idaQueNoSalio.tono === 'aviso' && esDelFormulario(idaQueNoSalio, de) ? idaQueNoSalio : null
+  if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.tono !== 'aviso' && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -190,6 +194,8 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
       },
     )
   } finally {
+    // Solo si sigue arriba la misma: si este envío puso otra, es lo que dice ahora.
+    if (entro && aMedias && idaQueNoSalio === aMedias) ponerIdaQueNoSalio(null)
     volvio(entro, motivo)
     avisarQueCambiaron()
   }

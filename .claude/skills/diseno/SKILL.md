@@ -361,7 +361,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   al lado: el texto que aparecía junto al botón lo corría de sitio con el dedo
   encima (H3). Lo mismo en la cabecera de una tarjeta: el estado del
   cronograma va en su renglón arriba del cuerpo (`EstadoDelCronograma`), que
-  además sigue a la vista con «Nueva tarea» abierta (D3 y D4). Si el rechazo
+  además sigue a la vista con «Nueva tarea» abierta (D3 y D4). Y en un
+  selector del encabezado, el mando que ese día no va guarda su sitio sin
+  verse (`Reservado`, en la caja diaria): «Día siguiente» y «Hoy» aparecían
+  al salir de hoy y corrían la flecha bajo el puntero (D3 de la cuadragésima
+  séptima). Si el rechazo
   de una ventana cerrada en vuelo no se dice en ningún otro lado, va al aviso
   de arriba («Lo que enviaste no entró, o no se sabe si entró: …»), en vez de
   mandar a leer un aviso que no está: `noEntro(motivo)` en `useAccion`
@@ -457,9 +461,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   se la lleva (`yaSeResolvio`): el comprobante en borrador completado en su
   fila (F1), el PDF de la orden que su campo vuelve a decir al volver (F5).
   Lo que quedó a medias no se va con cualquier envío del mismo formulario:
-  solo con el del formulario que es de ese documento (el plano, con su
-  `documento`), que lo completa. El que registra uno nuevo cada vez no lo
-  toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
+  solo cuando entra el del formulario que es de ese documento (el plano, con
+  su `documento`), que lo completa. No al salir: el que frena la validación
+  («Marca al menos un área») o el que vuelve a fallar con la persona ahí se
+  lo llevaban cuando seguía siendo cierto (R18 de la cuadragésima séptima).
+  El que registra uno nuevo cada vez no lo toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
   de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
   que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la
   cuadragésima sexta). Cuando el documento lo elige la búsqueda (?codigo=,
@@ -752,6 +758,10 @@ en un check con `set local role authenticated`.
   la caja, sin control, se quedaba con el día escrito a mano o con el de la
   entrada, debajo de los saldos de otro (H3 de diseño de la cuadragésima
   sexta). La `key` va en lo que tiene que olvidar, no en lo que tiene el foco.
+  El buscador de una lista con pastillas es `BuscadorSimple`, que sigue a la
+  URL y se lleva lo escrito en la pastilla: el de trabajos sin orden era un
+  formulario sin control y quedaba con lo escrito sin buscar, o vacío, sobre
+  la lista de otro filtro (D4 de diseño de la cuadragésima séptima).
 
 - **Lo que solo explica no va a la vista, y nada flota sin que lo pidan.** El
   2026-10-19 DKS lo corrigió por segunda vez: «cuadros flotantes que no dan o

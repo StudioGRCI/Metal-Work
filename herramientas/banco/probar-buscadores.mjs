@@ -602,6 +602,36 @@ for (const ancho of [390, 1280]) {
       `${ruta} (${puesto}): «${enlace}» conserva lo escrito (${escrita.search}) y el término puesto (${puesta.search})`)
   }
 
+  // Trabajos sin orden: la caja dice lo que filtra la lista, y la pastilla se
+  // lleva lo escrito (D4 de diseño, cuadragésima séptima pasada). Era un
+  // formulario sin control: la pastilla, que cambia solo la búsqueda, la
+  // dejaba con lo escrito sin buscar, o vacía, sobre una lista con otro filtro.
+  {
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const caja = pagina.getByRole('searchbox', { name: 'Buscar un trabajo' })
+    const pastilla = (nombre) => pagina.getByRole('group', { name: 'Filtrar por estado' }).getByRole('link', { name: nombre, exact: true })
+    await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
+    await caja.pressSequentially('tolva', { delay: 10 })
+    await pastilla('Cerrados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'SALIO', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const escrita = new URL(pagina.url())
+    const conLoEscrito = await caja.inputValue()
+    await pagina.goto(`${BASE}/avance/trabajos?buscar=cabina`, { waitUntil: 'networkidle' })
+    const alEntrar = await caja.inputValue()
+    await caja.fill('')
+    await pastilla('Terminados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'LISTA', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const vaciada = new URL(pagina.url())
+    const trasVaciar = await caja.inputValue()
+    comprobar(escrita.searchParams.get('buscar') === 'tolva' && conLoEscrito === 'tolva' && alEntrar === 'cabina' && !vaciada.searchParams.has('buscar') && trasVaciar === '',
+      `/avance/trabajos (sup.mtz): la pastilla se lleva lo escrito y la caja dice lo que filtra la lista (${escrita.search} «${conLoEscrito}»; con ?buscar=cabina «${alEntrar}», vaciada ${vaciada.search} «${trasVaciar}»)`)
+    comprobar(await pagina.getByRole('button', { name: /^Buscar$/ }).count() === 0 && errores.length === 0,
+      `/avance/trabajos (sup.mtz): sin botón «Buscar» que apretar ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
   {
     const { pagina } = await sesion('gerencia')

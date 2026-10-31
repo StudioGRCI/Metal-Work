@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Boton } from '@/components/ui/boton'
+import { BASE_BOTON, Boton, TAMANOS, VARIANTES, type Tamano, type Variante } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -14,6 +14,7 @@ import { cajaDelDia, type CajaDelDia, type CierreReabierto, type CuentaDelDia, t
 import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esExtorno, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { AnularMovimiento, CerrarDia, EditarCuenta, EnviosDeLaCaja, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
 
@@ -245,14 +246,33 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
 /** «3 activas», «1 desactivada»; nada si no hay ninguna. */
 const cuantas = (n: number, una: string, varias: string) => (n === 0 ? null : `${n} ${n === 1 ? una : varias}`)
 
+/**
+ * El sitio de un mando del selector que en este día no va: se guarda sin verse
+ * ni recibir el cursor, con las mismas medidas que el mando.
+ */
+function Reservado({ variante, tamano, children }: { variante: Variante; tamano: Tamano; children?: string }) {
+  return (
+    <span aria-hidden className={cn(BASE_BOTON, VARIANTES[variante], TAMANOS[tamano], 'invisible')}>
+      {children}
+    </span>
+  )
+}
+
 function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
   const siguiente = sumarDias(dia, 1)
+  // Cada mando guarda su sitio aunque ese día no vaya: a lo ancho el selector
+  // va pegado a la derecha del encabezado, y «Día siguiente» y «Hoy», que en
+  // hoy no están, al aparecer corrían la flecha cien píxeles; el segundo clic
+  // en «Día anterior» caía en la fecha (D3 de diseño, cuadragésima séptima
+  // pasada). A medio ancho, además, bajaba el selector a otro renglón.
   return (
     <form method="get" action={RUTA} className="flex flex-wrap items-center gap-2">
-      {dia > PRIMER_DIA && (
+      {dia > PRIMER_DIA ? (
         <EnlaceBoton href={enlaceDia(sumarDias(dia, -1), hoy)} variante="contorno" tamano="icono" aria-label="Día anterior">
           <ChevronLeft aria-hidden className="size-4" />
         </EnlaceBoton>
+      ) : (
+        <Reservado variante="contorno" tamano="icono" />
       )}
       <label htmlFor="caja-dia" className="sr-only">
         Día de la caja
@@ -270,11 +290,17 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
         <EnlaceBoton href={enlaceDia(siguiente, hoy)} variante="contorno" tamano="icono" aria-label="Día siguiente">
           <ChevronRight aria-hidden className="size-4" />
         </EnlaceBoton>
-      ) : null}
-      {dia !== hoy && (
+      ) : (
+        <Reservado variante="contorno" tamano="icono" />
+      )}
+      {dia !== hoy ? (
         <EnlaceBoton href={RUTA} variante="fantasma" tamano="sm">
           Hoy
         </EnlaceBoton>
+      ) : (
+        <Reservado variante="fantasma" tamano="sm">
+          Hoy
+        </Reservado>
       )}
     </form>
   )

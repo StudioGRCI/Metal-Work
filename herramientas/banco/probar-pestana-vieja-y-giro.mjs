@@ -4655,6 +4655,31 @@ if (corre('1zb-plano-a-medias')) {
   const trasElOtro = await idaQueNoSalio(pagina)
   comprobar(alVolver === dice.replace(/ Volver al plano$/, '') && delOtro?.[segunda] === 1 && trasElOtro === alVolver,
     `[Diseño 1280] 1zb-plano-a-medias. de vuelta dice lo mismo sin el enlace, y la versión de otro plano de la orden, que entra, no se lleva la línea del que sigue a medias (otro ${JSON.stringify(delOtro)}, al volver «${alVolver}», tras el otro «${trasElOtro}»)`)
+  // Lo que todavía no la completa no se lleva la línea (R18 de realización,
+  // cuadragésima séptima pasada): sin marcar ningún área lo frena la validación
+  // antes de subir nada, y enviada a la que faltó sin llegar otra vez, con la
+  // persona ahí, le sigue faltando.
+  const rojoDelFormulario = async () => limpio((await formulario().locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  await archivo().setInputFiles(pdf)
+  await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(rojoDelFormulario, (t) => t.includes('Marca al menos un área'), 15000)
+  await pagina.waitForTimeout(800)
+  const avisoSinArea = await rojoDelFormulario()
+  const sinArea = await idaQueNoSalio(pagina)
+  await formulario().getByLabel(primera, { exact: true }).check()
+  await archivo().setInputFiles(pdf)
+  const yaRetenidas = corte.retenidas
+  corte.cortarSubida = 'planos-privados'
+  await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > yaRetenidas, 30000)
+  corte.soltar()
+  await hasta(rojoDelFormulario, (t) => t.startsWith('Falta'), 30000)
+  await pagina.waitForTimeout(1500)
+  const avisoOtraVez = await rojoDelFormulario()
+  const otraVez = await idaQueNoSalio(pagina)
+  const trasFallar = await porArea()
+  comprobar(avisoSinArea === 'Marca al menos un área que recibirá este PDF.' && sinArea === alVolver && avisoOtraVez.startsWith(`Falta ${primera}`) && otraVez === alVolver && !trasFallar[primera] && trasFallar[segunda] === 1,
+    `[Diseño 1280] 1zb-plano-a-medias. lo que todavía no la completa no se lleva la línea: sin área la frena la validación, y a ${primera} otra vez sin llegar le sigue faltando (sin área «${avisoSinArea}», línea «${sinArea}»; otra vez «${avisoOtraVez}», línea «${otraVez}», ${JSON.stringify(trasFallar)})`)
   await formulario().getByLabel(primera, { exact: true }).check()
   await archivo().setInputFiles(pdf)
   await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
