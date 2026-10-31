@@ -52,11 +52,14 @@ export function IdaQueNoSalio() {
   const busqueda = useSearchParams()
   const aqui = `${ruta}?${busqueda}`
 
+  // Ya en su pantalla calla desde la primera pintada: si esperara al efecto que
+  // la quita, la línea asomaba un instante en la pantalla a la que lleva.
+  const llego = ida ? yaEstaEn(ida.url, ruta, busqueda) : false
   useEffect(() => {
-    if (ida && yaEstaEn(ida.url, ruta, busqueda)) ponerIdaQueNoSalio(null)
-  }, [ida, ruta, busqueda])
+    if (llego) ponerIdaQueNoSalio(null)
+  }, [llego])
 
-  const visible = ida && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
+  const visible = ida && !llego && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
   return (
     <div
       role="status"
