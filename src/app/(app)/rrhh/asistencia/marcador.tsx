@@ -224,7 +224,8 @@ function LineaMarca({ marca: m, anula }: { marca: Marca; anula: boolean }) {
       ) : m.tipo === 'INGRESO' ? (
         <Insignia tono="exito">A tiempo</Insignia>
       ) : null}
-      {anula && <AnularMarca marca={m} />}
+      {/* Por marca: con otro día, el motivo escrito para la de antes no pasa a la nueva. */}
+      {anula && <AnularMarca key={m.id} marca={m} />}
     </div>
   )
 }

@@ -8,7 +8,9 @@ import { fijarStockMinimo } from './acciones'
 
 /** Fijar o quitar el stock mínimo del material que se está mirando. */
 export function FijarStockMinimo({ materialId, minimo, unidad }: { materialId: string; minimo: number | null; unidad: string | null }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarStockMinimo)
+  // De cuál material: el de otro se llevaba la línea del rechazo de este (R13
+  // de realización, cuadragésima quinta pasada).
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarStockMinimo, undefined, { documento: `material:${materialId}` })
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="material_id" value={materialId} />

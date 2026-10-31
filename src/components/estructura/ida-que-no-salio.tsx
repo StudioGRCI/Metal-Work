@@ -82,7 +82,11 @@ export function IdaQueNoSalio() {
   // llevaba el rechazo que llegó antes que la pantalla pedida (el plano, con
   // su subida retenida, y la tarea del informe al Dashboard). La dirección es
   // la del formulario, no la del enlace: lo que ya había quedado lleva al
-  // reporte, y con la ida todavía en cola, en el formulario, se quitaba.
+  // reporte, y con la ida todavía en cola, en el formulario, se quitaba. Si la
+  // búsqueda eligió otro documento (?codigo=B), el formulario que sigue montado
+  // ya es de ese (`sigueMontado` lo mira) y la línea habla: callaba, y el
+  // rechazo del plano de A no se decía en ningún lado (X1 de la crítica,
+  // cuadragésima quinta pasada).
   const pareceSuya = Boolean(ida?.de && !ahi && comoDireccion(ida.desde ?? ida.url) !== aqui && sigueMontado(ida.de))
   // Con la pantalla pedida todavía en camino, el rechazo nace en la dirección
   // de su formulario, que sigue montado y lo dice junto a su botón: arriba se

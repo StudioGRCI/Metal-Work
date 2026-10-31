@@ -378,6 +378,9 @@ export function FormularioReporteDiario({
       refrescar: false,
       // Lo que ya había quedado la primera vez se ve en el reporte (`decirQueYaHabiaEntradoSiSeFue`).
       siSeVa: { que: 'el reporte', enlace: 'Volver al reporte', yaEntro: () => ({ url: `/reportes-diarios/${secciones[0]?.id ?? ids[0]}`, enlace: 'Ver el reporte' }) },
+      // La corrección de otro observado no se lleva la línea del rechazo de este
+      // (H1 de funcionalidad, cuadragésima quinta pasada).
+      documento: corrige ? `corrige:${corrige.reemplaza}` : undefined,
     },
   )
   const yaEntro = yaEntroLaPrimeraVez(error)

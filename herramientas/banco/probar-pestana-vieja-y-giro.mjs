@@ -269,13 +269,19 @@
  *       nombre (la regla de tardanzas, RR. HH.) también se dicen arriba.
  *   1zb. Lo que vuelve a medias o se resuelve en otro lado: el plano que
  *       llega a un área y no a otra (la versión de otro plano no se lleva su
- *       línea), el comprobante en borrador (completarlo en su fila la quita),
+ *       línea), el comprobante en borrador (completarlo en su fila la quita, y
+ *       registrar otro desde el mismo formulario no),
  *       el PDF de la orden (de vuelta lo dice el campo, y el segundo rechazo
  *       también sube a la vista), la sub-vista, dos formularios sin nombre, el
  *       reenvío con otra casilla y el que vuelve por otra pestaña de su lista
  *       con otros campos: los dos entran y se llevan su línea. Y la fila de
  *       una lista: quitar otra fila no se lleva su línea, y su propio envío sí.
- *   En las 1z, las 1za y las 1zb, la línea dicha en otra pantalla llega a la vista.
+ *   1zc. Lo que elige la búsqueda en la misma ruta (?codigo=, ?material=): el
+ *       plano de un código que no se guarda con la persona ya en otro código,
+ *       al que llegó por la campana (el otro empieza vacío, y arriba se dice
+ *       el rechazo con su camino de vuelta), y el mínimo de otro material, que
+ *       entra sin llevarse la línea del primero.
+ *   En las 1z, las 1za, las 1zb y las 1zc, la línea dicha en otra pantalla llega a la vista.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
  *       olvida al salir, algo que nadie alcanza con el dedo (R4).
@@ -284,7 +290,8 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las seis; 1y, las tres; 1z, las seis, las cinco 1za y las nueve 1zb).
+ * 1x, las seis; 1y, las tres; 1z, las seis, las cinco 1za, las nueve 1zb y
+ * las dos 1zc).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -4718,6 +4725,26 @@ if (corre('1zb-comprobante-en-borrador')) {
     await pagina.waitForURL((u) => u.pathname === '/adquisiciones', { timeout: 20000 }).catch(() => {})
     await quieta(pagina)
     const alVolver = await idaQueNoSalio(pagina)
+    // Otro comprobante desde el mismo formulario, que entra: lo de a medias del
+    // primero sigue, porque todavía le falta su PDF. El envío siguiente del
+    // formulario se lo llevaba (Y1 de la crítica, cuadragésima quinta pasada).
+    const otro = `QA_ZBM proveedor ${sello}`
+    await pagina.locator('#adq-tipo').selectOption('OTRO')
+    await pagina.locator('#adq-proveedor').fill(otro)
+    await pagina.locator('#adq-pdf').setInputFiles({ name: `M777-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COMPROBANTE M777-${sello}`, 'Prueba del banco']) })
+    await hasta(() => pagina.getByText('Leyendo la factura…').count(), (n) => n === 0, 20000)
+    await pagina.waitForTimeout(500)
+    await pagina.locator('#adq-numero').fill(`M777-${sello}`)
+    await pagina.locator('#adq-emision').fill(diaDeLima())
+    await pagina.locator('#adq-condicion').selectOption('CREDITO')
+    await pagina.locator('#adq-vencimiento').fill(diaDeLima())
+    await pagina.locator('#adq-total').fill('100')
+    await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+    const delOtro = await hasta(() => consulta(`select estado from adquisiciones where proveedor = $1`, [otro]), (l) => l?.length === 1, 30000)
+    await pagina.waitForTimeout(1500)
+    const trasElOtro = await idaQueNoSalio(pagina)
+    comprobar(delOtro?.length === 1 && delOtro[0].estado === 'REGISTRADA' && trasElOtro === alVolver && alVolver !== '',
+      `[Contabilidad 1280] 1zb-comprobante-en-borrador. otro comprobante del mismo formulario, que entra, no se lleva lo de a medias del primero (${JSON.stringify(delOtro)}, al volver «${alVolver}», tras el otro «${trasElOtro}»)`)
     await consulta(`drop trigger if exists qa_zbb_storage_dice_que_no on storage.objects`)
     const fila = pagina.locator('tr, li, article').filter({ hasText: numero }).filter({ has: pagina.getByRole('button', { name: 'Completar comprobante' }) }).filter({ visible: true }).first()
     await fila.locator('input[type="file"][name="pdf"]').setInputFiles({ name: `QA-ZBB-${sello}-b.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto(['FACTURA ELECTRONICA', numero, 'IMPORTE TOTAL: S/ 59.00']) })
@@ -5111,6 +5138,161 @@ if (corre('1zb-otra-pestana-de-la-lista')) {
     `[Contabilidad 1280] 1zb-otra-pestana-de-la-lista. el comprobante rechazado en «Sin factura», corregido de vuelta por el menú en «Facturas» con otros campos, entra y se lleva su línea («${dice}», al volver «${alVolver}», campos ${camposAntes === camposDespues ? 'iguales' : 'distintos'}, ${entro?.length ?? 0} comprobantes, al final «${alFinal}»)`)
   comprobar(errores.length === 0, `[Contabilidad 1280] 1zb-otra-pestana-de-la-lista. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
+}
+
+// ------------------------------------------- 1zc. Otro documento en la misma ruta: lo elige la búsqueda
+// El plano de un código que no se guarda con la persona ya en otro código, al
+// que llegó por un aviso de la campana: solo cambia la búsqueda (?codigo=), y
+// Next dejaba montado el formulario. Se quedaba con el N.º y el nombre del
+// plano del primero, su rechazo salía junto al botón del otro, y arriba nada
+// (X1 de la crítica, cuadragésima quinta pasada). Con otro código todo se
+// monta de nuevo: empieza vacío, arriba se dice el rechazo con su camino de
+// vuelta, y el plano del otro código, que entra, no se lo lleva (H1 de
+// funcionalidad). La subida se corta como cuando se va la señal.
+if (corre('1zc-otro-codigo')) {
+  const [a, b] = [`QA-ZCA-${sello}`, `QA-ZCB-${sello}`]
+  const titulo = `Plano recibido en el banco ${sello}`
+  const planos = (codigo) => consulta(`select numero from codigo_planos where codigo_interno = $1 and anulado_en is null`, [codigo])
+  const codigoDe = (direccion) => (direccion ? new URL(direccion, BASE).searchParams.get('codigo') : null)
+  // Los avisos los dejan los disparadores; este se siembra, con su pantalla.
+  await consulta(
+    `insert into notificaciones (usuario_id, titulo, cuerpo, ruta) select id, $2, 'Sembrado por probar-pestana-vieja-y-giro', $3 from usuarios where correo = $1`,
+    [CUENTAS.diseno, titulo, `/diseno/codigo?codigo=${encodeURIComponent(b)}`],
+  )
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  const llenar = async (numero, nombre) => {
+    await pagina.locator('#plano-numero').fill(numero)
+    await pagina.locator('#plano-nombre').fill(nombre)
+    await pagina.locator('#plano-area').selectOption({ index: 1 })
+    await pagina.locator('#plano-peso').fill('10')
+    await pagina.setInputFiles('#plano-pdf', { name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO ${numero}`, nombre]) })
+  }
+  const formPlano = pagina.locator('form', { has: pagina.locator('#plano-numero') })
+  try {
+    await ir(pagina, `${BASE}/diseno/codigo?codigo=${encodeURIComponent(a)}`)
+    await marcarDocumento(pagina)
+    await llenar(`ZCA-${sello}`, 'Plano del primer código')
+    corte.cortarSubida = 'planos-codigo'
+    await formPlano.getByRole('button', { name: 'Cargar plano' }).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    // Con el PDF subiendo, el aviso de la campana lleva al otro código.
+    await pagina.getByRole('button', { name: /^Avisos/ }).first().click()
+    await pagina.locator('#panel-avisos').waitFor({ timeout: 10000 })
+    await pagina.locator('#panel-avisos li button').filter({ hasText: titulo }).first().click()
+    await pagina.waitForURL((u) => u.searchParams.get('codigo') === b, { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    corte.soltar()
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 30000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const enB = [await pagina.locator('#plano-numero').inputValue().catch(() => '?'), await pagina.locator('#plano-nombre').inputValue().catch(() => '?')]
+    const junto = limpio((await formPlano.locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+    const enlace = await pagina.locator('[data-ida-que-no-salio] a').getAttribute('href', { timeout: 2000 }).catch(() => null)
+    const aLaVista = await lineaALaVista(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zc-otro-codigo.png') })
+    comprobar(codigoDe(donde) === b && /^El plano no se guardó\. .+ Volver al plano$/.test(dice) && codigoDe(enlace) === a && aLaVista &&
+      enB.join('|') === '|' && junto === '' && (await planos(a)).length === 0 && (await mismoDocumento(pagina)),
+      `[Diseño 1280] 1zc-otro-codigo. el plano que no se guarda con la persona ya en otro código lo dice arriba, con el camino al suyo, y el otro código empieza vacío, sin el rechazo junto a su botón (${donde}, «${dice}», enlace ${enlace}, a la vista ${aLaVista}, en el otro «${enB.join('», «')}», junto al botón «${junto}»)`)
+    // Un plano del otro código, que entra: no se lleva la línea del primero.
+    await llenar(`ZCB-${sello}`, 'Plano del segundo código')
+    await formPlano.getByRole('button', { name: 'Cargar plano' }).click()
+    const deB = await hasta(() => planos(b), (l) => l?.length === 1, 30000)
+    await pagina.waitForTimeout(1500)
+    const trasElOtro = await idaQueNoSalio(pagina)
+    comprobar(deB?.length === 1 && trasElOtro === dice && (await planos(a)).length === 0,
+      `[Diseño 1280] 1zc-otro-codigo. el plano del otro código entra y no se lleva la línea del primero (${deB?.length ?? 0} planos en el otro, ${(await planos(a)).length} en el primero, tras el otro «${trasElOtro}»)`)
+    // Hace lo que dice: vuelve a su código, que dice el motivo, y lo carga otra vez.
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al plano' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.searchParams.get('codigo') === a, { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    await pagina.waitForTimeout(1000)
+    const alVolver = await idaQueNoSalio(pagina)
+    const enA = await pagina.locator('#plano-numero').inputValue().catch(() => '?')
+    await llenar(`ZCA-${sello}`, 'Plano del primer código')
+    await formPlano.getByRole('button', { name: 'Cargar plano' }).click()
+    const deA = await hasta(() => planos(a), (l) => l?.length === 1, 30000)
+    await pagina.waitForTimeout(1500)
+    const alFinal = await idaQueNoSalio(pagina)
+    comprobar(alVolver === dice.replace(/ Volver al plano$/, '') && enA === '' && deA?.length === 1 && alFinal === '' && (await mismoDocumento(pagina)),
+      `[Diseño 1280] 1zc-otro-codigo. de vuelta en su código dice el motivo sin el enlace, y cargado otra vez entra y se lleva la línea (${pagina.url().replace(BASE, '')}, al volver «${alVolver}», N.º «${enA}», ${deA?.length ?? 0} planos, al final «${alFinal}»)`)
+    comprobar(errores.length === 0, `[Diseño 1280] 1zc-otro-codigo. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    await consulta(`delete from notificaciones where titulo = $1`, [titulo])
+    await contexto.close()
+  }
+}
+
+// El mínimo de un material que no se guarda con la persona ya en la lista del
+// kardex, y el de otro material, elegido en «bajo su stock mínimo»: la misma
+// ruta con otra búsqueda (?material=), y el que entraba se llevaba la línea
+// del primero (R13 de realización, cuadragésima quinta pasada). Cada material
+// dice cuál es, y solo su propio envío se la lleva. La base dice que no por un
+// disparador propio, que se quita al final con los mínimos de antes.
+if (corre('1zc-otro-material')) {
+  const [a, b] = await consulta(`select m.id, m.stock_minimo from materiales m
+                                 where m.activo and exists (select 1 from v_existencias_materiales e where e.material_id = m.id) order by m.id limit 2`)
+  const minimo = async (id) => (await consulta(`select stock_minimo from materiales where id = $1`, [id]))[0]?.stock_minimo ?? null
+  await consulta(`create or replace function public.qa_zcm_minimo_dice_que_no() returns trigger language plpgsql set search_path = public as $$
+                    begin
+                      if new.stock_minimo = 7.777 then
+                        raise exception 'El banco no acepta este mínimo (QA_ZCM).';
+                      end if;
+                      return new;
+                    end $$`)
+  await consulta(`drop trigger if exists qa_zcm_minimo_dice_que_no on public.materiales`)
+  await consulta(`create trigger qa_zcm_minimo_dice_que_no before update of stock_minimo on public.materiales for each row
+                    execute function public.qa_zcm_minimo_dice_que_no()`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.almacen, { width: 1280, height: 900 })
+  try {
+    // El otro, bajo su mínimo: sale en la lista de los que hay que reponer.
+    await consulta(`update materiales set stock_minimo = 99999999 where id = $1`, [b.id])
+    await ir(pagina, `${BASE}/almacen/kardex?material=${a.id}`)
+    await marcarDocumento(pagina)
+    await pagina.locator('#stock-minimo').fill('7.777')
+    corte.marca = '7.777'
+    await pagina.getByRole('button', { name: 'Guardar mínimo' }).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await (await enlaceVisible(pagina, '/almacen/kardex')).click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/almacen/kardex' && !u.searchParams.has('material'), { timeout: 20000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 30000)
+    await quieta(pagina)
+    const aLaVista = await lineaALaVista(pagina)
+    // El otro material, desde la lista: quitarle el mínimo entra y no se lleva la línea.
+    await (await enlaceVisible(pagina, `/almacen/kardex?material=${b.id}`)).click()
+    await pagina.waitForURL((u) => u.searchParams.get('material') === b.id, { timeout: 20000 }).catch(() => {})
+    await pagina.locator('#stock-minimo').waitFor({ timeout: 20000 })
+    await quieta(pagina)
+    const alLlegar = await idaQueNoSalio(pagina)
+    await pagina.locator('#stock-minimo').fill('')
+    await pagina.getByRole('button', { name: 'Guardar mínimo' }).click()
+    const sinMinimo = await hasta(() => minimo(b.id), (m) => m === null, 30000)
+    await pagina.waitForTimeout(1500)
+    const trasElOtro = await idaQueNoSalio(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zc-otro-material.png') })
+    comprobar(/^Lo que enviaste no se guardó\. .+ Volver adonde lo enviaste$/.test(dice) && aLaVista && alLlegar === dice && sinMinimo === null && trasElOtro === dice && (await minimo(a.id)) === a.stock_minimo,
+      `[Almacén 1280] 1zc-otro-material. el mínimo de otro material, que entra, no se lleva la línea del que no se guardó («${dice}», a la vista ${aLaVista}, al llegar «${alLlegar}», tras el otro «${trasElOtro}»)`)
+    // Hace lo que dice: vuelve a su material, que dice el motivo, y lo guarda otra vez.
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver adonde lo enviaste' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.searchParams.get('material') === a.id, { timeout: 20000 }).catch(() => {})
+    await pagina.locator('#stock-minimo').waitFor({ timeout: 20000 })
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    await pagina.locator('#stock-minimo').fill('5')
+    await pagina.getByRole('button', { name: 'Guardar mínimo' }).click()
+    const conMinimo = await hasta(() => minimo(a.id), (m) => Number(m) === 5, 30000)
+    await pagina.waitForTimeout(1500)
+    const alFinal = await idaQueNoSalio(pagina)
+    comprobar(alVolver === dice.replace(/ Volver adonde lo enviaste$/, '') && Number(conMinimo) === 5 && alFinal === '' && (await mismoDocumento(pagina)),
+      `[Almacén 1280] 1zc-otro-material. de vuelta en su material dice el motivo sin el enlace, y guardado otra vez entra y se lleva la línea (al volver «${alVolver}», mínimo ${conMinimo}, al final «${alFinal}»)`)
+    comprobar(errores.length === 0, `[Almacén 1280] 1zc-otro-material. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    await consulta(`drop trigger if exists qa_zcm_minimo_dice_que_no on public.materiales`)
+    await consulta(`drop function if exists public.qa_zcm_minimo_dice_que_no()`)
+    for (const m of [a, b]) await consulta(`update materiales set stock_minimo = $2 where id = $1`, [m.id, m.stock_minimo])
+    await contexto.close()
+  }
 }
 
 // ------------------------------------------- 1j. La ventana que pregunta por su envío anterior (Requerimientos)

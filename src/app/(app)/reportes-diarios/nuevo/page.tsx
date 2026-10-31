@@ -134,7 +134,9 @@ export default async function PaginaNuevoReporte({ searchParams }: PageProps<'/r
       )}
       <Tarjeta className="max-w-3xl">
         <TarjetaCuerpo>
+          {/* Con otro observado en la búsqueda, se monta de nuevo: lo escrito para uno no pasa al otro. */}
           <FormularioReporteDiario
+            key={corrige ? `corrige:${corrige.reemplaza}` : `nuevo:${codigoInicial}:${subcontratoInicial ?? ''}`}
             ids={Array.from({ length: corrige ? 1 : MAXIMO_CODIGOS_REPORTE }, () => crypto.randomUUID())}
             cuentaId={perfil.id}
             hoy={hoy}

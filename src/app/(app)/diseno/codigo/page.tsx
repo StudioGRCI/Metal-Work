@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
 import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/codigo-interno/materiales'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -81,36 +82,39 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
-        <div className="space-y-5">
-          <OrdenesDelCodigo ordenes={ordenes} />
+        // El código lo elige la búsqueda: con otro, todo se monta de nuevo (X1).
+        <DelDocumento documento={`codigo:${codigo}`}>
+          <div className="space-y-5">
+            <OrdenesDelCodigo ordenes={ordenes} />
 
-          <div className="grid grid-cols-3 gap-3">
-            <Indicador
-              titulo="Planos"
-              valor={String(resumen?.planos ?? 0)}
-              tono={(resumen?.planos_por_recibir ?? 0) > 0 ? 'aviso' : 'neutro'}
-              pie={(resumen?.planos_por_recibir ?? 0) > 0 ? `${resumen?.planos_por_recibir} por recibir` : 'Vigentes'}
+            <div className="grid grid-cols-3 gap-3">
+              <Indicador
+                titulo="Planos"
+                valor={String(resumen?.planos ?? 0)}
+                tono={(resumen?.planos_por_recibir ?? 0) > 0 ? 'aviso' : 'neutro'}
+                pie={(resumen?.planos_por_recibir ?? 0) > 0 ? `${resumen?.planos_por_recibir} por recibir` : 'Vigentes'}
+              />
+              <Indicador titulo="Materiales" valor={String(resumen?.materiales ?? 0)} pie="Líneas en la lista" />
+              <Indicador
+                titulo="Etapas"
+                valor={`${resumen?.etapas_terminadas ?? 0} de ${resumen?.etapas ?? 0}`}
+                tono={(resumen?.etapas_vencidas ?? 0) > 0 ? 'peligro' : 'neutro'}
+                pie={(resumen?.etapas_vencidas ?? 0) > 0 ? `${resumen?.etapas_vencidas} ${resumen?.etapas_vencidas === 1 ? 'vencida' : 'vencidas'}` : 'Terminadas'}
+              />
+            </div>
+
+            <PastillaFiltro
+              ruta="/diseno/codigo"
+              clave="vista"
+              params={params}
+              activo={vista === 'planos' ? null : vista}
+              etiqueta="Secciones del código"
+              opciones={VISTAS_DISENO.map((v) => ({ valor: v.valor === 'planos' ? null : v.valor, etiqueta: v.etiqueta }))}
             />
-            <Indicador titulo="Materiales" valor={String(resumen?.materiales ?? 0)} pie="Líneas en la lista" />
-            <Indicador
-              titulo="Etapas"
-              valor={`${resumen?.etapas_terminadas ?? 0} de ${resumen?.etapas ?? 0}`}
-              tono={(resumen?.etapas_vencidas ?? 0) > 0 ? 'peligro' : 'neutro'}
-              pie={(resumen?.etapas_vencidas ?? 0) > 0 ? `${resumen?.etapas_vencidas} ${resumen?.etapas_vencidas === 1 ? 'vencida' : 'vencidas'}` : 'Terminadas'}
-            />
+
+            <Vista vista={vista} codigo={codigo} />
           </div>
-
-          <PastillaFiltro
-            ruta="/diseno/codigo"
-            clave="vista"
-            params={params}
-            activo={vista === 'planos' ? null : vista}
-            etiqueta="Secciones del código"
-            opciones={VISTAS_DISENO.map((v) => ({ valor: v.valor === 'planos' ? null : v.valor, etiqueta: v.etiqueta }))}
-          />
-
-          <Vista vista={vista} codigo={codigo} />
-        </div>
+        </DelDocumento>
       )}
     </>
   )

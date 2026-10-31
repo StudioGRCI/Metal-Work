@@ -1,5 +1,5 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
-import { startTransition, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
+import { createContext, startTransition, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
 
 import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
@@ -168,7 +168,11 @@ export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (m
   // que conteste ahora lo dice él. El envío de otro formulario de la misma
   // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
   // motivo de la orden (H2 de funcionalidad, cuadragésima segunda pasada).
-  if (de && idaQueNoSalio?.rechazo && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
+  // Lo que quedó a medias (`aviso`) no lo quita ningún envío: el comprobante en
+  // borrador se iba al registrar otro con el mismo formulario y seguía sin su
+  // PDF (Y1 de la crítica, cuadragésima quinta pasada). Se va al completarlo
+  // (`yaSeResolvio`) o al quitarlo.
+  if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.tono !== 'aviso' && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -316,9 +320,11 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * («lo que enviaste»), dos formularios sin nombre de una pantalla se quitaban
  * el motivo uno al otro (R8 de realización); por la dirección, el comprobante
  * corregido después de cambiar de pestaña entraba y arriba seguía «no se
- * guardó» (W1 de la crítica, cuadragésima tercera pasada).
+ * guardó» (W1 de la crítica, cuadragésima tercera pasada). `documento`: de
+ * cuál era cuando se envió (`Opciones`): el mismo formulario, ya con otro
+ * documento, no es el que lo dijo.
  */
-export type DeFormulario = { instancia: string; campos: string; nombre?: string }
+export type DeFormulario = { instancia: string; campos: string; nombre?: string; documento?: string }
 
 /**
  * Cómo se reconoce el mismo formulario vuelto a montar (`DeFormulario`): los
@@ -351,32 +357,44 @@ const rutaDe = (direccion: string) => new URL(direccion, 'http://pantalla').path
 
 // El mismo formulario en su ruta, aunque la búsqueda sea otra: vuelto a montar
 // en otra pestaña de su lista (?vista=), su reenvío que entraba dejaba el «no
-// se guardó» (F3 de funcionalidad, cuadragésima cuarta pasada).
+// se guardó» (F3 de funcionalidad, cuadragésima cuarta pasada). Lo que elige el
+// documento (?codigo=, ?material=) no lo dice la ruta sino el formulario
+// (`documento`, en sus campos y su nombre): el plano bueno del código B se
+// llevaba la línea del plano rechazado del A (H1 de funcionalidad y R13 de
+// realización, cuadragésima quinta pasada). La misma vez montado, si ya es de
+// otro documento, tampoco es el que lo dijo.
 const esDelFormulario = (ida: IdaQueNoSalio, de: DeFormulario) =>
   ida.de !== undefined &&
-  (ida.de.instancia === de.instancia ||
+  ((ida.de.instancia === de.instancia && ida.de.documento === de.documento) ||
     (rutaDe(ida.desde ?? ida.url) === window.location.pathname &&
       (ida.de.campos === de.campos || (ida.de.nombre !== undefined && ida.de.nombre === de.nombre))))
 
-// Los formularios montados (`useFormularioMontado`): el rechazo del que sigue
-// en la pantalla lo dice él, junto a su botón, y arriba se repetía.
-const montados = new Set<string>()
-
-/** Si el formulario que puso la línea sigue en la pantalla. */
-export const sigueMontado = (de: DeFormulario | undefined) => Boolean(de && montados.has(de.instancia))
+// Los formularios montados (`useFormularioMontado`) y de qué documento es cada
+// uno ahora: el rechazo del que sigue en la pantalla lo dice él, junto a su
+// botón, y arriba se repetía.
+const montados = new Map<string, string | undefined>()
 
 /**
- * Esta vez que el formulario está montado, para `DeFormulario`. Mientras siga
- * montado, lo suyo se dice en él y no arriba: la pestaña de la lista cambia la
- * dirección y deja el formulario donde estaba (W1 de la crítica, cuadragésima
- * tercera pasada).
+ * Si el formulario que puso la línea sigue en la pantalla, con su documento. Un
+ * cambio de búsqueda no vuelve a montar la pantalla: el formulario del código A
+ * seguía montado en el B, la línea callaba como si él lo dijera y su rechazo
+ * no se decía en ningún lado (X1 de la crítica, cuadragésima quinta pasada).
  */
-export function useFormularioMontado() {
+export const sigueMontado = (de: DeFormulario | undefined) =>
+  Boolean(de && montados.has(de.instancia) && montados.get(de.instancia) === de.documento)
+
+/**
+ * Esta vez que el formulario está montado, para `DeFormulario`, y de qué
+ * documento es ahora (`Opciones`). Mientras siga montado con el mismo, lo suyo
+ * se dice en él y no arriba: la pestaña de la lista cambia la dirección y deja
+ * el formulario donde estaba (W1 de la crítica, cuadragésima tercera pasada).
+ */
+export function useFormularioMontado(documento?: string) {
   const instancia = useId()
   useEffect(() => {
-    montados.add(instancia)
+    montados.set(instancia, documento)
     return () => void montados.delete(instancia)
-  }, [instancia])
+  }, [instancia, documento])
   return instancia
 }
 
@@ -629,6 +647,15 @@ export function explicarFallo(e: unknown): string {
   return FALLO_DEL_SERVIDOR
 }
 
+/**
+ * El documento que eligió la búsqueda (?codigo=, ?semana=, ?fecha=), para
+ * todos los formularios de la pantalla (`DelDocumento`): se suma al de cada uno
+ * (`documento` de `Opciones`). La ruta es la misma para todos los documentos, y
+ * el envío del código B se llevaba la línea del rechazo del A (H1 de
+ * funcionalidad, cuadragésima quinta pasada).
+ */
+export const DocumentoDeLaPantalla = createContext<string | undefined>(undefined)
+
 type Opciones = {
   /** Repintar la pantalla con lo recién guardado. No hace falta si `alTerminar` navega a otra. */
   refrescar?: boolean
@@ -656,7 +683,9 @@ type Opciones = {
    * plano A, que seguía sin llegar a su área (F2 de funcionalidad,
    * cuadragésima cuarta pasada). También dice cuál es cuando dos formularios
    * distintos de una pantalla mandan los mismos campos (repartir el peso y dar
-   * por entregados, en la OT).
+   * por entregados, en la OT), y cuando lo elige la búsqueda (?codigo=,
+   * ?material=, ?semana=): la ruta es la misma para todos (H1 de
+   * funcionalidad, cuadragésima quinta pasada).
    */
   documento?: string
 }
@@ -676,9 +705,11 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA, documento } = opciones
+  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA } = opciones
+  const deLaPantalla = useContext(DocumentoDeLaPantalla)
+  const documento = deLaPantalla === undefined ? opciones.documento : opciones.documento === undefined ? deLaPantalla : `${deLaPantalla}/${opciones.documento}`
   const router = useRouter()
-  const instancia = useFormularioMontado()
+  const instancia = useFormularioMontado(documento)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
@@ -759,7 +790,7 @@ export function useAccion<T = never>(
     enCurso.current = true
     setResultado(null)
     const desde = partida()
-    const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined }
+    const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento }
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
       const desenlace = { entro, noEntro, de }

@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Landmark } from 'lucide-react'
 import Link from 'next/link'
 
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
@@ -83,7 +84,9 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
-        <>
+        // Lo de cada día se vuelve a montar con otro día: lo escrito para el A no
+        // pasa al B, y cada formulario dice de cuál día es (X1, cuadragésima quinta pasada).
+        <DelDocumento documento={`caja:${dia}`}>
           {pendientes.length > 0 && (
             <div role="status" className="mb-5 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3 text-sm text-texto">
               <p className="font-medium">Días sin cerrar</p>
@@ -167,7 +170,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
               />
             ))}
           </div>
-        </>
+        </DelDocumento>
       )}
 
       {caja.cuentas.length > 0 && (
