@@ -9,7 +9,7 @@ import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { subirAdjunto, MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, refrescarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
+import { decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeOtraCuenta, mientrasSeEnvia, OtraCuentaEnLaPestana, partida, refrescarSiEsDeLaPestana, type SiSeVa, useEnvio, useFormularioMontado } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fechaHora } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
@@ -17,6 +17,10 @@ import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
 import { quitarAdjunto } from './acciones-adjuntos'
 
 const NO_SUBIO_OTRA_CUENTA = 'No se subió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, elígelo otra vez.'
+
+// El rechazo del PDF con la persona ya en otra pantalla se decía solo al volver
+// a la orden, en su campo (N3 de funcionalidad, cuadragésima tercera pasada).
+const SI_SE_VA: SiSeVa = { que: 'el PDF de la orden', enlace: 'Volver a la orden' }
 
 export type AdjuntoEnPantalla = {
   id: string
@@ -77,6 +81,7 @@ export function ArchivosDeOrden({
   // tarjeta desmontada, lo dice la lista, que ya lo trae.
   const [aviso, setAviso] = useEstadoCompartido<string | null>(`pdf-orden:${ordenId}:aviso`, null)
   const [, iniciar] = useTransition()
+  const instancia = useFormularioMontado()
   // El PDF está pero este puesto no lo abre: se dice que está y no se ofrece subir otro.
   const pdfOculto = tienePdf && !adjuntos.some((a) => a.tipo === 'ORDEN')
   const sube = puedeSubir && !pdfOculto
@@ -138,6 +143,8 @@ export function ArchivosDeOrden({
     if (laPestanaEsDeOtraCuenta()) return setAvisoSubida(NO_SUBIO_OTRA_CUENTA)
     subidasEnCurso.add(ordenId)
     setSubiendo(true)
+    const desde = partida()
+    const de: DeFormulario = { instancia, campos: 'pdf-orden' }
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que el PDF suba y quede anotado, y si no entró no
     // recarga encima de su aviso. Recargaba a los 180 ms: la subida quedaba
@@ -149,6 +156,7 @@ export function ArchivosDeOrden({
         if (!r.ok) {
           // En la caja del campo se dice cómo volver a intentar, como los demás avisos.
           setAvisoSubida(r.error === NO_QUEDO_SIN_RESPUESTA ? 'No quedó, no llegó la respuesta: toca para elegirlo otra vez' : r.error)
+          decirElRechazoSiSeFue(desde, r.error === NO_QUEDO_SIN_RESPUESTA ? 'La respuesta no llegó y no quedó: elígelo otra vez.' : r.error, SI_SE_VA, { de })
           return
         }
         entro()
@@ -159,12 +167,14 @@ export function ArchivosDeOrden({
         setAviso(tieneOrden ? 'PDF corregido guardado.' : (r.mensaje ?? 'PDF guardado en la orden.'))
         iniciar(() => refrescarSiEsDeLaPestana(router))
       } catch (e) {
-        setAvisoSubida(e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.')
+        const motivo = e instanceof OtraCuentaEnLaPestana ? NO_SUBIO_OTRA_CUENTA : 'No se pudo guardar. Revisa la señal y vuelve a elegirlo.'
+        setAvisoSubida(motivo)
+        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA, { de })
       } finally {
         subidasEnCurso.delete(ordenId)
         setSubiendo(false)
       }
-    })
+    }, de)
   }
 
   return (

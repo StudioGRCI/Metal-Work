@@ -208,6 +208,10 @@ function Formulario({
       const resultado = await registrarAdquisicion(previo, datos)
       if (!resultado.ok && quedoEnBorrador(resultado.error)) {
         alQuedarEnBorrador(resultado.error, String(datos.get('proveedor') ?? ''), String(datos.get('numero_documento') ?? ''))
+        // Quedó creado: con la persona ya en otra pantalla, la línea de arriba
+        // lo dice tal cual y no «El comprobante no se guardó» (R7 de
+        // realización, cuadragésima tercera pasada).
+        return { ...resultado, arriba: resultado.error }
       }
       return resultado
     },

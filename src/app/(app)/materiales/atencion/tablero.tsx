@@ -282,7 +282,9 @@ export function TableroMateriales({
 
 /** Existencias globales y conteo físico, fuera del circuito de una OT. */
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
+  // Lleva dinero: su rechazo con la persona ya en otra pantalla lo nombra arriba
+  // (H5 de diseño, cuadragésima tercera pasada), como los demás de este tablero.
+  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra, undefined, { siSeVa: { que: 'el precio de la compra', enlace: 'Volver a la compra' } })
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
@@ -323,7 +325,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
 }
 
 function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra)
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra, undefined, { siSeVa: { que: 'el pago de la compra', enlace: 'Volver a la compra' } })
   if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago: {condicionDePago(compra.condicion_pago, compra.dias_credito)} · {compra.moneda === 'USD' ? 'Dólares' : 'Soles'}</p>
   return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
@@ -537,7 +539,7 @@ function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,p
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion)
+  const { alEnviar, enviando, error } = useEnvio(registrarRecepcion, undefined, { siSeVa: { que: 'la llegada a almacén', enlace: 'Volver a la compra' } })
   const restante = Number(compra.cantidad_pendiente ?? 0)
   return (
     <form onSubmit={alEnviar} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-2">
@@ -580,7 +582,7 @@ function FormularioDespacho({
     const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension
     datos.delete('foto');datos.set('foto_ruta',ruta)
     return subirArchivoPrivado({bucket:'evidencias-almacen',ruta,archivo,contentType:archivo.type,registrar:()=>despacharMaterial(null,datos)})
-  })
+  }, undefined, { siSeVa: { que: 'la entrega con su foto', enlace: 'Volver a la entrega' } })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="operacion_id" value={clave ?? ''} />

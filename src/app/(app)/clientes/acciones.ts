@@ -184,6 +184,11 @@ export async function guardarUnidad(
     ? await supabase.from('unidades').update(fila).eq('id', v.id!).select('id, placa, codigo_interno, numero_chasis, marca, modelo').maybeSingle()
     : await supabase.from('unidades').insert(fila).select('id, placa, codigo_interno, numero_chasis, marca, modelo').single()
 
+  // La placa repetida en el mismo cliente decía «Ya existe un registro con esos
+  // datos», sin decir cuál (cuadragésima tercera pasada).
+  if (error?.code === '23505' && /uq_unidades_cliente_placa/.test(error.message)) {
+    return { ok: false, error: `Este cliente ya tiene una unidad con la placa ${fila.placa}. Búscala en su ficha en vez de registrarla otra vez.` }
+  }
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!creada) return { ok: false, error: NO_TOCO_NADA }
 

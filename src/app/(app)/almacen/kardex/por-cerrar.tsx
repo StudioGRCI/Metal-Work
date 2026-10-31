@@ -73,7 +73,7 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
       bucket: 'evidencias-almacen', ruta, archivo, contentType: archivo.type,
       registrar: () => cerrarSalidaConFormato(null, datos),
     })
-  }, () => setAbierto(false))
+  }, () => setAbierto(false), { siSeVa: { que: 'el formato firmado', enlace: 'Volver a la salida' } })
 
   if (resultado?.ok) {
     return (

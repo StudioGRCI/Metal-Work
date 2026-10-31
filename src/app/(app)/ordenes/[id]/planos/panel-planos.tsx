@@ -127,6 +127,11 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
     const nombre = (area: string) => catalogos.areas.find((a) => a.id === area)?.nombre ?? 'el área'
     const enviadas: string[] = []
     const fallidas: string[] = []
+    // Las áreas a las que no llegó, y a las que no se sabe si llegó: con la
+    // persona ya en otra pantalla, la línea de arriba dice a cuáles volver a
+    // enviarla (`arriba`).
+    const noLlego: string[] = []
+    const enDuda: string[] = []
     let mensaje: string | undefined
     // Área por área, cada una sale con la sesión de ese momento. Si entró otra
     // cuenta, la que iba y las que siguen no salen, y se dice cuáles faltan
@@ -157,10 +162,12 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
             break
           }
           fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`)
+          noLlego.push(nombre(area))
           continue
         }
       } catch {
         fallidas.push(`${nombre(area)}: no se pudo cargar el PDF`)
+        noLlego.push(nombre(area))
         continue
       }
       const formulario = new FormData()
@@ -191,10 +198,27 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
         break
       }
       fallidas.push(`${nombre(area)}: ${resultado.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : resultado.error}`)
+      ;(resultado.error === NO_QUEDO_SIN_RESPUESTA || resultado.error === 'no se pudo confirmar el envío' ? enDuda : noLlego).push(nombre(area))
     }
     // Sin nada enviado, lo dice la traba, como en cualquier envío.
     if (cortadaEn === 0) throw new OtraCuentaEnLaPestana()
-    if (cortadaEn !== null) for (const area of areas.slice(cortadaEn)) fallidas.push(`${nombre(area)}: no salió, en otra pestaña entró otra cuenta`)
+    if (cortadaEn !== null) for (const area of areas.slice(cortadaEn)) {
+      fallidas.push(`${nombre(area)}: no salió, en otra pestaña entró otra cuenta`)
+      noLlego.push(nombre(area))
+    }
+    // Con la persona ya en otra pantalla, el formulario vuelve vacío y con otras
+    // solicitudes: «vuelve a enviar sin cambiar el archivo» ya no se puede, y
+    // con todas las áreas marcadas otra vez la que ya tenía su PDF lo recibía
+    // repetido. Arriba se dice a cuáles llegó y a cuáles volver a enviarla, sin
+    // «no se guardó» delante (N2 de funcionalidad, cuadragésima tercera pasada).
+    const arriba = enviadas.length || enDuda.length
+      ? [
+          enviadas.length ? `La versión del plano llegó a ${enviadas.join(' y ')}.` : '',
+          `Falta: ${fallidas.join('; ')}.`,
+          noLlego.length ? `Vuelve y envíala solo a ${noLlego.join(' y ')}.` : '',
+          enDuda.length ? `Antes de enviársela a ${enDuda.join(' y ')}, mira en el plano si ya le llegó.` : '',
+        ].filter(Boolean).join(' ')
+      : undefined
     // Reenviar sin cambiar el archivo no sirve aquí: hay que recargar.
     if (viejaEn !== null) {
       const antes = [
@@ -202,15 +226,21 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
         fallidas.length ? `Falta: ${fallidas.join('; ')}.` : '',
         enviadas.length || fallidas.length ? `No salió a ${areas.slice(viejaEn).map(nombre).join(' ni a ')}.` : '',
       ].filter(Boolean)
-      return { ok: false, error: [...antes, SE_ACTUALIZO_EL_SISTEMA].join(' ') }
+      return {
+        ok: false,
+        error: [...antes, SE_ACTUALIZO_EL_SISTEMA].join(' '),
+        arriba: enviadas.length ? [`La versión del plano llegó a ${enviadas.join(' y ')}.`, ...antes.slice(1), SE_ACTUALIZO_EL_SISTEMA].join(' ') : undefined,
+      }
     }
     if (fallidas.length > 0) {
       // Volver a elegir el archivo cambia la solicitud: se reenvía sin tocarlo.
-      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.` }
+      return { ok: false, error: `${enviadas.length ? `Enviado a ${enviadas.join(' y ')}. ` : ''}Falta: ${fallidas.join('; ')}. Vuelve a enviar sin cambiar el archivo: lo que ya llegó no se duplica.`, arriba }
     }
     return { ok: true, mensaje: `${mensaje ?? 'PDF registrado.'} Áreas: ${enviadas.join(', ')}.` }
   }
-  const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'))
+  // Lleva un documento: si se rechaza con la persona ya en otra pantalla, la
+  // línea de arriba lo nombra (R9 de realización, cuadragésima tercera pasada).
+  const { alEnviar, enviando, error } = useEnvio(cargar, r => setAviso(r.mensaje ?? 'Versión registrada.'), { siSeVa: { que: 'la versión del plano', enlace: 'Volver al plano' } })
   return <Tarjeta>
     <TarjetaCabecera titulo="Adjuntar PDF o nueva revisión" ayuda="Marca las áreas que reciben este PDF: si Maestranza y Producción llevan planos distintos, súbelos por separado. Si lo sube un colaborador, Jefatura de Diseño lo revisa primero; una corrección se adjunta como revisión nueva de esa área." />
     <TarjetaCuerpo>

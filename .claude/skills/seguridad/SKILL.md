@@ -185,7 +185,12 @@ En la misma migración que la crea, sin excepción:
   cuadragésima segunda). Lo que pudo entrar —sin respuesta, o un 502 de la
   pasarela con la base ya escrita— dice «No se sabe si … se guardó», nunca
   «no se guardó»: su enlace llevaba a registrarlo dos veces (H1 de esa
-  pasada). Un formulario dentro de una `Ventana` es solo suyo: React deja
+  pasada). Lo que quedó a medias tampoco: el resultado trae `arriba` (el
+  comprobante en borrador, el plano que llegó a un área y a otra no) y la
+  línea lo dice tal cual; con la persona fuera, «vuelve a enviar sin cambiar
+  el archivo» ya no se podía y el plano llegaba repetido (N2 de la
+  cuadragésima tercera). El rechazo es de su formulario (`DeFormulario`), no
+  de su texto: solo su envío siguiente lo quita. Un formulario dentro de una `Ventana` es solo suyo: React deja
   subir su envío por el portal hasta el formulario de la pantalla que la
   abre, y «Registrar unidad» en la orden nueva registraba también la orden,
   con el número del papel gastado (R3). La `Ventana` corta ese envío en su

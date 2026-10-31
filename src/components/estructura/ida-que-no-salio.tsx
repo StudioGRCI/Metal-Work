@@ -3,10 +3,10 @@
 import { X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, useIdaQueNoSalio } from '@/lib/envio'
+import { type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, sigueMontado, useIdaQueNoSalio } from '@/lib/envio'
 
 // Lo que la ida le pone a su dirección solo para esa vez («?creada=1»,
 // «?contrato=pendiente») o para elegir pestaña o filtrar («vista», «q»): llegar
@@ -52,7 +52,10 @@ function comoDireccion(direccion: string) {
  * siempre montada: una que nace con su texto el lector no la lee.
  *
  * También dice, en rojo, el rechazo que volvió cuando la persona ya se había
- * ido del formulario (`decirElRechazoSiSeFue`), con el camino de vuelta.
+ * ido del formulario (`decirElRechazoSiSeFue`), con el camino de vuelta; en
+ * ámbar, lo que quedó a medias, y en azul, lo que ya había quedado la primera
+ * vez. Si la dirección cambió y el formulario que la puso sigue en la pantalla
+ * (otra pestaña de la lista que lo pinta encima), lo dice él y la línea se va.
  */
 export function IdaQueNoSalio() {
   const ida = useIdaQueNoSalio()
@@ -72,25 +75,63 @@ export function IdaQueNoSalio() {
   // elige la pestaña, y en la de Taller el formulario del gasto no está.
   const ahi = ida ? (ida.rechazo ? comoDireccion(ida.url) === aqui : yaEstaEn(ida, ruta, busqueda)) : false
   const llego = ahi && !ida?.rechazo
+  // El formulario que la puso sigue en la pantalla, en otra dirección: lo dice
+  // él, y la línea calla. Al pintar la pantalla nueva, la que se va todavía
+  // está en el registro: aquí solo calla, y el efecto, que corre cuando React
+  // ya la desmontó, la quita o la vuelve a pintar. Quitarla al pintar se
+  // llevaba el rechazo que llegó antes que la pantalla pedida (el plano, con
+  // su subida retenida, y la tarea del informe al Dashboard). La dirección es
+  // la del formulario, no la del enlace: lo que ya había quedado lleva al
+  // reporte, y con la ida todavía en cola, en el formulario, se quitaba.
+  const pareceSuya = Boolean(ida?.de && !ahi && comoDireccion(ida.desde ?? ida.url) !== aqui && sigueMontado(ida.de))
+  const [, repintar] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    if (llego) ponerIdaQueNoSalio(null)
-  }, [llego])
+    if (llego) return ponerIdaQueNoSalio(null)
+    if (!pareceSuya) return
+    if (sigueMontado(ida?.de)) ponerIdaQueNoSalio(null)
+    else repintar()
+  }, [llego, pareceSuya, ida])
 
-  const visible = ida && !llego && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
+  const visible = ida && !llego && !pareceSuya && (!ida.dichaEn || comoDireccion(ida.dichaEn) !== aqui) ? ida : null
+
+  // La línea nace en el flujo, debajo de la barra pegada de arriba. Si la
+  // página estaba bajada unos pocos píxeles, el navegador la baja lo que mide
+  // la línea para no mover lo que se leía, y Next no sube porque el principio
+  // de la pantalla nueva se ve: quedaba entera debajo de la barra (A de diseño
+  // y R6 de realización, cuadragésima segunda y tercera pasadas). Hasta que se
+  // vea una vez, se sube lo justo; si la persona bajó más que eso, no se la
+  // mueve.
+  const region = useRef<HTMLDivElement>(null)
+  const vista = useRef<string | null>(null)
+  useEffect(() => {
+    if (!visible || vista.current === visible.dice) return
+    const cuadro = requestAnimationFrame(() => {
+      const linea = region.current?.getBoundingClientRect()
+      if (!linea) return
+      const barra = document.querySelector('[data-barra-superior]')?.getBoundingClientRect().bottom ?? 0
+      if (linea.top >= barra) {
+        vista.current = visible.dice
+        return
+      }
+      if (window.scrollY > linea.height + 80) return
+      vista.current = visible.dice
+      window.scrollTo({ top: Math.max(0, window.scrollY - (barra - linea.top)) })
+    })
+    return () => cancelAnimationFrame(cuadro)
+  }, [visible, aqui])
+
+  const fondo = !visible ? '' : visible.tono === 'aviso' ? 'bg-aviso-suave' : visible.tono === 'info' ? 'bg-info-suave' : visible.rechazo ? 'bg-peligro-suave' : 'bg-exito-suave'
   return (
     <div
+      ref={region}
       role="status"
-      className={
-        visible
-          ? `flex items-center gap-3 border-b border-borde px-4 py-1.5 print:hidden ${visible.rechazo ? 'bg-peligro-suave' : 'bg-exito-suave'}`
-          : 'sr-only'
-      }
-      data-ida-que-no-salio={visible ? (visible.rechazo ? 'rechazo' : '') : undefined}
+      className={visible ? `flex items-center gap-3 border-b border-borde px-4 py-1.5 print:hidden ${fondo}` : 'sr-only'}
+      data-ida-que-no-salio={visible ? (visible.tono === 'aviso' ? 'a-medias' : visible.rechazo ? 'rechazo' : visible.tono === 'info' ? 'ya-habia-quedado' : '') : undefined}
     >
       {visible && (
         <>
           <p className="min-w-0 flex-1 text-xs text-texto text-pretty">
-            <span className={visible.rechazo ? 'font-medium text-peligro' : 'font-medium'}>{visible.dice}</span>{' '}
+            <span className={visible.rechazo && !visible.tono ? 'font-medium text-peligro' : 'font-medium'}>{visible.dice}</span>{' '}
             {!ahi && (
               <Link
                 href={visible.url}

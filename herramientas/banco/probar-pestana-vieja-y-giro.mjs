@@ -301,6 +301,7 @@ const CUENTAS = {
   ventas: process.env.VENTAS ?? 'ventas.local@metalwork.test',
   gerencia: process.env.GERENCIA ?? 'gerencia.local@metalwork.test',
   contabilidad: process.env.CONTABILIDAD ?? 'contabilidad.local@metalwork.test',
+  colaborador: process.env.COLABORADOR ?? 'colaborador.local@metalwork.test',
   operario: 'operario.giro@banco.test',
 }
 if (!CLAVE) {
@@ -604,13 +605,20 @@ const avisoDeArriba = async (pagina) => limpio(await pagina.locator('[data-pesta
 const yaQuedo = (pagina) => pagina.locator('[data-ya-quedo]').innerText().then(limpio).catch(() => '')
 /** La línea de arriba (`IdaQueNoSalio`): lo que entró y no llevó a su pantalla, o el rechazo que volvió con la persona ya en otra. */
 const idaQueNoSalio = (pagina) => pagina.locator('[data-ida-que-no-salio]').innerText().then(limpio).catch(() => '')
-/** Si la línea de arriba se ve entera sin desplazar: no flota, y la que llega fuera de la vista no la lee nadie. */
+/**
+ * Si la línea de arriba se ve entera sin desplazar: no flota, y la que llega
+ * fuera de la vista no la lee nadie. Debajo de la barra pegada de arriba
+ * tampoco se ve: se mira qué hay en su centro y que empiece donde la barra
+ * termina (E de la crítica, cuadragésima tercera pasada).
+ */
 const lineaALaVista = (pagina) =>
   pagina
     .locator('[data-ida-que-no-salio]')
     .evaluate((e) => {
       const r = e.getBoundingClientRect()
-      return r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight
+      const barra = document.querySelector('[data-barra-superior]')?.getBoundingClientRect().bottom ?? 0
+      const enSuCentro = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      return r.height > 0 && r.top >= barra - 1 && r.bottom <= window.innerHeight && Boolean(enSuCentro && e.contains(enSuCentro))
     })
     .catch(() => false)
 /** Lo que pasa al volver a la pestaña después del despliegue de todos los días: queda «nueva». */
@@ -1819,7 +1827,7 @@ if (['1e', '1i-volver', '1i-sondeo', '1i-sin-senal', '1l', '1m', '1n', '1o', '1p
     const aLaVista = await lineaALaVista(pagina)
     const [rd] = await consulta(`select id from reportes_diarios where asunto = $1 order by creado_en desc limit 1`, [asunto])
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1za-ya-habia-quedado.png') })
-    comprobar(donde === '/reportes-diarios' && dice === 'El reporte ya había quedado la primera vez que lo enviaste; lo que cambiaste después no se guardó. Ver el reporte' && tono === '' && enlace === `/reportes-diarios/${rd?.id}` && aLaVista && (await reportes()) === n0 + 1 && (await mismoDocumento(pagina)),
+    comprobar(donde === '/reportes-diarios' && dice === 'El reporte ya había quedado la primera vez que lo enviaste; lo que cambiaste después no se guardó. Ver el reporte' && tono === 'ya-habia-quedado' && enlace === `/reportes-diarios/${rd?.id}` && aLaVista && (await reportes()) === n0 + 1 && (await mismoDocumento(pagina)),
       `[Maestranza 390] 1za-ya-habia-quedado. lo enviado otra vez después de pedir otra sección dice arriba que el reporte ya había quedado y lo cambiado no, con el enlace al reporte (${donde}, «${dice}», tono «${tono}», ${enlace}, a la vista ${aLaVista}, ${(await reportes()) - n0} reportes)`)
     // «Ver el reporte» lleva a lo que quedó, y la línea se va.
     await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Ver el reporte' }).tap({ timeout: 5000 }).catch(() => {})
@@ -4416,8 +4424,10 @@ if (corre('1za-la-ventana-de-la-orden')) {
       await unidadNueva()
       const enLaVentana = await hasta(() => v.locator('[role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), Boolean, 15000)
       const trasElRechazo = await idaQueNoSalio(pagina)
-      comprobar(Boolean(enLaVentana) && trasElRechazo === motivo && (await unidades()).length === 1 && (await ordenes()).length === 0,
-        `[Administración 1280] 1za-la-ventana-de-la-orden. la ventana rechazada dice su motivo dentro y no se lleva el de la orden («${enLaVentana}», arriba «${trasElRechazo}»)`)
+      // Dice cuál placa, no «Ya existe un registro con esos datos» (cuadragésima tercera pasada).
+      const [{ placa: guardada } = {}] = await unidades().then((l) => consulta(`select placa from unidades where id = $1`, [l[0]?.id ?? null]))
+      comprobar(enLaVentana === `Este cliente ya tiene una unidad con la placa ${guardada}. Búscala en su ficha en vez de registrarla otra vez.` && trasElRechazo === motivo && (await unidades()).length === 1 && (await ordenes()).length === 0,
+        `[Administración 1280] 1za-la-ventana-de-la-orden. la ventana rechazada dice dentro qué placa ya tiene el cliente y no se lleva el rechazo de la orden («${enLaVentana}», arriba «${trasElRechazo}»)`)
       await v.getByRole('button', { name: 'Cerrar', exact: true }).click()
       await hasta(() => v.count(), (n) => n === 0, 5000)
       // La orden misma, enviada: entra con su unidad, y el rechazo de arriba se va.
@@ -4504,6 +4514,333 @@ if (corre('1za-lo-que-enviaste')) {
   comprobar(pagina.url().replace(BASE, '') === '/rrhh/tardanzas' && alVolver === dice.replace(/ Volver adonde lo enviaste$/, ''),
     `[RR. HH. 1280] 1za-lo-que-enviaste. de vuelta en la regla dice el motivo, sin el enlace (${pagina.url().replace(BASE, '')}, «${alVolver}»)`)
   comprobar(errores.length === 0, `[RR. HH. 1280] 1za-lo-que-enviaste. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 1zb. Lo que la cuadragésima tercera pasada dejó en pie de la ida
+const diaDeLima = (dias = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date(Date.now() + dias * 86400000))
+/** El enlace a `href` que se ve dentro de la ventana, como el que la persona toca. */
+async function enlaceALaVista(pagina, href) {
+  const enlaces = pagina.locator(`a[href="${href}"]`)
+  const i = await enlaces.evaluateAll((l) => l.findIndex((a) => a.checkVisibility() && a.getBoundingClientRect().top >= 0 && a.getBoundingClientRect().bottom <= window.innerHeight))
+  return enlaces.nth(Math.max(i, 0))
+}
+
+// «Sin definir», lo que trae la ventana «Nuevo tipo de carrocería», llegaba
+// vacío y el enum lo rechazaba con «Invalid input» (H4 de diseño). Entra sin tipo.
+if (corre('1zb-carroceria-sin-definir')) {
+  const nombre = `QA_ZBC carrocería ${sello}`
+  const filas = () => consulta(`select tipo_unidad from tipos_carroceria where nombre = $1`, [nombre])
+  const { pagina, contexto, errores } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/ordenes/nueva`)
+  await pagina.getByRole('button', { name: 'Nuevo tipo de carrocería' }).click()
+  const v = pagina.getByRole('dialog').filter({ hasText: 'Nuevo tipo de carrocería' })
+  await v.waitFor({ timeout: 10000 })
+  const alAbrir = await v.locator('#ncar-tipo_unidad option:checked').innerText().then(limpio).catch(() => '')
+  await v.locator('#ncar-nombre').fill(nombre)
+  await v.getByRole('button', { name: 'Agregar al catálogo' }).click()
+  const entro = await hasta(filas, (l) => l?.length === 1, 15000)
+  await pagina.waitForTimeout(1000)
+  const dice = limpio((await v.locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-carroceria-sin-definir.png') })
+  comprobar(alAbrir === 'Sin definir' && entro?.length === 1 && entro[0].tipo_unidad === null && dice === '',
+    `[Administración 1280] 1zb-carroceria-sin-definir. el tipo nuevo con «Sin definir», como abre la ventana, entra sin tipo y sin «Invalid input» (abre en «${alAbrir}», ${entro?.length ?? 0} filas, tipo ${entro?.[0]?.tipo_unidad ?? '—'}, «${dice}»)`)
+  comprobar(errores.length === 0, `[Administración 1280] 1zb-carroceria-sin-definir. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El plano a dos áreas cuyo PDF llega a una y a la otra no, con la persona ya
+// en otra pantalla: arriba decía «La versión del plano no se guardó» y «vuelve
+// a enviar sin cambiar el archivo», que ya no se podía, y con las dos marcadas
+// otra vez la primera lo recibía repetido (N2 de funcionalidad). Dice, en
+// ámbar, a cuál llegó y a cuál volver a enviarla, y haciéndolo no se duplica.
+if (corre('1zb-plano-a-medias')) {
+  const [orden] = await consulta(`select o.id, e.id as etapa_id, o.plan_etapas_manual from ordenes_trabajo o join ot_etapas e on e.orden_id = o.id
+                                  where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
+  const integrante = orden.plan_etapas_manual
+    ? (await consulta(`insert into ot_equipo_diseno (orden_id, nombre, funcion) values ($1, 'QA banco Diseño', 'COLABORADOR')
+                       on conflict (orden_id, lower(btrim(nombre))) do update set nombre = excluded.nombre returning id`, [orden.id]))[0].id
+    : null
+  const [plano] = await consulta(`insert into ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
+                                  values ($1, $2, 'Plano a medias del banco', $3, $4) returning id`, [orden.id, `QA-ZBP-${sello}`, orden.etapa_id, integrante])
+  const porArea = async () =>
+    Object.fromEntries((await consulta(`select a.nombre, count(*)::int n from ot_plano_versiones v join areas a on a.id = v.area_id where v.plano_id = $1 group by a.nombre`, [plano.id])).map((x) => [x.nombre, x.n]))
+  const pdf = { name: `QA-ZBP-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZBP-${sello}`, 'Plano a medias del banco']) }
+  const direccion = `/ordenes/${orden.id}/planos?plano=${plano.id}`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}${direccion}`)
+  await marcarDocumento(pagina)
+  const formulario = () => pagina.locator('#version-archivo').locator('xpath=ancestor::form')
+  await pagina.locator('#version-archivo').waitFor({ state: 'attached', timeout: 30000 })
+  await formulario().getByLabel('Maestranza', { exact: true }).check()
+  await formulario().getByLabel('Producción', { exact: true }).check()
+  // La primera que sale es la que no llega: la que va primero en la lista.
+  const [primera, segunda] = await formulario().locator('input[name="area_id"]:checked').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim()))
+  await pagina.locator('#version-archivo').setInputFiles(pdf)
+  corte.cortarSubida = 'planos-privados'
+  await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await (await enlaceVisible(pagina, '/')).click()
+  await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('llegó a') || t.includes('no se guardó'), 30000)
+  await quieta(pagina)
+  await pagina.waitForTimeout(1500)
+  // Se lee ya en la pantalla pedida: en la del plano, con la ida en cola, la
+  // línea nace sin su enlace.
+  const dice = await idaQueNoSalio(pagina)
+  const donde = pagina.url().replace(BASE, '')
+  const tono = await tonoDeLaLinea(pagina)
+  const aLaVista = await lineaALaVista(pagina)
+  const antes = await porArea()
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-plano-a-medias.png') })
+  comprobar(donde === '/' && dice === `La versión del plano llegó a ${segunda}. Falta: ${primera}: no se pudo cargar el PDF. Vuelve y envíala solo a ${primera}. Volver al plano` && tono === 'a-medias' && aLaVista && antes[segunda] === 1 && !antes[primera] && (await mismoDocumento(pagina)),
+    `[Diseño 1280] 1zb-plano-a-medias. el PDF que llega a ${segunda} y no a ${primera} después de tocar el menú lo dice arriba en ámbar, sin «no se guardó», con a cuál volver a enviarla (${donde}, «${dice}», ${tono}, a la vista ${aLaVista}, ${JSON.stringify(antes)})`)
+  // Hace lo que dice: vuelve y la envía solo a la que faltó.
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al plano' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname + u.search === direccion, { timeout: 20000 }).catch(() => {})
+  await pagina.locator('#version-archivo').waitFor({ state: 'attached', timeout: 30000 })
+  await quieta(pagina)
+  const alVolver = await idaQueNoSalio(pagina)
+  await formulario().getByLabel(primera, { exact: true }).check()
+  await pagina.locator('#version-archivo').setInputFiles(pdf)
+  await formulario().getByRole('button', { name: 'Enviar a revisión' }).click()
+  const despues = await hasta(porArea, (x) => x?.[primera] === 1, 30000)
+  await pagina.waitForTimeout(1500)
+  const alFinal = await idaQueNoSalio(pagina)
+  const enElFormulario = limpio((await formulario().locator('[role="status"]').allInnerTexts().catch(() => [])).join(' '))
+  comprobar(alVolver === dice.replace(/ Volver al plano$/, '') && despues?.[primera] === 1 && despues?.[segunda] === 1 && alFinal === '' && enElFormulario.includes(`Áreas: ${primera}.`),
+    `[Diseño 1280] 1zb-plano-a-medias. de vuelta dice lo mismo sin el enlace; enviada solo a ${primera}, cada área tiene una versión, sin duplicar, y la línea se va (${JSON.stringify(despues)}, al volver «${alVolver}», al final «${alFinal}», «${enElFormulario}»)`)
+  comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El comprobante que entra en borrador porque Storage no acepta su PDF, con la
+// persona ya en otra pantalla: arriba decía «El comprobante no se guardó»
+// aunque había quedado (R7 de realización). Lo dice como lo dice la acción, en
+// ámbar. Storage dice que no por un disparador propio, que se quita al final.
+if (corre('1zb-comprobante-en-borrador')) {
+  const proveedor = `QA_ZBB proveedor ${sello}`
+  const numero = `F777-${sello}`
+  const [{ n: ruc } = {}] = await consulta(`select n from (select '20' || lpad($1::text, 8, '0') || d as n from generate_series(0, 9) d) x where public.ruc_es_valido(n) limit 1`, [sello])
+  const filas = () => consulta(`select estado from adquisiciones where proveedor = $1`, [proveedor])
+  await consulta(`create or replace function public.qa_zbb_storage_dice_que_no() returns trigger language plpgsql security definer set search_path = public as $$
+                    begin
+                      if exists (select 1 from public.adquisiciones a
+                                  where new.name = 'adquisiciones/' || a.id || '/comprobante.pdf' and a.proveedor like 'QA_ZBB proveedor %') then
+                        raise exception 'QA_ZBB: Storage no acepta este archivo';
+                      end if;
+                      return new;
+                    end $$`)
+  await consulta(`drop trigger if exists qa_zbb_storage_dice_que_no on storage.objects`)
+  await consulta(`create trigger qa_zbb_storage_dice_que_no before insert on storage.objects for each row
+                    when (new.bucket_id = 'comprobantes-financieros') execute function public.qa_zbb_storage_dice_que_no()`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.contabilidad, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
+    await marcarDocumento(pagina)
+    await pagina.locator('#adq-pdf').setInputFiles({ name: `QA-ZBB-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto(['FACTURA ELECTRONICA', numero, 'IMPORTE TOTAL: S/ 59.00']) })
+    await hasta(() => pagina.getByText('Leyendo la factura…').count(), (n) => n === 0, 20000)
+    await pagina.waitForTimeout(500)
+    await pagina.locator('#adq-proveedor').fill(proveedor)
+    await pagina.locator('#adq-ruc').fill(ruc ?? '')
+    await pagina.locator('#adq-numero').fill(numero)
+    await pagina.locator('#adq-emision').fill(diaDeLima())
+    await pagina.locator('#adq-total').fill('59.00')
+    await pagina.locator('#adq-vencimiento').fill(diaDeLima())
+    corte.marca = proveedor
+    await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await (await enlaceVisible(pagina, '/tesoreria/tipo-de-cambio')).click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/tesoreria/tipo-de-cambio', { timeout: 30000 }).catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('borrador') || t.includes('no se guardó'), 30000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const tono = await tonoDeLaLinea(pagina)
+    const aLaVista = await lineaALaVista(pagina)
+    const quedo = await filas()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-comprobante-en-borrador.png') })
+    comprobar(donde === '/tesoreria/tipo-de-cambio' && dice.startsWith(`El comprobante ${numero} quedó en borrador sin su PDF`) && dice.endsWith(' Volver al comprobante') && !dice.includes('El comprobante no se guardó') && tono === 'a-medias' && aLaVista && quedo.length === 1 && quedo[0].estado === 'BORRADOR' && (await mismoDocumento(pagina)),
+      `[Contabilidad 1280] 1zb-comprobante-en-borrador. el comprobante que queda en borrador sin su PDF después de tocar el menú lo dice arriba en ámbar, como quedó, y no «no se guardó» (${donde}, «${dice}», ${tono}, a la vista ${aLaVista}, ${JSON.stringify(quedo)})`)
+    comprobar(errores.length === 0, `[Contabilidad 1280] 1zb-comprobante-en-borrador. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    await consulta(`drop trigger if exists qa_zbb_storage_dice_que_no on storage.objects`)
+    await consulta(`drop function if exists public.qa_zbb_storage_dice_que_no()`)
+    await contexto.close()
+  }
+}
+
+// El formulario que sigue en pantalla cuando la persona cambia solo la
+// búsqueda de la dirección («Por pagar», la sub-vista de Facturas): arriba
+// salía su rechazo aunque el formulario seguía a la vista diciéndolo, y como
+// era de la dirección de antes, su siguiente envío no lo quitaba (W1 de la
+// crítica). Lo dice el formulario, y arriba nada.
+if (corre('1zb-subvista')) {
+  const numero = `QA-ZBS-${sello}`
+  const filas = () => consulta(`select estado from adquisiciones where numero_documento = $1`, [numero])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.contabilidad, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
+  await marcarDocumento(pagina)
+  await pagina.locator('#adq-tipo').selectOption('OTRO')
+  await pagina.locator('#adq-proveedor').fill(`QA_ZBS proveedor ${sello}`)
+  await pagina.locator('#adq-pdf').setInputFiles({ name: `${numero}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COMPROBANTE ${numero}`, 'Prueba del banco']) })
+  await hasta(() => pagina.getByText('Leyendo la factura…').count(), (n) => n === 0, 20000)
+  await pagina.waitForTimeout(500)
+  // Lo que el detector haya llenado no importa: se pone lo nuestro. A crédito, con el vencimiento antes de la emisión.
+  await pagina.locator('#adq-numero').fill(numero)
+  await pagina.locator('#adq-emision').fill(diaDeLima())
+  await pagina.locator('#adq-condicion').selectOption('CREDITO')
+  await pagina.locator('#adq-vencimiento').fill(diaDeLima(-1))
+  await pagina.locator('#adq-total').fill('100')
+  corte.marca = numero
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.locator('a[href^="/adquisiciones?vista=por-pagar"]').first().click()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.search.includes('por-pagar'), { timeout: 20000 }).catch(() => {})
+  const enElFormulario = () => pagina.locator('#nuevo-comprobante [role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))).catch(() => '')
+  const suAviso = await hasta(enElFormulario, Boolean, 20000)
+  await pagina.waitForTimeout(1500)
+  const donde = pagina.url().replace(BASE, '')
+  const arriba = await idaQueNoSalio(pagina)
+  const aLaVista = await pagina.locator('#adq-numero').isVisible()
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-subvista.png') })
+  comprobar(donde.startsWith('/adquisiciones?vista=por-pagar') && aLaVista && Boolean(suAviso) && arriba === '' && (await filas()).length === 0 && (await mismoDocumento(pagina)),
+    `[Contabilidad 1280] 1zb-subvista. el comprobante rechazado después de tocar «Por pagar» lo dice el formulario, que sigue a la vista, y arriba nada (${donde}, formulario «${suAviso}», arriba «${arriba}»)`)
+  // Corregido y enviado otra vez desde ahí: entra, y arriba sigue sin nada.
+  await pagina.locator('#adq-vencimiento').fill(diaDeLima())
+  await pagina.getByRole('button', { name: 'Registrar comprobante' }).click()
+  const entro = await hasta(filas, (l) => l?.length === 1, 30000)
+  await pagina.waitForTimeout(2500)
+  const alFinal = await idaQueNoSalio(pagina)
+  comprobar(entro?.length === 1 && alFinal === '',
+    `[Contabilidad 1280] 1zb-subvista. corregido y registrado desde «Por pagar» entra, y arriba no queda ningún «no se guardó» (${entro?.length ?? 0} comprobantes, arriba «${alFinal}»)`)
+  comprobar(errores.length === 0, `[Contabilidad 1280] 1zb-subvista. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// Dos formularios sin nombre propio en la misma pantalla (el informe semanal
+// del colaborador de Diseño): el rechazo de la tarea dicho arriba se iba con el
+// envío de la entrega (R8 de realización); y con la página bajada, la línea
+// llegaba tapada por la barra de arriba (E de la crítica). Cada línea es de su
+// formulario, y la que cae bajo la barra sube a la vista.
+if (corre('1zb-dos-sin-nombre')) {
+  const componente = `QA_ZBD tarea ${sello}`
+  const entrega = `QA_ZBD entrega ${sello}`
+  const tareas = async () => (await consulta(`select count(*)::int n from diseno_tareas where componente = $1`, [componente]))[0].n
+  const entregas = async () => (await consulta(`select count(*)::int n from diseno_entregas_planos where tipo_plano = $1`, [entrega]))[0].n
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.colaborador, { width: 1280, height: 1100 })
+  await ir(pagina, `${BASE}/diseno/informe-semanal`)
+  await marcarDocumento(pagina)
+  // Una OT con colaboradores en su equipo, y la tarea con la entrega antes del inicio: la acción la rechaza sin escribir.
+  const tarea = pagina.locator('form', { has: pagina.locator('#tarea-componente') })
+  const llenarLaTarea = async () => {
+    const ots = await pagina.locator('#tarea-ot option').evaluateAll((l) => l.map((o) => o.value).filter(Boolean))
+    for (const ot of ots) {
+      await pagina.locator('#tarea-ot').selectOption(ot)
+      if ((await pagina.locator('#tarea-persona option').count()) > 1) break
+    }
+    await pagina.locator('#tarea-persona').selectOption({ index: 1 })
+    await pagina.locator('#tarea-tipo').selectOption({ index: 1 })
+    await pagina.locator('#tarea-componente').fill(componente)
+    await pagina.locator('#tarea-inicio').fill(diaDeLima())
+    await pagina.locator('#tarea-fin').fill(diaDeLima(-1))
+    return pagina.locator('#tarea-ot').inputValue()
+  }
+  const ot = await llenarLaTarea()
+  corte.marca = componente
+  await tarea.getByRole('button', { name: 'Registrar tarea' }).click()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  // La página bajada hasta el final, y el menú.
+  await pagina.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await pagina.waitForTimeout(300)
+  const bajada = await pagina.evaluate(() => Math.round(window.scrollY))
+  await (await enlaceALaVista(pagina, '/')).click()
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+  const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 15000)
+  await quieta(pagina)
+  await pagina.waitForTimeout(1200)
+  const aLaVista = await lineaALaVista(pagina)
+  const enY = await pagina.evaluate(() => Math.round(window.scrollY))
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-dos-sin-nombre-bajo-la-barra.png') })
+  comprobar(/^Lo que enviaste no se guardó\. .+ Volver adonde lo enviaste$/.test(dice) && (await tonoDeLaLinea(pagina)) === 'rechazo' && aLaVista && bajada > 0 && (await mismoDocumento(pagina)),
+    `[Diseño colaborador 1280×1100] 1zb-dos-sin-nombre. la tarea rechazada después de tocar el menú con la página bajada (${bajada} px) lo dice arriba, a la vista y no bajo la barra («${dice}», a la vista ${aLaVista}, en ${enY} px)`)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver adonde lo enviaste' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/diseno/informe-semanal', { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const motivo = dice.replace(/ Volver adonde lo enviaste$/, '')
+  const alVolver = await idaQueNoSalio(pagina)
+  // La otra: la entrega sin ningún área marcada, que también se rechaza.
+  const a0 = corte.acciones
+  await pagina.locator('#entrega-ot').selectOption(ot)
+  await pagina.locator('#entrega-persona').selectOption({ index: 1 })
+  await pagina.locator('#entrega-tipo').fill(entrega)
+  await pagina.locator('#entrega-planos').fill('1')
+  for (const c of await pagina.locator('input[name="entregado_a"]').all()) if (await c.isChecked()) await c.uncheck()
+  const formEntrega = pagina.locator('form', { has: pagina.locator('#entrega-tipo') })
+  await formEntrega.getByRole('button', { name: 'Registrar entrega' }).click()
+  const suAviso = await hasta(() => formEntrega.locator('[role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), Boolean, 20000)
+  await pagina.waitForTimeout(1000)
+  const trasLaEntrega = await idaQueNoSalio(pagina)
+  comprobar(alVolver === motivo && Boolean(suAviso) && trasLaEntrega === motivo && (await entregas()) === 0,
+    `[Diseño colaborador 1280×1100] 1zb-dos-sin-nombre. la entrega rechazada en la misma pantalla no se lleva el rechazo de la tarea (${corte.acciones - a0} acciones, entrega «${suAviso}», arriba «${trasLaEntrega}»)`)
+  // La tarea misma, enviada otra vez: su línea se va, y su rechazo lo dice el formulario.
+  await llenarLaTarea()
+  await tarea.getByRole('button', { name: 'Registrar tarea' }).click()
+  const suyo = await hasta(() => tarea.locator('[role="alert"]').allInnerTexts().then((l) => limpio(l.join(' '))), Boolean, 20000)
+  await pagina.waitForTimeout(1000)
+  const alFinal = await idaQueNoSalio(pagina)
+  comprobar(Boolean(suyo) && alFinal === '' && (await tareas()) === 0,
+    `[Diseño colaborador 1280×1100] 1zb-dos-sin-nombre. la tarea enviada otra vez se lleva su línea y su rechazo va en el formulario (tarea «${suyo}», arriba «${alFinal}»)`)
+  comprobar(errores.length === 0, `[Diseño colaborador 1280×1100] 1zb-dos-sin-nombre. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El PDF de la orden se sube al elegirlo, fuera de `useAccion`: si Storage no
+// lo recibe con la persona ya en otra pantalla, no lo decía nadie hasta volver
+// a la orden (N3 de funcionalidad). Arriba lo dice, con el camino de vuelta.
+if (corre('1zb-pdf-de-la-orden')) {
+  const [ot] = await consulta(
+    `select o.id, o.numero from ordenes_trabajo o
+     where not exists (select 1 from ot_adjuntos a where a.orden_id = o.id and a.tipo = 'ORDEN') order by o.numero limit 1`,
+  )
+  const pdfs = async () => (await consulta(`select count(*)::int n from ot_adjuntos where orden_id = $1 and tipo = 'ORDEN'`, [ot?.id ?? null]))[0].n
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/ordenes/${ot?.id}`)
+  const campo = pagina.locator(`input[type="file"]#subir-pdf-${ot?.id}, #subir-pdf-${ot?.id} input[type="file"]`).first()
+  if (!ot || (await campo.count()) === 0) {
+    comprobar(false, `[Administración 1280] 1zb-pdf-de-la-orden. hay una orden sin PDF que ofrezca subirlo (${ot?.numero ?? 'ninguna'})`)
+  } else {
+    await marcarDocumento(pagina)
+    corte.cortarSubida = 'adjuntos-ot'
+    await campo.setInputFiles({ name: `QA-ZBO-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`Orden ${ot.numero}`, `QA_ZBO ${sello}`]) })
+    await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+    await (await enlaceVisible(pagina, '/clientes')).click()
+    await pagina.waitForURL((u) => u.pathname === '/clientes', { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 20000)
+    await pagina.waitForTimeout(1500)
+    const donde = pagina.url().replace(BASE, '')
+    const tono = await tonoDeLaLinea(pagina)
+    const aLaVista = await lineaALaVista(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zb-pdf-de-la-orden.png') })
+    comprobar(donde === '/clientes' && dice.startsWith('El PDF de la orden no se guardó. ') && dice.endsWith(' Volver a la orden') && tono === 'rechazo' && aLaVista && (await pdfs()) === 0 && (await mismoDocumento(pagina)),
+      `[Administración 1280] 1zb-pdf-de-la-orden. el PDF que Storage no recibe después de tocar el menú lo dice arriba, en rojo, a la vista y con el camino de vuelta (${donde}, «${dice}», ${tono}, a la vista ${aLaVista})`)
+    await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver a la orden' }).click({ timeout: 5000 }).catch(() => {})
+    await pagina.waitForURL((u) => u.pathname === `/ordenes/${ot.id}`, { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    const alVolver = await idaQueNoSalio(pagina)
+    comprobar(new URL(pagina.url()).pathname === `/ordenes/${ot.id}` && alVolver === dice.replace(/ Volver a la orden$/, ''),
+      `[Administración 1280] 1zb-pdf-de-la-orden. de vuelta en la orden dice el motivo, sin el enlace (${pagina.url().replace(BASE, '')}, «${alVolver}»)`)
+  }
+  comprobar(errores.length === 0, `[Administración 1280] 1zb-pdf-de-la-orden. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

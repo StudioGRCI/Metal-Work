@@ -13,7 +13,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { decirElRechazoSiSeFue, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo } from '@/lib/envio'
+import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -65,6 +65,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   useCursorAlRechazo(pendiente, errorNumero ?? error, () => (errorNumero ? campoNumero.current : avisoError.current))
   const router = useRouter()
   const enCurso = useRef(false)
+  const instancia = useFormularioMontado()
   const [clienteId, setClienteId] = useState('')
   const [unidadId, setUnidadId] = useState('')
   // La garantía es de un vehículo que vuelve: va con su unidad (migración 20261021120000).
@@ -171,6 +172,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     setErrorNumero(null)
     // Cómo estaba la pestaña: si al entrar la persona ya está en otra cosa, la orden no se la lleva.
     const desde = partida()
+    const de: DeFormulario = { instancia, campos: camposDe(datos) }
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que la orden vuelva, y si no entró no recarga.
     iniciar(() => mientrasSeEnvia(async (entro) => {
@@ -193,7 +195,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         if (falla) {
           const motivo = `No se pudo subir el PDF de la orden. ${motivoDeSubida(falla)}`
           setError(motivo)
-          decirElRechazoSiSeFue(desde, motivo, SI_SE_VA)
+          decirElRechazoSiSeFue(desde, motivo, SI_SE_VA, { de })
           return
         }
 
@@ -218,7 +220,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           } else {
             setError(r.error)
           }
-          decirElRechazoSiSeFue(desde, r.error, SI_SE_VA)
+          decirElRechazoSiSeFue(desde, r.error, SI_SE_VA, { de })
           return
         }
         // Registrada: el formulario queda trabado hasta que se abre la orden.
@@ -234,17 +236,17 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // ventana dice que no se guardó: al volver, el cursor va ahí.
         if (e instanceof OtraCuentaEnLaPestana) {
           setError(NO_SE_GUARDO_OTRA_CUENTA)
-          decirElRechazoSiSeFue(desde, NO_SE_GUARDO_OTRA_CUENTA, SI_SE_VA)
+          decirElRechazoSiSeFue(desde, NO_SE_GUARDO_OTRA_CUENTA, SI_SE_VA, { de })
           return
         }
         // Lo que se cae acá es la subida: la orden todavía no se registró.
         const motivo = 'No se pudo subir el PDF de la orden. Revisa la señal y vuelve a intentar.'
         setError(motivo)
-        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA)
+        decirElRechazoSiSeFue(desde, motivo, SI_SE_VA, { de })
       } finally {
         if (!listo) enCurso.current = false
       }
-    }, SI_SE_VA.que))
+    }, de))
   }
 
   return (

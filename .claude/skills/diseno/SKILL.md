@@ -427,10 +427,33 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   si … se guardó»: decía lo contrario de lo que pasó, y su enlace llevaba a
   registrarlo dos veces (H1 de funcionalidad de la cuadragésima segunda). Y
   lo que ya había quedado la primera vez se dice igual arriba, con el enlace
-  a lo que quedó (`siSeVa.yaEntro`, H3). Su enlace vuelve al formulario, y
+  a lo que quedó (`siSeVa.yaEntro`, H3), en azul de información y no en el
+  verde de lo que entró (H2 de diseño de la cuadragésima tercera). Lo que
+  quedó a medias —el comprobante en borrador, el plano que llegó a un área y
+  a otra no— no lleva «no se guardó» delante: el envío dice qué decir
+  (`arriba` en su resultado) y la línea lo dice tal cual, en ámbar (R7 y N2
+  de esa pasada; el plano decía «vuelve a enviar sin cambiar el archivo» y,
+  de vuelta con el formulario vacío, la persona lo mandaba repetido al área
+  a la que ya había llegado). Su enlace vuelve al formulario, y
   ahí sigue el motivo, sin enlace, hasta que ese mismo formulario se envía
   otra vez o se quita: el envío de una ventana de la misma pantalla (la
-  unidad nueva en la orden nueva) no se lo lleva (H2). La línea vieja seguía hablando de A después de que B sí
+  unidad nueva en la orden nueva) no se lo lleva (H2). «Ese mismo» es el
+  formulario, no su texto (`DeFormulario`: la vez que está montado y sus
+  campos): dos sin nombre de una pantalla se quitaban el motivo uno al otro
+  (R8 de la cuadragésima tercera). Si la dirección cambió y el formulario
+  sigue a la vista (una pestaña de la lista que lo pinta encima, como
+  Facturas y Por pagar en Adquisiciones), lo dice él y arriba no se repite;
+  y al reenviarlo, la línea se va aunque la dirección sea otra: el
+  comprobante corregido entraba y arriba seguía «no se guardó» (W1 de su
+  crítica). Si sigue montado se mira después de que React desmonta la
+  pantalla que se va, no al pintar la nueva: al pintar, el formulario que se
+  iba todavía contaba, y el rechazo que llegaba antes que la pantalla pedida
+  (el plano con su subida, la tarea del informe al Dashboard) se borraba sin
+  decirse. «La dirección cambió» es la del formulario, no la del enlace: lo
+  que ya había quedado lleva al reporte, y con la ida todavía en cola se
+  borraba en el mismo formulario que la puso. Si al aparecer queda debajo de la barra de arriba —la página
+  venía bajada unos píxeles y el navegador la baja lo que mide la línea—,
+  sube lo justo para verse, una vez (A y R6). La línea vieja seguía hablando de A después de que B sí
   saliera (H1 de diseño y H3 de funcionalidad de la trigesimonovena). No flota: va
   arriba de la página, y quien bajó no la ve hasta subir (H3 de diseño de la
   trigesimonovena, queda como Menor). Flotarla taparía lo que la persona está

@@ -165,7 +165,10 @@ export function CargarPlano({
       setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() })
     },
     // Tras «ya quedó», el plano siguiente lleva otro id: con el mismo decía «ya quedó» hasta recargar.
-    { alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }) },
+    {
+      alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }),
+      siSeVa: { que: 'el plano', enlace: 'Volver al plano' },
+    },
   )
   // El cursor va al aviso: con el formulario vaciado tras «ya quedó», caía a la página.
   const aviso = useRef<HTMLParagraphElement>(null)

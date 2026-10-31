@@ -1,5 +1,5 @@
 import { unstable_isUnrecognizedActionError, unstable_rethrow, useRouter } from 'next/navigation'
-import { startTransition, useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
+import { startTransition, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type FormEvent } from 'react'
 
 import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
@@ -163,12 +163,12 @@ export function alEmpezarUnEnvio(avisar: () => void) {
  * dice en vez de mandar a leer uno que no existe (funcionalidad H1 de la
  * trigesimoquinta pasada).
  */
-export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>, de?: string): Promise<T> {
+export async function mientrasSeEnvia<T>(enviar: (entro: () => void, noEntro: (motivo: string) => void) => Promise<T>, de?: DeFormulario): Promise<T> {
   // El rechazo de arriba es de este formulario (`de`), que sale otra vez: lo
   // que conteste ahora lo dice él. El envío de otro formulario de la misma
   // pantalla no lo quita: una ventana rechazada en la orden nueva se llevaba el
   // motivo de la orden (H2 de funcionalidad, cuadragésima segunda pasada).
-  if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.de === de && idaQueNoSalio.url === window.location.pathname + window.location.search) ponerIdaQueNoSalio(null)
+  if (de && idaQueNoSalio?.rechazo && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
   avisarQueCambiaron()
@@ -308,6 +308,48 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
 }
 
 /**
+ * El formulario que puso la línea de arriba: esta vez que está montado
+ * (`instancia`) y qué campos envía (`campos`), que no cambian al volver a
+ * montarse. Solo su envío siguiente quita el rechazo: el del mismo formulario,
+ * aunque la persona haya cambiado de pestaña de la lista que lo pinta encima, o
+ * el del mismo vuelto a montar en su dirección. Por el texto («lo que
+ * enviaste»), dos formularios sin nombre de una pantalla se quitaban el motivo
+ * uno al otro (R8 de realización); por la dirección, el comprobante corregido
+ * después de cambiar de pestaña entraba y arriba seguía «no se guardó» (W1 de la
+ * crítica, cuadragésima tercera pasada).
+ */
+export type DeFormulario = { instancia: string; campos: string }
+
+/** Los campos de un envío, para reconocer el mismo formulario vuelto a montar (`DeFormulario`). */
+export const camposDe = (datos: FormData) => [...new Set(datos.keys())].sort().join(',')
+
+const esDelFormulario = (ida: IdaQueNoSalio, de: DeFormulario) =>
+  ida.de !== undefined &&
+  (ida.de.instancia === de.instancia || (ida.de.campos === de.campos && (ida.desde ?? ida.url) === window.location.pathname + window.location.search))
+
+// Los formularios montados (`useFormularioMontado`): el rechazo del que sigue
+// en la pantalla lo dice él, junto a su botón, y arriba se repetía.
+const montados = new Set<string>()
+
+/** Si el formulario que puso la línea sigue en la pantalla. */
+export const sigueMontado = (de: DeFormulario | undefined) => Boolean(de && montados.has(de.instancia))
+
+/**
+ * Esta vez que el formulario está montado, para `DeFormulario`. Mientras siga
+ * montado, lo suyo se dice en él y no arriba: la pestaña de la lista cambia la
+ * dirección y deja el formulario donde estaba (W1 de la crítica, cuadragésima
+ * tercera pasada).
+ */
+export function useFormularioMontado() {
+  const instancia = useId()
+  useEffect(() => {
+    montados.add(instancia)
+    return () => void montados.delete(instancia)
+  }, [instancia])
+  return instancia
+}
+
+/**
  * Lo que entró y adónde lleva, cuando su ida no salió (`navegarSiEsDeLaPestana`).
  * `dichaEn`: la dirección del formulario de página entera que ya lo dice junto
  * a su botón (`YaQuedo`); mientras la persona siga ahí, arriba no se repite.
@@ -315,7 +357,10 @@ export function laIdaSigueEnPie(desde: Partida): boolean {
  * (/personal sin «estado» es Activos), para saber que la persona llegó.
  * `rechazo`: lo que no entró, y su enlace vuelve al formulario
  * (`decirElRechazoSiSeFue`). `de`: el formulario que lo dijo; solo su envío
- * siguiente lo quita.
+ * siguiente lo quita. `desde`: su dirección, cuando el enlace lleva a otra (lo
+ * que ya había quedado lleva al reporte, no al formulario). `tono`: lo que quedó a medias (`aviso`) o lo que ya
+ * había quedado la primera vez (`info`) no se pinta como el rechazo ni como lo
+ * que entró.
  */
 export type IdaQueNoSalio = {
   dice: string
@@ -324,7 +369,9 @@ export type IdaQueNoSalio = {
   dichaEn?: string
   porOmision?: Record<string, string>
   rechazo?: boolean
-  de?: string
+  de?: DeFormulario
+  desde?: string
+  tono?: 'aviso' | 'info'
 }
 let idaQueNoSalio: IdaQueNoSalio | null = null
 const alCambiarLaIda = new Set<() => void>()
@@ -363,15 +410,26 @@ const conMayuscula = (texto: string) => `${texto.charAt(0).toUpperCase()}${texto
  * Lo que pudo entrar no se dice «no se guardó»: sin respuesta, o con el servidor
  * caído a medio envío, la base pudo haberlo registrado, y un 502 con la persona
  * fuera decía lo contrario de lo que pasó y su enlace llevaba a registrarlo dos
- * veces (H1 de funcionalidad, cuadragésima segunda pasada).
+ * veces (H1 de funcionalidad, cuadragésima segunda pasada). Lo que quedó a
+ * medias tampoco: el envío dice qué decir arriba (`arriba`, el comprobante que
+ * quedó en borrador, el plano que llegó a un área y a otra no) y la línea lo
+ * dice tal cual, en el tono del aviso (R7 de realización y N2 de funcionalidad,
+ * cuadragésima tercera pasada).
+ *
+ * `de`: el formulario que lo envió. Si la dirección ya cambió y el formulario
+ * sigue en la pantalla, lo dice él y la línea calla (`IdaQueNoSalio`). No se
+ * mira aquí: con la pantalla nueva ya en la dirección y la vieja todavía por
+ * desmontar, el formulario que se iba contaba como presente y el rechazo no se
+ * decía en ningún lado.
  */
-export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enlace }: SiSeVa) {
+export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enlace }: SiSeVa, { de, arriba }: { de?: DeFormulario; arriba?: string } = {}) {
   if (!pidioOtraPantalla(desde)) return
+  if (arriba) return ponerIdaQueNoSalio({ dice: arriba, enlace, url: desde.direccion, rechazo: true, de, tono: 'aviso' })
   // «No se guardó: en otra pestaña…» ya lo dice la frase de delante.
   const porque = conMayuscula(motivo.replace(/^No se guardó: /, ''))
   const dice =
     pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR ? `No se sabe si ${que} se guardó. ${porque}` : `${conMayuscula(que)} no se guardó. ${porque}`
-  ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true, de: que })
+  ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true, de })
 }
 
 /**
@@ -379,14 +437,19 @@ export function decirElRechazoSiSeFue(desde: Partida, motivo: string, { que, enl
  * con la persona ya en otra pantalla: el formulario lo decía y se iba con él, y
  * la corrección se perdía sin que nada lo dijera (H3 de funcionalidad,
  * cuadragésima segunda pasada). `ida`: adónde se ve lo que quedó; sin ella,
- * la pantalla del formulario, que ya lo muestra.
+ * la pantalla del formulario, que ya lo muestra. En el tono de la información,
+ * como el formulario y la ventana lo dicen: en el verde de lo que entró se leía
+ * como un éxito (H2 de diseño, cuadragésima tercera pasada).
  */
-export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: SiSeVa, ida?: { url: string; enlace: string }) {
+export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: SiSeVa, ida?: { url: string; enlace: string }, de?: DeFormulario) {
   if (!pidioOtraPantalla(desde)) return
   ponerIdaQueNoSalio({
     dice: `${conMayuscula(que)} ya había quedado la primera vez que lo enviaste; lo que cambiaste después no se guardó.`,
     enlace: ida?.enlace ?? enlace,
     url: ida?.url ?? desde.direccion,
+    de,
+    desde: desde.direccion,
+    tono: 'info',
   })
 }
 
@@ -550,6 +613,7 @@ export function useAccion<T = never>(
 ) {
   const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA } = opciones
   const router = useRouter()
+  const instancia = useFormularioMontado()
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
@@ -580,7 +644,7 @@ export function useAccion<T = never>(
     salida: ResultadoAccion<T>,
     desde: Partida,
     lanzo: boolean,
-    { entro, noEntro }: { entro: () => void; noEntro: (motivo: string) => void },
+    { entro, noEntro, de }: { entro: () => void; noEntro: (motivo: string) => void; de: DeFormulario },
   ) {
     if (salida.ok) return
     const { ventana } = desde
@@ -594,8 +658,8 @@ export function useAccion<T = never>(
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
       if (siSeVa) {
-        if (yaEntro) decirQueYaHabiaEntradoSiSeFue(desde, siSeVa, siSeVa.yaEntro?.())
-        else decirElRechazoSiSeFue(desde, salida.error, siSeVa)
+        if (yaEntro) decirQueYaHabiaEntradoSiSeFue(desde, siSeVa, siSeVa.yaEntro?.(), de)
+        else decirElRechazoSiSeFue(desde, salida.error, siSeVa, { de, arriba: salida.arriba })
       }
       if (ponerAlDia) iniciar(() => refrescarSiEsDeLaPestana(router))
       return
@@ -629,9 +693,10 @@ export function useAccion<T = never>(
     enCurso.current = true
     setResultado(null)
     const desde = partida()
+    const de: DeFormulario = { instancia, campos: camposDe(datos) }
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro) => {
-      const desenlace = { entro, noEntro }
+      const desenlace = { entro, noEntro, de }
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true
@@ -687,7 +752,7 @@ export function useAccion<T = never>(
       } finally {
         if (soltar) enCurso.current = false
       }
-    }, desde.ventana === null ? siSeVa?.que : undefined))
+    }, desde.ventana === null ? de : undefined))
   }
 
   return {
