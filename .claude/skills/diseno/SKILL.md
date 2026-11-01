@@ -437,7 +437,13 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   registrarlo dos veces (H1 de funcionalidad de la cuadragésima segunda). Y
   lo que ya había quedado la primera vez se dice igual arriba, con el enlace
   a lo que quedó (`siSeVa.yaEntro`, H3), en azul de información y no en el
-  verde de lo que entró (H2 de diseño de la cuadragésima tercera). Lo que
+  verde de lo que entró (H2 de diseño de la cuadragésima tercera). Sin adónde
+  verlo (el gasto de área, sin `yaEntro`), su enlace vuelve al formulario y
+  se porta como el rechazo: se queda con el formulario vuelto a montar (Atrás
+  y Adelante) o con la ida al menú todavía en cola, sin enlace ahí, y se va
+  con el envío siguiente del formulario. Se iba al nacer, como lo que llega a
+  su pantalla, y nada decía que lo cambiado no se guardó (H1 de funcionalidad
+  de la quincuagésima). Lo que
   quedó a medias —el comprobante en borrador, el plano que llegó a un área y
   a otra no— no lleva «no se guardó» delante: el envío dice qué decir
   (`arriba` en su resultado) y la línea lo dice tal cual, en ámbar (R7 y N2
@@ -515,7 +521,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   botón vivo y un segundo toque registraba otro trabajo igual (X1 de la
   crítica de la trigesimonovena). Con `juntoAlBoton: true` la línea de arriba
   calla mientras la persona siga en ese formulario: lo mismo dos veces no;
-  si se va a otra pantalla, la línea sí lo dice allí. Un `redirect()` de
+  si se va a otra pantalla, la línea sí lo dice allí. Ese mismo, no otro
+  vuelto a montar en su dirección (Atrás y Adelante con «Más» abierta): ese
+  está vacío y sin trabar, y la línea es lo único que dice que entró; callada,
+  escrito otra vez quedaba doble (`Partida.de`, T1 de la crítica de la
+  quincuagésima). Un `redirect()` de
   servidor tras guardar no mira nada de eso: el cliente nuevo devuelve su id y
   el formulario va con `navegarSiEsDeLaPestana`.
   Cambiar lo de después de «#» deja la entrada del historial sin el estado de

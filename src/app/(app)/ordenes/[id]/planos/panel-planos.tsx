@@ -197,7 +197,8 @@ export function CargarVersion({ catalogos, ordenId, planoId }: { catalogos: Cata
         viejaEn = i
         break
       }
-      fallidas.push(`${nombre(area)}: ${resultado.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : resultado.error}`)
+      // El motivo llega con su punto, y aquí lo sigue «; » o «. »: decía «planos.. Vuelve a enviarla.» (M1 de funcionalidad, quincuagésima pasada).
+      fallidas.push(`${nombre(area)}: ${resultado.error === NO_QUEDO_SIN_RESPUESTA ? 'no llegó la respuesta' : resultado.error.replace(/\.+\s*$/, '')}`)
       ;(resultado.error === NO_QUEDO_SIN_RESPUESTA || resultado.error === 'no se pudo confirmar el envío' ? enDuda : noLlego).push(nombre(area))
     }
     // Sin nada enviado, lo dice la traba, como en cualquier envío.

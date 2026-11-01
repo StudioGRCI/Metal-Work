@@ -131,6 +131,12 @@ En la misma migración que la crea, sin excepción:
   decía «Revisa material, cantidad, motivo y quién recibe» con todo lleno
   (2026-10-13, PR #73). Por lo mismo, una carga por SQL genera sus ids con
   `gen_random_uuid()`, no con `md5()::uuid`.
+- El esquema de corregir que sale del de agregar (`.omit()`/`.extend()`) quita
+  lo que el formulario de corregir no trae. «Editar el plano» heredó «quién lo
+  elaboró» de agregar, sin ese campo en la pantalla, y decía «Elige quién
+  elaboró el plano.» sin guardar nunca (D3 de diseño, quincuagésima pasada;
+  venía de main). Se cruzan los `name` del formulario con las llaves del
+  esquema, y se prueba guardando con la cuenta del puesto.
 - Exigir permiso con `exigirPermiso`/`puede` **al principio** de la acción,
   no confiar en que la pantalla escondió el botón.
 - Los errores de Postgres pasan por `mensajeDeError` — no filtrar el mensaje

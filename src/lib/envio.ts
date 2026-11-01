@@ -180,8 +180,8 @@ export async function mientrasSeEnvia<T>(
   // área») y con el que volvía a fallar con la persona ahí, cuando lo que decía
   // seguía siendo cierto (R18 de realización, cuadragésima séptima pasada).
   // También se va cuando vuelve con otra cosa a medias (`otraVezAMedias`): el
-  // reenvío a Maestranza y a Producción que llega a Maestranza y a Producción
-  // no. Arriba seguía «Falta Maestranza… envíala solo a Maestranza», y
+  // reenvío a Maestranza y a Producción que llega a Maestranza pero no a
+  // Producción. Arriba seguía «Falta Maestranza… envíala solo a Maestranza», y
   // seguirla le mandaba a Maestranza otra revisión; lo de ahora lo dice el
   // formulario, o arriba si la persona ya se fue o el formulario ya no está
   // (R21 de realización y F1 de funcionalidad, cuadragésima octava pasada; W1
@@ -299,8 +299,12 @@ export function anotarQuePidioIr() {
   pidioIrEn = tocoEn
 }
 
-/** Cómo estaba la pestaña cuando salió un envío que, si entra, lleva a otra pantalla (`partida()`). */
-export type Partida = { direccion: string; salioEn: number; ventana: number | null }
+/**
+ * Cómo estaba la pestaña cuando salió un envío que, si entra, lleva a otra
+ * pantalla (`partida()`). `de`: el formulario que lo envió, cuando lo envía
+ * `useAccion` (`navegarSiEsDeLaPestana`).
+ */
+export type Partida = { direccion: string; salioEn: number; ventana: number | null; de?: DeFormulario }
 
 export function partida(): Partida {
   return {
@@ -443,7 +447,9 @@ export function useFormularioMontado(documento?: string) {
  * `porOmision`: lo que la pantalla toma cuando su dirección no lo dice
  * (/personal sin «estado» es Activos), para saber que la persona llegó.
  * `rechazo`: lo que no entró, y su enlace vuelve al formulario
- * (`decirElRechazoSiSeFue`). `de`: el formulario que lo dijo; solo su envío
+ * (`decirElRechazoSiSeFue`; también lo cambiado que no entró cuando lo primero
+ * ya había quedado y no hay adónde verlo, `decirQueYaHabiaEntradoSiSeFue`).
+ * `de`: el formulario que lo dijo; solo su envío
  * siguiente lo quita. `desde`: su dirección, cuando el enlace lleva a otra (lo
  * que ya había quedado lleva al reporte, no al formulario). `tono`: lo que
  * quedó a medias (`aviso`) o lo que ya había quedado la primera vez (`info`) no
@@ -561,6 +567,13 @@ export function decirElRechazoSiSeFue(
  * la pantalla del formulario, que ya lo muestra. En el tono de la información,
  * como el formulario y la ventana lo dicen: en el verde de lo que entró se leía
  * como un éxito (H2 de diseño, cuadragésima tercera pasada).
+ *
+ * Sin `ida`, su enlace vuelve al formulario, como el del rechazo, y se porta
+ * como él (`rechazo`): estar en esa dirección no la resuelve, solo esconde el
+ * enlace, y se va con el envío siguiente del formulario o al quitarla. Como lo
+ * que llega a su pantalla, se iba al nacer: con el formulario vuelto a montar
+ * (Atrás y Adelante) o con la ida al menú todavía en cola, nada decía que lo
+ * cambiado no se guardó (H1 de funcionalidad, quincuagésima pasada).
  */
 export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: SiSeVa, ida?: { url: string; enlace: string }, de?: DeFormulario) {
   if (!seFueDelFormulario(desde, de)) return
@@ -573,6 +586,7 @@ export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: S
     de,
     desde: desde.direccion,
     tono: 'info',
+    rechazo: ida ? undefined : true,
   })
 }
 
@@ -840,8 +854,8 @@ export function useAccion<T = never>(
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setResultado(null)
-    const desde = partida()
     const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento, propio: opciones.documento }
+    const desde: Partida = { ...partida(), de }
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro, otraVezAMedias) => {
       const desenlace = { entro, noEntro, otraVezAMedias, de }
@@ -1569,7 +1583,10 @@ export function refrescarSiEsDeLaPestana(router: { refresh(): void }) {
  * el subcontrato». Sin `siNoVa` no se dice: la ida era lo que la persona pidió
  * (abrir un aviso), y ya pidió otra cosa. Con `juntoAlBoton`, el formulario de
  * página entera ya lo dice junto a su botón trabado (`YaQuedo`), y arriba se
- * calla mientras la persona siga en él.
+ * calla mientras la persona siga en él. Solo si es el mismo que lo envió
+ * (`Partida.de`): vuelto a montar (Atrás y Adelante con «Más» abierto) está
+ * vacío y sin trabar, y nada decía que el trabajo había entrado; escrito otra
+ * vez, quedaba doble (T1 de la crítica, quincuagésima pasada).
  *
  * La ida que sí sale a otro documento se lleva la línea de antes: quedaba sobre
  * la pantalla del segundo subcontrato hablando del primero, y se leía como suya
@@ -1591,7 +1608,7 @@ export function navegarSiEsDeLaPestana(
     }
     if (siNoVa) {
       const { juntoAlBoton, ...dicho } = siNoVa
-      ponerIdaQueNoSalio({ ...dicho, url, dichaEn: juntoAlBoton ? desde.direccion : undefined })
+      ponerIdaQueNoSalio({ ...dicho, url, dichaEn: juntoAlBoton && (desde.de === undefined || sigueMontado(desde.de)) ? desde.direccion : undefined })
     }
     return false
   }

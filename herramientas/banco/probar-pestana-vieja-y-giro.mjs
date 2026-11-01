@@ -235,6 +235,8 @@
  *       abierta: el formulario se traba y lo dice junto al botón, un segundo
  *       toque no manda nada, en otra pantalla lo dice la línea, y llegar a la
  *       orden por la lista se la lleva.
+ *   1x-trabajo-atras-con-mas. El trabajo que entra con el formulario vuelto a
+ *       montar por Atrás y Adelante, vacío, y «Más» abierta: lo dice arriba.
  *   1x-clic-derecho y 1x-dedo-que-desplaza. Ni el clic derecho en el menú ni
  *       el dedo que desplaza desde un enlace son pedir otra pantalla: el
  *       cliente nuevo va a su ficha.
@@ -264,6 +266,10 @@
  *       se lleva el rechazo de la orden que dice la línea de arriba.
  *   1za-ya-habia-quedado. El reporte que ya había quedado la primera vez, con
  *       la persona en otra pantalla: arriba lo dice, con el enlace al reporte.
+ *   1za-gasto-ya-habia-quedado. El gasto de área, que no tiene adónde verlo:
+ *       con el formulario vuelto a montar por Atrás y Adelante, el menú o la
+ *       otra pestaña de la OT, arriba lo dice y se queda hasta su envío
+ *       siguiente (Diseño).
  *   1za-tipo-de-cambio y 1za-lo-que-enviaste. El rechazo de un formulario de
  *       pantalla (el tipo de cambio, Contabilidad) y el «no se sabe» de uno sin
  *       nombre (la regla de tardanzas, RR. HH.) también se dicen arriba.
@@ -284,6 +290,8 @@
  *       al que llegó por la campana (el otro empieza vacío, y arriba se dice
  *       el rechazo con su camino de vuelta), y el mínimo de otro material, que
  *       entra sin llevarse la línea del primero.
+ *   1zd. El plano de Diseño: «Editar el plano» guarda, y el motivo con que la
+ *       base rechaza una versión se dice sin doble punto, junto al botón y arriba.
  *   En las 1z, las 1za, las 1zb y las 1zc, la línea dicha en otra pantalla llega a la vista.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
@@ -293,8 +301,8 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las seis; 1y, las tres; 1z, las seis, las cinco 1za, las nueve 1zb y
- * las dos 1zc).
+ * 1x, las siete; 1y, las tres; 1z, las seis, las seis 1za, las nueve 1zb,
+ * las dos 1zc y las dos 1zd).
  */
 import ExcelJS from 'exceljs'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -3850,6 +3858,61 @@ if (corre('1x-trabajo-con-mas')) {
   await contexto.close()
 }
 
+// El trabajo que entra con el formulario vuelto a montar (Atrás y Adelante
+// mientras va) y «Más» abierta: la ida no sale, y la línea callaba en la
+// dirección del formulario como si él lo dijera junto a su botón. El de ahora
+// está vacío y sin trabar: nada decía que el trabajo había entrado, y escrito
+// otra vez quedaba doble (T1 de la crítica, quincuagésima pasada).
+if (corre('1x-trabajo-atras-con-mas')) {
+  const marca = `QA_X1TA_${sello}`
+  const trabajos = () => consulta(`select id from flota_unidades where trabajo like $1`, [`${marca}%`])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/avance/trabajos`)
+  await marcarDocumento(pagina)
+  // Por el enlace de la lista: así Atrás y Adelante no recargan la pantalla.
+  await (await enlaceVisible(pagina, '/avance/trabajos/nueva')).tap()
+  await pagina.waitForURL((u) => u.pathname === '/avance/trabajos/nueva', { timeout: 20000 })
+  await quieta(pagina)
+  await pagina.locator('#descripcion').fill(`Cabina de pintura ${sello}`)
+  await pagina.locator('#trabajo').fill(`${marca} trabajo de prueba del banco`)
+  corte.marca = marca
+  await pagina.getByRole('button', { name: 'Registrar el trabajo' }).tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.goBack({ waitUntil: 'commit' }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/avance/trabajos', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1500)
+  await pagina.goForward({ waitUntil: 'commit' }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/avance/trabajos/nueva', { timeout: 20000 }).catch(() => {})
+  await pagina.locator('#trabajo').waitFor({ timeout: 20000 })
+  await pagina.waitForTimeout(1500)
+  const vacio = (await pagina.locator('#trabajo').inputValue()) === ''
+  await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+  const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+  await mas.waitFor({ timeout: 10000 })
+  corte.soltar()
+  await hasta(trabajos, (l) => l.length === 1, 30000)
+  await pagina.waitForTimeout(3000)
+  await mas.getByRole('button', { name: 'Cerrar', exact: true }).tap()
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  const arriba = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El trabajo quedó registrado.'), 10000)
+  const donde = pagina.url().replace(BASE, '')
+  const junto = await yaQuedo(pagina)
+  const aLaVista = await lineaALaVista(pagina)
+  const n = (await trabajos()).length
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-trabajo-atras-con-mas.png') })
+  comprobar(vacio && donde === '/avance/trabajos/nueva' && arriba === 'El trabajo quedó registrado. Ver el trabajo' && junto === '' && aLaVista && n === 1 && (await mismoDocumento(pagina)),
+    `[Supervisión 390] 1x-trabajo-atras-con-mas. el trabajo entra con el formulario vuelto a montar, vacío, y «Más» abierta: al cerrarla, arriba dice que quedó, con su enlace (vacío ${vacio}, ${donde}, arriba «${arriba}», a la vista ${aLaVista}, junto al botón «${junto}», ${n} trabajo)`)
+  // «Ver el trabajo» lleva a él, y la línea se va.
+  const [t] = await trabajos()
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Ver el trabajo' }).tap()
+  await pagina.waitForURL((u) => u.pathname === `/avance/trabajos/${t?.id}`, { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1000)
+  comprobar(pagina.url().replace(BASE, '') === `/avance/trabajos/${t?.id}` && (await idaQueNoSalio(pagina)) === '' && (await trabajos()).length === 1,
+    `[Supervisión 390] 1x-trabajo-atras-con-mas. «Ver el trabajo» lleva al trabajo, sin línea arriba ni otro trabajo (${pagina.url().replace(BASE, '')})`)
+  comprobar(errores.length === 0, `[Supervisión 390] 1x-trabajo-atras-con-mas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
 // La orden, igual, y lo que pasa al irse: en otra pantalla la línea sí lo dice,
 // y llegar a la orden por la lista, sin «?creada=1», también es llegar.
 if (corre('1x-orden-con-mas')) {
@@ -4567,6 +4630,127 @@ async function enlaceALaVista(pagina, href) {
   return enlaces.nth(Math.max(i, 0))
 }
 
+// El gasto de área que ya había quedado la primera vez (la respuesta llegó
+// como un 502) y se reenvía con otro importe, con la persona fuera del
+// formulario: Atrás y Adelante lo vuelven a montar vacío en la misma
+// dirección, o el menú o la otra pestaña de la OT se van con el reenvío en
+// camino. El gasto no tiene adónde verlo: la línea volvía al formulario, se
+// iba al nacer como lo que llega a su pantalla, y nada decía que lo cambiado
+// no se guardó (H1 de funcionalidad, quincuagésima pasada). Ahora se porta
+// como el rechazo: en el formulario, sin enlace, y se va con su envío
+// siguiente; fuera, con «Volver al gasto».
+if (corre('1za-gasto-ya-habia-quedado')) {
+  const [ot] = await consulta(`select id from ordenes_trabajo where numero = '0001-2026'`)
+  const direccion = `/ordenes/${ot.id}?vista=costos`
+  const YA = 'El gasto ya había quedado la primera vez que lo enviaste; lo que cambiaste después no se guardó.'
+  const gastos = async (marca) => (await consulta(`select monto::text from ot_gastos_areas where descripcion like $1 order by creado_en`, [`${marca}%`])).map((g) => g.monto)
+  // Con `compilacion` se ven las respuestas, y `romper` las vuelve un 502.
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 }, { compilacion: true })
+  const abrir = async () => {
+    const pliegue = pagina.locator('details').filter({ has: pagina.locator('summary', { hasText: 'Registrar gasto de mi área' }) })
+    await pliegue.waitFor({ timeout: 20000 })
+    if (!(await pliegue.evaluate((d) => d.open))) await pliegue.locator('summary').click()
+    const form = pliegue.locator('form')
+    await form.waitFor({ timeout: 10000 })
+    return form
+  }
+  const llenar = async (form, marca, monto) => {
+    await form.locator('#gasto-fecha').fill(diaDeLima())
+    await form.locator('#gasto-monto').fill(monto)
+    await form.locator('#gasto-descripcion').fill(`${marca} gasto de prueba del banco`)
+    await form.locator('#gasto-pdf').setInputFiles({ name: `${marca}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`COMPROBANTE ${marca}`, 'Gasto de prueba del banco']) })
+  }
+  const delFormulario = async (form) => limpio((await form.locator('[role="status"], [role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  // Entra con la respuesta rota y se reenvía con otro importe; el reenvío, retenido.
+  const reenviarRetenido = async (marca) => {
+    const form = await abrir()
+    await llenar(form, marca, '10.00')
+    const rotas = corte.rotas
+    corte.romper = marca
+    await form.getByRole('button', { name: 'Enviar para revisión' }).click()
+    await hasta(() => corte.rotas, (n) => n > rotas, 30000)
+    const dijo = await hasta(() => delFormulario(form), (t) => t.length > 0, 20000)
+    await form.locator('#gasto-monto').fill('11.00')
+    const retenidas = corte.retenidas
+    corte.marca = marca
+    await form.getByRole('button', { name: 'Enviar para revisión' }).click()
+    await hasta(() => corte.retenidas, (n) => n > retenidas, 20000)
+    return dijo
+  }
+  try {
+    // Atrás y Adelante: la OT por su pestaña, para que no recarguen.
+    await ir(pagina, `${BASE}/ordenes/${ot.id}`)
+    await marcarDocumento(pagina)
+    await (await enlaceVisible(pagina, direccion)).click()
+    await pagina.waitForURL((u) => u.pathname + u.search === direccion, { timeout: 20000 })
+    await quieta(pagina)
+    const marcaA = `QA_ZAG_A_${sello}`
+    const primero = await reenviarRetenido(marcaA)
+    await pagina.goBack().catch(() => {})
+    await pagina.waitForURL((u) => u.pathname + u.search === `/ordenes/${ot.id}`, { timeout: 20000 }).catch(() => {})
+    await pagina.waitForTimeout(1500)
+    await pagina.goForward().catch(() => {})
+    await pagina.waitForURL((u) => u.pathname + u.search === direccion, { timeout: 20000 }).catch(() => {})
+    await quieta(pagina)
+    let form = await abrir()
+    const vacio = (await form.locator('#gasto-monto').inputValue()) === ''
+    corte.soltar()
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.startsWith(YA), 15000)
+    await pagina.waitForTimeout(1500)
+    const sigue = await idaQueNoSalio(pagina)
+    const tono = await tonoDeLaLinea(pagina)
+    const aLaVista = await lineaALaVista(pagina)
+    const montos = await gastos(marcaA)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1za-gasto-ya-habia-quedado.png') })
+    comprobar(primero === FALLO_DEL_SERVIDOR && vacio && dice === YA && sigue === YA && tono === 'ya-habia-quedado' && aLaVista && montos.join() === '10.00' && pagina.url().replace(BASE, '') === direccion && (await mismoDocumento(pagina)),
+      `[Diseño 1280] 1za-gasto-ya-habia-quedado. el reenvío cambiado que vuelve con el formulario vuelto a montar por Atrás y Adelante: arriba dice que el primero ya había quedado y lo cambiado no, sin enlace, y no se va sola (primero «${primero}»; vacío ${vacio}; «${sigue}», ${tono}, a la vista ${aLaVista}; ${montos.join(', ')})`)
+    // Otro gasto desde el formulario de ahora: entra, y se lleva la línea.
+    const marcaB = `QA_ZAG_B_${sello}`
+    form = await abrir()
+    await llenar(form, marcaB, '12.00')
+    await form.getByRole('button', { name: 'Enviar para revisión' }).click()
+    const otro = await hasta(() => gastos(marcaB), (l) => l.length === 1, 20000)
+    await pagina.waitForTimeout(1500)
+    const trasOtro = await idaQueNoSalio(pagina)
+    comprobar(otro.join() === '12.00' && trasOtro === '',
+      `[Diseño 1280] 1za-gasto-ya-habia-quedado. el gasto siguiente del mismo formulario entra y se lleva la línea (${otro.join(', ')}, línea «${trasOtro}»)`)
+    // El menú, con el reenvío en camino: la ida queda en cola hasta que vuelve.
+    for (const [cual, irse, adonde] of [
+      ['el menú', async () => (await enlaceVisible(pagina, '/')).click(), '/'],
+      ['otra pestaña de la OT', async () => (await enlaceVisible(pagina, `/ordenes/${ot.id}?vista=resumen`)).click(), `/ordenes/${ot.id}?vista=resumen`],
+    ]) {
+      await ir(pagina, `${BASE}${direccion}`)
+      const marca = `QA_ZAG_${adonde === '/' ? 'M' : 'P'}_${sello}`
+      await reenviarRetenido(marca)
+      await irse()
+      await pagina.waitForTimeout(800)
+      corte.soltar()
+      await pagina.waitForURL((u) => u.pathname + u.search === adonde, { timeout: 30000 }).catch(() => {})
+      await quieta(pagina)
+      const fuera = await hasta(() => idaQueNoSalio(pagina), (t) => t.startsWith(YA), 15000)
+      await pagina.waitForTimeout(1000)
+      const tonoFuera = await tonoDeLaLinea(pagina)
+      const enlace = await pagina.locator('[data-ida-que-no-salio] a').getAttribute('href').catch(() => null)
+      const donde = pagina.url().replace(BASE, '')
+      comprobar(donde === adonde && fuera === `${YA} Volver al gasto` && tonoFuera === 'ya-habia-quedado' && enlace === direccion && (await gastos(marca)).join() === '10.00',
+        `[Diseño 1280] 1za-gasto-ya-habia-quedado. con ${cual} pedido mientras va, arriba lo dice con «Volver al gasto» (${donde}, «${fuera}», ${tonoFuera}, ${enlace})`)
+      // Siguiéndolo, en el formulario sigue, sin enlace.
+      await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al gasto' }).click()
+      await pagina.waitForURL((u) => u.pathname + u.search === direccion, { timeout: 20000 }).catch(() => {})
+      await quieta(pagina)
+      await pagina.waitForTimeout(1000)
+      const deVuelta = await idaQueNoSalio(pagina)
+      comprobar(pagina.url().replace(BASE, '') === direccion && deVuelta === YA,
+        `[Diseño 1280] 1za-gasto-ya-habia-quedado. con ${cual}, «Volver al gasto» lleva al formulario y ahí la línea sigue, sin enlace («${deVuelta}»)`)
+    }
+    // Lo que los 502 anotan en la consola es lo que se prueba.
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response/i.test(e))
+    comprobar(propios.length === 0, `[Diseño 1280] 1za-gasto-ya-habia-quedado. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } finally {
+    await contexto.close()
+  }
+}
+
 // «Sin definir», lo que trae la ventana «Nuevo tipo de carrocería», llegaba
 // vacío y el enum lo rechazaba con «Invalid input» (H4 de diseño). Entra sin tipo.
 if (corre('1zb-carroceria-sin-definir')) {
@@ -4590,14 +4774,12 @@ if (corre('1zb-carroceria-sin-definir')) {
   await contexto.close()
 }
 
-// El plano a dos áreas cuyo PDF llega a una y a la otra no, con la persona ya
-// en otra pantalla: arriba decía «La versión del plano no se guardó» y «vuelve
-// a enviar sin cambiar el archivo», que ya no se podía, y con las dos marcadas
-// otra vez la primera lo recibía repetido (N2 de funcionalidad). Dice, en
-// ámbar, a cuál llegó y a cuál volver a enviarla, y haciéndolo no se duplica.
-// Es de su plano: la versión de otro plano de la misma orden, enviada antes,
-// se la llevaba (F2 de funcionalidad, cuadragésima cuarta pasada).
-if (corre('1zb-plano-a-medias')) {
+/**
+ * Una orden en curso con una etapa, y `nuevoPlano(numero, nombre)` para
+ * sembrarle planos. Si la orden lleva su equipo de Diseño, el plano lo elaboró
+ * uno del banco (`integrante`).
+ */
+async function ordenParaPlanos() {
   const [orden] = await consulta(`select o.id, e.id as etapa_id, o.plan_etapas_manual from ordenes_trabajo o join ot_etapas e on e.orden_id = o.id
                                   where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by o.numero limit 1`)
   const integrante = orden.plan_etapas_manual
@@ -4607,6 +4789,18 @@ if (corre('1zb-plano-a-medias')) {
   const nuevoPlano = async (numero, nombre) =>
     (await consulta(`insert into ot_planos (orden_id, numero_plano, nombre, etapa_id, integrante_diseno_id)
                      values ($1, $2, $3, $4, $5) returning id`, [orden.id, numero, nombre, orden.etapa_id, integrante]))[0]
+  return { orden, integrante, nuevoPlano }
+}
+
+// El plano a dos áreas cuyo PDF llega a una y a la otra no, con la persona ya
+// en otra pantalla: arriba decía «La versión del plano no se guardó» y «vuelve
+// a enviar sin cambiar el archivo», que ya no se podía, y con las dos marcadas
+// otra vez la primera lo recibía repetido (N2 de funcionalidad). Dice, en
+// ámbar, a cuál llegó y a cuál volver a enviarla, y haciéndolo no se duplica.
+// Es de su plano: la versión de otro plano de la misma orden, enviada antes,
+// se la llevaba (F2 de funcionalidad, cuadragésima cuarta pasada).
+if (corre('1zb-plano-a-medias')) {
+  const { orden, nuevoPlano } = await ordenParaPlanos()
   const plano = await nuevoPlano(`QA-ZBP-${sello}`, 'Plano a medias del banco')
   const otro = await nuevoPlano(`QA-ZBP-B-${sello}`, 'Otro plano de la misma orden')
   const porArea = async (id = plano.id) =>
@@ -4833,10 +5027,16 @@ if (corre('1zb-plano-a-medias')) {
     await formulario(cuarto.id).getByRole('button', { name: 'Enviar a revisión' }).click()
     await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
     await mientrasSube()
+    // La subida cortada le llega a la pantalla como fallida: el envío volvió,
+    // y lo que la línea diga ya es lo de él.
+    const volvio = pagina
+      .waitForEvent('requestfailed', { predicate: (r) => r.method() === 'POST' && r.url().includes('/storage/v1/object/planos-privados/'), timeout: 30000 })
+      .then(() => true, () => false)
     corte.soltar()
+    const cortada = await volvio
     await alVolver()
     // Si cambia, cambia al volver; si no, se mira a los 6 s.
-    return hasta(() => idaQueNoSalio(pagina), (t) => t !== sigue, 6000)
+    return { cortada, linea: await hasta(() => idaQueNoSalio(pagina), (t) => t !== sigue, 6000) }
   }
   const plegadaEntera = await reenviarSoloAOtra(lineaPlegado, async () => {
     await pliegue.click()
@@ -4856,9 +5056,9 @@ if (corre('1zb-plano-a-medias')) {
   const fueEnRaiz = new URL(pagina.url()).pathname === '/'
   const tonoFueraEntera = await tonoDeLaLinea(pagina)
   const trasEntera = await porArea(cuarto.id)
-  comprobar(plegadaEntera === lineaPlegado && tonoPlegadaEntera === 'a-medias' && fueEnRaiz && fueraEntera === `${lineaPlegado} Volver al plano` && tonoFueraEntera === 'a-medias' &&
+  comprobar(plegadaEntera.cortada && plegadaEntera.linea === lineaPlegado && tonoPlegadaEntera === 'a-medias' && fueraEntera.cortada && fueEnRaiz && fueraEntera.linea === `${lineaPlegado} Volver al plano` && tonoFueraEntera === 'a-medias' &&
     trasEntera[primera] === 1 && trasEntera[segunda] === 1 && !trasEntera[otra],
-    `[Diseño 1280] 1zb-plano-a-medias. reenviada solo a ${otra} y vuelta a fallar entera, con el formulario plegado o ya en otra pantalla, la línea sigue diciendo a cuál llegó y a cuál volver a enviarla (plegado «${plegadaEntera}», ${tonoPlegadaEntera}; fuera${fueEnRaiz ? '' : ' (sin llegar a «/»)'} «${fueraEntera}», ${tonoFueraEntera}; ${JSON.stringify(trasEntera)})`)
+    `[Diseño 1280] 1zb-plano-a-medias. reenviada solo a ${otra} y vuelta a fallar entera, con el formulario plegado o ya en otra pantalla, la línea sigue diciendo a cuál llegó y a cuál volver a enviarla (plegado${plegadaEntera.cortada ? '' : ' (sin ver la subida cortada)'} «${plegadaEntera.linea}», ${tonoPlegadaEntera}; fuera${fueraEntera.cortada ? '' : ' (sin ver la subida cortada)'}${fueEnRaiz ? '' : ' (sin llegar a «/»)'} «${fueraEntera.linea}», ${tonoFueraEntera}; ${JSON.stringify(trasEntera)})`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
@@ -5486,6 +5686,104 @@ if (corre('1zc-otro-material')) {
     await consulta(`drop trigger if exists qa_zcm_minimo_dice_que_no on public.materiales`)
     await consulta(`drop function if exists public.qa_zcm_minimo_dice_que_no()`)
     for (const m of [a, b]) await consulta(`update materiales set stock_minimo = $2 where id = $1`, [m.id, m.stock_minimo])
+    await contexto.close()
+  }
+}
+
+// «Editar el plano» con la cuenta de Diseño: el formulario no trae quién lo
+// elaboró ni la entrega de hoy, y la corrección los pedía como si agregara
+// uno: decía «Elige quién elaboró el plano.» y ningún plano se podía corregir
+// (D3 de diseño, quincuagésima pasada; venía de main).
+if (corre('1zd-editar-el-plano')) {
+  const { orden, integrante, nuevoPlano } = await ordenParaPlanos()
+  const plano = await nuevoPlano(`QA-ZDE-${sello}`, 'Plano que se corrige')
+  const { pagina, contexto, errores } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  await ir(pagina, `${BASE}/ordenes/${orden.id}/planos?plano=${plano.id}`)
+  const tarjeta = pagina.locator(`#plano-${plano.id}`)
+  await tarjeta.getByRole('button', { name: 'Editar el plano' }).click({ timeout: 30000 })
+  const form = tarjeta.locator('form').filter({ has: pagina.locator('input[name="numero_plano"]') })
+  await form.waitFor({ timeout: 10000 })
+  await form.locator('input[name="nombre"]').fill(`Plano corregido ${sello}`)
+  await form.locator('input[name="observacion"]').fill(`Observación corregida ${sello}`)
+  await form.getByRole('button', { name: 'Guardar el plano' }).click()
+  const [despues] = await hasta(() => consulta(`select nombre, observacion, integrante_diseno_id from ot_planos where id = $1`, [plano.id]), (l) => l?.[0]?.nombre === `Plano corregido ${sello}`, 20000)
+  await form.waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  const rojo = limpio((await form.locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  const abierto = await form.count()
+  // La pantalla se pinta otra vez un momento después de cerrar el formulario.
+  const enLaTarjeta = await hasta(() => tarjeta.innerText().then(limpio), (t) => t.includes(`Plano corregido ${sello}`), 10000)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-editar-el-plano.png') })
+  comprobar(despues?.nombre === `Plano corregido ${sello}` && despues?.observacion === `Observación corregida ${sello}` && despues?.integrante_diseno_id === integrante && rojo === '' && abierto === 0 && enLaTarjeta.includes(`Plano corregido ${sello}`),
+    `[Diseño 1280] 1zd-editar-el-plano. corregido el nombre y la observación, se guarda, sin pedir quién lo elaboró ni cambiarlo, y la tarjeta lo muestra (${JSON.stringify(despues)}, rojo «${rojo}», formulario abierto ${abierto})`)
+  comprobar(errores.length === 0, `[Diseño 1280] 1zd-editar-el-plano. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// El motivo de la base llega con su punto, y detrás va «; » o «. »: decía
+// «…(prueba).. Vuelve a enviarla.» (M1 de funcionalidad, quincuagésima
+// pasada). Con la persona ahí lo dice el formulario; con la persona ya en otra
+// pantalla, la línea de arriba. La base lo rechaza por un disparador propio,
+// que se quita al final.
+if (corre('1zd-motivo-de-la-base')) {
+  const { orden, nuevoPlano } = await ordenParaPlanos()
+  const plano = await nuevoPlano(`QA-ZDM-${sello}`, 'Plano que la base rechaza')
+  const MOTIVO = 'El banco no acepta esta versión (QA_ZDM).'
+  const sinPunto = MOTIVO.replace(/\.$/, '')
+  await consulta(`create or replace function public.qa_zdm_version_dice_que_no() returns trigger language plpgsql set search_path = public as $$
+                    begin
+                      if new.plano_id = '${plano.id}'::uuid then
+                        raise exception '${MOTIVO}';
+                      end if;
+                      return new;
+                    end $$`)
+  await consulta(`drop trigger if exists qa_zdm_version_dice_que_no on public.ot_plano_versiones`)
+  await consulta(`create trigger qa_zdm_version_dice_que_no before insert on public.ot_plano_versiones for each row
+                    execute function public.qa_zdm_version_dice_que_no()`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  try {
+    const direccion = `/ordenes/${orden.id}/planos?plano=${plano.id}`
+    const archivo = pagina.locator(`#version-archivo-${plano.id}`)
+    const formulario = archivo.locator('xpath=ancestor::form')
+    const versiones = async () => Number((await consulta(`select count(*) n from ot_plano_versiones where plano_id = $1`, [plano.id]))[0].n)
+    const pdf = { name: `QA-ZDM-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZDM-${sello}`, 'Plano que la base rechaza']) }
+    const llenar = async () => {
+      await archivo.waitFor({ state: 'attached', timeout: 30000 })
+      await formulario.getByLabel('Maestranza', { exact: true }).check()
+      await formulario.getByLabel('Producción', { exact: true }).check()
+      await archivo.setInputFiles(pdf)
+      return formulario.locator('input[name="area_id"]:checked').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim()))
+    }
+    await ir(pagina, `${BASE}${direccion}`)
+    await marcarDocumento(pagina)
+    const marcadas = await llenar()
+    const PORQUE = `Falta ${marcadas.map((a) => `${a}: ${sinPunto}`).join('; ')}. Vuelve a enviarla.`
+    const rojo = async () => limpio((await formulario.locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+    await formulario.getByRole('button', { name: 'Enviar a revisión' }).click()
+    const ahi = await hasta(rojo, (t) => t.startsWith('Falta'), 30000)
+    comprobar(ahi === PORQUE && (await versiones()) === 0,
+      `[Diseño 1280] 1zd-motivo-de-la-base. con la persona ahí, el formulario dice el motivo de cada área sin doble punto («${ahi}»)`)
+    // Ya en otra pantalla: la acción de la primera área se detiene hasta que
+    // la persona toca el menú, y lo que vuelve lo dice arriba.
+    await ir(pagina, `${BASE}${direccion}`)
+    await llenar()
+    const retenidas = corte.retenidas
+    corte.marca = `QA-ZDM-${sello}`
+    await formulario.getByRole('button', { name: 'Enviar a revisión' }).click()
+    await hasta(() => corte.retenidas, (n) => n > retenidas, 30000)
+    await (await enlaceVisible(pagina, '/')).click()
+    await pagina.waitForTimeout(800)
+    corte.soltar()
+    await pagina.waitForURL((u) => u.pathname === '/', { timeout: 30000 }).catch(() => {})
+    const arriba = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('no se guardó'), 30000)
+    await pagina.waitForTimeout(1000)
+    const tono = await tonoDeLaLinea(pagina)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-motivo-de-la-base.png') })
+    comprobar(pagina.url().replace(BASE, '') === '/' && arriba === `La versión del plano no se guardó. ${PORQUE} Volver al plano` && tono === 'rechazo' && (await versiones()) === 0,
+      `[Diseño 1280] 1zd-motivo-de-la-base. con la persona ya en otra pantalla, arriba dice el motivo sin doble punto («${arriba}», ${tono})`)
+    comprobar(errores.length === 0, `[Diseño 1280] 1zd-motivo-de-la-base. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    await consulta(`drop trigger if exists qa_zdm_version_dice_que_no on public.ot_plano_versiones`)
+    await consulta(`drop function if exists public.qa_zdm_version_dice_que_no()`)
     await contexto.close()
   }
 }

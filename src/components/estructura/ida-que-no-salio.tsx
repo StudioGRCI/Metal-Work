@@ -54,7 +54,8 @@ function comoDireccion(direccion: string) {
  * También dice, en rojo, el rechazo que volvió cuando la persona ya se había
  * ido del formulario (`decirElRechazoSiSeFue`), con el camino de vuelta; en
  * ámbar, lo que quedó a medias, y en azul, lo que ya había quedado la primera
- * vez. Si la dirección cambió y el formulario que la puso sigue en la pantalla
+ * vez (sin adónde verlo, se porta como el rechazo: su enlace vuelve al
+ * formulario). Si la dirección cambió y el formulario que la puso sigue en la pantalla
  * (otra pestaña de la lista que lo pinta encima), lo dice él y la línea se va.
  */
 export function IdaQueNoSalio() {
@@ -138,7 +139,7 @@ export function IdaQueNoSalio() {
       ref={region}
       role="status"
       className={visible ? `flex items-center gap-3 border-b border-borde px-4 py-1.5 print:hidden ${fondo}` : 'sr-only'}
-      data-ida-que-no-salio={visible ? (visible.tono === 'aviso' ? 'a-medias' : visible.rechazo ? 'rechazo' : visible.tono === 'info' ? 'ya-habia-quedado' : '') : undefined}
+      data-ida-que-no-salio={visible ? (visible.tono === 'aviso' ? 'a-medias' : visible.tono === 'info' ? 'ya-habia-quedado' : visible.rechazo ? 'rechazo' : '') : undefined}
     >
       {visible && (
         <>
