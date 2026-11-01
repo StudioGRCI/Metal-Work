@@ -477,7 +477,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   formulario, o arriba si ya no está: la persona se fue, o el formulario se
   desmontó en la misma dirección (plegó «PDF y revisiones», Atrás y Adelante),
   y sin eso la línea se iba sin que nada la reemplazara (W1 de la crítica de
-  la cuadragésima novena: `seFueDelFormulario`).
+  la cuadragésima novena: `seFueDelFormulario`). Lo que vuelve a fallar
+  entero, sin duda de que no entró, tampoco la cambia arriba: «La versión del
+  plano no se guardó… Vuelve a enviarla» borraba «llegó a Acabados» y «solo a
+  Maestranza», y con las dos marcadas Acabados la recibía otra vez
+  (`aMediasAlSalir`).
   El que registra uno nuevo cada vez no lo toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
   de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
   que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la

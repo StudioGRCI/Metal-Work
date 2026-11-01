@@ -190,6 +190,7 @@ export async function mientrasSeEnvia<T>(
   // seguía sin su PDF (Y1 de la crítica, cuadragésima quinta pasada); se va al
   // completarlo en su fila (`yaSeResolvio`) o al quitarlo.
   const aMedias = de?.propio !== undefined && idaQueNoSalio?.rechazo && idaQueNoSalio.tono === 'aviso' && esDelFormulario(idaQueNoSalio, de) ? idaQueNoSalio : null
+  if (de && aMedias) aMediasAlSalir.set(de, aMedias)
   if (de && idaQueNoSalio?.rechazo && idaQueNoSalio.tono !== 'aviso' && esDelFormulario(idaQueNoSalio, de)) ponerIdaQueNoSalio(null)
   const volvio = envios.salir()
   for (const avisar of alEmpezar) avisar()
@@ -212,6 +213,7 @@ export async function mientrasSeEnvia<T>(
   } finally {
     // Solo si sigue arriba la misma: si este envío puso otra, es lo que dice ahora.
     if ((entro || otraVez) && aMedias && idaQueNoSalio === aMedias) ponerIdaQueNoSalio(null)
+    if (de) aMediasAlSalir.delete(de)
     volvio(entro, motivo)
     avisarQueCambiaron()
   }
@@ -468,6 +470,9 @@ export function ponerIdaQueNoSalio(ida: IdaQueNoSalio | null) {
   for (const avisar of alCambiarLaIda) avisar()
 }
 
+// La línea ámbar del formulario que estaba arriba cuando salió su envío (`mientrasSeEnvia`).
+const aMediasAlSalir = new WeakMap<DeFormulario, IdaQueNoSalio>()
+
 /**
  * Lo que la línea de arriba decía de `documento` ya se resolvió en otro lado:
  * el comprobante que quedó en borrador se completó en su fila, y la línea
@@ -524,6 +529,13 @@ const conMayuscula = (texto: string) => `${texto.charAt(0).toUpperCase()}${texto
  * desmontar, el formulario que se iba contaba como presente y el rechazo no se
  * decía en ningún lado. Sí se mira en la misma dirección (`seFueDelFormulario`).
  * `documento`: de qué es (`yaSeResolvio`).
+ *
+ * Lo que vuelve a fallar entero, sin duda de que no entró, no cambia la línea
+ * ámbar que su formulario tenía arriba al salir (`aMediasAlSalir`): lo que
+ * decía sigue siendo lo último. En su lugar decía «La versión del plano no se guardó… Vuelve a
+ * enviarla», sin «llegó a Acabados» ni «solo a Maestranza», y con las dos
+ * marcadas otra vez Acabados la recibía repetida (control del hilo sobre W1,
+ * cuadragésima novena pasada: con el formulario plegado y con la persona fuera).
  */
 export function decirElRechazoSiSeFue(
   desde: Partida,
@@ -532,11 +544,12 @@ export function decirElRechazoSiSeFue(
   { de, arriba, documento }: { de?: DeFormulario; arriba?: string; documento?: string } = {},
 ) {
   if (!seFueDelFormulario(desde, de)) return
+  const enDuda = pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
+  if (!arriba && !enDuda && de && idaQueNoSalio && aMediasAlSalir.get(de) === idaQueNoSalio) return
   if (arriba) return ponerIdaQueNoSalio({ dice: arriba, enlace, url: desde.direccion, rechazo: true, de, tono: 'aviso', documento })
   // «No se guardó: en otra pestaña…» ya lo dice la frase de delante.
   const porque = conMayuscula(motivo.replace(/^No se guardó: /, ''))
-  const dice =
-    pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR ? `No se sabe si ${que} se guardó. ${porque}` : `${conMayuscula(que)} no se guardó. ${porque}`
+  const dice = enDuda ? `No se sabe si ${que} se guardó. ${porque}` : `${conMayuscula(que)} no se guardó. ${porque}`
   ponerIdaQueNoSalio({ dice, enlace, url: desde.direccion, rechazo: true, de, documento })
 }
 

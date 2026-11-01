@@ -270,7 +270,8 @@
  *   1zb. Lo que vuelve a medias o se resuelve en otro lado: el plano que
  *       llega a un área y no a otra (la versión de otro plano no se lleva su
  *       línea; reenviado y otra vez a medias, con la persona ahí lo dice el
- *       formulario, y con el formulario plegado mientras sube, arriba), el
+ *       formulario, y con el formulario plegado mientras sube, arriba; el
+ *       que vuelve a fallar entero, plegado o fuera, no la cambia), el
  *       comprobante en borrador (completarlo en su fila la quita, y
  *       registrar otro desde el mismo formulario no),
  *       el PDF de la orden (de vuelta lo dice el campo, y el segundo rechazo
@@ -4818,6 +4819,46 @@ if (corre('1zb-plano-a-medias')) {
   const trasPlegar = await porArea(cuarto.id)
   comprobar(aMediasCuarto.startsWith(`La versión del plano llegó a ${segunda}. Falta ${primera}`) && plegado && lineaPlegado.startsWith(`La versión del plano llegó a ${primera}. Falta ${otra}`) && tonoPlegado === 'a-medias' && rojoReabierto === '' && trasPlegar[primera] === 1 && trasPlegar[segunda] === 1 && !trasPlegar[otra],
     `[Diseño 1280] 1zb-plano-a-medias. reenviada a ${primera} y a ${otra} con el formulario plegado y vuelto a abrir mientras sube, lo que falta ahora lo dice arriba, en ámbar (antes «${aMediasCuarto}»; plegado ${plegado}; línea «${lineaPlegado}», ${tonoPlegado}; formulario «${rojoReabierto}», ${JSON.stringify(trasPlegar)})`)
+  // Y el reenvío solo a la que falta que vuelve a fallar entero, plegado o con
+  // la persona ya en otra pantalla, no cambia la línea: decía «La versión del
+  // plano no se guardó… Vuelve a enviarla», sin a cuál llegó ni «solo a», y
+  // con las dos marcadas la primera la recibía otra vez (control del hilo
+  // sobre W1, cuadragésima novena pasada).
+  const reenviarSoloAOtra = async (sigue, mientrasSube, alVolver = async () => {}) => {
+    await formulario(cuarto.id).getByLabel(otra, { exact: true }).check()
+    await archivo(cuarto.id).setInputFiles(pdfCuarto)
+    retenidasAntes = corte.retenidas
+    corte.saltarSubidas = 0
+    corte.cortarSubida = 'planos-privados'
+    await formulario(cuarto.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+    await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
+    await mientrasSube()
+    corte.soltar()
+    await alVolver()
+    // Si cambia, cambia al volver; si no, se mira a los 6 s.
+    return hasta(() => idaQueNoSalio(pagina), (t) => t !== sigue, 6000)
+  }
+  const plegadaEntera = await reenviarSoloAOtra(lineaPlegado, async () => {
+    await pliegue.click()
+    await archivo(cuarto.id).waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+    await pliegue.click()
+    await archivo(cuarto.id).waitFor({ state: 'attached', timeout: 10000 }).catch(() => {})
+  })
+  const tonoPlegadaEntera = await tonoDeLaLinea(pagina)
+  // La ida a «/» queda en cola hasta que el envío vuelve: se mira ya en «/».
+  const fueraEntera = await reenviarSoloAOtra(`${lineaPlegado} Volver al plano`, async () => {
+    await (await enlaceVisible(pagina, '/')).click()
+    await pagina.waitForTimeout(800)
+  }, async () => {
+    await pagina.waitForURL((u) => u.pathname === '/', { timeout: 30000 }).catch(() => {})
+    await quieta(pagina)
+  })
+  const fueEnRaiz = new URL(pagina.url()).pathname === '/'
+  const tonoFueraEntera = await tonoDeLaLinea(pagina)
+  const trasEntera = await porArea(cuarto.id)
+  comprobar(plegadaEntera === lineaPlegado && tonoPlegadaEntera === 'a-medias' && fueEnRaiz && fueraEntera === `${lineaPlegado} Volver al plano` && tonoFueraEntera === 'a-medias' &&
+    trasEntera[primera] === 1 && trasEntera[segunda] === 1 && !trasEntera[otra],
+    `[Diseño 1280] 1zb-plano-a-medias. reenviada solo a ${otra} y vuelta a fallar entera, con el formulario plegado o ya en otra pantalla, la línea sigue diciendo a cuál llegó y a cuál volver a enviarla (plegado «${plegadaEntera}», ${tonoPlegadaEntera}; fuera${fueEnRaiz ? '' : ' (sin llegar a «/»)'} «${fueraEntera}», ${tonoFueraEntera}; ${JSON.stringify(trasEntera)})`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
