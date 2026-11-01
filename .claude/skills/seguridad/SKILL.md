@@ -197,7 +197,9 @@ En la misma migración que la crea, sin excepción:
   salir a Maestranza) y cuando entra, no al salir (R18 de la cuadragésima
   séptima), o cuando vuelve con otra cosa a medias (R21 de la cuadragésima
   octava: llegaba a Maestranza y no a Producción, y arriba seguía «Falta
-  Maestranza»), ni el que registra uno nuevo cada vez (otro
+  Maestranza»; lo nuevo lo dice el formulario o, si ya no está montado
+  aunque la dirección sea la misma, la línea: W1 de la crítica de la
+  cuadragésima novena), ni el que registra uno nuevo cada vez (otro
   comprobante se llevaba el del borrador: Y1 de la crítica de la
   cuadragésima quinta). El documento que elige la búsqueda (?codigo=,
   ?fecha=) lo pone `DelDocumento` para todos los formularios de la

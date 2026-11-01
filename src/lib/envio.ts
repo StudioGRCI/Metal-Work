@@ -183,8 +183,9 @@ export async function mientrasSeEnvia<T>(
   // reenvío a Maestranza y a Producción que llega a Maestranza y a Producción
   // no. Arriba seguía «Falta Maestranza… envíala solo a Maestranza», y
   // seguirla le mandaba a Maestranza otra revisión; lo de ahora lo dice el
-  // formulario, o arriba si la persona ya se fue (R21 de realización y F1 de
-  // funcionalidad, cuadragésima octava pasada). El que registra uno nuevo cada
+  // formulario, o arriba si la persona ya se fue o el formulario ya no está
+  // (R21 de realización y F1 de funcionalidad, cuadragésima octava pasada; W1
+  // de la crítica, cuadragésima novena). El que registra uno nuevo cada
   // vez no la quita: el comprobante en borrador se iba al registrar otro y
   // seguía sin su PDF (Y1 de la crítica, cuadragésima quinta pasada); se va al
   // completarlo en su fila (`yaSeResolvio`) o al quitarlo.
@@ -409,6 +410,16 @@ export const sigueMontado = (de: DeFormulario | undefined) =>
   Boolean(de && montados.has(de.instancia) && montados.get(de.instancia) === de.documento)
 
 /**
+ * La persona ya no está en el formulario que envió: pidió otra pantalla, o
+ * sigue en la misma dirección y ese formulario ya no está montado —plegó «PDF y
+ * revisiones», o fue Atrás y Adelante— y el que ve, vuelto a montar, no dice
+ * nada. Lo que volvía no se decía en ningún lado, y la línea ámbar que el
+ * reenvío se llevaba al volver con otra cosa a medias quedaba sin reemplazo (W1
+ * de la crítica, cuadragésima novena pasada). Sin `de`, solo lo primero.
+ */
+const seFueDelFormulario = (desde: Partida, de?: DeFormulario) => pidioOtraPantalla(desde) || (de !== undefined && !sigueMontado(de))
+
+/**
  * Esta vez que el formulario está montado, para `DeFormulario`, y de qué
  * documento es ahora (`Opciones`). Mientras siga montado con el mismo, lo suyo
  * se dice en él y no arriba: la pestaña de la lista cambia la dirección y deja
@@ -511,7 +522,8 @@ const conMayuscula = (texto: string) => `${texto.charAt(0).toUpperCase()}${texto
  * sigue en la pantalla, lo dice él y la línea calla (`IdaQueNoSalio`). No se
  * mira aquí: con la pantalla nueva ya en la dirección y la vieja todavía por
  * desmontar, el formulario que se iba contaba como presente y el rechazo no se
- * decía en ningún lado. `documento`: de qué es (`yaSeResolvio`).
+ * decía en ningún lado. Sí se mira en la misma dirección (`seFueDelFormulario`).
+ * `documento`: de qué es (`yaSeResolvio`).
  */
 export function decirElRechazoSiSeFue(
   desde: Partida,
@@ -519,7 +531,7 @@ export function decirElRechazoSiSeFue(
   { que, enlace }: SiSeVa,
   { de, arriba, documento }: { de?: DeFormulario; arriba?: string; documento?: string } = {},
 ) {
-  if (!pidioOtraPantalla(desde)) return
+  if (!seFueDelFormulario(desde, de)) return
   if (arriba) return ponerIdaQueNoSalio({ dice: arriba, enlace, url: desde.direccion, rechazo: true, de, tono: 'aviso', documento })
   // «No se guardó: en otra pestaña…» ya lo dice la frase de delante.
   const porque = conMayuscula(motivo.replace(/^No se guardó: /, ''))
@@ -538,7 +550,7 @@ export function decirElRechazoSiSeFue(
  * como un éxito (H2 de diseño, cuadragésima tercera pasada).
  */
 export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: SiSeVa, ida?: { url: string; enlace: string }, de?: DeFormulario) {
-  if (!pidioOtraPantalla(desde)) return
+  if (!seFueDelFormulario(desde, de)) return
   // «Lo que enviaste ya había quedado la primera vez que lo enviaste»: sin nombre, sin la vez.
   const vez = que === SI_SE_VA_DE_LA_PANTALLA.que ? 'la primera vez' : 'la primera vez que lo enviaste'
   ponerIdaQueNoSalio({

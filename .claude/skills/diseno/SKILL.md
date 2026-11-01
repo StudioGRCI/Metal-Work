@@ -367,7 +367,10 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   al salir de hoy y corrían la flecha bajo el puntero (D3 de la cuadragésima
   séptima). Solo donde corre algo: en un teléfono angosto «Hoy» baja a un
   segundo renglón detrás de la flecha, y su sitio guardado era un renglón
-  vacío (D1 de la cuadragésima octava). Si el rechazo
+  vacío (D1 de la cuadragésima octava); con zoom o letra grande, por debajo
+  de unos 330 px, también el de «Día siguiente» (D1' de la cuadragésima
+  novena). Debajo de 400 px no se guarda ninguno de los dos: ahí el selector
+  va solo en su renglón y la flecha no se mueve. Si el rechazo
   de una ventana cerrada en vuelo no se dice en ningún otro lado, va al aviso
   de arriba («Lo que enviaste no entró, o no se sabe si entró: …»), en vez de
   mandar a leer un aviso que no está: `noEntro(motivo)` en `useAccion`
@@ -469,8 +472,12 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   que frena la validación («Marca al menos un área») o el que vuelve a fallar
   con la persona ahí se lo llevaban cuando seguía siendo cierto (R18 de la
   cuadragésima séptima). Y sin lo segundo, el reenvío que llegaba a Maestranza
-  y a Producción no dejaba arriba «Falta Maestranza», y seguirla le mandaba
-  otra revisión (R21 de la cuadragésima octava).
+  pero no a Producción dejaba arriba «Falta Maestranza», y seguirla le mandaba
+  otra revisión (R21 de la cuadragésima octava). Lo de ahora lo dice el
+  formulario, o arriba si ya no está: la persona se fue, o el formulario se
+  desmontó en la misma dirección (plegó «PDF y revisiones», Atrás y Adelante),
+  y sin eso la línea se iba sin que nada la reemplazara (W1 de la crítica de
+  la cuadragésima novena: `seFueDelFormulario`).
   El que registra uno nuevo cada vez no lo toca: otro comprobante se llevaba el aviso del que seguía en borrador (Y1
   de la crítica de la cuadragésima quinta), y sin ninguna salida el plano
   que ya había llegado a Maestranza seguía pidiendo enviárselo (F1 de la

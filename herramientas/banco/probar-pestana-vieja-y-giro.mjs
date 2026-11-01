@@ -269,7 +269,9 @@
  *       nombre (la regla de tardanzas, RR. HH.) también se dicen arriba.
  *   1zb. Lo que vuelve a medias o se resuelve en otro lado: el plano que
  *       llega a un área y no a otra (la versión de otro plano no se lleva su
- *       línea), el comprobante en borrador (completarlo en su fila la quita, y
+ *       línea; reenviado y otra vez a medias, con la persona ahí lo dice el
+ *       formulario, y con el formulario plegado mientras sube, arriba), el
+ *       comprobante en borrador (completarlo en su fila la quita, y
  *       registrar otro desde el mismo formulario no),
  *       el PDF de la orden (de vuelta lo dice el campo, y el segundo rechazo
  *       también sube a la vista), la sub-vista, dos formularios sin nombre, el
@@ -4764,6 +4766,58 @@ if (corre('1zb-plano-a-medias')) {
   const alCompletar = await idaQueNoSalio(pagina)
   comprobar(completo?.[primera] === 1 && completo?.[segunda] === 1 && completo?.[otra] === 1 && alCompletar === '' && duplicados === 1,
     `[Diseño 1280] 1zb-plano-a-medias. reenviada sin cambiar el archivo, ${otra} la recibe y ${primera} no la recibe dos veces: Storage dice que ya estaba (${JSON.stringify(completo)}, línea «${alCompletar}», ${duplicados} «Duplicate», ${delDuplicado} 400 en consola)`)
+  // Lo mismo con el formulario plegado mientras sube: «PDF y revisiones» lo
+  // desmonta y lo vuelve a montar vacío, en la misma dirección. La línea de lo
+  // que faltaba se iba y lo nuevo no lo decía nadie; ahora lo dice arriba (W1
+  // de la crítica, cuadragésima novena pasada). Y la que pone ese reenvío se
+  // queda: el finally solo quita la que estaba (R22 de realización).
+  const cuarto = await nuevoPlano(`QA-ZBP-D-${sello}`, 'Plano a medias que se pliega')
+  const direccionCuarto = `/ordenes/${orden.id}/planos?plano=${cuarto.id}`
+  await ir(pagina, `${BASE}${direccionCuarto}`)
+  await archivo(cuarto.id).waitFor({ state: 'attached', timeout: 30000 })
+  await formulario(cuarto.id).getByLabel(primera, { exact: true }).check()
+  await formulario(cuarto.id).getByLabel(segunda, { exact: true }).check()
+  const pdfCuarto = { name: `QA-ZBP-D-${sello}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`PLANO QA-ZBP-D-${sello}`, 'Plano a medias que se pliega']) }
+  await archivo(cuarto.id).setInputFiles(pdfCuarto)
+  retenidasAntes = corte.retenidas
+  corte.cortarSubida = 'planos-privados'
+  await formulario(cuarto.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
+  await (await enlaceVisible(pagina, '/')).click()
+  await pagina.waitForURL((u) => u.pathname === '/', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(800)
+  corte.soltar()
+  await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('llegó a'), 30000)
+  await quieta(pagina)
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Volver al plano' }).click({ timeout: 5000 }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname + u.search === direccionCuarto, { timeout: 20000 }).catch(() => {})
+  await archivo(cuarto.id).waitFor({ state: 'attached', timeout: 30000 })
+  await quieta(pagina)
+  const aMediasCuarto = await idaQueNoSalio(pagina)
+  await formulario(cuarto.id).getByLabel(primera, { exact: true }).check()
+  await formulario(cuarto.id).getByLabel(otra, { exact: true }).check()
+  await archivo(cuarto.id).setInputFiles(pdfCuarto)
+  const marcadasCuarto = await formulario(cuarto.id).locator('input[name="area_id"]:checked').evaluateAll((l) => l.map((c) => c.parentElement.textContent.trim()))
+  const pliegue = pagina.locator(`#plano-${cuarto.id}`).getByRole('button', { name: /^PDF y revisiones/ })
+  retenidasAntes = corte.retenidas
+  corte.saltarSubidas = marcadasCuarto.indexOf(otra)
+  corte.cortarSubida = 'planos-privados'
+  await formulario(cuarto.id).getByRole('button', { name: 'Enviar a revisión' }).click()
+  await hasta(() => corte.retenidas, (n) => n > retenidasAntes, 30000)
+  await pliegue.click()
+  await archivo(cuarto.id).waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  const plegado = (await archivo(cuarto.id).count()) === 0
+  await pliegue.click()
+  await archivo(cuarto.id).waitFor({ state: 'attached', timeout: 10000 }).catch(() => {})
+  corte.soltar()
+  await hasta(() => idaQueNoSalio(pagina), (t) => t.includes(`Falta ${otra}`), 30000)
+  await pagina.waitForTimeout(1500)
+  const lineaPlegado = await idaQueNoSalio(pagina)
+  const tonoPlegado = await tonoDeLaLinea(pagina)
+  const rojoReabierto = limpio((await formulario(cuarto.id).locator('[role="alert"]').allInnerTexts().catch(() => [])).join(' '))
+  const trasPlegar = await porArea(cuarto.id)
+  comprobar(aMediasCuarto.startsWith(`La versión del plano llegó a ${segunda}. Falta ${primera}`) && plegado && lineaPlegado.startsWith(`La versión del plano llegó a ${primera}. Falta ${otra}`) && tonoPlegado === 'a-medias' && rojoReabierto === '' && trasPlegar[primera] === 1 && trasPlegar[segunda] === 1 && !trasPlegar[otra],
+    `[Diseño 1280] 1zb-plano-a-medias. reenviada a ${primera} y a ${otra} con el formulario plegado y vuelto a abrir mientras sube, lo que falta ahora lo dice arriba, en ámbar (antes «${aMediasCuarto}»; plegado ${plegado}; línea «${lineaPlegado}», ${tonoPlegado}; formulario «${rojoReabierto}», ${JSON.stringify(trasPlegar)})`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zb-plano-a-medias. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

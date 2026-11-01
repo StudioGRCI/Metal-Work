@@ -286,24 +286,26 @@ function SelectorDeDia({ dia, hoy }: { dia: string; hoy: string }) {
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
+      {/* Los sitios de «Día siguiente» y de «Hoy» se guardan desde 400 px. Más
+          angosto, el selector va solo en su renglón en hoy y en otro día, y la
+          flecha no se mueve: guardados, bajaban solos a un renglón vacío bajo
+          el selector, «Hoy» en un teléfono de 360 o 375 (D1 de diseño,
+          cuadragésima octava pasada) y «Día siguiente» por debajo de unos 330,
+          con zoom o letra grande (D1' de diseño y R23 de realización,
+          cuadragésima novena). Más ancho sí: entre 470 y 640 px el de hoy
+          cabría junto al título sin ellos, y bajaría al salir de hoy. */}
       {siguiente <= hoy ? (
         <EnlaceBoton href={enlaceDia(siguiente, hoy)} variante="contorno" tamano="icono" aria-label="Día siguiente">
           <ChevronRight aria-hidden className="size-4" />
         </EnlaceBoton>
       ) : (
-        <Reservado variante="contorno" tamano="icono" />
+        <Reservado variante="contorno" tamano="icono" className="max-[25rem]:hidden" />
       )}
       {dia !== hoy ? (
         <EnlaceBoton href={RUTA} variante="fantasma" tamano="sm">
           Hoy
         </EnlaceBoton>
       ) : (
-        // En un teléfono angosto (360, 375) «Hoy» baja a un segundo renglón,
-        // detrás de la flecha, y su sitio guardado era un renglón vacío bajo el
-        // selector (D1 de diseño, cuadragésima octava pasada). Debajo de 400 px
-        // el selector va solo en su renglón en hoy y en otro día, y la flecha
-        // no se mueve. Más ancho sí lo guarda: entre 470 y 640 px el de hoy
-        // cabría junto al título sin él, y bajaría al salir de hoy.
         <Reservado variante="fantasma" tamano="sm" className="max-[25rem]:hidden">
           Hoy
         </Reservado>

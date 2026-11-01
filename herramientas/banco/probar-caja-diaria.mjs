@@ -19,7 +19,7 @@
  *   7. En el teléfono la pantalla entra sin desbordarse, y la flecha deja el
  *      selector en el día que muestra, con un día escrito o llegando por el menú.
  *      A lo ancho, a medio ancho y en el teléfono, la flecha no se mueve al
- *      salir de hoy, y en hoy el selector va en un solo renglón.
+ *      salir de hoy, y en hoy el selector va en un solo renglón (de 320 a 1440).
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
@@ -497,8 +497,19 @@ const movimientos = (caja, fecha) =>
 // caía en la fecha (D3 de diseño, cuadragésima séptima pasada). A medio ancho,
 // además, el selector bajaba a otro renglón. En hoy, el selector va en un solo
 // renglón: en un teléfono angosto el sitio guardado de «Hoy» bajaba solo a
-// otro, vacío (D1 de diseño, cuadragésima octava pasada).
-for (const vista of [{ width: 1440, height: 900 }, { width: 480, height: 900 }, { width: 390, height: 844 }, { width: 375, height: 812 }]) {
+// otro, vacío (D1 de diseño, cuadragésima octava pasada), y por debajo de
+// unos 330 px también el de «Día siguiente» (D1' de diseño y R23 de
+// realización, cuadragésima novena). 399 es el último ancho sin sitios
+// guardados: en hoy el selector no sube junto al título.
+for (const vista of [
+  { width: 1440, height: 900 },
+  { width: 480, height: 900 },
+  { width: 399, height: 844 },
+  { width: 390, height: 844 },
+  { width: 375, height: 812 },
+  { width: 330, height: 844 },
+  { width: 320, height: 844 },
+]) {
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria, vista)
   const anteayer = new Date(Date.parse(`${ayer}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
   const flecha = pagina.getByRole('link', { name: 'Día anterior' })
