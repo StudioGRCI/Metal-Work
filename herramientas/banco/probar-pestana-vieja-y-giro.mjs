@@ -3983,8 +3983,8 @@ if (corre('1x-orden-con-mas')) {
 // La orden, como el trabajo: entra con el formulario vuelto a montar por Atrás
 // y Adelante y «Más» abierta. El formulario arma su partida a mano y no decía
 // cuál la envió: la línea callaba, el de ahora estaba vacío y sin trabar, y
-// escrita otra vez quedaba otra orden numerada (T1 de la crítica,
-// quincuagésima pasada).
+// escrita otra vez volvía con «Ya hay una orden de trabajo…: revisa el número
+// del papel», que culpa al papel (T1 de la crítica, quincuagésima pasada).
 if (corre('1x-orden-atras-con-mas')) {
   const [libre] = await numerosLibres(1)
   const marca = `QA_X1OA_${sello}`
@@ -5789,6 +5789,86 @@ if (corre('1zd-editar-el-plano')) {
     `[Diseño 1280] 1zd-editar-el-plano. corregido el nombre y la observación, se guarda, sin pedir quién lo elaboró ni cambiarlo, y la tarjeta lo muestra (${JSON.stringify(despues)}, rojo «${rojo}», formulario abierto ${abierto})`)
   comprobar(errores.length === 0, `[Diseño 1280] 1zd-editar-el-plano. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
+}
+
+// La corrección del plano se cierra cuando la tarjeta ya muestra lo guardado.
+// Se cerraba al contestar la acción, con la tarjeta todavía como antes: vuelta
+// a abrir en ese segundo traía lo de antes, y guardarla, aunque fuera solo la
+// observación, deshacía la corrección (D1 de diseño, quincuagésima primera
+// pasada). Con la página lenta en ponerse al día: mientras guarda, el lápiz
+// gira y «Cancelar» se apaga; al cerrarse, la tarjeta ya dice lo nuevo, el
+// cursor está en el lápiz y el lector oye «Plano actualizado.». Una segunda
+// corrección, vuelta a abrir en cuanto se cierra, trae lo guardado, y
+// guardarla con solo la observación no lo deshace (con el código de antes
+// volvía al código de la primera).
+if (corre('1zd-corregir-y-volver-a-abrir')) {
+  const { orden, nuevoPlano } = await ordenParaPlanos()
+  const plano = await nuevoPlano(`QA-ZDV-${sello}`, 'Plano que se corrige y se vuelve a abrir')
+  const codigo = `QA-ZDV2-${sello}`
+  const nombre = `Plano corregido otra vez ${sello}`
+  const codigo3 = `QA-ZDV3-${sello}`
+  const nombre3 = `Plano corregido por segunda vez ${sello}`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}/planos?plano=${plano.id}`)
+    const tarjeta = pagina.locator(`#plano-${plano.id}`)
+    const lapiz = tarjeta.getByRole('button', { name: 'Editar el plano' })
+    const form = tarjeta.locator('form').filter({ has: pagina.locator('input[name="numero_plano"]') })
+    await lapiz.click({ timeout: 30000 })
+    await form.waitFor({ timeout: 10000 })
+    await form.locator('input[name="numero_plano"]').fill(codigo)
+    await form.locator('input[name="nombre"]').fill(nombre)
+    corte.lento = { patron: new RegExp(`/ordenes/${orden.id}/planos`), ms: 6000 }
+    const demorados = corte.demorados
+    const t0 = Date.now()
+    await form.getByRole('button', { name: 'Guardar el plano' }).click()
+    const [guardado] = await hasta(() => consulta(`select numero_plano, nombre from ot_planos where id = $1`, [plano.id]), (l) => l?.[0]?.numero_plano === codigo, 20000)
+    // La acción ya entró y la página todavía no se pone al día.
+    const enVuelo = {
+      ms: Date.now() - t0,
+      abierto: await form.count(),
+      lapiz: await lapiz.getAttribute('aria-disabled', { timeout: 500 }).catch(() => null),
+      cancelar: await form.getByRole('button', { name: 'Cancelar' }).isDisabled({ timeout: 500 }).catch(() => null),
+    }
+    await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const alCerrar = limpio(await tarjeta.innerText())
+    const cerro = { ms: Date.now() - t0, demorados: corte.demorados - demorados }
+    const [cursor, dicho] = await hasta(
+      () => Promise.all([
+        pagina.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName ?? ''),
+        tarjeta.locator('p[role="status"].sr-only').innerText().then(limpio),
+      ]),
+      (r) => r?.[0] === 'Editar el plano' && r?.[1] === 'Plano actualizado.', 1000) ?? []
+    // Otra corrección, todavía con la página lenta, y vuelta a abrir en cuanto
+    // se cierra: trae lo guardado, y guardar solo la observación no lo deshace.
+    await lapiz.click()
+    await form.waitFor({ timeout: 10000 })
+    await form.locator('input[name="numero_plano"]').fill(codigo3)
+    await form.locator('input[name="nombre"]').fill(nombre3)
+    await form.getByRole('button', { name: 'Guardar el plano' }).click()
+    await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    await lapiz.click()
+    await form.waitFor({ timeout: 10000 })
+    const reabierto = { codigo: await form.locator('input[name="numero_plano"]').inputValue(), nombre: await form.locator('input[name="nombre"]').inputValue() }
+    corte.lento = null
+    await form.locator('input[name="observacion"]').fill(`Solo la observación ${sello}`)
+    await form.getByRole('button', { name: 'Guardar el plano' }).click()
+    const [final] = await hasta(() => consulta(`select numero_plano, nombre, observacion from ot_planos where id = $1`, [plano.id]), (l) => l?.[0]?.observacion === `Solo la observación ${sello}`, 20000)
+    await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-corregir-y-volver-a-abrir.png') })
+    comprobar(guardado?.numero_plano === codigo && enVuelo.abierto === 1 && enVuelo.lapiz === 'true' && enVuelo.cancelar === true,
+      `[Diseño 1280] 1zd-corregir-y-volver-a-abrir. con la acción ya entrada y la página sin ponerse al día, la corrección sigue abierta, el lápiz gira y «Cancelar» está apagado (${JSON.stringify(enVuelo)})`)
+    comprobar(alCerrar.includes(`Plano ${codigo}`) && alCerrar.includes(nombre),
+      `[Diseño 1280] 1zd-corregir-y-volver-a-abrir. al cerrarse, la tarjeta ya dice el código y el nombre nuevos (${JSON.stringify(cerro)}, «${alCerrar.slice(0, 160)}»)`)
+    comprobar(cursor === 'Editar el plano' && dicho === 'Plano actualizado.',
+      `[Diseño 1280] 1zd-corregir-y-volver-a-abrir. el cursor vuelve al lápiz y el lector oye que se guardó (cursor «${cursor}», dicho «${dicho}»)`)
+    comprobar(reabierto.codigo === codigo3 && reabierto.nombre === nombre3 && final?.numero_plano === codigo3 && final?.nombre === nombre3,
+      `[Diseño 1280] 1zd-corregir-y-volver-a-abrir. vuelta a abrir enseguida trae lo guardado, y guardar solo la observación no deshace la corrección (abierta con ${JSON.stringify(reabierto)}, en la base ${JSON.stringify(final)})`)
+    comprobar(errores.length === 0, `[Diseño 1280] 1zd-corregir-y-volver-a-abrir. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    await contexto.close()
+  }
 }
 
 // El motivo de la base llega con su punto, y detrás va «; » o «. »: decía

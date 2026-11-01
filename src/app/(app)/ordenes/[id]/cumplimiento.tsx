@@ -2,7 +2,7 @@
 
 import { Check, MessageSquareWarning, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useId, useState } from 'react'
+import { startTransition, useEffect, useId, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -494,6 +494,32 @@ function TarjetaPlano({
   const [historial, setHistorial] = useState(false)
   const entregado = Boolean(plano.fecha_entrega)
   const planoId = plano.plano_id ?? ''
+  const lapiz = useRef<HTMLButtonElement>(null)
+  const volverAlLapiz = useRef(false)
+  const [guardando, setGuardando] = useState(false)
+  const [dicho, setDicho] = useState('')
+
+  // La corrección guardada se cierra en la transición de su envío, la que pone
+  // la página al día: se pinta junto con la tarjeta ya corregida. Cerrada al
+  // contestar la acción, la tarjeta seguía un segundo con lo de antes, y el
+  // formulario vuelto a abrir en ese segundo traía lo de antes: guardarlo,
+  // aunque fuera solo la observación, deshacía la corrección (D1 de diseño,
+  // quincuagésima primera pasada). Al cerrarse, el cursor vuelve al lápiz (se
+  // quedaba en la página) y el lector oye que se guardó.
+  function alCerrarLaCorreccion(mensaje?: string) {
+    volverAlLapiz.current = true
+    if (!mensaje) return setModo('ver')
+    setDicho('')
+    startTransition(() => {
+      setModo('ver')
+      setDicho(mensaje)
+    })
+  }
+  useEffect(() => {
+    if (modo !== 'ver' || !volverAlLapiz.current) return
+    volverAlLapiz.current = false
+    lapiz.current?.focus()
+  }, [modo])
 
   return (
     <Tarjeta id={`plano-${planoId}`}>
@@ -535,14 +561,16 @@ function TarjetaPlano({
             {puedeDisenar && (
               <>
                 {!entregado && (
-                  <Boton variante="secundario" tamano="sm" onClick={() => setModo(modo === 'entregar' ? 'ver' : 'entregar')}>
+                  <Boton variante="secundario" tamano="sm" disabled={guardando} onClick={() => setModo(modo === 'entregar' ? 'ver' : 'entregar')}>
                     Entregar
                   </Boton>
                 )}
                 <Boton
+                  ref={lapiz}
                   variante="fantasma"
                   tamano="icono"
                   aria-label="Editar el plano"
+                  ocupado={guardando}
                   onClick={() => setModo(modo === 'editar' ? 'ver' : 'editar')}
                 >
                   <Pencil aria-hidden className="size-4" />
@@ -551,6 +579,7 @@ function TarjetaPlano({
                   variante="fantasma"
                   tamano="icono"
                   aria-label="Quitar el plano"
+                  disabled={guardando}
                   onClick={() => setModo(modo === 'quitar' ? 'ver' : 'quitar')}
                 >
                   <Trash2 aria-hidden className="size-4" />
@@ -570,8 +599,9 @@ function TarjetaPlano({
         <FormularioEntrega ordenId={ordenId} planoId={planoId} alTerminar={() => setModo('ver')} />
       )}
       {modo === 'editar' && (
-        <FormularioPlano ordenId={ordenId} plano={plano} etapas={etapas} alTerminar={() => setModo('ver')} />
+        <FormularioPlano ordenId={ordenId} plano={plano} etapas={etapas} alCambiarEnvio={setGuardando} alTerminar={alCerrarLaCorreccion} />
       )}
+      <p role="status" className="sr-only">{dicho}</p>
       {modo === 'quitar' && (
         <ConfirmarQuitar
           accion={quitarPlano}
@@ -645,14 +675,25 @@ function FormularioPlano({
   ordenId,
   plano,
   etapas,
+  alCambiarEnvio,
   alTerminar,
 }: {
   ordenId: string
   plano: PlanoCumplimiento
   etapas: { id: string; nombre: string }[]
-  alTerminar: () => void
+  alCambiarEnvio: (enviando: boolean) => void
+  alTerminar: (mensaje?: string) => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar, { documento: plano.plano_id ?? undefined })
+  const { alEnviar, enviando, error } = useEnvio(editarPlano, (resultado) => alTerminar(resultado.mensaje ?? 'Plano actualizado.'), {
+    documento: plano.plano_id ?? undefined,
+  })
+  // Mientras se guarda, la corrección no se cierra: el lápiz de la tarjeta gira
+  // y «Cancelar», «Entregar» y «Quitar» se apagan. Cerrarla en vuelo y volver a
+  // abrirla también traía lo de antes.
+  useEffect(() => {
+    alCambiarEnvio(enviando)
+    return () => alCambiarEnvio(false)
+  }, [enviando, alCambiarEnvio])
   const id = plano.plano_id ?? ''
 
   return (
@@ -694,7 +735,7 @@ function FormularioPlano({
         </div>
       )}
       <div className="flex justify-end gap-2 sm:col-span-6">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={() => alTerminar()}>
           Cancelar
         </Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>

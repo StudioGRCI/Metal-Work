@@ -174,8 +174,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     // Cómo estaba la pestaña: si al entrar la persona ya está en otra cosa, la
     // orden no se la lleva. Con su formulario, como en `useAccion`: si al
     // entrar el que ve es otro, vuelto a montar vacío (Atrás y Adelante), la
-    // línea de arriba lo dice; callada, la orden se registraba dos veces (T1
-    // de la crítica, quincuagésima pasada).
+    // línea de arriba lo dice. Callada, nada decía que entró, y escrita otra vez
+    // volvía con «Ya hay una orden de trabajo…: revisa el número del papel»,
+    // que culpa al papel (T1 de la crítica, quincuagésima pasada).
     const desde = { ...partida(), de }
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que la orden vuelva, y si no entró no recarga.

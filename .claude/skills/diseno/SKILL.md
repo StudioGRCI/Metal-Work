@@ -526,8 +526,9 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   está vacío y sin trabar, y la línea es lo único que dice que entró; callada,
   escrito otra vez quedaba doble (`Partida.de`, T1 de la crítica de la
   quincuagésima). El formulario que arma su partida a mano (la orden nueva) le
-  pone su `de`, como `useAccion`: sin él calla igual, y ahí lo doble es otra
-  orden numerada. Un `redirect()` de
+  pone su `de`, como `useAccion`: sin él calla igual, y la orden escrita otra
+  vez volvía con «Ya hay una orden de trabajo…: revisa el número del papel»,
+  que culpa al papel en vez de decir que ya entró. Un `redirect()` de
   servidor tras guardar no mira nada de eso: el cliente nuevo devuelve su id y
   el formulario va con `navegarSiEsDeLaPestana`.
   Cambiar lo de después de «#» deja la entrada del historial sin el estado de
@@ -616,6 +617,16 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
   lugar de «Cancelar» tras el éxito.
+  Si el formulario corrige lo que la misma tarjeta muestra (el plano), el
+  `alTerminar` lo cierra dentro de un `startTransition`: va en la transición
+  del envío y se pinta junto con la página puesta al día. Cerrado al contestar
+  la acción, la tarjeta seguía un segundo con lo de antes, y el formulario
+  vuelto a abrir en ese segundo traía lo de antes: guardarlo, aunque fuera
+  solo la observación, deshacía la corrección (D1 de diseño, quincuagésima
+  primera pasada). Mientras guarda, el botón que lo abre queda `ocupado` y
+  «Cancelar» y los otros mandos de la tarjeta, apagados: cerrarlo en vuelo y
+  volver a abrirlo era el mismo camino. Al cerrarse, el cursor vuelve a ese
+  botón y una región `role="status"` de la tarjeta dice lo que contestó.
 - **Un rechazo que deja el registro creado** (el comprobante que entró en
   borrador y su PDF no subió) vacía el formulario como al registrar, con el
   aviso donde estaba y el cursor en él, hasta que se empieza el siguiente: lo
