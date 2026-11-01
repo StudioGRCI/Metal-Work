@@ -235,8 +235,9 @@
  *       abierta: el formulario se traba y lo dice junto al botón, un segundo
  *       toque no manda nada, en otra pantalla lo dice la línea, y llegar a la
  *       orden por la lista se la lleva.
- *   1x-trabajo-atras-con-mas. El trabajo que entra con el formulario vuelto a
- *       montar por Atrás y Adelante, vacío, y «Más» abierta: lo dice arriba.
+ *   1x-trabajo-atras-con-mas y 1x-orden-atras-con-mas. El trabajo y la orden
+ *       que entran con el formulario vuelto a montar por Atrás y Adelante,
+ *       vacío, y «Más» abierta: lo dice arriba.
  *   1x-clic-derecho y 1x-dedo-que-desplaza. Ni el clic derecho en el menú ni
  *       el dedo que desplaza desde un enlace son pedir otra pantalla: el
  *       cliente nuevo va a su ficha.
@@ -301,7 +302,7 @@
  * SOLO=1a,2 corre solo esas partes, y las que empiezan así (1i son 1i-volver,
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
- * 1x, las siete; 1y, las tres; 1z, las seis, las seis 1za, las nueve 1zb,
+ * 1x, las ocho; 1y, las tres; 1z, las seis, las seis 1za, las nueve 1zb,
  * las dos 1zc y las dos 1zd).
  */
 import ExcelJS from 'exceljs'
@@ -861,6 +862,10 @@ if (corre('1a') || corre('1b')) {
   }
 
   if (corre('1b')) {
+    // Las regiones de antes se leen con la pantalla del trabajo ya pintada:
+    // sola, la parte llegaba aquí con la dirección cambiada y la pantalla
+    // nueva todavía sin montar.
+    await reportar.waitFor({ timeout: 10000 })
     const antes = new Set(await regionesMontadas(pagina))
     await abrir(fotos.b)
     const [ruta] = (await enStorage()).slice(-1)
@@ -875,7 +880,7 @@ if (corre('1a') || corre('1b')) {
     const describe = await hasta(() => loQueDescribe(reportar), (t) => Boolean(t), 5000)
     const [idEstado] = await idsQueDescribe(reportar)
     comprobar(retenido && cerro && ocupado && describe === 'El reporte se sigue enviando: lo que conteste se dice aquí.' && antes.has(idEstado),
-      `[Maestranza 1280] 1b. cerrada en vuelo, «Reportar» gira y su aria-describedby nombra «se sigue enviando», en una región montada desde antes (retenido ${retenido}, ocupado ${ocupado}, «${describe}», de antes ${antes.has(idEstado)})`)
+      `[Maestranza 1280] 1b. cerrada en vuelo, «Reportar» gira y su aria-describedby nombra «se sigue enviando», en una región montada desde antes (retenido ${retenido}, ocupado ${ocupado}, «${describe}», de antes ${antes.has(idEstado)}: ${idEstado} en [${[...antes].join(' ')}])`)
     corte.despliegue = true
     corte.soltar()
     const desenlace = limpio(await hasta(() => pagina.getByRole('alert').filter({ hasText: 'que se estaba enviando' }).allInnerTexts().then((t) => t.join(' ')), Boolean))
@@ -3972,6 +3977,73 @@ if (corre('1x-orden-con-mas')) {
   comprobar(enBusqueda === 'La orden quedó registrada. Ver la orden' && pagina.url().replace(BASE, '') === `/ordenes/${o?.id}` && queda === '' && (await mismoDocumento(pagina)),
     `[Administración 390] 1x-orden-con-mas. la línea sigue mientras se busca, y llegar a la orden por la lista se la lleva (${pagina.url().replace(BASE, '')}, buscando «${enBusqueda}», en la orden «${queda}»)`)
   comprobar(errores.length === 0, `[Administración 390] 1x-orden-con-mas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La orden, como el trabajo: entra con el formulario vuelto a montar por Atrás
+// y Adelante y «Más» abierta. El formulario arma su partida a mano y no decía
+// cuál la envió: la línea callaba, el de ahora estaba vacío y sin trabar, y
+// escrita otra vez quedaba otra orden numerada (T1 de la crítica,
+// quincuagésima pasada).
+if (corre('1x-orden-atras-con-mas')) {
+  const [libre] = await numerosLibres(1)
+  const marca = `QA_X1OA_${sello}`
+  const ordenes = () => consulta(`select id from ordenes_trabajo where descripcion like $1`, [`${marca}%`])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/ordenes`)
+  await marcarDocumento(pagina)
+  // Por el enlace de la lista: así Atrás y Adelante no recargan la pantalla.
+  await (await enlaceVisible(pagina, '/ordenes/nueva')).tap()
+  await pagina.waitForURL((u) => u.pathname === '/ordenes/nueva', { timeout: 20000 })
+  await quieta(pagina)
+  await pagina.locator('#cliente_id').click()
+  await pagina.getByRole('option').first().click()
+  await pagina.locator('textarea[name="descripcion"]').fill(`${marca} orden de prueba del banco`)
+  await pagina.locator('input[type="file"]').first().setInputFiles({ name: `${marca}.pdf`, mimeType: 'application/pdf', buffer: pdfConTexto([`ORDEN DE TRABAJO N ${libre}-${anioDeLima()}`, marca]) })
+  await pagina.waitForTimeout(1500)
+  await pagina.locator('input[name="numero"], #numero').first().fill(String(libre))
+  corte.marca = marca
+  await pagina.getByRole('button', { name: 'Registrar orden' }).tap()
+  await hasta(() => corte.retenidas, (n) => n > 0, 30000)
+  await pagina.goBack({ waitUntil: 'commit' }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
+  await pagina.waitForTimeout(1500)
+  await pagina.goForward({ waitUntil: 'commit' }).catch(() => {})
+  await pagina.waitForURL((u) => u.pathname === '/ordenes/nueva', { timeout: 20000 }).catch(() => {})
+  await pagina.locator('textarea[name="descripcion"]').waitFor({ timeout: 20000 })
+  await pagina.waitForTimeout(1500)
+  const vacio = (await pagina.locator('textarea[name="descripcion"]').inputValue()) === ''
+  await pagina.locator('[data-barra-inferior] button').filter({ hasText: 'Más' }).tap()
+  const mas = pagina.getByRole('dialog', { name: 'Tus secciones' })
+  await mas.waitFor({ timeout: 10000 })
+  corte.soltar()
+  await hasta(ordenes, (l) => l.length === 1, 30000)
+  await pagina.waitForTimeout(3000)
+  await mas.getByRole('button', { name: 'Cerrar', exact: true }).tap()
+  await hasta(() => pagina.getByRole('dialog').count(), (n) => n === 0, 5000)
+  const arriba = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('La orden quedó registrada.'), 10000)
+  const donde = pagina.url().replace(BASE, '')
+  const junto = await yaQuedo(pagina)
+  const n = (await ordenes()).length
+  // El formulario de la orden es largo, y Adelante devuelve la página abajo,
+  // junto al botón: la línea no mueve la página de quien está lejos de ella
+  // (ida-que-no-salio.tsx). Se ve al subir, entera, y no debajo de la barra.
+  const bajada = await pagina.evaluate(() => window.scrollY)
+  await pagina.evaluate(() => window.scrollTo({ top: 0 }))
+  await pagina.waitForTimeout(300)
+  const aLaVista = await lineaALaVista(pagina)
+  await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1x-orden-atras-con-mas.png') })
+  comprobar(vacio && donde === '/ordenes/nueva' && arriba === 'La orden quedó registrada. Ver la orden' && junto === '' && aLaVista && n === 1 && (await mismoDocumento(pagina)),
+    `[Administración 390] 1x-orden-atras-con-mas. la orden entra con el formulario vuelto a montar, vacío, y «Más» abierta: al cerrarla, arriba dice que quedó, con su enlace (vacío ${vacio}, ${donde}, arriba «${arriba}», bajada ${bajada} px y al subir a la vista ${aLaVista}, junto al botón «${junto}», ${n} orden)`)
+  // «Ver la orden» lleva a ella, y la línea se va.
+  const [o] = await ordenes()
+  await pagina.locator('[data-ida-que-no-salio]').getByRole('link', { name: 'Ver la orden' }).tap()
+  await pagina.waitForURL((u) => u.pathname === `/ordenes/${o?.id}`, { timeout: 20000 }).catch(() => {})
+  await quieta(pagina)
+  const queda = await hasta(() => idaQueNoSalio(pagina), (t) => t === '', 5000)
+  comprobar(pagina.url().replace(BASE, '').startsWith(`/ordenes/${o?.id}`) && queda === '' && (await ordenes()).length === 1,
+    `[Administración 390] 1x-orden-atras-con-mas. «Ver la orden» lleva a la orden, sin línea arriba ni otra orden (${pagina.url().replace(BASE, '')}, «${queda}»)`)
+  comprobar(errores.length === 0, `[Administración 390] 1x-orden-atras-con-mas. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

@@ -525,7 +525,9 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   vuelto a montar en su dirección (Atrás y Adelante con «Más» abierta): ese
   está vacío y sin trabar, y la línea es lo único que dice que entró; callada,
   escrito otra vez quedaba doble (`Partida.de`, T1 de la crítica de la
-  quincuagésima). Un `redirect()` de
+  quincuagésima). El formulario que arma su partida a mano (la orden nueva) le
+  pone su `de`, como `useAccion`: sin él calla igual, y ahí lo doble es otra
+  orden numerada. Un `redirect()` de
   servidor tras guardar no mira nada de eso: el cliente nuevo devuelve su id y
   el formulario va con `navegarSiEsDeLaPestana`.
   Cambiar lo de después de «#» deja la entrada del historial sin el estado de

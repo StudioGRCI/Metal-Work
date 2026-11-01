@@ -301,8 +301,8 @@ export function anotarQuePidioIr() {
 
 /**
  * Cómo estaba la pestaña cuando salió un envío que, si entra, lleva a otra
- * pantalla (`partida()`). `de`: el formulario que lo envió, cuando lo envía
- * `useAccion` (`navegarSiEsDeLaPestana`).
+ * pantalla (`partida()`). `de`: el formulario que lo envió (`navegarSiEsDeLaPestana`);
+ * lo pone `useAccion`, y el formulario que arma su partida a mano (la orden nueva).
  */
 export type Partida = { direccion: string; salioEn: number; ventana: number | null; de?: DeFormulario }
 

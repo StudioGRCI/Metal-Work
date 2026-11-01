@@ -170,9 +170,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     enCurso.current = true
     setError(null)
     setErrorNumero(null)
-    // Cómo estaba la pestaña: si al entrar la persona ya está en otra cosa, la orden no se la lleva.
-    const desde = partida()
     const de: DeFormulario = { instancia, campos: camposDe(evento.currentTarget), nombre: nombreDe(SI_SE_VA) }
+    // Cómo estaba la pestaña: si al entrar la persona ya está en otra cosa, la
+    // orden no se la lleva. Con su formulario, como en `useAccion`: si al
+    // entrar el que ve es otro, vuelto a montar vacío (Atrás y Adelante), la
+    // línea de arriba lo dice; callada, la orden se registraba dos veces (T1
+    // de la crítica, quincuagésima pasada).
+    const desde = { ...partida(), de }
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que la orden vuelva, y si no entró no recarga.
     iniciar(() => mientrasSeEnvia(async (entro) => {
