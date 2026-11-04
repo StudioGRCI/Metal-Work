@@ -416,9 +416,12 @@ function BotonesDeConfirmar({
   const { trabada, guardado } = useTrabaDeLaVentana()
   return (
     <>
-      <p role="status" className={guardado ? 'mt-3 text-sm text-texto-suave' : 'sr-only'}>
-        {guardado ? 'Hecho. Poniendo la pantalla al día…' : ''}
-      </p>
+      {/* Nace con la traba, vacía, como la del pie (`PieDeVentana`). */}
+      {(trabada || guardado) && (
+        <p role="status" className={guardado ? 'mt-3 text-sm text-texto-suave' : 'sr-only'}>
+          {guardado ? 'Hecho. Poniendo la pantalla al día…' : ''}
+        </p>
+      )}
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"

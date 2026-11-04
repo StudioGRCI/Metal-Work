@@ -630,12 +630,16 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   `ConfirmarAccion`, apagado. Si lo rechazan se suelta; si entra, sigue trabada
   hasta la página nueva y el pie dice «Guardado. Poniendo la pantalla al día…»,
   porque React espera ahí a cualquier otro envío de la pestaña y el botón que
-  gira parecía colgado. Un «Cancelar», «No» o «Cerrar» propio, fuera de
+  gira parecía colgado. La región que lo dice nace vacía con la traba y se va
+  con ella, no en el pie de toda ventana: una fija era la que encontraba quien
+  busca el aviso de la ventana por `role="status"` (la vista previa del cierre
+  de caja). Un «Cancelar», «No» o «Cerrar» propio, fuera de
   `PieDeVentana`, va `disabled={enviando}` en su sitio. Un formulario en línea,
   sin ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control
   de la fila lo cierra o abre otro igual, que cierre solo el suyo
   (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Una
-  cadena a mano (el cronograma) usa `trabarLaVentana` igual.
+  cadena a mano (el cronograma) usa `trabarLaVentana` igual, y monta su región
+  con el envío.
   **Las altas no llevan `corrige`**: se cierran o se rehacen al contestar, como
   siempre, porque esperar a la página les quitaba el aviso, dejaba el botón
   girando sin decir nada y, con su `useIdDelEnvio` renovado tarde, la ventana

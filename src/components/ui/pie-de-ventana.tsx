@@ -23,10 +23,13 @@ import { useCursorAlRechazo } from '@/lib/envio'
  * archivo invitaba a cambiarlo y la cámara del vehículo subía otra foto
  * (decimocuarta pasada). Como el reporte diario, que lo hace con su `fieldset`.
  *
- * Lo enviado que ya entró espera a la pantalla al día para cerrar la ventana
- * (`useAccion`): mientras tanto el pie dice que ya se guardó, y el botón que
- * gira no parece colgado. Si la ventana corrige lo que la pantalla muestra, en
- * ese rato «Cancelar» no se puede (`trabarLaVentana`).
+ * La ventana que corrige lo que la pantalla muestra (`corrige` de `useAccion`)
+ * se cierra con la pantalla al día: desde que envía, «Cancelar» no se puede
+ * (`trabarLaVentana`), y con lo enviado ya guardado el pie lo dice, para que el
+ * botón que gira no parezca colgado. La región que lo dice nace con la traba,
+ * vacía, y se va con ella: la que nace con su texto no se anuncia, y una en el
+ * pie de toda ventana era la que encontraba quien busca el aviso de la ventana
+ * por `role="status"` (la vista previa del cierre de caja).
  */
 export function PieDeVentana({
   error,
@@ -115,9 +118,11 @@ export function PieDeVentana({
         )
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <p role="status" className={guardado ? 'mr-auto text-xs text-texto-suave' : 'sr-only'}>
-          {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
-        </p>
+        {(trabada || guardado) && (
+          <p role="status" className={guardado ? 'mr-auto text-xs text-texto-suave' : 'sr-only'}>
+            {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
+          </p>
+        )}
         {nota && !yaEntro && !guardado && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
         <Boton type="button" variante="contorno" onClick={alCancelar} disabled={trabada}>
           {yaEntro ? 'Cerrar' : 'Cancelar'}

@@ -390,7 +390,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           {error && <Falla texto={error} />}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <CancelarElCronograma alCancelar={cerrar} />
+            <CancelarElCronograma alCancelar={cerrar} enviando={enviando} />
             <Boton
               type="button"
               tamano="lg"
@@ -420,15 +420,18 @@ function Falla({ texto }: { texto: string }) {
  * «Cancelar» de la ventana del cronograma. Con lo cargado ya adentro, la
  * ventana espera a la tarjeta al día: no se cancela y dice que ya entró
  * (`trabarLaVentana`). Mientras sube, se cancela como siempre y el desenlace
- * se dice en la tarjeta (`useEnvioDeLaVentana`).
+ * se dice en la tarjeta (`useEnvioDeLaVentana`). La región que dice que ya
+ * entró nace vacía con el envío, para que se anuncie, y se va con él.
  */
-function CancelarElCronograma({ alCancelar }: { alCancelar: () => void }) {
+function CancelarElCronograma({ alCancelar, enviando }: { alCancelar: () => void; enviando: boolean }) {
   const { trabada, guardado } = useTrabaDeLaVentana()
   return (
     <>
-      <p role="status" className={guardado ? 'self-center text-xs text-texto-suave sm:mr-auto' : 'sr-only'}>
-        {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
-      </p>
+      {(enviando || guardado) && (
+        <p role="status" className={guardado ? 'self-center text-xs text-texto-suave sm:mr-auto' : 'sr-only'}>
+          {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
+        </p>
+      )}
       <Boton type="button" variante="contorno" disabled={trabada} onClick={alCancelar}>
         Cancelar
       </Boton>
