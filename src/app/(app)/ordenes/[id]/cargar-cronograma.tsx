@@ -3,19 +3,20 @@
 import { AlertTriangle, CalendarRange, Download } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { EstadoDelEnvio, useEnvioDeLaVentana, useLoQueDiceLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
-import { Ventana } from '@/components/ui/ventana'
+import { GUARDADO_PONIENDO_AL_DIA, useTrabaDeLaVentana, Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, mientrasSeEnvia, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
+import { trabarLaVentana, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 import { cargarCronograma } from './acciones-actividades'
 
@@ -128,6 +129,23 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
   const [, setExcel] = useEstadoCompartido<ExcelDelCronograma | null>(`cronograma:${ordenId}:excel`, null, { guardar: true })
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
+  // Lo cargado ya entró y la ventana sigue abierta: espera a la tarjeta al día
+  // para cerrarse, y mientras tanto no se cierra (`trabarLaVentana`). Cerrada
+  // al contestar, «Peso» y «Editar» de cada actividad se abrían con lo de
+  // antes del Excel y, guardados, lo deshacían (barrido del cambio).
+  const traba = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (enviando) return
+    traba.current?.()
+    traba.current = null
+  }, [enviando])
+  useEffect(() => {
+    const suya = traba
+    return () => {
+      suya.current?.()
+      suya.current = null
+    }
+  }, [])
   // Cerrada mientras va: el botón que la abre gira y el desenlace se dice en
   // el renglón de la tarjeta (`EstadoDelCronograma`).
   const fuera = useEnvioDeLaVentana(`cronograma:${ordenId}`, { idDelEstado: idDelEstado(ordenId), alEntrar: { dice: 'se cargó.' } })
@@ -189,6 +207,8 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setError(null)
+    // Si cambia, la ventana se cerró mientras iba (`vecesQueSeCerro`).
+    const ventana = vecesQueSeCerro()
     // Como en `useAccion`: «Volver a cargar», el del aviso de arriba tras un
     // despliegue, espera a que vuelvan el cronograma y su Excel, y si algo no
     // entró no recarga encima de su aviso. Recargaba a los 180 ms y el Excel
@@ -240,9 +260,18 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
         }
         setCargado({ dice: r.mensaje ?? 'Cronograma cargado.', conExcel: Boolean(guardado?.ok) })
         setExcel(guardado?.ok ? null : guardado)
-        setAbierto(false)
         if (!guardado || guardado.ok) entro()
-        iniciar(() => refrescarSiEsDeLaPestana(router))
+        // Abierta todavía, se cierra con la tarjeta ya al día, como las
+        // correcciones de `useAccion` (`corrige`): React junta el cierre con
+        // la página nueva y el pie dice que ya entró.
+        if (ventana === vecesQueSeCerro()) {
+          traba.current?.()
+          traba.current = trabarLaVentana({ trabada: true, guardado: true })
+        }
+        iniciar(() => {
+          setAbierto(false)
+          refrescarSiEsDeLaPestana(router)
+        })
       } catch (e) {
         // Lo mismo que en useAccion: sin señal, la pantalla entera caía y se
         // perdía el Excel leído.
@@ -361,9 +390,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           {error && <Falla texto={error} />}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={cerrar}>
-              Cancelar
-            </Boton>
+            <CancelarElCronograma alCancelar={cerrar} />
             <Boton
               type="button"
               tamano="lg"
@@ -386,5 +413,25 @@ function Falla({ texto }: { texto: string }) {
     <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro">
       {texto}
     </p>
+  )
+}
+
+/**
+ * «Cancelar» de la ventana del cronograma. Con lo cargado ya adentro, la
+ * ventana espera a la tarjeta al día: no se cancela y dice que ya entró
+ * (`trabarLaVentana`). Mientras sube, se cancela como siempre y el desenlace
+ * se dice en la tarjeta (`useEnvioDeLaVentana`).
+ */
+function CancelarElCronograma({ alCancelar }: { alCancelar: () => void }) {
+  const { trabada, guardado } = useTrabaDeLaVentana()
+  return (
+    <>
+      <p role="status" className={guardado ? 'self-center text-xs text-texto-suave sm:mr-auto' : 'sr-only'}>
+        {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
+      </p>
+      <Boton type="button" variante="contorno" disabled={trabada} onClick={alCancelar}>
+        Cancelar
+      </Boton>
+    </>
   )
 }

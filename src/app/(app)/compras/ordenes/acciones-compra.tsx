@@ -200,10 +200,15 @@ function CorregirCompra({
   const [codigo, setCodigo] = useState(codigoInterno ?? '')
   const [valores, setValores] = useState<Record<string, { cantidad: string; precio: string }>>({})
   const { corregir, otra } = useCorreccion(id, corregirCompra)
-  const { alEnviar, enviando, error } = useEnvio(corregir, () => {
-    otra()
-    alTerminar()
-  })
+  // Corrige lo que la OC muestra: se cierra con la OC ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    corregir,
+    () => {
+      otra()
+      alTerminar()
+    },
+    { corrige: true },
+  )
   const lista = Array.isArray(lineas) ? lineas : []
   const valor = (l: LineaParaCorregir) =>
     valores[l.detalle_id] ?? { cantidad: String(l.cantidad), precio: l.precio_unitario === null ? '' : String(l.precio_unitario) }

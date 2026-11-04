@@ -23,6 +23,8 @@ export function abrioVentana(marca: object) {
 }
 
 export function cerroVentana(marca: object) {
+  // Lo que la trababa era de esta vez: cerrada, se suelta (`trabarLaVentana`).
+  if (trabas.delete(marca)) avisarTrabas()
   if (!abiertas.delete(marca) || abiertas.size > 0) return
   cierres.set(cerradas, performance.now())
   cierres.delete(cerradas - 100)
@@ -52,4 +54,49 @@ export function alCerrarLaVentana(hacer: () => void): boolean {
   if (abiertas.size === 0) return false
   pendientes.push(hacer)
   return true
+}
+
+/**
+ * Lo que la ventana de encima no deja o dice mientras un envío suyo termina.
+ * `trabada`: no se cierra —ni «Cancelar», ni la X, ni Escape, ni el fondo—,
+ * porque corrige lo que la pantalla muestra y, vuelta a abrir antes de que la
+ * pantalla se ponga al día, traía lo de antes (`corrige` de `useAccion`).
+ * `guardado`: lo enviado ya entró y la ventana espera a la pantalla al día para
+ * cerrarse; el pie lo dice, y el botón que gira ya no parece colgado.
+ */
+export type TrabaDeLaVentana = { trabada: boolean; guardado: boolean }
+
+const trabas = new Map<object, Set<TrabaDeLaVentana>>()
+const alCambiarLasTrabas = new Set<() => void>()
+
+function avisarTrabas() {
+  for (const avisar of alCambiarLasTrabas) avisar()
+}
+
+/** Traba la ventana de encima hasta que se llame lo que devuelve, o hasta que se cierre. */
+export function trabarLaVentana(traba: TrabaDeLaVentana): () => void {
+  const marca = [...abiertas].at(-1)
+  if (!marca) return () => {}
+  let suyas = trabas.get(marca)
+  if (!suyas) trabas.set(marca, (suyas = new Set()))
+  const esta = { ...traba }
+  suyas.add(esta)
+  avisarTrabas()
+  return () => {
+    if (!suyas.delete(esta)) return
+    if (suyas.size === 0 && trabas.get(marca) === suyas) trabas.delete(marca)
+    avisarTrabas()
+  }
+}
+
+export function vigilarLasTrabas(avisar: () => void) {
+  alCambiarLasTrabas.add(avisar)
+  return () => void alCambiarLasTrabas.delete(avisar)
+}
+
+/** Cómo está trabada esa ventana: un número para que `useSyncExternalStore` lo compare (2, trabada; 1, guardado). */
+export function trabaDe(marca: object): number {
+  let traba = 0
+  for (const t of trabas.get(marca) ?? []) traba |= (t.trabada ? 2 : 0) | (t.guardado ? 1 : 0)
+  return traba
 }

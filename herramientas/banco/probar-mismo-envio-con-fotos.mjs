@@ -313,8 +313,10 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const [fila3] = await consulta(`select count(*)::int as n from ot_gastos_areas where id = $1 and descripcion = $2`, [id2, desc3])
   comprobar(dijo3.includes('enviado a Administración') && fila3.n === 1, `[Logística] el siguiente gasto entra con el id nuevo («${dijo3}»)`)
 
-  // El mismo envío repetido tras otra respuesta perdida entra una vez.
-  const id4 = await form.locator('input[name="id"]').inputValue()
+  // El mismo envío repetido tras otra respuesta perdida entra una vez. El id
+  // nuevo llega con la página puesta al día, junto con el botón libre; el
+  // verde ya se ve desde que contestó.
+  const id4 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id2, 15000)
   const desc4 = `QA-GASTO cuarto ${sello}, mismo envío repetido`
   await llenar('75.5', desc4, pdfs.D)
   corte.armado = 'QA-GASTO cuarto'
@@ -327,7 +329,7 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   comprobar(dijo4.includes(`El gasto ${id4} ya estaba registrado`) && fila4.n === 1, `[Logística] el mismo envío repetido se da por registrado una vez («${dijo4}»)`)
 
   // Otro PDF con el mismo nombre, y todo lo demás igual: no es el mismo envío.
-  const id5 = await form.locator('input[name="id"]').inputValue()
+  const id5 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id4, 15000)
   const desc5 = `QA-GASTO quinto ${sello}, otro PDF con el mismo nombre`
   await llenar('31.4', desc5, pdfs.E)
   corte.armado = 'QA-GASTO quinto'

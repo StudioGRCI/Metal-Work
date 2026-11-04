@@ -75,7 +75,9 @@ function Persona({ persona, ordenId, editable, vinculada, tieneResponsable }: {
   tieneResponsable: boolean
 }) {
   const [editando, setEditando] = useState(false)
-  const cambio = useEnvio(actualizarPersonaDiseno, () => setEditando(false), { documento: persona.id })
+  // Corrige el nombre que la tarjeta muestra: el formulario se cierra con la
+  // tarjeta ya al día y, mientras tanto, no se cancela (`corrige`).
+  const cambio = useEnvio(actualizarPersonaDiseno, () => setEditando(false), { documento: persona.id, corrige: true })
   const quitar = useEnvio(quitarPersonaDiseno, undefined, { documento: persona.id })
   if (!editable || !editando) return <div className="rounded-[var(--radius-base)] border border-borde p-3">
     <p className="font-medium text-texto">{persona.nombre}</p>
@@ -106,7 +108,7 @@ function Persona({ persona, ordenId, editable, vinculada, tieneResponsable }: {
     {cambio.error && <p role="alert" className="text-xs text-peligro">{cambio.error}</p>}
     <div className="flex gap-2">
       <Boton type="submit" tamano="sm" cargando={cambio.enviando}>Guardar</Boton>
-      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setEditando(false)}>Cancelar</Boton>
+      <Boton type="button" variante="fantasma" tamano="sm" disabled={cambio.enviando} onClick={() => setEditando(false)}>Cancelar</Boton>
     </div>
   </form>
 }

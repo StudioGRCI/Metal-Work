@@ -44,7 +44,9 @@ export function NuevaUnidad({
       setAbierto(false)
       if (r.datos) onCreada?.(r.datos)
     },
-    { refrescar: !onCreada },
+    // Con `unidad` corrige la que la ficha muestra: se cierra con la ficha ya
+    // al día (`corrige`). El alta se cierra al contestar.
+    { refrescar: !onCreada, corrige: Boolean(unidad) },
   )
   // La placa que el cliente ya tiene es de su campo: lo marca y el cursor va
   // ahí, con dónde está la que ya existe. Abajo mandaba a buscarla en la ficha,
@@ -221,7 +223,7 @@ export function NuevaUnidad({
           )}
 
           <div className="flex justify-end gap-2 sm:col-span-3">
-            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>

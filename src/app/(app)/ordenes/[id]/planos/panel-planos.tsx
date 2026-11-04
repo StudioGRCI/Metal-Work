@@ -26,9 +26,14 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   catalogos: Catalogos
 }) {
   const [mensaje, setMensaje] = useState<string | null>(null)
-  const { alEnviar, enviando, error } = useEnvio(asignarEquipoDiseno, (r) => {
-    setMensaje(r.mensaje ?? 'Equipo de Diseño actualizado.')
-  })
+  // El aviso sale con las listas ya al día, no con las de antes (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    asignarEquipoDiseno,
+    (r) => {
+      setMensaje(r.mensaje ?? 'Equipo de Diseño actualizado.')
+    },
+    { corrige: true },
+  )
   const lider = useEnvio(guardarLiderEntregaPlanos)
   const nombreLider = <form onSubmit={lider.alEnviar} className="space-y-3">
     <input type="hidden" name="orden_id" value={ordenId} />

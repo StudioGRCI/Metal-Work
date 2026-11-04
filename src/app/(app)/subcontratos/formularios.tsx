@@ -298,7 +298,9 @@ export function FormularioSubcontratista({ subcontratista }: { subcontratista?: 
 function DatosSubcontratista({ subcontratista: s, alTerminar }: { subcontratista?: Subcontratista; alTerminar: () => void }) {
   const [id] = useState(() => s?.id ?? crypto.randomUUID())
   const [ruc, setRuc] = useState(s?.ruc ?? '')
-  const { alEnviar, enviando, error } = useEnvio(guardarSubcontratista, alTerminar)
+  // Con `s` corrige la fila que la lista muestra: se cierra con la lista ya al
+  // día (`corrige`). El alta se cierra al contestar.
+  const { alEnviar, enviando, error } = useEnvio(guardarSubcontratista, alTerminar, { corrige: Boolean(s) })
   const limpio = ruc.replace(/\s/g, '')
   const avisoRuc =
     limpio.length === 11
@@ -368,7 +370,7 @@ function DatosSubcontratista({ subcontratista: s, alTerminar }: { subcontratista
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
+        <Boton type="button" variante="contorno" disabled={enviando} onClick={alTerminar}>
           Cancelar
         </Boton>
         <Boton type="submit" cargando={enviando} disabled={Boolean(avisoRuc)}>

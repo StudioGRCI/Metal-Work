@@ -40,7 +40,11 @@ export function EditarMedidas({
   conTexto?: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(guardarMedidasCarroceria)
+  // Corrige lo que la fila muestra: «Cerrar» espera a que la fila esté al día,
+  // para no volver a abrir con las medidas de antes (`corrige`).
+  const { alEnviar: accion, enviando: guardando, resultado } = useEnvio(guardarMedidasCarroceria, undefined, {
+    corrige: true,
+  })
 
   return (
     <>
@@ -162,7 +166,7 @@ export function EditarMedidas({
           <div className="flex justify-end gap-2 pt-1">
             {/* «Cerrar» y no «Cancelar» después de guardar: la regla del
                 proyecto prohíbe cerrar la ventana desde un efecto. */}
-            <Boton type="button" variante="secundario" tamano="sm" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="secundario" tamano="sm" disabled={guardando} onClick={() => setAbierta(false)}>
               {resultado?.ok ? 'Cerrar' : 'Cancelar'}
             </Boton>
             <Boton type="submit" tamano="sm" cargando={guardando}>

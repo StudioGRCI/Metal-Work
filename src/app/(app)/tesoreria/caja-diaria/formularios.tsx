@@ -551,7 +551,9 @@ function FormularioCuenta({ cuenta, hoy, alTerminar }: { cuenta?: CuentaEditable
     }
     return resultado
   }
-  const { alEnviar, enviando, error } = useEnvio(guardar, alTerminar)
+  // Con `cuenta` corrige la fila que la caja muestra: se cierra con la fila ya
+  // al día (`corrige`). El alta se cierra al contestar.
+  const { alEnviar, enviando, error } = useEnvio(guardar, alTerminar, { corrige: Boolean(cuenta) })
   const p = `cuenta-${id.slice(0, 8)}`
 
   return (

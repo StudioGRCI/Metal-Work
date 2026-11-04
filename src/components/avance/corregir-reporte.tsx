@@ -53,10 +53,16 @@ export function CorregirReporte({
 }) {
   const [abierto, setAbierto] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(corregirReporte, (r) => {
-    setAbierto(false)
-    setAviso(r.mensaje ?? 'Reporte corregido.')
-  })
+  // Corrige lo que la tarjeta muestra: la ventana se cierra con la tarjeta ya
+  // puesta al día, no con el porcentaje de antes (`corrige`).
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    corregirReporte,
+    (r) => {
+      setAbierto(false)
+      setAviso(r.mensaje ?? 'Reporte corregido.')
+    },
+    { corrige: true },
+  )
 
   const prefijo = `c-${reporte.id.slice(0, 8)}`
 
@@ -170,7 +176,7 @@ export function CorregirReporte({
           )}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Boton type="button" variante="contorno" onClick={() => setAbierto(false)}>
+            <Boton type="button" variante="contorno" disabled={enviando} onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="lg" cargando={enviando} className="w-full sm:w-auto">

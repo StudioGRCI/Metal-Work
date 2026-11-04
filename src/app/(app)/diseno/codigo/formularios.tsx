@@ -235,7 +235,8 @@ export function CargarPlano({
 /** Corregir el porcentaje de la unidad que representa un plano vigente. */
 export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; numero: string; peso: number | null; libre: number }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(fijarPesoPlano, () => setAbierta(false))
+  // Corrige el % que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(fijarPesoPlano, () => setAbierta(false), { corrige: true })
   const tope = Math.round((libre + (peso ?? 0)) * 100) / 100
   return (
     <>
@@ -398,12 +399,18 @@ export function FormularioMaterial({
   const [material, setMaterial] = useState(linea?.material_id ?? '')
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [vuelta, setVuelta] = useState(0)
-  const { alEnviar, enviando, error } = useEnvio(guardarMaterial, (r) => {
-    if (alTerminar) return alTerminar()
-    setMensaje(r.mensaje ?? null)
-    setMaterial('')
-    setVuelta((v) => v + 1)
-  })
+  // Con `linea` corrige lo que la lista muestra y se cierra con la lista ya al
+  // día; el alta se rehace al contestar para la siguiente (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    guardarMaterial,
+    (r) => {
+      if (alTerminar) return alTerminar()
+      setMensaje(r.mensaje ?? null)
+      setMaterial('')
+      setVuelta((v) => v + 1)
+    },
+    { corrige: Boolean(linea) },
+  )
   const id = linea?.id ?? 'nueva'
   return (
     <form
@@ -567,11 +574,16 @@ export function FormularioEtapa({
 }) {
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [vuelta, setVuelta] = useState(0)
-  const { alEnviar, enviando, error } = useEnvio(guardarEtapa, (r) => {
-    if (alTerminar) return alTerminar()
-    setMensaje(r.mensaje ?? null)
-    setVuelta((v) => v + 1)
-  })
+  // Con `etapa` corrige la fila y se cierra con ella ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    guardarEtapa,
+    (r) => {
+      if (alTerminar) return alTerminar()
+      setMensaje(r.mensaje ?? null)
+      setVuelta((v) => v + 1)
+    },
+    { corrige: Boolean(etapa) },
+  )
   const id = etapa?.id ?? 'nueva'
   return (
     <form

@@ -194,7 +194,11 @@ function FormularioTrabajador({
 }) {
   // Decidido aquí: un reintento manda el mismo id y la base corrige en vez de duplicar.
   const [id] = useState(() => trabajador?.id ?? crypto.randomUUID())
-  const { alEnviar, enviando, error } = useEnvio(guardarTrabajador, (r) => alTerminar(r.mensaje ?? 'Ficha guardada.'))
+  // Con `trabajador` corrige la ficha que la pantalla muestra: se cierra con la
+  // ficha ya al día (`corrige`). El alta se cierra al contestar.
+  const { alEnviar, enviando, error } = useEnvio(guardarTrabajador, (r) => alTerminar(r.mensaje ?? 'Ficha guardada.'), {
+    corrige: Boolean(trabajador),
+  })
   const t = trabajador
   return (
     <form onSubmit={alEnviar} className="space-y-5">

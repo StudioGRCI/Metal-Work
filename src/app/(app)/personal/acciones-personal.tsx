@@ -237,7 +237,9 @@ export function FilaDePersona({
   const router = useRouter()
   const [ventana, setVentana] = useState<'editar' | 'clave' | 'baja' | null>(null)
 
-  const edicion = useEnvio(guardarPersona)
+  // Corrige la ficha que la fila muestra: «Cerrar» espera a que la fila esté al
+  // día, para no volver a abrir con los datos de antes (`corrige`).
+  const edicion = useEnvio(guardarPersona, undefined, { corrige: true })
   const clave = useEnvio(cambiarClave)
   // Dada de baja, la fila se va de «Activos» y con ella el botón para
   // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
@@ -395,7 +397,7 @@ export function FilaDePersona({
           <CamposDePersona catalogos={catalogos} persona={persona} />
           <Aviso resultado={edicion.resultado} />
           <div className="flex justify-end gap-2 pt-1">
-            <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
+            <Boton type="button" variante="contorno" disabled={edicion.enviando} onClick={() => setVentana(null)}>
               Cerrar
             </Boton>
             <Boton type="submit" cargando={edicion.enviando}>

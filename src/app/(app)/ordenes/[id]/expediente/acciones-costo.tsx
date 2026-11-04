@@ -85,8 +85,10 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
   // Al guardar, la tarjeta de arriba cambia sola; el mensaje dice que ya pasó
   // (el auditor de funcionalidad halló el 27/10/2026 que no se veía nada).
   const [mensaje, setMensaje] = useState<string | null>(null)
+  // «Arriba ya se ve el presupuesto nuevo» sale con la tarjeta ya al día (`corrige`).
   const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto, (r) => setMensaje(r.mensaje ?? 'Presupuesto guardado.'), {
     siSeVa: { que: 'el presupuesto', enlace: 'Volver al expediente' },
+    corrige: true,
   })
 
   function enviar(evento: FormEvent<HTMLFormElement>) {

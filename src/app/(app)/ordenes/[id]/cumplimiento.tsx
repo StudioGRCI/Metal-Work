@@ -2,7 +2,7 @@
 
 import { Check, MessageSquareWarning, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { startTransition, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -499,25 +499,23 @@ function TarjetaPlano({
   const [guardando, setGuardando] = useState(false)
   const [dicho, setDicho] = useState('')
 
-  // La corrección guardada se cierra en la transición de su envío, la que pone
-  // la página al día: se pinta junto con la tarjeta ya corregida. Cerrada al
-  // contestar la acción, la tarjeta seguía un segundo con lo de antes, y el
-  // formulario vuelto a abrir en ese segundo traía lo de antes: guardarlo,
-  // aunque fuera solo la observación, deshacía la corrección (D1 de diseño,
-  // quincuagésima primera pasada). Al cerrarse, el cursor vuelve al lápiz (se
-  // quedaba en la página) y el lector oye que se guardó.
+  // La corrección guardada se cierra con la tarjeta ya corregida: `useEnvio`
+  // corre su `alTerminar` en la transición que pone la página al día (`corrige`). Al
+  // cerrarse, el lector oye que se guardó, y el cursor, que se quedaba en la
+  // página, vuelve al lápiz. Solo si quedó sin lugar: a quien ya escribía en
+  // otro plano mientras este se guardaba, el salto le cortaba lo escrito, le
+  // movía la página y cada espacio abría y cerraba este formulario (D1 de diseño,
+  // quincuagésima segunda pasada).
   function alCerrarLaCorreccion(mensaje?: string) {
     volverAlLapiz.current = true
-    if (!mensaje) return setModo('ver')
-    setDicho('')
-    startTransition(() => {
-      setModo('ver')
-      setDicho(mensaje)
-    })
+    setModo('ver')
+    if (mensaje) setDicho(mensaje)
   }
   useEffect(() => {
     if (modo !== 'ver' || !volverAlLapiz.current) return
     volverAlLapiz.current = false
+    const activo = document.activeElement
+    if (activo && activo !== document.body) return
     lapiz.current?.focus()
   }, [modo])
 
@@ -571,7 +569,12 @@ function TarjetaPlano({
                   tamano="icono"
                   aria-label="Editar el plano"
                   ocupado={guardando}
-                  onClick={() => setModo(modo === 'editar' ? 'ver' : 'editar')}
+                  onClick={() => {
+                    // Lo dicho de la corrección anterior se va al abrir otra: si no, la
+                    // siguiente vuelve con el mismo texto y el lector no la anuncia.
+                    setDicho('')
+                    setModo(modo === 'editar' ? 'ver' : 'editar')
+                  }}
                 >
                   <Pencil aria-hidden className="size-4" />
                 </Boton>
@@ -686,6 +689,7 @@ function FormularioPlano({
 }) {
   const { alEnviar, enviando, error } = useEnvio(editarPlano, (resultado) => alTerminar(resultado.mensaje ?? 'Plano actualizado.'), {
     documento: plano.plano_id ?? undefined,
+    corrige: true,
   })
   // Mientras se guarda, la corrección no se cierra: el lápiz de la tarjeta gira
   // y «Cancelar», «Entregar» y «Quitar» se apagan. Cerrarla en vuelo y volver a
@@ -1352,7 +1356,8 @@ function FormularioPieza({
   pieza: PiezaCumplimiento
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar)
+  // Se cierra con la pieza ya corregida (`corrige`), y mientras guarda no se cancela.
+  const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar, { corrige: true })
   const id = pieza.id ?? ''
   const uid = useId()
 
@@ -1379,7 +1384,7 @@ function FormularioPieza({
         </div>
       )}
       <div className="flex justify-end gap-2 sm:col-span-5">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alTerminar}>
           Cancelar
         </Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>

@@ -147,7 +147,8 @@ export function CorregirServicio({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useEnvio(corregirOrdenServicio, () => setAbierta(false))
+  // Corrige lo que la OS muestra: se cierra con la OS ya al día (`corrige`).
+  const envio = useEnvio(corregirOrdenServicio, () => setAbierta(false), { corrige: true })
   const inicial = detraccion.afecta === null ? '' : detraccion.afecta ? (detraccion.codigo ?? '') : NO_SUJETA
 
   return (
@@ -200,7 +201,7 @@ export function CorregirServicio({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="contorno" disabled={envio.enviando} onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={envio.enviando}>

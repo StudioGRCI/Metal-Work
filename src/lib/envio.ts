@@ -5,7 +5,7 @@ import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
-import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, trabarLaVentana, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -752,6 +752,25 @@ type Opciones = {
    * funcionalidad, cuadragésima quinta pasada).
    */
   documento?: string
+  /**
+   * El formulario corrige lo que la pantalla muestra (la ficha, la cuenta, las
+   * fechas, el código, el comprobante). Lo que cambia `alTerminar` —cerrarlo,
+   * decir que se guardó— se pinta junto con la pantalla al día, no al contestar
+   * la acción, y mientras tanto su ventana no se cierra: ni «Cancelar», ni la X,
+   * ni Escape, ni el fondo (`trabarLaVentana`). Cerrado al contestar, la fila o
+   * la tarjeta seguían un segundo con lo de antes, y el formulario vuelto a
+   * abrir en ese segundo traía lo de antes y ya enviaba: guardarlo, aunque fuera
+   * por otro campo, deshacía la corrección (D1 de diseño, quincuagésima
+   * primera pasada, en el plano; F1 de la crítica, quincuagésima segunda, y el
+   * barrido de la quincuagésima tercera en las demás). Cerrarlo en vuelo y
+   * volver a abrirlo era el mismo camino, por eso la traba empieza al enviar. Si
+   * el envío no entra, se suelta con el rechazo. Un «Cancelar» propio, fuera de
+   * `PieDeVentana`, va `disabled={enviando}`.
+   *
+   * Lo demás se cierra al contestar: un alta no deja nada viejo a la vista, y su
+   * formulario queda listo para la siguiente mientras la página se pone al día.
+   */
+  corrige?: boolean
 }
 
 /**
@@ -769,7 +788,7 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA } = opciones
+  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA, corrige = false } = opciones
   const deLaPantalla = useContext(DocumentoDeLaPantalla)
   const documento = deLaPantalla === undefined ? opciones.documento : opciones.documento === undefined ? deLaPantalla : `${deLaPantalla}/${opciones.documento}`
   const router = useRouter()
@@ -777,6 +796,26 @@ export function useAccion<T = never>(
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   const [resultado, setResultado] = useState<ResultadoAccion<T> | null>(null)
+  // Lo que traba la ventana del envío (`trabarLaVentana`) hasta que la pantalla
+  // se pone al día: `enviando` vuelve a false en la misma pintada en que
+  // `alTerminar` cierra la ventana. Si el formulario se desmonta antes, se suelta.
+  const traba = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (enviando) return
+    traba.current?.()
+    traba.current = null
+  }, [enviando])
+  useEffect(() => {
+    const suya = traba
+    return () => {
+      suya.current?.()
+      suya.current = null
+    }
+  }, [])
+  const trabar = (como: { trabada: boolean; guardado: boolean } | null) => {
+    traba.current?.()
+    traba.current = como ? trabarLaVentana(como) : null
+  }
 
   /**
    * Lo que sigue a un envío que no salió bien. El aviso que se leyó en su ventana
@@ -807,6 +846,8 @@ export function useAccion<T = never>(
     { entro, noEntro, otraVezAMedias, de }: { entro: () => void; noEntro: (motivo: string) => void; otraVezAMedias: () => void; de: DeFormulario },
   ) {
     if (salida.ok) return
+    // Lo que no entró deja la ventana como estaba: se puede cancelar.
+    trabar(null)
     if (salida.arriba) otraVezAMedias()
     const { ventana } = desde
     const desdeVentana = ventana !== null
@@ -844,7 +885,10 @@ export function useAccion<T = never>(
 
   /** `formulario`: el que se envía, para reconocerlo vuelto a montar (`camposDe`). */
   function ejecutar(datos: FormData, formulario?: HTMLFormElement) {
-    if (enCurso.current) return
+    // Una corrección, tampoco mientras la página se pone al día tras el ok: el
+    // formulario sigue a la vista con lo que ya entró, y Ctrl+Enter en un campo
+    // de texto (`requestSubmit`, que no mira el botón apagado) la mandaba otra vez.
+    if (enCurso.current || (corrige && enviando)) return
     // La sesión es de la cuenta que entró en otra pestaña: lo que saliera de
     // aquí entraría a su nombre. Se mira la cookie en el momento del toque, no
     // solo el aviso de la otra pestaña, que llega cuando esa termina de pintarse
@@ -854,6 +898,7 @@ export function useAccion<T = never>(
     if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setResultado(null)
+    trabar(corrige && hayVentanaAbierta() ? { trabada: true, guardado: false } : null)
     const de: DeFormulario = { instancia, campos: camposDe(formulario ?? datos, documento), nombre: siSeVa ? nombreDe(siSeVa, documento) : undefined, documento, propio: opciones.documento }
     const desde: Partida = { ...partida(), de }
 
@@ -908,9 +953,27 @@ export function useAccion<T = never>(
         }
 
         entro()
-        alTerminar?.(salida, desde)
-        // El ok puede llegar con la traba ya puesta: salió antes del cambio de cuenta.
-        if (refrescar) iniciar(() => refrescarSiEsDeLaPestana(router))
+        // El ok puede llegar con la traba ya puesta: salió antes del cambio de
+        // cuenta, y la página espera a la cuenta.
+        if (!corrige) {
+          alTerminar?.(salida, desde)
+          if (refrescar) iniciar(() => refrescarSiEsDeLaPestana(router))
+          return
+        }
+        // Lo de `alTerminar` va en la transición del envío, la que pone la página
+        // al día, y se pinta junto con lo guardado (`corrige`). React junta en
+        // esa transición todas las acciones en vuelo de la pestaña: si hay otro
+        // envío en camino (una subida larga), espera también a que termine, con
+        // `refrescar: false` o sin él. Mientras tanto la ventana, si sigue
+        // abierta, dice que ya se guardó (`PieDeVentana`), para que el botón que
+        // gira no parezca colgado, y sigue sin poder cerrarse. Un id de
+        // `useIdDelEnvio` no se renueva aquí: el `setId` esperaría a la página, y
+        // una ventana abierta entretanto mandaría el id que ya entró.
+        trabar(desde.ventana !== null && desde.ventana === vecesQueSeCerro() ? { trabada: true, guardado: true } : null)
+        iniciar(() => {
+          alTerminar?.(salida, desde)
+          if (refrescar) refrescarSiEsDeLaPestana(router)
+        })
       } finally {
         if (soltar) enCurso.current = false
       }

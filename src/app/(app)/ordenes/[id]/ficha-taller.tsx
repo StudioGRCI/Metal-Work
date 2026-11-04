@@ -386,7 +386,9 @@ function Verificacion({
                       )}
                       {puedeEditar &&
                         (anotando === paso.id ? (
-                          <NotaPaso ordenId={ordenId} paso={paso} alCerrar={() => setAnotando(null)} />
+                          // Cierra solo su propia nota: con la página poniéndose
+                          // al día, otra pudo abrirse mientras tanto.
+                          <NotaPaso ordenId={ordenId} paso={paso} alCerrar={() => setAnotando((a) => (a === paso.id ? null : a))} />
                         ) : (
                           // Once píxeles de letra no son un blanco para el dedo:
                           // en el teléfono el enlace ocupa 44 px de alto.
@@ -437,7 +439,9 @@ function Verificacion({
  * qué paso era.
  */
 function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
-  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar, { documento: paso.id })
+  // Corrige la nota que la fila muestra: se cierra con la fila ya al día
+  // (`corrige`) y, mientras tanto, «Cerrar» no deja la nota de antes a la vista.
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar, { documento: paso.id, corrige: true })
 
   return (
     <form onSubmit={alEnviar} className="mt-1 space-y-1">
@@ -457,7 +461,7 @@ function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVeri
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar nota
         </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alCerrar}>
           Cerrar
         </Boton>
       </div>

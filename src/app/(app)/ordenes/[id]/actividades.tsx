@@ -546,8 +546,9 @@ function AccionesActividad({
   corregibleHoy: boolean
 }) {
   const [modo, setModo] = useState<'nada' | 'peso' | 'editar' | 'quitar'>('nada')
-  const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'), { documento: actividad.id })
-  const editar = useEnvio(editarActividad, () => setModo('nada'), { documento: actividad.id })
+  // Las correcciones se cierran con la fila ya corregida (`corrige`).
+  const peso = useEnvio(cambiarPesoActividad, () => setModo('nada'), { documento: actividad.id, corrige: true })
+  const editar = useEnvio(editarActividad, () => setModo('nada'), { documento: actividad.id, corrige: true })
   const quitar = useEnvio(quitarActividad, () => setModo('nada'), { documento: actividad.id })
 
   if (modo === 'editar') {
@@ -594,7 +595,10 @@ function AccionesActividad({
           </div>
         )}
         <div className="flex justify-end gap-2 sm:col-span-6">
-          <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
+          {/* Apagado mientras guarda: se cierra con la fila ya corregida, y
+              cerrado antes la dejaba como estaba y el formulario vuelto a
+              abrir traía lo de antes. */}
+          <Boton type="button" variante="fantasma" tamano="sm" disabled={editar.enviando} onClick={() => setModo('nada')}>
             Cancelar
           </Boton>
           <Boton type="submit" tamano="sm" cargando={editar.enviando}>
@@ -619,7 +623,7 @@ function AccionesActividad({
         <Boton type="submit" variante="peligro" tamano="sm" cargando={quitar.enviando}>
           Sí, quitar
         </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={quitar.enviando} onClick={() => setModo('nada')}>
           No
         </Boton>
         {quitar.error && <Error_ texto={quitar.error} />}
@@ -647,7 +651,7 @@ function AccionesActividad({
         <Boton type="submit" tamano="sm" cargando={peso.enviando}>
           Guardar
         </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setModo('nada')}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={peso.enviando} onClick={() => setModo('nada')}>
           Cerrar
         </Boton>
         {peso.error && <Error_ texto={peso.error} />}

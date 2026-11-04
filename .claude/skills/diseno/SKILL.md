@@ -617,16 +617,36 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   regla `react-hooks/set-state-in-effect` lo rechaza y ya nos pasó tres
   veces. Se cierra en el `alTerminar` de `useEnvio`, o se muestra «Cerrar» en
   lugar de «Cancelar» tras el éxito.
-  Si el formulario corrige lo que la misma tarjeta muestra (el plano), el
-  `alTerminar` lo cierra dentro de un `startTransition`: va en la transición
-  del envío y se pinta junto con la página puesta al día. Cerrado al contestar
-  la acción, la tarjeta seguía un segundo con lo de antes, y el formulario
-  vuelto a abrir en ese segundo traía lo de antes: guardarlo, aunque fuera
-  solo la observación, deshacía la corrección (D1 de diseño, quincuagésima
-  primera pasada). Mientras guarda, el botón que lo abre queda `ocupado` y
-  «Cancelar» y los otros mandos de la tarjeta, apagados: cerrarlo en vuelo y
-  volver a abrirlo era el mismo camino. Al cerrarse, el cursor vuelve a ese
-  botón y una región `role="status"` de la tarjeta dice lo que contestó.
+  Un formulario que **corrige lo que su pantalla muestra** (la fila, la
+  tarjeta, la cifra) va con `corrige: true` en `useEnvio`/`useAccion`: el
+  `alTerminar` corre en la transición del envío y se pinta junto con la página
+  puesta al día, sin otro `startTransition`. Cerrado al contestar la acción, la
+  pantalla seguía un segundo con lo de antes, y el formulario vuelto a abrir en
+  ese segundo traía lo de antes: guardarlo, aunque fuera por otro campo,
+  deshacía la corrección (D1 de diseño, quincuagésima primera pasada, en el
+  plano; F1 de la crítica, quincuagésima segunda, en la actividad, el material
+  y el subcontrato). Con `corrige`, la ventana de encima queda trabada desde que
+  sale el envío: sin X, Escape ni fondo, y el «Cancelar» de `PieDeVentana` y de
+  `ConfirmarAccion`, apagado. Si lo rechazan se suelta; si entra, sigue trabada
+  hasta la página nueva y el pie dice «Guardado. Poniendo la pantalla al día…»,
+  porque React espera ahí a cualquier otro envío de la pestaña y el botón que
+  gira parecía colgado. Un «Cancelar», «No» o «Cerrar» propio, fuera de
+  `PieDeVentana`, va `disabled={enviando}` en su sitio. Un formulario en línea,
+  sin ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control
+  de la fila lo cierra o abre otro igual, que cierre solo el suyo
+  (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Una
+  cadena a mano (el cronograma) usa `trabarLaVentana` igual.
+  **Las altas no llevan `corrige`**: se cierran o se rehacen al contestar, como
+  siempre, porque esperar a la página les quitaba el aviso, dejaba el botón
+  girando sin decir nada y, con su `useIdDelEnvio` renovado tarde, la ventana
+  que se abría en ese rato mandaba el id que ya había entrado (la prueba 1x del
+  banco, tras la quincuagésima segunda pasada). Por lo mismo, en un `alTerminar` con `corrige` no se renueva
+  un `useIdDelEnvio`. En el plano, además, el lápiz queda `ocupado` y los otros
+  mandos de la tarjeta, apagados. Al cerrarse, una región `role="status"` de la
+  tarjeta dice lo que contestó, y el cursor vuelve al botón que lo abrió solo si
+  quedó sin lugar (en `document.body`): a quien ya escribía en otro plano
+  mientras este se guardaba, el salto le cortaba lo escrito y cada espacio
+  abría y cerraba el formulario (D1 de diseño, quincuagésima segunda pasada).
 - **Un rechazo que deja el registro creado** (el comprobante que entró en
   borrador y su PDF no subió) vacía el formulario como al registrar, con el
   aviso donde estaba y el cursor en él, hasta que se empieza el siguiente: lo

@@ -179,9 +179,12 @@ export function Etapas({
                     )}
                   </div>
 
+                  {/* Cierra solo el suyo, y la llave con las fechas lo rehace
+                      con las guardadas si se volvió a abrir antes de que la
+                      página se pusiera al día. */}
                   {abierta && (
-                    <FormularioProgramacion ordenId={ordenId} etapa={etapa}
-                      alTerminar={() => setProgramando(null)} />
+                    <FormularioProgramacion key={`${etapa.fecha_inicio_programada ?? ''}:${etapa.fecha_fin_programada ?? ''}`} ordenId={ordenId} etapa={etapa}
+                      alTerminar={() => setProgramando((p) => (p === etapa.etapa_id ? null : p))} />
                   )}
                 </li>
               )
@@ -328,7 +331,11 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
   etapa: Etapa
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar, { documento: etapa.etapa_id ?? undefined })
+  // Corrige las fechas que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar, {
+    documento: etapa.etapa_id ?? undefined,
+    corrige: true,
+  })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid min-w-0 gap-3 border-t border-borde pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="orden_id" value={ordenId} />
@@ -343,7 +350,7 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
       </Campo>
       {error && <p role="alert" className="text-sm text-peligro sm:col-span-3">{error}</p>}
       <div className="flex items-end justify-end gap-2">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>Cancelar</Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alTerminar}>Cancelar</Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>Guardar fechas</Boton>
       </div>
     </form>

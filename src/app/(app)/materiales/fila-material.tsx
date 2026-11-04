@@ -32,7 +32,9 @@ function FormularioMaterial({
   abierto: boolean
   alCerrar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(guardarMaterial, alCerrar)
+  // Con `material` corrige la fila que el catálogo muestra: se cierra con la
+  // fila ya al día (`corrige`). El alta se cierra al contestar.
+  const { alEnviar, enviando, error } = useEnvio(guardarMaterial, alCerrar, { corrige: material !== null })
 
   return (
     <Ventana
@@ -111,7 +113,7 @@ function FormularioMaterial({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Boton type="button" variante="contorno" onClick={alCerrar}>
+          <Boton type="button" variante="contorno" disabled={enviando} onClick={alCerrar}>
             Cancelar
           </Boton>
           <Boton type="submit" cargando={enviando}>

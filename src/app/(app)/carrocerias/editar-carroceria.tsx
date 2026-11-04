@@ -21,7 +21,8 @@ export function EditarCarroceria({
   activo: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(editarCarroceria, () => setAbierta(false))
+  // Corrige lo que el catálogo muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(editarCarroceria, () => setAbierta(false), { corrige: true })
   return (
     <>
       <Boton type="button" tamano="sm" variante="contorno" onClick={() => setAbierta(true)}>
@@ -39,7 +40,7 @@ export function EditarCarroceria({
           </Campo>
           {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="fantasma" onClick={() => setAbierta(false)}>Cancelar</Boton>
+            <Boton type="button" variante="fantasma" disabled={enviando} onClick={() => setAbierta(false)}>Cancelar</Boton>
             <Boton type="submit" cargando={enviando}>Guardar cambios</Boton>
           </div>
         </form>

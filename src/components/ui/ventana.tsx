@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 import { useCursorAlRechazo, useVersionDeLaPestana } from '@/lib/envio'
 import { cn } from '@/lib/utils'
-import { abrioVentana, cerroVentana, esLaUltimaVentana } from '@/lib/ventanas-abiertas'
+import { abrioVentana, cerroVentana, esLaUltimaVentana, trabaDe, vigilarLasTrabas } from '@/lib/ventanas-abiertas'
 
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
@@ -50,6 +50,22 @@ export type AnchoVentana = keyof typeof ANCHOS
 /** El documento no cambia: solo importa si ya se está en el navegador. */
 const sinSuscripcion = () => () => {}
 
+/** Cómo está la ventana en la que se pinta (`trabaDe`): el pie no deja cancelar, o dice que ya entró. */
+const TrabaDeLaVentana = createContext(0)
+
+/**
+ * Lo que el pie de la ventana tiene que saber de un envío suyo que termina
+ * (`trabarLaVentana`): si se puede cancelar, y si lo enviado ya entró y solo
+ * falta la pantalla al día.
+ */
+export function useTrabaDeLaVentana() {
+  const traba = useContext(TrabaDeLaVentana)
+  return { trabada: (traba & 2) !== 0, guardado: (traba & 1) !== 0 }
+}
+
+/** Lo que dice el pie mientras la ventana espera a la pantalla al día, con lo enviado ya guardado. */
+export const GUARDADO_PONIENDO_AL_DIA = 'Guardado. Poniendo la pantalla al día…'
+
 /**
  * La ventana del sistema: una sola, en lugar de las catorce que había copiadas.
  *
@@ -92,6 +108,18 @@ export function Ventana({
   children: React.ReactNode
 }) {
   const caja = useRef<HTMLDivElement>(null)
+  // La misma para cada vez que se abre: lo que la traba (`trabarLaVentana`) la
+  // nombra con ella, y la ventana lo lee al pintarse.
+  const [marca] = useState(() => ({}))
+  const traba = useSyncExternalStore(vigilarLasTrabas, () => trabaDe(marca), () => 0)
+  // Mientras un envío que corrige lo que la pantalla muestra termina, la
+  // ventana no se cierra: vuelta a abrir antes de la pantalla al día, traía lo
+  // de antes, y guardarla deshacía la corrección (quincuagésima tercera
+  // pasada). Se mira la traba al momento, no la del último pintado.
+  const cerrarSiSePuede = () => {
+    if (trabaDe(marca) & 2) return
+    alCerrar()
+  }
   // El contenido tiene su propia referencia porque el foco al abrir tiene que
   // caer en el primer campo del formulario, no en la X. La X va antes en el
   // orden del documento, así que buscar desde la caja la encontraba siempre a
@@ -100,9 +128,9 @@ export function Ventana({
   const contenido = useRef<HTMLDivElement>(null)
   // Para el Escape que llega con el cursor fuera de la ventana: el efecto no
   // vuelve a correr con cada render, y `alCerrar` cambia.
-  const cerrar = useRef(alCerrar)
+  const cerrar = useRef(cerrarSiSePuede)
   useEffect(() => {
-    cerrar.current = alCerrar
+    cerrar.current = cerrarSiSePuede
   })
   const idTitulo = useId()
   const idDescripcion = useId()
@@ -128,7 +156,6 @@ export function Ventana({
   useEffect(() => {
     if (!abierta || !hidratada) return
 
-    const marca = {}
     abrioVentana(marca)
     const veniaDe = document.activeElement as HTMLElement | null
     const rodadoPrevio = document.body.style.overflow
@@ -162,14 +189,14 @@ export function Ventana({
       // Lo que esperaba a que se cerrara: la pantalla de detrás, al día.
       cerroVentana(marca)
     }
-  }, [abierta, hidratada])
+  }, [abierta, hidratada, marca])
 
   if (!abierta || !hidratada) return null
 
   function alTeclado(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
       e.stopPropagation()
-      alCerrar()
+      cerrarSiSePuede()
       return
     }
 
@@ -206,7 +233,7 @@ export function Ventana({
       onMouseDown={(e) => {
         // Solo el fondo, no un arrastre que empezó dentro y terminó afuera al
         // seleccionar texto.
-        if (cerrarAlTocarFuera && e.target === e.currentTarget) alCerrar()
+        if (cerrarAlTocarFuera && e.target === e.currentTarget) cerrarSiSePuede()
       }}
     >
       <div
@@ -239,9 +266,10 @@ export function Ventana({
 
           <button
             type="button"
-            onClick={alCerrar}
+            onClick={cerrarSiSePuede}
+            disabled={(traba & 2) !== 0}
             aria-label="Cerrar"
-            className="-mr-2 flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto sm:size-8"
+            className="-mr-2 flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-base)] text-texto-suave hover:bg-superficie-2 hover:text-texto disabled:opacity-40 sm:size-8"
           >
             <X aria-hidden className="size-4" />
           </button>
@@ -249,7 +277,7 @@ export function Ventana({
 
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
-          {children}
+          <TrabaDeLaVentana value={traba}>{children}</TrabaDeLaVentana>
         </div>
       </div>
     </div>,
@@ -368,11 +396,35 @@ export function ConfirmarAccion({
         </p>
       )}
 
+      <BotonesDeConfirmar alCerrar={alCerrar} alConfirmar={alConfirmar} etiquetaConfirmar={etiquetaConfirmar} trabajando={trabajando} />
+    </Ventana>
+  )
+}
+
+/** Dentro de la ventana, para leer su traba: con lo confirmado ya hecho, lo dice y no deja cancelar. */
+function BotonesDeConfirmar({
+  alCerrar,
+  alConfirmar,
+  etiquetaConfirmar,
+  trabajando,
+}: {
+  alCerrar: () => void
+  alConfirmar: () => void
+  etiquetaConfirmar: string
+  trabajando: boolean
+}) {
+  const { trabada, guardado } = useTrabaDeLaVentana()
+  return (
+    <>
+      <p role="status" className={guardado ? 'mt-3 text-sm text-texto-suave' : 'sr-only'}>
+        {guardado ? 'Hecho. Poniendo la pantalla al día…' : ''}
+      </p>
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={alCerrar}
-          className="inline-flex h-11 items-center justify-center rounded-[var(--radius-base)] border border-borde-fuerte px-4 text-sm font-medium text-texto hover:bg-superficie-2 sm:h-9"
+          disabled={trabada}
+          className="inline-flex h-11 items-center justify-center rounded-[var(--radius-base)] border border-borde-fuerte px-4 text-sm font-medium text-texto hover:bg-superficie-2 disabled:opacity-60 sm:h-9"
         >
           Cancelar
         </button>
@@ -385,6 +437,6 @@ export function ConfirmarAccion({
           {trabajando ? 'Quitando…' : etiquetaConfirmar}
         </button>
       </div>
-    </Ventana>
+    </>
   )
 }

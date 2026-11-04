@@ -99,10 +99,15 @@ function Formulario({
     rq.lineas.map((l) => ({ item: l.item, cantidad: String(l.cantidad), material_id: l.material_id ?? '' })),
   )
   const { corregir, otra } = useCorreccion(rq.id, corregirRequerimiento)
-  const { alEnviar, enviando, error } = useEnvio(corregir, (r) => {
-    otra()
-    alTerminar(r.mensaje ?? null)
-  })
+  // Corrige lo que el RQ muestra: se cierra con el RQ ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    corregir,
+    (r) => {
+      otra()
+      alTerminar(r.mensaje ?? null)
+    },
+    { corrige: true },
+  )
   const opciones = useMemo(
     () =>
       materiales.map((m) => ({

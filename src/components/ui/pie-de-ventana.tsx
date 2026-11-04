@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { GUARDADO_PONIENDO_AL_DIA, useTrabaDeLaVentana } from '@/components/ui/ventana'
 import { yaEntroEnLaVentana, yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { useCursorAlRechazo } from '@/lib/envio'
 
@@ -21,6 +22,11 @@ import { useCursorAlRechazo } from '@/lib/envio'
  * Los campos quedan trabados: lo cambiado seguía editable junto al aviso, el
  * archivo invitaba a cambiarlo y la cámara del vehículo subía otra foto
  * (decimocuarta pasada). Como el reporte diario, que lo hace con su `fieldset`.
+ *
+ * Lo enviado que ya entró espera a la pantalla al día para cerrar la ventana
+ * (`useAccion`): mientras tanto el pie dice que ya se guardó, y el botón que
+ * gira no parece colgado. Si la ventana corrige lo que la pantalla muestra, en
+ * ese rato «Cancelar» no se puede (`trabarLaVentana`).
  */
 export function PieDeVentana({
   error,
@@ -57,6 +63,7 @@ export function PieDeVentana({
   const corregida = useRef<HTMLDivElement>(null)
   const pie = useRef<HTMLDivElement>(null)
   const yaEntro = yaEntroLaPrimeraVez(error)
+  const { trabada, guardado } = useTrabaDeLaVentana()
   // Se traba lo que haya en el formulario mientras dure el aviso, también lo
   // que React vuelve a encender después: los campos con `disabled={enviando}`
   // estaban apagados al llegar el aviso, se saltaban y quedaban editables, y un
@@ -108,8 +115,11 @@ export function PieDeVentana({
         )
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {nota && !yaEntro && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
-        <Boton type="button" variante="contorno" onClick={alCancelar}>
+        <p role="status" className={guardado ? 'mr-auto text-xs text-texto-suave' : 'sr-only'}>
+          {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
+        </p>
+        {nota && !yaEntro && !guardado && <p className="mr-auto text-xs text-texto-suave">{nota}</p>}
+        <Boton type="button" variante="contorno" onClick={alCancelar} disabled={trabada}>
           {yaEntro ? 'Cerrar' : 'Cancelar'}
         </Boton>
         {!yaEntro && children}
