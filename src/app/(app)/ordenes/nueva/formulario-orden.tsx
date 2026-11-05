@@ -113,8 +113,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // unidad volvió sin decir si entró, y se vuelven a leer (`unidadEnDuda`).
   // La lectura que falla (sin conexión, o con la sesión muerta) no toca la
   // lista: vaciaba «Unidad» y soltaba la unidad elegida (F-B de funcionalidad,
-  // quincuagésima sexta pasada; N3 de su crítica). Lo dice junto al campo, por
-  // qué, y vuelve a leer al volver la conexión o a esta pestaña.
+  // quincuagésima sexta pasada; N3 de su crítica). Lo dice junto al campo, a la
+  // vista, por qué, y vuelve a leer sola: cada `REINTENTO_UNIDADES`, y enseguida
+  // al volver la conexión o a esta pestaña. Con el wifi del taller conectado y
+  // sin salida no llega 'online', y la promesa de leer «al volver la conexión»
+  // no se cumplía hasta salir de la pestaña (M1 de realización, quincuagésima
+  // séptima pasada). Con la sesión muerta no: hasta entrar de nuevo, que es
+  // volver a esta pestaña.
   const [releer, setReleer] = useState(0)
   const [sinLeer, setSinLeer] = useState<{ clienteId: string; porSesion: boolean } | null>(null)
   // Las dadas de alta aquí: una lectura que sale antes de su alta y llega
@@ -127,6 +132,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     if (!clienteId) return
 
     let vigente = true
+    let reintento: ReturnType<typeof setTimeout> | undefined
     const volverALeer = () => setReleer((n) => n + 1)
     createClient()
       .from('unidades')
@@ -142,6 +148,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           if (porSesion) setAparte((a) => (a.unidad === DUDA_UNIDAD ? { ...a, unidad: DUDA_UNIDAD_SIN_SESION } : a))
           window.addEventListener('online', volverALeer, { once: true })
           window.addEventListener('focus', volverALeer, { once: true })
+          if (!porSesion) reintento = setTimeout(volverALeer, REINTENTO_UNIDADES)
           return
         }
         setSinLeer(null)
@@ -152,14 +159,20 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
     return () => {
       vigente = false
+      clearTimeout(reintento)
       window.removeEventListener('online', volverALeer)
       window.removeEventListener('focus', volverALeer)
     }
   }, [clienteId, releer])
 
   // Se derivan del estado en lugar de limpiarse a mano: mientras la carga del
-  // nuevo cliente está en vuelo no se muestran las unidades del anterior.
+  // nuevo cliente está en vuelo no se muestran las unidades del anterior, y se
+  // dice que se están leyendo: decía «no tiene unidades registradas» de un
+  // cliente que sí las tiene mientras la lectura reintentaba (H1 de diseño,
+  // quincuagésima séptima pasada).
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
+  const noSeLeyeron = clienteId && sinLeer?.clienteId === clienteId ? sinLeer : null
+  const leyendoUnidades = Boolean(clienteId) && !noSeLeyeron && cargadas?.clienteId !== clienteId
 
   function clienteCreado(c: Catalogos['clientes'][number], { elegir }: { elegir: boolean }) {
     setClientesNuevos((lista) => (lista.some((x) => x.id === c.id) ? lista : [c, ...lista]))
@@ -247,7 +260,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     }
     if (!data) return
     setClientesNuevos((lista) => (lista.some((x) => x.id === data.id) ? lista : [data, ...lista]))
-    setAparte((a) => (a.cliente === duda ? { ...a, cliente: `El cliente ${data.razon_social} quedó registrado aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
+    // «Ya está»: puede que ya estuviera antes de esta alta, y decir que «quedó»
+    // afirmaba un registro que no hubo (H2 de funcionalidad, quincuagésima séptima).
+    setAparte((a) => (a.cliente === duda ? { ...a, cliente: `El cliente ${data.razon_social} ya está registrado, aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
   }
 
   async function carroceriaEnDuda({ nombre }: { nombre: string }) {
@@ -262,7 +277,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     }
     if (!data) return
     setCarroceriasNuevas((lista) => (lista.some((x) => x.id === data.id) ? lista : [data, ...lista]))
-    setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `La carrocería ${data.nombre} quedó registrada aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
+    setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `La carrocería ${data.nombre} ya está en el catálogo, aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
   }
 
   function carroceriaCreada(t: { id: string; nombre: string }, { elegir }: { elegir: boolean }) {
@@ -430,11 +445,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               etiqueta="Unidad"
               htmlFor="unidad_id"
               requerido={esGarantia}
+              // Por qué está vacía, a la vista: largo, se iba a la «i» y el pie
+              // quedaba mudo (H1 de diseño, quincuagésima séptima pasada).
+              ayudaEnIcono={noSeLeyeron ? false : undefined}
               ayuda={
-                clienteId && sinLeer?.clienteId === clienteId
-                  ? sinLeer.porSesion
+                noSeLeyeron
+                  ? noSeLeyeron.porSesion
                     ? `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER_A_ENTRAR}: se leen otra vez.`
-                    : 'No se pudieron leer sus unidades. Se vuelven a leer al volver la conexión.'
+                    : 'No se pudieron leer sus unidades. Se vuelven a pedir solas hasta que lleguen.'
+                  : leyendoUnidades
+                  ? 'Leyendo sus unidades…'
                   : clienteId && unidades.length === 0
                   ? 'Este cliente no tiene unidades registradas'
                   : esGarantia
@@ -691,6 +711,8 @@ const DUDA_UNIDAD_SIN_SESION = `No se sabe si quedó la unidad que registrabas: 
 // (el token vencido, o sin sesión, y anon no lee estas tablas). Lo que se
 // escribió sigue en la pantalla, y lo que se envíe tampoco llegaría.
 const sinSesion = (status: number) => status === 401 || status === 403
+// Cada cuánto se vuelven a pedir las unidades que no se pudieron leer.
+const REINTENTO_UNIDADES = 10_000
 
 /** Cómo guarda la base el número del papel (migración 20261021110000); `null` si todavía no es un número. */
 function comoQuedaElNumero(escrito: string): string | null {

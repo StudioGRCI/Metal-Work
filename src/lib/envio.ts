@@ -912,9 +912,17 @@ export function useAccion<T = never>(
     traba.current?.()
     traba.current = null
   }, [enviando])
+  // Desmontado (Atrás con la acción en camino), ya no hay quién suelte lo que
+  // se anote después: la marca de la puesta al día quedaba puesta y el F5
+  // siguiente, en otra pantalla, decía que no se sabía si había quedado (F1 de
+  // la crítica, quincuagésima séptima pasada).
+  const montado = useRef(false)
   useEffect(() => {
     const suya = traba
+    const vivo = montado
+    vivo.current = true
     return () => {
+      vivo.current = false
       suya.current?.()
       suya.current = null
     }
@@ -982,8 +990,8 @@ export function useAccion<T = never>(
     // anota, para que la pantalla que nazca de una recarga entera diga qué no
     // se sabe si quedó: la nota del paso se iba con lo escrito y sin aviso (D
     // de funcionalidad, quincuagésima sexta pasada). Se suelta como la traba,
-    // con la pantalla ya al día.
-    if (alDiaYa && !suVentana()) traba.current = anotarQueSePoneAlDia(siSeVa?.que ?? SI_SE_VA_DE_LA_PANTALLA.que)
+    // con la pantalla ya al día; con el formulario ya desmontado no se anota.
+    if (alDiaYa && !suVentana() && montado.current) traba.current = anotarQueSePoneAlDia(siSeVa?.que ?? SI_SE_VA_DE_LA_PANTALLA.que)
     if (salida.arriba) otraVezAMedias()
     if (yaEntro) entro()
     else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)

@@ -121,7 +121,8 @@ function anotarLaPuestaAlDia() {
 /**
  * Lo mismo que la traba `mirando`, para lo que se pone al día sin su ventana a
  * la vista: un formulario en línea que corrige su tarjeta (la nota del paso),
- * o el envío cuya ventana se canceló en vuelo. Una recarga entera se llevaba
+ * o el envío cuya ventana se cerró en vuelo con su formulario aún montado (el
+ * desmontado no anota: nadie lo soltaría). Una recarga entera se llevaba
  * lo escrito sin decir nada (D de funcionalidad, quincuagésima sexta pasada).
  * `que`: cómo se llama lo enviado («la nota», «lo que enviaste»). Se quita
  * llamando a lo que devuelve.

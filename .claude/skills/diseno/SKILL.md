@@ -701,9 +701,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   conexión, o tras el 502 que dejó la duda, recargaba el documento y se
   llevaba la orden escrita (F-A); con la sesión muerta, la llevaba a
   /ingresar (N2 de la crítica). La lectura que falla no vacía la lista ni
-  suelta lo elegido: lo dice junto al campo y vuelve a leer con la conexión o
-  al volver a la pestaña (F-B). Si falla con 401 o 403, es la sesión y no la
-  conexión, y se dice así: que entre de nuevo en otra pestaña y vuelva (N3).
+  suelta lo elegido: lo dice junto al campo, al pie y no en la «i»
+  (`ayudaEnIcono={false}`), y vuelve a pedirla sola cada pocos segundos y
+  enseguida con la conexión o al volver a la pestaña (F-B; M1 de la 57.ª: con
+  el wifi conectado y sin salida no llega 'online'). Si falla con 401 o 403, es
+  la sesión y no la conexión, y se dice así: que entre de nuevo en otra
+  pestaña y vuelva (N3). Mientras la de otro cliente está en camino dice
+  «Leyendo sus unidades…», no que no tiene. Lo encontrado tras la duda «ya
+  está», no «quedó»: pudo estar desde antes (H2 de la 57.ª).
   Un formulario en línea, sin
   ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control de
   la fila lo cierra o abre otro igual, que cierre solo el suyo

@@ -481,6 +481,13 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   //
   // `lento`: { patron, ms }, los pedidos (no acciones) cuya dirección calza se
   // demoran `ms` antes de salir, como la pantalla de destino con poca señal.
+  // `lentaRespuesta`: { patron, ms }, con `compilacion`: el pedido sale y el
+  // servidor contesta enseguida, pero la respuesta se retiene `ms` antes de
+  // llegar a la pantalla; solo la primera que calza. Su cuerpo queda en
+  // `cuerpoDemorado` y la hora en que llegó a la pantalla, en `soltadaEn`.
+  // `cortarLectura`: los pedidos (no acciones) cuya dirección calza no llegan
+  // (`lecturasCortadas`), con `navigator.onLine` en true: el wifi del taller
+  // conectado y sin salida.
   // `sesion` cuenta los pedidos a /auth/sesion, donde la pantalla refresca la
   // sesión antes de una acción. `sinSesion`: la pregunta de si la pantalla
   // llegaría (/auth/sesion?comprobar) no llega al servidor, como sin conexión.
@@ -502,7 +509,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, romperAntes: null, romperRsc: null, rscRotos: 0, lento: null, demorados: 0, sesion: 0, sinSesion: false, preguntasCortadas: 0, cortarSubida: null, saltarSubidas: 0, contar: null, contadas: 0 }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, romperAntes: null, romperRsc: null, rscRotos: 0, lento: null, demorados: 0, lentaRespuesta: null, cuerpoDemorado: null, soltadaEn: 0, cortarLectura: null, lecturasCortadas: 0, sesion: 0, sinSesion: false, preguntasCortadas: 0, cortarSubida: null, saltarSubidas: 0, contar: null, contadas: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -519,6 +526,15 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
     if (e.responseStatusCode !== undefined || e.responseErrorReason !== undefined) {
       const responder = (extra = {}) => cdp.send('Fetch.continueResponse', { requestId: e.requestId, ...extra }).catch(() => seguir())
+      if (corte.lentaRespuesta && !h['next-action'] && !e.responseErrorReason && corte.lentaRespuesta.patron.test(e.request.url)) {
+        const { ms } = corte.lentaRespuesta
+        corte.lentaRespuesta = null
+        const leido = await cdp.send('Fetch.getResponseBody', { requestId: e.requestId }).catch(() => null)
+        corte.cuerpoDemorado = leido ? Buffer.from(leido.body, leido.base64Encoded ? 'base64' : 'utf8').toString('utf8') : ''
+        await new Promise((listo) => setTimeout(listo, ms))
+        corte.soltadaEn = Date.now()
+        return responder()
+      }
       if (h['next-action'] && corte.perder && !e.responseErrorReason) {
         const enviado = cuerpo(e.request)
         if (!enviado || enviado.includes(corte.perder)) {
@@ -574,6 +590,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
         corte.preguntasCortadas++
         return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionRefused' }).catch(() => {})
       }
+    }
+    if (corte.cortarLectura && !h['next-action'] && corte.cortarLectura.test(e.request.url)) {
+      corte.lecturasCortadas++
+      return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionRefused' }).catch(() => {})
     }
     if (corte.lento && !h['next-action'] && corte.lento.patron.test(e.request.url)) {
       corte.demorados++
@@ -7105,12 +7125,12 @@ if (corre('1zd-cliente-carroceria-en-duda')) {
     corte.romperRsc = /\/ordenes\/nueva/
     await v1.getByRole('button', { name: 'Registrar cliente', exact: true }).click()
     const aviso1 = await hasta(() => alerta(v1), (t) => t.length > 0, 15000)
-    const dice1 = await hasta(aparte, (t) => t.includes('quedó registrado aunque no llegó'), 10000)
+    const dice1 = await hasta(aparte, (t) => t.includes('ya está registrado, aunque no llegó'), 10000)
     await cerrarVentana(v1)
     const tras1 = { rotas: corte.rotas, rscRotos: corte.rscRotos, mismo: await mismoDocumento(pagina), escrito: (await descripcion()) === escrito, cliente: await valor('cliente_id'), enLista: await enLaLista('cliente_id', razon1), enBase: await clientesCon(ruc1), aviso: aviso1.slice(0, 50), dice: dice1 }
     comprobar(tras1.rotas === 1 && tras1.rscRotos === 0 && tras1.mismo && tras1.escrito && tras1.cliente === '' && tras1.enLista === 1 && tras1.enBase === 1
       && aviso1.startsWith('El servidor no pudo completar el envío')
-      && dice1 === `El cliente ${razon1} quedó registrado aunque no llegó la respuesta. Está en la lista, sin elegir.`,
+      && dice1 === `El cliente ${razon1} ya está registrado, aunque no llegó la respuesta. Está en la lista, sin elegir.`,
       `[Administración 1280] 1zd-cliente-carroceria-en-duda. el cliente que entró con el 502 se busca sin recargar: queda en la lista, sin elegir, y la orden escrita sigue (${JSON.stringify(tras1)})`)
     await pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
 
@@ -7124,13 +7144,13 @@ if (corre('1zd-cliente-carroceria-en-duda')) {
     corte.romperRsc = /\/ordenes\/nueva/
     await v2.getByRole('button', { name: 'Agregar al catálogo', exact: true }).click()
     const aviso2 = await hasta(() => alerta(v2), (t) => t.length > 0, 15000)
-    const dice2 = await hasta(aparte, (t) => t.includes('quedó registrada aunque no llegó'), 10000)
+    const dice2 = await hasta(aparte, (t) => t.includes('ya está en el catálogo, aunque no llegó'), 10000)
     await cerrarVentana(v2)
     const [{ n: carrocerias }] = await consulta(`select count(*)::int n from tipos_carroceria where nombre = $1`, [nombre2])
     const tras2 = { rotas: corte.rotas, rscRotos: corte.rscRotos, mismo: await mismoDocumento(pagina), escrito: (await descripcion()) === escrito, carroceria: await valor('tipo_carroceria_id'), enLista: await enLaLista('tipo_carroceria_id', nombre2), enBase: carrocerias, aviso: aviso2.slice(0, 50), dice: dice2 }
     comprobar(tras2.rotas === 2 && tras2.rscRotos === 0 && tras2.mismo && tras2.escrito && tras2.carroceria === '' && tras2.enLista === 1 && tras2.enBase === 1
       && aviso2.startsWith('El servidor no pudo completar el envío')
-      && dice2 === `La carrocería ${nombre2} quedó registrada aunque no llegó la respuesta. Está en la lista, sin elegir.`,
+      && dice2 === `La carrocería ${nombre2} ya está en el catálogo, aunque no llegó la respuesta. Está en la lista, sin elegir.`,
       `[Administración 1280] 1zd-cliente-carroceria-en-duda. la carrocería que entró con el 502 se busca sin recargar: queda en la lista, sin elegir, y la orden escrita sigue (${JSON.stringify(tras2)})`)
     await pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
     corte.romperRsc = null
@@ -7268,14 +7288,16 @@ if (corre('1zd-orden-nueva-sin-sesion')) {
     await hasta(() => alerta(v3), (t) => t.length > 0, 15000)
     const dice3 = await hasta(aparte, (t) => t.includes('la sesión terminó'), 10000)
     await cerrarVentana(v3)
-    const ayuda = await pagina.getByText('No se pudieron leer sus unidades', { exact: false }).first().innerText({ timeout: 3000 }).then(limpio).catch(() => '')
+    // Al pie del campo y a la vista, no en el globo de la «i» (H1 de diseño, quincuagésima séptima pasada).
+    const pie = pagina.locator('p:not([role])', { hasText: 'No se pudieron leer sus unidades' }).first()
+    const ayuda = await pie.innerText({ timeout: 3000 }).then(limpio).catch(() => '')
     const [{ n: enBase3 }] = await consulta(`select count(*)::int n from unidades where replace(placa, '-', '') = $1`, [placa])
-    const tras3 = { ...(await sigue()), enBase: enBase3, unidad: (await valor('unidad_id')) === unidadElegida, dice: dice3, ayuda }
+    const tras3 = { ...(await sigue()), enBase: enBase3, unidad: (await valor('unidad_id')) === unidadElegida, dice: dice3, ayuda, aLaVista: await pie.isVisible().catch(() => false), enGlobo: await pagina.locator('[role="tooltip"]', { hasText: 'No se pudieron leer' }).count() }
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-orden-nueva-sin-sesion.png') }).catch(() => {})
-    comprobar(tras3.direccion === '/ordenes/nueva' && tras3.mismo && tras3.escrito && enBase3 === 0 && tras3.unidad && Boolean(unidadElegida)
+    comprobar(tras3.direccion === '/ordenes/nueva' && tras3.mismo && tras3.escrito && enBase3 === 0 && tras3.unidad && Boolean(unidadElegida) && tras3.aLaVista && tras3.enGlobo === 0
       && dice3 === `No se sabe si quedó la unidad que registrabas: la sesión terminó. ${VOLVER}, y búscala en «Unidad» antes de registrarla otra vez.`
       && ayuda === `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER}: se leen otra vez.`,
-      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la unidad elegida se queda, y junto al campo se dice que la sesión terminó (${JSON.stringify(tras3)})`)
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la unidad elegida se queda, y al pie del campo, a la vista, se dice que la sesión terminó (${JSON.stringify(tras3)})`)
     // Lo que se ve es del navegador: la sesión que el banco dejó sin valer, y la
     // redirección a /ingresar que le llega a Next como «An unexpected response…».
     const propios = errores.filter((e) => !/refresco-que-no-vale|Invalid Refresh Token|AuthApiError|JWT|401|403|An unexpected response was received from the server/i.test(e))
@@ -7382,7 +7404,10 @@ if (corre('1zd-unidad-en-duda')) {
     await quitarAparte()
 
     // 3. La relectura de la duda llega tarde: la unidad registrada y elegida
-    // mientras tanto se queda en «Unidad», elegida.
+    // mientras tanto se queda en «Unidad», elegida. Se retiene la respuesta y
+    // no el pedido: retenido el pedido, la lectura llegaba al servidor después
+    // del alta y ya la traía, y la parte pasaba sin `creadasAqui` (M2' de
+    // realización, quincuagésima séptima pasada). Se comprueba que no la traía.
     await elegirEn('cliente_id', A.razon_social)
     await pagina.waitForLoadState('networkidle').catch(() => {})
     const placa3 = `ZP${sello.slice(-4)}`
@@ -7390,12 +7415,12 @@ if (corre('1zd-unidad-en-duda')) {
     const v3 = laVentana(pagina)
     await v3.waitFor({ timeout: 10000 })
     await llenarUnidad(v3, placa3)
-    const demorados = corte.demorados
     corte.perder = placa3
-    corte.lento = { patron: /\/rest\/v1\/unidades/, ms: 6000 }
+    corte.cuerpoDemorado = null
+    corte.soltadaEn = 0
+    corte.lentaRespuesta = { patron: /\/rest\/v1\/unidades/, ms: 8000 }
     await v3.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
-    const demorada = (await hasta(() => corte.demorados, (n) => n > demorados, 15000)) > demorados
-    corte.lento = null
+    const demorada = (await hasta(() => corte.cuerpoDemorado, (c) => c !== null, 15000)) !== null
     await v3.getByRole('button', { name: 'Cancelar', exact: true }).click({ timeout: 3000 }).catch(() => {})
     await hasta(ventanas, (n) => n === 0, 5000)
     const placa4 = `ZO${sello.slice(-4)}`
@@ -7406,20 +7431,222 @@ if (corre('1zd-unidad-en-duda')) {
     await v4.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
     const creada4 = await hasta(() => unidadCon(placa4), Boolean, 20000)
     const elegida = await hasta(() => valor('unidad_id'), (v) => v === creada4?.id, 10000)
+    const elegidaEn = Date.now()
     // Llega la relectura demorada.
-    await pagina.waitForTimeout(6500)
+    await hasta(() => corte.soltadaEn, (t) => t > 0, 15000)
+    await pagina.waitForTimeout(1000)
     await pagina.waitForLoadState('networkidle').catch(() => {})
-    const tras3 = { demorada, elegidaAntes: Boolean(creada4) && elegida === creada4.id, unidad: (await valor('unidad_id')) === creada4?.id, enLista4: await enLaLista('unidad_id', placa4), enLista3: await enLaLista('unidad_id', placa3) }
+    const traia = (corte.cuerpoDemorado ?? '').replace(/-/g, '')
+    const tras3 = {
+      demorada,
+      llegoTarde: corte.soltadaEn > elegidaEn,
+      traia3: traia.includes(placa3),
+      traia4: traia.includes(placa4),
+      elegidaAntes: Boolean(creada4) && elegida === creada4.id,
+      unidad: (await valor('unidad_id')) === creada4?.id,
+      enLista4: await enLaLista('unidad_id', placa4),
+      enLista3: await enLaLista('unidad_id', placa3),
+    }
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-unidad-en-duda.png') }).catch(() => {})
-    comprobar(tras3.demorada && tras3.elegidaAntes && tras3.unidad && tras3.enLista4 === 1 && tras3.enLista3 === 1,
-      `[Administración 1280] 1zd-unidad-en-duda. la relectura que llega tarde trae la de la duda y no borra la registrada y elegida entretanto (${JSON.stringify(tras3)})`)
+    comprobar(tras3.demorada && tras3.llegoTarde && tras3.traia3 && !tras3.traia4 && tras3.elegidaAntes && tras3.unidad && tras3.enLista4 === 1 && tras3.enLista3 === 1,
+      `[Administración 1280] 1zd-unidad-en-duda. la relectura que llega tarde, sin la registrada y elegida entretanto, trae la de la duda y no la borra (${JSON.stringify(tras3)})`)
     const propios = errores.filter((e) => !/ERR_CONNECTION_RESET|Failed to fetch|NetworkError|network error|Load failed/i.test(e))
     comprobar((await mismoDocumento(pagina)) && propios.length === 0, `[Administración 1280] 1zd-unidad-en-duda. sin recargar y sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
   } catch (e) {
     comprobar(false, `[Administración 1280] 1zd-unidad-en-duda. ${String(e?.message ?? e).slice(0, 300)}`)
   } finally {
     corte.perder = null
-    corte.lento = null
+    corte.lentaRespuesta = null
+    corte.soltar()
+    await contexto.close()
+  }
+}
+
+// «Unidad» sin salida a internet: con el wifi del taller conectado y el
+// servidor sin contestar, `navigator.onLine` sigue en true y 'online' no llega.
+// La lectura que falla se vuelve a pedir sola, sin salir de la pestaña; antes
+// solo volvía con 'online' o 'focus' (M1 de realización, quincuagésima séptima
+// pasada). Mientras la del cliente recién elegido está en camino dice que se
+// está leyendo, no que no tiene unidades; y el motivo de la que falló se dice
+// al pie, a la vista, no en el globo de la «i» (H1 de diseño). Administración.
+if (corre('1zd-unidades-sin-salida')) {
+  const clientes = await consulta(`with c as (select id, razon_social from clientes where activo order by razon_social, id limit 500)
+                                   select c.id, c.razon_social, min(u.placa) placa from c
+                                     join unidades u on u.cliente_id = c.id and u.activo and nullif(btrim(u.placa), '') is not null
+                                    group by c.id, c.razon_social order by c.razon_social limit 2`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  const elegirEn = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first().click()
+  }
+  const enLaLista = async (texto) => {
+    await pagina.locator('#unidad_id').click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    const n = await pagina.getByRole('option', { name: new RegExp(texto) }).count()
+    await pagina.keyboard.press('Escape')
+    return n
+  }
+  // Lo que dice el Campo «Unidad»: al pie (el <p> que es hijo del Campo) y en el globo de la «i».
+  const unidad = () =>
+    pagina
+      .evaluate(() => {
+        const raiz = document.querySelector('label[for="unidad_id"]')?.parentElement?.parentElement
+        const texto = (e) => e?.textContent.replace(/\s+/g, ' ').trim() ?? ''
+        const pie = raiz?.querySelector(':scope > p:not([role])')
+        return { pie: texto(pie), aLaVista: Boolean(pie && pie.getBoundingClientRect().height > 0 && getComputedStyle(pie).opacity !== '0'), globo: texto(raiz?.querySelector('[role="tooltip"]')) }
+      })
+      .catch(() => ({ pie: '', aLaVista: false, globo: '' }))
+  const NO_SE_LEYERON = 'No se pudieron leer sus unidades. Se vuelven a pedir solas hasta que lleguen.'
+  try {
+    if (clientes.length < 2) throw new Error('Faltan dos clientes con unidades')
+    const [A, B] = clientes
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await marcarDocumento(pagina)
+    await elegirEn('cliente_id', A.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    // Lo que va diciendo el pie de «Unidad», y si la ventana recupera el foco
+    // (que también vuelve a leer): la relectura tiene que llegar sin él.
+    await pagina.evaluate(() => {
+      window.__pies = []
+      window.__focos = 0
+      window.addEventListener('focus', () => window.__focos++)
+      const mirar = () => {
+        const raiz = document.querySelector('label[for="unidad_id"]')?.parentElement?.parentElement
+        const dice = raiz?.querySelector(':scope > p:not([role])')?.textContent.replace(/\s+/g, ' ').trim() ?? ''
+        if (window.__pies.at(-1) !== dice) window.__pies.push(dice)
+      }
+      new MutationObserver(mirar).observe(document.body, { subtree: true, childList: true, characterData: true })
+    })
+    corte.cortarLectura = /\/rest\/v1\/unidades/
+    await elegirEn('cliente_id', B.razon_social)
+    const fallo = await hasta(unidad, (u) => u?.pie === NO_SE_LEYERON, 25000)
+    const cortadas = corte.lecturasCortadas
+    const enLinea = await pagina.evaluate(() => navigator.onLine)
+    corte.cortarLectura = null
+    const t0 = Date.now()
+    const leida = await hasta(unidad, (u) => u?.pie === 'Vehículo sobre el que se ejecuta el trabajo', 30000)
+    const tardo = Date.now() - t0
+    const { pies, focos } = await pagina.evaluate(() => ({ pies: window.__pies, focos: window.__focos }))
+    const tras = {
+      cortadas,
+      enLinea,
+      fallo,
+      leyendo: pies.includes('Leyendo sus unidades…'),
+      dijoQueNoTiene: pies.includes('Este cliente no tiene unidades registradas'),
+      volvio: leida?.pie === 'Vehículo sobre el que se ejecuta el trabajo',
+      tardo,
+      focos,
+      enLista: await enLaLista(B.placa),
+      pies: pies.slice(0, 8),
+    }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-unidades-sin-salida.png') }).catch(() => {})
+    comprobar(cortadas >= 1 && enLinea && fallo?.aLaVista && fallo?.globo === '' && tras.leyendo && !tras.dijoQueNoTiene,
+      `[Administración 1280] 1zd-unidades-sin-salida. mientras lee dice «Leyendo sus unidades…», no que no tiene, y lo que falló se dice al pie, a la vista (${JSON.stringify(tras)})`)
+    comprobar(tras.volvio && tras.focos === 0 && tras.enLista >= 1,
+      `[Administración 1280] 1zd-unidades-sin-salida. con la salida de vuelta se vuelven a leer solas, sin 'online' ni volver a la pestaña (${JSON.stringify(tras)})`)
+    const propios = errores.filter((e) => !/ERR_CONNECTION_REFUSED|Failed to fetch|NetworkError|network error|Load failed/i.test(e))
+    comprobar((await mismoDocumento(pagina)) && propios.length === 0, `[Administración 1280] 1zd-unidades-sin-salida. sin recargar y sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-unidades-sin-salida. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.cortarLectura = null
+    await contexto.close()
+  }
+}
+
+// Atrás con la corrección en camino: el formulario que corrige se desmonta
+// antes de que vuelva la acción, y después ya no hay quién suelte lo que se
+// anote para la recarga. La marca quedaba puesta y el F5 siguiente, en otra
+// pantalla, decía en ámbar que no se sabía si había quedado lo que sí entró (F1
+// de la crítica, quincuagésima séptima pasada). En línea (la nota del paso,
+// Administración) y en ventana (la cuenta de la caja, Tesorería).
+for (const donde of ['linea', 'ventana']) {
+  if (!corre(`1zd-se-va-atras-${donde}`)) continue
+  const puesto = donde === 'linea' ? 'Administración' : 'Tesorería'
+  let preparar
+  if (donde === 'linea') {
+    const [orden] = await consulta(`select o.id from ordenes_trabajo o where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA')
+      and coalesce((select max(v.numero) from ot_verificaciones v where v.orden_id = o.id), 0) <= 38 order by o.numero limit 1`)
+    let paso
+    await comoLaCuenta(CUENTAS.administracion, async () => {
+      paso = (await base.query(`insert into ot_verificaciones (orden_id, numero, descripcion, observaciones)
+        select $1, coalesce((select max(numero) from ot_verificaciones where orden_id = $1), 0) + 1,
+               'QA-ZDA paso ' || $2 || ', no es real', 'QA-ZDA nota de antes'
+        returning id, descripcion`, [orden.id, sello])).rows[0]
+    })
+    const escrita = `QA-ZDA nota escrita a mano ${sello}`
+    preparar = async (pagina) => {
+      // Por la aplicación, para que Atrás sea del enrutador y no del documento.
+      await ir(pagina, `${BASE}/ordenes/${orden.id}`)
+      await marcarDocumento(pagina)
+      await pagina.locator(`a[href="/ordenes/${orden.id}?vista=ficha"]`).first().click()
+      await pagina.waitForURL((u) => u.search.includes('vista=ficha'), { timeout: 20000 })
+      await pagina.waitForLoadState('networkidle').catch(() => {})
+      const fila = pagina.locator('tr').filter({ hasText: paso.descripcion }).first()
+      await fila.getByRole('button', { name: /^(Anotar|Editar) observación$/ }).click({ timeout: 30000 })
+      await fila.locator('input[name="observaciones"]').fill(escrita)
+      return {
+        enviado: escrita,
+        guardar: () => fila.getByRole('button', { name: 'Guardar nota' }).click(),
+        montado: () => fila.locator('input[name="observaciones"]').count(),
+        enBase: async () => (await consulta(`select observaciones from ot_verificaciones where id = $1`, [paso.id]))[0]?.observaciones === escrita,
+      }
+    }
+  } else {
+    const nombre = `QA-ZDA cuenta ${sello}`
+    const cuenta = await cuentaDeTesoreria(nombre)
+    const corregido = `${nombre} corregida`
+    preparar = async (pagina) => {
+      await ir(pagina, `${BASE}/tesoreria/por-pagar`)
+      await marcarDocumento(pagina)
+      // El enlace del menú puede estar plegado: se pulsa desde la página.
+      await pagina.evaluate(() => document.querySelector('a[href="/tesoreria/caja-diaria"]')?.click())
+      await pagina.waitForURL((u) => u.pathname === '/tesoreria/caja-diaria', { timeout: 20000 })
+      await pagina.waitForLoadState('networkidle').catch(() => {})
+      const form = await cuenta.abrirla(pagina)
+      await form.locator('input[name="nombre"]').fill(corregido)
+      return {
+        enviado: corregido,
+        guardar: () => form.getByRole('button', { name: 'Guardar', exact: true }).click(),
+        montado: () => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(),
+        enBase: async () => (await cuenta.enBase()) === corregido,
+      }
+    }
+  }
+  const { pagina, contexto, errores, corte } = await entrar(donde === 'linea' ? CUENTAS.administracion : CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+  const marca = () => pagina.evaluate(() => sessionStorage.getItem('metal-work:al-dia-con-la-ventana')).catch(() => 'sin leer')
+  try {
+    const f = await preparar(pagina)
+    const desde = new URL(pagina.url()).pathname + new URL(pagina.url()).search
+    corte.romper = f.enviado
+    corte.marca = f.enviado
+    const retenidas = corte.retenidas
+    await f.guardar()
+    const retenida = (await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)) > retenidas
+    await pagina.goBack({ waitUntil: 'commit', timeout: 5000 }).catch(() => {})
+    const desmontado = (await hasta(f.montado, (n) => n === 0, 5000)) === 0
+    const fue = new URL(pagina.url()).pathname + new URL(pagina.url()).search
+    corte.soltar()
+    const entro = await hasta(f.enBase, Boolean, 15000)
+    await pagina.waitForTimeout(4000)
+    const marcaTras = await marca()
+    await pagina.reload({ waitUntil: 'load' })
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    await pagina.waitForTimeout(1500)
+    const tras = { retenida, rotas: corte.rotas, desde, fue, desmontado, entro, marcaTras, trasF5: await idaQueNoSalio(pagina), marcaTrasF5: await marca() }
+    await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-1zd-se-va-atras-${donde}.png`) }).catch(() => {})
+    comprobar(tras.retenida && tras.rotas === 1 && fue !== desde && !fue.startsWith('/sin-permiso') && tras.desmontado && tras.entro && marcaTras === null && !tras.trasF5.includes('se volvió a cargar') && tras.marcaTrasF5 === null,
+      `[${puesto} 1280] 1zd-se-va-atras-${donde}. Atrás con la corrección en camino no deja la marca puesta, y el F5 siguiente no dice que se recargó mientras se ponía al día (${JSON.stringify(tras)})`)
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response/i.test(e))
+    comprobar(propios.length === 0, `[${puesto} 1280] 1zd-se-va-atras-${donde}. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[${puesto} 1280] 1zd-se-va-atras-${donde}. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.romper = null
+    corte.marca = null
     corte.soltar()
     await contexto.close()
   }
