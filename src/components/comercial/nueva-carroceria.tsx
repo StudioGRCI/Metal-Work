@@ -7,7 +7,7 @@ import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
 
 
 /**
@@ -20,7 +20,8 @@ import { useEnvio } from '@/lib/envio'
 export function NuevaCarroceria({
   onCreada,
 }: {
-  onCreada?: (carroceria: { id: string; nombre: string }) => void
+  /** `elegir`: la ventana seguía abierta al entrar (como en `NuevaUnidad`). */
+  onCreada?: (carroceria: { id: string; nombre: string }, como: { elegir: boolean }) => void
 }) {
   const [abierto, setAbierto] = useState(false)
   const [tipoUnidad, setTipoUnidad] = useState('')
@@ -29,8 +30,8 @@ export function NuevaCarroceria({
   // nueva, se repinta la pantalla para que aparezca en la lista.
   const { alEnviar, enviando, resultado, limpiar } = useEnvio(
     crearCarroceria,
-    (r) => {
-      if (r.datos) onCreada?.(r.datos)
+    (r, desde) => {
+      if (r.datos) onCreada?.(r.datos, { elegir: suVentanaSigueAbierta(desde) })
     },
     { refrescar: !onCreada },
   )

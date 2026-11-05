@@ -314,6 +314,15 @@ export function partida(): Partida {
   }
 }
 
+/**
+ * La ventana de donde salió el envío sigue abierta: no se cerró ninguna desde
+ * entonces. Si la persona la cerró con lo suyo en camino, lo que entra después
+ * no elige nada en el formulario de atrás: la orden nueva tomaba la unidad
+ * cancelada en lugar de la que la persona había elegido entretanto (F3 de la
+ * crítica, quincuagésima cuarta pasada).
+ */
+export const suVentanaSigueAbierta = (desde: Partida) => desde.ventana !== null && desde.ventana === vecesQueSeCerro()
+
 /** La persona sigue en la dirección de donde salió el envío: «Atrás», un filtro o una búsqueda la cambian. */
 export const sigueDondeSalio = (desde: Partida) => window.location.pathname + window.location.search === desde.direccion
 
@@ -671,6 +680,17 @@ export async function volverACargar({
   return null
 }
 
+/**
+ * «Volver a cargar» de la ventana cuyo envío no contesta (`MientrasSePoneAlDia`):
+ * no espera a lo que ya salió, que puede no volver nunca —con la petición
+ * colgada el botón esperaba para siempre (F2 de la crítica, quincuagésima
+ * cuarta pasada)—; sí a lo que salga después.
+ */
+export function volverACargarSinEsperarLoQueVa() {
+  envios.ofrecer()
+  return volverACargar({ igual: true })
+}
+
 // A la pantalla de la ida, si la hubo; si es esta misma (la tarjeta de la
 // cotización, `#id`), se recarga con su marca: un `assign` que solo cambia lo de
 // después de `#` no recarga.
@@ -780,17 +800,37 @@ type Opciones = {
 }
 
 /**
- * Si el servidor contesta ahora, en 4 s como mucho. Tras «No llegó la
- * respuesta», pedir la página sin conexión hace que Next recargue el documento
- * entero (se lleva el aviso y lo escrito), y `navigator.onLine` dice que sí con
- * el wifi conectado y sin salida. `/auth/sesion` no repinta nada.
+ * Si la pantalla se puede poner al día ya, con la ventana de una corrección
+ * abierta (`despuesDelRechazo`), sin que Next recargue el documento entero y se
+ * lleve el aviso y lo escrito. Se pregunta a `/auth/sesion?comprobar`, en 3 s
+ * como mucho:
+ *
+ * · Sin respuesta, no: tras «No llegó la respuesta», pedir la página sin
+ *   conexión la recarga entera, y `navigator.onLine` dice que sí con el wifi
+ *   del taller conectado y sin salida.
+ * · Sin sesión, no: la página iría a /ingresar (F1 de la crítica,
+ *   quincuagésima cuarta pasada).
+ * · Con el servidor de otro despliegue, no: Next ve otra compilación y recarga
+ *   el documento entero. La pestaña que ya lo sabía ni pregunta (R34 de
+ *   realización); la que no, lo anota y lo dice arriba.
+ *
+ * Que la página falle justo después de que el servidor contestó (un 500, otro
+ * corte) recarga igual: son dos fallos seguidos, y no se cubre.
  */
-async function contestaElServidor(): Promise<boolean> {
-  if (typeof window === 'undefined' || !navigator.onLine) return false
+async function sePuedePonerAlDia(): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.onLine || laPestanaEsDeOtroDespliegue()) return false
   const corte = new AbortController()
-  const tope = setTimeout(() => corte.abort(), 4000)
+  const tope = setTimeout(() => corte.abort(), 3000)
   try {
-    return (await fetch('/auth/sesion', { cache: 'no-store', signal: corte.signal })).ok
+    const respuesta = await fetch('/auth/sesion?comprobar', { cache: 'no-store', signal: corte.signal })
+    if (respuesta.status !== 204) return false
+    const delServidor = respuesta.headers.get('x-compilacion')
+    const deLaPestana = laCompilacionDeLaPestana()
+    if (delServidor && deLaPestana && delServidor !== deLaPestana) {
+      anotarQueHuboUnDespliegue()
+      return false
+    }
+    return !laPestanaEsDeOtroDespliegue()
   } catch {
     return false
   } finally {
@@ -883,13 +923,17 @@ export function useAccion<T = never>(
     // funcionalidad, quincuagésima tercera pasada). Mientras tanto la ventana
     // sigue trabada, sin X ni «Cancelar», y dice que se pone al día; el
     // formulario en línea tiene su «Cancelar» apagado con `enviando`, que dura
-    // hasta la pantalla nueva. Sin conexión no: Next no consigue la página,
-    // recarga el documento entero y se lleva el aviso y lo escrito; se pone al
-    // día al cerrar, como antes. Se pregunta al servidor antes: `onLine` dice
-    // que sí con el wifi del taller conectado y sin salida.
-    const alDiaYa = corrige && refrescar && pudoEntrar && !yaEntro && (await contestaElServidor())
+    // hasta la pantalla nueva. Solo si la página llegaría sin recargar el
+    // documento entero (`sePuedePonerAlDia`): sin conexión, sin sesión o en
+    // una pestaña de otro despliegue se llevaba el aviso y lo escrito, y se
+    // pone al día al cerrar, como antes. Mientras se pregunta, la ventana lo
+    // dice (`preguntando`).
+    const suVentana = () => desdeVentana && ventana === vecesQueSeCerro() && hayVentanaAbierta()
+    const quizasAlDia = corrige && refrescar && pudoEntrar && !yaEntro && !laPestanaEsDeOtroDespliegue()
+    if (quizasAlDia && suVentana()) trabar({ trabada: true, guardado: false, preguntando: true })
+    const alDiaYa = quizasAlDia && (await sePuedePonerAlDia())
     // Lo que no entró deja la ventana como estaba: se puede cancelar.
-    trabar(alDiaYa && desdeVentana && ventana === vecesQueSeCerro() && hayVentanaAbierta() ? { trabada: true, guardado: false, mirando: true } : null)
+    trabar(alDiaYa && suVentana() ? { trabada: true, guardado: false, mirando: true } : null)
     if (salida.arriba) otraVezAMedias()
     if (yaEntro) entro()
     else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)
@@ -974,7 +1018,9 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          await despuesDelRechazo(fallo, desde, true, desenlace)
+          // La acción que el servidor ya no conoce no corrió: no hay nada que
+          // poner al día, ni al cerrar (R34 de realización).
+          await despuesDelRechazo(fallo, desde, mensaje !== SE_ACTUALIZO_EL_SISTEMA, desenlace)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -1008,7 +1054,7 @@ export function useAccion<T = never>(
         // cerrarse; si tarda, lo dice también. Un id de
         // `useIdDelEnvio` no se renueva aquí: el `setId` esperaría a la página, y
         // una ventana abierta entretanto mandaría el id que ya entró.
-        trabar(desde.ventana !== null && desde.ventana === vecesQueSeCerro() ? { trabada: true, guardado: true } : null)
+        trabar(suVentanaSigueAbierta(desde) ? { trabada: true, guardado: true } : null)
         iniciar(() => {
           alTerminar?.(salida, desde)
           if (refrescar) refrescarSiEsDeLaPestana(router)

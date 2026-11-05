@@ -7,7 +7,7 @@ import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { esPlacaRepetida, TIPOS_VEHICULO } from '@/lib/dominio/unidades'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
@@ -22,17 +22,25 @@ export function NuevaUnidad({
 }: {
   clienteId: string
   unidad?: UnidadEditable
-  /** Para los formularios que quieren quedarse con la unidad recién creada. */
+  /**
+   * Para los formularios que quieren quedarse con la unidad recién creada.
+   * `elegir`: la ventana seguía abierta al entrar. Si la persona la cerró con
+   * el alta en camino, la unidad entra igual, pero no se elige (F3 de la
+   * crítica, quincuagésima cuarta pasada).
+   */
   // La placa puede faltar: quien reciba la unidad recién creada la nombra con
   // nombreDeUnidad(), no dando por hecho que hay matrícula.
-  onCreada?: (unidad: {
-    id: string
-    placa: string | null
-    codigo_interno?: string | null
-    numero_chasis?: string | null
-    marca?: string | null
-    modelo?: string | null
-  }) => void
+  onCreada?: (
+    unidad: {
+      id: string
+      placa: string | null
+      codigo_interno?: string | null
+      numero_chasis?: string | null
+      marca?: string | null
+      modelo?: string | null
+    },
+    como: { elegir: boolean },
+  ) => void
   compacta?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -40,9 +48,10 @@ export function NuevaUnidad({
   // la unidad nueva, es un alta suelta: se repinta la lista de atrás.
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     guardarUnidad,
-    (r) => {
+    (r, desde) => {
+      const elegir = suVentanaSigueAbierta(desde)
       setAbierto(false)
-      if (r.datos) onCreada?.(r.datos)
+      if (r.datos) onCreada?.(r.datos, { elegir })
     },
     // Con `unidad` corrige la que la ficha muestra: se cierra con la ficha ya
     // al día (`corrige`). El alta se cierra al contestar.

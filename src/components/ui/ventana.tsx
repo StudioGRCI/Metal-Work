@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
-import { useCursorAlRechazo, useEnviosEnCamino, useVersionDeLaPestana, volverACargar } from '@/lib/envio'
+import { useCursorAlRechazo, useEnviosEnCamino, useVersionDeLaPestana, volverACargar, volverACargarSinEsperarLoQueVa } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { abrioVentana, cerroVentana, esLaUltimaVentana, trabaDe, vigilarLasTrabas } from '@/lib/ventanas-abiertas'
 
@@ -72,6 +72,14 @@ export const GUARDADO_PONIENDO_AL_DIA = 'Guardado. Poniendo la pantalla al día�
  * menos de un segundo; con la señal del taller, unos pocos.
  */
 const TARDA_EN_PONERSE_AL_DIA = 8000
+
+/**
+ * Cuánto se espera a que el envío de una ventana trabada conteste antes de
+ * decir que no llega. Una corrección contesta en menos de un segundo; con la
+ * señal del taller, en unos pocos, y decirlo antes empujaba a recargar a
+ * medio envío.
+ */
+const TARDA_EN_CONTESTAR = 15_000
 
 /**
  * La ventana del sistema: una sola, en lugar de las catorce que había copiadas.
@@ -285,7 +293,8 @@ export function Ventana({
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
           <TrabaDeLaVentana value={traba}>{children}</TrabaDeLaVentana>
-          {traba !== 0 && <MientrasSePoneAlDia traba={traba} />}
+          {/* Cada fase la dice de nuevo y cuenta su tiempo desde cero: el envío, la pregunta, la espera. */}
+          {traba !== 0 && <MientrasSePoneAlDia key={(traba & 8) !== 0 ? 'preguntando' : (traba & 5) !== 0 ? 'espera' : 'envio'} traba={traba} />}
         </div>
       </div>
     </div>,
@@ -324,29 +333,43 @@ function SeActualizoEnLaVentana({ id, alAbrir }: { id: string; alAbrir: boolean 
 }
 
 /**
- * Debajo de los botones, mientras la ventana trabada espera a la pantalla al
- * día (`trabarLaVentana`). La pinta la ventana, no cada pie: de las veintitrés
- * ventanas que corrigen, dieciocho tienen su pie propio y no decían nada en
- * esos segundos, con la X, «Cancelar» y Escape apagados y solo el botón
- * girando (D2 de diseño, quincuagésima tercera pasada).
+ * Debajo de los botones, mientras la ventana trabada espera (`trabarLaVentana`).
+ * La pinta la ventana, no cada pie: de las veintitrés ventanas que corrigen,
+ * dieciocho tienen su pie propio y no decían nada en esos segundos, con la X,
+ * «Cancelar» y Escape apagados y solo el botón girando (D2 de diseño,
+ * quincuagésima tercera pasada).
  *
  * Nace vacía y el texto llega en la pintada siguiente: la región que nace con
  * su texto no se anuncia, y el cronograma la traba ya guardado. Al decir algo
- * se lleva a la vista: debajo de los botones no los empuja, y a 390, con la
- * ventana rodada hasta el fondo, la línea del pie sacaba «Guardar» por debajo
- * del borde (D4 de diseño).
+ * se lleva a la vista, con el margen de abajo de la ventana: debajo de los
+ * botones no los empuja, y a 390, con la ventana rodada hasta el fondo, la
+ * línea del pie sacaba «Guardar» por debajo del borde (D4 de diseño); llevada
+ * a la vista sin margen, quedaba pegada al borde (D7, quincuagésima cuarta).
  *
- * Si la pantalla tarda más de ocho segundos, lo dice. React no pinta la página
- * nueva mientras haya otro envío de la pestaña en camino —la captura de una
- * cuenta nueva que sigue subiendo (H4 de funcionalidad)—, y entonces dice que
- * espera a ese. Sin otro, la pantalla se colgó al ponerse al día (D3 de
- * diseño): lo dice y ofrece volver a cargar, que no pierde lo guardado. La
- * ventana sigue sin cerrarse: cerrada, la pantalla de detrás seguiría con lo
- * de antes, y vuelta a abrir traería lo de antes, que es lo que la traba evita.
+ * Mientras espera a la pantalla al día, y si tarda más de ocho segundos, lo
+ * dice. React no pinta la página nueva mientras haya otro envío de la pestaña
+ * en camino —la captura de una cuenta nueva que sigue subiendo (H4 de
+ * funcionalidad)—, y entonces dice que espera a ese. Sin otro, la pantalla se
+ * colgó al ponerse al día (D3 de diseño): lo dice y ofrece volver a cargar,
+ * que no pierde lo guardado. La ventana sigue sin cerrarse: cerrada, la
+ * pantalla de detrás seguiría con lo de antes, y vuelta a abrir traería lo de
+ * antes, que es lo que la traba evita.
+ *
+ * Tras «No llegó la respuesta», mientras se pregunta si el servidor contesta
+ * (`preguntando`, hasta 3 s), dice que lo comprueba: el aviso rojo con el botón
+ * girando y sin X parecía colgado (H4 de funcionalidad, quincuagésima cuarta).
+ *
+ * Mientras el envío no contesta, nada: el botón que gira basta. A los quince
+ * segundos lo dice y ofrece volver a cargar sin esperarlo, que puede no volver
+ * nunca: la ventana trabada no tenía otra salida que Atrás o F5 (F2 de la
+ * crítica, quincuagésima cuarta pasada).
  */
 function MientrasSePoneAlDia({ traba }: { traba: number }) {
   const guardado = (traba & 1) !== 0
+  const preguntando = (traba & 8) !== 0
   const espera = guardado || (traba & 4) !== 0
+  // Solo trabada: el envío todavía no contesta.
+  const sinRespuesta = !espera && !preguntando
   const linea = useRef<HTMLDivElement>(null)
   const [conTexto, setConTexto] = useState(false)
   const [tarde, setTarde] = useState(false)
@@ -356,31 +379,36 @@ function MientrasSePoneAlDia({ traba }: { traba: number }) {
     return () => cancelAnimationFrame(cuadro)
   }, [])
   useEffect(() => {
-    if (!espera) return
-    const reloj = setTimeout(() => setTarde(true), TARDA_EN_PONERSE_AL_DIA)
+    if (preguntando) return
+    const reloj = setTimeout(() => setTarde(true), espera ? TARDA_EN_PONERSE_AL_DIA : TARDA_EN_CONTESTAR)
     return () => clearTimeout(reloj)
-  }, [espera])
-  const dice = espera && conTexto
+  }, [espera, preguntando])
+  const dice = conTexto && (preguntando || espera || tarde)
   useEffect(() => {
     if (dice) linea.current?.scrollIntoView({ block: 'nearest' })
-  }, [dice, tarde])
+  }, [dice, tarde, preguntando])
 
-  const texto = !tarde
-    ? guardado
-      ? GUARDADO_PONIENDO_AL_DIA
-      : 'Poniendo la pantalla al día…'
-    : otros > 0
-      ? `${guardado ? 'Guardado. ' : ''}La pantalla se pone al día cuando termine el otro envío que va en camino desde esta pestaña.`
-      : guardado
-        ? 'Guardado, pero la pantalla tarda en ponerse al día. Si no se cierra sola, vuelve a cargar: lo guardado no se pierde.'
-        : 'La pantalla tarda en ponerse al día. Si no se suelta sola, copia lo que escribiste y vuelve a cargar.'
+  const texto = preguntando
+    ? 'Comprobando si el servidor contesta…'
+    : sinRespuesta
+      ? 'Todavía no llega la respuesta del servidor. Si sigue así, vuelve a cargar y después mira si quedó guardado antes de enviarlo otra vez.'
+      : !tarde
+        ? guardado
+          ? GUARDADO_PONIENDO_AL_DIA
+          : 'Poniendo la pantalla al día…'
+        : otros > 0
+          ? `${guardado ? 'Guardado. ' : ''}La pantalla se pone al día cuando termine el otro envío que va en camino desde esta pestaña.`
+          : guardado
+            ? 'Guardado, pero la pantalla tarda en ponerse al día. Si no se cierra sola, vuelve a cargar: lo guardado no se pierde.'
+            : 'La pantalla tarda en ponerse al día. Si no se suelta sola, copia lo que escribiste y vuelve a cargar.'
+  const conBoton = dice && tarde && (sinRespuesta || otros === 0)
   return (
-    <div ref={linea} className={dice ? 'mt-3 space-y-2 sm:text-right' : undefined}>
+    <div ref={linea} className={dice ? 'mt-3 scroll-mb-4 space-y-2 sm:text-right' : undefined}>
       <p role="status" className={dice ? 'text-xs text-texto-suave' : 'sr-only'}>
         {dice ? texto : ''}
       </p>
-      {dice && tarde && otros === 0 && (
-        <Boton type="button" variante="contorno" tamano="sm" onClick={() => void volverACargar()}>
+      {conBoton && (
+        <Boton type="button" variante="contorno" tamano="sm" onClick={() => void (sinRespuesta ? volverACargarSinEsperarLoQueVa() : volverACargar())}>
           Volver a cargar
         </Boton>
       )}

@@ -73,7 +73,7 @@ export async function registrarGastoArea(_previo: unknown, datos: FormData): Pro
     // Lo que entró y cómo se corrige: «recarga la pantalla» solo dejaba el
     // formulario vacío, que se leía como que el cambio había entrado.
     return mismo
-      ? { ok: true, mensaje: `El gasto ${previo.id} ya estaba registrado.` }
+      ? { ok: true, mensaje: `El gasto «${previo.descripcion}» por ${moneda(previo.monto, previo.moneda === 'USD' ? 'USD' : 'PEN')} ya estaba registrado.` }
       : { ok: false, error: `Este gasto ya quedó registrado la primera vez que lo enviaste, por ${moneda(previo.monto, previo.moneda === 'USD' ? 'USD' : 'PEN')}, y lo que cambiaste después no se guardó. Está en la lista de abajo; si algo está mal, pide a Administración que lo observe.` }
   }
   const ruta = `ot/${v.orden_id}/gastos/${v.id}.pdf`

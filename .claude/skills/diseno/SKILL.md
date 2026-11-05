@@ -640,19 +640,39 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   Si a los 8 s la página sigue sin ponerse al día, lo dice: con otro envío de
   la pestaña en camino, que espera a ese; sin otro, que lo guardado no se
   pierde, con «Volver a cargar» (D3 y D4). La ventana sigue sin cerrarse:
-  cerrada, la pantalla de detrás seguiría con lo de antes.
+  cerrada, la pantalla de detrás seguiría con lo de antes. La línea llevada a
+  la vista va con `scroll-mb-4`: sin margen quedaba pegada al borde (D7).
+  Si el envío mismo no contesta, a los 15 s dice «Todavía no llega la respuesta
+  del servidor…» con «Volver a cargar», que no lo espera
+  (`volverACargarSinEsperarLoQueVa`): con la petición colgada, la ventana
+  trabada no tenía otra salida que Atrás o F5 (F2 de la crítica, quincuagésima
+  cuarta pasada). Antes de eso, nada: el botón que gira basta. Cada fase (el
+  envío, la pregunta, la espera) monta la línea de nuevo, con su `key`, y cuenta
+  su tiempo desde cero.
   Tras «No llegó la respuesta» o un 502 de una corrección que pudo entrar, la
   página se pone al día ya, con la ventana abierta y trabada («Poniendo la
   pantalla al día…», la traba `mirando`), y no al cerrarla: cancelada y vuelta a
   abrir antes, traía lo de antes y guardarla deshacía lo que sí entró (H1 de
-  funcionalidad). Solo si `/auth/sesion` contesta: sin servidor, Next recarga
-  el documento entero y se lleva el aviso y lo escrito, y se pone al día al
-  cerrar, como antes.
+  funcionalidad). Solo si la pantalla llegaría (`sePuedePonerAlDia`, que pregunta
+  a `/auth/sesion?comprobar`, 3 s a lo más): sin servidor, Next recarga el
+  documento entero; sin sesión, el refresco va a /ingresar (F1 de la crítica);
+  en una pestaña de otro despliegue —ya sabido o porque el servidor contesta
+  con otra `x-compilacion`—, recarga el documento entero (R34 de realización).
+  En los tres se llevaba el aviso y lo escrito; ahí se pone al día al cerrar,
+  como antes, y la acción que el servidor ya no conoce, ni al cerrar. Mientras
+  pregunta, la ventana dice «Comprobando si el servidor contesta…» (la traba
+  `preguntando`): el aviso rojo con el botón girando parecía colgado (H4).
   Un «Cancelar», «No» o «Cerrar» propio, fuera de `PieDeVentana`, va apagado
   mientras se envía **solo si corrige**: el alta con `corrige` según el caso
   (`corrige: Boolean(unidad)`) se sigue cancelando en vuelo
   (`disabled={enviando && Boolean(unidad)}`; la suite entera lo encontró roto
-  en la unidad, el material y el subcontratista). Un formulario en línea, sin
+  en la unidad, el material y el subcontratista). Lo que el alta cancelada en
+  vuelo crea entra igual, pero **no elige nada** en el formulario de atrás:
+  quien recibe lo creado (`onCreada`, `onCreado`) mira `elegir`
+  (`suVentanaSigueAbierta(desde)`) y, si la ventana ya se cerró, lo suma a la
+  lista y dice junto a su campo que quedó registrado, sin elegirlo. La orden
+  nueva tomaba la unidad cancelada en lugar de la que la persona había elegido
+  entretanto (F3 de la crítica, quincuagésima cuarta pasada). Un formulario en línea, sin
   ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control de
   la fila lo cierra o abre otro igual, que cierre solo el suyo
   (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Y

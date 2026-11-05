@@ -306,8 +306,16 @@
  *       la respuesta» o el 502 de una corrección que entró, se pone al día
  *       trabada. En línea, mientras una nota de verificación o unas fechas de
  *       etapa se guardan, las demás filas no se abren; las etapas corregidas
- *       vuelven con lo guardado, y las altas (material, subcontratista, cuenta)
- *       se siguen cancelando en vuelo.
+ *       vuelven con lo guardado, y las altas (material, subcontratista; la
+ *       caja chica, en 1zd-cuenta-tarda) se siguen cancelando en vuelo. En la
+ *       orden nueva, la unidad y el cliente cancelados en vuelo entran a la
+ *       lista sin elegirse, y junto a su campo se dice; la unidad que entra
+ *       después de cambiar el cliente no va a la lista del nuevo. La corrección
+ *       que no se sabe si entró no recarga la pantalla en una pestaña de otro
+ *       despliegue (sepa la pestaña que lo es o se lo diga el servidor al
+ *       preguntar), sin conexión ni sin sesión: la ventana sigue abierta con lo
+ *       escrito; mientras pregunta lo dice, y a los 3 s se suelta. La que no
+ *       vuelve nunca lo dice a los 15 s, con «Volver a cargar», que no la espera.
  *   En las 1z, las 1za, las 1zb y las 1zc, la línea dicha en otra pantalla llega a la vista.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
@@ -469,7 +477,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   // `lento`: { patron, ms }, los pedidos (no acciones) cuya dirección calza se
   // demoran `ms` antes de salir, como la pantalla de destino con poca señal.
   // `sesion` cuenta los pedidos a /auth/sesion, donde la pantalla refresca la
-  // sesión antes de una acción.
+  // sesión antes de una acción. `sinSesion`: la pregunta de si la pantalla
+  // llegaría (/auth/sesion?comprobar) no llega al servidor, como sin conexión.
+  // Con `compilacion` y `despliegue`, la respuesta a esa pregunta dice la
+  // compilación nueva (`x-compilacion`), como la diría el servidor nuevo.
   //
   // `contar`: cuántas acciones salen con eso en el cuerpo (`contadas`); las de
   // la campana también son acciones y no cuentan.
@@ -482,7 +493,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, cortarSubida: null, saltarSubidas: 0, contar: null, contadas: 0 }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, sinSesion: false, preguntasCortadas: 0, cortarSubida: null, saltarSubidas: 0, contar: null, contadas: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -523,6 +534,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
         }
       }
       if (!corte.despliegue || e.responseErrorReason) return responder()
+      if (new URL(e.request.url).pathname === '/auth/sesion') {
+        const conLaNueva = (e.responseHeaders ?? []).map((x) => (x.name.toLowerCase() === 'x-compilacion' && x.value ? { name: x.name, value: 'compilacion-nueva' } : x))
+        return responder({ responseCode: e.responseStatusCode, responseHeaders: conLaNueva })
+      }
       const responseHeaders = [...(e.responseHeaders ?? []).filter((x) => x.name.toLowerCase() !== 'x-nextjs-deployment-id'), { name: 'x-nextjs-deployment-id', value: 'compilacion-nueva' }]
       if (h['next-action']) {
         if (!corte.conservaIds || !corte.compilacion) return responder()
@@ -544,7 +559,13 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
       return responder({ responseCode: e.responseStatusCode, responseHeaders })
     }
     if (e.resourceType === 'Document') corte.documentos++
-    if (new URL(e.request.url).pathname === '/auth/sesion') corte.sesion++
+    if (new URL(e.request.url).pathname === '/auth/sesion') {
+      corte.sesion++
+      if (corte.sinSesion && new URL(e.request.url).searchParams.has('comprobar')) {
+        corte.preguntasCortadas++
+        return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionRefused' }).catch(() => {})
+      }
+    }
     if (corte.lento && !h['next-action'] && corte.lento.patron.test(e.request.url)) {
       corte.demorados++
       await new Promise((listo) => setTimeout(listo, corte.lento.ms))
@@ -6405,6 +6426,411 @@ for (const modo of ['perder', 'romper']) {
   }
 }
 
+// Lo que la corrección que no se sabe si entró mira antes de poner la pantalla
+// al día con la ventana abierta (`sePuedePonerAlDia`): en una pestaña de otro
+// despliegue, el refresco recarga el documento entero y se llevaba la ventana
+// y lo escrito (R34 de realización, quincuagésima cuarta pasada). «vieja»: la
+// acción sale con un id que el servidor no conoce, como tras un despliegue que
+// cambió los ids; no entra y la pestaña ya lo sabe. «nueva»: el despliegue de
+// todos los días (conserva los ids), con la respuesta perdida: la corrección
+// entra y la pestaña no lo sabe hasta que el servidor se lo dice al preguntar.
+// «con»: el servidor contesta la pregunta; «sin»: no llega (sin conexión), y
+// la pantalla tampoco se pone al día (R36). En los cuatro la ventana sigue
+// abierta con lo escrito, sin recargar, y se puede cancelar.
+async function mirarUnRato(pagina, leer, ms = 8000) {
+  const visto = []
+  const t0 = Date.now()
+  while (Date.now() - t0 < ms) {
+    const v = await leer().catch((e) => ({ error: String(e).slice(0, 80) }))
+    visto.push({ ms: Date.now() - t0, ...v })
+    await pagina.waitForTimeout(250)
+  }
+  return visto
+}
+/** Cada cambio de lo visto, con su momento. */
+const cambiosDe = (visto) => {
+  const cambios = []
+  let antes = ''
+  for (const v of visto) {
+    const { ms, ...resto } = v
+    const clave = JSON.stringify(resto)
+    if (clave !== antes) cambios.push(v)
+    antes = clave
+  }
+  return cambios
+}
+for (const despliegue of ['vieja', 'nueva']) {
+  for (const modo of ['con', 'sin']) {
+    const parte = `1zd-correccion-otro-despliegue-${despliegue}-${modo}`
+    if (!corre(parte)) continue
+    const nombre = `QA-ZDO ${despliegue} ${modo} ${sello}`
+    const cuenta = await cuentaDeTesoreria(nombre)
+    const corregido = `${nombre} escrita`
+    const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+    try {
+      await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+      const form = await cuenta.abrirla(pagina)
+      await form.locator('input[name="nombre"]').fill(corregido)
+      await marcarDocumento(pagina)
+      corte.sinSesion = modo === 'sin'
+      corte.despliegue = true
+      if (despliegue === 'nueva') {
+        corte.conservaIds = true
+        corte.perder = cuenta.id
+      }
+      const preguntas = corte.preguntasCortadas
+      await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+      const visto = await mirarUnRato(pagina, async () => ({
+        mismoDocumento: await mismoDocumento(pagina),
+        abierta: await form.count(),
+        escrito: await form.locator('input[name="nombre"]').inputValue({ timeout: 200 }).catch(() => null),
+        aviso: limpio(await laVentana(pagina).locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')).catch(() => '')).slice(0, 70),
+        cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isEnabled({ timeout: 200 }).catch(() => null),
+      }))
+      const enBase = await cuenta.enBase()
+      const arriba = await pagina.locator('[data-pestana-vieja]').getAttribute('data-pestana-vieja').catch(() => null)
+      await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-${parte}.png`) }).catch(() => {})
+      const recargo = visto.find((v) => v.mismoDocumento === false)
+      const final = visto.at(-1)
+      const resumen = JSON.stringify(cambiosDe(visto)).slice(0, 600)
+      comprobar(!recargo && final.abierta === 1 && final.escrito === corregido && final.aviso.length > 0 && final.cancelar === true,
+        `[Tesorería 1280] ${parte}. la corrección no recarga la pantalla: la ventana sigue abierta con lo escrito, dice el aviso y se puede cancelar (${resumen})`)
+      if (despliegue === 'vieja') {
+        comprobar(final.aviso.includes(SE_ACTUALIZO) && enBase === nombre && arriba === 'vieja',
+          `[Tesorería 1280] ${parte}. la acción que el servidor ya no conoce no entra, y lo dicen la ventana y el aviso de arriba («${final.aviso}», en la base «${enBase}», arriba ${arriba})`)
+      } else {
+        // Con la pregunta contestada, la pestaña sabe que es de otro despliegue y lo dice arriba.
+        // Si la campana ya lo supo antes, no hace falta preguntar: también vale.
+        comprobar(enBase === corregido && (modo === 'con' ? arriba === 'nueva' : corte.preguntasCortadas > preguntas || arriba === 'nueva'),
+          `[Tesorería 1280] ${parte}. la corrección entró, y ${modo === 'con' ? 'arriba se dice que hay una versión nueva' : 'la pregunta no llegó al servidor'} (en la base «${enBase}», arriba ${arriba}, preguntas cortadas ${corte.preguntasCortadas - preguntas})`)
+      }
+      comprobar(errores.length === 0, `[Tesorería 1280] ${parte}. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    } finally {
+      corte.despliegue = false
+      corte.conservaIds = false
+      corte.perder = null
+      corte.sinSesion = false
+      await contexto.close()
+    }
+  }
+}
+
+// En línea, sin ventana: la nota del paso de la ficha de taller, desde una
+// pestaña de antes del despliegue (Administración). No entra, y la nota
+// escrita sigue en su campo, sin recargar.
+if (corre('1zd-nota-otro-despliegue')) {
+  const [orden] = await consulta(`select id from ordenes_trabajo where estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by numero limit 1`)
+  let paso
+  await comoLaCuenta(CUENTAS.administracion, async () => {
+    paso = (await base.query(`insert into ot_verificaciones (orden_id, numero, descripcion, observaciones)
+      select $1, coalesce((select max(numero) from ot_verificaciones where orden_id = $1), 0) + 1,
+             'QA-ZDO paso ' || $2 || ', no es real', 'QA-ZDO nota de antes'
+      returning id, descripcion`, [orden.id, sello])).rows[0]
+  })
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=ficha`)
+    const fila = pagina.locator('tr').filter({ hasText: paso.descripcion }).first()
+    await fila.getByRole('button', { name: /^(Anotar|Editar) observación$/ }).click({ timeout: 30000 })
+    const campo = fila.locator('input[name="observaciones"]')
+    await campo.waitFor({ timeout: 10000 })
+    const escrita = `QA-ZDO nota larga escrita a mano ${sello}`
+    await campo.fill(escrita)
+    await marcarDocumento(pagina)
+    corte.despliegue = true
+    await fila.getByRole('button', { name: 'Guardar nota' }).click()
+    const visto = await mirarUnRato(pagina, async () => ({
+      mismoDocumento: await mismoDocumento(pagina),
+      escrito: await campo.inputValue({ timeout: 200 }).catch(() => null),
+      aviso: limpio(await fila.locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')).catch(() => '')).slice(0, 70),
+    }))
+    const [{ observaciones }] = await consulta(`select observaciones from ot_verificaciones where id = $1`, [paso.id])
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-nota-otro-despliegue.png') }).catch(() => {})
+    const recargo = visto.find((v) => v.mismoDocumento === false)
+    const final = visto.at(-1)
+    comprobar(!recargo && final.escrito === escrita && final.aviso.includes(SE_ACTUALIZO) && observaciones === 'QA-ZDO nota de antes',
+      `[Administración 1280] 1zd-nota-otro-despliegue. la nota que no entró no recarga la pantalla, sigue escrita y dice por qué (${JSON.stringify(cambiosDe(visto)).slice(0, 400)}, en la base «${observaciones}»)`)
+    comprobar(errores.length === 0, `[Administración 1280] 1zd-nota-otro-despliegue. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.despliegue = false
+    await contexto.close()
+  }
+}
+
+/**
+ * La sesión muere con la pantalla abierta: la cookie sigue diciendo la misma
+ * cuenta, pero el token venció y el de refresco no vale, como tras un refresco
+ * revocado o vencido.
+ */
+async function matarLaSesion(contexto) {
+  const partes = (await contexto.cookies()).filter((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name)).sort((a, b) => a.name.localeCompare(b.name))
+  if (partes.length === 0) throw new Error('No hay cookie de sesión')
+  let texto = decodeURIComponent(partes.map((c) => c.value).join(''))
+  if (texto.startsWith('base64-')) texto = Buffer.from(texto.slice(7), 'base64url').toString('utf8')
+  const sesion = JSON.parse(texto)
+  const ahora = Math.floor(Date.now() / 1000)
+  const [cabeza, carga] = sesion.access_token.split('.')
+  const vencida = { ...JSON.parse(Buffer.from(carga, 'base64url').toString('utf8')), exp: ahora - 60 }
+  sesion.access_token = `${cabeza}.${Buffer.from(JSON.stringify(vencida)).toString('base64url')}.firma-que-no-vale`
+  sesion.refresh_token = 'refresco-que-no-vale'
+  sesion.expires_at = ahora - 60
+  const nombre = partes[0].name.replace(/\.\d+$/, '')
+  await contexto.addCookies([
+    { ...partes[0], name: nombre, value: `base64-${Buffer.from(JSON.stringify(sesion)).toString('base64url')}` },
+    ...partes.filter((c) => c.name !== nombre).map((c) => ({ ...c, value: '', expires: ahora - 10 })),
+  ])
+}
+
+// La corrección con la sesión ya muerta: la acción no entra y, sin sesión, la
+// pantalla no se pone al día con la ventana abierta. El refresco iba a
+// /ingresar y se llevaba la ventana y lo escrito, sin decir nada (F1 de la
+// crítica, quincuagésima cuarta pasada). Tesorería.
+if (corre('1zd-correccion-sin-sesion')) {
+  const nombre = `QA-ZDS ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const escrito = `${nombre} corregida a mano`
+  const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(escrito)
+    await marcarDocumento(pagina)
+    await matarLaSesion(contexto)
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const visto = await mirarUnRato(pagina, async () => ({
+      direccion: new URL(pagina.url()).pathname,
+      mismoDocumento: await mismoDocumento(pagina),
+      abierta: await form.count(),
+      escrito: await form.locator('input[name="nombre"]').inputValue({ timeout: 200 }).catch(() => null),
+      aviso: limpio(await laVentana(pagina).locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')).catch(() => '')).slice(0, 90),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isEnabled({ timeout: 200 }).catch(() => null),
+    }), 10000)
+    const enBase = await cuenta.enBase()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-correccion-sin-sesion.png') }).catch(() => {})
+    const final = visto.at(-1)
+    const fuera = visto.find((v) => v.direccion !== '/tesoreria/caja-diaria' || v.mismoDocumento === false)
+    comprobar(!fuera && final.abierta === 1 && final.escrito === escrito && final.aviso.length > 0 && final.cancelar === true && enBase === nombre,
+      `[Tesorería 1280] 1zd-correccion-sin-sesion. sin sesión, la corrección no se lleva la pantalla a /ingresar: la ventana sigue abierta con lo escrito y el aviso, y se puede cancelar (${JSON.stringify(cambiosDe(visto)).slice(0, 600)}, en la base «${enBase}»)`)
+    // Lo que se ve es del navegador: la sesión que el banco dejó sin valer.
+    // explicarFallo anota en la consola lo que lanzó la acción: sin sesión, la
+    // redirección a /ingresar le llega a Next como «An unexpected response…».
+    const propios = errores.filter((e) => !/refresco-que-no-vale|Invalid Refresh Token|AuthApiError|JWT|401|An unexpected response was received from the server/i.test(e))
+    comprobar(propios.length === 0, `[Tesorería 1280] 1zd-correccion-sin-sesion. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } finally {
+    await contexto.close()
+  }
+}
+
+// Mientras se pregunta si la pantalla llegaría, la ventana lo dice: el aviso
+// rojo con el botón girando y sin X parecía colgado (H4 de funcionalidad,
+// quincuagésima cuarta pasada). La pregunta no espera más de 3 s: sin
+// respuesta, la ventana se suelta y se pone al día al cerrarla. Tesorería.
+if (corre('1zd-correccion-pregunta-lenta')) {
+  const nombre = `QA-ZDP ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const corregido = `${nombre} corregida`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(corregido)
+    await marcarDocumento(pagina)
+    corte.lento = { patron: /\/auth\/sesion\?comprobar/, ms: 6000 }
+    corte.perder = cuenta.id
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const pregunta = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('Comprobando si el servidor contesta'), 15000)
+    const t0 = Date.now()
+    const mientras = {
+      aviso: limpio(await laVentana(pagina).locator('[role="alert"]').allInnerTexts().then((t) => t.join(' ')).catch(() => '')).slice(0, 70),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 300 }).catch(() => null),
+      x: await laVentana(pagina).getByRole('button', { name: 'Cerrar' }).first().isDisabled({ timeout: 300 }).catch(() => null),
+    }
+    const suelta = await hasta(() => form.getByRole('button', { name: 'Cancelar', exact: true }).isEnabled({ timeout: 300 }).catch(() => false), Boolean, 8000)
+    const ms = Date.now() - t0
+    const despues = { suelta, ms, dice: await loQueDiceLaVentana(pagina), escrito: await form.locator('input[name="nombre"]').inputValue().catch(() => null), mismoDocumento: await mismoDocumento(pagina) }
+    const enBase = await cuenta.enBase()
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-correccion-pregunta-lenta.png') }).catch(() => {})
+    comprobar(pregunta === 'Comprobando si el servidor contesta…' && mientras.aviso.length > 0 && mientras.cancelar === true && mientras.x === true,
+      `[Tesorería 1280] 1zd-correccion-pregunta-lenta. tras el aviso, mientras pregunta, la ventana dice que lo comprueba y sigue trabada («${pregunta}», ${JSON.stringify(mientras)})`)
+    comprobar(despues.suelta && despues.ms < 4500 && !despues.dice.includes('Comprobando') && despues.escrito === corregido && despues.mismoDocumento && enBase === corregido,
+      `[Tesorería 1280] 1zd-correccion-pregunta-lenta. sin respuesta, a los 3 s se suelta con lo escrito y sin recargar (${JSON.stringify(despues)}, en la base «${enBase}»)`)
+    comprobar(errores.length === 0, `[Tesorería 1280] 1zd-correccion-pregunta-lenta. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    corte.perder = null
+    await contexto.close()
+  }
+}
+
+// La corrección cuya acción no vuelve nunca: la ventana trabada no tenía otra
+// salida que Atrás o F5, y no decía nada (F2 de la crítica, quincuagésima
+// cuarta pasada). Antes de los 15 s, nada más que el botón que gira; a los 15
+// s lo dice, a la vista, y «Volver a cargar» recarga sin esperarla. Tesorería.
+if (corre('1zd-correccion-colgada')) {
+  const nombre = `QA-ZDC ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(`${nombre} corregida`)
+    const retenidas = corte.retenidas
+    corte.marca = cuenta.id
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const t0 = Date.now()
+    await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)
+    await pagina.waitForTimeout(Math.max(0, 5000 - (Date.now() - t0)))
+    const antes = { dice: await loQueDiceLaVentana(pagina), boton: await laVentana(pagina).getByRole('button', { name: 'Volver a cargar', exact: true }).count() }
+    const dice = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('Todavía no llega la respuesta del servidor'), 20000)
+    const ms = Date.now() - t0
+    const ventana = laVentana(pagina)
+    const visto = {
+      ms,
+      abierta: await form.count(),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 300 }).catch(() => null),
+      x: await ventana.getByRole('button', { name: 'Cerrar' }).first().isDisabled({ timeout: 300 }).catch(() => null),
+      boton: await ventana.getByRole('button', { name: 'Volver a cargar', exact: true }).isVisible().catch(() => false),
+      aLaVista: await ventana.locator('[role="status"]', { hasText: 'Todavía no llega' }).evaluate((e) => {
+        const r = e.getBoundingClientRect()
+        return r.top >= 0 && r.bottom <= window.innerHeight
+      }).catch(() => null),
+    }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-correccion-colgada.png') }).catch(() => {})
+    comprobar(antes.dice === '' && antes.boton === 0,
+      `[Tesorería 1280] 1zd-correccion-colgada. a los 5 s, sin respuesta, la ventana todavía no dice nada: el botón que gira basta (${JSON.stringify(antes)})`)
+    comprobar(dice === 'Todavía no llega la respuesta del servidor. Si sigue así, vuelve a cargar y después mira si quedó guardado antes de enviarlo otra vez.' && ms >= 14000 && visto.abierta === 1 && visto.cancelar === true && visto.x === true && visto.boton && visto.aLaVista,
+      `[Tesorería 1280] 1zd-correccion-colgada. a los 15 s dice que no llega la respuesta, a la vista, con «Volver a cargar», y la ventana sigue trabada («${dice}», ${JSON.stringify(visto)})`)
+    await marcarDocumento(pagina)
+    await ventana.getByRole('button', { name: 'Volver a cargar', exact: true }).click()
+    const recargo = await hasta(() => mismoDocumento(pagina), (m) => !m, 15000).then((m) => !m)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const trasRecargar = { recargo, ventanas: await pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), direccion: new URL(pagina.url()).pathname }
+    comprobar(recargo && trasRecargar.ventanas === 0 && trasRecargar.direccion === '/tesoreria/caja-diaria',
+      `[Tesorería 1280] 1zd-correccion-colgada. «Volver a cargar» recarga sin esperar la acción que no vuelve (${JSON.stringify(trasRecargar)})`)
+    comprobar(errores.length === 0, `[Tesorería 1280] 1zd-correccion-colgada. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.soltar()
+    await contexto.close()
+  }
+}
+
+// En la orden nueva, lo que se dio de alta en su ventana y se canceló en vuelo
+// entra igual, pero no elige nada: la unidad cancelada reemplazaba la que la
+// persona había elegido entretanto, y la orden —un documento numerado— salía
+// con ella (F3 de la crítica, quincuagésima cuarta pasada). Junto al campo se
+// dice que quedó registrada; en la lista está, sin elegir. Lo mismo con el
+// cliente nuevo, que además borraba la unidad elegida. Y la unidad que entra
+// después de cambiar el cliente es del de antes: no va en la lista del nuevo.
+// Administración.
+if (corre('1zd-altas-cancelan-orden-nueva')) {
+  const clientes = await consulta(`with c as (select id, razon_social from clientes where activo order by razon_social, id limit 500)
+                                   select c.id, c.razon_social, min(u.placa) placa from c
+                                     join unidades u on u.cliente_id = c.id and u.activo and nullif(btrim(u.placa), '') is not null
+                                    group by c.id, c.razon_social order by c.razon_social limit 2`)
+  const [{ n: ruc }] = await consulta(`select n from (select '208' || lpad($1::text, 7, '0') || d as n from generate_series(0, 9) d) x
+                                       where public.ruc_es_valido(n) and not exists (select 1 from clientes c where c.numero_documento = x.n) limit 1`, [sello])
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  const elegirEn = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first().click()
+  }
+  /** Si `texto` está entre las opciones del campo: se abre, se busca y se cierra sin elegir. */
+  const enLaLista = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    const n = await pagina.getByRole('option', { name: new RegExp(texto) }).count()
+    await pagina.keyboard.press('Escape')
+    return n
+  }
+  // SeleccionBuscable lleva el valor en un <select> de verdad, transparente.
+  const valor = (campo) => pagina.locator(`select[name="${campo}"]`).inputValue({ timeout: 3000 }).catch(() => null)
+  const aparte = () => pagina.locator('[data-registrado-aparte]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+  const altaRetenida = async (abrir, llenar, enviar, marca) => {
+    await pagina.getByRole('button', { name: abrir, exact: true }).click()
+    const v = laVentana(pagina)
+    await v.waitFor({ timeout: 10000 })
+    await llenar(v)
+    const retenidas = corte.retenidas
+    corte.marca = marca
+    await v.getByRole('button', { name: enviar, exact: true }).click()
+    const retenida = (await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)) > retenidas
+    const cancelar = v.getByRole('button', { name: 'Cancelar', exact: true })
+    const cancela = await cancelar.isEnabled({ timeout: 1000 }).catch(() => false)
+    await cancelar.click({ timeout: 3000 }).catch(() => {})
+    const cerrada = (await hasta(() => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), (n) => n === 0, 5000)) === 0
+    return { retenida, cancela, cerrada }
+  }
+  const llenarUnidad = (placa) => async (v) => {
+    await v.locator('#nu-marca').fill('QA')
+    await v.locator('#nu-modelo').fill(`ZDU ${sello}`)
+    await v.locator('#nu-anio').fill('2020')
+    await v.locator('#nu-placa').fill(placa)
+  }
+  const unidadCon = (placa) => consulta(`select id, cliente_id from unidades where replace(placa, '-', '') = $1`, [placa]).then((f) => f[0] ?? null)
+  try {
+    if (clientes.length < 2 || !ruc) throw new Error('Faltan dos clientes con unidades, o un RUC libre')
+    const [A, B] = clientes
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await marcarDocumento(pagina)
+    await elegirEn('cliente_id', A.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const clienteA = await valor('cliente_id')
+
+    // 1. La unidad: se cancela en vuelo, la persona elige la que ya existía y después entra el alta.
+    const placa1 = `ZU${sello.slice(-4)}`
+    const enVuelo1 = await altaRetenida('Nueva unidad', llenarUnidad(placa1), 'Registrar unidad', placa1)
+    await elegirEn('unidad_id', A.placa)
+    const elegida = await valor('unidad_id')
+    corte.soltar()
+    const creada1 = await hasta(() => unidadCon(placa1), Boolean, 20000)
+    const dice1 = await hasta(aparte, (t) => t.includes(placa1), 5000)
+    const tras1 = { unidad: await valor('unidad_id'), elegida, enLista: await enLaLista('unidad_id', placa1), dice: dice1 }
+    comprobar(enVuelo1.retenida && enVuelo1.cancela && enVuelo1.cerrada && Boolean(creada1) && Boolean(elegida) && tras1.unidad === elegida && tras1.enLista === 1
+      && dice1 === `La unidad ${placa1} quedó registrada aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
+      `[Administración 1280] 1zd-altas-cancelan-orden-nueva. la unidad cancelada en vuelo entra a la lista sin pisar la elegida, y junto al campo se dice (${JSON.stringify({ enVuelo1, ...tras1 })})`)
+    await pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
+
+    // 2. El cliente: se cancela en vuelo y entra después; el cliente y la unidad elegidos se quedan.
+    const razon = `QA-ZDU CLIENTE ${sello} S.A.C.`
+    const enVuelo2 = await altaRetenida('Nuevo cliente', async (v) => {
+      await v.locator('#nc-tipo').selectOption('RUC')
+      await v.locator('#nc-numero').fill(ruc)
+      await v.locator('#nc-razon').fill(razon)
+    }, 'Registrar cliente', razon)
+    corte.soltar()
+    const creado2 = await hasta(() => consulta(`select id from clientes where numero_documento = $1`, [ruc]).then((f) => f[0] ?? null), Boolean, 20000)
+    const dice2 = await hasta(aparte, (t) => t.includes(razon), 5000)
+    const tras2 = { cliente: await valor('cliente_id'), unidad: await valor('unidad_id'), enLista: await enLaLista('cliente_id', `QA-ZDU CLIENTE ${sello}`), dice: dice2 }
+    comprobar(enVuelo2.retenida && enVuelo2.cancela && enVuelo2.cerrada && Boolean(creado2) && tras2.cliente === clienteA && tras2.unidad === elegida && tras2.enLista === 1
+      && dice2 === `El cliente ${razon} quedó registrado aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
+      `[Administración 1280] 1zd-altas-cancelan-orden-nueva. el cliente cancelado en vuelo entra a la lista sin cambiar el cliente ni la unidad elegidos (${JSON.stringify({ enVuelo2, ...tras2 })})`)
+
+    // 3. La unidad que entra después de cambiar el cliente: es del de antes.
+    const placa3 = `ZW${sello.slice(-4)}`
+    const enVuelo3 = await altaRetenida('Nueva unidad', llenarUnidad(placa3), 'Registrar unidad', placa3)
+    await elegirEn('cliente_id', B.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    corte.soltar()
+    const creada3 = await hasta(() => unidadCon(placa3), Boolean, 20000)
+    const dice3 = await hasta(aparte, (t) => t.includes(placa3), 5000)
+    await pagina.waitForTimeout(500)
+    const tras3 = { cliente: await valor('cliente_id'), unidad: await valor('unidad_id'), enLista: await enLaLista('unidad_id', placa3), conLasDeB: await enLaLista('unidad_id', B.placa), dice: dice3 }
+    comprobar(enVuelo3.retenida && enVuelo3.cancela && creada3?.cliente_id === clienteA && tras3.cliente !== clienteA && tras3.unidad === '' && tras3.enLista === 0 && tras3.conLasDeB >= 1
+      && dice3 === `La unidad ${placa3} quedó registrada en ${A.razon_social} aunque cerraste su ventana antes de que contestara.`,
+      `[Administración 1280] 1zd-altas-cancelan-orden-nueva. la unidad del cliente de antes no entra a la lista del nuevo ni se elige, y se dice de quién quedó (${JSON.stringify({ enVuelo3, ...tras3 })})`)
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-altas-cancelan-orden-nueva.png') })
+    comprobar((await mismoDocumento(pagina)) && errores.length === 0, `[Administración 1280] 1zd-altas-cancelan-orden-nueva. sin recargar y sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-altas-cancelan-orden-nueva. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.soltar()
+    await contexto.close()
+  }
+}
+
 // En línea, mientras una nota de verificación se guarda, las demás no se abren
 // y la suya no se cierra: abrir otra desmontaba la que iba en camino, y vuelta
 // a abrir traía la nota de antes; guardarla así deshacía la corrección (H2 de
@@ -6464,13 +6890,23 @@ if (corre('1zd-nota-otra')) {
 }
 
 // Una orden con etapas libres para corregir: las dos QA-ZDE se siembran con la
-// función de la base y el rol de Diseño. No es la primera ni la última orden
-// (las del cronograma), y solo tiene etapas del banco.
+// función de la base y el rol de Diseño. No es la del cronograma (sin
+// cotización: la elige `ordenParaElCronograma`), solo tiene etapas del banco y
+// Administración ve su pestaña Etapas: la de una cotización con código de
+// unidad que no es PLANTA no la tiene (`acceso-orden.ts`, el criterio de
+// `avance_de_ordenes`). Elegida por posición, en otra base tocaba una así y la
+// parte se colgaba y cortaba la corrida (R35 de realización, quincuagésima
+// cuarta pasada).
 async function ordenConEtapasDelBanco() {
   const [orden] = await consulta(`select o.id from ordenes_trabajo o
                                    where o.plan_etapas_manual and o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA')
+                                     and not (o.cotizacion_pdf_id is not null
+                                              and exists (select 1 from unidades u where u.id = o.unidad_id
+                                                            and nullif(btrim(u.codigo_interno), '') is not null and upper(btrim(u.codigo_interno)) <> 'PLANTA'))
+                                     and o.id <> (select c.id from ordenes_trabajo c where c.cotizacion_pdf_id is null
+                                                    and c.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA', 'BORRADOR') order by c.numero limit 1)
                                      and not exists (select 1 from ot_etapas e where e.orden_id = o.id and e.nombre not like 'QA-ZDE%')
-                                   order by o.numero limit 1 offset 1`)
+                                   order by o.numero limit 1`)
   const a = randomUUID()
   const b = randomUUID()
   const nombreA = `QA-ZDE A ${sello}`
@@ -6580,8 +7016,9 @@ if (corre('1zd-programacion-otra')) {
 
 // Las altas que comparten formulario con su corrección (`corrige` según el
 // caso) se siguen cancelando en vuelo: el material nuevo del catálogo (Diseño)
-// y el subcontratista nuevo (Administración). La unidad nueva lo prueba
-// 1t-motivo-arriba. Con «Cancelar» apagado en vuelo, la suite entera lo encontró.
+// y el subcontratista nuevo (Administración). La unidad nueva, en la orden
+// nueva, la prueba 1zd-altas-cancelan-orden-nueva, que mira también qué hace
+// lo que entra después. Con «Cancelar» apagado en vuelo, la suite entera lo encontró.
 if (corre('1zd-altas-cancelan')) {
   const casos = [
     {

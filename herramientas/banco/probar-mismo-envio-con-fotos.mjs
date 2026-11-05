@@ -327,7 +327,9 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await enviar.click()
   const dijo4 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes('ya estaba registrado')))
   const [fila4] = await consulta(`select count(*)::int as n from ot_gastos_areas where descripcion = $1`, [desc4])
-  comprobar(dijo4.includes(`El gasto ${id4} ya estaba registrado`) && fila4.n === 1, `[Logística] el mismo envío repetido se da por registrado una vez («${dijo4}»)`)
+  // Lo nombra por lo que la persona escribió, no por su id.
+  comprobar(dijo4.includes(`El gasto «${desc4}» por`) && dijo4.includes('ya estaba registrado') && !dijo4.includes(id4) && fila4.n === 1,
+    `[Logística] el mismo envío repetido se da por registrado una vez, nombrado por su descripción («${dijo4}»)`)
 
   // Otro PDF con el mismo nombre, y todo lo demás igual: no es el mismo envío.
   const id5 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id4, 15000)

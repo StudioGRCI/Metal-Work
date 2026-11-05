@@ -7,7 +7,7 @@ import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
 
 /**
  * Alta de cliente sin salir del formulario.
@@ -20,7 +20,8 @@ import { useEnvio } from '@/lib/envio'
 export function NuevoCliente({
   onCreado,
 }: {
-  onCreado?: (cliente: { id: string; razon_social: string; numero_documento: string }) => void
+  /** `elegir`: la ventana seguía abierta al entrar (como en `NuevaUnidad`). */
+  onCreado?: (cliente: { id: string; razon_social: string; numero_documento: string }, como: { elegir: boolean }) => void
 }) {
   const [abierto, setAbierto] = useState(false)
   // Hay que avisar a quien abrió la ventana en cuanto el cliente existe, sin
@@ -28,8 +29,8 @@ export function NuevoCliente({
   // el botón de registrar: no hay segundo envío posible.
   const { alEnviar, enviando, resultado, limpiar } = useEnvio(
     crearClienteRapido,
-    (r) => {
-      if (r.datos) onCreado?.(r.datos)
+    (r, desde) => {
+      if (r.datos) onCreado?.(r.datos, { elegir: suVentanaSigueAbierta(desde) })
     },
     { refrescar: !onCreado },
   )

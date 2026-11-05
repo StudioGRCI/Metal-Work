@@ -1,5 +1,6 @@
 'use client'
 
+import { X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -77,8 +78,20 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     clienteId: string
     unidades: { id: string; placa: string | null; marca: string | null }[]
   } | null>(null)
-  // Lo dado de alta sin salir de acá se suma a las listas y queda elegido.
+  // Lo dado de alta sin salir de acá se suma a las listas y queda elegido. Si la
+  // persona cerró su ventana antes de que contestara, solo se suma, y junto a su
+  // campo se dice que entró igual: la unidad cancelada en vuelo reemplazaba la
+  // que la persona había elegido entretanto, y la orden —un documento numerado—
+  // podía salir con ella (F3 de la crítica, quincuagésima cuarta pasada).
   const [clientesNuevos, setClientesNuevos] = useState<Catalogos['clientes']>([])
+  const [aparte, setAparte] = useState<Partial<Record<'cliente' | 'unidad' | 'carroceria', string>>>({})
+  const quitarAparte = (campo: keyof typeof aparte) => setAparte(({ [campo]: _, ...resto }) => resto)
+  // El cliente elegido ahora. `NuevaUnidad` va con el de su ventana (`key`): la
+  // que se cerró en vuelo y entra después de cambiar el cliente es del de antes.
+  const clienteAhora = useRef(clienteId)
+  useEffect(() => {
+    clienteAhora.current = clienteId
+  }, [clienteId])
   const [carroceriasNuevas, setCarroceriasNuevas] = useState<Catalogos['tiposCarroceria']>([])
   // Tras una acción de servidor Next refresca la página y el catálogo ya trae
   // lo recién creado: se filtra para no listarlo dos veces.
@@ -117,32 +130,56 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // nuevo cliente está en vuelo no se muestran las unidades del anterior.
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
 
-  function clienteCreado(c: Catalogos['clientes'][number]) {
+  function clienteCreado(c: Catalogos['clientes'][number], { elegir }: { elegir: boolean }) {
     setClientesNuevos((lista) => (lista.some((x) => x.id === c.id) ? lista : [c, ...lista]))
+    if (!elegir) {
+      setAparte((a) => ({ ...a, cliente: `El cliente ${c.razon_social} quedó registrado aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
+      return
+    }
     setClienteId(c.id)
     setUnidadId('')
+    setAparte(({ cliente: _, unidad: __, ...resto }) => resto)
   }
 
-  function unidadCreada(u: {
-    id: string
-    placa: string | null
-    codigo_interno?: string | null
-    numero_chasis?: string | null
-    marca?: string | null
-    modelo?: string | null
-  }) {
+  function unidadCreada(
+    u: {
+      id: string
+      placa: string | null
+      codigo_interno?: string | null
+      numero_chasis?: string | null
+      marca?: string | null
+      modelo?: string | null
+    },
+    { elegir }: { elegir: boolean },
+  ) {
+    const nombre = nombreDeUnidad(u)
+    if (clienteAhora.current !== clienteId) {
+      const de = clienteElegido?.razon_social ?? 'el cliente que tenías elegido'
+      setAparte((a) => ({ ...a, unidad: `La unidad ${nombre} quedó registrada en ${de} aunque cerraste su ventana antes de que contestara.` }))
+      return
+    }
     const fila = { ...u, marca: null }
     setCargadas((previas) =>
       previas?.clienteId === clienteId
         ? { clienteId, unidades: [fila, ...previas.unidades.filter((x) => x.id !== u.id)] }
         : { clienteId, unidades: [fila] },
     )
+    if (!elegir) {
+      setAparte((a) => ({ ...a, unidad: `La unidad ${nombre} quedó registrada aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
+      return
+    }
     setUnidadId(u.id)
+    quitarAparte('unidad')
   }
 
-  function carroceriaCreada(t: { id: string; nombre: string }) {
+  function carroceriaCreada(t: { id: string; nombre: string }, { elegir }: { elegir: boolean }) {
     setCarroceriasNuevas((lista) => (lista.some((x) => x.id === t.id) ? lista : [t, ...lista]))
+    if (!elegir) {
+      setAparte((a) => ({ ...a, carroceria: `La carrocería ${t.nombre} quedó registrada aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
+      return
+    }
     setCarroceriaId(t.id)
+    quitarAparte('carroceria')
   }
 
   async function elegirArchivo(elegido: File | undefined) {
@@ -281,6 +318,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   onChange={(v) => {
                     setClienteId(v)
                     setUnidadId('')
+                    setAparte(({ cliente: _, unidad: __, ...resto }) => resto)
                   }}
                   marcador="Elige el cliente"
                   marcadorBusqueda="Razón social o RUC"
@@ -292,6 +330,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                 />
                 <NuevoCliente onCreado={clienteCreado} />
               </div>
+              <RegistradoAparte dice={aparte.cliente} alQuitar={() => quitarAparte('cliente')} />
             </Campo>
 
             <Campo
@@ -313,7 +352,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   deshabilitado={!clienteId}
                   className="flex-1"
                   valor={unidadId}
-                  onChange={setUnidadId}
+                  onChange={(v) => {
+                    setUnidadId(v)
+                    quitarAparte('unidad')
+                  }}
                   marcador="Sin unidad asignada"
                   marcadorBusqueda="Placa o marca"
                   opciones={unidades.map((u) => ({
@@ -331,6 +373,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   />
                 )}
               </div>
+              <RegistradoAparte dice={aparte.unidad} alQuitar={() => quitarAparte('unidad')} />
             </Campo>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -355,13 +398,17 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   name="tipo_carroceria_id"
                   className="flex-1"
                   valor={carroceriaId}
-                  onChange={setCarroceriaId}
+                  onChange={(v) => {
+                    setCarroceriaId(v)
+                    quitarAparte('carroceria')
+                  }}
                   marcador="Sin especificar"
                   marcadorBusqueda="Tolva, cisterna, furgón…"
                   opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
                 />
                 <NuevaCarroceria onCreada={carroceriaCreada} />
               </div>
+              <RegistradoAparte dice={aparte.carroceria} alQuitar={() => quitarAparte('carroceria')} />
             </Campo>
 
             <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
@@ -544,4 +591,28 @@ function comoQuedaElNumero(escrito: string): string | null {
   if (!cifras) return null
   const anio = m[2] ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
   return `${cifras.padStart(4, '0')}-${anio}`
+}
+
+/**
+ * Lo que se dio de alta en su ventana y entró después de cerrarla: junto a su
+ * campo, sin elegirlo (`aparte`). Siempre montada, como `YaQuedo`: una región
+ * que nace con su texto el lector no la lee.
+ */
+function RegistradoAparte({ dice, alQuitar }: { dice: string | undefined; alQuitar: () => void }) {
+  return (
+    <div
+      role="status"
+      className={dice ? 'flex items-center gap-2 rounded-[var(--radius-base)] bg-info-suave py-1 pr-1 pl-3 text-xs text-texto' : 'sr-only'}
+      data-registrado-aparte={dice ? '' : undefined}
+    >
+      {dice && (
+        <>
+          <p className="min-w-0 flex-1 text-pretty">{dice}</p>
+          <Boton type="button" variante="fantasma" tamano="icono" aria-label="Quitar este aviso" onClick={alQuitar}>
+            <X aria-hidden className="size-4" />
+          </Boton>
+        </>
+      )}
+    </div>
+  )
 }

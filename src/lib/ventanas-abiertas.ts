@@ -66,8 +66,11 @@ export function alCerrarLaVentana(hacer: () => void): boolean {
  * `mirando`: no se sabe si entró («No llegó la respuesta», el 502) y la pantalla
  * se pone al día con la ventana abierta, para que diga si quedó y la ventana
  * vuelta a abrir no traiga lo de antes.
+ * `preguntando`: antes de eso, se pregunta si el servidor contesta (hasta 3 s);
+ * la ventana lo dice, y el botón que gira con el aviso rojo no parece colgado
+ * (H4 de funcionalidad, quincuagésima cuarta pasada).
  */
-export type TrabaDeLaVentana = { trabada: boolean; guardado: boolean; mirando?: boolean }
+export type TrabaDeLaVentana = { trabada: boolean; guardado: boolean; mirando?: boolean; preguntando?: boolean }
 
 const trabas = new Map<object, Set<TrabaDeLaVentana>>()
 const alCambiarLasTrabas = new Set<() => void>()
@@ -97,9 +100,9 @@ export function vigilarLasTrabas(avisar: () => void) {
   return () => void alCambiarLasTrabas.delete(avisar)
 }
 
-/** Cómo está trabada esa ventana: un número para que `useSyncExternalStore` lo compare (2, trabada; 1, guardado; 4, mirando). */
+/** Cómo está trabada esa ventana: un número para que `useSyncExternalStore` lo compare (2, trabada; 1, guardado; 4, mirando; 8, preguntando). */
 export function trabaDe(marca: object): number {
   let traba = 0
-  for (const t of trabas.get(marca) ?? []) traba |= (t.trabada ? 2 : 0) | (t.guardado ? 1 : 0) | (t.mirando ? 4 : 0)
+  for (const t of trabas.get(marca) ?? []) traba |= (t.trabada ? 2 : 0) | (t.guardado ? 1 : 0) | (t.mirando ? 4 : 0) | (t.preguntando ? 8 : 0)
   return traba
 }
