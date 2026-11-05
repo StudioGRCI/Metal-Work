@@ -5,7 +5,7 @@ import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
-import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, trabarLaVentana, vecesQueSeCerro, type TrabaDeLaVentana } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, laRecargaSeLlevoLaVentana, trabarLaVentana, vecesQueSeCerro, type TrabaDeLaVentana } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -559,7 +559,7 @@ export function decirElRechazoSiSeFue(
   { de, arriba, documento }: { de?: DeFormulario; arriba?: string; documento?: string } = {},
 ) {
   if (!seFueDelFormulario(desde, de)) return
-  const enDuda = pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
+  const enDuda = quedoEnDuda(motivo)
   if (!arriba && !enDuda && de && idaQueNoSalio && aMediasAlSalir.get(de) === idaQueNoSalio) return
   if (arriba) return ponerIdaQueNoSalio({ dice: arriba, enlace, url: desde.direccion, rechazo: true, de, tono: 'aviso', documento })
   // «No se guardó: en otra pestaña…» ya lo dice la frase de delante.
@@ -596,6 +596,26 @@ export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: S
     desde: desde.direccion,
     tono: 'info',
     rechazo: ida ? undefined : true,
+  })
+}
+
+/**
+ * Si al nacer la pantalla la recarga del documento se había llevado una
+ * ventana que se ponía al día sin saber si lo suyo entró
+ * (`laRecargaSeLlevoLaVentana`), lo dice arriba, en el tono de lo que quedó a
+ * medias y con el camino de vuelta a su pantalla. Se queda hasta quitarla: lo
+ * que la persona tiene que hacer es mirar, y ningún envío lo resuelve solo.
+ */
+export function decirLoQueSeLlevoLaRecarga() {
+  const recarga = laRecargaSeLlevoLaVentana()
+  if (!recarga) return
+  const ventana = recarga.titulo ? `la ventana «${recarga.titulo}»` : 'la ventana que tenías abierta'
+  ponerIdaQueNoSalio({
+    dice: `La pantalla se volvió a cargar entera mientras se ponía al día, y se cerró ${ventana} con lo que habías escrito. No se sabe si se guardó: mira si quedó antes de escribirlo otra vez.`,
+    enlace: 'Volver a esa pantalla',
+    url: recarga.ruta,
+    rechazo: true,
+    tono: 'aviso',
   })
 }
 
@@ -713,6 +733,9 @@ export const motivoDelFallo = (e: unknown, motivo: string) => (esDeLaVersionAnte
 export const FALLO_DEL_SERVIDOR =
   'El servidor no pudo completar el envío. Mira si quedó guardado; si se repite, vuelve a cargar la pantalla o avisa al administrador.'
 
+/** El rechazo no dice si lo enviado entró: sin respuesta, o con el servidor caído a medio envío. */
+export const quedoEnDuda = (motivo: string) => pudoHaberEntrado(motivo) || motivo === FALLO_DEL_SERVIDOR
+
 /**
  * Qué decir cuando la llamada a una acción de servidor lanza en vez de
  * devolver su resultado. Sin esto la excepción llegaba al límite de error: la
@@ -814,8 +837,11 @@ type Opciones = {
  *   el documento entero. La pestaña que ya lo sabía ni pregunta (R34 de
  *   realización); la que no, lo anota y lo dice arriba.
  *
- * Que la página falle justo después de que el servidor contestó (un 500, otro
- * corte) recarga igual: son dos fallos seguidos, y no se cubre.
+ * Que el servidor conteste no quiere decir que la página llegue: si falla justo
+ * después (un 502 de la misma función, otro corte), Next recarga igual. Eso no
+ * se puede preguntar antes; la pestaña lo anota mientras se pone al día y la
+ * pantalla que nace de la recarga lo dice arriba (`anotarLaPuestaAlDia`, G1 de
+ * la crítica, quincuagésima quinta pasada).
  */
 async function sePuedePonerAlDia(): Promise<boolean> {
   if (typeof window === 'undefined' || !navigator.onLine || laPestanaEsDeOtroDespliegue()) return false
@@ -923,11 +949,12 @@ export function useAccion<T = never>(
     // funcionalidad, quincuagésima tercera pasada). Mientras tanto la ventana
     // sigue trabada, sin X ni «Cancelar», y dice que se pone al día; el
     // formulario en línea tiene su «Cancelar» apagado con `enviando`, que dura
-    // hasta la pantalla nueva. Solo si la página llegaría sin recargar el
-    // documento entero (`sePuedePonerAlDia`): sin conexión, sin sesión o en
+    // hasta la pantalla nueva. Solo si no se sabe ya que la página se
+    // recargaría entera (`sePuedePonerAlDia`): sin conexión, sin sesión o en
     // una pestaña de otro despliegue se llevaba el aviso y lo escrito, y se
     // pone al día al cerrar, como antes. Mientras se pregunta, la ventana lo
-    // dice (`preguntando`).
+    // dice (`preguntando`). Si aun así la página no llega, la pantalla que nace
+    // de la recarga lo dice arriba (`anotarLaPuestaAlDia`).
     const suVentana = () => desdeVentana && ventana === vecesQueSeCerro() && hayVentanaAbierta()
     const quizasAlDia = corrige && refrescar && pudoEntrar && !yaEntro && !laPestanaEsDeOtroDespliegue()
     if (quizasAlDia && suVentana()) trabar({ trabada: true, guardado: false, preguntando: true })

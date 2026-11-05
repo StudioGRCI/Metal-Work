@@ -646,15 +646,20 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   del servidor…» con «Volver a cargar», que no lo espera
   (`volverACargarSinEsperarLoQueVa`): con la petición colgada, la ventana
   trabada no tenía otra salida que Atrás o F5 (F2 de la crítica, quincuagésima
-  cuarta pasada). Antes de eso, nada: el botón que gira basta. Cada fase (el
-  envío, la pregunta, la espera) monta la línea de nuevo, con su `key`, y cuenta
-  su tiempo desde cero.
+  cuarta pasada). Como el de los 8 s, pide copiar lo escrito: recargar se lo
+  lleva (H2 de diseño, quincuagésima quinta). Antes de eso, nada: el botón que
+  gira basta. El envío y lo que sigue a su respuesta montan la línea de nuevo,
+  con su `key`, y cuentan su tiempo desde cero; la pregunta y la espera son la
+  misma línea, y se dicen solo si pasan de 400 ms (`SE_DICE_DESDE`): vuelta a
+  montar entre una y otra, o dichas aunque duraran 50 ms, el pie saltaba cinco
+  veces (H3 de diseño). «Guardado» se dice enseguida.
   Tras «No llegó la respuesta» o un 502 de una corrección que pudo entrar, la
   página se pone al día ya, con la ventana abierta y trabada («Poniendo la
   pantalla al día…», la traba `mirando`), y no al cerrarla: cancelada y vuelta a
   abrir antes, traía lo de antes y guardarla deshacía lo que sí entró (H1 de
-  funcionalidad). Solo si la pantalla llegaría (`sePuedePonerAlDia`, que pregunta
-  a `/auth/sesion?comprobar`, 3 s a lo más): sin servidor, Next recarga el
+  funcionalidad). Solo si no se sabe ya que la página se recargaría entera
+  (`sePuedePonerAlDia`, que pregunta a `/auth/sesion?comprobar`, 3 s a lo
+  más): sin servidor, Next recarga el
   documento entero; sin sesión, el refresco va a /ingresar (F1 de la crítica);
   en una pestaña de otro despliegue —ya sabido o porque el servidor contesta
   con otra `x-compilacion`—, recarga el documento entero (R34 de realización).
@@ -662,6 +667,13 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   como antes, y la acción que el servidor ya no conoce, ni al cerrar. Mientras
   pregunta, la ventana dice «Comprobando si el servidor contesta…» (la traba
   `preguntando`): el aviso rojo con el botón girando parecía colgado (H4).
+  Que `/auth/sesion` conteste no dice que la página llegue: con el 502 de la
+  acción y otro de la página, Next recarga igual y se lleva la ventana. La
+  pestaña anota la traba `mirando` (`anotarLaPuestaAlDia`) y la pantalla que
+  nace de esa recarga lo dice arriba, en ámbar: qué ventana se cerró, que no se
+  sabe si se guardó y que se mire antes de escribirlo otra vez (G1 de la
+  crítica, quincuagésima quinta pasada). Lo escrito no vuelve: cada ventana
+  tendría que saber llenar sus campos.
   Un «Cancelar», «No» o «Cerrar» propio, fuera de `PieDeVentana`, va apagado
   mientras se envía **solo si corrige**: el alta con `corrige` según el caso
   (`corrige: Boolean(unidad)`) se sigue cancelando en vuelo

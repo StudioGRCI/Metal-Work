@@ -1,13 +1,13 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
+import { quedoEnDuda, suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
 
 /**
  * Alta de cliente sin salir del formulario.
@@ -19,9 +19,12 @@ import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
  */
 export function NuevoCliente({
   onCreado,
+  alQuedarEnDuda,
 }: {
   /** `elegir`: la ventana seguía abierta al entrar (como en `NuevaUnidad`). */
   onCreado?: (cliente: { id: string; razon_social: string; numero_documento: string }, como: { elegir: boolean }) => void
+  /** El alta volvió sin decir si entró: quien guarda la lista la pone al día (como en `NuevaUnidad`). */
+  alQuedarEnDuda?: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
   // Hay que avisar a quien abrió la ventana en cuanto el cliente existe, sin
@@ -34,6 +37,11 @@ export function NuevoCliente({
     },
     { refrescar: !onCreado },
   )
+  const error = resultado && !resultado.ok ? resultado.error : null
+  const avisarLaDuda = useEffectEvent(() => alQuedarEnDuda?.())
+  useEffect(() => {
+    if (error && quedoEnDuda(error)) avisarLaDuda()
+  }, [error])
 
   function abrir() {
     limpiar()

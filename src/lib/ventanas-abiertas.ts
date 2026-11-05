@@ -76,7 +76,62 @@ const trabas = new Map<object, Set<TrabaDeLaVentana>>()
 const alCambiarLasTrabas = new Set<() => void>()
 
 function avisarTrabas() {
+  anotarLaPuestaAlDia()
   for (const avisar of alCambiarLasTrabas) avisar()
+}
+
+// El título de cada ventana, para nombrar la que se llevó la recarga (`nombrarVentana`).
+const titulos = new WeakMap<object, string>()
+
+/** Cómo se llama la ventana: lo que dice arriba si la recarga del documento se la lleva. */
+export function nombrarVentana(marca: object, titulo: string) {
+  titulos.set(marca, titulo)
+}
+
+/**
+ * Mientras la pantalla se pone al día con la ventana abierta y sin saber si lo
+ * enviado entró (`mirando`), la pestaña lo anota. Que el servidor conteste
+ * (`sePuedePonerAlDia`) no quiere decir que la página llegue: si la acción
+ * volvió con un 502 y la página también, Next recarga el documento entero y
+ * se lleva la ventana con lo escrito. Nada decía que no había entrado, y la
+ * ventana que se cierra sola parecía guardada (G1 de la crítica, quincuagésima
+ * quinta pasada). La pantalla nueva lo lee y lo dice arriba
+ * (`laRecargaSeLlevoLaVentana`). Lo escrito no se guarda en la pestaña: cada
+ * ventana tendría que saber volver a llenar sus campos.
+ */
+const SE_PONIA_AL_DIA = 'metal-work:al-dia-con-la-ventana'
+// Solo quita lo anotado por esta pantalla: al nacer, la pantalla que viene de
+// la recarga no tiene trabas, y no tiene que borrar lo que la anterior dejó.
+let anotada = false
+
+function anotarLaPuestaAlDia() {
+  let titulo: string | null = null
+  for (const [marca, suyas] of trabas) if ([...suyas].some((t) => t.mirando)) titulo = titulos.get(marca) ?? ''
+  if (titulo === null && !anotada) return
+  try {
+    if (titulo === null) sessionStorage.removeItem(SE_PONIA_AL_DIA)
+    else sessionStorage.setItem(SE_PONIA_AL_DIA, JSON.stringify({ titulo, ruta: location.pathname + location.search, en: Date.now() }))
+  } catch {}
+  anotada = titulo !== null
+}
+
+/**
+ * La ventana que se ponía al día cuando el documento se recargó: su título y
+ * la dirección de su pantalla. Se lee una vez, al nacer la pantalla. Lo anotado
+ * hace más de diez minutos ya no es de esta recarga.
+ */
+export function laRecargaSeLlevoLaVentana(): { titulo: string; ruta: string } | null {
+  try {
+    const anotado = sessionStorage.getItem(SE_PONIA_AL_DIA)
+    if (!anotado) return null
+    sessionStorage.removeItem(SE_PONIA_AL_DIA)
+    const { titulo, ruta, en } = JSON.parse(anotado) as { titulo?: unknown; ruta?: unknown; en?: unknown }
+    if (typeof titulo !== 'string' || typeof ruta !== 'string' || typeof en !== 'number') return null
+    if (!ruta.startsWith('/') || ruta.startsWith('//') || Date.now() - en > 10 * 60_000) return null
+    return { titulo, ruta }
+  } catch {
+    return null
+  }
 }
 
 /** Traba la ventana de encima hasta que se llame lo que devuelve, o hasta que se cierre. */

@@ -22,12 +22,14 @@ const SIN_GUARDAR = { 'Cache-Control': 'no-store' }
  * diciendo `getUser` en el proxy y en cada acción.
  *
  * Con `?comprobar`, antes de poner la pantalla al día con una ventana abierta
- * (`sePuedePonerAlDia`), dice además si esa pantalla llegaría: 401 sin sesión
+ * (`sePuedePonerAlDia`), dice además lo que ya se sabe que la recargaría entera: 401 sin sesión
  * —el refresco iría a /ingresar y se llevaba la ventana y lo escrito (F1 de la
  * crítica, quincuagésima cuarta pasada)— y, con sesión, de qué despliegue es el
  * servidor (`x-compilacion`), que en otro el refresco recarga el documento
  * entero (R34 de realización). `/auth` es pública, así que sin esto contestaba
- * 204 igual. Quién es lo dice `getUser`, lo mismo que mira el proxy.
+ * 204 igual. Quién es lo dice `getUser`, lo mismo que mira el proxy. Que la
+ * página misma llegue no lo dice: esta es otra ruta (G1 de la crítica,
+ * quincuagésima quinta pasada).
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient()

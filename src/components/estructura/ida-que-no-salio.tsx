@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useReducer, useRef } from 'react'
 
 import { Boton } from '@/components/ui/boton'
-import { type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, sigueMontado, useIdaQueNoSalio } from '@/lib/envio'
+import { decirLoQueSeLlevoLaRecarga, type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, sigueMontado, useIdaQueNoSalio } from '@/lib/envio'
 
 // Lo que la ida le pone a su dirección solo para esa vez («?creada=1»,
 // «?contrato=pendiente») o para elegir pestaña o filtrar («vista», «q»): llegar
@@ -57,6 +57,10 @@ function comoDireccion(direccion: string) {
  * vez (sin adónde verlo, se porta como el rechazo: su enlace vuelve al
  * formulario). Si la dirección cambió y el formulario que la puso sigue en la pantalla
  * (otra pestaña de la lista que lo pinta encima), lo dice él y la línea se va.
+ *
+ * Y, en ámbar, la ventana que se llevó la recarga del documento mientras se
+ * ponía al día (`decirLoQueSeLlevoLaRecarga`): eso sí se guarda en la pestaña,
+ * porque lo dice la pantalla que nace de esa recarga.
  */
 export function IdaQueNoSalio() {
   const ida = useIdaQueNoSalio()
@@ -96,6 +100,8 @@ export function IdaQueNoSalio() {
   // pedida, si el formulario se fue con la vieja, la línea lo dice.
   const loDiceEl = Boolean(ida?.rechazo && ahi && sigueMontado(ida.de))
   const [, repintar] = useReducer((n: number) => n + 1, 0)
+  // Al nacer la pantalla: la recarga que se llevó una ventana a medio ponerse al día.
+  useEffect(() => decirLoQueSeLlevoLaRecarga(), [])
   useEffect(() => {
     if (llego) return ponerIdaQueNoSalio(null)
     if (!pareceSuya) return

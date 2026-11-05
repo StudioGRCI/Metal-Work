@@ -14,7 +14,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
+import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
@@ -106,7 +106,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   ]
 
   // Las unidades dependen del cliente: se cargan al vuelo para no traer al
-  // navegador toda la flota de todos los clientes.
+  // navegador toda la flota de todos los clientes. `releer`: el alta de una
+  // unidad volvió sin decir si entró, y se vuelven a leer (`unidadEnDuda`).
+  const [releer, setReleer] = useState(0)
   useEffect(() => {
     if (!clienteId) return
 
@@ -124,7 +126,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     return () => {
       vigente = false
     }
-  }, [clienteId])
+  }, [clienteId, releer])
 
   // Se derivan del estado en lugar de limpiarse a mano: mientras la carga del
   // nuevo cliente está en vuelo no se muestran las unidades del anterior.
@@ -170,6 +172,27 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
     }
     setUnidadId(u.id)
     quitarAparte('unidad')
+  }
+
+  // El alta que volvió sin decir si entró (sin respuesta, el servidor caído a
+  // medio envío): se vuelve a leer su lista y junto al campo se dice que puede
+  // haber quedado. La unidad entraba y no estaba en «Unidad», donde la ventana
+  // mandaba a buscarla, y sin placa se registraba dos veces (G2 de la crítica,
+  // quincuagésima quinta pasada). El cliente y la carrocería vienen del
+  // catálogo de la página: se pone al día.
+  function unidadEnDuda() {
+    setReleer((n) => n + 1)
+    setAparte((a) => ({ ...a, unidad: 'No llegó la respuesta de la unidad que registrabas: puede haber quedado. Búscala en «Unidad» antes de registrarla otra vez.' }))
+  }
+
+  function clienteEnDuda() {
+    refrescarSiEsDeLaPestana(router)
+    setAparte((a) => ({ ...a, cliente: 'No llegó la respuesta del cliente que registrabas: puede haber quedado. Búscalo en «Cliente» antes de registrarlo otra vez.' }))
+  }
+
+  function carroceriaEnDuda() {
+    refrescarSiEsDeLaPestana(router)
+    setAparte((a) => ({ ...a, carroceria: 'No llegó la respuesta de la carrocería que registrabas: puede haber quedado. Búscala en «Tipo de carrocería» antes de registrarla otra vez.' }))
   }
 
   function carroceriaCreada(t: { id: string; nombre: string }, { elegir }: { elegir: boolean }) {
@@ -328,7 +351,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                     detalle: c.numero_documento,
                   }))}
                 />
-                <NuevoCliente onCreado={clienteCreado} />
+                <NuevoCliente onCreado={clienteCreado} alQuedarEnDuda={clienteEnDuda} />
               </div>
               <RegistradoAparte dice={aparte.cliente} alQuitar={() => quitarAparte('cliente')} />
             </Campo>
@@ -369,6 +392,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                     key={clienteId}
                     clienteId={clienteId}
                     onCreada={unidadCreada}
+                    alQuedarEnDuda={unidadEnDuda}
                     compacta
                   />
                 )}
@@ -406,7 +430,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   marcadorBusqueda="Tolva, cisterna, furgón…"
                   opciones={carrocerias.map((t) => ({ valor: t.id, etiqueta: t.nombre }))}
                 />
-                <NuevaCarroceria onCreada={carroceriaCreada} />
+                <NuevaCarroceria onCreada={carroceriaCreada} alQuedarEnDuda={carroceriaEnDuda} />
               </div>
               <RegistradoAparte dice={aparte.carroceria} alQuitar={() => quitarAparte('carroceria')} />
             </Campo>
@@ -594,8 +618,8 @@ function comoQuedaElNumero(escrito: string): string | null {
 }
 
 /**
- * Lo que se dio de alta en su ventana y entró después de cerrarla: junto a su
- * campo, sin elegirlo (`aparte`). Siempre montada, como `YaQuedo`: una región
+ * Lo que se dio de alta en su ventana y entró después de cerrarla, o lo que
+ * volvió sin decir si entró: junto a su campo, sin elegirlo (`aparte`). Siempre montada, como `YaQuedo`: una región
  * que nace con su texto el lector no la lee.
  */
 function RegistradoAparte({ dice, alQuitar }: { dice: string | undefined; alQuitar: () => void }) {

@@ -7,7 +7,7 @@ import { X } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { useCursorAlRechazo, useEnviosEnCamino, useVersionDeLaPestana, volverACargar, volverACargarSinEsperarLoQueVa } from '@/lib/envio'
 import { cn } from '@/lib/utils'
-import { abrioVentana, cerroVentana, esLaUltimaVentana, trabaDe, vigilarLasTrabas } from '@/lib/ventanas-abiertas'
+import { abrioVentana, cerroVentana, esLaUltimaVentana, nombrarVentana, trabaDe, vigilarLasTrabas } from '@/lib/ventanas-abiertas'
 
 /**
  * Lo que se puede enfocar dentro de la ventana. Sirve para dos cosas: llevar el
@@ -74,6 +74,12 @@ export const GUARDADO_PONIENDO_AL_DIA = 'Guardado. Poniendo la pantalla al día�
 const TARDA_EN_PONERSE_AL_DIA = 8000
 
 /**
+ * Desde cuándo se dice la pregunta y la espera que siguen a «No llegó la
+ * respuesta». Lo que dura menos no parece colgado, y decirlo hacía saltar el pie.
+ */
+const SE_DICE_DESDE = 400
+
+/**
  * Cuánto se espera a que el envío de una ventana trabada conteste antes de
  * decir que no llega. Una corrección contesta en menos de un segundo; con la
  * señal del taller, en unos pocos, y decirlo antes empujaba a recargar a
@@ -127,6 +133,8 @@ export function Ventana({
   // nombra con ella, y la ventana lo lee al pintarse.
   const [marca] = useState(() => ({}))
   const traba = useSyncExternalStore(vigilarLasTrabas, () => trabaDe(marca), () => 0)
+  // Su nombre, por si la recarga del documento se la lleva mientras se pone al día.
+  useEffect(() => nombrarVentana(marca, titulo), [marca, titulo])
   // Mientras un envío que corrige lo que la pantalla muestra termina, la
   // ventana no se cierra: vuelta a abrir antes de la pantalla al día, traía lo
   // de antes, y guardarla deshacía la corrección (quincuagésima tercera
@@ -293,8 +301,11 @@ export function Ventana({
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
           <TrabaDeLaVentana value={traba}>{children}</TrabaDeLaVentana>
-          {/* Cada fase la dice de nuevo y cuenta su tiempo desde cero: el envío, la pregunta, la espera. */}
-          {traba !== 0 && <MientrasSePoneAlDia key={(traba & 8) !== 0 ? 'preguntando' : (traba & 5) !== 0 ? 'espera' : 'envio'} traba={traba} />}
+          {/* El envío y lo que sigue a su respuesta cuentan su tiempo desde cero.
+              La pregunta y la espera son la misma línea: vuelta a montar entre
+              una y otra, quedaba un cuadro vacío y el pie saltaba (H3 de diseño,
+              quincuagésima quinta pasada). */}
+          {traba !== 0 && <MientrasSePoneAlDia key={(traba & 13) !== 0 ? 'respuesta' : 'envio'} traba={traba} />}
         </div>
       </div>
     </div>,
@@ -358,11 +369,18 @@ function SeActualizoEnLaVentana({ id, alAbrir }: { id: string; alAbrir: boolean 
  * Tras «No llegó la respuesta», mientras se pregunta si el servidor contesta
  * (`preguntando`, hasta 3 s), dice que lo comprueba: el aviso rojo con el botón
  * girando y sin X parecía colgado (H4 de funcionalidad, quincuagésima cuarta).
+ * La pregunta y la espera que la sigue se dicen solo si pasan de
+ * `SE_DICE_DESDE`: cuando las dos terminan antes, la línea asomaba unos
+ * milisegundos dos veces, el pie saltaba cinco y el lector leía lo que ya había
+ * terminado (H3 de diseño, quincuagésima quinta pasada). «Guardado» se dice
+ * enseguida: es lo que la persona tiene que saber.
  *
  * Mientras el envío no contesta, nada: el botón que gira basta. A los quince
  * segundos lo dice y ofrece volver a cargar sin esperarlo, que puede no volver
  * nunca: la ventana trabada no tenía otra salida que Atrás o F5 (F2 de la
- * crítica, quincuagésima cuarta pasada).
+ * crítica, quincuagésima cuarta pasada). Recargar se lleva lo escrito: lo pide
+ * copiar, como la espera de los ocho segundos (H2 de diseño, quincuagésima
+ * quinta).
  */
 function MientrasSePoneAlDia({ traba }: { traba: number }) {
   const guardado = (traba & 1) !== 0
@@ -373,17 +391,23 @@ function MientrasSePoneAlDia({ traba }: { traba: number }) {
   const linea = useRef<HTMLDivElement>(null)
   const [conTexto, setConTexto] = useState(false)
   const [tarde, setTarde] = useState(false)
+  // Desde que llegó la respuesta: la pregunta y la espera breves no se dicen.
+  const [breve, setBreve] = useState(true)
   const otros = useEnviosEnCamino()
   useEffect(() => {
     const cuadro = requestAnimationFrame(() => setConTexto(true))
-    return () => cancelAnimationFrame(cuadro)
+    const reloj = setTimeout(() => setBreve(false), SE_DICE_DESDE)
+    return () => {
+      cancelAnimationFrame(cuadro)
+      clearTimeout(reloj)
+    }
   }, [])
   useEffect(() => {
     if (preguntando) return
     const reloj = setTimeout(() => setTarde(true), espera ? TARDA_EN_PONERSE_AL_DIA : TARDA_EN_CONTESTAR)
     return () => clearTimeout(reloj)
   }, [espera, preguntando])
-  const dice = conTexto && (preguntando || espera || tarde)
+  const dice = conTexto && (guardado || tarde || ((preguntando || espera) && !breve))
   useEffect(() => {
     if (dice) linea.current?.scrollIntoView({ block: 'nearest' })
   }, [dice, tarde, preguntando])
@@ -391,7 +415,7 @@ function MientrasSePoneAlDia({ traba }: { traba: number }) {
   const texto = preguntando
     ? 'Comprobando si el servidor contesta…'
     : sinRespuesta
-      ? 'Todavía no llega la respuesta del servidor. Si sigue así, vuelve a cargar y después mira si quedó guardado antes de enviarlo otra vez.'
+      ? 'Todavía no llega la respuesta del servidor. Si sigue así, copia lo que escribiste, vuelve a cargar y mira si quedó guardado antes de enviarlo otra vez.'
       : !tarde
         ? guardado
           ? GUARDADO_PONIENDO_AL_DIA

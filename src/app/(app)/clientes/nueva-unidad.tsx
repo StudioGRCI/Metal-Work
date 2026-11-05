@@ -1,13 +1,13 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { esPlacaRepetida, TIPOS_VEHICULO } from '@/lib/dominio/unidades'
-import { suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { quedoEnDuda, suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
@@ -18,6 +18,7 @@ export function NuevaUnidad({
   clienteId,
   unidad,
   onCreada,
+  alQuedarEnDuda,
   compacta = false,
 }: {
   clienteId: string
@@ -41,6 +42,14 @@ export function NuevaUnidad({
     },
     como: { elegir: boolean },
   ) => void
+  /**
+   * El alta volvió sin decir si entró (sin respuesta, o el servidor caído a
+   * medio envío): quien guarda la lista de unidades la vuelve a leer y dice
+   * junto a su campo que puede haber quedado. La unidad entraba y no estaba en
+   * «Unidad», donde la ventana mandaba a buscarla, y sin placa se registraba
+   * dos veces (G2 de la crítica, quincuagésima quinta pasada).
+   */
+  alQuedarEnDuda?: () => void
   compacta?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -66,6 +75,10 @@ export function NuevaUnidad({
     ? `${error}${unidad || / desactivada/.test(error ?? '') ? '' : onCreada ? ' Elígela en «Unidad», detrás de esta ventana.' : ' Está en sus unidades, detrás de esta ventana.'}`
     : null
   useCursorAlRechazo(enviando, error, () => (errorPlaca ? campoPlaca.current : null))
+  const avisarLaDuda = useEffectEvent(() => alQuedarEnDuda?.())
+  useEffect(() => {
+    if (!unidad && error && quedoEnDuda(error)) avisarLaDuda()
+  }, [error, unidad])
 
   function abrir() {
     limpiar()
