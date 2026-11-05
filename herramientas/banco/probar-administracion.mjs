@@ -237,8 +237,10 @@ let ordenId = ''
   await v.locator('input[type="number"]').first().fill('6')
   await v.screenshot({ path: `${CAPTURAS}/adm-rqa-a-todos.png` })
   await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
-  rqa = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
+  // El aviso del registro, no el primer `role="status"`: cada tarjeta con «Corregir» lleva el suyo, vacío.
+  const registrado = pagina.locator('[role="status"]', { hasText: /RQA-\d{4}-\d{4}/ }).first()
+  await registrado.waitFor({ timeout: 20000 })
+  rqa = ((await registrado.innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
   const fila = await uno(`select id, codigo_interno from public.requerimientos where numero = $1`, [rqa])
   comprobar(fila?.codigo_interno === 'TODOS LOS ACTIVOS', `el ${rqa || 'RQA'} queda cargado a TODOS LOS ACTIVOS`)
   // La lista se pone al día cuando llega la página nueva; con el banco cargado tarda más de 800 ms.
@@ -371,6 +373,12 @@ let ordenId = ''
   comprobar(objeto?.n === 1, 'y sigue en Storage después de registrar (nadie lo quitó al ir a la orden)')
   const vista = limpio(await pagina.locator('main').innerText())
   comprobar(vista.includes('Orden registrada con su PDF'), 'la orden dice que se registró con su PDF')
+  // Vigesimosexta pasada: el cursor quedaba en BODY y el aviso no lo oía nadie.
+  const cursorEnElAviso = await pagina.evaluate(() => {
+    const a = document.activeElement
+    return `${a?.getAttribute('role') ?? a?.tagName}: ${(a?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)}`
+  })
+  comprobar(cursorEnElAviso.startsWith('status: Orden registrada con su PDF'), `y el cursor está en ese aviso, que se lee al llegar («${cursorEnElAviso}»)`)
   comprobar(vista.includes(`OT-banco-${sello}.pdf`), 'y Administración ve su PDF en la orden')
   comprobar((await pagina.getByRole('button', { name: `Quitar OT-banco-${sello}.pdf` }).count()) === 0, 'sin botón para quitar el único PDF de la orden')
   // Con su PDF puesto no hay un campo vacío: «Cambiar el PDF» lo abre y dice cómo se cambia.

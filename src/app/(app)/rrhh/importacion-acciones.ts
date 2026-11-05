@@ -128,5 +128,6 @@ export async function confirmarImportacion(_previo: unknown, datos: FormData): P
   if (data !== cab.data.importacion_id) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/rrhh')
   const n = lineas.data.length
-  return { ok: true, mensaje: `${n} ${n === 1 ? 'persona importada' : 'personas importadas'}. Reparte su costo entre las OT antes de cerrar la planilla.` }
+  // El reparto por OT se quitó el 2026-10-26 (#170): ya no hay nada que repartir antes de cerrar.
+  return { ok: true, mensaje: `${n} ${n === 1 ? 'persona importada' : 'personas importadas'}.` }
 }

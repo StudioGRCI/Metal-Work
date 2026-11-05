@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
-import { mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
+import { reglaTardanza, resumenTardanzas, tardanzasRestadas } from '@/lib/datos/rrhh'
+import { DESCUENTOS_DESDE, mesDeLima, mesValido, mesVecino, minutosLargos, porcentajeCorto } from '@/lib/dominio/rrhh'
 import { hoyLima, mesLargo, moneda } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
@@ -23,7 +23,13 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
 
-  const [resumen, regla] = await Promise.all([resumenTardanzas(mes), reglaTardanza()])
+  // Desde octubre de 2026 el descuento se resta solo del pago (migración 20261026200000).
+  const seResta = mes >= DESCUENTOS_DESDE
+  const [resumen, regla, restadas] = await Promise.all([
+    resumenTardanzas(mes),
+    reglaTardanza(),
+    veSueldo && seResta ? tardanzasRestadas(mes) : Promise.resolve(null),
+  ])
   const cada = regla?.tardanzas_por_descuento ?? 3
   const pct = regla?.porcentaje_descuento ?? 5
   const conDescuento = resumen.filter((r) => r.porcentaje > 0)
@@ -35,7 +41,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
       <EncabezadoPagina
         titulo="Tardanzas"
         descripcion={`Cada ${cada} tardanzas del mes se descuenta el ${porcentajeCorto(pct)} de la remuneración mensual`}
-        ayuda="Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. El mes siguiente empieza de cero."
+        ayuda="Por cada persona, cuántas veces llegó después de su hora y su tolerancia en el mes. El mes siguiente empieza de cero. El descuento se resta solo del pago: a la gente de taller, en la planilla diaria; a la de la oficina, en su pago. Si se anula una tardanza después, la siguiente planilla o el siguiente pago devuelve lo restado de más."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tardanzas' }]}
       />
 
@@ -119,9 +125,13 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                                 {r.descuento === null ? 'Falta su remuneración' : <span className="tabular">{moneda(r.descuento)}</span>}
                               </p>
                             )}
+                            <Restado r={restadas?.get(r.trabajador.id)} activo={r.trabajador.activo} />
                           </>
                         ) : (
-                          '—'
+                          <>
+                            —
+                            <Restado r={restadas?.get(r.trabajador.id)} activo={r.trabajador.activo} />
+                          </>
                         )}
                       </TD>
                     </TR>
@@ -140,7 +150,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                 ? `Hoy: ${regla.tolerancia_minutos} ${regla.tolerancia_minutos === 1 ? 'minuto' : 'minutos'} de tolerancia · cada ${cada} tardanzas del mes, ${porcentajeCorto(pct)} de descuento`
                 : 'Todavía no hay regla: se usa la de la base.'
             }
-            ayuda="Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy. Las tardanzas no se compensan con horas extras: eso es para los permisos."
+            ayuda="Si una marca fue tardanza queda fijo al marcar; el descuento del mes se calcula con la regla de hoy, y un mes que ya se empezó a restar se queda con la regla con que se restó. Las tardanzas no se compensan con horas extras: eso es para los permisos."
           />
           {ajusta && (
             <TarjetaCuerpo>
@@ -150,5 +160,40 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
         </Tarjeta>
       </div>
     </>
+  )
+}
+
+/** Lo que ya se restó del pago por las tardanzas del mes, y lo que falta restar o devolver. */
+function Restado({
+  r,
+  activo,
+}: {
+  r: { descontado: number; por_descontar: number; documentos: string | null } | undefined
+  /** De baja ya no tiene próximo pago: lo que falta no se va a restar solo. */
+  activo: boolean
+}) {
+  if (!r || (r.descontado === 0 && r.por_descontar === 0)) return null
+  const cuando = activo ? ' en su próximo pago' : ': está de baja, ya no tiene próximo pago'
+  return (
+    <div className="text-xs" data-restado>
+      {r.descontado !== 0 && (
+        <p className="text-texto-suave">
+          Restado <span className="tabular whitespace-nowrap text-texto">{moneda(r.descontado)}</span>
+          {r.documentos && ` en ${r.documentos}`}
+        </p>
+      )}
+      {r.por_descontar > 0 && (
+        <p className="text-aviso">
+          Por restar <span className="tabular whitespace-nowrap">{moneda(r.por_descontar)}</span>
+          {cuando}
+        </p>
+      )}
+      {r.por_descontar < 0 && (
+        <p className="text-exito">
+          {activo ? 'Se le devuelven' : 'Por devolver'} <span className="tabular whitespace-nowrap">{moneda(-r.por_descontar)}</span>
+          {cuando}
+        </p>
+      )}
+    </div>
   )
 }

@@ -61,11 +61,23 @@ function deLaPersona(persona: { nombres: string; apellidos: string } | null, dia
   return [[cuanto, quien].filter(Boolean).join(' de '), `el ${fecha(dia)}`].filter(Boolean).join(' ')
 }
 
-/** Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene (`obtenerSesion`). */
-async function puestoDe(supabase: Cliente, usuario: string) {
-  const { data } = await supabase.from('usuarios').select('cargo, rol:roles!inner(nombre)').eq('id', usuario).maybeSingle()
+/**
+ * Con lo que se nombra la cuenta en pantalla: el cargo, o el rol si no lo tiene
+ * (`obtenerSesion`). Si es del mismo puesto que la que pregunta, también con su
+ * nombre, como en la traba: «a nombre de Logística», dicho a otra persona de
+ * Logística, no dice quién fue.
+ */
+async function comoSeNombra(supabase: Cliente, usuario: string, puestoDeQuienPregunta: string) {
+  const { data } = await supabase
+    .from('usuarios')
+    .select('nombres, apellidos, cargo, rol:roles!inner(nombre)')
+    .eq('id', usuario)
+    .maybeSingle()
   const rol = data?.rol as unknown as { nombre: string } | null
-  return data?.cargo?.trim() || rol?.nombre || 'otra cuenta'
+  const puesto = data?.cargo?.trim() || rol?.nombre
+  if (!puesto) return 'otra cuenta'
+  const nombre = `${data?.nombres ?? ''} ${data?.apellidos ?? ''}`.trim()
+  return puesto === puestoDeQuienPregunta && nombre ? `${nombre} (${puesto})` : puesto
 }
 
 /**
@@ -79,7 +91,8 @@ async function puestoDe(supabase: Cliente, usuario: string) {
  * envió con su sesión, la fila es de esa persona, y es ella la que tiene que
  * ver que quedó; antes la ventana miraba la cuenta pintada, no la encontraba, y
  * el reintento entraba dos veces (vigésima pasada). Lo registrado por otra
- * cuenta lleva su puesto, para que la ventana no lo cuente como «que enviaste».
+ * cuenta lleva su puesto, para que la ventana no lo cuente como «que enviaste»,
+ * y su nombre si es del mismo puesto (`comoSeNombra`).
  */
 export async function consultarEnvio(clave: ClaveDelEnvio, ids: string[]): Promise<LoQueQuedo | null> {
   const perfil = await obtenerSesion()
@@ -91,7 +104,7 @@ export async function consultarEnvio(clave: ClaveDelEnvio, ids: string[]): Promi
     [...new Set(analisis.data.ids)].map(async (id) => {
       const hallado = await queQuedo(supabase, analisis.data.clave, id, perfil.id)
       if (!hallado) return null
-      const lo = hallado.por === perfil.id ? hallado.lo : { ...hallado.lo, autor: await puestoDe(supabase, hallado.por) }
+      const lo = hallado.por === perfil.id ? hallado.lo : { ...hallado.lo, autor: await comoSeNombra(supabase, hallado.por, perfil.puesto) }
       return [id, lo] as const
     }),
   )

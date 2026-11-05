@@ -231,7 +231,9 @@ export function CorregirSubcontrato({
   codigos: CodigoParaElegir[] | null
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(corregirSubcontrato, () => setAbierta(false))
+  // Mientras guarda no se cierra (`corrige`): se cierra con lo pactado ya
+  // corregido en la pantalla, y cerrada antes, vuelta a abrir traía lo de antes.
+  const { alEnviar, enviando, error } = useEnvio(corregirSubcontrato, () => setAbierta(false), { corrige: true })
   return (
     <>
       <Boton type="button" variante="contorno" onClick={() => setAbierta(true)} data-corregir-subcontrato>
@@ -280,7 +282,7 @@ export function CorregirSubcontrato({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="contorno" disabled={enviando} onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={enviando}>

@@ -7,7 +7,23 @@
  */
 export type ResultadoAccion<T = never> =
   | { ok: true; mensaje?: string; datos?: T }
-  | { ok: false; error: string }
+  | {
+      ok: false
+      error: string
+      /**
+       * Lo que quedó a medias, dicho tal cual en la línea de arriba si la
+       * persona ya se fue del formulario (`decirElRechazoSiSeFue`): el
+       * comprobante que quedó en borrador, el plano que llegó a un área y a
+       * otra no. «No se guardó» delante mentía (cuadragésima tercera pasada).
+       */
+      arriba?: string
+      /**
+       * De qué documento es lo que quedó a medias: lo que lo resuelve en otro
+       * lado (completar el comprobante en su fila) quita la línea
+       * (`yaSeResolvio`).
+       */
+      documento?: string
+    }
 
 /**
  * Lo que se le dice al usuario cuando la escritura no tocó ninguna fila.

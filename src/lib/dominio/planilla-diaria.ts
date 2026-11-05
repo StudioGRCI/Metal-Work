@@ -23,6 +23,9 @@ export const TIPOS_ARCHIVO_PLANILLA: Record<string, string> = {
 
 type Tono = 'neutro' | 'exito' | 'aviso' | 'peligro' | 'info' | 'acento'
 
+/** Lo que paga cada renglón de la planilla: las horas del reporte, las extras y el permiso justificado con extras. */
+export type ConceptoPlanilla = 'ORDINARIAS' | 'EXTRAS' | 'PERMISO'
+
 /** Qué decidió RR. HH. con las horas extras de un día. */
 export const DECISION_EXTRAS: Record<string, { etiqueta: string; tono: Tono }> = {
   PAGAR: { etiqueta: 'Se pagan', tono: 'acento' },
@@ -72,6 +75,23 @@ export function montoExtras(hora: number, tramo1: number, tramo2: number, regla:
 /** Lo que se paga por unas horas ordinarias. */
 export function montoOrdinarias(hora: number, horas: number) {
   return redondear(horas * hora)
+}
+
+/**
+ * Lo que la planilla resta de lo que alguien cobra, igual que
+ * `enviar_planilla_diaria`: lo que se devuelve (negativo) entra siempre, y lo
+ * que se resta, en orden, hasta lo que alcanza; lo demás espera la siguiente.
+ * Los descuentos llegan ya en el orden de la base (primero lo que se devuelve).
+ */
+export function aplicarDescuentos(bruto: number, descuentos: { monto: number }[]) {
+  let libre = redondear(bruto)
+  const aplicados = descuentos.map((d) => {
+    const aplica = d.monto > 0 ? Math.min(d.monto, libre) : d.monto
+    libre = redondear(libre - aplica)
+    return redondear(aplica)
+  })
+  const restado = redondear(aplicados.reduce((n, a) => n + a, 0))
+  return { aplicados, restado, neto: redondear(bruto - restado) }
 }
 
 /** «PD-0001-2026 · 3 personas». */

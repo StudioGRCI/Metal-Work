@@ -7,13 +7,15 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { PlanContraReal } from '@/components/expediente/plan-contra-real'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
-import { Indicador } from '@/components/ui/indicador'
+import { Indicador, tramos } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
+import { avanceDelCodigo } from '@/lib/datos/codigos-internos'
+import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
 import { observacionesDeOrden } from '@/lib/datos/observaciones'
 import { obtenerOrden, timelineDeOrden } from '@/lib/datos/ordenes'
@@ -38,10 +40,11 @@ import {
 } from '@/lib/dominio/expediente'
 import { CODIGO_SIN_AVANCE, enlaceCodigo, faltanteDelCosto, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, numero, porcentaje } from '@/lib/format'
+import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, porcentajeYMonto, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn, esUuid } from '@/lib/utils'
 
+import { VistaEtapas } from '../../../codigos-internos/detalle/vistas-diseno'
 import { Pestanas } from '../pestanas'
 import { queMeToca } from '../te-toca'
 import { CerrarCosto, ConfirmarIgv, FijarPresupuesto } from './acciones-costo'
@@ -98,8 +101,12 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // Con código interno, el costo de la unidad es el de su código (el mismo de
   // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
   // Solo depende de la orden: se lee junto con lo demás, no después.
+  // Quién lee las etapas del código (las mismas llaves que `puede_ver_codigos_de_diseno()`)
+  // y quién cuenta sus reportes (`codigo_interno_avance` exige `codigos_internos.ver`).
+  const veEtapasDelCodigo = puede(perfil, ['diseno.codigos', 'codigos_internos.ver', 'codigos_internos.area', 'codigos_internos.seguimiento'])
+  const cuentaReportesDelCodigo = puede(perfil, 'codigos_internos.ver')
   const leyendoOrden = obtenerOrden(id)
-  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo] = await Promise.all([
+  const [orden, pendientes, expediente, eventos, observaciones, cotizacion, costoDelCodigo, tallerDelCodigo] = await Promise.all([
     leyendoOrden,
     pendientesDeOrden(id),
     expedienteDeOrden(id, { verCosteo, verMargen }),
@@ -112,8 +119,30 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         ? costoDeOrdenes([{ id: o.id, codigo_interno: codigo }], { conMargen: verMargen }).then((m) => m.get(o.id) ?? null)
         : null
     }),
+    // Con código interno el taller empieza con la primera etapa del código y sus reportes son los del
+    // código: la OT decía «Todavía no empieza» con Maestranza terminada (auditoría del 27/10/2026).
+    leyendoOrden.then(async (o) => {
+      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      if (!o || codigo === '' || codigo === CODIGO_SIN_AVANCE) return null
+      // Cada lectura con la llave que pide su función, y solo si el puesto la tiene:
+      // las etapas, `puede_ver_codigos_de_diseno()`; los reportes, `codigos_internos.ver`
+      // (Diseño ve las etapas y no los reportes). Un error de verdad no se calla.
+      const [etapas, avance] = await Promise.all([
+        veEtapasDelCodigo ? etapasDeCodigo(codigo) : null,
+        cuentaReportesDelCodigo ? avanceDelCodigo(codigo) : null,
+      ])
+      if (etapas === null && avance === null) return null
+      const inicios = (etapas ?? []).flatMap((e) => (e.inicio_real ? [e.inicio_real] : [])).sort()
+      return {
+        inicio: inicios[0] ?? null,
+        reportes: avance === null ? null : new Set(avance.filter((a) => a.estado !== 'ANULADO').map((a) => a.reporte_id)).size,
+      }
+    }),
   ])
   if (!orden) notFound()
+  // Las pestañas dependen de la orden: la de una cotización lleva su ficha y
+  // sus etapas por el código interno.
+  const pestanas = seccionesDeOrden(perfil, orden)
 
   const hoy = hoyLima()
   const viva = !ESTADOS_CERRADOS.includes(orden.estado)
@@ -138,7 +167,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const terminadas = expediente.etapas.filter((e) => e.estado === 'TERMINADA').length
   const entregaReal = expediente.acta?.fecha_entrega ?? null
   const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, entregaReal, hoy)
-  const taller = tiempoEnTaller(orden.fecha_inicio_real, orden.fecha_fin_real ?? entregaReal, hoy)
+  const taller = tiempoEnTaller(orden.fecha_inicio_real ?? tallerDelCodigo?.inicio ?? null, orden.fecha_fin_real ?? entregaReal, hoy)
   const composicion = expediente.costo ? composicionDelCosto(expediente.costo.resumen) : null
   const enSoles = enSolesDe(expediente)
   const conFoto = expediente.reportes.filter((r) => r.foto_url)
@@ -173,7 +202,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
       />
 
       <div className="mb-4">
-        <Pestanas ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={secciones} />
+        <Pestanas ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={pestanas} />
       </div>
 
       {/* Lo que la hoja impresa necesita y la pantalla ya dice arriba. */}
@@ -214,11 +243,17 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             tono={Number(orden.avance_porcentaje) >= 100 ? 'exito' : 'acento'}
             valor={
               <div>
-                <span>{numero(orden.avance_porcentaje, 1)} %</span>
+                <span>{porcentaje(orden.avance_porcentaje)}</span>
                 <Progreso valor={orden.avance_porcentaje} alto="sm" className="mt-2" etiqueta="Avance de la unidad" />
               </div>
             }
-            pie={expediente.etapas.length > 0 ? `${terminadas} de ${expediente.etapas.length} etapas terminadas` : 'Sin etapas definidas'}
+            pie={
+              orden.avance_del_codigo
+                ? `Avance del código ${orden.avance_del_codigo}`
+                : expediente.etapas.length > 0
+                  ? `${terminadas} de ${expediente.etapas.length} etapas terminadas`
+                  : 'Sin etapas definidas'
+            }
           />
           <Indicador
             titulo="Tiempo en taller"
@@ -247,7 +282,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               pie={
                 faltanteDelCosto({ sinPrecio: delCodigo.sinPrecio, horasSinCosto: delCodigo.sinCosto, sinCambio: delCodigo.sinCambio })
                   ?? (delCodigo.margenPct !== null
-                    ? `Margen ${porcentaje(delCodigo.margenPct, 1)} · el costo del código ${delCodigo.codigo}`
+                    ? `Margen a hoy ${porcentajeYMonto(delCodigo.margenPct, delCodigo.margenPen, 'PEN', 1)} · el costo del código ${delCodigo.codigo}`
                     : `El costo del código ${delCodigo.codigo}`)
               }
               tono={delCodigo.sinPrecio + delCodigo.sinCosto + delCodigo.sinCambio > 0 ? 'aviso' : 'neutro'}
@@ -265,7 +300,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                   : enSoles.sinCambio > 0
                     ? `${enSoles.sinCambio} línea(s) en dólares sin tipo de cambio`
                     : expediente.margen?.margen_pct != null
-                      ? `Margen ${porcentaje(expediente.margen.margen_pct, 1)} sobre la venta sin IGV`
+                      ? `Margen a hoy ${porcentajeYMonto(expediente.margen.margen_pct, expediente.margen.margen_pen, 'PEN', 1)} sobre la venta sin IGV`
                       : enSoles.totalUsd > 0
                         ? `Incluye ${moneda(enSoles.totalUsd, 'USD')} al cambio de su fecha`
                         : 'Material despachado, planilla cerrada y gastos aprobados'
@@ -276,8 +311,16 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <Indicador
               titulo="Reportes del taller"
               icono={FileText}
-              valor={expediente.reportes.length}
-              pie={`${conFoto.length} con foto`}
+              // Con código, los reportes del taller son los del código: quien no los
+              // puede contar ve «—» y no los de la OT, que no son el trabajo hecho.
+              valor={tallerDelCodigo ? (tallerDelCodigo.reportes ?? '—') : expediente.reportes.length}
+              pie={
+                tallerDelCodigo
+                  ? tallerDelCodigo.reportes !== null
+                    ? `reportes diarios del código ${codigoDeLaUnidad}`
+                    : `van por el código ${codigoDeLaUnidad}`
+                  : `${conFoto.length} con foto`
+              }
             />
           )}
         </section>
@@ -288,7 +331,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         <Tarjeta className="no-partir">
           <TarjetaCabecera titulo="Hitos" ayuda="Los pasos que toda carrocería recorre, con su fecha" />
           <TarjetaCuerpo>
-            <Hitos orden={orden} expediente={expediente} />
+            <Hitos orden={orden} expediente={expediente} inicioDelCodigo={tallerDelCodigo?.inicio ?? null} />
           </TarjetaCuerpo>
         </Tarjeta>
 
@@ -328,13 +371,27 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         </Tarjeta>
 
         {/* ----------------------------------------- el plan contra lo real */}
+        {orden.avance_del_codigo && veEtapasDelCodigo ? (
+          // Desde el 2026-10-15 las etapas son del código interno: las de la OT
+          // ya no las mueve nadie. Van aquí mismo, para que el expediente
+          // impreso o en PDF las lleve.
+          <div id="plan" className="scroll-mt-20">
+            <VistaEtapas codigo={orden.avance_del_codigo} />
+          </div>
+        ) : (
         <Tarjeta id="plan" className="scroll-mt-20">
           <TarjetaCabecera
             titulo="Plan contra real"
             ayuda="Lo que Administración programó para cada etapa y lo que de verdad tomó"
           />
           <TarjetaCuerpo className="space-y-5">
-            {expediente.etapas.length === 0 ? (
+            {orden.avance_del_codigo ? (
+              // Desde el 2026-10-15 las etapas son del código interno: las de la OT ya no las mueve nadie.
+              <p className="text-sm text-texto-suave">
+                Las etapas se llevan por el código interno <span className="font-mono">{orden.avance_del_codigo}</span>: Diseño
+                las marca y Supervisión reporta por código.
+              </p>
+            ) : expediente.etapas.length === 0 ? (
               <p className="text-sm text-texto-suave">
                 Diseño todavía no definió las etapas de esta orden. Se definen en la pestaña Etapas.
               </p>
@@ -386,6 +443,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             )}
           </TarjetaCuerpo>
         </Tarjeta>
+        )}
 
         {/* El avance de cada área y las observaciones son cortos: lado a lado en
             el monitor, uno sobre otro en el teléfono y en la hoja impresa. */}
@@ -395,7 +453,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
             <TarjetaCabecera titulo="Avance por área" ayuda="La hoja de actividades de cada área y cuánto lleva de lo suyo" />
             <TarjetaCuerpo className="space-y-4">
               {expediente.areas.length === 0 ? (
-                <p className="text-sm text-texto-suave">Ninguna área armó todavía su hoja de actividades para esta orden.</p>
+                <p className="text-sm text-texto-suave">
+                  {orden.avance_del_codigo
+                    ? `Las áreas reportan por el código interno ${orden.avance_del_codigo}: lo que lleva cada una está en sus etapas.`
+                    : 'Ninguna área armó todavía su hoja de actividades para esta orden.'}
+                </p>
               ) : (
                 <ul className="space-y-3">
                   {expediente.areas.map((a) => (
@@ -511,7 +573,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               {expediente.costo.lineas.length > 0 && (
                 <SeccionDesplegable
                   titulo="Lo cargado solo a esta OT"
-                  descripcion="Como se costeaba la OT antes del código: despachos de su requerimiento, la planilla del mes que RR. HH. repartió a la OT y los gastos de las áreas. No es el costo de la unidad, que es el de su código: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona."
+                  descripcion="Como se costeaba la OT antes del código: despachos de su requerimiento, la planilla del mes que RR. HH. repartía a la OT (hasta octubre de 2026) y los gastos de las áreas. No es el costo de la unidad, que es el de su código: los gastos aprobados y la merma de esta OT ya están en él, y la planilla repartida no, porque el código cuenta las horas de cada persona y el ajuste de la planilla de taller."
                 >
                   <div className="space-y-5">
                     {composicion.monedas.length > 0 && (
@@ -554,7 +616,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
               {enSoles.sinCambio > 0 && (
                 <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
                   {enSoles.sinCambio === 1 ? 'Una línea en dólares no tiene' : `${enSoles.sinCambio} líneas en dólares no tienen`}{' '}
-                  tipo de cambio de su fecha: Contabilidad lo registra en Tipo de cambio, y hasta entonces no suma al total en soles.
+                  tipo de cambio de su fecha: Contabilidad o Administración lo registran en Tipo de cambio, y hasta entonces no suma al total en soles.
                 </p>
               )}
               {composicion.monedas.length === 0 ? (
@@ -715,7 +777,7 @@ type OrdenParaHitos = {
 }
 
 /** Los pasos de toda carrocería, en orden, con la fecha en que se cumplieron. */
-function Hitos({ orden, expediente }: { orden: OrdenParaHitos; expediente: Expediente }) {
+function Hitos({ orden, expediente, inicioDelCodigo }: { orden: OrdenParaHitos; expediente: Expediente; inicioDelCodigo: string | null }) {
   const planosEntregados = expediente.planos.filter((p) => p.fecha_entrega)
   const ultimoPlano = planosEntregados.map((p) => p.fecha_entrega as string).sort().at(-1) ?? null
   const hitos: { titulo: string; cuando: string | null; detalle?: string }[] = [
@@ -727,7 +789,8 @@ function Hitos({ orden, expediente }: { orden: OrdenParaHitos; expediente: Exped
           detalle: `${planosEntregados.length} de ${expediente.planos.length}`,
         }]
       : []),
-    { titulo: 'Inicio del trabajo', cuando: orden.fecha_inicio_real },
+    // Con código, el trabajo empieza con la primera etapa del código, como el tiempo en taller.
+    { titulo: 'Inicio del trabajo', cuando: orden.fecha_inicio_real ?? inicioDelCodigo },
     { titulo: 'Trabajo terminado', cuando: orden.fecha_fin_real },
     { titulo: 'Liberación de Tesorería', cuando: expediente.liberacion?.liberado_en ?? null },
     { titulo: 'Acta de entrega', cuando: expediente.acta?.fecha_entrega ?? null, detalle: expediente.acta?.numero ?? undefined },
@@ -1097,7 +1160,8 @@ function PresupuestoDeLaCarroceria({
           Sale solo de la cotización cuando se confirma si su monto incluye IGV: el precio sin IGV ÷ 1.15, la utilidad
           estándar de la casa.{puedeFijar ? ' Si la OT no tiene cotización, fíjalo a mano.' : ''}
         </p>
-        {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={false} />}
+        {/* Con `key`: al fijarlo la tarjeta cambia de forma y, sin ella, el formulario se volvía a montar y se perdía su «listo». */}
+        {puedeFijar && <FijarPresupuesto key="fijar" ordenId={ordenId} manual={false} />}
       </section>
     )
   }
@@ -1122,10 +1186,14 @@ function PresupuestoDeLaCarroceria({
         <CifraMargen
           etiqueta={cerrado ? 'Costo cerrado' : 'Gastado a la fecha'}
           valor={moneda(presupuesto.costo_pen)}
-          pie={`${porcentaje(consumido, 1)} del presupuesto`}
+          pie={`${porcentaje(consumido, 1)} del presupuesto · ${presupuesto.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto.presupuesto_pen - presupuesto.costo_pen))}`}
           tono={presupuesto.semaforo === 'EXCEDIDO' ? 'peligro' : undefined}
         />
-        <CifraMargen etiqueta="Avance de la unidad" valor={porcentaje(presupuesto.avance_pct, 0)} pie="Lo hecho, según los reportes" />
+        <CifraMargen
+          etiqueta="Avance de la unidad"
+          valor={porcentaje(presupuesto.avance_pct, 0)}
+          pie={`Lo hecho, según los reportes: vale ${moneda((presupuesto.presupuesto_pen * presupuesto.avance_pct) / 100)} del presupuesto`}
+        />
       </dl>
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
@@ -1140,12 +1208,12 @@ function PresupuestoDeLaCarroceria({
           >
             <div className={cn('h-full rounded-full', s.barra)} style={{ width: `${Math.min(100, Math.max(0, consumido))}%` }} />
           </div>
-          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(consumido)}%</span>
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{porcentaje(Math.round(consumido))}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-xs text-texto-suave">Avance</span>
           <Progreso valor={presupuesto.avance_pct} etiqueta="Avance de la unidad" className="w-full" />
-          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{Math.round(presupuesto.avance_pct)}%</span>
+          <span className="tabular w-12 shrink-0 text-right text-xs text-texto-suave">{porcentaje(Math.round(presupuesto.avance_pct))}</span>
         </div>
       </div>
       <p className="text-xs text-texto-suave">
@@ -1160,7 +1228,7 @@ function PresupuestoDeLaCarroceria({
       {presupuesto.costo_incompleto && (
         <p className="text-xs text-aviso">El costo todavía está incompleto: lo gastado de verdad puede ser más.</p>
       )}
-      {puedeFijar && <FijarPresupuesto ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
+      {puedeFijar && <FijarPresupuesto key="fijar" ordenId={ordenId} manual={presupuesto.origen === 'MANUAL'} />}
     </section>
   )
 }
@@ -1177,9 +1245,13 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
       />
       {verMargen && (
         <CifraMargen
-          etiqueta="Margen"
+          etiqueta={costo.cierre ? 'Margen al cierre' : 'Margen a hoy'}
           valor={costo.margenPct === null ? '—' : porcentaje(costo.margenPct, 1)}
-          pie={costo.margenPct === null ? 'Sin cotización aprobada con precio, o sin costo todavía' : 'Sobre la cotización aprobada sin IGV'}
+          pie={
+            costo.margenPct === null
+              ? 'Sin cotización aprobada con precio, o sin costo todavía'
+              : `${costo.margenPen === null ? '' : `${moneda(costo.margenPen)} · `}sobre la cotización aprobada sin IGV`
+          }
           tono={costo.margenPct !== null && costo.margenPct < 0 ? 'peligro' : undefined}
         />
       )}
@@ -1188,7 +1260,10 @@ function CostoDelCodigo({ costo, verMargen }: { costo: CostoDeOrden; verMargen: 
           etiqueta="Presupuesto"
           valor={costo.consumidoPct === null ? '—' : `${porcentaje(costo.consumidoPct, 0)} gastado`}
           pie={[
-            costo.semaforo === 'EXCEDIDO' ? 'Pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'Ajustado, del 90 % en adelante' : null,
+            costo.presupuestoPen !== null
+              ? `${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))} de ${moneda(costo.presupuestoPen)}`
+              : null,
+            costo.semaforo === 'EXCEDIDO' ? 'pasó el presupuesto' : costo.semaforo === 'AJUSTADO' ? 'ajustado, del 90 % en adelante' : null,
             costo.presupuestoFijado ? 'el fijado a mano en la OT' : 'la venta sin IGV ÷ 1.15, la utilidad estándar',
           ]
             .filter(Boolean)
@@ -1217,7 +1292,7 @@ function CifraMargen({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: 
     <div className="min-w-0">
       <dt className="text-xs text-texto-suave">{etiqueta}</dt>
       <dd className={cn('tabular text-lg font-semibold', tono === 'peligro' ? 'text-peligro' : 'text-texto')}>{valor}</dd>
-      <dd className="text-xs text-texto-tenue">{pie}</dd>
+      <dd className="text-xs text-texto-tenue">{tramos(pie)}</dd>
     </div>
   )
 }

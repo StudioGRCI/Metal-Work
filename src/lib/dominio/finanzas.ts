@@ -4,7 +4,7 @@
  * las exige la base (migraciones 20261015120000 a 20261015124000).
  */
 
-import { moneda } from '@/lib/format'
+import { moneda, parteDe, porcentaje } from '@/lib/format'
 
 type Tono = 'neutro' | 'exito' | 'aviso' | 'peligro' | 'info' | 'acento'
 
@@ -96,7 +96,9 @@ export function detalleDelControl(c: ControlParaTexto, dinero: (monto: number) =
     ? `De sus OC faltaba facturar ${dinero(c.total_oc)}${otras.length > 0 ? ` (ya van en ${otras.join(', ')})` : ''}`
     : `Sus OC suman ${dinero(c.total_oc)}`
   const marcarParcial = !sobra && !c.ordenes.some((o) => o.parcial) ? ' Si cubre solo una parte, corrígela y márcala como parcial.' : ''
-  return `${base}: ${sobra ? 'sobran' : 'faltan'} ${dinero(Math.abs(c.diferencia))}.${marcarParcial}`
+  // La diferencia también como parte de lo que faltaba (DKS, 27/10/2026: porcentaje y costo).
+  const parte = parteDe(Math.abs(c.diferencia), c.total_oc)
+  return `${base}: ${sobra ? 'sobran' : 'faltan'} ${dinero(Math.abs(c.diferencia))}${parte === null ? '' : ` (${porcentaje(parte)})`}.${marcarParcial}`
 }
 
 /**

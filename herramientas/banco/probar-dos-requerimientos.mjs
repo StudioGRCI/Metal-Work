@@ -99,8 +99,8 @@ async function registrar(pagina, { area, codigo, justificacion, insumos }) {
     await ventana.locator('[id^="rq-cat-"]').nth(i).selectOption({ index: 1 })
   }
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
-  const aviso = await pagina.locator('[role="status"]').first().innerText()
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   return { aviso, numero: (aviso.match(/RQA?-\d{4}-\d{4}/) ?? [''])[0] }
 }
 
@@ -247,8 +247,8 @@ let rqa = ''
   await ventana.locator('[id^="ocd-precio-"]').first().fill('85')
   await ventana.getByRole('button', { name: 'Emitir orden de compra' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
-  const aviso = await pagina.locator('[role="status"]').first().innerText()
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   const oc = (aviso.match(/OC-\d+-MW/) ?? [''])[0]
   comprobar(oc !== '', `la administradora emitió la OC del RQA: «${aviso}»`)
   await pagina.waitForTimeout(800)

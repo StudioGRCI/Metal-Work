@@ -16,9 +16,10 @@ export function EditarOrden({ orden, cotizaciones }: {
   const [abierta, abrir] = useState(false)
   const [nueva, elegir] = useState('')
   const [mensaje, avisar] = useState('')
+  // Corrige lo que la OT muestra: se cierra con la OT ya al día (`corrige`).
   const { alEnviar, enviando, error } = useEnvio(editarOrdenConHistorial, r => {
     abrir(false); elegir(''); avisar(r.mensaje ?? 'Cambio guardado.')
-  })
+  }, { corrige: true })
   const seleccionada = cotizaciones.find(c => c.id === nueva)
   return <>
     <Boton variante="secundario" tamano="sm" onClick={() => { avisar(''); abrir(true) }}>Editar OT / cambiar cliente</Boton>
@@ -38,7 +39,7 @@ export function EditarOrden({ orden, cotizaciones }: {
             <option value="ALTA">Alta</option><option value="URGENTE">Urgente</option>
           </Seleccion>
         </Campo>
-        <Campo etiqueta="Fecha de entrega prometida" htmlFor="editar-fecha" requerido>
+        <Campo etiqueta="Fecha de entrega al cliente" htmlFor="editar-fecha" requerido>
           <Entrada id="editar-fecha" name="fecha_entrega_comprometida" type="date" required defaultValue={orden.fecha_entrega_comprometida ?? ''} />
         </Campo>
         <Campo etiqueta="Código interno" htmlFor="editar-codigo">

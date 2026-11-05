@@ -11,9 +11,10 @@
  *      El filtro del Kardex sí espera «Ver», porque combina cinco filtros.
  *   5. «Limpiar» quita el término y deja los demás filtros puestos.
  *   6. Lo que la pantalla muestra es lo que la base tiene: se cuenta en SQL.
- *   7. El desplegable con buscador (`SeleccionBuscable`), el buscador de la
- *      asistencia y el de las OT del reparto de RRHH, que filtran en el
- *      navegador, buscan igual.
+ *   7. El desplegable con buscador (`SeleccionBuscable`) y el buscador de la
+ *      asistencia, que filtran en el navegador, buscan igual. (El de las OT del
+ *      reparto de la planilla del mes se fue con el reparto, migración
+ *      20261026210000: aquí se mira que no vuelva.)
  *   8. Una sigla o un código se encuentran con o sin sus signos: «sac» a
  *      «S.A.C.», una placa sin el guion.
  *
@@ -174,9 +175,9 @@ const TRABAJADOR = `ZÚÑIGA PEÑA ${sello}, ÁNGEL`
 const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
 await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
   [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, logistico])
-// Una planilla en preparación con alguien, para que salga el reparto entre OT. El nombre
-// lleva el sello en letras: la planilla compara los nombres sin sus cifras, y el de una
-// tanda anterior chocaba («ya está en la planilla de taller de este mes»).
+// Una planilla en preparación con alguien que no tiene ficha: ya no sale el reparto entre OT.
+// El nombre lleva el sello en letras: la planilla compara los nombres sin sus cifras, y el
+// de una tanda anterior chocaba («ya está en la planilla de taller de este mes»).
 const PERSONA = `PERSONA BANCO ${[...sello].map((d) => 'ABCDEFGHIJ'[Number(d)]).join('')}`
 const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
                             on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [logistico])
@@ -601,6 +602,65 @@ for (const ancho of [390, 1280]) {
       `${ruta} (${puesto}): «${enlace}» conserva lo escrito (${escrita.search}) y el término puesto (${puesta.search})`)
   }
 
+  // Trabajos sin orden: la caja dice lo que filtra la lista, y la pastilla se
+  // lleva lo escrito (D4 de diseño, cuadragésima séptima pasada). Era un
+  // formulario sin control: la pastilla, que cambia solo la búsqueda, la
+  // dejaba con lo escrito sin buscar, o vacía, sobre una lista con otro filtro.
+  {
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const caja = pagina.getByRole('searchbox', { name: 'Buscar un trabajo' })
+    const pastilla = (nombre) => pagina.getByRole('group', { name: 'Filtrar por estado' }).getByRole('link', { name: nombre, exact: true })
+    await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
+    await caja.pressSequentially('tolva', { delay: 10 })
+    await pastilla('Cerrados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'SALIO', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const escrita = new URL(pagina.url())
+    const conLoEscrito = await caja.inputValue()
+    await pagina.goto(`${BASE}/avance/trabajos?buscar=cabina`, { waitUntil: 'networkidle' })
+    const alEntrar = await caja.inputValue()
+    await caja.fill('')
+    await pastilla('Terminados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'LISTA', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const vaciada = new URL(pagina.url())
+    const trasVaciar = await caja.inputValue()
+    comprobar(escrita.searchParams.get('buscar') === 'tolva' && conLoEscrito === 'tolva' && alEntrar === 'cabina' && !vaciada.searchParams.has('buscar') && trasVaciar === '',
+      `/avance/trabajos (sup.mtz): la pastilla se lleva lo escrito y la caja dice lo que filtra la lista (${escrita.search} «${conLoEscrito}»; con ?buscar=cabina «${alEntrar}», vaciada ${vaciada.search} «${trasVaciar}»)`)
+    comprobar(await pagina.getByRole('button', { name: /^Buscar$/ }).count() === 0 && errores.length === 0,
+      `/avance/trabajos (sup.mtz): sin botón «Buscar» que apretar ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
+  // Trabajos sin orden busca como las demás listas, sin tildes y por palabras
+  // en cualquier orden: con la frase entera en un `ilike`, «pestana» no
+  // encontraba «pestaña» (F2 de funcionalidad, cuadragésima octava pasada). Y
+  // sin nada, el consejo nombra las pestañas donde sí puede estar: decía
+  // siempre «Cerrados», también en Cerrados (D2 de diseño).
+  {
+    const { id } = await uno(
+      `insert into public.flota_unidades (trabajo, descripcion, cliente) values ($1, $2, $3) returning id`,
+      [`Trabajo del buscador ${sello}`, `Tolva de la pestaña vieja ${sello}`, `Transportes Núñez ${sello}`],
+    )
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const encontrado = {}
+    for (const texto of [`pestana ${sello}`, `PESTANA vieja ${sello}`, `vieja tolva ${sello}`, `tolva, vieja (${sello})`, `nunez ${sello}`]) {
+      await pagina.goto(`${BASE}/avance/trabajos?buscar=${encodeURIComponent(texto)}`, { waitUntil: 'networkidle' })
+      encontrado[texto] = await pagina.locator(`a[href="/avance/trabajos/${id}"]`).count()
+    }
+    comprobar(Object.values(encontrado).every((n) => n === 1),
+      `/avance/trabajos (sup.mtz): busca sin tildes y por palabras en cualquier orden (${JSON.stringify(encontrado)})`)
+    const consejo = {}
+    for (const [pestana, estado] of [['En curso', ''], ['Terminados', 'LISTA'], ['Cerrados', 'SALIO']]) {
+      await pagina.goto(`${BASE}/avance/trabajos?${estado ? `estado=${estado}&` : ''}buscar=zzqq${sello}`, { waitUntil: 'networkidle' })
+      consejo[pestana] = await pagina.getByText(/^La búsqueda mira solo la pestaña elegida/).innerText().catch(() => '')
+    }
+    comprobar(consejo['En curso'].endsWith('prueba en «Cerrados».') && consejo.Terminados.endsWith('prueba en «En curso» o en «Cerrados».') && consejo.Cerrados.endsWith('prueba en «En curso».'),
+      `/avance/trabajos (sup.mtz): sin resultados, el consejo nombra las otras pestañas (${JSON.stringify(consejo)})`)
+    comprobar(errores.length === 0, `/avance/trabajos (sup.mtz): al buscar, sin errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
   {
     const { pagina } = await sesion('gerencia')
@@ -672,22 +732,15 @@ for (const ancho of [390, 1280]) {
     }
   }
 
-  // …el reparto entre OT de una planilla en preparación (RRHH), con el número
-  // escrito sin guion…
+  // …la planilla del mes en preparación (RRHH) ya no reparte entre las OT:
+  // dice cómo entra cada persona al costo (aquí, sin ficha en Personal)…
   {
     const { pagina } = await sesion('rrhh')
     await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
-    const tarjeta = pagina.locator('details', { hasText: 'Repartir en partes iguales' }).filter({ hasText: PERSONA })
-    const texto = ot.numero.replace('-', '')
-    if (await tarjeta.count()) {
-      await tarjeta.first().locator('summary').click()
-      await tarjeta.first().getByLabel('Buscar OT por número o unidad').pressSequentially(texto, { delay: 15 })
-      const leer = () => tarjeta.first().locator('label:visible', { has: pagina.locator('input[name="orden_id"]') }).allInnerTexts()
-      const visibles = await hasta(leer, (v) => v.length === 1)
-      comprobar(visibles.length === 1 && visibles[0].includes(ot.numero), `Planillas (RRHH): «${texto}» deja solo la OT ${ot.numero} (${visibles.length} a la vista)`)
-    } else {
-      comprobar(false, `Planillas (RRHH): no salió el reparto de la planilla en preparación (estado ${planilla.estado})`)
-    }
+    const fila = pagina.locator('details', { hasText: PERSONA })
+    const texto = (await fila.first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    comprobar(texto.includes('sin ficha en Personal'), `Planillas (RRHH): la persona sin ficha dice cómo entra al costo («${texto.slice(0, 120)}», estado ${planilla.estado})`)
+    comprobar((await pagina.getByText('Repartir en partes iguales').count()) === 0 && !texto.includes('Repartido'), 'Planillas (RRHH): sin reparto entre las OT')
   }
 
   // …y el desplegable con buscador, aquí el del cliente de una orden nueva.

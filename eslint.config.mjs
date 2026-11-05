@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Worktrees de los auditores (skill `auditar`): no son código del proyecto.
+    ".claude/worktrees/**",
   ]),
 ]);
 

@@ -185,9 +185,14 @@ begin
   perform public.confirmar_igv_cotizacion(current_setting('prueba.cot')::uuid, true);
   reset role;
 
+  -- Gerencia la aprueba y Administración le da su código y sube su OT (migración 20261027200000).
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
-  perform public.aprobar_cotizacion_con_ot(
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = current_setting('prueba.cot')::uuid;
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform public.cargar_codigo_y_ot_de_cotizacion(
     current_setting('prueba.cot')::uuid, current_setting('prueba.ot')::uuid, 'CHK397_A_26/01', '397-2099',
     'SEMIRREMOLQUE', current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot') || '/orden.pdf',
     'orden.pdf', 100);
@@ -435,12 +440,15 @@ begin
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = current_setting('prueba.cot_c')::uuid;
   -- Desde la migración 20261020150000 el correlativo de la OT es global y no
   -- se reinicia cada año: la segunda OT del check lleva otro correlativo.
-  perform public.aprobar_cotizacion_con_ot(
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  perform public.cargar_codigo_y_ot_de_cotizacion(
     current_setting('prueba.cot_c')::uuid, current_setting('prueba.ot_c')::uuid, 'CHK397_C_26/03', '3972-2098',
     'SEMIRREMOLQUE', current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot_c') || '/orden.pdf',
     'orden.pdf', 100);
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   k := pg_temp.costo('CHK397_C_26/03');
   perform test.afirmar((k->>'precio_neto_pen')::numeric = 50000 and (k->>'costo_pen')::numeric = 0,
     'el código nuevo tiene precio (S/ 59,000 con IGV = 50,000) y nada de costo');

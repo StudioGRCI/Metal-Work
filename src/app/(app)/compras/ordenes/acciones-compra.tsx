@@ -13,7 +13,7 @@ import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/jus
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { AYUDA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { motivoDelFallo, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir } from './acciones'
 
@@ -61,8 +61,8 @@ export function AccionesCompra({
   async function abrirCorreccion() {
     setCorrigiendo(true)
     setLineas(null)
-    const r = await lineasDeLaCompra(id).catch(() => null)
-    setLineas(r?.ok ? (r.datos ?? []) : (r?.error ?? 'No se pudieron leer las líneas. Vuelve a abrir la corrección.'))
+    const r = await lineasDeLaCompra(id).catch((e: unknown) => ({ ok: false as const, error: motivoDelFallo(e, 'No se pudieron leer las líneas. Vuelve a abrir la corrección.') }))
+    setLineas(r.ok ? (r.datos ?? []) : r.error)
   }
   // El documento lleva un identificador fijo: un reintento no lo duplica. La
   // ventana desmonta el formulario al cerrarse, así que se guarda aquí, y cambia
@@ -70,7 +70,7 @@ export function AccionesCompra({
   // ruta del primero. Al volver a abrir tras «No llegó la respuesta», la base
   // dice si aquel entró (`useIdDelEnvio`).
   const documento = useIdDelEnvio('documento_compra', undefined, id)
-  const envio = useAccion(mandarARecojo)
+  const envio = useAccion(mandarARecojo, undefined, { documento: id })
   // En la OC sin número, el título dice eso y la referencia va en la línea de
   // abajo: con todo en el título, en el teléfono ocupaba tres líneas.
   const { numero: titulo, referencia } = partesDeNombreDeOc(oc.nombre)
@@ -200,10 +200,15 @@ function CorregirCompra({
   const [codigo, setCodigo] = useState(codigoInterno ?? '')
   const [valores, setValores] = useState<Record<string, { cantidad: string; precio: string }>>({})
   const { corregir, otra } = useCorreccion(id, corregirCompra)
-  const { alEnviar, enviando, error } = useEnvio(corregir, () => {
-    otra()
-    alTerminar()
-  })
+  // Corrige lo que la OC muestra: se cierra con la OC ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    corregir,
+    () => {
+      otra()
+      alTerminar()
+    },
+    { corrige: true },
+  )
   const lista = Array.isArray(lineas) ? lineas : []
   const valor = (l: LineaParaCorregir) =>
     valores[l.detalle_id] ?? { cantidad: String(l.cantidad), precio: l.precio_unitario === null ? '' : String(l.precio_unitario) }

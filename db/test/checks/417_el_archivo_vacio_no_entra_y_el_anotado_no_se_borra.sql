@@ -182,11 +182,17 @@ select test.afirmar((select count(*) from storage.objects where bucket_id = 'cot
 -- archivo (`and documento_id = p_id`), en una línea o en varias. La primera
 -- versión solo buscaba «ruta» y `id = p_id` sola, y no vio las tres
 -- correcciones con justificante (migración 20261022180000, undécima pasada).
+-- La guarda buena compara el archivo con lo que llega (`and archivo_ruta =
+-- p_ruta`): esa no cuenta. Antes la dejaba pasar solo si la línea traía un
+-- paréntesis (`registrado_por = public.usuario_actual()`), y el pago de la OS
+-- de #166, con la misma guarda y `v_yo`, salía como si no comparara nada.
 select test.afirmar(not exists (
     select 1 from pg_proc p
      where p.pronamespace = 'public'::regnamespace
        and pg_get_function_arguments(p.oid) ~* '\mp_\w*(ruta|justificante|archivo|foto)\w* text'
-       and p.prosrc ~* 'where\s+(\w+\.)?id\s*=\s*p_\w+(\s+and\s+[^)]*)?\)\s*then\s+return\s+p_\w+\s*;'),
+       and exists (select 1
+                     from regexp_matches(p.prosrc, 'where\s+(?:\w+\.)?id\s*=\s*p_\w+((?:\s+and\s+[^)]*)?)\)\s*then\s+return\s+p_\w+\s*;', 'gi') m
+                    where coalesce(m[1], '') !~* '=\s*p_\w*(ruta|justificante|archivo|foto)')),
   'Ninguna función que anota un archivo da por registrado otro envío con el mismo id');
 -- Las fotos (`p_fotos jsonb`, o dentro de `p_codigos`) también son archivos, y
 -- el id también se reconoce leyendo la fila (`select … into; if found then if

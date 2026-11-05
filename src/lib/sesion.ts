@@ -152,6 +152,18 @@ export function puedeCorregirReporte(
 }
 
 /**
+ * Si compra como Logística: emite la OC directa y la orden de servicio, y lleva
+ * las OC que no nacen de un RQA. Administración tiene `compras.crear` solo para
+ * la OC de su RQA (migraciones 20261015162000 y 20261026160000); la base le
+ * rechaza lo demás con `compra_solo_su_rqa()`, y esta es su gemela en la pantalla.
+ */
+export function compraComoLogistica(perfil: PerfilSesion | null): boolean {
+  if (!perfil) return false
+  if (perfil.rol.codigo === 'ADMIN') return true
+  return perfil.permisos.includes('compras.crear') && !perfil.permisos.includes('requerimientos.administracion')
+}
+
+/**
  * Si aprueba u observa los reportes de los trabajos sin orden: quien aprueba
  * todos los del taller, y Gerencia, que solo aprueba esos (migración
  * 20261020160000, `produccion.aprobar_sin_orden`).
@@ -172,7 +184,7 @@ export function editaComoRrhh(perfil: PerfilSesion | null, permiso: string): boo
   return Boolean(perfil?.permisos.includes(permiso))
 }
 
-/** Si cambia el DNI y el costo por hora de las cuentas: solo Recursos Humanos (migración 20261020165000). */
+/** Si cambia el DNI de las cuentas: solo Recursos Humanos (migración 20261020165000; el costo por hora ya no se pide). */
 export function cambiaDatosReservados(perfil: PerfilSesion | null): boolean {
   return editaComoRrhh(perfil, 'rrhh.personal')
 }

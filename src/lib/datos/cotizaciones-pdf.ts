@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { archivoNoEncontrado, SIN_ENLACES } from '@/lib/datos/facturacion'
+import { bajarComo } from '@/lib/descarga'
 import { createClient } from '@/lib/supabase/server'
 import type { Vistas } from '@/types/database'
 
@@ -8,9 +9,9 @@ import type { Vistas } from '@/types/database'
  * La cotización que la casa arma en Word y manda en PDF (migraciones 101 a
  * 103). El sistema guarda lo poco que necesita y la traza: quién la subió,
  * quién la aprobó, qué orden salió de ella y, si Gerencia la rechazó, cada
- * versión con la observación que le hizo. Desde la migración 20261016900000
- * Gerencia la aprueba con el código interno y la OT: `codigo_interno` es el de
- * la unidad de su OT.
+ * versión con la observación que le hizo. Desde la migración 20261027200000
+ * Gerencia la aprueba con un toque y Administración le da el código interno y
+ * sube la OT: `codigo_interno` es el de la unidad de su OT.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
@@ -22,6 +23,11 @@ export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
    * (migración 20261015124000). Las ve quien ve facturas; los demás, ninguna.
    */
   facturas: FacturaDeCotizacion[]
+  /**
+   * Tiene una factura vigente, la vea o no quien mira: así Ventas sabe que ya no
+   * se corrige (migración 20261026140000), sin ver la factura.
+   */
+  facturada: boolean
   /** Semirremolque o carrocería montada, si el catálogo lo sabe: lo propone al emitir la OT (migración 104). */
   tipo_unidad: string | null
 }
@@ -58,11 +64,9 @@ async function enlacesDe(filas: ConArchivo[]): Promise<Map<string, string>> {
   const words = filas.filter((f) => f.ruta_storage && (f.mime_type ?? PDF) !== PDF)
   await Promise.all(
     words.map(async (f) => {
-      const { data, error } = await supabase.storage
-        .from('cotizaciones-pdf')
-        .createSignedUrl(f.ruta_storage as string, 600, { download: f.nombre_archivo ?? true })
+      const { data, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrl(f.ruta_storage as string, 600)
       if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
-      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, data.signedUrl)
+      if (data?.signedUrl) enlaces.set(f.ruta_storage as string, bajarComo(data.signedUrl, f.nombre_archivo ?? true))
     }),
   )
   return enlaces
@@ -84,12 +88,17 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
 
   const cotizacionIds = filas.flatMap((f) => f.id ? [f.id] : [])
   // El RLS decide: a quien no ve facturas le llegan cero filas, no un error.
-  const facturas = await supabase
-    .from('v_facturas_venta')
-    .select('id, cotizacion_pdf_id, numero, total, moneda, cobrado, cancelada, anulada_en')
-    .in('cotizacion_pdf_id', cotizacionIds)
-    .order('creado_en')
+  const [facturas, conFactura] = await Promise.all([
+    supabase
+      .from('v_facturas_venta')
+      .select('id, cotizacion_pdf_id, numero, total, moneda, cobrado, cancelada, anulada_en')
+      .in('cotizacion_pdf_id', cotizacionIds)
+      .order('creado_en'),
+    supabase.rpc('cotizaciones_con_factura', { p_ids: cotizacionIds }),
+  ])
   if (facturas.error) throw new Error(`No se pudieron leer las facturas de las cotizaciones: ${facturas.error.message}`)
+  if (conFactura.error) throw new Error(`No se pudo saber qué cotizaciones ya están facturadas: ${conFactura.error.message}`)
+  const facturadas = new Set((conFactura.data ?? []).map((x) => x.cotizacion))
 
   // Solo las que tuvieron más de una versión tienen historial que leer.
   const conHistorial = filas.filter((f) => (f.version ?? 1) > 1 && f.id).map((f) => f.id as string)
@@ -113,13 +122,15 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const tipoDe = new Map((tipos ?? []).map((t) => [t.id, t.tipo_unidad as string | null]))
 
   // Sin enlaces la lista igual sirve: se ve qué hay aunque no se pueda abrir.
-  const enlaces = await enlacesDe([...filas, ...versiones])
+  const [enlaces, clientes] = await Promise.all([enlacesDe([...filas, ...versiones]), clientesReservados(filas)])
 
   return filas.map((f) => {
     const ultimaAprobada = versiones.find((v) => v.cotizacion_id === f.id && v.estado_al_archivar === 'APROBADA')
     return {
       ...f,
+      cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
+      facturada: facturadas.has(f.id),
       tipo_unidad: (f.tipo_carroceria_id && tipoDe.get(f.tipo_carroceria_id)) ?? null,
       url: (f.ruta_storage && enlaces.get(f.ruta_storage)) ?? null,
       urlAprobada: f.estado === 'APROBADA'
@@ -130,6 +141,23 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
         .map((v) => ({ ...v, url: (v.ruta_storage && enlaces.get(v.ruta_storage)) ?? null })),
     }
   })
+}
+
+/**
+ * El cliente de las cotizaciones que quien mira ve sin ver el padrón de
+ * clientes: Tesorería y Contabilidad no tienen `clientes.ver`, y la vista les
+ * da el cliente vacío. `clientes_de_cotizaciones` (migración 20261026110000) les
+ * da el nombre de las aprobadas, el mismo que ven en Cuentas por cobrar, y el de
+ * las liberadas a Tesorería. Quien no ve ninguna de las dos, sin nombre.
+ */
+async function clientesReservados(filas: Vistas<'v_cotizaciones_pdf'>[]): Promise<Map<string, string>> {
+  const ids = filas.flatMap((f) => (f.id && f.cliente_id && !f.cliente ? [f.id] : []))
+  if (ids.length === 0) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('clientes_de_cotizaciones', { p_ids: ids })
+  if (error?.code === '42501') return new Map()
+  if (error) throw new Error(`No se pudo leer el cliente de las cotizaciones: ${error.message}`)
+  return new Map((data ?? []).flatMap((c) => (c.cotizacion_id && c.cliente ? [[c.cotizacion_id, c.cliente] as const] : [])))
 }
 
 /**

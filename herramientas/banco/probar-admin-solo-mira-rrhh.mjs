@@ -50,7 +50,7 @@ const PANTALLAS = [
   ['/planilla-diaria', 'Planilla diaria'],
   ['/rrhh/asistencia', 'Asistencia'],
   ['/rrhh/personal', 'Personal'],
-  ['/rrhh/cuentas', 'DNI y costo de las cuentas'],
+  ['/rrhh/cuentas', 'DNI de las cuentas'],
   ['/rrhh/costeo', 'Costeo'],
   ['/rrhh/permisos', 'Permisos'],
   ['/rrhh/observaciones', 'Observaciones'],

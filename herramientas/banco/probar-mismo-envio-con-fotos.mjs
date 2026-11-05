@@ -16,6 +16,11 @@
  *   3. El supervisor de Maestranza, en el celular, sube su reporte diario;
  *      tras la respuesta perdida cambia el asunto y agrega una foto: la
  *      pantalla dice que ya quedó, quita la foto nueva y lleva al reporte.
+ *   4. El mismo supervisor elige tres fotos y, mientras sube la primera, en
+ *      otra pestaña entra Logística: las otras dos no suben (antes salían a
+ *      nombre de Logística y volvían con «No tienes permiso»), quedan con
+ *      «Reintentar» y, cuando vuelve su cuenta, suben y el reporte entra con
+ *      las tres, todas suyas en Storage.
  *
  * La respuesta se corta con CDP, en la etapa de la respuesta: el pedido llega
  * entero al servidor, la acción se cumple y el navegador no se entera.
@@ -26,6 +31,8 @@ import { join } from 'node:path'
 
 import pg from 'pg'
 import { chromium } from 'playwright-core'
+
+import { codigoSinUsar } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -51,6 +58,42 @@ const base = new pg.Client({
 })
 await base.connect()
 const consulta = async (sql, valores = []) => (await base.query(sql, valores)).rows
+
+/** Corre `sql` en una transacción con la sesión de esa cuenta y el rol authenticated: como lo haría su pantalla. */
+async function comoPuesto(correo, sql, valores = []) {
+  await base.query('begin')
+  try {
+    const [{ id }] = (await base.query('select id::text from usuarios where correo = $1', [correo])).rows
+    await base.query(
+      `select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+              set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,
+      [id],
+    )
+    await base.query('set local role authenticated')
+    const filas = (await base.query(sql, valores)).rows
+    await base.query('commit')
+    return filas
+  } catch (error) {
+    await base.query('rollback')
+    throw error
+  }
+}
+/**
+ * Una persona del taller de Maestranza, con su costo, como la registra RR. HH.
+ * desde su pantalla. Antes se metía como postgres, por encima del permiso, y la
+ * prueba no decía si RR. HH. podía (vigesimoquinta pasada).
+ */
+async function personaDeMaestranza(nombres, apellidos, dni) {
+  const [r] = await comoPuesto(
+    CUENTAS.rrhh,
+    `select public.rrhh_guardar_trabajador(x.id, $1, $2, $3, 'Soldadora', (select id from areas where codigo = 'MTZ'), '08:00', '17:00',
+                                           'Banco de Pruebas', 'AHORROS', '191-' || $3, null) = x.id as ficha,
+            public.rrhh_guardar_costo_trabajador(x.id, 2400) = x.id as costo
+       from (select gen_random_uuid() as id) x`,
+    [nombres, apellidos, dni],
+  )
+  if (!r?.ficha || !r?.costo) throw new Error(`RR. HH. no pudo registrar a ${nombres} con su costo.`)
+}
 
 const fallas = []
 function comprobar(cond, texto) {
@@ -100,7 +143,12 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
   // salir tarde: por eso no se corta la primera acción que pase, sino esa.
   const cdp = await contexto.newCDPSession(pagina)
   await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
-  const corte = { armado: null, cortadas: 0 }
+  // `retenerFoto`: la respuesta de la próxima foto que sube se detiene hasta
+  // `soltar()`; la foto ya llegó al servidor, con la sesión de ese momento.
+  const corte = { armado: null, cortadas: 0, retenerFoto: false, fotosRetenidas: 0, esperan: [] }
+  corte.soltar = () => {
+    for (const listo of corte.esperan.splice(0)) listo()
+  }
   const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
   cdp.on('Fetch.requestPaused', async (e) => {
     const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
@@ -109,9 +157,34 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
       corte.cortadas++
       return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
     }
+    if (corte.retenerFoto && e.request.method === 'POST' && e.request.url.includes('/storage/v1/object/')) {
+      corte.retenerFoto = false
+      corte.fotosRetenidas++
+      await new Promise((listo) => corte.esperan.push(listo))
+    }
     return cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
   })
   return { pagina, contexto, errores, corte }
+}
+
+/** En otra pestaña del mismo navegador se cierra la sesión y entra `correo`: la sesión es de todas. */
+async function enOtraPestana(contexto, correo) {
+  const otra = await contexto.newPage()
+  await ir(otra, `${BASE}/`)
+  await Promise.all([
+    otra.waitForURL((u) => u.pathname.startsWith('/ingresar'), { timeout: 30000 }),
+    otra.evaluate(() => document.querySelector('form[action="/auth/salir"]')?.requestSubmit()),
+  ])
+  await quieta(otra)
+  await otra.fill('input[type="email"]', correo)
+  await otra.fill('input[type="password"]', CLAVE)
+  await Promise.all([
+    otra.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
+    otra.click('button[type="submit"]'),
+  ])
+  if (otra.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
+  await quieta(otra)
+  await otra.close()
 }
 
 const sello = Date.now().toString().slice(-6)
@@ -128,10 +201,38 @@ for (const [n, relleno] of [['A', 700], ['B', 2100], ['C', 900], ['D', 1300], ['
 mkdirSync(join(archivos, 'otro'), { recursive: true })
 pdfs.Eotro = join(archivos, 'otro', `QA-GASTO-E-${sello}.pdf`)
 writeFileSync(pdfs.Eotro, PDF(3000))
-// Fotos pequeñas de verdad, cada una distinta.
+// Fotos pequeñas de verdad, cada una distinta. Las chicas en JPEG se suben tal
+// cual (`comprimirFoto`); las dos grandes, en PNG y con ruido para que no se
+// compriman solas, son las que la cola tiene que achicar antes de subirlas.
 const fotos = {}
+const pesoOriginal = {}
 {
   const p = await (await navegador.newContext()).newPage()
+  for (const n of ['dosGrande', 'tresGrande']) {
+    const b64 = await p.evaluate(async () => {
+      const c = document.createElement('canvas')
+      c.width = 1800
+      c.height = 1350
+      const g = c.getContext('2d')
+      const ruido = g.createImageData(c.width, c.height)
+      for (let i = 0; i < ruido.data.length; i += 4) {
+        ruido.data[i] = Math.random() * 256
+        ruido.data[i + 1] = Math.random() * 256
+        ruido.data[i + 2] = Math.random() * 256
+        ruido.data[i + 3] = 255
+      }
+      g.putImageData(ruido, 0, 0)
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+      const b = new Uint8Array(await blob.arrayBuffer())
+      let s = ''
+      for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000))
+      return btoa(s)
+    })
+    fotos[n] = join(archivos, `foto-${n}-${sello}.png`)
+    const buffer = Buffer.from(b64, 'base64')
+    pesoOriginal[n] = buffer.length
+    writeFileSync(fotos[n], buffer)
+  }
   for (const [n, color] of [['uno', '#7a4b2a'], ['dos', '#3a3f44'], ['tres', '#2a5a7a'], ['cuatro', '#5a7a2a'], ['cinco', '#7a2a5a'], ['seis', '#2a7a6a']]) {
     const b64 = await p.evaluate(async (color) => {
       const c = document.createElement('canvas')
@@ -212,8 +313,11 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   const [fila3] = await consulta(`select count(*)::int as n from ot_gastos_areas where id = $1 and descripcion = $2`, [id2, desc3])
   comprobar(dijo3.includes('enviado a Administración') && fila3.n === 1, `[Logística] el siguiente gasto entra con el id nuevo («${dijo3}»)`)
 
-  // El mismo envío repetido tras otra respuesta perdida entra una vez.
-  const id4 = await form.locator('input[name="id"]').inputValue()
+  // El mismo envío repetido tras otra respuesta perdida entra una vez. El id
+  // nuevo llega al contestar, con el verde: es un alta, sin `corrige`, y su
+  // `alTerminar` vacía el formulario y lo renueva sin esperar a la página
+  // puesta al día. El `hasta` solo cubre el repintado.
+  const id4 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id2, 15000)
   const desc4 = `QA-GASTO cuarto ${sello}, mismo envío repetido`
   await llenar('75.5', desc4, pdfs.D)
   corte.armado = 'QA-GASTO cuarto'
@@ -223,10 +327,12 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await enviar.click()
   const dijo4 = limpio(await hasta(() => aviso.allInnerTexts().then((t) => t.join(' ')), (t) => t.includes('ya estaba registrado')))
   const [fila4] = await consulta(`select count(*)::int as n from ot_gastos_areas where descripcion = $1`, [desc4])
-  comprobar(dijo4.includes(`El gasto ${id4} ya estaba registrado`) && fila4.n === 1, `[Logística] el mismo envío repetido se da por registrado una vez («${dijo4}»)`)
+  // Lo nombra por lo que la persona escribió, no por su id.
+  comprobar(dijo4.includes(`El gasto «${desc4}» por`) && dijo4.includes('ya estaba registrado') && !dijo4.includes(id4) && fila4.n === 1,
+    `[Logística] el mismo envío repetido se da por registrado una vez, nombrado por su descripción («${dijo4}»)`)
 
   // Otro PDF con el mismo nombre, y todo lo demás igual: no es el mismo envío.
-  const id5 = await form.locator('input[name="id"]').inputValue()
+  const id5 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id4, 15000)
   const desc5 = `QA-GASTO quinto ${sello}, otro PDF con el mismo nombre`
   await llenar('31.4', desc5, pdfs.E)
   corte.armado = 'QA-GASTO quinto'
@@ -353,17 +459,10 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
 // ------------------------------------------- 3. El reporte diario (Maestranza, en el celular)
 {
   const persona = `Elsa ${sello}`
-  await consulta(
-    `with nueva as (
-       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
-       values ($1, 'Prueba Mismo Envío', '6' || $2, 'Soldadora', (select id from areas where codigo = 'MTZ'), (select id from usuarios where correo = $3))
-       returning id)
-     insert into trabajador_costos (trabajador_id, costo_mensual) select id, 2400 from nueva`,
-    [persona, sello.padStart(7, '0'), CUENTAS.rrhh],
-  )
+  await personaDeMaestranza(persona, 'Prueba Mismo Envío', `6${sello.padStart(7, '0')}`)
   const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
   const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
-  const codigo = `QA_SR_O4_1_26/${sello.slice(-2)}`
+  const codigo = await codigoSinUsar(consulta, 'QA_SR_O4_1_26/', sello)
   const asunto = `Armado de tolva ${sello}`
   await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
   await pagina.fill('#rd-codigo', codigo)
@@ -371,7 +470,11 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await pagina.fill('#rd-descripcion', 'Se avanzó la tolva del lado izquierdo.')
   const elegir = async (etiqueta, texto) => {
     await pagina.getByRole('combobox', { name: etiqueta }).click()
-    await pagina.keyboard.type(texto)
+    // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+    // tiene el foco, o las letras se pierden en el botón (se vio en la cola).
+    const caja = pagina.locator('input[type="search"]:focus')
+    await caja.waitFor({ timeout: 10000 })
+    await caja.fill(texto)
     await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
   }
   const t1 = pagina.locator('fieldset[data-trabajo="1"]')
@@ -423,6 +526,89 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   await pagina.waitForURL(`**/reportes-diarios/${rep?.id}`, { timeout: 20000 }).catch(() => {})
   comprobar(new URL(pagina.url()).pathname === `/reportes-diarios/${rep?.id}`, `[Maestranza 390] «Ver el reporte» abre el que entró (${new URL(pagina.url()).pathname})`)
   comprobar(errores.length === 0, `[Maestranza 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// ------------------------------------------- 4. La cola de fotos con la traba (Maestranza, en el celular)
+// Vigesimotercera pasada: `SelectorFotos` miraba la sesión al elegir y no antes
+// de cada foto. Si en otra pestaña entraba otra cuenta mientras subía la
+// primera, las que seguían salían con esa sesión.
+{
+  const persona = `Rita ${sello}`
+  await personaDeMaestranza(persona, 'Prueba Cola De Fotos', `7${sello.padStart(7, '0')}`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.mtz, CELULAR)
+  const [yo] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.mtz])
+  const [logistica] = await consulta(`select id from usuarios where correo = $1`, [CUENTAS.logistica])
+  const asunto = `Cola de fotos ${sello}`
+  await ir(pagina, `${BASE}/reportes-diarios/nuevo`)
+  await pagina.fill('#rd-codigo', await codigoSinUsar(consulta, 'QA_SR_O4_1_26/', sello))
+  await pagina.fill('#rd-asunto', asunto)
+  await pagina.fill('#rd-descripcion', 'Se armó la cola de la tolva.')
+  const elegir = async (etiqueta, texto) => {
+    await pagina.getByRole('combobox', { name: etiqueta }).click()
+    // Como en probar-reporte-diario: se escribe cuando la caja de búsqueda ya
+    // tiene el foco, o las letras se pierden en el botón (se vio en la cola).
+    const caja = pagina.locator('input[type="search"]:focus')
+    await caja.waitFor({ timeout: 10000 })
+    await caja.fill(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
+  }
+  const t1 = pagina.locator('fieldset[data-trabajo="1"]')
+  await elegir('Trabajo 1: sobre qué', 'Tarea nueva')
+  await t1.locator('textarea').fill('Armado de la cola')
+  await t1.locator('input[type="number"]').first().fill('30')
+  await elegir('Personal del trabajo 1: persona 1', persona)
+  await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 1: horas de la persona 1' }).fill('3')
+
+  const [{ desde }] = await consulta(`select now() as desde`)
+  const deQuien = () =>
+    consulta(
+      `select count(*) filter (where owner_id = $2)::int as mias, count(*) filter (where owner_id = $3)::int as de_logistica,
+              count(*) filter (where owner_id = $2 and metadata->>'mimetype' = 'image/jpeg')::int as en_jpeg,
+              coalesce(max((metadata->>'size')::bigint) filter (where owner_id = $2), 0)::bigint as la_mas_pesada
+         from storage.objects where bucket_id = 'fotos-reporte-diario' and created_at >= $1`,
+      [desde, yo.id, logistica.id],
+    ).then(([r]) => ({ ...r, la_mas_pesada: Number(r.la_mas_pesada) }))
+  corte.retenerFoto = true
+  // La primera, chica, sube tal cual; las dos que esperan son las grandes, que hay que achicar.
+  await pagina.locator('input[type="file"]:not([capture])').setInputFiles([fotos.uno, fotos.dosGrande, fotos.tresGrande])
+  await hasta(async () => corte.fotosRetenidas, (n) => n === 1)
+  await enOtraPestana(contexto, CUENTAS.logistica)
+  const traba = pagina.locator('dialog[data-traba-otra-cuenta]')
+  const trabada = await hasta(() => traba.evaluate((d) => d.open).catch(() => false), Boolean, 10000)
+  corte.soltar()
+  const reintentar = pagina.getByRole('button', { name: /^Volver a subir / })
+  const quedaron = await hasta(() => reintentar.count(), (n) => n === 2)
+  await esperarSubidas(pagina)
+  const avisos = limpio((await pagina.getByRole('list', { name: 'Fotos que no entraron' }).allInnerTexts()).join(' '))
+  const enStorage = await deQuien()
+  comprobar(trabada && corte.fotosRetenidas === 1 && quedaron === 2 && (avisos.match(/No se subió: en otra pestaña entró otra cuenta/g) ?? []).length === 2
+      && !avisos.includes('permiso') && enStorage.mias === 1 && enStorage.de_logistica === 0,
+    `[Maestranza 390] entra Logística a media cola: sube la que ya salía, las otras dos esperan con «Reintentar» y nada sube a su nombre (${quedaron} por reintentar; Storage: ${enStorage.mias} suya, ${enStorage.de_logistica} de Logística; «${avisos.slice(0, 90)}…»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'cola-de-fotos-con-la-traba-390.png'), fullPage: true })
+
+  await enOtraPestana(contexto, CUENTAS.mtz)
+  const destrabada = await hasta(() => traba.evaluate((d) => !d.open).catch(() => true), Boolean, 10000)
+  for (let i = 0; i < 2; i++) await reintentar.first().click()
+  await esperarSubidas(pagina)
+  const sinFallas = await hasta(() => pagina.getByRole('list', { name: 'Fotos que no entraron' }).count(), (n) => n === 0, 10000)
+  const despues = await deQuien()
+  // Achicadas: en Storage las tres son JPEG y ninguna pesa lo que pesaba la
+  // más liviana de las grandes en PNG (vigesimoquinta pasada: con fotos chicas,
+  // «achica» no se medía).
+  const pngMasLiviano = Math.min(pesoOriginal.dosGrande, pesoOriginal.tresGrande)
+  comprobar(destrabada && sinFallas === 0 && despues.mias === 3 && despues.de_logistica === 0 && despues.en_jpeg === 3 && despues.la_mas_pesada < pngMasLiviano,
+    `[Maestranza 390] vuelve su cuenta, «Reintentar» achica y sube las dos, y quedan las tres a su nombre (Storage: ${despues.mias} suyas, ${despues.en_jpeg} en JPEG, la más pesada ${Math.round(despues.la_mas_pesada / 1024)} KB contra ${Math.round(pngMasLiviano / 1024)} KB del PNG; ${despues.de_logistica} de Logística)`)
+
+  await pagina.getByRole('button', { name: 'Subir reporte' }).click()
+  await pagina.waitForURL((u) => /^\/reportes-diarios\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 30000 }).catch(() => {})
+  const [rep] = await consulta(
+    `select r.registrado_por = $2 as suyo, (select count(*)::int from reporte_diario_fotos f where f.reporte_id = r.id) as fotos
+       from reportes_diarios r where asunto = $1`,
+    [asunto, yo.id],
+  )
+  comprobar(rep?.suyo && rep?.fotos === 3, `[Maestranza 390] el reporte entra a su nombre con las tres fotos (${rep?.fotos ?? 'sin reporte'})`)
+  comprobar(errores.length === 0, `[Maestranza 390, cola] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 

@@ -11,6 +11,7 @@ import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from '@/app/(app)/adquisiciones/detector'
 import {
+  codigosDeOcs,
   comprasConBoletaPorPagar,
   cuentasPorPagar,
   PAGADAS_A_LA_VISTA,
@@ -27,7 +28,7 @@ import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
-import { fecha, hoyLima, moneda, periodo, type CodigoMoneda } from '@/lib/format'
+import { fecha, hoyLima, moneda, parteDe, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -73,7 +74,7 @@ export default async function PaginaPorPagar() {
     comprasConBoletaPorPagar(verCuentas),
     // Las boletas de una parte de la OC que llega en partes (migración 20261022200000).
     partesConBoletaPorPagar(verCuentas),
-    db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,numero_ot,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
+    db.from('v_compras_credito_sin_comprobante').select('orden_compra_id,numero,proveedor,referencia,fecha_compra,fecha_vencimiento,moneda,total_estimado').order('fecha_vencimiento').limit(100),
     db.rpc('resumen_planilla_por_ot'),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     paga ? cuentasParaPagar() : Promise.resolve([]),
@@ -85,13 +86,17 @@ export default async function PaginaPorPagar() {
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
   // Y, para quien lleva la caja, de qué cuenta salió cada pago.
   const verCaja = puede(perfil, 'tesoreria.caja')
-  const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas] = await Promise.all([
+  // Gerencia, que aprueba, salta desde la factura en espera a Aprobación de compras.
+  const apruebaCompras = puede(perfil, 'compras.configurar_aprobacion')
+  const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas, codigosCredito] = await Promise.all([
     correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
     verCaja ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('PAGO_ORDEN_COMPRA', boletas.flatMap((b) => b.pagos.map((p) => p.id))) : undefined,
     verCaja ? cajaDeLosPagos('DEVOLUCION_ORDEN_COMPRA', boletas.flatMap((b) => b.devoluciones.map((d) => d.id))) : undefined,
     verCaja ? cajaDeLosPagos('PAGO_PARTE_BOLETA', partes.flatMap((x) => x.pagosDeLaParte.map((p) => p.id))) : undefined,
     pasa ? paraLasVentanasDeLaBoleta(db, boletas) : { descontables: new Map<string, FacturaParaDescontar[]>(), cambios: new Map<string, number | null>() },
+    // El código interno de cada compra a crédito sin comprobante, como en Adquisiciones.
+    codigosDeOcs((pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))),
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
@@ -114,7 +119,9 @@ export default async function PaginaPorPagar() {
   const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
-  const exigibles = porPagar.filter((c) => !c.enEspera)
+  // La que espera a Gerencia tampoco: no se puede pagar todavía.
+  const esperanGerencia = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length > 0)
+  const exigibles = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length === 0)
   const vencidas =
     exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
     pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length +
@@ -131,7 +138,7 @@ export default async function PaginaPorPagar() {
   const planillasPorOt = planillas.data ?? []
   // La que espera no le pide nada a Tesorería: va en el tono de aviso y lleva a la primera.
   const primeraEnEspera = porPagar.find((c) => c.enEspera)
-  const enEspera = porPagar.length - exigibles.length
+  const enEspera = porPagar.filter((c) => c.enEspera).length
   const conSaldo = notas.filter((n) => n.aFavor > 0).length
   // De qué notas a favor puede descontarse cada factura: se dice en ella, para no pagarla entera sin saberlo.
   const aFavorDe = new Map<string, NotaQueDescuenta[]>()
@@ -142,6 +149,13 @@ export default async function PaginaPorPagar() {
   const avisos = [
     conSaldo > 0
       ? { texto: conSaldo === 1 ? 'una nota de crédito a favor' : `${conSaldo} notas de crédito a favor`, href: '#notas-credito', tono: 'text-aviso' }
+      : null,
+    esperanGerencia.length > 0
+      ? {
+          texto: esperanGerencia.length === 1 ? 'una espera a Gerencia' : `${esperanGerencia.length} esperan a Gerencia`,
+          href: `#factura-${esperanGerencia[0].id}`,
+          tono: 'text-aviso',
+        }
       : null,
     primeraEnEspera
       ? {
@@ -203,6 +217,7 @@ export default async function PaginaPorPagar() {
                 pasa={pasa}
                 verOc={verOc}
                 verCuentas={verCuentas}
+                apruebaCompras={apruebaCompras}
                 hoy={hoy}
                 correcciones={correcciones.get(c.id ?? '')}
                 cuentasCaja={cuentasCaja}
@@ -291,7 +306,7 @@ export default async function PaginaPorPagar() {
               >
                 <span>
                   <span className="text-texto">
-                    {c.numero_ot ? `OT ${c.numero_ot}` : 'Para almacén'} · {c.proveedor} · {nombreDeOc(c)}
+                    <CodigosInternos codigos={(c.orden_compra_id && codigosCredito.get(c.orden_compra_id)) || []} alInicio /> · {c.proveedor} · {nombreDeOc(c)}
                   </span>
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
@@ -320,6 +335,7 @@ export default async function PaginaPorPagar() {
                 pasa={pasa}
                 verOc={verOc}
                 verCuentas={verCuentas}
+                apruebaCompras={apruebaCompras}
                 hoy={hoy}
                 correcciones={correcciones.get(c.id ?? '')}
                 cuentasCaja={cuentasCaja}
@@ -360,7 +376,10 @@ export default async function PaginaPorPagar() {
 
       {planillasPorOt.length > 0 && (
         <Tarjeta className="mt-5">
-          <TarjetaCabecera titulo="Planillas distribuidas por OT" ayuda="Para consultar: las planillas que cerró RR. HH. Los nombres del personal se quedan en RR. HH." />
+          <TarjetaCabecera
+            titulo="Planillas de antes, repartidas por OT"
+            ayuda="Para consultar: las planillas que RR. HH. cerró cuando todavía se repartían entre las OT. Desde octubre de 2026 ya no se reparten: la de taller entra al costo de cada código interno por sus horas. Los nombres del personal se quedan en RR. HH."
+          />
           <TarjetaCuerpo className="space-y-2">
             {planillasPorOt.map((p, i) => (
               <p
@@ -455,6 +474,7 @@ function ParteConBoletaFila({
               <>
                 {'pagado '}
                 <span className="whitespace-nowrap">{moneda(pagado, m)}</span>
+                {parteDe(pagado, x.monto) !== null && ` (${porcentaje(parteDe(pagado, x.monto))})`}
                 {' · '}
               </>
             )}
@@ -844,6 +864,14 @@ function queQuedaAlAnular(b: CompraConBoleta, pagoId: string, m: CodigoMoneda): 
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
+/**
+ * Las OC de la factura que todavía no dejan pagarla: la base rechaza el pago de
+ * la factura de una OC por aprobar, rechazada o anulada (migración 20261027100000).
+ */
+function ocsSinAprobar(c: CuentaPorPagar) {
+  return Number(c.saldo) > 0 ? (c.control?.ordenes ?? []).filter((o) => o.aprobacion !== null && o.aprobacion !== 'APROBADA' && o.aprobacion !== 'NO_REQUERIDA') : []
+}
+
 /** Lo que le pide a Tesorería algo que no es pagar: lo pagado de más, o la factura en otra moneda que espera lo pagado por la boleta. */
 function pideAlgo(b: CompraConBoleta) {
   return Number(b.de_mas ?? 0) > 0 || Boolean(b.otra_moneda)
@@ -903,6 +931,26 @@ function textoDeLaToma(t: CompraConBoleta['pagos'][number]['tomas'][number], m: 
   return `descontado en ${t.factura}: ${enLaFactura}${deLaBoleta}`
 }
 
+/**
+ * El código interno de un documento, como lo nombran las demás pantallas: uno o
+ * varios, o que no tiene. Cada código entero en su línea: en el teléfono no se parte.
+ */
+function CodigosInternos({ codigos, alInicio = false }: { codigos: string[]; alInicio?: boolean }) {
+  const palabra = (texto: string) => (alInicio ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto)
+  if (codigos.length === 0) return <>{palabra('sin código interno')}</>
+  return (
+    <>
+      {palabra(codigos.length === 1 ? 'código' : 'códigos')}{' '}
+      {codigos.map((codigo, i) => (
+        <span key={codigo}>
+          {i > 0 && ', '}
+          <span className="tabular whitespace-nowrap">{codigo}</span>
+        </span>
+      ))}
+    </>
+  )
+}
+
 /** Una factura de compra: sus OC, el aviso de monto, lo pagado con cada voucher y el botón para pagar. */
 function Factura({
   cuenta: c,
@@ -917,9 +965,12 @@ function Factura({
   esperaBoleta,
   nombresOc,
   aFavor = [],
+  apruebaCompras = false,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
+  /** Gerencia: la factura en espera lleva a Aprobación de compras. */
+  apruebaCompras?: boolean
   /** Puede pasar a una factura lo pagado por la boleta, o deshacerlo. */
   pasa: boolean
   verOc: boolean
@@ -940,6 +991,10 @@ function Factura({
   const aviso = control ? (CONTROL_FACTURA_COMPRA[control.control] ?? { etiqueta: control.control, tono: 'neutro' as const }) : null
   const avisos = avisosDeFacturaRegistrada(c, control)
   const ordenes = control?.ordenes ?? []
+  // La base no deja pagar la factura de una OC que Gerencia no aprobó (migración 20261027100000):
+  // en vez del botón, la factura dice a quién espera.
+  const sinAprobar = ocsSinAprobar(c)
+  const rechazada = sinAprobar.find((o) => o.aprobacion === 'RECHAZADA' || o.aprobacion === 'ANULADA')
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
@@ -1007,12 +1062,18 @@ function Factura({
             {saldo <= 0 && <Insignia tono="exito">Pagada</Insignia>}
             {saldo > 0 && Number(c.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {c.enEspera && saldo > 0 && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
+            {sinAprobar.length > 0 &&
+              (rechazada ? (
+                <Insignia tono="peligro">{rechazada.aprobacion === 'ANULADA' ? 'OC anulada' : 'OC rechazada'}</Insignia>
+              ) : (
+                <Insignia tono="aviso">Espera a Gerencia</Insignia>
+              ))}
             {aviso && <Insignia tono={aviso.tono}>{aviso.etiqueta}</Insignia>}
             <InsigniaDelDetector avisos={avisos} />
           </p>
           <p className="text-xs text-texto-suave">
             {definir(TIPO_COMPROBANTE, c.tipo ?? '').etiqueta} · {c.condicion_pago === 'CREDITO' ? 'crédito' : 'contado'} ·{' '}
-            {c.numero_ot ? `OT ${c.numero_ot}` : 'sin OT'} ·{' '}
+            <CodigosInternos codigos={c.codigos} /> ·{' '}
             {/* Puede que ya se haya pagado fuera: no vence hasta que Contabilidad lo diga. */}
             {c.enEspera && saldo > 0 ? 'sin vencimiento hasta que Contabilidad diga si se pagó' : <Vencimiento dia={c.fecha_vencimiento} saldo={saldo} />}
           </p>
@@ -1024,7 +1085,7 @@ function Factura({
                 <span key={o.id}>
                   {i > 0 && ' · '}
                   <span className={`tabular text-texto ${o.numero ? 'whitespace-nowrap' : ''}`}>{nombreDeOc(o)}</span>
-                  {o.numero_ot && ` (OT ${o.numero_ot})`}
+                  {ordenes.length > 1 && (c.codigosPorOc.get(o.id) ?? []).length > 0 && ` (${c.codigosPorOc.get(o.id)?.join(', ')})`}
                 </span>
               ))}
             </p>
@@ -1044,7 +1105,8 @@ function Factura({
           </p>
           <p className="tabular text-xs text-texto-suave">
             Total {moneda(c.total, m)}
-            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}`}
+            {/* Lo pagado también como parte del total de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+            {Number(c.pagado) > 0 && saldo > 0 && ` · pagado ${moneda(c.pagado, m)}${parteDe(c.pagado, c.total) === null ? '' : ` · ${porcentaje(parteDe(c.pagado, c.total))}`}`}
           </p>
         </div>
       </div>
@@ -1053,9 +1115,9 @@ function Factura({
       <div className="mt-2 space-y-2">
         <ParaPagar
           documentos={documentos}
-          cuentas={saldo > 0 && !espera && !c.enEspera ? c.cuentasProveedor : []}
+          cuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? c.cuentasProveedor : []}
           monedaDocumento={m}
-          sinCuentas={saldo > 0 && !espera && !c.enEspera ? sinCuentas(verCuentas, ordenes.length > 0) : null}
+          sinCuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? sinCuentas(verCuentas, ordenes.length > 0) : null}
         />
         {paga &&
           faltaDeAnulados > 0.005 && (
@@ -1093,6 +1155,36 @@ function Factura({
             Espera a Contabilidad: la{' '}
             <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
+          </p>
+        ) : sinAprobar.length > 0 ? (
+          <p className={`text-xs ${rechazada ? 'text-peligro' : 'text-aviso'}`}>
+            {rechazada ? (
+              <>
+                {rechazada.aprobacion === 'ANULADA' ? 'La ' : 'Gerencia rechazó la '}
+                <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>
+                {rechazada.aprobacion === 'ANULADA' ? ' está anulada' : ''}: esta factura no se paga. Contabilidad ve con el proveedor qué pasa con ella.
+              </>
+            ) : (
+              <>
+                {sinAprobar.length === 1 ? 'La ' : 'Las '}
+                {sinAprobar.map((o, i) => (
+                  <span key={o.id}>
+                    {i > 0 && (i === sinAprobar.length - 1 ? ' y ' : ', ')}
+                    <span className={o.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(o)}</span>
+                  </span>
+                ))}{' '}
+                {sinAprobar.length === 1 ? 'todavía espera' : 'todavía esperan'} la aprobación de Gerencia: la factura se paga cuando Gerencia{' '}
+                {sinAprobar.length === 1 ? 'la apruebe' : 'las apruebe'}.
+                {apruebaCompras && (
+                  <>
+                    {' '}
+                    <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
+                      Ir a Aprobación de compras
+                    </a>
+                  </>
+                )}
+              </>
+            )}
           </p>
         ) : espera ? (
           <p className="text-xs text-aviso">
@@ -1430,6 +1522,7 @@ function CompraConBoletaFila({
                   <>
                     {' · pagado '}
                     <span className="whitespace-nowrap">{moneda(neto, m)}</span>
+                    {parteDe(neto, b.total) !== null && ` · ${porcentaje(parteDe(neto, b.total))}`}
                   </>
                 )}
                 {devuelto > 0 && (

@@ -682,6 +682,7 @@ export async function registrarPagoServicio(_previo: unknown, formulario: FormDa
       fecha_pago: z.iso.date('Elige el día del pago.'),
       monto: z.coerce.number('Escribe lo que se pagó.').positive('Escribe lo que se pagó.').multipleOf(0.01, 'El importe va en dos decimales.'),
       cancela: z.enum(['si', 'no'], 'Indica si este pago cancela la orden de servicio.'),
+      destino: z.enum(['PROVEEDOR', 'DETRACCION'], 'Elige a quién le pagas: al proveedor o la detracción.'),
       operacion: z.string().max(60, 'El número de operación pasa de 60 caracteres.'),
       comprobante: z.string().max(30, 'El número del comprobante del proveedor pasa de 30 caracteres.'),
       ruta: z.string().min(1, 'Adjunta el comprobante del pago.').max(200),
@@ -690,6 +691,7 @@ export async function registrarPagoServicio(_previo: unknown, formulario: FormDa
     .safeParse({
       id: dato(formulario, 'id'),
       orden_servicio_id: dato(formulario, 'orden_servicio_id'),
+      destino: dato(formulario, 'destino'),
       fecha_pago: dato(formulario, 'fecha_pago'),
       monto: dato(formulario, 'monto'),
       cancela: dato(formulario, 'cancela'),
@@ -713,6 +715,7 @@ export async function registrarPagoServicio(_previo: unknown, formulario: FormDa
     p_ruta: d.ruta,
     p_caja: d.caja_id,
     p_monto_cuenta: montoDeLaCuenta(d.monto_cuenta),
+    p_destino: d.destino,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El pago no se registró. Recarga la pantalla.' }

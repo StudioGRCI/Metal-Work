@@ -283,7 +283,7 @@ function SolicitarGrupo({
   area: keyof typeof AREAS
   lineas: MaterialDeOrden[]
 }) {
-  const { alEnviar, enviando, error } = useEnvio(crearRequerimiento)
+  const { alEnviar, enviando, error } = useEnvio(crearRequerimiento, undefined, { documento: area })
   return (
     <Tarjeta>
       <TarjetaCuerpo className="space-y-3">
@@ -328,9 +328,9 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
   const [confirmando, setConfirmando] = useState(false)
   const [areaDestino, setAreaDestino] = useState(material.area_destino)
   const [materialId, setMaterialId] = useState(material.material_id)
-  const { alEnviar, enviando, error } = useEnvio(editarLineaMaterial, () => setEditando(false))
+  const { alEnviar, enviando, error } = useEnvio(editarLineaMaterial, () => setEditando(false), { corrige: true })
   const elegido = catalogo.materiales.find((m) => m.id === materialId)
-  const quitar = useEnvio(quitarMaterial, () => setConfirmando(false))
+  const quitar = useEnvio(quitarMaterial, () => setConfirmando(false), { documento: material.id })
 
   // Quitar pregunta antes: el icono va pegado al lápiz y con guante se toca sin
   // querer, y una línea borrada hay que volver a buscarla en el catálogo.
@@ -346,7 +346,7 @@ function AccionesLinea({ material, ordenId, catalogo }: { material: MaterialDeOr
         <Boton type="submit" variante="peligro" tamano="sm" cargando={quitar.enviando}>
           Sí, quitar
         </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmando(false)}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={quitar.enviando} onClick={() => setConfirmando(false)}>
           No
         </Boton>
         {quitar.error && <Error_ texto={quitar.error} />}

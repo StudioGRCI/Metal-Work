@@ -185,7 +185,7 @@ function NuevaObservacion({
 
 function ItemObservacion({ ordenId, observacion: o }: { ordenId: string; observacion: ObservacionEnPantalla }) {
   const [resolviendo, setResolviendo] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(resolverObservacion, () => setResolviendo(false))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(resolverObservacion, () => setResolviendo(false), { documento: o.id })
 
   return (
     <div

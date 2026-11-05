@@ -26,3 +26,18 @@ export function resumenMedidas(c: MedidasDeCarroceria): string | null {
   ].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : null
 }
+
+/**
+ * El código de un tipo de carrocería, que sale de su nombre: mayúsculas, sin
+ * tildes, con guiones bajos. No se repite: el alta que encuentra el suyo
+ * devuelve el que estaba (`crearCarroceria`), y la orden nueva busca por él la
+ * carrocería cuya alta volvió sin decir si entró.
+ */
+export const codigoDeCarroceria = (nombre: string) =>
+  nombre
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40)

@@ -2,6 +2,7 @@ import { FileText, Truck, CalendarDays } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia, Punto } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -10,7 +11,7 @@ import type { obtenerOrden } from '@/lib/datos/ordenes'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
 import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { fecha, hoyLima, numero as fmtNumero } from '@/lib/format'
+import { fecha, hoyLima, numero as fmtNumero, porcentaje } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 
 import { AccionesEstado } from './acciones-estado'
@@ -129,13 +130,16 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
         }
       />
 
+      {/* La pantalla a la que lleva «Registrar orden» dice qué pasó y recibe el
+          cursor: con un <p> sin rol, el cursor quedaba en la página y no se oía
+          nada (vigesimosexta pasada). */}
       {creada && orden.estado === 'BORRADOR' && (
-        <p className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-exito">
+        <AvisoEnfocado className="mb-4 rounded-[var(--radius-base)] bg-exito-suave px-3 py-2">
           {/* A quien no aprueba no se le pide que apruebe: se le dice quién lo hace. */}
           {puede(perfil, 'ordenes.aprobar')
             ? 'Orden registrada con su PDF. Apruébala para que Diseño pueda definir las etapas.'
             : 'Orden registrada con su PDF. Gerencia la aprueba para que Diseño pueda definir las etapas.'}
-        </p>
+        </AvisoEnfocado>
       )}
 
       {/* La que abrió el taller: se dice quién la revisa y que el trabajo no
@@ -175,13 +179,14 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-baseline justify-between gap-4">
                 <span className="text-xs font-medium text-texto-suave">Avance de la unidad</span>
-                <strong className="tabular text-lg text-texto">{fmtNumero(orden.avance_porcentaje,1)} %</strong>
+                <strong className="tabular text-lg text-texto">{porcentaje(orden.avance_porcentaje)}</strong>
               </div>
               <Progreso valor={orden.avance_porcentaje} etiqueta="Avance de la orden de trabajo" alto={esResumen?'md':'sm'}/>
-              {/* El número suma todos los reportes de las áreas, revisados o no
-                  (migración 097: la aprobación es el visto bueno, no la llave
-                  del porcentaje). Decía «aprobado» y no lo era. */}
-              {esResumen&&<p className="mt-2 text-xs text-texto-suave">Según lo que reportan las áreas · {tipoCarroceria?.nombre??definir(TIPO_TRABAJO,orden.tipo_trabajo).etiqueta} · <Link href={`/ordenes/${orden.id}/expediente`} className="font-medium text-acento hover:underline">Ver expediente</Link></p>}
+              {/* Desde el 2026-10-15 el avance es el del código interno: las
+                  etapas que marca Diseño y lo que reporta Supervisión por código
+                  (migración 20261026160000). La orden sin cotización sigue con
+                  el de sus etapas. */}
+              {esResumen&&<p className="mt-2 text-xs text-texto-suave">{orden.avance_del_codigo?<>El del código <span className="font-mono">{orden.avance_del_codigo}</span>: etapas de Diseño y reportes de Supervisión</>:'Según lo que reportan las áreas'} · {tipoCarroceria?.nombre??definir(TIPO_TRABAJO,orden.tipo_trabajo).etiqueta} · <Link href={`/ordenes/${orden.id}/expediente`} className="font-medium text-acento hover:underline">Ver expediente</Link></p>}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

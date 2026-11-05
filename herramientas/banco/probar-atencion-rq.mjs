@@ -4,6 +4,7 @@
  *
  *   1. Requerimientos registra un RQ; su menú tiene «Requerimientos» y «Vehículos», y el gasto en «Consultas».
  *   2. Almacén lo ve en «Atención de requerimiento» y revisa el stock: no tiene nada.
+ *      A Requerimientos le llega «Por comprar» (DKS, 26/10/2026).
  *   3. Logística lo ve por comprar y lo marca en compra; su menú arranca por Atención.
  *   4. Almacén lo deja listo en almacén y lo entrega con faltante (no hay salida
  *      en el kardex de un material nuevo sin stock); pasa al historial.
@@ -64,14 +65,29 @@ async function menu(pagina) {
   )
 }
 
+/**
+ * Espera a que la fila deje de decir lo que decía antes del paso. Cada paso
+ * revalida la bandeja en el servidor, y con muchas filas eso pasa del segundo
+ * (2,8 s en el banco del hilo con 113 RQ): una espera fija de 800 ms daba un
+ * FALLA que no era del código. Si la fila sale de la vista, también vale.
+ */
+async function esperarFila(pagina, fila, antes) {
+  for (let i = 0; i < 80; i++) {
+    const ahora = await fila.innerText().catch(() => null)
+    if (ahora === null || ahora !== antes) return
+    await pagina.waitForTimeout(250)
+  }
+}
+
 /** Abre la ventana del paso y la manda con la nota. */
 async function paso(pagina, fila, boton, nota) {
+  const antes = await fila.innerText().catch(() => null)
   await fila.getByRole('button', { name: boton, exact: true }).click()
   const v = pagina.locator('[role="dialog"]')
   if (nota) await v.locator('textarea[name="nota"]').fill(nota)
   await v.getByRole('button', { name: /Marcar|Dejar listo|Registrar entrega/ }).click()
   await v.waitFor({ state: 'detached', timeout: 20000 })
-  await pagina.waitForTimeout(800)
+  await esperarFila(pagina, fila, antes)
 }
 
 /**
@@ -79,6 +95,7 @@ async function paso(pagina, fila, boton, nota) {
  * `nada` usan los atajos de la ventana; un arreglo pone cada cantidad a mano.
  */
 async function revisarStock(pagina, fila, cuanto, nota) {
+  const antes = await fila.innerText().catch(() => null)
   await fila.getByRole('button', { name: 'Revisar stock' }).click()
   const v = pagina.locator('[role="dialog"]')
   if (cuanto === 'todo') await v.getByRole('button', { name: 'Tengo todo' }).click()
@@ -87,7 +104,7 @@ async function revisarStock(pagina, fila, cuanto, nota) {
   if (nota) await v.locator('textarea[name="nota"]').fill(nota)
   await v.getByRole('button', { name: 'Guardar la revisión' }).click()
   await v.waitFor({ state: 'detached', timeout: 20000 })
-  await pagina.waitForTimeout(800)
+  await esperarFila(pagina, fila, antes)
 }
 
 const sello = Date.now().toString().slice(-6)
@@ -117,7 +134,7 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await ventana.locator('[id^="rq-cant-"]').fill('3')
   await ventana.locator('[id^="rq-cat-"]').selectOption({ index: 1 })
   await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
   const fila = pagina.locator('[data-rq]', { hasText: codigo })
   await fila.waitFor({ timeout: 20000 })
   comprobar((await fila.innerText()).includes('Por revisar'), 'el RQ nace «Por revisar» (Almacén)')
@@ -144,9 +161,22 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   comprobar((await fila.getByRole('button', { name: 'Revisar stock' }).count()) === 1 && (await fila.getByRole('button', { name: 'Listo en almacén' }).count()) === 0,
     'con el botón «Revisar stock»')
   await revisarStock(pagina, fila, 'nada', 'No queda plancha de 2 mm')
-  comprobar((await pagina.locator('tbody tr', { hasText: codigo }).innerText()).includes('Por comprar'), 'queda «Por comprar»')
+  // Como con «En compra»: se espera la fila con el estado nuevo, no la pausa fija.
+  const porComprar = pagina.locator('tbody tr', { hasText: codigo }).filter({ hasText: 'Por comprar' })
+  comprobar(await porComprar.waitFor({ timeout: 15000 }).then(() => true, () => false), 'queda «Por comprar»')
   await pagina.screenshot({ path: `${CAPTURAS}/atencion-almacen.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola como Almacén ${errores.join(' | ')}`)
+  await contexto.close()
+}
+
+// ------------------------------------------------ 2b. Requerimientos: le llegó «Por comprar»
+{
+  const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos)
+  await pagina.goto(`${BASE}/avisos`, { waitUntil: 'networkidle' })
+  const aviso = pagina.locator('li, tr, a', { hasText: codigo }).filter({ hasText: /Por comprar: RQ-/ }).first()
+  const texto = (await aviso.innerText().catch(() => '')).replace(/\s+/g, ' ')
+  comprobar(texto.includes('Almacén no tiene nada; Logística compra 1 de 1 insumo'), `a Requerimientos le llegó «Por comprar» con lo que se compra: «${texto.slice(0, 200)}»`)
+  comprobar(errores.length === 0, `sin errores de consola en los avisos de Requerimientos ${errores.join(' | ')}`)
   await contexto.close()
 }
 

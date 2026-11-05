@@ -47,7 +47,8 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
             {!plantilla.activa && <Insignia tono="neutro">Dada de baja</Insignia>}
           </span>
         }
-        descripcion={plantilla.descripcion ?? undefined}
+        // Unos 1 500 caracteres de procedencia empujaban la ficha una pantalla en el teléfono: a la ayuda (auditoría del 27/10/2026).
+        ayuda={plantilla.descripcion ?? undefined}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">

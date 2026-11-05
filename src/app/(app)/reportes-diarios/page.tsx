@@ -8,9 +8,10 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarReportesDiarios, type ReporteListado } from '@/lib/datos/reportes-diarios'
+import { tareosDelMes } from '@/lib/datos/rrhh'
 import { ESTADO_REPORTE, estadoDeReporte, faltaParaValidar, horasPorPersona, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
-import { fechaLarga, hoyLima, mesLargo } from '@/lib/format'
+import { fechaLarga, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Reporte diario' }
@@ -28,12 +29,16 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const area = typeof params.area === 'string' ? params.area : null
   const filtro = typeof params.estado === 'string' && params.estado in FILTRO_ESTADO ? params.estado : null
 
-  const todos = await listarReportesDiarios(mes)
+  // RR. HH. ve lo que cuestan esas horas: el costeo por código ya las tiene con su costo.
+  const veCosto = puede(perfil, 'rrhh.personal')
+  const [todos, tareos] = await Promise.all([listarReportesDiarios(mes), veCosto ? tareosDelMes(mes) : Promise.resolve([])])
   const areas = [...new Set(todos.map((r) => r.area ?? 'Sin área'))].sort()
   const deLaArea = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
   const reportes = filtro ? deLaArea.filter((r) => estadoDeReporte(r) === FILTRO_ESTADO[filtro]) : deLaArea
   const vigentes = reportes.filter((r) => !r.anulado_en)
   const horas = vigentes.reduce((n, r) => n + r.personal.reduce((m, p) => m + p.horas, 0), 0)
+  const idsVigentes = new Set(vigentes.map((r) => r.id))
+  const costoHoras = tareos.filter((t) => !t.anulado_en && t.reporte && idsVigentes.has(t.reporte.id)).reduce((n, t) => n + t.costo, 0)
   const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
   const enlaceMes = (m: string) =>
     `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
@@ -81,6 +86,12 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         <p className="text-xs text-texto-suave">
           <span className="tabular">{vigentes.length}</span> {vigentes.length === 1 ? 'reporte' : 'reportes'} ·{' '}
           <span className="tabular">{horasCortas(horas)}</span> de personal
+          {veCosto && costoHoras > 0 && (
+            <>
+              {' '}
+              · <span className="tabular whitespace-nowrap">{moneda(costoHoras)}</span>
+            </>
+          )}
         </p>
       </div>
 

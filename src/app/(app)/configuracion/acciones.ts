@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
+import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -136,9 +137,15 @@ const esquemaCarroceria = z
     nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
     descripcion: z.string().trim().optional(),
     // Semirremolque o carrocería montada: el SR/CM de su código de producto.
-    tipo_unidad: z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA']).optional(),
+    // «Sin definir» llega vacío: es lo que trae la ventana y la carrocería
+    // entra sin tipo. El enum solo aceptaba la falta del campo, y la ventana
+    // decía «Invalid input» (H4 de diseño, cuadragésima tercera pasada).
+    tipo_unidad: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.enum(['SEMIRREMOLQUE', 'CARROCERIA_MONTADA'], 'Elige si es semirremolque o carrocería montada, o déjalo sin definir.').optional(),
+    ),
     // La habitual de esta carrocería, escrita como la escriben ellos.
-    capacidad: z.string().trim().max(60).optional(),
+    capacidad: z.string().trim().max(60, 'La capacidad va en 60 caracteres como máximo.').optional(),
   })
 
 /**
@@ -167,13 +174,7 @@ export async function crearCarroceria(
   const supabase = await createClient()
 
   // El código sale del nombre: mayúsculas, sin tildes, con guiones bajos.
-  const codigo = v.nombre
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40)
+  const codigo = codigoDeCarroceria(v.nombre)
 
   // Si ya existe uno con ese nombre se devuelve el que estaba para no duplicar el catálogo.
   const { data: existente } = await supabase

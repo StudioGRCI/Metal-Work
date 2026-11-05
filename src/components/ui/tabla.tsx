@@ -37,7 +37,7 @@ export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   return (
     <th
       className={cn(
-        'px-3 py-2 text-left text-[11px] font-semibold tracking-wide text-texto-suave uppercase',
+        'px-3 py-2 text-left text-xs font-semibold tracking-normal text-texto-suave uppercase sm:tracking-wide',
         className,
       )}
       {...props}

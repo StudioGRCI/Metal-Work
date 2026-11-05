@@ -12,7 +12,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { cantidad, fecha } from '@/lib/format'
 import { PRIORIDAD, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
+import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
 import {
   ORDENES_POR_PAGINA,
   comoEstado,
@@ -96,14 +96,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
       atraso,
       habiles,
       unidad,
-      sinPlaca: todaviaSinPlaca(unidad),
       plazo:
         atraso > 0
           ? { texto: `${atraso} ${atraso === 1 ? 'día' : 'días'} de atraso`, clase: 'font-medium text-peligro' }
           : habiles === null
             ? null
             : {
-                texto: habiles === 0 ? 'se entrega hoy' : `quedan ${habiles} ${habiles === 1 ? 'día' : 'días'} de taller`,
+                texto: habiles === 0 ? 'se entrega hoy' : `faltan ${habiles} ${habiles === 1 ? 'día hábil' : 'días hábiles'} de taller`,
                 clase: habiles <= 3 ? 'font-medium text-aviso' : 'text-texto-suave',
               },
     }
@@ -121,9 +120,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
             <>
-              {/* La OT de una unidad la carga Gerencia al aprobar la
-                  cotización, con su código interno (migración 20261016900000):
-                  aquí ya no se emite. Queda la orden suelta —reparación,
+              {/* La OT de una unidad la carga Administración con su código
+                  interno, sobre la cotización que Gerencia aprobó (migración
+                  20261027200000): aquí ya no se emite. Queda la orden suelta —reparación,
                   garantía—, que nace en borrador y la aprueba Gerencia. */}
               {puedeCrear && (
                 <EnlaceBoton href="/ordenes/nueva" variante="contorno">
@@ -149,7 +148,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
           cabía y solo se leía el número y medio cliente. */}
       {filas.length > 0 && (
         <ul className="mt-4 space-y-3 sm:hidden">
-          {filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => (
+          {filas.map(({ orden, estado, prioridad, unidad, plazo }) => (
             <li key={orden.id}>
               <Link
                 href={`/ordenes/${orden.id}`}
@@ -170,14 +169,16 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
                 </p>
                 <p className="text-xs text-texto-suave">
-                  <span className={sinPlaca ? 'text-texto-tenue' : undefined}>{nombreDeUnidad(unidad)}</span>
+                  <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : undefined}>{nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}</span>
                   {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
                 </p>
                 <div className="mt-3 flex items-end justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                     <p className="mt-1 text-[11px] text-texto-suave">
-                      {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                      {orden.avance_del_codigo
+                        ? `Avance del código ${orden.avance_del_codigo}`
+                        : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
                     </p>
                   </div>
                   {/* Ancho fijo: si la columna medía lo que su texto, cada
@@ -230,7 +231,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
             </tr>
           </TablaCabecera>
           <tbody>
-            {filas.map(({ orden, estado, prioridad, unidad, sinPlaca, plazo }) => {
+            {filas.map(({ orden, estado, prioridad, unidad, plazo }) => {
                 return (
                   <TR key={orden.id}>
                     <TD className="whitespace-nowrap">
@@ -261,8 +262,8 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                         {/* Sin placa el nombre lo pone el código de fábrica o
                             el chasis: va más tenue para que nadie lo lea de
                             lejos como si fuera una matrícula. */}
-                        <span className={sinPlaca ? 'text-texto-tenue' : undefined}>
-                          {nombreDeUnidad(unidad)}
+                        <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : undefined}>
+                          {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
                         </span>
                         {/* El responsable no tiene columna propia en el
                             teléfono: viaja aquí, pegado a la unidad. */}
@@ -287,7 +288,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                     <TD>
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
                       <p className="mt-1 text-[11px] text-texto-suave">
-                        {orden.etapas_terminadas ?? 0} de {orden.etapas_total ?? 0} etapas
+                        {orden.avance_del_codigo
+                          ? `Avance del código ${orden.avance_del_codigo}`
+                          : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
                       </p>
                     </TD>
 

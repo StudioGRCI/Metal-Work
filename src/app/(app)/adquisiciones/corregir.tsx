@@ -149,6 +149,8 @@ function Formulario({
       otra()
       alTerminar()
     },
+    // Corrige lo que el comprobante muestra: se cierra con él ya al día.
+    { corrige: true },
   )
   const rucEscrito = ruc.replace(/\D/g, '')
   // Las OC que se pueden marcar: las de la factura y las que esperan su factura, del mismo proveedor.

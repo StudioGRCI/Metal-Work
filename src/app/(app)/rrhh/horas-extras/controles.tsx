@@ -25,7 +25,10 @@ import { anularDecisionHorasExtras, anularUsoSaldo, decidirHorasExtras, guardarR
  */
 export function DecidirExtras({ id, trabajadorId, fecha }: { id: string; trabajadorId: string; fecha: string }) {
   const router = useRouter()
-  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras, () => router.refresh(), { refrescar: false })
+  const { ejecutar, enviando, error } = useAccion(decidirHorasExtras, () => router.refresh(), {
+    refrescar: false,
+    documento: `${trabajadorId}:${fecha}`,
+  })
   const yaEntro = yaEntroLaPrimeraVez(error)
   const [elegida, setElegida] = useState<'PAGAR' | 'RESERVAR' | null>(null)
   function decidir(decision: 'PAGAR' | 'RESERVAR') {

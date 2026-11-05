@@ -287,7 +287,9 @@ export function SeleccionBuscable({
           <ul ref={listaRef} id={idLista} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {visibles.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-texto-suave">
-                Nada coincide. Prueba con menos palabras o con el número.
+                {/* Por la lista y no por lo escrito: vacía de origen, el consejo
+                    de escribir menos no sirve (H3 de diseño, quincuagésima octava pasada). */}
+                {opciones.length > 0 ? 'Nada coincide. Prueba con menos palabras o con el número.' : 'No hay nada que elegir.'}
               </li>
             )}
 

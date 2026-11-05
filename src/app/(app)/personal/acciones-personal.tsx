@@ -10,8 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import type { PersonaEnLista } from '@/lib/datos/personal'
-import { useEnvio } from '@/lib/envio'
-import { moneda } from '@/lib/format'
+import { navegarSiEsDeLaPestana, useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { cambiarClave, cambiarEstado, darDeAltaPersona, guardarPersona } from './acciones'
@@ -138,13 +137,12 @@ function CamposDePersona({
         </Campo>
       </div>
 
-      {/* El DNI y el costo por hora los pone Recursos Humanos (migración
-          20261020165000): aquí solo se leen. */}
+      {/* El DNI lo pone Recursos Humanos (migración 20261020165000): aquí solo
+          se lee. */}
       {persona && (
         <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm text-texto">
-          DNI <span className="tabular font-medium">{persona.documento ?? 'sin registrar'}</span> · costo por hora{' '}
-          <span className="tabular font-medium">{persona.costo_hora > 0 ? moneda(persona.costo_hora) : 'sin registrar'}</span>
-          <span className="mt-0.5 block text-xs text-texto-suave">Los pone y los cambia Recursos Humanos, en «DNI y costo de las cuentas».</span>
+          DNI <span className="tabular font-medium">{persona.documento ?? 'sin registrar'}</span>
+          <span className="mt-0.5 block text-xs text-texto-suave">Lo pone y lo cambia Recursos Humanos, en «DNI de las cuentas».</span>
         </p>
       )}
 
@@ -239,19 +237,26 @@ export function FilaDePersona({
   const router = useRouter()
   const [ventana, setVentana] = useState<'editar' | 'clave' | 'baja' | null>(null)
 
-  const edicion = useEnvio(guardarPersona)
+  // Corrige la ficha que la fila muestra: «Cerrar» espera a que la fila esté al
+  // día, para no volver a abrir con los datos de antes (`corrige`).
+  const edicion = useEnvio(guardarPersona, undefined, { corrige: true })
   const clave = useEnvio(cambiarClave)
   // Dada de baja, la fila se va de «Activos» y con ella el botón para
   // deshacerlo: se lleva a la lista donde quedó, con el botón a la vista.
   const estado = useEnvio(
     cambiarEstado,
-    () => {
+    (_, desde) => {
       setVentana(null)
       const lista = persona.activo ? 'bajas' : 'activos'
-      router.push(`/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`)
+      const quien = `${persona.nombres} ${persona.apellidos}`
+      navegarSiEsDeLaPestana(router, `/personal?estado=${lista}&q=${encodeURIComponent(persona.correo ?? persona.apellidos)}`, desde, {
+        dice: persona.activo ? `${quien} quedó de baja.` : `${quien} volvió a activos.`,
+        enlace: persona.activo ? 'Verla en Bajas' : 'Verla en Activos',
+        porOmision: { estado: 'activos' },
+      })
     },
     // La navegación ya trae la lista nueva: un refresco aparte la rehacía dos veces.
-    { refrescar: false },
+    { refrescar: false, documento: persona.id },
   )
 
   const alcance = (
@@ -280,13 +285,7 @@ export function FilaDePersona({
           {/* El puesto y el alcance también bajan aquí en el teléfono: con sus
               columnas y los tres botones, la tabla se corría de costado. */}
           <div className="mt-1 text-xs text-texto sm:hidden">
-            {[
-              persona.rol?.nombre,
-              persona.area?.nombre,
-              persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}/h` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+            {[persona.rol?.nombre, persona.area?.nombre].filter(Boolean).join(' · ')}
           </div>
           <div className="mt-1 flex flex-wrap gap-1 sm:hidden">{alcance}</div>
         </TD>
@@ -294,9 +293,6 @@ export function FilaDePersona({
         <TD className="hidden text-xs sm:table-cell">{persona.rol?.nombre ?? '—'}</TD>
         <TD className="hidden text-xs sm:table-cell">{persona.area?.nombre ?? '—'}</TD>
         <TD className="hidden sm:table-cell">{alcance}</TD>
-        <TD className="tabular hidden text-right text-xs sm:table-cell">
-          {persona.es_operario ? `S/ ${Number(persona.costo_hora).toFixed(2)}` : '—'}
-        </TD>
 
         {gestiona && (
           // En fila y con hueco solo en el teléfono: en el monitor los botones
@@ -401,7 +397,7 @@ export function FilaDePersona({
           <CamposDePersona catalogos={catalogos} persona={persona} />
           <Aviso resultado={edicion.resultado} />
           <div className="flex justify-end gap-2 pt-1">
-            <Boton type="button" variante="contorno" onClick={() => setVentana(null)}>
+            <Boton type="button" variante="contorno" disabled={edicion.enviando} onClick={() => setVentana(null)}>
               Cerrar
             </Boton>
             <Boton type="submit" cargando={edicion.enviando}>

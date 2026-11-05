@@ -1,12 +1,16 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
-import { hoyLima, mesLargo } from '@/lib/format'
+import { hoyLima } from '@/lib/format'
 import { menuDe } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -27,14 +31,34 @@ export type PendientesGlobales = {
   porRuta: Record<string, number>
   /** Las rutas con alguna cuenta que no se pudo leer: su globo dice «!», no cero. */
   sinComprobar: string[]
+  /** Cada cuenta con algo, con su texto: el Dashboard arma con ellas la cifra de lo que espera por el puesto. */
+  tareas: TareaPendiente[]
+  /** Las claves cuya cuenta no se pudo leer: la cifra del Dashboard que las suma no puede decir «nada por ahora». */
+  clavesSinComprobar: string[]
 }
 
-/** Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más antiguo, por ejemplo). */
-type Cuenta = () => Promise<number | { cantidad: number; ruta?: string }>
+/** Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero. */
+export type MontoPendiente = { PEN: number; USD: number }
+
+export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string; monto?: MontoPendiente }
+
+/**
+ * Cuántos hay; con `ruta`, el enlace afina adónde llevar (el mes del más
+ * antiguo, por ejemplo); con `monto`, cuánto vale (DKS, 27/10/2026: toda la
+ * matemática en porcentaje y costo).
+ */
+type Cuenta = () => Promise<number | { cantidad: number; ruta?: string; monto?: MontoPendiente }>
+
+const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T) => number): MontoPendiente =>
+  filas.reduce((m, f) => (moneda(f) === 'USD' ? { ...m, USD: m.USD + monto(f) } : { ...m, PEN: m.PEN + monto(f) }), { PEN: 0, USD: 0 })
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
-export async function pendientesGlobales(perfil: PerfilSesion): Promise<PendientesGlobales> {
+/**
+ * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
+ * de lo que espera, en la misma carga, y las consultas se hacen una sola vez.
+ */
+export const pendientesGlobales = cache(async function pendientesGlobales(perfil: PerfilSesion): Promise<PendientesGlobales> {
   const supabase = await createClient()
   const hoy = hoyLima()
 
@@ -136,9 +160,9 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // Las aprobadas antes de que la aprobación trajera código y OT (migración
-  // 20261016900000): Gerencia les da su código y les carga la OT.
-  if (puede(perfil, 'cotizaciones.revisar')) {
+  // Las que Gerencia aprobó y esperan su código interno y su OT: las carga
+  // Administración (migración 20261027200000).
+  if (puede(perfil, 'ordenes.crear')) {
     tareas.push({
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
@@ -406,24 +430,64 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     })
   }
 
-  // La mano de obra de cada carrocería entra cuando RR. HH. cierra la planilla
-  // del mes y la reparte: mientras tanto, el costo de todas las OT sale corto.
+  // La evaluación de desempeño que Diseño envió y Administración todavía no
+  // recibe ni devuelve (la base además le avisa al enviarla, migración 20261026160000).
+  if (puede(perfil, 'administracion.recibir_evaluacion')) {
+    tareas.push({
+      clave: 'evaluaciones_por_recibir',
+      ruta: '/diseno/evaluaciones',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'evaluación de desempeño por recibir', 'evaluaciones de desempeño por recibir'),
+      contar: () => cabeza(supabase.from('diseno_evaluaciones').select('id', { count: 'exact', head: true }).eq('estado', 'ENVIADA')),
+    })
+  }
+
+  // La planilla de taller de un mes que ya pasó, creada y sin cerrar: al
+  // cerrarla, la diferencia entre el costo real de cada persona y lo que entró
+  // por sus horas se reparte entre los códigos (migración 20261026210000).
+  // Mientras siga en preparación, la mano de obra de esos códigos sale corta.
+  // No cuenta la que todavía no se crea: la de un mes sin planilla no tiene
+  // nada que cerrar hasta que RR. HH. la importe. Tampoco la de antes de
+  // noviembre de 2026, que queda como registro (`planilla_ajuste_desde()`,
+  // migración 20261026230000).
   if (puede(perfil, 'rrhh.gestionar_planillas')) {
-    const mesAnterior = primerDiaDelMesAnterior(hoy)
+    const esteMes = `${hoy.slice(0, 7)}-01`
     tareas.push({
       clave: 'planilla_por_cerrar',
       ruta: '/rrhh',
       tono: 'aviso',
-      texto: (n) => `${n} planilla de taller de ${mesLargo(mesAnterior)} por cerrar y repartir`,
+      texto: (n) =>
+        plural(n, 'planilla de taller por cerrar: su ajuste no entra a los códigos', 'planillas de taller por cerrar: su ajuste no entra a los códigos'),
       contar: async () => {
+        const desde = await planillaAjusteDesde()
         const { count, error } = await supabase
           .from('planillas')
           .select('id', { count: 'exact', head: true })
           .eq('tipo', 'TALLER')
-          .eq('periodo', mesAnterior)
-          .eq('estado', 'CERRADA')
+          .eq('moneda', 'PEN')
+          .eq('estado', 'BORRADOR')
+          .gte('periodo', desde)
+          .lt('periodo', esteMes)
         if (error) throw new Error('No se pudo leer la planilla.')
-        return (count ?? 0) > 0 ? 0 : 1
+        return count ?? 0
+      },
+    })
+  }
+
+  // Un permiso de un día que ya pasó, sin justificar, descontar ni reportar, no
+  // tiene ninguna consecuencia hasta que RR. HH. decida (migración 20261026200000).
+  // Los de antes de octubre de 2026 solo se reportan: también cuentan.
+  if (puede(perfil, 'rrhh.permisos')) {
+    tareas.push({
+      clave: 'permisos_sin_decidir',
+      ruta: '/rrhh/permisos',
+      tono: 'aviso',
+      texto: (n) =>
+        plural(n, 'permiso de un día pasado sin justificar, descontar ni reportar', 'permisos de días pasados sin justificar, descontar ni reportar'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('rrhh_permisos_con_estado', {})
+        if (error) throw new Error('No se pudieron leer los permisos.')
+        return (data ?? []).filter((p) => p.fecha && p.fecha < hoy && Number(p.por_justificar ?? 0) > 0 && !p.reportado && !p.anulado_en).length
       },
     })
   }
@@ -489,7 +553,22 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       ruta: '/contabilidad/facturacion',
       tono: 'acento',
       texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
-      contar: async () => (await facturacion()).por_facturar ?? 0,
+      contar: async () => {
+        // La cuenta es la de la base; lo que vale sale de la misma bandeja que
+        // Facturación: las aprobadas con código y sin factura vigente.
+        // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
+        const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
+        const cantidad = cuenta.por_facturar ?? 0
+        // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
+        if (bandeja.error) return cantidad
+        const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
+        // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
+        if (sinFactura.length !== cantidad) return cantidad
+        return {
+          cantidad,
+          monto: enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+        }
+      },
     })
   }
 
@@ -586,7 +665,12 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       if (aprueba.data !== true) return 0
       const { data, error } = await supabase.rpc('documentos_por_aprobar')
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).filter((d) => d.aprobacion === 'POR_APROBAR').length
+      const espera = (data ?? []).filter((d) => d.aprobacion === 'POR_APROBAR')
+      // En soles al cambio de su fecha, como la pantalla; sin cambio, en su moneda.
+      return {
+        cantidad: espera.length,
+        monto: enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)),
+      }
     },
   })
 
@@ -780,6 +864,17 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
       },
     })
   }
+  // Las cuentas con un día anterior a hoy sin cerrar, como la cifra «Caja de hoy»
+  // del Dashboard y el aviso «Días sin cerrar» de la caja: de todas las cuentas.
+  if (puede(perfil, 'tesoreria.caja')) tareas.push({
+    clave: 'cajas_sin_cerrar', ruta: '/tesoreria/caja-diaria', tono: 'aviso',
+    texto: n => plural(n, 'cuenta con días sin cerrar', 'cuentas con días sin cerrar'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('caja_del_dia', { p_fecha: hoy })
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).filter((k) => k.caja_id && k.primer_dia_sin_cerrar && k.primer_dia_sin_cerrar < hoy).length
+    },
+  })
   if (puede(perfil, 'subcontratos.pagar')) tareas.push({
     clave: 'recibos_por_pagar', ruta: '/tesoreria/recibos-por-honorarios', tono: 'aviso',
     texto: n => plural(n, 'recibo por honorarios por pagar', 'recibos por honorarios por pagar'),
@@ -801,11 +896,14 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
     contar: async () => {
       const { data, error } = await supabase
         .from('planillas_diarias')
-        .select('anulado_en, gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_entregada_en)')
+        .select('anulado_en, gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_entregada_en, total)')
         .is('anulado_en', null)
         .limit(200)
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente ?? []))).length
+      const porPagar = (data ?? []).filter((p) => ['POR_PAGAR', 'PAGO_PARCIAL'].includes(estadoDePlanilla(p.anulado_en, p.gente ?? [])))
+      // Lo que falta pagar: las personas de esas planillas sin su pago.
+      const falta = porPagar.flatMap((p) => (p.gente ?? []).filter((g) => !g.pago_id))
+      return { cantidad: porPagar.length, monto: { PEN: falta.reduce((n, g) => n + Number(g.total ?? 0), 0), USD: 0 } }
     },
   })
 
@@ -883,24 +981,28 @@ export async function pendientesGlobales(perfil: PerfilSesion): Promise<Pendient
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()
+  const clavesSinComprobar: string[] = []
+  const conAlgo: TareaPendiente[] = []
   suyas.forEach((t, i) => {
     const cuenta = cuentas[i]
     if (cuenta === null) {
       sinComprobar.add(t.ruta.split(/[?#]/)[0])
+      clavesSinComprobar.push(t.clave)
       return
     }
     const n = typeof cuenta === 'number' ? cuenta : cuenta.cantidad
     if (n <= 0) return
     const base = t.ruta.split(/[?#]/)[0]
     porRuta[base] = (porRuta[base] ?? 0) + n
+    conAlgo.push({
+      clave: t.clave,
+      ruta: typeof cuenta === 'number' ? t.ruta : (cuenta.ruta ?? t.ruta),
+      tono: t.tono,
+      cantidad: n,
+      texto: t.texto(n),
+      monto: typeof cuenta === 'number' ? undefined : cuenta.monto,
+    })
   })
 
-  return { porRuta, sinComprobar: [...sinComprobar] }
-}
-
-/** El día 1 del mes anterior a `dia` (YYYY-MM-DD), que es como la base guarda el periodo de una planilla. */
-function primerDiaDelMesAnterior(dia: string) {
-  const [anio, mes] = dia.split('-').map(Number)
-  const previo = mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 }
-  return `${previo.anio}-${String(previo.mes).padStart(2, '0')}-01`
-}
+  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar }
+})

@@ -33,26 +33,36 @@ export function reemplazoDeLaOrden(perfil: Pick<PerfilSesion, 'rol'>): string {
 /** Un mismo criterio para los enlaces de la OT y la entrada por URL.
  * La lectura de filas y archivos continúa sometida a RLS y al área asignada.
  */
-export function seccionesDeOrden(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): string[] {
+export function seccionesDeOrden(
+  perfil: Pick<PerfilSesion, 'permisos' | 'rol'>,
+  orden?: { avance_del_codigo?: string | null } | null,
+): string[] {
   const tiene = (...permisos: string[]) =>
     perfil.rol.codigo === 'ADMIN' || permisos.some(p => perfil.permisos.includes(p))
   if (!tiene('ordenes.ver') || trabajaPorCodigo(perfil)) return []
   const tecnico = tiene('diseno.planos', 'diseno.revisar', 'diseno.subir_pdf', 'produccion.registrar', 'produccion.cualquier_area', 'supervision.general')
     || ['COMPRADOR', 'CALIDAD'].includes(perfil.rol.codigo)
+  // En la OT de una cotización, Administración lleva la ficha de taller y ve
+  // las etapas desde el código interno (Códigos internos › Ficha de taller y
+  // Etapas), y los reportes del taller ya los aprueba Gerencia en Supervisión
+  // (decisión de DKS, 2026-10-26; migración 20261026160000). La orden sin
+  // cotización (garantía, trabajo directo) no tiene esa vista por código:
+  // ahí conserva sus pestañas.
+  const porCodigo = perfil.rol.codigo === 'ADMINISTRACION' && Boolean(orden?.avance_del_codigo)
   return [
     'resumen',
     // El expediente lo ve quien ve la orden: cada bloque se lee con su propio
     // RLS, y el costo solo se pide con `costos.ver`.
     'expediente',
-    ...(tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
-    ...(tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
+    ...(!porCodigo && tiene('ordenes.editar', 'produccion.ver', 'diseno.planos') ? ['ficha'] : []),
+    ...(!porCodigo && tiene('ordenes.listar', 'produccion.ver') ? ['etapas'] : []),
     ...(tecnico ? ['planos'] : []),
     ...(tiene('diseno.planos', 'cotizaciones.costear', 'produccion.ver', 'requerimientos.ver') || tecnico ? ['materiales'] : []),
     ...(tiene('costos.ver', 'costos.registrar_gasto') ? ['costos'] : []),
-    // Administración revisa los reportes del taller (`produccion.aprobar_reportes`)
-    // y los revisa aquí: sin la pestaña, el aviso de «reportes por aprobar» no
-    // tenía adónde llevarla.
-    ...(tiene('produccion.ver', 'diseno.planos', 'produccion.aprobar_reportes') ? ['actividades'] : []),
+    // Quien aprueba los reportes del taller (`produccion.aprobar_reportes`) los
+    // revisa aquí: sin la pestaña, el aviso de «reportes por aprobar» no tenía
+    // adónde llevarlo. Administración ya no los aprueba (2026-10-26).
+    ...(!porCodigo && tiene('produccion.ver', 'diseno.planos', 'produccion.aprobar_reportes') ? ['actividades'] : []),
     'entrega',
     ...(tiene('produccion.ver') ? ['avance'] : []),
     'bitacora',

@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, Minus, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Progreso } from '@/components/ui/progreso'
@@ -319,6 +319,10 @@ function Verificacion({
   puedeCrear: boolean
 }) {
   const [anotando, setAnotando] = useState<string | null>(null)
+  // Mientras una nota se guarda, las demás no se abren: abrir otra desmontaba
+  // la que iba en camino y su «Guardado» o su rechazo no salía en ninguna fila
+  // (H2 de funcionalidad, quincuagésima tercera pasada).
+  const [guardando, setGuardando] = useState(false)
   const { alEnviar, enviando, error: errorCrear } = useEnvio(agregarVerificacion)
 
   const hechos = pasos.filter((p) => p.avance_1 && p.avance_2).length
@@ -386,14 +390,22 @@ function Verificacion({
                       )}
                       {puedeEditar &&
                         (anotando === paso.id ? (
-                          <NotaPaso ordenId={ordenId} paso={paso} alCerrar={() => setAnotando(null)} />
+                          // Cierra solo su propia nota: con la página poniéndose
+                          // al día, otra pudo abrirse mientras tanto.
+                          <NotaPaso
+                            ordenId={ordenId}
+                            paso={paso}
+                            alCambiarEnvio={setGuardando}
+                            alCerrar={() => setAnotando((a) => (a === paso.id ? null : a))}
+                          />
                         ) : (
                           // Once píxeles de letra no son un blanco para el dedo:
                           // en el teléfono el enlace ocupa 44 px de alto.
                           <button
                             type="button"
+                            disabled={guardando}
                             onClick={() => setAnotando(paso.id)}
-                            className="mt-1 inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
+                            className="mt-1 inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-texto-tenue sm:min-h-0"
                           >
                             {paso.observaciones ? 'Editar observación' : 'Anotar observación'}
                           </button>
@@ -436,8 +448,25 @@ function Verificacion({
  * se cerraba al enviar y el error aparecía al pie de la tarjeta, sin decir de
  * qué paso era.
  */
-function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVerificacion; alCerrar: () => void }) {
-  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar)
+function NotaPaso({
+  ordenId,
+  paso,
+  alCambiarEnvio,
+  alCerrar,
+}: {
+  ordenId: string
+  paso: PasoVerificacion
+  alCambiarEnvio: (enviando: boolean) => void
+  alCerrar: () => void
+}) {
+  // Corrige la nota que la fila muestra: se cierra con la fila ya al día
+  // (`corrige`) y, mientras tanto, «Cerrar» no deja la nota de antes a la vista.
+  const { alEnviar, enviando, error } = useEnvio(anotarVerificacion, alCerrar, { documento: paso.id, corrige: true })
+  useEffect(() => {
+    if (!enviando) return
+    alCambiarEnvio(true)
+    return () => alCambiarEnvio(false)
+  }, [enviando, alCambiarEnvio])
 
   return (
     <form onSubmit={alEnviar} className="mt-1 space-y-1">
@@ -457,7 +486,7 @@ function NotaPaso({ ordenId, paso, alCerrar }: { ordenId: string; paso: PasoVeri
         <Boton type="submit" tamano="sm" cargando={enviando}>
           Guardar nota
         </Boton>
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alCerrar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alCerrar}>
           Cerrar
         </Boton>
       </div>
@@ -497,6 +526,7 @@ function Casilla({
         etiqueta={etiqueta}
         className="mx-auto"
         accion={marcarVerificacion}
+        documento={`${pasoId}:${avance}`}
         datos={(marcar) => {
           const datos = new FormData()
           datos.set('id', pasoId)
@@ -533,6 +563,7 @@ function Visto({
   etiqueta,
   accion,
   datos,
+  documento,
   className,
 }: {
   marcado: boolean
@@ -541,11 +572,13 @@ function Visto({
   /** La acción que marca o desmarca, y los datos que le van según el sentido. */
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
   datos: (marcar: boolean) => FormData
+  /** De cuál casilla es (`documento` de `useAccion`): el toque de otra no se lleva la línea de esta. */
+  documento: string
   className?: string
 }) {
   // useAccion: un toque en vuelo a la vez y el repintado al terminar, sin el
   // par `useState(enviando)` + `router.refresh()` a mano que tenía antes.
-  const { ejecutar, enviando, error } = useAccion(accion)
+  const { ejecutar, enviando, error } = useAccion(accion, undefined, { documento })
 
   return (
     <>
@@ -692,6 +725,7 @@ function Accesorios({
                     puedeEditar={puedeEditar}
                     etiqueta={`Visto bueno de ${a.descripcion}`}
                     accion={marcarAccesorio}
+                    documento={a.id}
                     datos={(marcar) => {
                       const datos = new FormData()
                       datos.set('id', a.id)

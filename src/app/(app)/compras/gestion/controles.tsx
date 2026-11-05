@@ -32,7 +32,7 @@ export function ProgramarRecojo({
   pesoFijo: boolean
 }) {
   const [mensaje, setMensaje] = useState<string | null>(null)
-  const { alEnviar, enviando, error } = useEnvio(programarRecojo, (r) => setMensaje(r.mensaje ?? null))
+  const { alEnviar, enviando, error } = useEnvio(programarRecojo, (r) => setMensaje(r.mensaje ?? null), { documento: id })
   const programada = lugar !== null
   return (
     // La clave rehace el formulario cuando la base le cambia el lugar o el
@@ -92,7 +92,7 @@ export function ProgramarRecojo({
 
 /** Subir o bajar un lugar sin abrir nada: el mismo programar, con el peso que ya tiene. */
 export function MoverEnLista({ id, peso, lugar, cuantas, nombre }: { id: string; peso: number; lugar: number; cuantas: number; nombre: string }) {
-  const accion = useAccion(programarRecojo)
+  const accion = useAccion(programarRecojo, undefined, { documento: id })
   function mover(destino: number) {
     const datos = new FormData()
     datos.set('id', id)

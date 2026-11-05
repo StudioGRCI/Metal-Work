@@ -107,6 +107,10 @@ begin
   values (v_cot, 'QA-398-1', v_cli, (select id from public.tipos_carroceria where activo order by orden_secuencia limit 1),
           'POR_REVISAR', 'qa-398-1.pdf', 'cot/' || v_cot || '/qa-398-1.pdf', 'application/pdf', 120, current_setting('prueba.conta')::uuid,
           1000, 'USD');
+  -- Desde la 20261026140000 solo se factura la versión aprobada de la
+  -- cotización: el armazón la aprueba como administrador, sin OT.
+  perform test.como_usuario(test.crear_usuario('Ada', 'Admin', 'admin398@demo.pe', 'ADMIN', (select id from public.sedes where codigo = 'QA98')));
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = v_cot;
   insert into public.facturas_venta (id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision,
                                      fecha_vencimiento, moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
   values (current_setting('prueba.fv')::uuid, 'QA398-V', v_cot, 'QA-398-1', 'QA CLIENTE 398', 'E001-398', v_hoy - 10, v_hoy,

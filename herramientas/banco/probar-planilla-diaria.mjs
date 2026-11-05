@@ -33,6 +33,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
+import { codigoSinUsar } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -91,7 +92,12 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 /** Elige a una persona en el `SeleccionBuscable` cuyo nombre accesible se da. */
 async function elegirPersona(pagina, etiqueta, texto) {
   await pagina.getByRole('combobox', { name: etiqueta }).click()
-  await pagina.keyboard.type(texto)
+  // Se escribe cuando la caja de búsqueda ya tiene el foco (como en
+  // probar-reporte-diario.mjs): si no, las primeras letras se pierden en el botón
+  // y la persona no aparece en la lista.
+  const caja = pagina.locator('input[type="search"]:focus')
+  await caja.waitFor({ timeout: 10000 })
+  await caja.fill(texto)
   await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
 }
 
@@ -142,7 +148,8 @@ const inicio = new Date()
 const sello = Date.now().toString().slice(-5)
 // El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
-const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
+// Uno que esta base no tiene: con el de otra corrida, su actividad sigue abierta.
+const codigo = await codigoSinUsar(consulta, 'PRB_SR_O4_1_26/', sello)
 const asuntoA = `Tolva de volquete ${sello}`
 const asuntoB = `Pintura del chasis ${sello}`
 const [elena, mario] = [`Elena ${sello}`, `Mario ${sello}`]
@@ -202,7 +209,7 @@ let numeroPlanilla = null
   await pagina.waitForLoadState('networkidle')
   idA = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idA), 'sube el primer reporte')
-  const aviso = limpio(await pagina.locator('[role="status"]').textContent().catch(() => ''))
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
   comprobar(aviso.includes('Gerencia y Recursos Humanos lo validan'), `al subir avisa que lo validan Gerencia y RR. HH. (${aviso.slice(0, 90)}…)`)
   const validacion = limpio(await pagina.locator('[data-lado]').allTextContents().then((t) => t.join(' | ')))
   comprobar(

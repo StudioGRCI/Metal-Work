@@ -1,5 +1,6 @@
 import { registrarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { motivoDeSubida, type ResultadoAccion } from '@/lib/acciones'
+import { laPestanaEsDeLaVersionAnterior, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { createClient } from '@/lib/supabase/client'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
@@ -40,8 +41,18 @@ export async function subirAdjunto(
   const contentType = esPdf ? TIPOS.pdf : TIPOS.xlsx
   const supabase = createClient()
 
-  const { error } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, contentType)
-  if (error) return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la
+  // de otra pestaña: el archivo saldría a su nombre (`seguirConLaCuentaDeLaPestana`).
+  seguirConLaCuentaDeLaPestana()
+  // La pestaña ya se sabe de antes del último despliegue: la acción que lo
+  // anotaría no va a entrar, así que ni se sube (trigésima pasada).
+  if (laPestanaEsDeLaVersionAnterior()) return { ok: false, error: SE_ACTUALIZO_EL_SISTEMA }
+  const { error } = await subirARutaNueva(supabase.storage.from('adjuntos-ot'), ruta, archivo, contentType, quitarConLaCuenta)
+  if (error) {
+    // Un rechazo con la sesión de otra cuenta no es «No tienes permiso»: es el corte.
+    seguirConLaCuentaDeLaPestana()
+    return { ok: false, error: `No se pudo subir el archivo. ${motivoDeSubida(error)}` }
+  }
 
   const datos = new FormData()
   datos.set('orden_id', ordenId)

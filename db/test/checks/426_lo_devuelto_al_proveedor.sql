@@ -20,6 +20,13 @@
 \set ON_ERROR_STOP on
 begin;
 
+-- La unidad y el nombre del material de la prueba, para leer los avisos (migración 20261026130000).
+create function pg_temp.unidad_m1() returns text language sql as $$
+  select um.codigo::text from public.materiales mt join public.unidades_medida um on um.id = mt.unidad_medida_id
+   where mt.id = current_setting('prueba.m1')::uuid $$;
+create function pg_temp.material_m1() returns text language sql as $$
+  select descripcion::text from public.materiales where id = current_setting('prueba.m1')::uuid $$;
+
 do $$
 declare v text; v_id uuid;
 begin
@@ -200,6 +207,17 @@ begin
                                     and requerimiento_id = current_setting('prueba.rq_b')::uuid),
     'con reposición no se recompra nada');
 end $$;
+-- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026130000).
+reset role;
+do $$
+begin
+  perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.comprador')::uuid
+                                  and titulo like 'Devuelto al proveedor:%'
+                                  and cuerpo = format('Devolución de 3 %s de %s. Motivo: Llegaron con el disco partido. El proveedor lo repone.',
+                                    pg_temp.unidad_m1(), pg_temp.material_m1())),
+    'el aviso de la devolución dice la unidad y el motivo como su propia frase');
+end $$;
+set local role authenticated;
 reset role;
 do $$
 begin
@@ -291,6 +309,12 @@ begin
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
                                   and titulo like 'Espera la nota de crédito:%'),
     'Contabilidad recibe el aviso de que viene una nota de crédito');
+  -- Se lee con su unidad y el motivo como frase aparte (migración 20261026130000).
+  perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
+                                  and titulo like 'Espera la nota de crédito:%'
+                                  and cuerpo = format('El proveedor ya no repone 1 %s de %s. Motivo: El proveedor ya no tiene ese disco: emite nota de crédito. Registra su nota de crédito contra la factura.',
+                                    pg_temp.unidad_m1(), pg_temp.material_m1())),
+    'el aviso dice la cantidad con su unidad y el motivo como su propia frase');
   perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.requerimientos')::uuid
                                   and titulo like 'Por comprar otra vez:%'),
     'quien pidió el RQ sabe que se compra otra vez');
@@ -334,6 +358,17 @@ begin
                                jsonb_array_elements(a.lineas) l where (l->>'item')::int = 1) = 'POR_COMPRAR',
     'el insumo suelto vuelve a «por comprar»');
 end $$;
+-- Los avisos se leen sin el rol de la sesión: son de otras cuentas (migración 20261026130000).
+reset role;
+do $$
+begin
+  perform test.afirmar(exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.contabilidad')::uuid
+                                  and titulo like 'Espera la nota de crédito:%'
+                                  and cuerpo = format('Devolución de 3 %s de %s. Motivo: Tres discos más con fisuras al revisarlos. El proveedor no lo repone: registra su nota de crédito contra la factura.',
+                                    pg_temp.unidad_m1(), pg_temp.material_m1())),
+    'al devolver sin reposición, Contabilidad lee la unidad y el motivo aparte');
+end $$;
+set local role authenticated;
 
 -- ============================================ 4. Lo que salió al taller y quien no es de Almacén
 -- Salen 5 al taller (como dueño, para no armar la salida entera): quedan 1 en el almacén.

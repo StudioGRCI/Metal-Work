@@ -135,6 +135,10 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
 /** Elige una opción en un `SeleccionBuscable` escribiendo parte de su texto. */
 async function elegir(pagina, ventana, texto) {
   await ventana.getByRole('combobox').first().click()
+  // Se escribe cuando la caja de búsqueda ya tiene el foco (como en
+  // probar-reporte-diario.mjs): el panel la enfoca en el cuadro siguiente y, si
+  // no, las primeras letras se pierden en el botón y la opción no aparece.
+  await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
   await pagina.keyboard.type(texto)
   await pagina.getByRole('option', { name: new RegExp(texto) }).first().click()
 }
@@ -286,6 +290,34 @@ async function registrarPermiso(pagina, persona, horas, motivo) {
 }
 
 await navegador.close()
+
+// Al terminar, lo de la prueba se anula: un permiso justificado con extras se
+// paga en la próxima planilla diaria y las tardanzas se restan del próximo pago,
+// así que lo que quedara vigente se colaría en las otras sondas del banco.
+// Primero los permisos; después las marcas, las salidas antes que los ingresos.
+async function anularComoRrhh(sql, id) {
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+    await base.query('set local role authenticated')
+    await base.query(sql, [id])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    fallas.push(`no se pudo dejar anulado lo de la prueba al terminar: ${e.message}`)
+  }
+}
+const personas = [ana.id, beto.id, tomas.id]
+for (const p of await consulta(`select id from public.permisos_personal where trabajador_id = any($1::uuid[]) and anulado_en is null`, [personas])) {
+  await anularComoRrhh(`select public.rrhh_anular_permiso($1, 'Prueba del banco: se deja anulado al terminar')`, p.id)
+}
+for (const a of await consulta(
+  `select id from public.asistencias where trabajador_id = any($1::uuid[]) and anulado_en is null order by tipo = 'INGRESO'`,
+  [personas],
+)) {
+  await anularComoRrhh(`select public.anular_asistencia($1, 'Prueba del banco: se deja anulada al terminar')`, a.id)
+}
+
 await base.end()
 if (fallas.length) {
   console.error(`\n${fallas.length} comprobaciones fallaron.`)

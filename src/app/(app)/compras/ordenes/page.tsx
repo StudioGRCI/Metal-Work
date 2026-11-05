@@ -16,7 +16,7 @@ import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
@@ -31,7 +31,10 @@ function divisa(codigo: string) {
 
 export default async function PaginaOrdenesCompra() {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
-  const emite = puede(perfil, 'compras.crear')
+  // Emite la OC directa y lleva todas las OC quien compra como Logística. Administración
+  // tiene `compras.crear` solo para la OC de su RQA: aquí lleva esa y mira las demás.
+  const emite = compraComoLogistica(perfil)
+  const llevaSuRqa = !emite && puede(perfil, 'compras.crear')
   const verAdquisiciones = puede(perfil, 'adquisiciones.ver')
   const [compras, proveedores, materiales, codigos, porReponer] = await Promise.all([
     cargarOrdenesCompra(),
@@ -50,7 +53,7 @@ export default async function PaginaOrdenesCompra() {
     <>
       <EncabezadoPagina
         titulo="Órdenes de compra"
-        ayuda="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento de OT y las directas para el almacén. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta el comprobante."
+        ayuda="Todas las órdenes, con su número OC-…-MW: las que nacen de un requerimiento y las directas para el almacén, cada una con su código interno. Aquí se ve si esperan a Gerencia, si el conductor ya las recogió y si falta el comprobante."
         migas={[{ titulo: 'Compras' }, { titulo: 'Órdenes de compra' }]}
         acciones={
           emite && (
@@ -112,13 +115,18 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
+              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
             )}
           </tbody>
         </Tabla>
       </Tarjeta>
     </>
   )
+}
+
+/** La OC compra solo insumos de un RQA (RQA-0001-2026…): la que Administración lleva. */
+function esDeUnRqa(c: OrdenCompraListada) {
+  return c.requerimientos.length > 0 && c.requerimientos.every((rq) => rq.startsWith('RQA-'))
 }
 
 function FilaCompra({
@@ -147,7 +155,7 @@ function FilaCompra({
     c.codigo_interno ?? (c.codigos.length ? c.codigos.join(', ') : null),
     ...(c.origen === 'DIRECTA'
       ? [c.requerimientos.length ? null : 'Almacén']
-      : [c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades]),
+      : [c.codigo_interno || c.codigos.length ? null : 'Solicitud de antes de los RQ', ...c.unidades]),
     // Qué requerimiento (RQ-0001-2026…) atiende esta compra, si nació de uno.
     c.requerimientos.length ? c.requerimientos.join(', ') : null,
   ]
@@ -176,7 +184,7 @@ function FilaCompra({
           ) : sinCurso ? (
             <span className="text-[11px] text-texto-suave">No se paga</span>
           ) : (
-            <span className="text-[11px] text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+            <span className="text-[11px] text-texto-suave">{comprobantePendiente(c)}</span>
           )}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
@@ -213,7 +221,7 @@ function FilaCompra({
         ) : sinCurso ? (
           <span className="text-xs text-texto-suave">No se paga</span>
         ) : (
-          <span className="text-xs text-texto-suave">{c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'}</span>
+          <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
         )}
         {!sinCurso && <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>}
         {c.facturas.length > 0 && (
@@ -261,4 +269,15 @@ function FilaCompra({
       </TD>
     </TR>
   )
+}
+
+/**
+ * Lo que falta del comprobante: la factura que Contabilidad ya registró en
+ * Adquisiciones no está «pendiente», solo le falta el PDF en la OC (en
+ * Adquisiciones la OC salía pagada y aquí «Factura pendiente», 27/10/2026).
+ */
+function comprobantePendiente(c: { con_factura: boolean | null; registradas: string[] }) {
+  if (c.registradas.length > 1) return `Facturas ${c.registradas.join(', ')} registradas por Contabilidad · falta anexarlas a la OC`
+  if (c.registradas.length === 1) return `Factura ${c.registradas[0]} registrada por Contabilidad · falta anexarla a la OC`
+  return c.con_factura ? 'Factura pendiente' : 'Comprobante pendiente'
 }

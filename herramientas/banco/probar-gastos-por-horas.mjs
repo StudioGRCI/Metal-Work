@@ -108,12 +108,14 @@ try {
   // ------------------------------------------------------------------ 1. el armazón
   // Lo que harían RR. HH.: un soldador de Maestranza (S/ 2,400) y una asistente
   // de Administración (S/ 3,000), los dos con su costo; y 8 h del soldador en la unidad.
+  // La asistente es de planilla administrativa: desde la 20261020200000, solo a
+  // esa planilla se le registra el sueldo del mes.
   await consulta(
     `with nuevo as (
-       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, creado_por)
-       select x.nombre, 'Banco', x.dni, x.cargo, (select id from areas where codigo = x.area), (select id from usuarios where correo = $2)
-         from (values ('Soldador ' || $1, '6' || right($1, 7), 'Soldador', 'MTZ'),
-                      ('Asistente ' || $1, '5' || right($1, 7), 'Asistente', 'ADM')) x(nombre, dni, cargo, area)
+       insert into trabajadores (nombres, apellidos, dni, cargo, area_id, planilla, creado_por)
+       select x.nombre, 'Banco', x.dni, x.cargo, (select id from areas where codigo = x.area), x.planilla, (select id from usuarios where correo = $2)
+         from (values ('Soldador ' || $1, '6' || right($1, 7), 'Soldador', 'MTZ', 'TALLER'),
+                      ('Asistente ' || $1, '5' || right($1, 7), 'Asistente', 'ADM', 'ADMINISTRATIVA')) x(nombre, dni, cargo, area, planilla)
        returning id, cargo)
      insert into trabajador_costos (trabajador_id, costo_mensual)
      select id, case when cargo = 'Soldador' then 2400 else 3000 end from nuevo
@@ -168,7 +170,7 @@ try {
     const [parte] = await consulta(`select parte from public.horas_por_codigo_del_mes($1::date) h,
                                            lateral (select round(100 * h.horas / h.total, 2) as parte) p where h.codigo = $2`, [`${mes}-01`, CODIGO])
     const filaUnidad = limpio(await tarjeta.locator('tr', { hasText: CODIGO }).innerText())
-    comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`),
+    comprobar(filaUnidad.includes('8') && filaUnidad.includes(`${Number(parte.parte).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`),
       `«Cómo se reparte» lista la unidad con 8 h y su ${parte.parte} %: «${filaUnidad}»`)
     const [oficina] = await consulta(`select personas, monto from public.sueldos_oficina_del_mes($1::date)`, [`${mes}-01`])
     const ficha = limpio(await pagina.locator('[data-sueldo-oficina]').innerText())

@@ -362,7 +362,8 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   comprobar(error2 === '', `la factura se registra${error2 ? ` (dijo: ${error2})` : ''}`)
   await tarjeta.getByText(`Factura ${FACTURA}`).waitFor({ timeout: 30000 }).catch(() => {})
   const despues = limpio(await tarjeta.textContent())
-  comprobar(despues.includes('Facturada') && despues.includes('Por cobrar'), 'la cotización queda «Facturada» y la factura «Por cobrar»')
+  // La factura cubre la mitad de la cotización (29 500 de 59 000): queda «Facturada en parte», no «Facturada» (27/10/2026).
+  comprobar(despues.includes('Facturada en parte') && despues.includes('Por cobrar'), 'la cotización queda «Facturada en parte» y la factura «Por cobrar»')
   const [f] = await consulta(`select numero, codigo_interno, total, moneda from facturas_venta where cotizacion_numero = $1 and anulada_en is null`, [COT])
   comprobar(f?.numero === FACTURA && f.codigo_interno === CODIGO && Number(f.total) === 29500 && f.moneda === 'USD',
     `la base guarda ${FACTURA} por US$ 29 500 en el código ${CODIGO}`)

@@ -9,7 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos } from '@/lib/datos/avances'
 import { fotosDeReportesFlota, reportesDeFlota } from '@/lib/datos/flota'
-import { fecha as formatearFecha, hora, hoyLima, numero } from '@/lib/format'
+import { fecha as formatearFecha, hora, hoyLima, numero, porcentaje } from '@/lib/format'
 import { apruebaSinOrden, puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
@@ -76,7 +76,7 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
                 <p className="text-sm text-texto">{r.descripcion}</p>
 
                 {r.avance_porcentaje !== null && (
-                  <p className="text-xs font-medium text-texto-suave">va en ~{numero(r.avance_porcentaje, 0)} %</p>
+                  <p className="text-xs font-medium text-texto-suave">va en ~{porcentaje(r.avance_porcentaje, 0)}</p>
                 )}
 
                 {r.impedimento && (

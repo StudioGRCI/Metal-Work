@@ -59,7 +59,7 @@ export type LineaRequerimiento = {
   sin_salida: number | null
 }
 
-/** En qué porcentaje va el RQ y la etapa de su insumo más atrasado. */
+/** En qué porcentaje va el RQ (el promedio de sus insumos) y la etapa de su insumo más atrasado. */
 export type AvanceRequerimiento = { porcentaje: number; etapa: string }
 
 /** Un requerimiento en el listado: número, quién lo necesita, para qué, qué se pide y por dónde va. */

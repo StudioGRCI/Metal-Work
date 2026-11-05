@@ -28,12 +28,13 @@ import {
   enSituacion,
   guiaPorCargar,
 } from '@/lib/dominio/adquisiciones'
+import { controlDeFacturas, type ControlDeFactura } from '@/lib/datos/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { TIPO_COMPROBANTE, definir } from '@/lib/dominio/estados'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, compraConPdf, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
-import { cantidad, fecha, hoyLima, moneda, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
@@ -84,7 +85,6 @@ function camposDeBusqueda(f: CompraTrazada): (string | null)[] {
     f.descripcion,
     f.emitido_por,
     ...f.requerimientos.map((r) => r.numero),
-    ...f.ordenes,
     ...f.codigos,
     ...f.areas,
     ...f.facturas.map((x) => x.numero),
@@ -96,7 +96,7 @@ function camposDeBusqueda(f: CompraTrazada): (string | null)[] {
 
 /**
  * Cada OC y cada OS en una fila, de izquierda a derecha como se vive la compra:
- * de qué RQ u OT salió, el proveedor, el total, la aprobación y en qué va, sus
+ * de qué RQ o código interno salió, el proveedor, el total, la aprobación y en qué va, sus
  * documentos (cotización, factura, boleta, guía…) y si se pagó, con el voucher.
  * Se lee de `trazabilidad_de_compras()` (migración 20261020170000); los enlaces
  * se firman solo para la página que se muestra.
@@ -149,6 +149,9 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   const devoluciones = await devolucionesDeCompras(deLaPagina.flatMap((f) => (f.tipo === 'OC' && f.con_factura === false ? [f.id] : [])))
   const visibles: Fila[] = deLaPagina.map((f) => ({ ...f, devoluciones: devoluciones.filter((d) => d.orden_compra_id === f.id) }))
   const { urls, sinFirmar } = await enlacesDeCompras(visibles, devoluciones)
+  // Las OC de cada factura registrada de la página: una factura puede llevar
+  // varias OC (decisión 16), y el aviso de que pasa su OC se mide contra todas.
+  const control = await controlDeFacturas([...new Set(visibles.flatMap((f) => f.facturas.filter((x) => x.estado === 'REGISTRADA').map((x) => x.id)))])
   const hayFiltros = Boolean(busqueda || tipo || situacion)
   const vacio =
     todas.length === 0
@@ -179,7 +182,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
             </Link>
           </p>
         )}
-        <BuscadorSimple ruta={RUTA} etiqueta="Buscar orden" marcador="OC, OS, RQ, OT, código, proveedor o factura" />
+        <BuscadorSimple ruta={RUTA} etiqueta="Buscar orden" marcador="OC, OS, RQ, código, proveedor o factura" />
         <PastillaFiltro
           ruta={RUTA}
           clave="tipo"
@@ -229,7 +232,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                   <Origen f={f} acceso={acceso} />
                   <EnQueVa f={f} />
                   <Documentos f={f} urls={urls} acceso={acceso} />
-                  <Pago f={f} urls={urls} acceso={acceso} />
+                  <Pago f={f} urls={urls} acceso={acceso} control={control} />
                 </li>
               ))}
             </ul>
@@ -278,7 +281,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                     <Documentos f={f} urls={urls} acceso={acceso} />
                   </TD>
                   <TD className="min-w-40 align-top">
-                    <Pago f={f} urls={urls} acceso={acceso} />
+                    <Pago f={f} urls={urls} acceso={acceso} control={control} />
                   </TD>
                 </TR>
               ))
@@ -333,10 +336,17 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   )
 }
 
-/** De dónde sale: los RQ que atiende, la OT, el código interno y el área. */
+/** De dónde sale: los RQ que atiende, el código interno y el área. */
 function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
   const sinRq =
-    f.tipo === 'OS' ? 'Sin RQ: servicio' : f.origen === 'REQUERIMIENTO' ? 'Requerimiento de la OT' : 'Compra directa'
+    f.tipo === 'OS'
+      ? 'Sin RQ: servicio'
+      : f.origen !== 'REQUERIMIENTO'
+        ? 'Compra directa'
+        : // Las compras de antes de los RQ no siempre tienen código: no se promete uno que no está.
+          f.codigos.length > 0
+          ? 'Requerimiento del código interno'
+          : 'Solicitud de antes de los RQ'
   return (
     <div className="space-y-0.5 text-xs">
       {f.requerimientos.length > 0 ? (
@@ -356,7 +366,6 @@ function Origen({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
       ) : (
         <p className="text-texto-suave">{sinRq}</p>
       )}
-      {f.ordenes.length > 0 && <p className="tabular text-texto">OT {f.ordenes.join(', ')}</p>}
       {f.codigos.length > 0 && (
         <p className="flex flex-wrap gap-x-2">
           {f.codigos.map((c) =>
@@ -631,7 +640,7 @@ function AnulaElAnexo({ f, d, acceso }: { f: Fila; d: Documento; acceso: Acceso 
 }
 
 /** Si ya se pagó: el estado, lo que falta y cada voucher; Tesorería salta a pagarla. */
-function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso: Acceso }) {
+function Pago({ f, urls, acceso, control }: { f: Fila; urls: Map<string, string>; acceso: Acceso; control: Map<string, ControlDeFactura> }) {
   const estado = definir(ESTADO_PAGO, f.pago)
   const enPartes = f.documentos.some((d) => d.monto_de_la_parte !== null && !d.anulado_en)
   const registradas = f.facturas.filter((x) => x.estado === 'REGISTRADA')
@@ -664,8 +673,24 @@ function Pago({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; acceso:
             {x.saldo > 0 && (
               <p className="tabular whitespace-nowrap text-texto">
                 {x.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(x.saldo, m)}
+                {/* Lo pagado como parte de la factura (DKS, 27/10/2026: porcentaje y costo). */}
+                {(x.pagado ?? 0) > 0 && <span className="text-texto-suave"> · pagado {porcentaje(parteDe(x.pagado, x.total))}</span>}
               </p>
             )}
+            {/* La factura que pasa el total de sus OC sin que nadie lo diga: el aviso de Contabilidad va en su pestaña, y aquí no se veía (27/10/2026).
+                Se mide contra todas sus OC (`adquisiciones_control`): con una factura de dos OC, compararla con una sola decía que la pasaba. */}
+            {f.tipo === 'OC' && (() => {
+              const c = control.get(x.id)
+              if (!c || c.control !== 'NO_CALZA' || c.diferencia === null || c.diferencia <= 0.005 || c.total_oc === null) return null
+              const parte = parteDe(c.diferencia, c.total_oc)
+              return (
+                <p className="text-aviso">
+                  La factura pasa {c.ordenes.length > 1 ? `sus ${c.ordenes.length} OC` : 'la OC'} en{' '}
+                  <span className="tabular whitespace-nowrap">{moneda(c.diferencia, m)}</span>
+                  {parte !== null && ` (${porcentaje(parte)})`}
+                </p>
+              )
+            })()}
             {tomado > 0 && (
               <p className="tabular text-texto-suave">
                 Tomó <span className="whitespace-nowrap">{moneda(tomado, m)}</span> del pago por la boleta

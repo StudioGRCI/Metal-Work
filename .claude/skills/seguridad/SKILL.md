@@ -131,6 +131,12 @@ En la misma migración que la crea, sin excepción:
   decía «Revisa material, cantidad, motivo y quién recibe» con todo lleno
   (2026-10-13, PR #73). Por lo mismo, una carga por SQL genera sus ids con
   `gen_random_uuid()`, no con `md5()::uuid`.
+- El esquema de corregir que sale del de agregar (`.omit()`/`.extend()`) quita
+  lo que el formulario de corregir no trae. «Editar el plano» heredó «quién lo
+  elaboró» de agregar, sin ese campo en la pantalla, y decía «Elige quién
+  elaboró el plano.» sin guardar nunca (D3 de diseño, quincuagésima pasada;
+  venía de main). Se cruzan los `name` del formulario con las llaves del
+  esquema, y se prueba guardando con la cuenta del puesto.
 - Exigir permiso con `exigirPermiso`/`puede` **al principio** de la acción,
   no confiar en que la pantalla escondió el botón.
 - Los errores de Postgres pasan por `mensajeDeError` — no filtrar el mensaje
@@ -138,7 +144,102 @@ En la misma migración que la crea, sin excepción:
 - Un archivo que el navegador sube a Storage se anota con
   `anotarSinDejarloSuelto` (`src/lib/subida-privada.ts`), no con un `try/catch`
   propio: si la respuesta se pierde, pregunta otra vez con la misma ruta y solo
-  quita el archivo si ninguna fila lo nombra. Antes unas pantallas lo dejaban
+  quita el archivo si ninguna fila lo nombra. Si el servidor no conoce la acción
+  (una pestaña de antes del último despliegue, `UnrecognizedActionError`), no
+  corrió: quita el archivo en el acto y dice `SE_ACTUALIZO_EL_SISTEMA`, sin
+  pausa ni reintento, que darían lo mismo (vigesimoctava). Ese caso se reconoce
+  siempre con `esDeLaVersionAnterior` (`src/lib/envio.ts`), no con la función de
+  Next: además anota la pestaña como vieja, para que no se recargue sola al
+  volver (se perdía lo escrito y la foto quedaba suelta) y para que nada suba
+  antes de su acción: todo lo que sube desde el navegador (`subirArchivoPrivado`,
+  `subirAdjunto`, los archivos de subcontratos, planilla y finanzas, la orden
+  nueva, la cotización, el plano, la salida de la planilla y las fotos) mira
+  `laPestanaEsDeLaVersionAnterior()` antes de tocar Storage (vigesimonovena y
+  trigésima). Toda cadena que sube y anota desde el navegador, también el PDF
+  de la orden que sube al elegirlo, va dentro de `mientrasSeEnvia` y llama a
+  `entro()` solo cuando quedó anotado: si no, «Volver a cargar», el del aviso de
+  la pestaña de otro despliegue, la cortaba y dejaba el archivo subido sin
+  anotar (D17; C, H5 y R1 de la trigesimocuarta). «Volver a cargar igual» deja
+  de esperar solo lo que ofreció no esperar, nunca lo que salió después
+  (`cuentaDeEnvios`, F3). Una ida que la aplicación hace sola tras un envío
+  no recarga y no espera: la de la tarjeta de la OT recién cargada sale en el
+  acto, sin recargar, solo si ese es el único envío en camino, la dirección
+  es la misma de la que salió (ni otra pantalla, ni «Atrás», ni un filtro) y
+  la persona no tocó nada después de cerrar su ventana; si no, y sigue en
+  Cotización, lo dice el encabezado con «Ver su tarjeta»
+  (`vaSolaALaTarjeta`); en otra pantalla lo dice la tarjeta misma. Las demás idas
+  tras un envío (subcontrato, planilla, evaluación, reporte, orden, trabajo,
+  personal, cliente, y la de un aviso) siguen la misma regla con
+  `navegarSiEsDeLaPestana(router, url, desde, siNoVa)`: no salen si cambió la
+  dirección, se hizo clic en un enlace a otra pantalla en esta pestaña (no
+  cuentan desplazar con el dedo, el clic derecho ni abrir en otra pestaña) o
+  se abrió un aviso de la campana (`anotarQuePidioIr`: es un botón, y la ida
+  del formulario salía y la del aviso la pisaba, X2 de la crítica de la
+  cuadragésima), hay otra ventana abierta o la del envío se cerró y se tocó
+  algo, y entonces `IdaQueNoSalio` lo dice arriba con su enlace (W1 de la
+  trigesimoctava: se llevaba lo escrito en otra ventana, o el menú pedido).
+  La ida que sale a otro documento se lleva esa línea; la de un aviso no
+  pasa `siNoVa`: si no sale calla, porque lo que entró ya lo dice el aviso
+  (S1 de la trigesimonovena), y salga o no deja la línea que había. Un formulario de página entera, además, se traba al
+  entrar y lo dice junto a su botón (`YaQuedo`), salga la ida o no: un
+  segundo toque registraba otro igual (X1 de su crítica). Y si la base lo
+  rechaza cuando la persona ya pidió otra pantalla, el rechazo lo dice esa
+  línea, en rojo (`decirElRechazoSiSeFue`; `siSeVa` en `useEnvio`): se pintaba
+  en el formulario unos milisegundos y se iba con él, y la persona creía que
+  había entrado (Y1 de la crítica de la cuadragésima primera). Vale para todo
+  formulario fuera de una ventana, con o sin `siSeVa` (Z1 de la crítica de la
+  cuadragésima segunda). Lo que pudo entrar —sin respuesta, o un 502 de la
+  pasarela con la base ya escrita— dice «No se sabe si … se guardó», nunca
+  «no se guardó»: su enlace llevaba a registrarlo dos veces (H1 de esa
+  pasada). Lo que quedó a medias tampoco: el resultado trae `arriba` (el
+  comprobante en borrador, el plano que llegó a un área y a otra no) y la
+  línea lo dice tal cual; con la persona fuera, «vuelve a enviar sin cambiar
+  el archivo» ya no se podía y el plano llegaba repetido (N2 de la
+  cuadragésima tercera). El rechazo es de su formulario (`DeFormulario`), no
+  de su texto: solo su envío siguiente lo quita (el mismo formulario en su
+  ruta, por sus campos o por su nombre y su `documento`), o que se resuelva
+  en otro lado (`yaSeResolvio`). Lo que quedó a medias, solo el envío del
+  formulario de ese documento (`documento` propio: el plano que vuelve a
+  salir a Maestranza) y cuando entra, no al salir (R18 de la cuadragésima
+  séptima), o cuando vuelve con otra cosa a medias (R21 de la cuadragésima
+  octava: llegaba a Maestranza y no a Producción, y arriba seguía «Falta
+  Maestranza»; lo nuevo lo dice el formulario o, si ya no está montado
+  aunque la dirección sea la misma, la línea: W1 de la crítica de la
+  cuadragésima novena), ni el que registra uno nuevo cada vez (otro
+  comprobante se llevaba el del borrador: Y1 de la crítica de la
+  cuadragésima quinta). El documento que elige la búsqueda (?codigo=,
+  ?fecha=) lo pone `DelDocumento` para todos los formularios de la
+  pantalla: la ruta es la misma, Next no la vuelve a montar, y el envío del
+  código B se llevaba el rechazo del A (H1 de esa pasada). Un formulario dentro de una `Ventana` es solo suyo: React deja
+  subir su envío por el portal hasta el formulario de la pantalla que la
+  abre, y «Registrar unidad» en la orden nueva registraba también la orden,
+  con el número del papel gastado (R3). La `Ventana` corta ese envío en su
+  borde. Un `redirect()` de
+  servidor tras guardar no sabe nada de eso, y no se usa. Recargar cortaba el
+  envío de otra tarjeta y dejaba su archivo subido sin anotar (X1 de la
+  trigesimoquinta), y esperar a que no quedara nada la dejaba armada: salía
+  minutos después desde otra pantalla y se llevaba lo escrito allí (Y1 de la
+  trigesimosexta). Tampoco sale si la persona tocó algo después de cerrar la
+  ventana en vuelo (H2 de la trigesimoséptima). «Se va» (`anotarQueSeVa`) lo
+  anota solo la ida que sigue a un envío que entró, nunca «Ver su tarjeta»: con
+  la marca puesta sin envío, «Volver a cargar» no recargaba y decía «Lo que
+  enviaste ya entró… no lo envíes de nuevo» aunque la base hubiera rechazado
+  la OT que sí iba (Z1). El desenlace de un envío de ventana escrita a mano
+  (`useEnvioDeLaVentana`) y el de la subida del PDF de la orden se guardan por
+  su clave hasta que los reemplace otro o se recargue la pestaña
+  (`useEstadoCompartido` con `guardar`): con el botón desmontado se perdía, y
+  quien no lo vio lo enviaba de nuevo. Lo que solo dice que algo se hizo («PDF
+  corregido guardado.») no se guarda: volvía horas después diciendo qué PDF
+  vale aunque otro hubiera subido uno (Y2). Tampoco «Cronograma cargado…» ni
+  «Cotización subida y enviada a Gerencia»: el éxito vive mientras su tarjeta
+  o su pantalla siguen montadas, y de la llave del Excel se guarda solo la
+  falla, que es lo que evita mandarlo dos veces (H4, H5 y realización H2 de la
+  trigesimoséptima). Lo que entró con la ventana cerrada en vuelo sí queda
+  dicho, en pasado, por `alEntrar` («El cronograma que se estaba enviando se
+  cargó.»): dice lo que pasó, no cómo está ahora (F3 de la trigesimoctava). Que el id de la acción cambie no es lo de siempre: la clave dura
+  14 días y Vercel la conserva, así que el despliegue de todos los días se
+  reconoce por la compilación que contesta el servidor
+  (`compilacionDelServidor`, en `contarAvisosYDespliegue`), no por un 404. Antes unas pantallas lo dejaban
   suelto para siempre y otras lo quitaban a ciegas diciendo «No se pudo»
   aunque hubiera quedado. La acción que anota contesta `ok` al mismo pedido
   repetido —en la función, por su id **con la misma ruta y la misma persona**;
@@ -184,6 +285,31 @@ En la misma migración que la crea, sin excepción:
   `Ventana` desmonta vuelve al del padre al reabrirla, y el segundo documento
   de la misma OC chocaba con la ruta del primero. El padre que guarda el id lo
   cambia cuando uno entró (`alAdjuntar`).
+- **La sesión se refresca antes de una acción, no durante ella.** El proxy
+  (`src/lib/supabase/sesion-proxy.ts`) llama a `getUser` en cada pedido y, a
+  90 s de vencer, refresca la sesión y escribe cookies nuevas; si eso pasa en
+  una acción, Next las cuenta como de la acción y la responde revalidada, y en
+  una pestaña de otro despliegue eso recarga el documento entero aunque la
+  acción no revalide (X8 de la trigesimosegunda). `refrescarLaSesionAntesDeCadaAccion`
+  (`src/lib/envio.ts`, la monta `RefrescoAlVolver`) envuelve `window.fetch`:
+  antes de un POST con cabecera `next-action`, si a la sesión de la cookie le
+  quedan menos de 10 min (o cada 5 min, por si la cookie no se lee), pide
+  `/auth/sesion` con 4 s de tope, y la acción sale igual si no contesta. No
+  toca la cabecera ni el cuerpo de la acción. `/auth/sesion` es un GET que
+  refresca solo la sesión de quien llama, con su propio token de refresco, y
+  devuelve 204 sin cuerpo; de `getSession` mira solo cuándo vence: quién es lo
+  sigue diciendo `getUser`, en el proxy y en cada acción. Lo que el navegador
+  lee de la cookie (`sesionEnLaCookie`) sirve para decidir cuándo preguntar,
+  nunca para decidir permisos. Si esperó a `/auth/sesion` y en ese rato la
+  cookie pasó a ser de otra cuenta, la acción no sale (`OtraCuentaEnLaPestana`):
+  quien envía miró la cuenta antes de la espera, y saldría a nombre de la otra.
+  La pregunta de la traba, que sale ya sabiendo que es otra, no se corta.
+- **La compilación que manda el navegador decide solo si se revalida.** La
+  planilla del kardex, el conteo inicial y los avisos mandan `compilacion`
+  (`laCompilacionDeLaPestana`) y el servidor no revalida si es de otro
+  despliegue (`esDeOtroDespliegue`). Un navegador que mienta ahí consigue, a lo
+  sumo, una pantalla sin poner al día o una recarga: el permiso, el RLS y lo
+  que se guarda no la miran.
 - **«El mismo envío» es todo lo que el envío lleva, no solo su id y su ruta.**
   Con la ruta fija de la ventana (corrección, guía, plano), tras una respuesta
   perdida la persona puede cambiar la cantidad, el motivo o la fecha y volver a
@@ -290,7 +416,8 @@ En la misma migración que la crea, sin excepción:
   (`sb-…-auth-token`, que `@supabase/ssr` deja legible para su cliente del
   navegador): `laPestanaEsDeOtraCuenta()` la lee en el acto, y la llaman
   `useAccion`, `salio()` y los formularios que suben por su cuenta (conteo
-  inicial, planilla, cotización, orden nueva, cronograma) antes de enviar.
+  inicial, planilla, cotización, orden nueva, cronograma, PDF de la orden)
+  antes de enviar.
   Esperar el aviso de la otra pestaña (`BroadcastChannel`) dejaba un hueco de
   segundos —llega cuando esa termina de pintarse— en que la OC entraba a nombre
   de la otra cuenta. La traba es una sola para toda la pantalla
@@ -301,12 +428,49 @@ En la misma migración que la crea, sin excepción:
   cookie se puede leer —uno viejo destrababa una pestaña que ya era de otra—.
   Sin la cookie a la vista quedan el aviso y la pregunta al abrir
   (`consultarEnvio` contesta la cuenta de la sesión), y vale la respuesta de la
-  última pregunta. Lo que queda, solo entonces: lo que se envíe antes de que
-  la base conteste. Se destraba al pintarse con la sesión o si la primera
+  última pregunta. Lo que queda: lo que se envíe antes de que la base
+  conteste y, aun con la cookie a la vista, lo que ya esperaba en la cola de
+  acciones de Next cuando cambió la sesión. Cerrarlo del todo es que el
+  servidor compare la cuenta pintada con la de la sesión: pendiente. Se destraba al pintarse con la sesión o si la primera
   cuenta vuelve a entrar; la pestaña no cambia de cuenta por la respuesta, solo
   por el layout —cambiarla escondía lo pendiente de la primera cuando volvía y
   el egreso entraba dos veces—. Un formulario nuevo que envía sin `useAccion`
-  llama a `laPestanaEsDeOtraCuenta()` antes de salir.
+  llama a `laPestanaEsDeOtraCuenta()` antes de salir. **Cada paso de una
+  cadena mira la sesión, no solo el primero** (vigesimotercera): `useAccion` y
+  `salio()` miran el toque, pero lo que sigue sale con la sesión de ese
+  momento, y el comprobante de la OC quedaba subido por la cuenta que entró a
+  media subida. `seguirConLaCuentaDeLaPestana()` lanza `OtraCuentaEnLaPestana`
+  antes de cada subida (`subirArchivoPrivado`, `subirAdjunto`,
+  `subirArchivoFinanzas`, `subirArchivoSubcontrato`, `subirArchivoPlanilla`),
+  antes de anotar lo subido (`anotarSinDejarloSuelto`) y cuando Storage
+  rechaza con la sesión cambiada, que no es «No tienes permiso». Lo que sale
+  por partes (las fotos de `SelectorFotos`, la planilla y el conteo del
+  kardex, los planos por área, la cotización con cliente nuevo) mira antes de
+  cada parte y para ahí. El paso que sigue a uno que ya quedó va en
+  `pasoTrasLoQueQuedo`, que no lanza: devuelve `ENTRO_OTRA_CUENTA` para que la
+  ventana diga qué falta. El archivo que una cadena cortada dejó subido no se
+  anota ni se quita con la otra sesión —Storage no la deja—: se quita cuando
+  vuelve la cuenta de la pantalla (`cuandoVuelvaLaCuenta`); si en vez de
+  volver se recarga, se queda suelto, visible solo para quien lo subió. Lo
+  mismo si la otra cuenta entra en la pausa antes de volver a preguntar, tras
+  una respuesta perdida: no se pregunta con ella, y el archivo se mira cuando
+  vuelva la cuenta (antes se quedaba suelto para siempre, vigesimoquinta).
+  **Un borrado con la sesión de otra cuenta vuelve vacío y sin error**, como si
+  una fila lo nombrara: ningún borrado de Storage sale del navegador con esa
+  sesión. Lo que solo se quita va por `quitarConLaCuenta`, que lo deja para
+  cuando vuelva la cuenta, y `subirARutaNueva` lo pide como argumento para que
+  nadie lo olvide (el servidor pasa `quitarEnElActo`). Donde el vacío se lee,
+  la cuenta se mira antes: `quitarSiSuelto` (en `anotarSinDejarloSuelto`) con
+  la traba no pide nada, se deja para la vuelta y entretanto no se sabe —tras un
+  rechazo con la traba, el archivo quedaba suelto sin que nadie lo quitara
+  (vigesimoséptima)—; `quitarConEstaCuenta` (el 409 y el otro tipo de archivo en
+  otra ruta, en `subirArchivoPrivado`) la mira antes y después y, si cambió,
+  corta la cadena: con la traba, el vacío decía «quedó registrado la primera
+  vez» sin que quedara nada (vigesimosexta). La caja diaria copia la misma
+  regla en línea al cambiar la captura. El
+  refresco y la navegación tras un envío también esperan
+  (`refrescarSiEsDeLaPestana`, `navegarSiEsDeLaPestana`): con la otra sesión
+  pintaban su pantalla y se llevaban la traba.
   Una clave nueva en
   `consultarEnvio` compara la columna del autor de su tabla.
   Una migración ya aplicada en producción no se reescribe: su cambio va en
@@ -314,9 +478,12 @@ En la misma migración que la crea, sin excepción:
   pegarse). Un aviso nuevo de «mismo envío» lleva
   «la primera vez que lo enviaste» para que `yaEntroLaPrimeraVez` lo
   reconozca. **Las fotos nuevas de ese envío no las nombra nadie: se quitan al
-  recibir el aviso**, en el envoltorio de la acción (`quitarFotosSueltas`; la
-  base no deja quitar las de la primera vez), no al pulsar «Cerrar», que puede
-  no llegar. El formulario de página (el reporte diario) además se traba y
+  recibir el aviso**, en el envoltorio de la acción (`useFotosDelEnvio`, o
+  `quitarFotosSueltas` en el formulario de página; la base no deja quitar las
+  de la primera vez), no al pulsar «Cerrar», que puede no llegar. **Sin
+  respuesta no se quita nada:** la política de Storage solo protege la foto que
+  una fila ya nombra, y la del reporte que todavía está entrando se borraba
+  (vigesimosexta). El formulario de página (el reporte diario) además se traba y
   lleva al registro, y el que fija su id al abrirse (el gasto del área) lo
   cambia tras el aviso, o el próximo envío chocaría con el mismo. El aviso dice
   qué quedó y cómo se corrige; «recarga la pantalla» con el formulario vacío se

@@ -1,6 +1,6 @@
 'use client'
 
-import type { FormEvent } from 'react'
+import { type FormEvent, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -15,7 +15,7 @@ import { cerrarCosto, confirmarIgv, fijarPresupuesto } from './acciones'
  * botón que envió, así que se agrega a mano.
  */
 export function ConfirmarIgv({ cotizacionId, ordenId }: { cotizacionId: string; ordenId: string }) {
-  const { alEnviar, enviando, error } = useEnvio(confirmarIgv)
+  const { alEnviar, enviando, error } = useEnvio(confirmarIgv, undefined, { siSeVa: { que: 'el IGV de la cotización', enlace: 'Volver al expediente' } })
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
     const boton = (evento.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
@@ -51,7 +51,7 @@ export function ConfirmarIgv({ cotizacionId, ordenId }: { cotizacionId: string; 
  * vez por OT y no se deshace.
  */
 export function CerrarCosto({ ordenId }: { ordenId: string }) {
-  const { alEnviar, enviando, error } = useEnvio(cerrarCosto)
+  const { alEnviar, enviando, error } = useEnvio(cerrarCosto, undefined, { siSeVa: { que: 'el cierre del costo', enlace: 'Volver al expediente' } })
 
   return (
     <Pliegue titulo="Cerrar el costo de esta OT" enCaja className="print:hidden">
@@ -82,9 +82,17 @@ export function CerrarCosto({ ordenId }: { ordenId: string }) {
  * al presupuesto de la cotización. El botón tocado viaja como `accion`.
  */
 export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual: boolean }) {
-  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto)
+  // Al guardar, la tarjeta de arriba cambia sola; el mensaje dice que ya pasó
+  // (el auditor de funcionalidad halló el 27/10/2026 que no se veía nada).
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  // «Arriba ya se ve el presupuesto nuevo» sale con la tarjeta ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(fijarPresupuesto, (r) => setMensaje(r.mensaje ?? 'Presupuesto guardado.'), {
+    siSeVa: { que: 'el presupuesto', enlace: 'Volver al expediente' },
+    corrige: true,
+  })
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
+    setMensaje(null)
     const boton = (evento.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
     alEnviar(evento, (datos) => {
       datos.set('accion', boton?.value === 'cotizacion' ? 'cotizacion' : 'fijar')
@@ -110,6 +118,11 @@ export function FijarPresupuesto({ ordenId, manual }: { ordenId: string; manual:
         {error && (
           <p role="alert" className="text-sm text-peligro">
             {error}
+          </p>
+        )}
+        {mensaje && (
+          <p role="status" className="text-sm text-exito">
+            {mensaje} Arriba ya se ve el presupuesto nuevo.
           </p>
         )}
         <div className="flex flex-wrap gap-2">

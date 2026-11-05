@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { useAccion, useEnvio } from '@/lib/envio'
+import { navegarSiEsDeLaPestana, useAccion, useEnvio } from '@/lib/envio'
 import { borrarEvaluacionDiseno, cambiarEstadoEvaluacion } from '../acciones'
 
 /**
@@ -103,7 +103,11 @@ function RecibirODevolver({ id }: { id: string }) {
 function Borrar({ id }: { id: string }) {
   const router = useRouter()
   const [abierta, setAbierta] = useState(false)
-  const accion = useAccion(borrarEvaluacionDiseno, () => router.push('/diseno/evaluaciones'), { refrescar: false })
+  const accion = useAccion(
+    borrarEvaluacionDiseno,
+    (_, desde) => navegarSiEsDeLaPestana(router, '/diseno/evaluaciones', desde, { dice: 'El borrador se borró.', enlace: 'Ir a Evaluaciones' }),
+    { refrescar: false },
+  )
   return (
     <>
       <Boton type="button" variante="contornoPeligro" className="w-full justify-center" onClick={() => { accion.limpiar(); setAbierta(true) }}>

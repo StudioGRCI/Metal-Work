@@ -1,7 +1,8 @@
 import 'server-only'
 
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
-import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
+import { bajarComo } from '@/lib/descarga'
+import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
@@ -80,11 +81,9 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
     filas
       .filter((f) => f.archivo_ruta && !esPdf(f))
       .map(async (f) => {
-        const { data: firmado, error } = await supabase.storage
-          .from('cotizaciones-pdf')
-          .createSignedUrl(f.archivo_ruta as string, 600, { download: f.archivo_nombre ?? true })
+        const { data: firmado, error } = await supabase.storage.from('cotizaciones-pdf').createSignedUrl(f.archivo_ruta as string, 600)
         if (error && !archivoNoEncontrado(error)) throw new Error(SIN_ENLACES)
-        if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, firmado.signedUrl)
+        if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, bajarComo(firmado.signedUrl, f.archivo_nombre ?? true))
       }),
   )
   return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null }))
@@ -213,10 +212,11 @@ type ServicioFila = Funciones<'servicios_por_pagar'>['Returns'][number]
 type PagoServicioFila = Pick<
   Tablas<'pagos_orden_servicio'>,
   | 'id' | 'orden_servicio_id' | 'fecha_pago' | 'moneda' | 'monto' | 'cancela' | 'operacion' | 'comprobante_proveedor'
-  | 'archivo_ruta' | 'archivo_mime' | 'anulado_en' | 'motivo_anulacion'
+  | 'archivo_ruta' | 'archivo_mime' | 'anulado_en' | 'motivo_anulacion' | 'destino'
 >
 export type ServicioPorPagar = ServicioFila & {
   pagos: (PagoServicioFila & { url: string | null })[]
+  saldo: SaldoDeServicio
   cuentas: Pick<Tablas<'proveedor_cuentas'>, 'id' | 'banco' | 'numero_cuenta' | 'titular' | 'moneda'>[]
   detraccion: DetraccionDeServicio
   /** La factura, la boleta o el recibo del proveedor, y el contrato (migración 20261020210000). */
@@ -226,7 +226,8 @@ export type ServicioPorPagar = ServicioFila & {
 /**
  * Las órdenes de servicio aprobadas por Gerencia, con lo pagado, los comprobantes,
  * las cuentas del proveedor y la detracción que Logística o Contabilidad le
- * fijaron (migración 20261015141000): esa parte va al Banco de la Nación.
+ * fijaron (migración 20261015141000): esa parte va al Banco de la Nación. Lo que
+ * se debe de cada una lo da la base, con IGV (migración 20261026100000).
  */
 export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPorPagar[]> {
   const supabase = await createClient()
@@ -235,11 +236,11 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   const filas = data ?? []
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
   const proveedores = [...new Set(filas.flatMap((f) => (f.proveedor_id ? [f.proveedor_id] : [])))]
-  const [pagos, cuentas, detracciones, tipos, documentos] = await Promise.all([
+  const [pagos, cuentas, detracciones, tipos, documentos, saldos] = await Promise.all([
     ids.length
       ? supabase
           .from('pagos_orden_servicio')
-          .select('id, orden_servicio_id, fecha_pago, moneda, monto, cancela, operacion, comprobante_proveedor, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion')
+          .select('id, orden_servicio_id, fecha_pago, moneda, monto, cancela, operacion, comprobante_proveedor, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion, destino')
           .in('orden_servicio_id', ids)
           .order('fecha_pago')
       : Promise.resolve({ data: [], error: null }),
@@ -249,6 +250,7 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
     ids.length ? supabase.from('ordenes_servicio').select(COLUMNAS_DETRACCION).in('id', ids) : Promise.resolve({ data: [], error: null }),
     ids.length ? cargarTiposDetraccion() : Promise.resolve([]),
     documentosDeServicios(ids),
+    saldosDeServicios(ids),
   ])
   if (pagos.error) throw new Error(`No se pudieron leer los pagos de servicio: ${pagos.error.message}`)
   if (cuentas.error) throw new Error(`No se pudieron leer las cuentas de los proveedores: ${cuentas.error.message}`)
@@ -261,5 +263,37 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
     detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
     documentos: (f.id && documentos.get(f.id)) || [],
+    saldo: (f.id && saldos.get(f.id)) || SIN_SALDO,
   }))
+}
+
+const SIN_SALDO: SaldoDeServicio = {
+  total: 0, detraccion: 0, detraccionEnMoneda: 0, alProveedor: 0, pagadoProveedor: 0, pagadoDetraccion: 0, saldoProveedor: 0, saldoDetraccion: 0,
+}
+
+/** Lo que se debe de cada orden de servicio, por su id (migración 20261026100000). */
+export async function saldosDeServicios(ids: string[]): Promise<Map<string, SaldoDeServicio>> {
+  if (ids.length === 0) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('saldos_de_servicios', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer lo que falta pagar de los servicios: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) =>
+      f.orden_servicio_id
+        ? [[
+            f.orden_servicio_id,
+            {
+              total: Number(f.total ?? 0),
+              detraccion: Number(f.detraccion ?? 0),
+              detraccionEnMoneda: Number(f.detraccion_en_moneda ?? 0),
+              alProveedor: Number(f.al_proveedor ?? 0),
+              pagadoProveedor: Number(f.pagado_proveedor ?? 0),
+              pagadoDetraccion: Number(f.pagado_detraccion ?? 0),
+              saldoProveedor: Number(f.saldo_proveedor ?? 0),
+              saldoDetraccion: Number(f.saldo_detraccion ?? 0),
+            } satisfies SaldoDeServicio,
+          ] as const]
+        : [],
+    ),
+  )
 }

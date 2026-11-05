@@ -1,7 +1,7 @@
 'use client'
 
 import { CalendarDays, Pencil } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -10,7 +10,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora, porcentaje, porcentajeCorto } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import type { Vistas } from '@/types/database'
@@ -42,6 +42,11 @@ export function Etapas({
   puedeProgramar: boolean
 }) {
   const [programando, setProgramando] = useState<string | null>(null)
+  // Mientras unas fechas se guardan, ninguna fila abre ni cierra las suyas: abrir
+  // otra desmontaba la que iba en camino, y su desenlace no salía en ninguna
+  // fila; cerrar la propia dejaba las fechas de antes a la vista (H3 de
+  // funcionalidad, quincuagésima tercera pasada).
+  const [guardando, setGuardando] = useState(false)
   // Corregir o agregar etapas reemplaza la lista por el formulario: las dos a
   // la vez repetían cada etapa en pantalla.
   const [editando, setEditando] = useState(false)
@@ -96,9 +101,9 @@ export function Etapas({
         {esNueva && etapas.length > 0 && !editando && (
           <div className="rounded-[var(--radius-base)] border border-borde p-3">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{cantidad(contemplado)} %</strong></span>
+              <span className="text-texto">Contemplado en etapas: <strong className="tabular">{porcentajeCorto(contemplado)}</strong></span>
               <span className={faltaContemplar > 0 ? 'text-aviso' : 'text-exito'}>
-                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{cantidad(faltaContemplar)} %</strong></> : 'El 100 % está contemplado'}
+                {faltaContemplar > 0 ? <>Falta contemplar: <strong className="tabular">{porcentajeCorto(faltaContemplar)}</strong></> : 'El 100 % está contemplado'}
               </span>
             </div>
             <Progreso valor={contemplado} etiqueta="Porcentaje contemplado en etapas" alto="sm" />
@@ -142,7 +147,7 @@ export function Etapas({
                       <p className="mt-0.5 text-xs text-texto-suave">
                         {[
                           area,
-                          etapa.peso_pct !== null ? `${cantidad(etapa.peso_pct)} % del avance` : null,
+                          etapa.peso_pct !== null ? `${porcentajeCorto(etapa.peso_pct)} del avance` : null,
                           // Las horas solo pesan en el plan histórico; en las OT
                           // nuevas valen 0 y decirlo era ruido.
                           Number(etapa.horas_estimadas ?? 0) > 0 ? `${cantidad(etapa.horas_estimadas)} h estimadas` : null,
@@ -172,6 +177,7 @@ export function Etapas({
 
                     {puedeProgramar && (
                       <Boton variante={abierta ? 'fantasma' : 'secundario'} tamano="sm"
+                        disabled={guardando}
                         onClick={() => setProgramando(abierta ? null : etapa.etapa_id)}
                         aria-expanded={abierta}>
                         {abierta ? 'Cerrar' : programa.inicio || programa.fin ? 'Cambiar fechas' : 'Programar fechas'}
@@ -179,9 +185,15 @@ export function Etapas({
                     )}
                   </div>
 
+                  {/* Cierra solo el suyo. La llave con las fechas lo rehace con
+                      las de la base si la página se pone al día con el
+                      formulario abierto y otras fechas (las guardó otra
+                      pestaña u otra persona): no se queda mostrando las de
+                      antes para volver a mandarlas. */}
                   {abierta && (
-                    <FormularioProgramacion ordenId={ordenId} etapa={etapa}
-                      alTerminar={() => setProgramando(null)} />
+                    <FormularioProgramacion key={`${etapa.fecha_inicio_programada ?? ''}:${etapa.fecha_fin_programada ?? ''}`} ordenId={ordenId} etapa={etapa}
+                      alCambiarEnvio={setGuardando}
+                      alTerminar={() => setProgramando((p) => (p === etapa.etapa_id ? null : p))} />
                   )}
                 </li>
               )
@@ -203,8 +215,11 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   /** Sin cambios, vuelve a la lista. */
   alCancelar?: () => void
 }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(definirEtapas, alTerminar)
+  // Al corregirlas, la lista vuelve ya con las etapas guardadas (`corrige`): al
+  // contestar, mostraba un segundo las de antes (R30 de realización,
+  // quincuagésima tercera pasada). La primera vez es un alta.
   const corrigiendo = etapas.length > 0
+  const { alEnviar, enviando, error, resultado } = useEnvio(definirEtapas, alTerminar, { corrige: corrigiendo })
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_id !== null)
     .map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? '', area: e.area_id ?? '', peso: e.peso_pct ?? 0,
@@ -219,7 +234,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   const areaActividad = areas.find((area) => area.id === actividadExistente?.area_id)?.nombre ?? 'Producción'
   const bloqueos = [
     seleccion.length === 0 ? 'Agrega al menos una etapa.' : null,
-    total > 100 ? `Las etapas suman ${total} %: baja alguna, no pueden pasar de 100 %.` : null,
+    total > 100 ? `Las etapas suman ${porcentajeCorto(total)}: baja alguna, no pueden pasar de ${porcentaje(100)}.` : null,
     conversion && etapasDiseno.length !== 1 ? 'Incluye exactamente una etapa de Diseño para vincular el plano existente.' : null,
     conversion && actividadesPorVincular.length !== 1 ? 'No se pudo identificar la actividad histórica; recarga la orden.' : null,
     conversion && actividadExistente && etapasDeActividad.length === 0
@@ -287,7 +302,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
           ...actual, { id: crypto.randomUUID(), nombre: '', area: '', peso: 0, avance: 0, iniciada: false },
         ])}>+ Agregar etapa</Boton>
         {seleccion.length > 0 && <p className={`text-sm font-medium tabular ${total === 100 ? 'text-exito' : total > 100 ? 'text-peligro' : 'text-texto-suave'}`} role="status">
-          Contemplado: {total} %{total < 100 ? ` · falta contemplar ${100 - total} %` : total === 100 ? ' · completo' : ''}
+          Contemplado: {porcentajeCorto(total)}{total < 100 ? ` · falta contemplar ${porcentajeCorto(100 - total)}` : total === 100 ? ' · completo' : ''}
         </p>}
       </div>
       {conversion && seleccion.length > 0 && actividadesPorVincular.map((actividad) => (
@@ -323,12 +338,22 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   )
 }
 
-function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
+function FormularioProgramacion({ ordenId, etapa, alCambiarEnvio, alTerminar }: {
   ordenId: string
   etapa: Etapa
+  alCambiarEnvio: (enviando: boolean) => void
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar)
+  // Corrige las fechas que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar, {
+    documento: etapa.etapa_id ?? undefined,
+    corrige: true,
+  })
+  useEffect(() => {
+    if (!enviando) return
+    alCambiarEnvio(true)
+    return () => alCambiarEnvio(false)
+  }, [enviando, alCambiarEnvio])
   return (
     <form onSubmit={alEnviar} className="mt-3 grid min-w-0 gap-3 border-t border-borde pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="orden_id" value={ordenId} />
@@ -343,7 +368,7 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
       </Campo>
       {error && <p role="alert" className="text-sm text-peligro sm:col-span-3">{error}</p>}
       <div className="flex items-end justify-end gap-2">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>Cancelar</Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alTerminar}>Cancelar</Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>Guardar fechas</Boton>
       </div>
     </form>

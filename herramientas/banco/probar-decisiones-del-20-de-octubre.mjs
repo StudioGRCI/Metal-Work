@@ -2,11 +2,12 @@
  * Clic real sobre lo que DKS decidió el 2026-10-20 (migraciones 20261020160000
  * a 20261020163000), con la cuenta del puesto que hace cada cosa:
  *
- *   1. Recursos Humanos le pone a una cuenta su costo por hora y su DNI en «DNI
- *      y costo de las cuentas» (desde la migración 20261020165000 son suyos;
- *      el administrador solo los ve). La base los guarda en la tabla reservada
- *      y `usuarios` queda vacío. El administrador los ve en Personal y en esa
- *      pantalla, sin campos ni lápiz para cambiarlos.
+ *   1. Recursos Humanos le pone a una cuenta su DNI en «DNI de las cuentas»
+ *      (desde la migración 20261020165000 es suyo; el administrador solo lo
+ *      ve). La base lo guarda en la tabla reservada y `usuarios` queda vacío.
+ *      El administrador lo ve en Personal y en esa pantalla, sin campos ni
+ *      lápiz para cambiarlo. El costo por hora de la cuenta ya no se pide
+ *      (DKS, 2026-10-26): guardar el DNI no lo toca.
  *   2. Administración y Gerencia ven «Trabajos sin orden» en su menú;
  *      Administración aprueba el reporte de uno y la base lo dice.
  *   3. Ventas no ve «Quitar» en su cotización rechazada, y sí en la que acaba
@@ -85,7 +86,7 @@ const idDe = async (correo) => (await consulta('select id from public.usuarios w
 const sufijo = randomUUID().slice(0, 6).toUpperCase()
 
 try {
-  // ---------------------------------------------- 1. costo por hora y DNI
+  // ---------------------------------------------- 1. el DNI de la cuenta
   {
     const [persona] = await consulta(
       `select u.id, u.nombres from public.usuarios u join public.roles r on r.id = u.rol_id
@@ -98,21 +99,22 @@ try {
       const { pagina, contexto, errores } = await entrar(CUENTAS.rrhh)
       await pagina.goto(`${BASE}/rrhh/cuentas`, { waitUntil: 'networkidle' })
       const fila = pagina.locator(`tr[data-cuenta="${cuenta.correo}"]`)
-      await fila.getByRole('button', { name: /Cambiar el DNI y el costo/ }).click()
+      const [antes] = await consulta('select costo_hora::float as costo from public.usuario_datos_reservados where usuario_id = $1', [persona.id])
+      await fila.getByRole('button', { name: /Cambiar el DNI de/ }).click()
       const v = pagina.locator('[role="dialog"]')
+      comprobar((await v.locator('input[name="costo_hora"]').count()) === 0, 'la ventana ya no pide el costo por hora')
       await v.locator('input[name="documento"]').fill(dni)
-      await v.locator('input[name="costo_hora"]').fill('14.5')
       await v.getByRole('button', { name: 'Guardar' }).click()
       await v.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
       const [u] = await consulta('select documento, costo_hora::float as costo from public.usuarios where id = $1', [persona.id])
       const [r] = await consulta('select documento, costo_hora::float as costo from public.usuario_datos_reservados where usuario_id = $1', [persona.id])
       comprobar(u.documento === null && u.costo === 0, 'en usuarios, que lee toda cuenta, no quedó ni el DNI ni el costo')
-      comprobar(r?.documento === dni && r?.costo === 14.5, `RR. HH. guarda el DNI y S/ 14.50 la hora en la tabla reservada (${JSON.stringify(r)})`)
+      comprobar(r?.documento === dni && r?.costo === (antes?.costo ?? 0), `RR. HH. guarda el DNI en la tabla reservada y el costo queda como estaba (${JSON.stringify(r)})`)
       await pagina.reload({ waitUntil: 'networkidle' })
       const texto = (await fila.innerText()).replace(/\s+/g, ' ')
-      comprobar(texto.includes(dni) && texto.includes('14.50'), `la fila vuelve a mostrar el DNI y el costo («${texto.slice(0, 120)}»)`)
+      comprobar(texto.includes(dni), `la fila vuelve a mostrar el DNI («${texto.slice(0, 120)}»)`)
       await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-cuentas-rrhh.png'), fullPage: true })
-      comprobar(errores.length === 0, `DNI y costo de las cuentas sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+      comprobar(errores.length === 0, `DNI de las cuentas sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
       await contexto.close()
     }
     {
@@ -122,12 +124,12 @@ try {
       const v = pagina.locator('[role="dialog"]')
       comprobar((await v.locator('#documento, #costo_hora, input[name="costo_hora"]').count()) === 0, 'en Personal el administrador ya no tiene los campos del DNI y el costo')
       const ficha = (await v.innerText()).replace(/\s+/g, ' ')
-      comprobar(ficha.includes(dni) && ficha.includes('14.50') && ficha.includes('Recursos Humanos'), 'pero los ve, y dice que los cambia Recursos Humanos')
+      comprobar(ficha.includes(dni) && !ficha.includes('costo por hora') && ficha.includes('Recursos Humanos'), 'pero ve el DNI, sin el costo por hora, y dice que lo cambia Recursos Humanos')
       await pagina.screenshot({ path: join(CAPTURAS, 'decisiones-personal.png'), fullPage: true })
       await pagina.keyboard.press('Escape')
       await pagina.goto(`${BASE}/rrhh/cuentas`, { waitUntil: 'networkidle' })
-      comprobar(new URL(pagina.url()).pathname === '/rrhh/cuentas', 'el administrador abre «DNI y costo de las cuentas»')
-      comprobar((await pagina.getByRole('button', { name: /Cambiar el DNI y el costo/ }).count()) === 0, 'solo para mirar: sin lápiz')
+      comprobar(new URL(pagina.url()).pathname === '/rrhh/cuentas', 'el administrador abre «DNI de las cuentas»')
+      comprobar((await pagina.getByRole('button', { name: /Cambiar el DNI de/ }).count()) === 0, 'solo para mirar: sin lápiz')
       await pagina.goto(`${BASE}/personal?q=${dni}`, { waitUntil: 'networkidle' })
       comprobar(await pagina.getByRole('button', { name: `Editar a ${persona.nombres}` }).first().isVisible().catch(() => false),
         'el buscador de Personal la encuentra por su DNI')

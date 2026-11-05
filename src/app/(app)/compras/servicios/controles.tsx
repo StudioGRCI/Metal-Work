@@ -32,7 +32,7 @@ export function AvanceServicio({
   anular: boolean
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
-  const inicio = useAccion(avanzarOrdenServicio)
+  const inicio = useAccion(avanzarOrdenServicio, undefined, { documento: id })
   const cierre = useEnvio(avanzarOrdenServicio, () => setPaso(null))
 
   return (
@@ -61,8 +61,9 @@ export function AvanceServicio({
         </Boton>
       )}
       {anular && (
-        <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setPaso('ANULADA')}>
-          <Ban aria-hidden className="size-4" />
+        // Sin borde: corrige un error y no pesa como el paso de la OS.
+        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setPaso('ANULADA')}>
+          <Ban aria-hidden className="size-4 text-peligro" />
           Anular
         </Boton>
       )}
@@ -146,7 +147,8 @@ export function CorregirServicio({
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useEnvio(corregirOrdenServicio, () => setAbierta(false))
+  // Corrige lo que la OS muestra: se cierra con la OS ya al día (`corrige`).
+  const envio = useEnvio(corregirOrdenServicio, () => setAbierta(false), { corrige: true })
   const inicial = detraccion.afecta === null ? '' : detraccion.afecta ? (detraccion.codigo ?? '') : NO_SUJETA
 
   return (
@@ -199,7 +201,7 @@ export function CorregirServicio({
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="contorno" disabled={envio.enviando} onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={envio.enviando}>

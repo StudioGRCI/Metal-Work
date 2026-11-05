@@ -6,7 +6,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { materialesParaValorizar, precioDeCosteo } from '@/lib/datos/valorizacion'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { cantidad, fecha, moneda } from '@/lib/format'
+import { cantidad, fecha, moneda, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { FijarPrecio } from './fijar-precio'
@@ -50,6 +50,8 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
 
   const enAlmacen = conCosteo.filter((m) => Number(m.existencia ?? 0) > 0)
   const sinPrecio = enAlmacen.filter((m) => m.costeo === null)
+  // Con todo sin precio, un S/ 0.00 se leía como almacén vacío: las dos monedas dicen «Sin calcular» (auditoría del 27/10/2026).
+  const todoSinPrecio = sinPrecio.length > 0 && sinPrecio.length === enAlmacen.length
   const valor = { PEN: 0, USD: 0 }
   for (const m of enAlmacen) {
     if (m.costeo) valor[m.costeo.moneda] += Number(m.existencia ?? 0) * m.costeo.precio
@@ -72,9 +74,19 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
 
       <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Cifra etiqueta="Materiales con saldo" valor={cantidad(enAlmacen.length)} />
-        <Cifra etiqueta="Con saldo y sin precio" valor={cantidad(sinPrecio.length)} aviso={sinPrecio.length > 0} />
-        <Cifra etiqueta="Valor en almacén (soles)" valor={moneda(valor.PEN, 'PEN')} />
-        <Cifra etiqueta="Valor en almacén (dólares)" valor={moneda(valor.USD, 'USD')} />
+        <Cifra
+          etiqueta="Con saldo y sin precio"
+          valor={cantidad(sinPrecio.length)}
+          pie={sinPrecio.length > 0 ? `${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))} de los que tienen saldo` : undefined}
+          aviso={sinPrecio.length > 0}
+        />
+        {/* Un S/ 0.00 con todo sin precio se leía como almacén vacío (auditoría del 27/10/2026). */}
+        <Cifra
+          etiqueta="Valor en almacén (soles)"
+          valor={todoSinPrecio ? 'Sin calcular' : moneda(valor.PEN, 'PEN')}
+          pie={todoSinPrecio ? 'ninguno tiene precio' : sinPrecio.length > 0 ? `no cuenta ${sinPrecio.length} de ${enAlmacen.length} materiales (${porcentaje(parteDe(sinPrecio.length, enAlmacen.length))}): no tienen precio` : undefined}
+        />
+        <Cifra etiqueta="Valor en almacén (dólares)" valor={todoSinPrecio ? 'Sin calcular' : moneda(valor.USD, 'USD')} />
       </dl>
 
       <div className="mb-4 space-y-3">
@@ -86,7 +98,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Materiales del almacén"
-          ayuda="El costeo de la OT usa el precio congelado en la salida; si no lo hay, la última compra; y si el material nunca se compró, el precio que fija Logística."
+          ayuda="El costeo del código interno y el de la OT usan el mismo precio: el congelado en la salida; si no lo hay, el de la última compra que entró al almacén; y si el material nunca se compró, el precio que fija Logística."
         />
         <Tabla>
           <TablaCabecera>
@@ -172,11 +184,14 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
   )
 }
 
-function Cifra({ etiqueta, valor, aviso }: { etiqueta: string; valor: string; aviso?: boolean }) {
+function Cifra({ etiqueta, valor, pie, aviso }: { etiqueta: string; valor: string; pie?: string; aviso?: boolean }) {
   return (
     <div className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
-      <dt className="text-[11px] text-texto-suave">{etiqueta}</dt>
-      <dd className={`tabular mt-1 text-lg font-semibold ${aviso ? 'text-aviso' : 'text-texto'}`}>{valor}</dd>
+      <dt className="text-xs text-texto-suave">{etiqueta}</dt>
+      <dd className={`tabular mt-1 text-lg font-semibold ${aviso ? 'text-aviso' : 'text-texto'}`}>
+        {valor}
+        {pie && <span className="block text-xs font-normal text-texto-suave">{pie}</span>}
+      </dd>
     </div>
   )
 }

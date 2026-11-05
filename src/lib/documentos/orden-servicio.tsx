@@ -228,7 +228,8 @@ export function DocumentoOrdenServicio({ servicio: o, logo }: { servicio: Servic
         <View style={{ marginBottom: 8 }}>
           <Caja titulo="Destino del servicio">
             <Dato titulo="Código interno:" valor={o.codigoInterno} />
-            <Dato titulo="OT:" valor={o.orden} />
+            {/* Las OS nuevas van por código interno; la OT sale solo en las de antes que la tenían. */}
+            {o.orden ? <Dato titulo="OT:" valor={o.orden} /> : null}
             {o.unidad ? <Dato titulo="Unidad:" valor={o.unidad} /> : null}
             <Dato titulo="Área que lo pide:" valor={o.area} />
           </Caja>

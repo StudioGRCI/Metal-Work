@@ -165,7 +165,10 @@ export function CargarPlano({
       setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() })
     },
     // Tras «ya quedó», el plano siguiente lleva otro id: con el mismo decía «ya quedó» hasta recargar.
-    { alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }) },
+    {
+      alYaEntrar: () => setIds({ plano: crypto.randomUUID(), revision: crypto.randomUUID() }),
+      siSeVa: { que: 'el plano', enlace: 'Volver al plano' },
+    },
   )
   // El cursor va al aviso: con el formulario vaciado tras «ya quedó», caía a la página.
   const aviso = useRef<HTMLParagraphElement>(null)
@@ -232,7 +235,8 @@ export function CargarPlano({
 /** Corregir el porcentaje de la unidad que representa un plano vigente. */
 export function CambiarPeso({ plano, numero, peso, libre }: { plano: string; numero: string; peso: number | null; libre: number }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error } = useEnvio(fijarPesoPlano, () => setAbierta(false))
+  // Corrige el % que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(fijarPesoPlano, () => setAbierta(false), { corrige: true })
   const tope = Math.round((libre + (peso ?? 0)) * 100) / 100
   return (
     <>
@@ -350,12 +354,14 @@ export function AnularPlano({ plano, numero }: { plano: string; numero: string }
 
 /** El supervisor marca que recibió la revisión vigente. Un toque, sin ventana. */
 export function RecibirPlano({ revision, numero }: { revision: string; numero: string }) {
-  const { ejecutar, enviando, error } = useAccion(recibirPlano)
+  const { ejecutar, enviando, error } = useAccion(recibirPlano, undefined, { documento: revision })
   return (
     <div className="space-y-1">
+      {/* Dice lo que hace, no un estado: «✓ Recibido» junto a «Por recibir» se leía como que ya estaba (auditoría del 27/10/2026). */}
       <Boton
         type="button"
         tamano="sm"
+        variante="secundario"
         cargando={enviando}
         onClick={() => {
           const datos = new FormData()
@@ -365,7 +371,7 @@ export function RecibirPlano({ revision, numero }: { revision: string; numero: s
         aria-label={`Marcar recibido el plano ${numero}`}
       >
         <Check aria-hidden className="size-4" />
-        Recibido
+        Marcar recibido
       </Boton>
       <Alerta error={error} />
     </div>
@@ -393,12 +399,18 @@ export function FormularioMaterial({
   const [material, setMaterial] = useState(linea?.material_id ?? '')
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [vuelta, setVuelta] = useState(0)
-  const { alEnviar, enviando, error } = useEnvio(guardarMaterial, (r) => {
-    if (alTerminar) return alTerminar()
-    setMensaje(r.mensaje ?? null)
-    setMaterial('')
-    setVuelta((v) => v + 1)
-  })
+  // Con `linea` corrige lo que la lista muestra y se cierra con la lista ya al
+  // día; el alta se rehace al contestar para la siguiente (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    guardarMaterial,
+    (r) => {
+      if (alTerminar) return alTerminar()
+      setMensaje(r.mensaje ?? null)
+      setMaterial('')
+      setVuelta((v) => v + 1)
+    },
+    { corrige: Boolean(linea) },
+  )
   const id = linea?.id ?? 'nueva'
   return (
     <form
@@ -562,11 +574,16 @@ export function FormularioEtapa({
 }) {
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [vuelta, setVuelta] = useState(0)
-  const { alEnviar, enviando, error } = useEnvio(guardarEtapa, (r) => {
-    if (alTerminar) return alTerminar()
-    setMensaje(r.mensaje ?? null)
-    setVuelta((v) => v + 1)
-  })
+  // Con `etapa` corrige la fila y se cierra con ella ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    guardarEtapa,
+    (r) => {
+      if (alTerminar) return alTerminar()
+      setMensaje(r.mensaje ?? null)
+      setVuelta((v) => v + 1)
+    },
+    { corrige: Boolean(etapa) },
+  )
   const id = etapa?.id ?? 'nueva'
   return (
     <form
@@ -633,7 +650,7 @@ export function CorregirEtapa({ codigo, areas, etapa }: { codigo: string; areas:
 }
 
 export function MoverEtapa({ id, nombre, primera, ultima }: { id: string; nombre: string; primera: boolean; ultima: boolean }) {
-  const { ejecutar, enviando, error } = useAccion(moverEtapa)
+  const { ejecutar, enviando, error } = useAccion(moverEtapa, undefined, { documento: id })
   const mover = (arriba: boolean) => {
     const datos = new FormData()
     datos.set('id', id)

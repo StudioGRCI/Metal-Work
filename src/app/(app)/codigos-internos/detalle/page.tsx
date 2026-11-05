@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Download, FileText } from 'lucide-react'
 
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
@@ -14,6 +15,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   actividadesDelCodigo,
+  ajusteDePlanilla,
   aporteDeLosPlanos,
   avanceDelCodigo,
   comprasDelCodigo,
@@ -30,7 +32,8 @@ import {
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
-import { mesesSinPagosDeOficina, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import {
   CODIGO_SIN_AVANCE,
@@ -58,11 +61,12 @@ import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
+import { cantidad, fecha, fechaLarga, hoyLima, moneda, numero, parteDe, periodo, porcentaje, porcentajeCorto, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
 import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
+import { VistaFicha } from './vista-ficha'
 
 export const metadata = { title: 'Código interno' }
 
@@ -76,8 +80,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   // TODOS LOS ACTIVOS no es una unidad: no tiene etapas, planos, materiales, costeo propio, personal ni factura.
   // Solo a dónde fue lo que se le cargó y sus requerimientos.
   const aTodos = codigo === CODIGO_TODOS_LOS_ACTIVOS
+  // La ficha de taller la ve quien la veía en la OT (`seccionesDeOrden`) y es solo de una unidad.
+  const veFicha = !noEsUnidad(codigo) && puede(perfil, ['ordenes.editar', 'produccion.ver', 'diseno.planos'])
   const vistas = VISTAS_CODIGO.filter((v) =>
-    aTodos ? v.valor === 'avance' || v.valor === 'documentos' : v.valor !== 'facturacion' || veFacturas,
+    aTodos
+      ? v.valor === 'avance' || v.valor === 'documentos'
+      : (v.valor !== 'facturacion' || veFacturas) && (v.valor !== 'ficha' || veFicha),
   )
   // Quien cierra el costeo sabe antes de intentarlo si la unidad espera a que termine el mes
   // (cerrar_costeo_codigo lo exige: sus gastos del mes se reparten por las horas del mes entero).
@@ -86,14 +94,19 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas] = await Promise.all([
     leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
     // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPagosDeOficina(codigo) : Promise.resolve<string[]>([]),
+    // Y los que esperan la planilla de taller cerrada: su ajuste es parte de la mano de obra.
+    cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
+    // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
+    aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
   ])
+  const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
   const avance = avances.get(codigo)
   const todos = sumarCodigosDeDiseno(conDocumentos, deDiseno)
@@ -136,63 +149,69 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
-        <div className="space-y-5">
-          {otros.length > 0 && (
-            <Tarjeta className="border-aviso">
-              <TarjetaCuerpo className="text-sm">
-                <p className="font-medium text-texto">¿Es el mismo código que {otros.length === 1 ? 'este' : 'estos'}?</p>
-                <p className="text-texto-suave">
-                  Se escribe casi igual que{' '}
-                  {otros.map((o, i) => (
-                    <span key={o}>
-                      {i > 0 && ', '}
-                      <Link href={enlaceCodigo(o, vista)} className="font-mono text-acento hover:underline">
-                        {o}
-                      </Link>
-                    </span>
-                  ))}
-                  . Si es el mismo, cada uno lleva su parte del avance y del costo por separado: hay que pedir que se corrija donde se escribió.
-                </p>
-              </TarjetaCuerpo>
-            </Tarjeta>
-          )}
+        // El código lo elige la búsqueda: con otro, la ficha y lo demás se montan
+        // de nuevo y no se llevan lo escrito para el anterior (X1, cuadragésima quinta pasada).
+        <DelDocumento documento={`codigo:${codigo}`}>
+          <div className="space-y-5">
+            {otros.length > 0 && (
+              <Tarjeta className="border-aviso">
+                <TarjetaCuerpo className="text-sm">
+                  <p className="font-medium text-texto">¿Es el mismo código que {otros.length === 1 ? 'este' : 'estos'}?</p>
+                  <p className="text-texto-suave">
+                    Se escribe casi igual que{' '}
+                    {otros.map((o, i) => (
+                      <span key={o}>
+                        {i > 0 && ', '}
+                        <Link href={enlaceCodigo(o, vista)} className="font-mono text-acento hover:underline">
+                          {o}
+                        </Link>
+                      </span>
+                    ))}
+                    . Si es el mismo, cada uno lleva su parte del avance y del costo por separado: hay que pedir que se corrija donde se escribió.
+                  </p>
+                </TarjetaCuerpo>
+              </Tarjeta>
+            )}
 
-          {aTodos ? (
-            <CifrasDelReparto filas={reparto} />
-          ) : (
-            <>
-              <ComoVa
-                c={resumen}
-                avance={avance}
-                facturado={facturado}
-                codigo={codigo}
-                verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
-                cierra={cierra}
-                esperaElMes={esperaElMes}
-                faltaOficina={faltaOficina}
-              />
-              <LineaDeDiseno d={diseno} />
-            </>
-          )}
+            {aTodos ? (
+              <CifrasDelReparto filas={reparto} />
+            ) : (
+              <>
+                <ComoVa
+                  c={resumen}
+                  avance={avance}
+                  facturado={facturado}
+                  codigo={codigo}
+                  verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
+                  cierra={cierra}
+                  esperaElMes={esperaElMes}
+                  faltaOficina={faltaOficina}
+                  faltaPlanilla={faltaPlanilla}
+                  ajuste={ajuste}
+                />
+                <LineaDeDiseno d={diseno} />
+              </>
+            )}
 
-          <PastillaFiltro
-            ruta="/codigos-internos/detalle"
-            clave="vista"
-            params={params}
-            activo={vista === 'avance' ? null : vista}
-            etiqueta="Secciones del código"
-            opciones={vistas.map((v) => ({
-              valor: v.valor === 'avance' ? null : v.valor,
-              etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
-            }))}
-          />
+            <PastillaFiltro
+              ruta="/codigos-internos/detalle"
+              clave="vista"
+              params={params}
+              activo={vista === 'avance' ? null : vista}
+              etiqueta="Secciones del código"
+              opciones={vistas.map((v) => ({
+                valor: v.valor === 'avance' ? null : v.valor,
+                etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+              }))}
+            />
 
-          {aTodos && vista === 'avance' ? (
-            <RepartoPorMes filas={reparto} c={resumen} />
-          ) : (
-            <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
-          )}
-        </div>
+            {aTodos && vista === 'avance' ? (
+              <RepartoPorMes filas={reparto} c={resumen} />
+            ) : (
+              <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+            )}
+          </div>
+        </DelDocumento>
       )}
     </>
   )
@@ -208,6 +227,8 @@ function ComoVa({
   cierra,
   esperaElMes,
   faltaOficina,
+  faltaPlanilla,
+  ajuste,
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
@@ -221,11 +242,22 @@ function ComoVa({
   esperaElMes: boolean
   /** Los meses con horas de la unidad a los que les faltan pagos de la oficina. */
   faltaOficina: string[]
+  /** Los meses terminados con horas de la unidad cuya planilla de taller sigue sin cerrar. */
+  faltaPlanilla: string[]
+  /** Lo que la mano de obra trae del ajuste de la planilla de taller (ya va en `c.mano_obra`). */
+  ajuste: number
 }) {
   const costo = costoDelCodigo(c)
   const manoObra = c.mano_obra + c.recargo_extras
   const gastosPen = c.gastos_mes_pen + c.gastos_ot_pen + c.caja_pen
   const gastosUsd = c.gastos_mes_usd + c.gastos_ot_usd + c.caja_usd
+  const presupuesto = c.venta?.presupuesto_pen ?? null
+  // Cada parte del costo, con lo que pesa en el total en soles (DKS, 27/10/2026: porcentaje y costo).
+  // Con dólares en la parte, su % contra el total al cambio saldría corto: no se dice.
+  const delCosto = (pen: number, usd = 0) => {
+    const parte = parteDe(pen, costo.pen)
+    return parte === null || pen <= 0 || usd > 0 ? null : `${porcentaje(parte)} del costo`
+  }
   return (
     <div className="space-y-3">
       {/* Primero cómo va y cuánto deja; debajo, de qué está hecho el costo. */}
@@ -238,11 +270,18 @@ function ComoVa({
               'No aplica'
             ) : (
               <span data-avance={avance?.avance ?? 0}>
-                <Progreso valor={avance?.avance ?? 0} mostrarValor etiqueta="Avance del código" />
+                {/* Lo que vale lo hecho en plata va en el pie, con su frase: al lado de la barra se leía como otro costo (auditoría 27/10/2026). */}
+                <Progreso
+                  valor={avance?.avance ?? 0}
+                  mostrarValor
+                  etiqueta="Avance del código"
+                />
               </span>
             )
           }
-          pie={origenDelAvance(codigo, avance)}
+          pie={[origenDelAvance(codigo, avance), presupuesto !== null && verPrecio && !noEsUnidad(codigo) && (avance?.avance ?? 0) > 0 && `lo hecho vale ${moneda((presupuesto * (avance?.avance ?? 0)) / 100)} de los ${moneda(presupuesto)} del presupuesto`]
+            .filter(Boolean)
+            .join(' · ')}
         />
         <Indicador
           className={verPrecio ? undefined : 'col-span-2 lg:col-span-1'}
@@ -261,9 +300,15 @@ function ComoVa({
               ? 'Falta el tipo de cambio de Contabilidad para pasar los dólares a soles'
               : costo.pen === 0
                 ? 'Todavía nada costeado'
-                : c.usd_al_cambio > 0
-                  ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad`
-                  : 'Todo en soles'
+                : [
+                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad` : 'Todo en soles',
+                    // Lo gastado contra lo que se podía gastar, en sus dos unidades.
+                    verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
+                      ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
           }
         />
         {verPrecio && <IndicadorMargen c={c} codigo={codigo} />}
@@ -274,9 +319,11 @@ function ComoVa({
           valor={faltaElPrecio(manoObra, c.horas_sin_costo, 'Sin costo') ?? moneda(manoObra)}
           tono={c.horas_sin_costo > 0 ? 'aviso' : 'neutro'}
           pie={[
+            delCosto(manoObra),
             `${horasCortas(c.horas)} de personal`,
             c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} sin costo`,
             c.recargo_extras > 0 && `${moneda(c.recargo_extras)} de recargo de extras`,
+            ajuste !== 0 && `${moneda(ajuste)} de ajuste de la planilla de taller`,
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -293,6 +340,7 @@ function ComoVa({
           }
           tono={c.materiales_sin_precio > 0 ? 'aviso' : 'neutro'}
           pie={[
+            delCosto(c.materiales_pen + c.merma_pen, c.materiales_usd + c.merma_usd),
             `${c.salidas} ${c.salidas === 1 ? 'salida' : 'salidas'} del almacén`,
             c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} sin precio`,
             c.merma_pen + c.merma_usd > 0 && `${montoMixto(c.merma_pen, c.merma_usd)} de merma`,
@@ -308,7 +356,7 @@ function ComoVa({
               {c.servicios_usd > 0 && <span className="block text-sm">+ {moneda(c.servicios_usd, 'USD')}</span>}
             </>
           }
-          pie={piesDeServicios(c)}
+          pie={[delCosto(c.servicios_pen, c.servicios_usd), piesDeServicios(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           titulo="Subcontratos"
@@ -319,7 +367,7 @@ function ComoVa({
             </>
           }
           tono={c.subcontratos_por_pagar > 0 ? 'aviso' : 'neutro'}
-          pie={piesDeSubcontratos(c)}
+          pie={[delCosto(c.subcontratos_pen, c.subcontratos_usd), piesDeSubcontratos(c)].filter(Boolean).join(' · ')}
         />
         <Indicador
           className="col-span-2 lg:col-span-1"
@@ -334,6 +382,7 @@ function ComoVa({
             gastosPen + gastosUsd === 0
               ? 'Gastos del mes, trámites aprobados en la OT y egresos de caja con este código'
               : [
+                  delCosto(gastosPen),
                   c.gastos_mes_pen + c.gastos_mes_usd > 0 && `${montoMixto(c.gastos_mes_pen, c.gastos_mes_usd)} de gastos del mes`,
                   c.gastos_ot_pen + c.gastos_ot_usd > 0 && `${montoMixto(c.gastos_ot_pen, c.gastos_ot_usd)} aprobados en la OT`,
                   c.egresos_caja > 0 &&
@@ -357,7 +406,17 @@ function ComoVa({
           {c.compras === 1 ? 'OC' : 'OC'}. No se suman al costo: lo comprado entra al almacén y se cuenta cuando sale para este código.
         </p>
       )}
-      {!noEsUnidad(codigo) && <LineaCierre c={c} codigo={codigo} verPrecio={verPrecio} cierra={cierra} esperaElMes={esperaElMes} faltaOficina={faltaOficina} />}
+      {!noEsUnidad(codigo) && (
+        <LineaCierre
+          c={c}
+          codigo={codigo}
+          verPrecio={verPrecio}
+          cierra={cierra}
+          esperaElMes={esperaElMes}
+          faltaOficina={faltaOficina}
+          faltaPlanilla={faltaPlanilla}
+        />
+      )}
     </div>
   )
 }
@@ -516,15 +575,20 @@ function IndicadorMargen({ c, codigo }: { c: ResumenCodigo; codigo: string }) {
     )
   }
   const incompleto = c.materiales_sin_precio > 0 || c.horas_sin_costo > 0 || c.lineas_sin_cambio > 0
-  const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : 'exito'
+  // Verde solo al cierre: con el costeo abierto un 98 % no es una buena noticia, es que falta costear (auditoría 27/10/2026).
+  const tono = v.margen_pct < 0 || v.semaforo === 'EXCEDIDO' ? 'peligro' : v.semaforo === 'AJUSTADO' || incompleto ? 'aviso' : c.cierre ? 'exito' : 'neutro'
+  // Lo que se espera dejar si se gasta el presupuesto entero: ancla el margen a hoy.
+  const previsto = v.presupuesto_pen === null ? null : parteDe(v.precio_neto_pen - v.presupuesto_pen, v.precio_neto_pen)
   return (
     <Indicador
-      titulo="Margen"
+      // «A hoy»: es la venta menos lo costado hasta ahora, no lo que va a dejar la unidad (auditoría 27/10/2026).
+      titulo={c.cierre ? 'Margen al cierre' : 'Margen a hoy'}
       valor={<span data-margen={v.margen_pct}>{porcentaje(v.margen_pct, 1)}</span>}
       tono={tono}
       pie={[
         `${moneda(v.margen_pen)} de ${moneda(v.precio_neto_pen)} sin IGV`,
         v.consumido_pct !== null && `${porcentaje(v.consumido_pct, 0)} gastado del presupuesto${v.presupuesto_fijado ? ' fijado en la OT' : ''}`,
+        !c.cierre && previsto !== null && `previsto al cotizar: ${porcentaje(previsto, 1)}`,
         incompleto && 'con el costo incompleto',
       ]
         .filter(Boolean)
@@ -541,6 +605,7 @@ function LineaCierre({
   cierra,
   esperaElMes,
   faltaOficina,
+  faltaPlanilla,
 }: {
   c: ResumenCodigo
   codigo: string
@@ -548,6 +613,7 @@ function LineaCierre({
   cierra: boolean
   esperaElMes: boolean
   faltaOficina: string[]
+  faltaPlanilla: string[]
 }) {
   const z = c.cierre
   if (!z) {
@@ -559,10 +625,12 @@ function LineaCierre({
       // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
       c.venta && c.venta.sin_igv > 0 &&
         `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registra Contabilidad)',
+      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registran Contabilidad o Administración)',
       esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
       faltaOficina.length > 0 &&
         `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
+      faltaPlanilla.length > 0 &&
+        `cerrar la planilla de taller de ${faltaPlanilla.map((m) => periodo(m)).join(', ')} (RR. HH., en Planillas: al cerrarla entra el ajuste de la mano de obra)`,
     ].filter(Boolean)
     if (falta.length > 0) {
       return (
@@ -719,12 +787,13 @@ async function Vista({
   avance: AvanceDeCodigo | undefined
 }) {
   if (vista === 'etapas') return <VistaEtapas codigo={codigo} />
+  if (vista === 'ficha') return <VistaFicha codigo={codigo} perfil={perfil} />
   if (vista === 'planos') return <VistaPlanos codigo={codigo} />
   if (vista === 'materiales') return <VistaMateriales codigo={codigo} />
   if (vista === 'costeo') return <VistaCosteo codigo={codigo} perfil={perfil} />
   if (vista === 'personal') return <VistaPersonal codigo={codigo} />
   if (vista === 'documentos') return <VistaDocumentos codigo={codigo} perfil={perfil} />
-  if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} />
+  if (vista === 'facturacion') return <VistaFacturacion codigo={codigo} perfil={perfil} />
   return <VistaAvance codigo={codigo} perfil={perfil} avance={avance} />
 }
 
@@ -750,7 +819,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Avance en 0 %</p>
+          <p className="text-sm font-medium text-texto">Avance en {porcentaje(0)}</p>
           <p className="text-sm text-texto-suave">
             Diseño todavía no armó las etapas de este código y ningún supervisor subió un reporte diario de él. El avance sale de las etapas que
             Diseño carga en «Control de etapas» y de lo que cada área reporta.
@@ -763,7 +832,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Cómo sale el {avance.avance} %</p>
+          <p className="text-sm font-medium text-texto">Cómo sale el {porcentaje(avance.avance)}</p>
           <p className="text-sm text-texto-suave">
             Diseño todavía no armó las etapas de este código, así que el avance es el promedio del último avance de cada trabajo del reporte
             diario, área por área (abajo). Cuando Diseño las arme, el avance saldrá de ellas.
@@ -813,7 +882,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     return (
       <Tarjeta data-como-sale>
         <TarjetaCabecera
-          titulo={`Cómo sale el ${avance.avance} %`}
+          titulo={`Cómo sale el ${porcentaje(avance.avance)}`}
           ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
         />
         <TarjetaCuerpo>{listaEtapas}</TarjetaCuerpo>
@@ -831,17 +900,19 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
   return (
     <Tarjeta data-como-sale>
       <TarjetaCabecera
-        titulo={`Cómo sale el ${avance.avance} %`}
-        descripcion={`${numero(deLosPlanos, 1)} % por los planos${resto > 0 ? ` + ${numero(deLasEtapas, 1)} % por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${cantidad(resto)} % que no está en planos)` : ''}`}
+        titulo={`Cómo sale el ${porcentaje(avance.avance)}`}
+        descripcion={`${porcentaje(deLosPlanos, 1)} por los planos${resto > 0 ? ` + ${porcentaje(deLasEtapas, 1)} por ${porEtapas ? 'las etapas' : 'las actividades'} (el ${porcentajeCorto(resto)} que no está en planos)` : ''}`}
         ayuda="Diseño pone a cada plano el porcentaje de la unidad que representa. Cada plano aporta su porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya terminó. Lo que no se repartió en planos se mide por las etapas: su promedio, donde la terminada vale 100 % y la que no, el promedio de las actividades de su área que no son de un plano, porque el plano ya contó por su lado."
       />
       <TarjetaCuerpo className="space-y-4">
         <Tabla>
           <TablaCabecera>
             <TR>
+              {/* En el teléfono «% unidad» va bajo el plano y la barra se achica:
+                  con las cuatro columnas el nombre salía una palabra por línea. */}
               <TH>Plano</TH>
-              <TH className="text-right">% unidad</TH>
-              <TH className="w-40">Avance</TH>
+              <TH className="hidden text-right sm:table-cell">% unidad</TH>
+              <TH className="w-20 sm:w-40">Avance</TH>
               <TH className="text-right">Aporta</TH>
             </TR>
           </TablaCabecera>
@@ -851,6 +922,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                 <TD>
                   <span className="font-mono">{p.numero}</span> · {p.nombre}
                   <span className="block text-xs text-texto-suave">
+                    <span className="sm:hidden">{porcentajeCorto(p.peso)} de la unidad · </span>
                     {p.area} ·{' '}
                     {p.por_etapa
                       ? 'su etapa ya terminó'
@@ -859,11 +931,11 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
                         : 'sin reporte todavía'}
                   </span>
                 </TD>
-                <TD className="tabular text-right">{cantidad(p.peso)} %</TD>
+                <TD className="tabular hidden text-right sm:table-cell">{porcentajeCorto(p.peso)}</TD>
                 <TD>
                   <Progreso valor={p.avance} alto="sm" mostrarValor etiqueta={`Avance del plano ${p.numero}`} />
                 </TD>
-                <TD className="tabular text-right">{numero(p.aporte, 1)} %</TD>
+                <TD className="tabular text-right">{porcentaje(p.aporte, 1)}</TD>
               </TR>
             ))}
           </tbody>
@@ -871,7 +943,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
         {resto > 0 && (
           <div className="space-y-2" data-resto={resto}>
             <p className="text-sm font-medium text-texto">
-              El {cantidad(resto)} % que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {numero(avanceResto, 0)} % en promedio
+              El {porcentajeCorto(resto)} que no está en planos, por {porEtapas ? 'las etapas' : 'las actividades'}: {porcentaje(avanceResto, 0)} en promedio
             </p>
             {etapas.length > 0 ? (
               listaEtapas
@@ -960,7 +1032,7 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
                 </div>
                 <p className="text-xs text-texto-suave">
                   {t.historial.length > 1
-                    ? t.historial.map((h) => `${h.avance} % el ${fecha(h.fecha)}`).join(' → ')
+                    ? t.historial.map((h) => `${porcentaje(h.avance)} el ${fecha(h.fecha)}`).join(' → ')
                     : `Reportado el ${fecha(t.ultima_fecha)}`}
                   {t.tipo === 'SUBCONTRATO' && t.avance === 100 && t.historial.at(-1)?.avance !== 100 && ' · terminado por Administración'}
                 </p>
@@ -1052,7 +1124,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden">
         <TarjetaCabecera
           titulo="Mano de obra"
-          ayuda="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona, y el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
+          ayuda="Las horas del reporte diario y las que carga Recursos Humanos, a lo que cuesta la hora de cada persona; el recargo que la planilla diaria pagó por las horas extras, repartido entre los códigos que esa persona trabajó ese día; y, cuando Recursos Humanos cierra la planilla de taller del mes, el ajuste: la diferencia entre el costo real de cada persona y lo que entró por sus horas, repartida por esas mismas horas. Las horas de quien todavía no tiene costo se muestran sin sumar hasta que RR. HH. se lo ponga."
         />
         <Tabla>
           <TablaCabecera>
@@ -1081,7 +1153,8 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </p>
                     </TD>
                     <TD className="tabular text-right align-top whitespace-nowrap">
-                      {l.fuente === 'RECARGO_EXTRAS' ? <span className="text-texto-tenue">—</span> : horasCortas(l.horas ?? 0)}
+                      {/* El recargo y el ajuste de la planilla del mes no traen horas propias. */}
+                      {l.fuente === 'RECARGO_EXTRAS' || l.horas === null ? <span className="text-texto-tenue">—</span> : horasCortas(l.horas)}
                     </TD>
                     <TD
                       className="tabular text-right align-top whitespace-nowrap"
@@ -1526,7 +1599,8 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
  * y su voucher (migración 20261015124000). Solo lectura: factura Contabilidad y
  * cobra Tesorería, cada una en su pantalla.
  */
-async function VistaFacturacion({ codigo }: { codigo: string }) {
+async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
+  const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const [cotizaciones, facturas] = await Promise.all([cotizacionesAprobadas(codigo), facturasDelCodigo(codigo)])
   const deMoneda = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
   return (
@@ -1564,6 +1638,17 @@ async function VistaFacturacion({ codigo }: { codigo: string }) {
                         >
                           {pdf ? <FileText aria-hidden className="size-3.5" /> : <Download aria-hidden className="size-3.5" />}
                           {pdf ? 'Abrir la cotización' : 'Bajar la cotización'}
+                        </a>
+                      )}
+                      {/* Guardado desde el visor, el PDF sale con el nombre interno del archivo. */}
+                      {c.url && pdf && c.cotizacion_id && puedeBajar && (
+                        <a
+                          href={rutaParaBajarCotizacion(c.cotizacion_id)}
+                          aria-label={`Descargar la cotización ${c.numero}`}
+                          className="ml-4 inline-flex min-h-11 items-center gap-1 text-xs text-acento hover:underline sm:min-h-0"
+                        >
+                          <Download aria-hidden className="size-3.5" />
+                          Descargar
                         </a>
                       )}
                     </div>

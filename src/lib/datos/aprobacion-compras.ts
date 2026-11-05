@@ -53,6 +53,8 @@ export type CompraParaAprobar = {
   requerimientos: string[]
   codigos: string[]
   detraccion: DetraccionDeServicio | null
+  /** La OC va con factura (lleva IGV) o con boleta (no lo lleva); la OS siempre con factura. */
+  con_factura: boolean
 }
 
 export type ReglaAprobacion = {
@@ -153,11 +155,16 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
     : [{ data: [], error: null }, []]
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
-  // Los RQ y los códigos de las OC que compran insumos de requerimientos (#100).
-  const insumos = await insumosPorCompra(
-    supabase,
-    (compras.data ?? []).flatMap((c) => (c.tipo !== 'OS' && c.id ? [c.id] : [])),
-  )
+  // Los RQ y los códigos de las OC que compran insumos de requerimientos (#100),
+  // y si la OC va con factura o con boleta: `documentos_por_aprobar` no lo trae,
+  // y sin eso la pantalla sumaría el IGV a una compra que no lo lleva.
+  const idsOc = (compras.data ?? []).flatMap((c) => (c.tipo !== 'OS' && c.id ? [c.id] : []))
+  const [insumos, comprobante] = await Promise.all([
+    insumosPorCompra(supabase, idsOc),
+    idsOc.length ? supabase.from('ordenes_compra_materiales').select('id, con_factura').in('id', idsOc) : Promise.resolve({ data: [], error: null }),
+  ])
+  if (comprobante.error) throw new Error(`No se pudo leer si las compras van con factura: ${comprobante.error.message}`)
+  const conFactura = new Map((comprobante.data ?? []).map((o) => [o.id, o.con_factura ?? true]))
 
   return {
     regla: regla.data
@@ -200,6 +207,7 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         requerimientos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.requerimientos ?? []),
         codigos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.codigos ?? []),
         detraccion: c.tipo === 'OS' ? detraccionDeFila(porId.get(c.id ?? ''), tipos) : null,
+        con_factura: c.tipo === 'OS' ? true : (conFactura.get(c.id ?? '') ?? true),
       }),
     ),
     // Operario y Solo consulta quedan fuera: la base tampoco los acepta. ADMIN

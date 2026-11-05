@@ -194,7 +194,9 @@ const CAMBIOS_RQ = z.object({
  * Corregir un requerimiento registrado: el código, la justificación, la fecha y
  * la cantidad o el material de cada insumo, siempre con su motivo y su
  * justificante. Lo corrige quien lleva su tipo, igual que en la base
- * (`corregir_requerimiento` → `rq_exigir`), y a Almacén le llega el aviso.
+ * (`corregir_requerimiento` → `rq_exigir`). El aviso le llega a Almacén si el
+ * RQ sigue por revisar y, si no, a quien hace su compra: el mensaje lo dice
+ * igual que la base (`corregir_requerimiento` → `fn_rq_avisar`).
  */
 export async function corregirRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -223,5 +225,11 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
 
   revalidatePath('/requerimientos')
   revalidatePath('/requerimientos/atencion')
-  return { ok: true, mensaje: 'Requerimiento corregido, con su justificante. A Almacén le llegó el aviso.' }
+  // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar
+  // (corregir_requerimiento: por revisar o listo, Almacén; si no, quien compra).
+  // El RQA en compra avisa a la administradora, que es quien lo corrige: no se dice.
+  const { data: rq } = await supabase.from('requerimientos').select('estado, tipo').eq('id', id.data).maybeSingle()
+  const aviso =
+    rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
+  return { ok: true, mensaje: `Requerimiento corregido, con su justificante.${aviso}` }
 }

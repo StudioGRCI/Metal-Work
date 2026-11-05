@@ -10,7 +10,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { areasDeSubcontratos, subcontratosDelArea, type SubcontratoDelArea } from '@/lib/datos/subcontratos'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { ESTADO_SUBCONTRATO, estadoDeSubcontrato } from '@/lib/dominio/subcontratos'
-import { cantidad, fecha, hoyLima } from '@/lib/format'
+import { cantidad, fecha, hoyLima, parteDe, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { MarcarFechasReales } from './fechas-reales'
@@ -40,7 +40,9 @@ function plazo(s: SubcontratoDelArea, hoy: string): { texto: string; vencido: bo
   if (n < 0) return { texto: `Se pasó del fin ${n === -1 ? 'por un día' : `por ${-n} días`}`, vencido: true }
   if (s.fecha_inicio) {
     const total = dias(s.fecha_inicio, s.fecha_fin) + 1
-    return { texto: `Día ${dias(s.fecha_inicio, hoy) + 1} de ${total}`, vencido: false }
+    const dia = dias(s.fecha_inicio, hoy) + 1
+    // El plazo también en porcentaje, para leerlo al lado del avance (DKS, 27/10/2026).
+    return { texto: `Día ${dia} de ${total} · ${porcentaje(parteDe(dia, total))} del plazo`, vencido: false }
   }
   return { texto: n === 0 ? 'Termina hoy' : n === 1 ? 'Termina mañana' : `Faltan ${n} días`, vencido: false }
 }

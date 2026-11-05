@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import type { PlanoDeCodigo, RevisionDePlano } from '@/lib/datos/diseno-codigos'
-import { cantidad, fecha, fechaHora, tamanoArchivo } from '@/lib/format'
+import { cantidad, fecha, fechaHora, tamanoArchivo, porcentajeCorto } from '@/lib/format'
 
 /** El PDF se abre por la ruta que pide el enlace firmado en el momento del toque. */
 export function enlacePdfPlano(revision: string) {
@@ -100,7 +100,7 @@ function FilaPlano({
             avisarSinPeso && <Insignia tono="aviso">Sin % de la unidad</Insignia>
           ) : (
             <Insignia tono="neutro">
-              <span className="tabular">{cantidad(p.peso)} %</span> de la unidad
+              <span className="tabular">{porcentajeCorto(p.peso)}</span> de la unidad
             </Insignia>
           )}
           {p.recibido_en ? (

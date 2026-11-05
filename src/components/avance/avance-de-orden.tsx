@@ -7,7 +7,7 @@ import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { enlacesDeFotos, etapasDeLaOrden, fotosDeAvances, listarAvances } from '@/lib/datos/avances'
-import { fecha as formatearFecha, hoyLima } from '@/lib/format'
+import { fecha as formatearFecha, hoyLima, porcentaje } from '@/lib/format'
 import { puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
 
 /**
@@ -79,7 +79,7 @@ export async function AvanceDeOrden({
                       {a.registrado_por_nombre ?? 'Sin registrar'}
                       {a.avance_porcentaje !== null && (
                         <span className="ml-2 font-medium text-texto-suave">
-                          etapa al {Math.round(Number(a.avance_porcentaje))}%
+                          etapa al {porcentaje(Math.round(Number(a.avance_porcentaje)))}
                         </span>
                       )}
                     </p>

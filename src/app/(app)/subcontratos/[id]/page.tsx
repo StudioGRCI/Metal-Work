@@ -7,7 +7,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { subcontratoDetalle, type ReciboHonorarios } from '@/lib/datos/subcontratos'
 import { BUCKET_SUBCONTRATOS, ESTADO_RECIBO, ESTADO_SUBCONTRATO, cuentasDeSubcontrato, estadoDeRecibo, estadoDeSubcontrato, nombreDeAreaSubcontrato } from '@/lib/dominio/subcontratos'
-import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, parteDe, porcentaje, porcentajeCorto } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { adjuntarContratoSubcontrato } from '../acciones'
@@ -101,16 +101,37 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
           />
           <TarjetaCuerpo>
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3" data-cuentas>
+              {/* Cada monto con lo que es del pactado o del neto, en porcentaje (DKS, 27/10/2026: porcentaje y costo). */}
               <Cifra etiqueta="Pactado" valor={moneda(s.monto, s.moneda)} />
-              <Cifra etiqueta={`Recibido (${c.recibos} ${c.recibos === 1 ? 'recibo' : 'recibos'})`} valor={moneda(c.recibido, s.moneda)} />
+              <Cifra
+                etiqueta={`Recibido (${c.recibos} ${c.recibos === 1 ? 'recibo' : 'recibos'})`}
+                valor={moneda(c.recibido, s.moneda)}
+                pie={parteDe(c.recibido, s.monto) === null ? undefined : `${porcentaje(parteDe(c.recibido, s.monto))} del pactado`}
+              />
               <Cifra
                 etiqueta={c.porRecibir < 0 ? 'Recibido de más' : 'Falta recibir'}
                 valor={moneda(Math.abs(c.porRecibir), s.moneda)}
+                pie={parteDe(Math.abs(c.porRecibir), s.monto) === null ? undefined : `${porcentaje(parteDe(Math.abs(c.porRecibir), s.monto))} del pactado`}
                 tono={c.porRecibir < 0 ? 'text-peligro' : undefined}
               />
-              <Cifra etiqueta="Retenido (8 %)" valor={moneda(c.retenido, s.moneda)} />
-              <Cifra etiqueta="Pagado por Tesorería" valor={moneda(c.pagado, s.moneda)} tono={c.pagado > 0 ? 'text-exito' : undefined} />
-              <Cifra etiqueta="Por pagar" valor={moneda(c.porPagar, s.moneda)} tono={c.porPagar > 0 ? 'text-aviso' : undefined} />
+              {/* El porcentaje sale de los recibos: no todos llevan retención. */}
+              <Cifra
+                etiqueta="Retenido"
+                valor={moneda(c.retenido, s.moneda)}
+                pie={parteDe(c.retenido, c.recibido) === null ? 'Ningún recibo todavía' : `${porcentaje(parteDe(c.retenido, c.recibido))} de lo recibido`}
+              />
+              <Cifra
+                etiqueta="Pagado por Tesorería"
+                valor={moneda(c.pagado, s.moneda)}
+                pie={parteDe(c.pagado, c.pagado + c.porPagar) === null ? undefined : `${porcentaje(parteDe(c.pagado, c.pagado + c.porPagar))} del neto`}
+                tono={c.pagado > 0 ? 'text-exito' : undefined}
+              />
+              <Cifra
+                etiqueta="Por pagar"
+                valor={moneda(c.porPagar, s.moneda)}
+                pie={parteDe(c.porPagar, c.pagado + c.porPagar) === null ? undefined : `${porcentaje(parteDe(c.porPagar, c.pagado + c.porPagar))} del neto`}
+                tono={c.porPagar > 0 ? 'text-aviso' : undefined}
+              />
             </dl>
           </TarjetaCuerpo>
         </Tarjeta>
@@ -238,11 +259,14 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
   )
 }
 
-function Cifra({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: string }) {
+function Cifra({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie?: string; tono?: string }) {
   return (
     <div>
       <dt className="text-xs text-texto-suave">{etiqueta}</dt>
-      <dd className={`tabular text-base font-semibold ${tono ?? 'text-texto'}`}>{valor}</dd>
+      <dd className={`tabular text-base font-semibold ${tono ?? 'text-texto'}`}>
+        {valor}
+        {pie && <span className="block text-xs font-normal text-texto-suave">{pie}</span>}
+      </dd>
     </div>
   )
 }
@@ -265,7 +289,7 @@ function Recibo({ r, subcontratoId, gestiona }: { r: ReciboHonorarios; subcontra
             {r.retencion_porcentaje > 0 ? (
               <>
                 {' '}
-                · retención {r.retencion_porcentaje} % <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
+                · retención {porcentajeCorto(r.retencion_porcentaje)} <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
               </>
             ) : (
               ' · sin retención'

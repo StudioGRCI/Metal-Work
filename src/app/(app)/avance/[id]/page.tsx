@@ -10,12 +10,12 @@ import { AvanceDeOrden } from '@/components/avance/avance-de-orden'
 import { cabeceraDeAvance, etapasDeLaOrden, listarAvances } from '@/lib/datos/avances'
 import { estadoDeOrden } from '@/lib/dominio/estados'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
-import { fecha as formatearFecha } from '@/lib/format'
+import { fecha as formatearFecha, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { esUuid } from '@/lib/utils'
 
-import { RegistrarAvance } from '../registrar-avance'
+import { EstadoDeRegistrarAvance, RegistrarAvance } from '../registrar-avance'
 
 export const metadata = { title: 'Avance de la unidad' }
 
@@ -59,15 +59,16 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
       {/* El título es el nombre de la unidad, no su placa: hay carrocerías que
           se construyen sobre chasis todavía sin matricular. El número de la
           orden queda a la vista en la descripción, que es como se pide por
-          teléfono. */}
+          teléfono. Sin `clientes.ver` el cliente no llega, y se leía «null». */}
       <EncabezadoPagina
         titulo={nombreDeUnidad(orden)}
-        descripcion={`${orden.numero} · ${orden.cliente} · ${orden.descripcion}`}
+        descripcion={[orden.numero, orden.cliente, orden.descripcion].filter(Boolean).join(' · ')}
         acciones={
           registra && (
-            <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} />
+            <RegistrarAvance ordenId={id} etapas={etapas} trabaActual={ultimo?.impedimento ?? null} estadoAparte />
           )
         }
+        estado={registra && <EstadoDeRegistrarAvance ordenId={id} />}
       />
 
       <Tarjeta className="mb-4">
@@ -78,7 +79,7 @@ export default async function PaginaAvanceDeUnidad({ params }: PageProps<'/avanc
             <div className="mb-1 flex items-center justify-between text-xs">
               <span className="text-texto-suave">Avance de la unidad</span>
               <span className="tabular font-medium text-texto">
-                {Math.round(Number(orden.avance_porcentaje))}%
+                {porcentaje(Math.round(Number(orden.avance_porcentaje)))}
               </span>
             </div>
             <Progreso valor={Number(orden.avance_porcentaje)} alto="sm" />

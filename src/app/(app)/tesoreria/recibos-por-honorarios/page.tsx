@@ -10,7 +10,7 @@ import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
-import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, porcentajeCorto } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { EnlaceArchivo } from '../../subcontratos/enlace-archivo'
@@ -161,7 +161,7 @@ function Fila({
             {r.retencion_porcentaje > 0 ? (
               <>
                 {' '}
-                − retención <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
+                − retención del {porcentajeCorto(r.retencion_porcentaje)} <span className="tabular">{moneda(r.retencion_monto, r.moneda)}</span>
               </>
             ) : (
               ' · sin retención'

@@ -28,6 +28,8 @@ import { join } from 'node:path'
 import pg from 'pg'
 import { chromium } from 'playwright-core'
 
+import { codigoSinUsar } from './campo-codigo.mjs'
+
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
@@ -135,7 +137,8 @@ const pesoGrande = (await import('node:fs')).statSync(join(fotos, 'tolva-grande.
 console.log(`  · foto grande de prueba: ${(pesoGrande / 1024 / 1024).toFixed(1)} MB`)
 
 const sello = Date.now().toString().slice(-5)
-const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
+// Uno que esta base no tiene: con el de otra corrida, su actividad sigue abierta.
+const codigo = await codigoSinUsar(consulta, 'PRB_SR_O4_1_26/', sello)
 const asunto1 = `Armado de tolva ${sello}`
 const asunto2 = `Planta general ${sello}`
 const [ana, bruno, carlos] = [`Ana ${sello}`, `Bruno ${sello}`, `Carlos ${sello}`]
@@ -195,7 +198,9 @@ let idReporte2 = null
   await elegirPersona(pagina, 'Personal del trabajo 2: persona 2', ana)
   await pagina.getByRole('spinbutton', { name: 'Personal del trabajo 2: horas de la persona 2' }).fill('2')
 
-  const resumen = limpio(await pagina.locator('[aria-live="polite"]:not([data-opciones])').textContent())
+  // Por su marca: la pantalla tiene más de una región que se anuncia, y cuál va
+  // primero no es cosa de esta suite.
+  const resumen = limpio(await pagina.locator('[data-resumen-personal]').textContent())
   comprobar(/3 personas · 17\.5 h en total/.test(resumen.replace(/,/g, '.')) || /3 personas/.test(resumen), `el resumen suma por persona (${resumen.slice(0, 120)})`)
 
   // Las fotos: un archivo que no es foto no entra; las dos de verdad se achican y suben.
@@ -223,7 +228,7 @@ let idReporte2 = null
   await pagina.waitForLoadState('networkidle')
   idReporte1 = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idReporte1), `al subir, abre el reporte (${pagina.url()})`)
-  const aviso = limpio(await pagina.locator('[role="status"]').textContent().catch(() => ''))
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
   comprobar(aviso.includes('Reporte subido') && aviso.includes(codigo), `avisa que subió con su código (${aviso})`)
 
   const [r] = await consulta(
@@ -353,7 +358,12 @@ let idReporte2 = null
   comprobar(carlosLinea?.hora === 7 && carlosLinea?.horas === 4, `al ponerle su costo, sus 4 h entran a S/ 7.00 la hora (${JSON.stringify(carlosLinea)})`)
   await pagina.goto(`${BASE}/rrhh/costeo`, { waitUntil: 'networkidle' })
   costeo = limpio(await pagina.locator('main').textContent())
-  comprobar(!costeo.includes('Horas de los reportes que esperan su costo'), 'el aviso de horas en espera desaparece')
+  // Lo que dice el aviso, si sigue: en un banco usado, otra suite puede haber
+  // dejado a alguien sin costo, y entonces el aviso se queda, sin Carlos.
+  const enEspera = costeo.includes('Horas de los reportes que esperan su costo')
+    ? costeo.slice(costeo.indexOf('Horas de los reportes que esperan su costo'), costeo.indexOf('Mano de obra por código interno'))
+    : ''
+  comprobar(!enEspera.includes(carlos), `las horas de Carlos salen del aviso de horas en espera (${enEspera ? 'el aviso sigue por otros' : 'el aviso desaparece'})`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

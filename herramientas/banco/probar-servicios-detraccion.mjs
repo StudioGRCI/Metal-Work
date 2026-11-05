@@ -89,7 +89,7 @@ async function emitir(pagina, { codigo, monto, detraccion, motivo, descripcion }
 async function guardar(pagina, ventana) {
   await ventana.getByRole('button', { name: 'Emitir orden de servicio' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 30000 })
-  const aviso = await pagina.locator('[role="status"]').first().innerText()
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   return (aviso.match(/OS-\d+-MW/) ?? [''])[0]
 }
 

@@ -6,7 +6,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { CajaDelPago } from '@/lib/datos/caja'
 import type { CobroFactura, FacturaVenta } from '@/lib/datos/facturacion'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
-import { diasHasta, fecha, moneda, type CodigoMoneda } from '@/lib/format'
+import { diasHasta, fecha, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 
 const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
 
@@ -48,7 +48,13 @@ export function FacturaDeVenta({
           {f.concepto && <span className="text-sm text-texto-suave">{f.concepto}</span>}
         </p>
         {!anulada && (
-          <p className="tabular text-sm font-semibold text-texto">{saldo > 0 ? `Saldo ${moneda(saldo, m)}` : 'Sin saldo'}</p>
+          <p className="tabular text-sm font-semibold text-texto">
+            {saldo > 0 ? `Saldo ${moneda(saldo, m)}` : 'Sin saldo'}
+            {/* Lo que falta cobrar como parte del total (DKS, 27/10/2026: porcentaje y costo). */}
+            {saldo > 0 && Number(f.cobrado) > 0 && (
+              <span className="font-normal text-texto-suave"> · {porcentaje(parteDe(saldo, f.total))} del total</span>
+            )}
+          </p>
         )}
       </div>
       {conCotizacion && (
@@ -66,6 +72,7 @@ export function FacturaDeVenta({
           <>
             {' '}
             · cobrado <span className="tabular">{moneda(f.cobrado, m)}</span>
+            {parteDe(f.cobrado, f.total) !== null && ` · ${porcentaje(parteDe(f.cobrado, f.total))} de la factura`}
           </>
         )}{' '}
         · emitida el {fecha(f.fecha_emision)}

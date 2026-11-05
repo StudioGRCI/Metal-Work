@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   cargarAprobacionCompras,
@@ -12,6 +13,7 @@ import {
   type CompraParaAprobar,
 } from '@/lib/datos/aprobacion-compras'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
+import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, fechaHora, moneda } from '@/lib/format'
@@ -43,7 +45,9 @@ export default async function PaginaAprobacionCompras() {
 
   let resumen = 'Falta la regla de aprobación en la base.'
   if (regla?.activa) {
-    resumen = `Las compras desde ${moneda(regla.monto_desde)} sin IGV esperan la aprobación de ${regla.rol_aprobador ?? 'su puesto'} antes de enviarse al proveedor. Las compras directas y las órdenes de servicio la esperan siempre.`
+    // Con monto cero no hay «desde»: todas pasan por aquí.
+    const cuales = Number(regla.monto_desde) > 0 ? `Las compras desde ${moneda(regla.monto_desde)} sin IGV` : 'Todas las compras'
+    resumen = `${cuales} esperan la aprobación de ${regla.rol_aprobador ?? 'su puesto'} antes de enviarse al proveedor. Las compras directas y las órdenes de servicio la esperan siempre.`
   } else if (regla) {
     resumen = 'Apagada para las compras de requerimiento. Las compras directas y las órdenes de servicio esperan aprobación siempre.'
   }
@@ -57,25 +61,6 @@ export default async function PaginaAprobacionCompras() {
       />
 
       <div className="space-y-6">
-        <Tarjeta>
-          <TarjetaCabecera
-            titulo="La regla"
-            ayuda={
-              configura
-                ? 'Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas.'
-                : undefined
-            }
-            acciones={regla && <Insignia tono={regla.activa ? 'exito' : 'neutro'}>{regla.activa ? 'Encendida' : 'Apagada'}</Insignia>}
-          />
-          <TarjetaCuerpo>
-            {configura ? (
-              <FormularioRegla regla={regla} puestos={puestos} />
-            ) : (
-              <p className="text-sm text-texto-suave">{resumen}</p>
-            )}
-          </TarjetaCuerpo>
-        </Tarjeta>
-
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-texto">
             Por aprobar <span className="tabular text-texto-suave">({pendientes.length})</span>
@@ -131,6 +116,23 @@ export default async function PaginaAprobacionCompras() {
               </Tabla>
             </Tarjeta>
           </section>
+        )}
+
+        {/* La regla va al final: Gerencia viene a aprobar, no a configurar; en el teléfono el formulario tapaba «Por aprobar» (27/10/2026).
+            El encabezado ya la cuenta, así que la tarjeta solo sale para quien puede cambiarla. */}
+        {configura && (
+          <Tarjeta>
+            <TarjetaCabecera
+              titulo="La regla"
+              ayuda="Desde qué monto una orden de compra espera aprobación y qué puesto la da. Cambiarla no toca las compras ya emitidas."
+              acciones={regla && <Insignia tono={regla.activa ? 'exito' : 'neutro'}>{regla.activa ? 'Encendida' : 'Apagada'}</Insignia>}
+            />
+            <TarjetaCuerpo>
+              <Pliegue titulo="Cambiar la regla">
+                <FormularioRegla regla={regla} puestos={puestos} />
+              </Pliegue>
+            </TarjetaCuerpo>
+          </Tarjeta>
         )}
       </div>
     </>
@@ -277,6 +279,12 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
             <dt className="text-xs text-texto-suave">Monto sin IGV</dt>
             <dd className="tabular text-lg font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</dd>
             {enDolares && c.monto_pen !== null && <dd className="tabular text-xs text-texto-suave">≈ {moneda(c.monto_pen)}</dd>}
+            {/* Lo que va a salir de la caja: el IGV del 18 % y el total, como en el PDF, que no lo suma a la compra con boleta (DKS, 27/10/2026: porcentaje y costo). */}
+            <dd className="tabular text-xs text-texto-suave">
+              {c.con_factura
+                ? `IGV ${moneda(igvCompra(c.monto), divisa(c.moneda))} · total ${moneda(c.monto + igvCompra(c.monto), divisa(c.moneda))}`
+                : 'Con boleta: sin IGV, el total es el mismo'}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-texto-suave">Pago</dt>
@@ -301,7 +309,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                 <TH>Insumo</TH>
                 <TH className="hidden sm:table-cell">OT</TH>
                 <TH className="text-right">Cantidad</TH>
-                <TH className="text-right">P. unitario</TH>
+                <TH className="hidden text-right sm:table-cell">P. unitario</TH>
                 <TH className="text-right">Importe</TH>
               </tr>
             </TablaCabecera>
@@ -322,7 +330,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                   <TD className="tabular text-right whitespace-nowrap">
                     {cantidad(l.cantidad)} {l.unidad}
                   </TD>
-                  <TD className="tabular text-right whitespace-nowrap">
+                  <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">
                     {l.precio_unitario === null ? 'Pendiente' : moneda(l.precio_unitario, divisa(c.moneda))}
                   </TD>
                   <TD className="tabular text-right whitespace-nowrap">

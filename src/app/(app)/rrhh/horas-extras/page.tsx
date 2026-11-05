@@ -13,7 +13,7 @@ import {
 } from '@/lib/datos/planilla-diaria'
 import { DECISION_EXTRAS, JORNADA_HORAS, montoExtras, valorHora } from '@/lib/dominio/planilla-diaria'
 import { horasCortas } from '@/lib/dominio/rrhh'
-import { fecha, fechaHora, hoyLima, moneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, moneda, porcentajeCorto } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularExtras, DecidirExtras, FormularioReglaExtras, UsarSaldo } from './controles'
@@ -56,7 +56,7 @@ export default async function PaginaHorasExtras() {
                 ? `${horasCortas(horasPorDecidir)} en ${porDecidir.length} ${porDecidir.length === 1 ? 'jornada' : 'jornadas'}`
                 : 'Nada por decidir.'
             }
-            ayuda={`Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %.`}
+            ayuda={`Las ${horasCortas(regla.horas_tramo1)} primeras de cada día van con ${porcentajeCorto(regla.recargo_tramo1)} y las siguientes con ${porcentajeCorto(regla.recargo_tramo2)}.`}
           />
           <Tabla>
             <TablaCabecera>
@@ -75,6 +75,8 @@ export default async function PaginaHorasExtras() {
               ) : (
                 porDecidir.map((e) => {
                   const pago = e.remuneracion === null ? null : montoExtras(valorHora(e.remuneracion), e.tramo1, e.tramo2, regla)
+                  // El recargo solo: lo que se paga de más que la hora normal.
+                  const recargo = e.remuneracion === null || pago === null ? null : Math.round((pago - valorHora(e.remuneracion) * (e.tramo1 + e.tramo2)) * 100) / 100
                   return (
                     <TR key={`${e.trabajador_id}-${e.fecha}`} data-extras={e.nombre}>
                       <TD>
@@ -88,14 +90,16 @@ export default async function PaginaHorasExtras() {
                         <p className="tabular font-semibold text-acento">{horasCortas(e.por_decidir)}</p>
                         <p className="text-xs text-texto-suave">
                           {[
-                            e.tramo1 > 0 && `${horasCortas(e.tramo1)} al ${regla.recargo_tramo1} %`,
-                            e.tramo2 > 0 && `${horasCortas(e.tramo2)} al ${regla.recargo_tramo2} %`,
+                            e.tramo1 > 0 && `${horasCortas(e.tramo1)} al ${porcentajeCorto(regla.recargo_tramo1)}`,
+                            e.tramo2 > 0 && `${horasCortas(e.tramo2)} al ${porcentajeCorto(regla.recargo_tramo2)}`,
                           ]
                             .filter(Boolean)
                             .join(' · ')}
                         </p>
                         {decide && (
-                          <p className="text-xs text-texto-suave">{pago === null ? 'Sin remuneración' : `Pagarlas: ${moneda(pago)}`}</p>
+                          <p className="text-xs text-texto-suave">
+                            {pago === null ? 'Sin remuneración' : `Pagarlas: ${moneda(pago)}${recargo !== null && recargo > 0 ? ` (recargo ${moneda(recargo)})` : ''}`}
+                          </p>
                         )}
                       </TD>
                       {decide && (
@@ -230,7 +234,7 @@ export default async function PaginaHorasExtras() {
         <Tarjeta>
           <TarjetaCabecera
             titulo="La regla de las horas extras"
-            descripcion={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${regla.recargo_tramo1} % y las siguientes con ${regla.recargo_tramo2} %`}
+            descripcion={`Hoy: las ${horasCortas(regla.horas_tramo1)} primeras de cada día con ${porcentajeCorto(regla.recargo_tramo1)} y las siguientes con ${porcentajeCorto(regla.recargo_tramo2)}`}
             ayuda="Sobre la hora de la persona (su remuneración mensual entre 240). Es lo mínimo de ley o más; cambiarla no toca lo ya enviado a Tesorería."
           />
           {decide && (

@@ -119,6 +119,26 @@ const suma = (conceptos: DetallePlanilla['conceptos'], ...claves: string[]) =>
 
 const soles = (v: number) => `S/ ${v.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+/**
+ * Lo que el Excel le resta a alguien por tardanzas y por permisos, en palabras
+ * («tardanzas S/ 50.00 y permisos S/ 20.00»), o null si no le resta nada. Desde
+ * octubre de 2026 el sistema ya resta del pago las tardanzas y los permisos
+ * descontados de quien tiene ficha (migración 20261026200000): si el Excel
+ * también los trae, se restan dos veces. RR. HH. deja de ponerlos en el Excel
+ * (DKS, 2026-10-26). El importe no se corta del «S/» al cambiar de línea.
+ */
+export function tardanzasYPermisosDelExcel(conceptos: DetallePlanilla['conceptos']): string | null {
+  const partes = [
+    ['tardanzas', suma(conceptos, 'TARDANZAS')],
+    ['permisos', suma(conceptos, 'PERMISOS')],
+  ] as const
+  const conImporte = partes.filter(([, n]) => n > 0).map(([nombre, n]) => `${nombre} ${soles(n).replace(' ', '\u00a0')}`)
+  return conImporte.length ? conImporte.join(' y ') : null
+}
+
+/** El aviso de la fila cuando el Excel trae tardanzas o permisos que el sistema ya resta. */
+export const avisoDobleResta = (enElExcel: string) => `El Excel le resta ${enElExcel}: con ficha en Personal, el sistema ya resta eso del pago.`
+
 /** Las boletas de una hoja RESUMEN, en los dos formatos. Una boleta mal armada no detiene a las demás. */
 export function leerBoletas(filas: unknown[][], hoja: string): { lineas: LineaPlanilla[]; errores: BoletaConError[] } {
   const anclas: { inicio: number; formato: 'A' | 'B' }[] = []

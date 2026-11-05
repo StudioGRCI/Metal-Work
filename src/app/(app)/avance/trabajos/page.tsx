@@ -1,9 +1,9 @@
 import { Plus } from 'lucide-react'
 
 import { TarjetaTrabajo } from '@/components/avance/tarjeta-trabajo'
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -32,6 +32,11 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
   const estado =
     params.estado === 'LISTA' || params.estado === 'SALIO' ? (params.estado as EstadoFlota) : null
   const buscar = typeof params.buscar === 'string' ? params.buscar.trim() : ''
+  // Dónde más buscar si en la pestaña elegida no está: «En curso» trae también
+  // los terminados. Decía siempre «prueba en Cerrados», también estando en
+  // Cerrados, y desde Terminados no mandaba a En curso (D2 de diseño,
+  // cuadragésima octava pasada).
+  const otrasPestanas = estado === 'SALIO' ? '«En curso»' : estado === 'LISTA' ? '«En curso» o en «Cerrados»' : '«Cerrados»'
 
   // Quien aprueba viene a eso: el trabajo con reportes por aprobar va primero y
   // lo dice en su tarjeta, para no tener que abrirlos todos a buscarlos.
@@ -62,24 +67,19 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
         }
       />
 
-      <form method="get" className="mb-3 flex flex-wrap items-center gap-3">
-        {estado && <input type="hidden" name="estado" value={estado} />}
-        <Entrada
-          type="search"
-          name="buscar"
-          defaultValue={buscar}
-          placeholder="Placa, qué es o de quién…"
-          aria-label="Buscar un trabajo"
-          autoComplete="off"
-          className="w-full sm:w-72"
+      {/* El buscador de toda lista, que sigue a la búsqueda: era un formulario
+          con la caja sin control, y una pastilla —que cambia solo la búsqueda,
+          sin volver a montar la pantalla— dejaba en la caja lo escrito sin
+          buscar, o la vaciada, sobre una lista con otro filtro (D4 de diseño,
+          cuadragésima séptima pasada). Las pastillas se llevan lo escrito. */}
+      <div className="mb-3">
+        <BuscadorSimple
+          ruta="/avance/trabajos"
+          clave="buscar"
+          etiqueta="Buscar un trabajo"
+          marcador="Placa, qué es o de quién…"
         />
-        <button
-          type="submit"
-          className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
-        >
-          Buscar
-        </button>
-      </form>
+      </div>
 
       <PastillaFiltro
         ruta="/avance/trabajos"
@@ -107,7 +107,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
               }
               descripcion={
                 buscar
-                  ? 'La búsqueda mira solo la pestaña elegida: prueba en «Cerrados».'
+                  ? `La búsqueda mira solo la pestaña elegida: prueba en ${otrasPestanas}.`
                   : puedeRegistrar
                     ? 'Cuando empiece uno, regístralo con el botón de arriba.'
                     : 'Los registra el supervisor de cada área.'

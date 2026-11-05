@@ -4,17 +4,19 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarPersonal } from '@/lib/datos/personal'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { moneda } from '@/lib/format'
 import { cambiaDatosReservados, exigirPermiso } from '@/lib/sesion'
 
 import { EditarDatosDeCuenta } from './editar'
 
-export const metadata = { title: 'DNI y costo de las cuentas' }
+export const metadata = { title: 'DNI de las cuentas' }
 
 /**
- * El DNI y el costo por hora de cada cuenta del sistema. DKS lo decidió el
- * 2026-10-20: los pone y los cambia Recursos Humanos; el administrador solo los
- * ve, aquí y en Personal (migración 20261020165000).
+ * El DNI de cada cuenta del sistema. DKS lo decidió el 2026-10-20: lo pone y lo
+ * cambia Recursos Humanos; el administrador solo lo ve, aquí y en Personal
+ * (migración 20261020165000). El costo por hora de la cuenta salió de aquí el
+ * 2026-10-26 (DKS): no entraba a ningún código; la mano de obra sale del costo
+ * mensual de la ficha y de las horas que tarean los supervisores. La columna
+ * `usuario_datos_reservados.costo_hora` se queda como estaba.
  */
 export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'/rrhh/cuentas'>) {
   const perfil = await exigirPermiso('rrhh.personal')
@@ -27,16 +29,16 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
   return (
     <>
       <EncabezadoPagina
-        titulo="DNI y costo de las cuentas"
-        descripcion={`${
-          cuentas.length === 0 ? '' : `${cuentas.length === 1 ? '1 cuenta activa' : `${cuentas.length} cuentas activas`}${sinDni > 0 ? ` · ${sinDni} sin DNI` : ''}. `
-        }El costo por hora va solo en las cuentas de operario; el costo que se carga a cada código interno sale del costo mensual de la ficha del personal.`}
+        titulo="DNI de las cuentas"
+        descripcion={
+          cuentas.length === 0 ? undefined : `${cuentas.length === 1 ? '1 cuenta activa' : `${cuentas.length} cuentas activas`}${sinDni > 0 ? ` · ${sinDni} sin DNI` : ''}`
+        }
         ayuda={
           cambia
-            ? 'Las cuentas con las que la gente entra al sistema. Su DNI y su costo por hora los pones tú; el administrador los ve, pero no los cambia. El costo que se carga a cada código interno sale de la ficha de Personal, no de aquí.'
-            : 'Las cuentas con las que la gente entra al sistema, con su DNI y su costo por hora. Los cambia Recursos Humanos.'
+            ? 'Las cuentas con las que la gente entra al sistema y su DNI, que pones tú; el administrador lo ve, pero no lo cambia. El costo que se carga a cada código interno sale del costo mensual de la ficha de Personal y de las horas que tarean los supervisores, no de la cuenta.'
+            : 'Las cuentas con las que la gente entra al sistema, con su DNI. Lo cambia Recursos Humanos.'
         }
-        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'DNI y costo de las cuentas' }]}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'DNI de las cuentas' }]}
       />
 
       <div className="mb-3 max-w-xl">
@@ -48,8 +50,7 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
           <TablaCabecera>
             <tr>
               <TH>Persona</TH>
-              <TH className="hidden sm:table-cell">DNI</TH>
-              <TH className="text-right">Costo hora</TH>
+              <TH>DNI</TH>
               {cambia && <TH className="w-12">
                 <span className="sr-only">Cambiar</span>
               </TH>}
@@ -58,7 +59,7 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
           <tbody>
             {cuentas.length === 0 && (
               <SinDatos
-                colSpan={cambia ? 4 : 3}
+                colSpan={cambia ? 3 : 2}
                 titulo={busqueda ? `Nadie con «${busqueda}»` : 'No hay cuentas activas'}
                 descripcion={busqueda ? 'Prueba con el apellido o con el correo.' : 'Las cuentas las crea el administrador en Personal.'}
               />
@@ -75,27 +76,13 @@ export default async function PaginaDatosDeCuentas({ searchParams }: PageProps<'
                       {c.rol?.nombre ?? 'Sin puesto'}
                       {c.cargo && ` · ${c.cargo}`}
                     </p>
-                    <p className="tabular text-xs text-texto-suave sm:hidden">DNI {c.documento ?? 'sin registrar'}</p>
                   </TD>
-                  <TD className="hidden sm:table-cell">
+                  <TD>
                     {c.documento ? <span className="tabular text-sm text-texto">{c.documento}</span> : <span className="text-sm text-texto-suave">Sin registrar</span>}
-                  </TD>
-                  <TD className="text-right">
-                    {c.es_operario || c.costo_hora > 0 ? (
-                      <span className="tabular text-sm text-texto">{c.costo_hora > 0 ? moneda(c.costo_hora) : 'Sin registrar'}</span>
-                    ) : (
-                      <span className="text-sm text-texto-suave">—</span>
-                    )}
                   </TD>
                   {cambia && (
                     <TD className="text-right">
-                      <EditarDatosDeCuenta
-                        usuarioId={c.id}
-                        nombre={nombre}
-                        documento={c.documento}
-                        costoHora={c.costo_hora}
-                        conCosto={c.es_operario || c.costo_hora > 0}
-                      />
+                      <EditarDatosDeCuenta usuarioId={c.id} nombre={nombre} documento={c.documento} />
                     </TD>
                   )}
                 </TR>

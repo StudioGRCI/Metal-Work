@@ -79,7 +79,8 @@ export function situacionDeEntrega(
   const faltan = diasEntre(hoy, comprometida)
   if (faltan < 0) return { pie: `Vencida hace ${dias(-faltan)}`, tono: 'peligro' }
   if (faltan === 0) return { pie: 'Se entrega hoy', tono: 'aviso' }
-  return { pie: `Faltan ${dias(faltan)}`, tono: faltan <= 7 ? 'aviso' : 'neutro' }
+  // De calendario: la lista de OT cuenta los hábiles de taller, y los dos lo dicen para no leerse como dos plazos.
+  return { pie: `Faltan ${dias(faltan)} de calendario`, tono: faltan <= 7 ? 'aviso' : 'neutro' }
 }
 
 /** Días que la unidad lleva (o llevó) en el taller, desde que empezó el trabajo. */

@@ -1,16 +1,30 @@
 \set ON_ERROR_STOP on
--- Administración revisa los reportes del taller, también en el flujo nuevo.
+-- Los reportes de las tareas del taller dentro de la OT los revisa quien tiene
+-- `produccion.aprobar_reportes`, también en el flujo nuevo.
 --
--- Tenía el permiso (`produccion.aprobar_reportes`, migración 20260929110000) y
--- dos candados se lo negaban sin que nada avisara:
+-- Hasta el 2026-10-26 los revisaba Administración. DKS decidió ese día que no:
+-- la OT de una cotización se sigue por su código interno y los reportes del
+-- taller van por Supervisión (migración 20261026160000, que le cambió
+-- `produccion.aprobar_reportes` por `produccion.aprobar_sin_orden`). Hoy solo
+-- tienen el permiso el Jefe de producción y el Jefe de maestranza, puestos que
+-- ya no admiten cuentas («Las jefaturas de taller fueron reemplazadas por
+-- Supervisión»), y el supervisor reporta por código en su reporte diario. El
+-- circuito de las tareas sigue en la base: como con `ordenes.ver` más abajo, la
+-- prueba le presta el permiso a un puesto que no ve la hoja (Contabilidad)
+-- solo mientras dure, para seguir cuidando los dos candados, y comprueba que
+-- Administración ya no ve la hoja ni la aprueba.
+--
+-- Cuando Administración tenía el permiso, dos candados se lo negaban sin que
+-- nada avisara:
 --   · la lectura: `puede_ver_hoja_de_area` no la contaba, y una tarea que el RLS
 --     esconde no se ve ni se aprueba —el UPDATE tocaba cero filas—;
 --   · el disparador del taller: en una OT del flujo nuevo, aprobar contestaba
 --     «El reporte de la tarea corresponde al supervisor» (hoy, «No tienes permiso para
 --     registrar ni corregir el reporte de la tarea»).
--- Aquí, con los roles reales: Administración ve la tarea y el reporte, lo observa
--- y lo aprueba, pero no lo corrige; el supervisor no se aprueba solo y su
--- corrección sin foto sigue rechazada; Tesorería no ve la hoja.
+-- Aquí, con los roles reales: quien tiene el permiso ve la tarea y el reporte, lo
+-- observa y lo aprueba, pero no lo corrige; el supervisor no se aprueba solo y
+-- su corrección sin foto sigue rechazada; Administración y Tesorería no ven la
+-- hoja, y lo que Administración intente aprobar no toca ninguna fila.
 begin;
 
 select test.crear_usuario('QA','Admin','qa-323-admin@demo.pe','ADMIN',
@@ -23,6 +37,8 @@ select test.crear_usuario('QA','Administración','qa-323-administracion@demo.pe'
   (select id from public.sedes order by nombre limit 1)) as administracion_id \gset
 select test.crear_usuario('QA','Tesorería','qa-323-tesoreria@demo.pe','TESORERIA',
   (select id from public.sedes order by nombre limit 1)) as tesoreria_id \gset
+select test.crear_usuario('QA','Revisor','qa-323-revisor@demo.pe','CONTABILIDAD',
+  (select id from public.sedes order by nombre limit 1)) as jefe_id \gset
 select gen_random_uuid() as orden_id \gset
 select gen_random_uuid() as etapa_id \gset
 
@@ -45,6 +61,12 @@ insert into public.roles_permisos (rol_id, permiso_codigo)
 select id, 'ordenes.ver' from public.roles where codigo = 'SUPERVISOR'
 on conflict do nothing;
 
+-- El revisor de la prueba: Contabilidad, con `produccion.aprobar_reportes`
+-- prestado mientras dure la transacción.
+insert into public.roles_permisos (rol_id, permiso_codigo)
+select id, 'produccion.aprobar_reportes' from public.roles where codigo = 'CONTABILIDAD'
+on conflict do nothing;
+
 insert into public.clientes(tipo_documento,numero_documento,razon_social)
 values ('RUC','20990000323','QA Administración revisa la hoja');
 insert into public.ordenes_trabajo(id,numero,cliente_id,sede_id,tipo_trabajo,
@@ -65,6 +87,7 @@ select set_config('prueba.ar.diseno', :'diseno_id', true);
 select set_config('prueba.ar.supervisor', :'supervisor_id', true);
 select set_config('prueba.ar.administracion', :'administracion_id', true);
 select set_config('prueba.ar.tesoreria', :'tesoreria_id', true);
+select set_config('prueba.ar.jefe', :'jefe_id', true);
 
 do $test$
 declare
@@ -103,12 +126,28 @@ begin
   end;
   reset role;
 
-  -- Administración ve la tarea y el reporte.
+  -- Administración ya no revisa la hoja del taller (2026-10-26): no la ve, y
+  -- aprobar desde ella no toca ninguna fila.
   perform test.como_usuario(current_setting('prueba.ar.administracion')::uuid);
+  set local role authenticated;
+  if (select count(*) from public.ot_actividades where id = v_tarea) <> 0
+     or (select count(*) from public.ot_actividad_avances where id = v_reporte) <> 0 then
+    raise exception 'FALLO: Administración todavía ve la hoja del taller';
+  end if;
+  update public.ot_actividad_avances set revision = 'APROBADO' where id = v_reporte;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FALLO: Administración aprobó % reportes del taller', n; end if;
+  reset role;
+  if (select revision from public.ot_actividad_avances where id = v_reporte) <> 'PENDIENTE' then
+    raise exception 'FALLO: el reporte dejó de estar pendiente sin que lo revisara quien tiene el permiso';
+  end if;
+
+  -- El revisor ve la tarea y el reporte.
+  perform test.como_usuario(current_setting('prueba.ar.jefe')::uuid);
   set local role authenticated;
   if (select count(*) from public.ot_actividades where id = v_tarea) <> 1
      or (select count(*) from public.ot_actividad_avances where id = v_reporte) <> 1 then
-    raise exception 'FALLO: Administración no ve la tarea o el reporte que tiene que revisar';
+    raise exception 'FALLO: el revisor no ve la tarea o el reporte que tiene que revisar';
   end if;
 
   -- Lo observa: una fila.
@@ -119,8 +158,8 @@ begin
 
   -- Pero no corrige lo que reportó el supervisor.
   begin
-    update public.ot_actividad_avances set nota = 'Corregida por Administración' where id = v_reporte;
-    raise exception 'FALLO: Administración corrigió la nota del reporte del supervisor';
+    update public.ot_actividad_avances set nota = 'Corregida por el revisor' where id = v_reporte;
+    raise exception 'FALLO: el revisor corrigió la nota del reporte del supervisor';
   exception when others then
     if sqlerrm not like 'No tienes permiso para registrar ni corregir el reporte de la tarea%' then raise; end if;
   end;
@@ -137,14 +176,14 @@ begin
   end;
   reset role;
 
-  -- Administración lo aprueba: una fila, a su nombre.
-  perform test.como_usuario(current_setting('prueba.ar.administracion')::uuid);
+  -- El revisor lo aprueba: una fila, a su nombre.
+  perform test.como_usuario(current_setting('prueba.ar.jefe')::uuid);
   set local role authenticated;
   update public.ot_actividad_avances set revision = 'APROBADO' where id = v_reporte;
   get diagnostics n = row_count;
   select revision, revisado_por into r from public.ot_actividad_avances where id = v_reporte;
   if n <> 1 or r.revision <> 'APROBADO'
-     or r.revisado_por is distinct from current_setting('prueba.ar.administracion')::uuid then
+     or r.revisado_por is distinct from current_setting('prueba.ar.jefe')::uuid then
     raise exception 'FALLO: aprobar tocó % filas y dejó % por %', n, r.revision, r.revisado_por;
   end if;
   reset role;
@@ -158,7 +197,7 @@ begin
   end if;
   reset role;
 
-  raise notice '  ok · Administración ve, observa y aprueba el reporte del flujo nuevo, sin corregirlo';
+  raise notice '  ok · quien tiene produccion.aprobar_reportes ve, observa y aprueba el reporte del flujo nuevo, sin corregirlo; Administración ya no ve la hoja';
 end;
 $test$;
 

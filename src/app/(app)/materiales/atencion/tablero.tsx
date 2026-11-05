@@ -20,7 +20,7 @@ import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cantidad, fecha as formatearFecha } from '@/lib/format'
+import { cantidad, fecha as formatearFecha, porcentaje as fmtPorcentaje } from '@/lib/format'
 import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { SIN_RESPUESTA, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import type {
@@ -167,7 +167,7 @@ export function TableroMateriales({
             <div className="min-w-48 flex-1">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-texto">Atención completa de requerimientos</p>
-                <p className="tabular text-sm font-semibold text-acento">{avanceLineas}%</p>
+                <p className="tabular text-sm font-semibold text-acento">{fmtPorcentaje(avanceLineas)}</p>
               </div>
               <Progreso valor={avanceLineas} etiqueta="Líneas de materiales entregadas por completo" />
               <p className="mt-1 text-xs text-texto-suave">
@@ -285,7 +285,9 @@ export function TableroMateriales({
 
 /** Existencias globales y conteo físico, fuera del circuito de una OT. */
 function PrecioCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra)
+  // Lleva dinero: su rechazo con la persona ya en otra pantalla lo nombra arriba
+  // (H5 de diseño, cuadragésima tercera pasada), como los demás de este tablero.
+  const { alEnviar, enviando, error } = useEnvio(registrarPrecioCompra, undefined, { siSeVa: { que: 'el precio de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   return <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-2 rounded-md border border-borde p-2">
     <input type="hidden" name="detalle_id" value={compra.id ?? ''} />
     <span className="min-w-0 flex-1 text-xs text-texto">{compra.proveedor} · {compra.nombre}</span>
@@ -310,7 +312,7 @@ function detalleDelRecojo(compra: CompraMaterialPendiente): string {
  * aprobación. «Mandar a recojo» queda para las compras de antes.
  */
 function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const envio = useAccion(mandarARecojo)
+  const envio = useAccion(mandarARecojo, undefined, { documento: compra.orden_compra_id ?? undefined })
   // En qué va ya lo dice la cabecera de la tarjeta.
   if (!puedeIrARecojo(compra)) return null
   return <div className="flex flex-wrap items-center gap-2">
@@ -326,7 +328,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
 }
 
 function CondicionCompra({ compra }: { compra: CompraMaterialPendiente }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra)
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarCondicionCompra, undefined, { siSeVa: { que: 'el pago de la compra', enlace: 'Volver a la compra' }, documento: compra.id ?? undefined })
   if (compra.entregado_almacen_en) return <p className="text-xs text-texto-suave">Pago: {condicionDePago(compra.condicion_pago, compra.dias_credito)} · {compra.moneda === 'USD' ? 'Dólares' : 'Soles'}</p>
   return <form onSubmit={alEnviar} className="grid gap-2 rounded-lg border border-borde p-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
     <input type="hidden" name="compra_id" value={compra.orden_compra_id ?? ''} />
@@ -390,7 +392,7 @@ function LineaMaterial({
         </div>
         <div className="min-w-52 flex-1 sm:max-w-72">
           <div className="mb-1 flex justify-between gap-2 text-[11px] text-texto-suave">
-            <span>Entregado al área</span><span className="tabular font-medium text-texto">{porcentaje}%</span>
+            <span>Entregado al área</span><span className="tabular font-medium text-texto">{fmtPorcentaje(porcentaje)}</span>
           </div>
           <Progreso valor={porcentaje} etiqueta={`Material entregado: ${linea.material ?? 'material'}`} />
         </div>
@@ -446,7 +448,7 @@ function LineaMaterial({
 }
 
 function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
-  const { alEnviar, enviando, error } = useEnvio(revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-center gap-2">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <input type="hidden" name="decision" value="STOCK" />
@@ -457,7 +459,7 @@ function ReconsiderarStock({ linea }: { linea: LineaAtencionMaterial }) {
 }
 
 function DecisionMaterial({ linea, tipo }: { linea: LineaAtencionMaterial; tipo: 'diseno' | 'almacen' }) {
-  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock)
+  const { alEnviar, enviando, error } = useEnvio(tipo === 'diseno' ? resolverPropuesta : revisarStock, undefined, { documento: linea.detalle_id ?? undefined })
   return <form onSubmit={alEnviar} className="mt-3 flex flex-wrap items-end gap-2 border-t border-borde pt-3">
     <input type="hidden" name="detalle_id" value={linea.detalle_id ?? ''} />
     <Campo etiqueta={tipo === 'diseno' ? 'Decisión de Diseño' : 'Revisión de Almacén'} htmlFor={`decision-${tipo}-${linea.detalle_id}`}>
@@ -545,9 +547,12 @@ function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,p
  * cambiado todavía escrito, y pulsar otra vez registraba una segunda llegada o
  * un segundo despacho (20261023200000). Al pedirlo, el formulario vuelve vacío.
  */
-function useYaQuedoEnElTablero<T>(accion: Parameters<typeof useEnvio<T>>[0]) {
+function useYaQuedoEnElTablero<T>(
+  accion: Parameters<typeof useEnvio<T>>[0],
+  opciones: Parameters<typeof useEnvio<T>>[2] = {},
+) {
   const router = useRouter()
-  const envio = useEnvio<T>(accion, () => router.refresh(), { refrescar: false })
+  const envio = useEnvio<T>(accion, () => router.refresh(), { ...opciones, refrescar: false })
   const yaEntro = yaEntroLaPrimeraVez(envio.error)
   const ver = (form: HTMLFormElement | null | undefined) => {
     form?.reset()
@@ -558,7 +563,10 @@ function useYaQuedoEnElTablero<T>(accion: Parameters<typeof useEnvio<T>>[0]) {
 }
 
 function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendiente; clave: string | undefined }) {
-  const { alEnviar, enviando, error, yaEntro, ver } = useYaQuedoEnElTablero(registrarRecepcion)
+  const { alEnviar, enviando, error, yaEntro, ver } = useYaQuedoEnElTablero(registrarRecepcion, {
+    siSeVa: { que: 'la llegada a almacén', enlace: 'Volver a la compra' },
+    documento: compra.id ?? undefined,
+  })
   const restante = Number(compra.cantidad_pendiente ?? 0)
   return (
     <form onSubmit={alEnviar} className="grid gap-2 rounded-md border border-borde p-3 sm:grid-cols-2">
@@ -604,7 +612,7 @@ function FormularioDespacho({
     const ruta=data.user.id+'/'+String(datos.get('operacion_id'))+'.'+extension
     datos.delete('foto');datos.set('foto_ruta',ruta)
     return subirArchivoPrivado({bucket:'evidencias-almacen',ruta,archivo,contentType:archivo.type,registrar:()=>despacharMaterial(null,datos)})
-  })
+  }, { siSeVa: { que: 'la entrega con su foto', enlace: 'Volver a la entrega' }, documento: linea.detalle_id ?? undefined })
   return (
     <form onSubmit={alEnviar} className="mt-3 grid gap-2 border-t border-borde pt-3 sm:grid-cols-[1fr_1fr_auto]">
       <fieldset disabled={yaEntro} className="contents">

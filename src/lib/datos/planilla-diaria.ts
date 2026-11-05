@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { BUCKET_PLANILLA_DIARIA, REGLA_DE_LEY, type ReglaHorasExtras } from '@/lib/dominio/planilla-diaria'
+import { BUCKET_PLANILLA_DIARIA, REGLA_DE_LEY, type ConceptoPlanilla, type ReglaHorasExtras } from '@/lib/dominio/planilla-diaria'
 import { createClient } from '@/lib/supabase/server'
 
 type Uno<T> = T | T[] | null
@@ -26,8 +26,12 @@ export async function reglaHorasExtras(): Promise<ReglaHorasExtras & { actualiza
   }
 }
 
-/** Un día de una persona que va a entrar a la próxima planilla. */
-export type DiaPorEnviar = { fecha: string; concepto: 'ORDINARIAS' | 'EXTRAS'; horas: number; tramo1: number; tramo2: number }
+/**
+ * Un día de una persona que va a entrar a la próxima planilla. `PERMISO`: las
+ * horas de un permiso que se justificó con extras reservadas, que se pagan a la
+ * hora ordinaria (migración 20261026200000).
+ */
+export type DiaPorEnviar = { fecha: string; concepto: ConceptoPlanilla; horas: number; tramo1: number; tramo2: number }
 
 /** Lo que va a entrar a la próxima planilla, por persona. Sin remuneración, la persona espera. */
 export type PersonaPorEnviar = {
@@ -55,7 +59,7 @@ export async function planillaPorEnviar(): Promise<PersonaPorEnviar[]> {
     }
     persona.dias.push({
       fecha: f.fecha,
-      concepto: f.concepto === 'EXTRAS' ? 'EXTRAS' : 'ORDINARIAS',
+      concepto: conceptoDe(f.concepto),
       horas: Number(f.horas),
       tramo1: Number(f.horas_tramo1 ?? 0),
       tramo2: Number(f.horas_tramo2 ?? 0),
@@ -63,6 +67,10 @@ export async function planillaPorEnviar(): Promise<PersonaPorEnviar[]> {
     porPersona.set(f.trabajador_id, persona)
   }
   return [...porPersona.values()]
+}
+
+function conceptoDe(valor: string | null): ConceptoPlanilla {
+  return valor === 'EXTRAS' || valor === 'PERMISO' ? valor : 'ORDINARIAS'
 }
 
 /** Una planilla en la lista, con lo justo para saber en qué va. */
@@ -75,7 +83,7 @@ export type PlanillaListada = {
   creado_en: string
   anulado_en: string | null
   motivo_anulacion: string | null
-  gente: { pago_id: string | null; boleta_ruta: string | null; boleta_entregada_en: string | null }[]
+  gente: { pago_id: string | null; boleta_ruta: string | null; boleta_entregada_en: string | null; total: number }[]
 }
 
 /** Las planillas diarias, de la más reciente a la más vieja. Las ven RR. HH., Tesorería y Gerencia. */
@@ -85,19 +93,24 @@ export async function listarPlanillasDiarias(): Promise<PlanillaListada[]> {
     .from('planillas_diarias')
     .select(
       'id, numero, fecha, personas, total, creado_en, anulado_en, motivo_anulacion,' +
-        ' gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_ruta, boleta_entregada_en)',
+        ' gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(pago_id, boleta_ruta, boleta_entregada_en, total)',
     )
     .order('creado_en', { ascending: false })
     .limit(100)
   if (error) throw new Error(`No se pudieron leer las planillas diarias: ${error.message}`)
-  type Fila = Omit<PlanillaListada, 'total' | 'gente'> & { total: number | string; gente: PlanillaListada['gente'] | null }
-  return ((data ?? []) as unknown as Fila[]).map((p) => ({ ...p, total: Number(p.total), gente: p.gente ?? [] }))
+  type Persona = Omit<PlanillaListada['gente'][number], 'total'> & { total: number | string }
+  type Fila = Omit<PlanillaListada, 'total' | 'gente'> & { total: number | string; gente: Persona[] | null }
+  return ((data ?? []) as unknown as Fila[]).map((p) => ({
+    ...p,
+    total: Number(p.total),
+    gente: (p.gente ?? []).map((g) => ({ ...g, total: Number(g.total ?? 0) })),
+  }))
 }
 
 /** Un día de una persona en la planilla, con la hora y el recargo de ese momento. */
 export type DetallePlanilla = {
   fecha: string
-  concepto: 'ORDINARIAS' | 'EXTRAS'
+  concepto: ConceptoPlanilla
   horas: number
   horas_tramo1: number
   horas_tramo2: number
@@ -117,9 +130,15 @@ export type PersonaPlanilla = {
   cargo: string | null
   horas_ordinarias: number
   horas_extras: number
+  horas_permiso: number
   monto_ordinarias: number
   monto_extras: number
+  monto_permiso: number
+  /** Lo restado por tardanzas y permisos (negativo si se devolvió): `total` ya va sin ello. */
+  monto_descuentos: number
   total: number
+  /** Cada cosa restada o devuelta, con su motivo. */
+  descuentos: DescuentoDePlanilla[]
   pago_id: string | null
   boleta_ruta: string | null
   boleta_subida_en: string | null
@@ -128,6 +147,8 @@ export type PersonaPlanilla = {
   detalle: DetallePlanilla[]
   cuenta: CuentaDePago | null
 }
+
+export type DescuentoDePlanilla = { concepto: 'TARDANZAS' | 'PERMISO'; fecha: string; horas: number | null; monto: number; detalle: string }
 
 export type PagoPlanilla = {
   id: string
@@ -155,7 +176,9 @@ export async function planillaDiaria(id: string, conCuentas: boolean): Promise<P
     .select(
       'id, numero, fecha, personas, total, creado_en, anulado_en, motivo_anulacion,' +
         ' gente:planilla_diaria_personas!planilla_diaria_personas_planilla_id_fkey(id, trabajador_id, nombre, cargo, horas_ordinarias,' +
-        ' horas_extras, monto_ordinarias, monto_extras, total, pago_id, boleta_ruta, boleta_subida_en, boleta_entregada_en,' +
+        ' horas_extras, horas_permiso, monto_ordinarias, monto_extras, monto_permiso, monto_descuentos, total, pago_id, boleta_ruta,' +
+        ' boleta_subida_en, boleta_entregada_en,' +
+        ' descuentos:descuentos_del_pago!descuentos_del_pago_planilla_persona_id_fkey(concepto, fecha, horas, monto, detalle),' +
         ' detalle:planilla_diaria_detalle!planilla_diaria_detalle_persona_id_fkey(fecha, concepto, horas, horas_tramo1, horas_tramo2,' +
         ' valor_hora, recargo_tramo1, recargo_tramo2, monto)),' +
         ' pagos:planilla_diaria_pagos!planilla_diaria_pagos_planilla_id_fkey(id, fecha_pago, operacion, comprobante_ruta, comprobante_mime,' +
@@ -168,13 +191,10 @@ export async function planillaDiaria(id: string, conCuentas: boolean): Promise<P
 
   type Num = number | string
   type FilaDetalle = { [K in keyof DetallePlanilla]: K extends 'fecha' | 'concepto' ? DetallePlanilla[K] : Num }
-  type FilaPersona = Omit<PersonaPlanilla, 'horas_ordinarias' | 'horas_extras' | 'monto_ordinarias' | 'monto_extras' | 'total' | 'detalle' | 'cuenta' | 'boleta_enlace'> & {
-    horas_ordinarias: Num
-    horas_extras: Num
-    monto_ordinarias: Num
-    monto_extras: Num
-    total: Num
+  type Montos = 'horas_ordinarias' | 'horas_extras' | 'horas_permiso' | 'monto_ordinarias' | 'monto_extras' | 'monto_permiso' | 'monto_descuentos' | 'total'
+  type FilaPersona = Omit<PersonaPlanilla, Montos | 'detalle' | 'descuentos' | 'cuenta' | 'boleta_enlace'> & { [K in Montos]: Num } & {
     detalle: FilaDetalle[] | null
+    descuentos: { concepto: string; fecha: string; horas: Num | null; monto: Num; detalle: string }[] | null
   }
   const fila = data as unknown as Omit<PlanillaListada, 'total' | 'gente'> & {
     total: Num
@@ -195,9 +215,21 @@ export async function planillaDiaria(id: string, conCuentas: boolean): Promise<P
         ...p,
         horas_ordinarias: Number(p.horas_ordinarias),
         horas_extras: Number(p.horas_extras),
+        horas_permiso: Number(p.horas_permiso),
         monto_ordinarias: Number(p.monto_ordinarias),
         monto_extras: Number(p.monto_extras),
+        monto_permiso: Number(p.monto_permiso),
+        monto_descuentos: Number(p.monto_descuentos),
         total: Number(p.total),
+        descuentos: [...(p.descuentos ?? [])]
+          .map((d) => ({
+            concepto: d.concepto === 'PERMISO' ? ('PERMISO' as const) : ('TARDANZAS' as const),
+            fecha: d.fecha,
+            horas: d.horas === null ? null : Number(d.horas),
+            monto: Number(d.monto),
+            detalle: d.detalle,
+          }))
+          .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.concepto.localeCompare(b.concepto)),
         boleta_enlace: p.boleta_ruta ? (enlaces[p.boleta_ruta] ?? null) : null,
         detalle: [...(p.detalle ?? [])]
           .map((d) => ({

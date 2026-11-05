@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { conAvanceDelCodigo } from '@/lib/datos/ordenes'
 import { createClient } from '@/lib/supabase/server'
 import type { Tablas } from '@/types/database'
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
@@ -108,6 +109,6 @@ export async function ordenesDeCliente(clienteId: string) {
     .limit(ORDENES_DE_CLIENTE)
 
   if (error) throw new Error(`No se pudieron cargar las órdenes del cliente: ${error.message}`)
-  const ordenes = data ?? []
+  const ordenes = await conAvanceDelCodigo(data ?? [])
   return { ordenes, total: count ?? ordenes.length }
 }

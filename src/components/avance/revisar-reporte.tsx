@@ -36,11 +36,11 @@ export function RevisarReporte({
   // Lo decidido se pinta al instante: el repintado con las fotos del día tarda
   // segundos y el jefe no sabía si el toque había entrado.
   const [decision, setDecision] = useState<'APROBADO' | 'OBSERVADO' | null>(null)
-  const aprobar = useEnvio(revisarReporte, () => setDecision('APROBADO'))
+  const aprobar = useEnvio(revisarReporte, () => setDecision('APROBADO'), { documento: `${clase}:${id}` })
   const observar = useEnvio(revisarReporte, () => {
     setObservando(false)
     setDecision('OBSERVADO')
-  })
+  }, { documento: `${clase}:${id}` })
 
   if (revision === 'APROBADO') return null
   if (decision) {

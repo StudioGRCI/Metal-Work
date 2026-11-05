@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
 import type { DatosRevision } from '@/lib/dominio/estados'
 import { createClient } from '@/lib/supabase/server'
 
@@ -101,15 +102,11 @@ export async function listarFlota(
 
   if (filtros.trabadas) consulta = consulta.not('impedimento', 'is', null)
 
-  // Lo escrito viaja dentro de un filtro `or` de PostgREST, donde la coma,
-  // los paréntesis y el comodín tienen significado: se quitan antes.
-  const texto = filtros.buscar?.replace(/[,()*%\\]/g, ' ').trim()
-  if (texto) {
-    const clave = texto.toUpperCase().replace(/[^A-Z0-9]/g, '')
-    const ramas = [`descripcion.ilike.*${texto}*`, `cliente.ilike.*${texto}*`]
-    if (clave) ramas.unshift(`placa_clave.ilike.*${clave}*`)
-    consulta = consulta.or(ramas.join(','))
-  }
+  // Como toda lista, sin tildes y por palabras sueltas (`filtrosDeBusqueda`):
+  // con la frase entera en un `ilike`, «pestana» no encontraba «pestaña» ni
+  // «vieja tolva» la «Tolva de la pestaña vieja» (F2 de funcionalidad,
+  // cuadragésima octava pasada). La placa, por su clave sin signos.
+  for (const filtro of filtrosDeBusqueda(['placa_clave', 'descripcion', 'cliente'], filtros.buscar)) consulta = consulta.or(filtro)
 
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudieron leer los trabajos sin orden: ${error.message}`)

@@ -496,13 +496,20 @@ select test.debe_fallar(format($q$select public.resolver_observacion_ot(%L, 'Ya 
 select test.afirmar(pg_temp.codigo(format($q$select public.resolver_observacion_ot(%L, 'Ya se soldó')$q$, pg_temp.id('observacion'))) = '23514',
   'esa sigue siendo check_violation (23514)');
 reset role;
+-- Desde la 20261026160000 Administración ya no aprueba los reportes del taller:
+-- tampoco resuelve la observación. La resuelve quien la anotó.
 select pg_temp.como('administracion');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.resolver_observacion_ot(%L, 'Ya se soldó')$q$, pg_temp.id('observacion')),
+  'Administración ya no resuelve una observación del taller', 'No tienes permiso para resolver esta observación.');
+reset role;
+select pg_temp.como('gerente');
 set local role authenticated;
 select public.resolver_observacion_ot(pg_temp.id('observacion'), 'Se soldó el larguero y se revisó con la plantilla');
 reset role;
-select test.afirmar((select resuelta_en is not null and resuelta_por = pg_temp.id('administracion')
+select test.afirmar((select resuelta_en is not null and resuelta_por = pg_temp.id('gerente')
                        from public.ot_observaciones where id = pg_temp.id('observacion')),
-  'Administración, que aprueba los reportes del taller, sí la resuelve');
+  'quien anotó la observación sí la resuelve');
 
 -- El control vehicular: Almacén no lo registra; Costos y Materiales sí pasa.
 select pg_temp.como('almacenero');

@@ -192,7 +192,7 @@ export function SubirBoleta({ planillaId, personaId, nombre, cambiar }: { planil
 
 /** RR. HH. marca que ya le entregó la boleta a la persona. */
 export function EntregarBoleta({ planillaId, personaId }: { planillaId: string; personaId: string }) {
-  const { ejecutar, enviando, error } = useAccion(entregarBoletaPlanilla)
+  const { ejecutar, enviando, error } = useAccion(entregarBoletaPlanilla, undefined, { documento: personaId })
   return (
     <div>
       <Boton

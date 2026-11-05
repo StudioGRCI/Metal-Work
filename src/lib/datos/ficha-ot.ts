@@ -122,3 +122,28 @@ export async function personalDelTaller() {
   if (error) throw new Error(`No se pudo leer el personal: ${error.message}`)
   return (data ?? []) as unknown as { id: string; puesto: string | null; correo: string | null }[]
 }
+
+/**
+ * La OT de un código interno: la que nació de su cotización, la más reciente
+ * que no esté anulada. Desde el 2026-10-26 la ficha de taller se llena desde el
+ * código (Códigos internos › Ficha de taller) y se guarda en esa OT. La orden
+ * sin cotización (una garantía sobre la misma unidad) no es la del código.
+ */
+export async function ordenDelCodigo(codigo: string): Promise<{ id: string; numero: string; estado: string } | null> {
+  const supabase = await createClient()
+  const unidades = await supabase.from('unidades').select('id').eq('codigo_interno', codigo).limit(20)
+  if (unidades.error) throw new Error(`No se pudo leer la unidad del código: ${unidades.error.message}`)
+  const ids = (unidades.data ?? []).map((u) => u.id)
+  if (ids.length === 0) return null
+  const { data, error } = await supabase
+    .from('ordenes_trabajo')
+    .select('id, numero, estado')
+    .in('unidad_id', ids)
+    .not('cotizacion_pdf_id', 'is', null)
+    .neq('estado', 'ANULADA')
+    .order('fecha_registro', { ascending: false })
+    .order('numero', { ascending: false })
+    .limit(1)
+  if (error) throw new Error(`No se pudo leer la OT del código: ${error.message}`)
+  return data?.[0] ?? null
+}

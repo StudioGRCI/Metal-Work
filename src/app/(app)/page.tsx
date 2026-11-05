@@ -8,14 +8,14 @@ import {
 } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Indicador } from '@/components/ui/indicador'
+import { Indicador, tramos } from '@/components/ui/indicador'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
-import { nombreDeUnidad, todaviaSinPlaca } from '@/lib/dominio/unidades'
-import { fecha, fechaLarga, hoyLima, moneda, porcentaje } from '@/lib/format'
+import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
+import { fecha, fechaLarga, hoyLima, moneda, porcentajeYMonto, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
@@ -68,7 +68,7 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
           Con un número impar, la primera —la cifra principal del puesto— toma la
           fila entera en vez de dejar una sola con un hueco al lado: en media
           columna, un saldo de seis cifras partía el «S/» en otro renglón. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length === 6 ? 'lg:grid-cols-3' : cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -261,8 +261,8 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                               la razón social larga del cliente la cortaba. */}
                           <p className="line-clamp-2 text-xs text-texto-suave sm:line-clamp-1">
                             {unidad && (
-                              <span className={todaviaSinPlaca(unidad) ? 'text-texto-tenue' : 'text-texto'}>
-                                {nombreDeUnidad(unidad)}
+                              <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : 'text-texto'}>
+                                {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
                                 {(orden.cliente || orden.cliente_id === null) && ' · '}
                               </span>
                             )}
@@ -303,7 +303,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                 </span>
                                 {costo.margenPct !== null && (
                                   <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                    Margen {porcentaje(costo.margenPct, 1)}
+                                    {tramos(`${costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} ${porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}`)}
                                   </span>
                                 )}
                                 {costo.semaforo && costo.consumidoPct !== null && (
@@ -317,7 +317,13 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
                                           : 'text-texto-suave',
                                     )}
                                   >
-                                    {porcentaje(costo.consumidoPct, 0)} del presupuesto
+                                    {tramos(
+                                      `${porcentaje(costo.consumidoPct, 0)} del presupuesto${
+                                        costo.presupuestoPen !== null
+                                          ? ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`
+                                          : ''
+                                      }`,
+                                    )}
                                   </span>
                                 )}
                                 {costo.sinPrecio > 0 && (

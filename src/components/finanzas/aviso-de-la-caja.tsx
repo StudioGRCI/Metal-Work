@@ -77,11 +77,12 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
   return (
     <Avisar.Provider value={setAviso}>
       {children}
-      {/* Las regiones existen siempre: un lector de pantalla anuncia lo que entra en ellas, no la región que aparece. */}
-      <p role="status" aria-live="polite" className="sr-only">
+      {/* Las regiones existen siempre: un lector de pantalla anuncia lo que entra en ellas, no la región que aparece.
+          `data-se-ve-en`: si el aviso llegó con la pantalla trabada, al volver la cuenta el cursor va al botón que lo muestra. */}
+      <p role="status" aria-live="polite" data-se-ve-en={`${id}-boton`} className="sr-only">
         {atencion ? null : aviso}
       </p>
-      <p role="alert" className="sr-only">
+      <p role="alert" data-se-ve-en={`${id}-boton`} className="sr-only">
         {atencion ? aviso : null}
       </p>
       {aviso &&
@@ -93,6 +94,7 @@ export function AvisoDeLaCaja({ children }: { children: ReactNode }) {
             <button
               type="button"
               ref={boton}
+              id={`${id}-boton`}
               aria-expanded={abierto}
               aria-controls={id}
               aria-label="Lo que pasó en la caja diaria"
