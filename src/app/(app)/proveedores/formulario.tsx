@@ -132,7 +132,11 @@ export function FormularioProveedor({
   const [tipo, setTipo] = useState<string>(proveedor?.tipo_documento ?? 'RUC')
   const [documento, setDocumento] = useState(proveedor?.numero_documento ?? '')
   const [condicion, setCondicion] = useState(proveedor?.condicion_pago ?? 'CONTADO')
-  const { alEnviar, enviando, error } = useEnvio(guardarProveedor, (r) => alTerminar(r.datos, r.mensaje))
+  // Con `proveedor` corrige la ficha que la lista muestra: se cierra con la lista
+  // ya al día (`corrige`). El alta se cierra al contestar.
+  const { alEnviar, enviando, error } = useEnvio(guardarProveedor, (r) => alTerminar(r.datos, r.mensaje), {
+    corrige: Boolean(proveedor),
+  })
 
   // El aviso sale cuando el RUC ya tiene sus 11 dígitos y no cuadra: antes de
   // eso, la persona todavía está escribiendo.
@@ -297,7 +301,7 @@ export function NuevoProveedor() {
 
 export function AccionesProveedor({ proveedor, cuentasVisibles }: { proveedor: Proveedor; cuentasVisibles: boolean }) {
   const [editando, setEditando] = useState(false)
-  const estado = useAccion(cambiarEstadoProveedor)
+  const estado = useAccion(cambiarEstadoProveedor, undefined, { documento: proveedor.id })
 
   function cambiarEstado() {
     const datos = new FormData()

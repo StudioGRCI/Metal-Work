@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ComposicionDelCosto } from '@/components/expediente/composicion-costo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -10,12 +10,13 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Pliegue, SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
 import { faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { composicionDelCosto } from '@/lib/dominio/expediente'
 import { fecha, fechaHora, moneda } from '@/lib/format'
-import { useEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { solicitarTesoreria } from './acciones-costos'
 import { adjuntarControlFirmado, guardarControlVehicular, registrarGastoArea, revisarGastoArea } from './acciones-control-y-gastos'
 
@@ -149,12 +150,31 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
   ordenId: string; datos: Datos; puedeRegistrar: boolean; puedeRevisar: boolean; esAdministracion: boolean; conCodigo: boolean
 }) {
   const [id, setId] = useState(() => crypto.randomUUID())
-  const { alEnviar, enviando, resultado, error } = useEnvio(registrarGastoArea, () => setId(crypto.randomUUID()))
+  const formulario = useRef<HTMLFormElement>(null)
+  // Al entrar, el formulario se vacía junto con el id nuevo: lleno, un toque
+  // tardío tras el verde registraba el mismo gasto otra vez (duodécima pasada).
+  const vaciar = () => {
+    formulario.current?.reset()
+    setId(crypto.randomUUID())
+  }
+  // Si el envío ya había entrado la primera vez, lo escrito después no se
+  // guardó: el formulario se vacía igual, con un id nuevo, para que el próximo
+  // gasto no choque con ese.
+  const { alEnviar, enviando, resultado, error } = useEnvio(async (previo: unknown, datos: FormData) => {
+    const salida = await registrarGastoArea(previo, datos)
+    if (!salida.ok && yaEntroLaPrimeraVez(salida.error)) vaciar()
+    return salida
+  }, vaciar, { siSeVa: { que: 'el gasto', enlace: 'Volver al gasto' } })
+  const yaEntro = yaEntroLaPrimeraVez(error)
+  // El cursor va al aviso: con el formulario vacío, caía a la página y el «ya
+  // quedó» no se anunciaba (decimotercera pasada).
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
   return <Tarjeta>
     <TarjetaCabecera titulo="Gastos de las áreas" ayuda="Cada área adjunta el comprobante de su OT. Administración aprueba; solo entonces se suma al costo." />
     <TarjetaCuerpo className="space-y-4">
       {puedeRegistrar && <Pliegue titulo="Registrar gasto de mi área" enCaja>
-        <form onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
+        <form ref={formulario} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
           {conCodigo && <p className="sm:col-span-2 text-sm text-texto-suave">Un servicio que ya tiene su orden de servicio, o un subcontrato con su recibo por honorarios registrado, ya suma al costo del código: no lo registres aquí, que se contaría dos veces.</p>}
           <Campo etiqueta="Tipo" htmlFor="gasto-tipo" requerido><Seleccion id="gasto-tipo" name="tipo" defaultValue="SERVICIO"><option value="SERVICIO">Servicio</option><option value="TRANSPORTE">Transporte</option><option value="VIATICO">Viático</option><option value="SUBCONTRATO">Subcontrato</option><option value="OTRO">Otro</option>{esAdministracion && <><option value="TRAMITE">Trámites de placas y documentación</option><option value="COMISION">Comisión de venta</option></>}</Seleccion></Campo>
@@ -163,7 +183,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Campo etiqueta="Moneda" htmlFor="gasto-moneda" requerido><Seleccion id="gasto-moneda" name="moneda" defaultValue="PEN"><option value="PEN">Soles</option><option value="USD">Dólares</option></Seleccion></Campo>
           <div className="sm:col-span-2"><Campo etiqueta="Descripción y referencia" htmlFor="gasto-descripcion" requerido><AreaTexto id="gasto-descripcion" name="descripcion" minLength={10} maxLength={500} required rows={2} /></Campo></div>
           <div className="sm:col-span-2"><Campo etiqueta="Comprobante PDF" htmlFor="gasto-pdf" requerido><ElegirArchivo id="gasto-pdf" name="pdf" accept="application/pdf,.pdf" hastaMb={15} required /></Campo></div>
-          {error && <p role="alert" className="sm:col-span-2 text-sm text-peligro">{error}</p>}
+          {error && <p ref={aviso} tabIndex={-1} role="alert" data-ya-entro={yaEntro || undefined} className={yaEntro ? 'sm:col-span-2 rounded-[var(--radius-base)] bg-info-suave px-3 py-2 text-sm text-texto' : 'sm:col-span-2 text-sm text-peligro'}>{error}</p>}
           {resultado?.ok && <p role="status" className="sm:col-span-2 text-sm text-exito">{resultado.mensaje}</p>}
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>
@@ -183,7 +203,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
 }
 
 function RevisionGasto({ id, ordenId }: { id: string; ordenId: string }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea)
+  const { alEnviar, enviando, resultado, error } = useEnvio(revisarGastoArea, undefined, { siSeVa: { que: 'la revisión del gasto', enlace: 'Volver al gasto' }, documento: id })
   return <form onSubmit={alEnviar} className="mt-3 space-y-2 border-t border-borde pt-3">
     <input type="hidden" name="id" value={id} /><input type="hidden" name="orden_id" value={ordenId} />
     <Campo etiqueta="Decisión de Administración" htmlFor={'decision-' + id}><Seleccion id={'decision-' + id} name="estado" defaultValue="APROBADO"><option value="APROBADO">Aprobar</option><option value="OBSERVADO">Observar</option></Seleccion></Campo>
@@ -203,8 +223,8 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
   const c = datos.control
   const ingresoCerrado = Boolean(c?.ingreso_cerrado_en)
   const salidaCerrada = Boolean(c?.salida_cerrada_en)
-  const { alEnviar, enviando, resultado, error } = useEnvio(guardarControlVehicular)
-  const escaneo = useEnvio(adjuntarControlFirmado)
+  const { alEnviar, enviando, resultado, error } = useEnvio(guardarControlVehicular, undefined, { siSeVa: { que: 'el control vehicular', enlace: 'Volver al control' } })
+  const escaneo = useEnvio(adjuntarControlFirmado, undefined, { siSeVa: { que: 'el escaneo firmado', enlace: 'Volver al control' } })
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     const boton = (evento.nativeEvent as SubmitEvent).submitter
     const accion = boton instanceof HTMLButtonElement ? boton.value : 'GUARDAR'
@@ -279,7 +299,7 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
 
 /** Solo se pinta con la salida cerrada y su escaneo firmado adjunto. */
 function NuevaSolicitud({ ordenId }: { ordenId: string }) {
-  const { alEnviar, enviando, resultado, error } = useEnvio(solicitarTesoreria)
+  const { alEnviar, enviando, resultado, error } = useEnvio(solicitarTesoreria, undefined, { siSeVa: { que: 'el pedido a Tesorería', enlace: 'Volver al pedido' } })
   return <form onSubmit={alEnviar} className="grid gap-3 rounded-[var(--radius-base)] border border-borde p-4">
     <input type="hidden" name="orden_id" value={ordenId} />
     <p className="text-xs text-texto-suave">Lista de salida completada.</p>

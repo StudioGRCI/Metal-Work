@@ -1,7 +1,7 @@
 'use client'
 
 import { CalendarDays, Pencil } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -42,6 +42,11 @@ export function Etapas({
   puedeProgramar: boolean
 }) {
   const [programando, setProgramando] = useState<string | null>(null)
+  // Mientras unas fechas se guardan, ninguna fila abre ni cierra las suyas: abrir
+  // otra desmontaba la que iba en camino, y su desenlace no salía en ninguna
+  // fila; cerrar la propia dejaba las fechas de antes a la vista (H3 de
+  // funcionalidad, quincuagésima tercera pasada).
+  const [guardando, setGuardando] = useState(false)
   // Corregir o agregar etapas reemplaza la lista por el formulario: las dos a
   // la vez repetían cada etapa en pantalla.
   const [editando, setEditando] = useState(false)
@@ -172,6 +177,7 @@ export function Etapas({
 
                     {puedeProgramar && (
                       <Boton variante={abierta ? 'fantasma' : 'secundario'} tamano="sm"
+                        disabled={guardando}
                         onClick={() => setProgramando(abierta ? null : etapa.etapa_id)}
                         aria-expanded={abierta}>
                         {abierta ? 'Cerrar' : programa.inicio || programa.fin ? 'Cambiar fechas' : 'Programar fechas'}
@@ -179,9 +185,15 @@ export function Etapas({
                     )}
                   </div>
 
+                  {/* Cierra solo el suyo. La llave con las fechas lo rehace con
+                      las de la base si la página se pone al día con el
+                      formulario abierto y otras fechas (las guardó otra
+                      pestaña u otra persona): no se queda mostrando las de
+                      antes para volver a mandarlas. */}
                   {abierta && (
-                    <FormularioProgramacion ordenId={ordenId} etapa={etapa}
-                      alTerminar={() => setProgramando(null)} />
+                    <FormularioProgramacion key={`${etapa.fecha_inicio_programada ?? ''}:${etapa.fecha_fin_programada ?? ''}`} ordenId={ordenId} etapa={etapa}
+                      alCambiarEnvio={setGuardando}
+                      alTerminar={() => setProgramando((p) => (p === etapa.etapa_id ? null : p))} />
                   )}
                 </li>
               )
@@ -203,8 +215,11 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   /** Sin cambios, vuelve a la lista. */
   alCancelar?: () => void
 }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(definirEtapas, alTerminar)
+  // Al corregirlas, la lista vuelve ya con las etapas guardadas (`corrige`): al
+  // contestar, mostraba un segundo las de antes (R30 de realización,
+  // quincuagésima tercera pasada). La primera vez es un alta.
   const corrigiendo = etapas.length > 0
+  const { alEnviar, enviando, error, resultado } = useEnvio(definirEtapas, alTerminar, { corrige: corrigiendo })
   const [seleccion, setSeleccion] = useState(() => etapas
     .filter((e) => e.etapa_id !== null)
     .map((e) => ({ id: e.etapa_id!, nombre: e.etapa ?? '', area: e.area_id ?? '', peso: e.peso_pct ?? 0,
@@ -323,12 +338,22 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
   )
 }
 
-function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
+function FormularioProgramacion({ ordenId, etapa, alCambiarEnvio, alTerminar }: {
   ordenId: string
   etapa: Etapa
+  alCambiarEnvio: (enviando: boolean) => void
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar)
+  // Corrige las fechas que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(programarEtapa, alTerminar, {
+    documento: etapa.etapa_id ?? undefined,
+    corrige: true,
+  })
+  useEffect(() => {
+    if (!enviando) return
+    alCambiarEnvio(true)
+    return () => alCambiarEnvio(false)
+  }, [enviando, alCambiarEnvio])
   return (
     <form onSubmit={alEnviar} className="mt-3 grid min-w-0 gap-3 border-t border-borde pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="orden_id" value={ordenId} />
@@ -343,7 +368,7 @@ function FormularioProgramacion({ ordenId, etapa, alTerminar }: {
       </Campo>
       {error && <p role="alert" className="text-sm text-peligro sm:col-span-3">{error}</p>}
       <div className="flex items-end justify-end gap-2">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>Cancelar</Boton>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alTerminar}>Cancelar</Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>Guardar fechas</Boton>
       </div>
     </form>

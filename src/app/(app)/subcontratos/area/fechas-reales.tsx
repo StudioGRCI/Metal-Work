@@ -76,7 +76,8 @@ function FormularioFechas({
   alTerminar: () => void
 }) {
   const [desde, setDesde] = useState(inicio ?? '')
-  const { alEnviar, enviando, error } = useEnvio(marcarFechasReales, alTerminar)
+  // Corrige las fechas que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(marcarFechasReales, alTerminar, { corrige: true })
   const prefijo = `real-${id.slice(0, 8)}`
   return (
     <form onSubmit={alEnviar} className="space-y-4">
@@ -103,7 +104,7 @@ function FormularioFechas({
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alTerminar}>
+        <Boton type="button" variante="contorno" disabled={enviando} onClick={alTerminar}>
           Cancelar
         </Boton>
         <Boton type="submit" cargando={enviando}>

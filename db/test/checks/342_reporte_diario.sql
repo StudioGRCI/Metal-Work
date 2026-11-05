@@ -172,8 +172,8 @@ begin
             'Tolva de la unidad 28', 'Se avanzó la soldadura y el armado.', v_trab, null,
             jsonb_build_array(current_setting('prueba.f1'), current_setting('prueba.f2')));
   perform test.afirmar(v_id = current_setting('prueba.r1')::uuid, 'el reporte entra');
-  -- Un reintento (la señal se cortó) devuelve el mismo reporte sin duplicar.
-  v_id := public.registrar_reporte_diario(current_setting('prueba.r1')::uuid, v_hoy, 'PLA_SR_O4_1_26/28',
+  -- Un reintento (la señal se cortó) trae lo mismo: devuelve el mismo reporte sin duplicar.
+  v_id := public.registrar_reporte_diario(current_setting('prueba.r1')::uuid, v_hoy, '  pla_sr_o4_1_26/28 ',
             'Tolva de la unidad 28', 'Se avanzó la soldadura y el armado.', v_trab, null,
             jsonb_build_array(current_setting('prueba.f1'), current_setting('prueba.f2')));
   perform test.afirmar((select count(*) from public.reportes_diarios) = 1, 'el reintento no duplica el reporte');

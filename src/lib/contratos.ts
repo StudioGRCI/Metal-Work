@@ -8,7 +8,8 @@ import { subirArchivoPrivado } from '@/lib/subida-privada'
  * carpeta es el subcontrato y el id
  * es el del contrato, decidido una vez por formulario: un reintento sube a la
  * misma ruta y la base no lo duplica. Si la anotación se rechaza, el archivo se
- * retira; si la respuesta no llega, se deja (ver `subirArchivoPrivado`).
+ * retira; si la respuesta no llega, se pregunta otra vez y se quita solo si
+ * sigue suelto (ver `anotarSinDejarloSuelto`).
  */
 export async function subirContrato({
   bucket,

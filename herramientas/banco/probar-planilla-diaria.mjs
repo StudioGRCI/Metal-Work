@@ -33,6 +33,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { crearCajaDePrueba, elegirCuenta, movimientosDeLaCaja } from './caja-de-prueba.mjs'
+import { codigoSinUsar } from './campo-codigo.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -147,7 +148,8 @@ const inicio = new Date()
 const sello = Date.now().toString().slice(-5)
 // El pago pide la cuenta de la caja de la que salió (migración 20261019100000).
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
-const codigo = `PRB_SR_O4_1_26/${sello.slice(-2)}`
+// Uno que esta base no tiene: con el de otra corrida, su actividad sigue abierta.
+const codigo = await codigoSinUsar(consulta, 'PRB_SR_O4_1_26/', sello)
 const asuntoA = `Tolva de volquete ${sello}`
 const asuntoB = `Pintura del chasis ${sello}`
 const [elena, mario] = [`Elena ${sello}`, `Mario ${sello}`]
@@ -207,7 +209,7 @@ let numeroPlanilla = null
   await pagina.waitForLoadState('networkidle')
   idA = pagina.url().match(/reportes-diarios\/([0-9a-f-]{36})/)?.[1] ?? null
   comprobar(Boolean(idA), 'sube el primer reporte')
-  const aviso = limpio(await pagina.locator('[role="status"]').textContent().catch(() => ''))
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().textContent().catch(() => ''))
   comprobar(aviso.includes('Gerencia y Recursos Humanos lo validan'), `al subir avisa que lo validan Gerencia y RR. HH. (${aviso.slice(0, 90)}…)`)
   const validacion = limpio(await pagina.locator('[data-lado]').allTextContents().then((t) => t.join(' | ')))
   comprobar(
@@ -376,7 +378,13 @@ let numeroPlanilla = null
   const error = await esperarVentana(pagina)
   comprobar(!error, `usa media hora de su saldo${error ? `: ${error}` : ''}`)
   const [s] = await consulta(`select saldo::float from saldo_horas_por_persona($1)`, [ids[mario]]).catch(() => [{}])
-  const saldoPantalla = limpio(await pagina.locator('[data-saldo]', { hasText: mario }).textContent().catch(() => ''))
+  // La pantalla se pone al día después de cerrar la ventana: con el banco cargado, un instante después.
+  const leerSaldo = async () => limpio(await pagina.locator('[data-saldo]', { hasText: mario }).textContent().catch(() => ''))
+  let saldoPantalla = await leerSaldo()
+  for (let i = 0; i < 30 && !/0[,.]5 h/.test(saldoPantalla); i++) {
+    await pagina.waitForTimeout(500)
+    saldoPantalla = await leerSaldo()
+  }
   comprobar(saldoPantalla.includes('0,5 h') || saldoPantalla.includes('0.5 h'), `le queda media hora en pantalla (${saldoPantalla}; base: ${s?.saldo ?? 'sin sesión'})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'pd-08-rrhh-saldo.png'), fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)

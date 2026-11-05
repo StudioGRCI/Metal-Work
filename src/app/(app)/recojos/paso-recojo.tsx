@@ -16,7 +16,7 @@ import { marcarRecojo } from './acciones'
  */
 export function PasoRecojo({ id, nombre, paso }: { id: string; nombre: string; paso: 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO' }) {
   const [confirmando, setConfirmando] = useState(false)
-  const accion = useAccion(marcarRecojo, () => setConfirmando(false))
+  const accion = useAccion(marcarRecojo, () => setConfirmando(false), { documento: id })
 
   function marcar() {
     const datos = new FormData()

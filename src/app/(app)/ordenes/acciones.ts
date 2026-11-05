@@ -76,7 +76,28 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
     p_tamano_pdf: v.tamano_pdf,
   })
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La misma orden otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`); la base dice «ya quedó
+    // registrada» (o, si las dos se cruzaron, «duplicado»). Si su PDF, con esta
+    // ruta —un uuid de este envío—, está anotado en esta orden por quien la
+    // registra, fue este mismo envío: quedó, y se abre la orden.
+    if (error.code === '23514' || error.code === '23505') {
+      const { data: ya } = await supabase
+        .from('ot_adjuntos')
+        .select('orden_id')
+        .eq('ruta_storage', v.ruta_pdf)
+        .eq('orden_id', v.orden_id)
+        .eq('subido_por', perfil.id)
+        .eq('tipo', 'ORDEN')
+        .maybeSingle()
+      if (ya) {
+        revalidatePath('/ordenes')
+        return { ok: true, datos: { id: v.orden_id } }
+      }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/ordenes')

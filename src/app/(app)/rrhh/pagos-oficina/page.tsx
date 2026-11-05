@@ -74,7 +74,11 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           edita && (
+          // Una por mes: las personas que ofrece dependen de él, y con la
+          // ventana abierta, Atrás a otro mes la dejaba con la elegida de
+          // antes cambiada por la primera de la lista (cuadragésima quinta pasada).
           <RegistrarPago
+            key={inicio}
             inicio={inicio}
             personal={deOficina
               .filter((t) => t.activo || (t.fecha_baja !== null && t.fecha_baja >= inicio))

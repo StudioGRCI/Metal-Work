@@ -6,11 +6,13 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import { BUCKET_FACTURAS_VENTA, MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 
 import { anularFactura, registrarFactura } from './acciones'
@@ -19,15 +21,17 @@ import { anularFactura, registrarFactura } from './acciones'
 function sacarArchivo(datos: FormData): File | null {
   const archivo = datos.get('archivo')
   datos.delete('archivo')
-  return archivo instanceof File && archivo.size > 0 ? archivo : null
+  // Uno vacío también cuenta como elegido: lo rechaza la subida diciendo que está vacío.
+  return archivo instanceof File && archivo.name !== '' ? archivo : null
 }
 
 /**
  * Contabilidad registra la factura que emitió en SUNAT. El PDF sube primero a
  * Storage, en la carpeta de la factura, y si la factura no entra se retira.
- * El id de la factura se decide al abrir la ventana: un reintento con la
- * ventana abierta no registra otra. Si con ella lo facturado pasa del total de
- * la cotización, avisa sin impedirlo (pedido de Gerencia del 2026-10-14).
+ * El id de la factura vive fuera de la ventana (`useIdDelEnvio`): un reintento
+ * no registra otra, y si aquella entró, la ventana lo dice al volver a abrirse y
+ * la siguiente lleva otro. Si con ella lo facturado pasa del total de la
+ * cotización, avisa sin impedirlo (pedido de Gerencia del 2026-10-14).
  */
 export function RegistrarFactura({
   cotizacionId,
@@ -48,7 +52,8 @@ export function RegistrarFactura({
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
 }) {
-  const [facturaId, setFacturaId] = useState<string | null>(null)
+  const factura = useIdDelEnvio('factura_venta', undefined, cotizacionId)
+  const [abierta, setAbierta] = useState(false)
   const [total, setTotal] = useState('')
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)
   const conEsta = facturado + (Number(total) || 0)
@@ -57,20 +62,29 @@ export function RegistrarFactura({
   function abrir() {
     setTotal('')
     setMonedaFactura(monedaCotizacion)
-    setFacturaId(crypto.randomUUID())
+    factura.abrir()
+    setAbierta(true)
   }
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = sacarArchivo(datos)
     if (!archivo) return { ok: false, error: 'Adjunta el PDF de la factura.' }
-    if (!facturaId) return { ok: false, error: 'Vuelve a abrir el formulario de la factura.' }
-    return subirArchivoFinanzas(BUCKET_FACTURAS_VENTA, facturaId, archivo, { 'application/pdf': 'pdf' }, (ruta) => {
+    if (!factura.id) return { ok: false, error: 'Vuelve a abrir el formulario de la factura.' }
+    factura.salio()
+    return subirArchivoFinanzas(BUCKET_FACTURAS_VENTA, factura.id, archivo, { 'application/pdf': 'pdf' }, (ruta) => {
       datos.set('ruta', ruta)
       datos.set('nombre_archivo', archivo.name)
       return registrarFactura(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(registrar, () => setFacturaId(null))
+  const { alEnviar, enviando, error } = useEnvio(
+    registrar,
+    () => {
+      setAbierta(false)
+      factura.otro()
+    },
+    { alYaEntrar: factura.otro },
+  )
   const campo = (nombre: string) => `${nombre}-${cotizacionId}`
 
   return (
@@ -80,14 +94,15 @@ export function RegistrarFactura({
         Registrar factura
       </Boton>
       <Ventana
-        abierta={facturaId !== null}
-        alCerrar={() => setFacturaId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Factura del código ${codigoInterno}`}
         descripcion={`Por la cotización ${numeroCotizacion}. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Una cotización puede llevar varias: la inicial y el saldo.`}
         ancho="md"
       >
+        <EnvioAnterior texto={factura.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={facturaId ?? ''} />
+          <input type="hidden" name="id" value={factura.id ?? ''} />
           <input type="hidden" name="cotizacion_id" value={cotizacionId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Número de factura" htmlFor={campo('numero')} requerido ayuda="La serie, un guion y el número: E001-626.">
@@ -146,19 +161,7 @@ export function RegistrarFactura({
           <Campo etiqueta="PDF de la factura" htmlFor={campo('archivo')} requerido ayuda="El que descargaste de SUNAT.">
             <ElegirArchivo id={campo('archivo')} name="archivo" accept="application/pdf,.pdf" hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setFacturaId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Registrar la factura
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Registrar la factura" />
         </form>
       </Ventana>
     </>
@@ -187,19 +190,7 @@ export function AnularFactura({ facturaId, numero }: { facturaId: string; numero
           <Campo etiqueta="Motivo" htmlFor={`anular-factura-${facturaId}`} requerido>
             <AreaTexto id={`anular-factura-${facturaId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>

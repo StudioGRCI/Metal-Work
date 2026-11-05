@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Camera, FileCode, FileSpreadsheet, FileText, FileUp, ImageIcon, type LucideIcon } from 'lucide-react'
 
+import { Boton } from '@/components/ui/boton'
 import { tamanoArchivo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -102,12 +103,32 @@ export async function revisarArchivo(archivo: File, accept: string, hastaMb?: nu
 function ConPuntero({ texto }: { texto: string }) {
   const i = texto.indexOf('toca para')
   if (i < 0) return texto
-  return (
+  const invitacion = (
     <>
-      {texto.slice(0, i)}
       <span className="pointer-fine:hidden">toca</span>
       <span className="hidden pointer-fine:inline">haz clic</span>
       {texto.slice(i + 'toca'.length)}
+    </>
+  )
+  // «· toca para cambiarlo» no se dice con el campo apagado: tras «ya quedó» la
+  // ventana lo traba sin pasar por aquí, y la caja invitaba a cambiar un archivo
+  // que ya no se puede tocar (decimoquinta pasada).
+  const separador = texto.lastIndexOf(' · ', i)
+  if (separador >= 0 && /^toca para cambiarlo/.test(texto.slice(i))) {
+    return (
+      <>
+        {texto.slice(0, separador)}
+        <span className="group-has-[input:disabled]/archivo:hidden">
+          {texto.slice(separador, i)}
+          {invitacion}
+        </span>
+      </>
+    )
+  }
+  return (
+    <>
+      {texto.slice(0, i)}
+      {invitacion}
     </>
   )
 }
@@ -164,7 +185,9 @@ export type ElegirArchivoProps = Omit<React.InputHTMLAttributes<HTMLInputElement
  * un archivo, también donde se lee o se sube apenas se elige (`archivo`,
  * `aviso` y `estado`): «aplica para todo lugar que pida documento» (DKS,
  * 2026-10-21). Con `archivo`, el campo se vacía solo al abrirse: la pantalla
- * no tiene que vaciarlo.
+ * no tiene que vaciarlo. Sin `archivo` ni `required`, el elegido lleva
+ * «Quitar»: el campo vuelve a quedar vacío y la pantalla se entera por su
+ * `onChange`, como si hubieran elegido «nada».
  */
 export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoProps>(function ElegirArchivo(
   {
@@ -282,6 +305,19 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
     (archivo ? `${tamanoArchivo(archivo.size)} · toca para cambiarlo` : [tipo.formato, limite].filter(Boolean).join(', '))
   const invalido = invalidoDesdeAfuera === true || invalidoDesdeAfuera === 'true'
   const mal = Boolean(aviso) || invalido
+  // Un campo opcional tiene que poder quedar vacío otra vez: la OC directa
+  // decía «Quítalo para adjuntarlo después» y no había cómo. Donde la pantalla
+  // guarda el archivo, lo vacía ella.
+  const quitable = !required && !controlado && !disabled
+
+  function quitar() {
+    const input = propio.current
+    if (!input) return
+    input.value = ''
+    // La pantalla se entera como si hubieran elegido «nada», y vacía lo que leyó.
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    input.focus()
+  }
   // Mientras se lee o se sube todavía no se sabe si sirve: ni verde ni apagado.
   const ocupado = Boolean(estado) && !mal
   // Apagado mientras se lee o se sube, pero sin soltar el foco: un campo
@@ -292,7 +328,7 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
   return (
     <div
       className={cn(
-        'relative flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] border px-3 py-2',
+        'group/archivo relative flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] border px-3 py-2',
         archivo
           ? mal
             ? 'border-solid border-peligro bg-peligro-suave/40'
@@ -304,10 +340,11 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
             : 'border-dashed border-borde-fuerte',
         // El campo de verdad es transparente: su anillo de foco (globals.css)
         // no se vería, así que lo lleva la caja, con el mismo grosor y color.
-        'has-[:focus-visible]:border-acento has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-anillo-foco',
+        'has-[input:focus-visible]:border-acento has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-anillo-foco',
         // Con aviso, el fondo rojo se queda aunque pase el ratón. Ocupado no se
-        // apaga: «Subiendo…» se tiene que leer.
-        disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : !mal && 'hover:bg-superficie-2',
+        // apaga: «Subiendo…» se tiene que leer. Dentro de un `fieldset` trabado
+        // (la ventana que envía) se apaga como los demás campos.
+        disabled ? (ocupado ? 'cursor-progress' : 'opacity-60') : [!mal && 'hover:bg-superficie-2', !ocupado && 'has-[input:disabled]:opacity-60'],
         className,
       )}
     >
@@ -330,9 +367,10 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
             </>
           )}
         </span>
-        {/* Se anuncia al elegir: el aviso de «no es un Excel» llega también a quien no ve la caja. */}
+        {/* Se anuncia al elegir: el aviso de «no es un Excel» llega también a quien no ve la caja.
+            El estado sin aviso no lo suma la traba al volver la cuenta: es lo que el cursor tiene delante. */}
         {pie && (
-          <span aria-live="polite" className={cn('block text-xs', aviso ? 'text-peligro' : 'text-texto-tenue')}>
+          <span aria-live="polite" data-no-anunciar={aviso ? undefined : ''} className={cn('block text-xs', aviso ? 'text-peligro' : 'text-texto-tenue')}>
             <ConPuntero texto={pie} />
           </span>
         )}
@@ -380,6 +418,19 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         }}
         {...props}
       />
+      {quitable && archivo && (
+        // Encima del campo transparente: tocarlo no abre el selector.
+        <Boton
+          type="button"
+          variante="fantasma"
+          tamano="sm"
+          className="relative z-10 -my-1 shrink-0"
+          aria-label={`Quitar ${archivo.name}`}
+          onClick={quitar}
+        >
+          Quitar
+        </Boton>
+      )}
     </div>
   )
 })

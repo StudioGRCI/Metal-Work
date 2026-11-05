@@ -262,8 +262,8 @@ let numero = ''
   comprobar(!(await campo.evaluate((e) => e.validity.customError)), 'con el código elegido, nada para el envío')
 
   await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
-  numero = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  numero = ((await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()).match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   const rq = await uno(`select codigo_interno from public.requerimientos where numero = $1`, [numero])
   comprobar(rq?.codigo_interno === CODIGO, `el ${numero || 'RQ'} queda con ${CODIGO} (${rq?.codigo_interno})`)
 

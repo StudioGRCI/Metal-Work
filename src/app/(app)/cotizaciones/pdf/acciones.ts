@@ -43,7 +43,7 @@ const esquemaSubir = z.object({
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion.default('application/pdf'),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 export async function registrarCotizacionPdf(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
@@ -75,13 +75,27 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
       registrado_por: perfil.id,
     })
     .select('id')
     .maybeSingle()
 
+  const subida = async (): Promise<ResultadoAccion> => {
+    const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
+    revalidatePath('/cotizaciones/pdf')
+    return { ok: true, mensaje: `Cotización subida y enviada a Gerencia para que la revise.${igv}` }
+  }
   if (error) {
+    // La misma subida otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`). Si la cotización con este id
+    // ya nombra esta ruta —un uuid de esta subida— y la registró quien sube,
+    // quedó: se dice como la primera vez. El IGV se anota otra vez (es un upsert),
+    // por si la primera se cortó antes.
+    if (error.code === '23505') {
+      const { data: ya } = await supabase.from('cotizaciones_pdf').select('ruta_storage, registrado_por').eq('id', v.id).maybeSingle()
+      if (ya && ya.ruta_storage === v.ruta_storage && ya.registrado_por === perfil.id) return subida()
+    }
     return {
       ok: false,
       error: error.message.includes('uq_cotizacion_pdf_numero')
@@ -91,9 +105,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
   }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
-  const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
-  revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: `Cotización subida. Gerencia ya la tiene para revisar.${igv}` }
+  return subida()
 }
 
 const esquemaRevisar = z.object({
@@ -151,7 +163,7 @@ const esquemaCorregir = z.object({
   moneda: z.enum(['PEN', 'USD'], { message: 'Elige soles o dólares.' }),
   incluye_igv: z.enum(['si', 'no'], { message: 'Indica si el total incluye IGV.' }),
   // Un archivo vacío no es una cotización: le llegaba a Gerencia sin nada que abrir.
-  tamano_bytes: z.coerce.number().int().min(1, 'El archivo está vacío: elige otro.').optional(),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 /** Una nueva versión conserva el número y vuelve a Gerencia. */
@@ -180,7 +192,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
       monto_venta: Number(v.monto_venta),
       moneda: v.moneda,
     })
@@ -193,13 +205,27 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
     const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
     return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
   }
-  if (!data) {
-    return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
+  let corregida = data
+  if (!corregida) {
+    // La misma corrección otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo con la versión que tenía. Si la cotización ya nombra
+    // esta ruta —un uuid de esta corrección— en la versión siguiente, quedó. La
+    // corrección solo la sube quien registró la cotización (lo exige la base):
+    // si quien pregunta es otro, no es su envío.
+    const { data: ya } = await supabase
+      .from('cotizaciones_pdf')
+      .select('numero, version, ruta_storage, registrado_por')
+      .eq('id', v.id)
+      .maybeSingle()
+    if (!ya || ya.ruta_storage !== v.ruta_storage || ya.version !== v.version + 1 || ya.registrado_por !== perfil.id) {
+      return { ok: false, error: 'La cotización cambió o no tienes acceso. Recarga la página y vuelve a intentar.' }
+    }
+    corregida = ya
   }
 
   const igv = await anotarIgv(supabase, v.id, v.incluye_igv)
   revalidatePath('/cotizaciones/pdf')
-  return { ok: true, mensaje: `Corrección subida: la ${data.numero} vuelve a Gerencia (versión ${data.version}).${igv}` }
+  return { ok: true, mensaje: `Corrección subida: la ${corregida.numero} vuelve a Gerencia (versión ${corregida.version}).${igv}` }
 }
 
 const esquemaQuitar = z.object({ id: z.guid() })
@@ -285,7 +311,7 @@ const esquemaCodigoYOt = z.object({
   fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega al cliente'),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
-  tamano_pdf: z.coerce.number().int().min(0).optional(),
+  tamano_pdf: z.coerce.number({ error: 'Falta el tamaño del PDF de la OT: vuelve a elegirlo.' }).int().min(1, 'El PDF de la OT está vacío: elige otro.'),
 })
 
 /**
@@ -322,16 +348,33 @@ export async function cargarCodigoYOt(
     p_fecha_entrega: v.fecha_entrega,
     p_ruta_pdf: v.ruta_pdf,
     p_nombre_pdf: v.nombre_pdf,
-    p_tamano_pdf: v.tamano_pdf ?? 0,
+    p_tamano_pdf: v.tamano_pdf,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
   })
 
   if (error) {
-    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
-    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
-  }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
+    // La misma carga otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`), y la base dice que la
+    // cotización ya tiene su OT. Si esa OT es la de este envío —su id es un uuid
+    // de este envío, y la base la crea con su código y su PDF, todo o nada— y
+    // la creó quien la carga, quedó.
+    const yaEsSuya =
+      error.code === '23505' &&
+      (
+        await supabase
+          .from('ordenes_trabajo')
+          .select('id')
+          .eq('id', v.orden_id)
+          .eq('cotizacion_pdf_id', v.cotizacion_id)
+          .eq('creado_por', perfil.id)
+          .maybeSingle()
+      ).data
+    if (!yaEsSuya) {
+      const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
+      return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
+    }
+  } else if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/cotizaciones/pdf')
   revalidatePath('/codigos-internos')

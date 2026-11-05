@@ -8,6 +8,7 @@ import {
   type CabeceraCotizacion,
   type TotalCotizacion,
 } from '@/lib/cotizacion-pdf'
+import { moneda, numero } from '@/lib/format'
 
 /**
  * El archivo de una cotización: PDF o Word (migración 103). Lo usan la subida y
@@ -50,6 +51,28 @@ export type LecturaArchivoCotizacion = {
   total: TotalCotizacion
   /** Si el papel dice que el total trae IGV; null si no lo dice. */
   incluyeIgv: boolean | null
+}
+
+/**
+ * Lo que trae el documento cuando el total que queda no calza con el leído,
+ * para decirlo en ámbar bajo el monto; null si calza o si no se leyó nada.
+ */
+export function totalDelDocumentoSiNoCalza(total: TotalCotizacion, leido: TotalCotizacion | null): string | null {
+  if (!leido?.monto) return null
+  const igual = Number(total.monto) === Number(leido.monto) && (!leido.moneda || total.moneda === leido.moneda)
+  if (igual) return null
+  return leido.moneda ? moneda(leido.monto, leido.moneda) : numero(leido.monto)
+}
+
+/**
+ * La ayuda del monto. «Detectado» solo mientras es el que se leyó: el que la
+ * persona escribió no se le atribuye al documento. «No se leyó» solo cuando
+ * terminó de leerse uno sin total (`leido` es null antes y mientras se lee).
+ */
+export function ayudaDelMonto(total: TotalCotizacion, leido: TotalCotizacion | null): string {
+  if (leido?.monto && !totalDelDocumentoSiNoCalza(total, leido)) return 'Detectado en el documento; confirma o corrige el total final.'
+  if (leido && !leido.monto && !total.monto) return 'No se leyó el total: escríbelo como aparece en la cotización.'
+  return 'El total final, como aparece en la cotización.'
 }
 
 /**

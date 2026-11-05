@@ -176,9 +176,12 @@ const OTRO = `ZÚÑIGA ROJAS ${sello}, MARÍA`
 await consulta(`insert into public.trabajadores (nombres, apellidos, dni, creado_por) values ('ÁNGEL', $1, $2, $5), ('MARÍA', $3, $4, $5)`,
   [`ZÚÑIGA PEÑA ${sello}`, `${DNI}1`, `ZÚÑIGA ROJAS ${sello}`, `${DNI}2`, logistico])
 // Una planilla en preparación con alguien que no tiene ficha: ya no sale el reparto entre OT.
+// El nombre lleva el sello en letras: la planilla compara los nombres sin sus cifras, y el
+// de una tanda anterior chocaba («ya está en la planilla de taller de este mes»).
+const PERSONA = `PERSONA BANCO ${[...sello].map((d) => 'ABCDEFGHIJ'[Number(d)]).join('')}`
 const planilla = await uno(`insert into public.planillas (tipo, periodo, moneda, registrado_por) values ('TALLER', '2099-12-01', 'PEN', $1)
                             on conflict (tipo, periodo) do update set tipo = excluded.tipo returning id, estado`, [logistico])
-await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, `PERSONA BANCO ${sello}`, logistico])
+await consulta(`insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por) values ($1, $2, 1, $3)`, [planilla.id, PERSONA, logistico])
 console.log(`Sembrado con el sello ${sello} (OT ${ot.numero}).`)
 
 // ---------------------------------------------------------------- navegador
@@ -599,6 +602,65 @@ for (const ancho of [390, 1280]) {
       `${ruta} (${puesto}): «${enlace}» conserva lo escrito (${escrita.search}) y el término puesto (${puesta.search})`)
   }
 
+  // Trabajos sin orden: la caja dice lo que filtra la lista, y la pastilla se
+  // lleva lo escrito (D4 de diseño, cuadragésima séptima pasada). Era un
+  // formulario sin control: la pastilla, que cambia solo la búsqueda, la
+  // dejaba con lo escrito sin buscar, o vacía, sobre una lista con otro filtro.
+  {
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const caja = pagina.getByRole('searchbox', { name: 'Buscar un trabajo' })
+    const pastilla = (nombre) => pagina.getByRole('group', { name: 'Filtrar por estado' }).getByRole('link', { name: nombre, exact: true })
+    await pagina.goto(`${BASE}/avance/trabajos`, { waitUntil: 'networkidle' })
+    await caja.pressSequentially('tolva', { delay: 10 })
+    await pastilla('Cerrados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'SALIO', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const escrita = new URL(pagina.url())
+    const conLoEscrito = await caja.inputValue()
+    await pagina.goto(`${BASE}/avance/trabajos?buscar=cabina`, { waitUntil: 'networkidle' })
+    const alEntrar = await caja.inputValue()
+    await caja.fill('')
+    await pastilla('Terminados').click()
+    await pagina.waitForURL((u) => u.searchParams.get('estado') === 'LISTA', { timeout: 15000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    const vaciada = new URL(pagina.url())
+    const trasVaciar = await caja.inputValue()
+    comprobar(escrita.searchParams.get('buscar') === 'tolva' && conLoEscrito === 'tolva' && alEntrar === 'cabina' && !vaciada.searchParams.has('buscar') && trasVaciar === '',
+      `/avance/trabajos (sup.mtz): la pastilla se lleva lo escrito y la caja dice lo que filtra la lista (${escrita.search} «${conLoEscrito}»; con ?buscar=cabina «${alEntrar}», vaciada ${vaciada.search} «${trasVaciar}»)`)
+    comprobar(await pagina.getByRole('button', { name: /^Buscar$/ }).count() === 0 && errores.length === 0,
+      `/avance/trabajos (sup.mtz): sin botón «Buscar» que apretar ni errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
+  // Trabajos sin orden busca como las demás listas, sin tildes y por palabras
+  // en cualquier orden: con la frase entera en un `ilike`, «pestana» no
+  // encontraba «pestaña» (F2 de funcionalidad, cuadragésima octava pasada). Y
+  // sin nada, el consejo nombra las pestañas donde sí puede estar: decía
+  // siempre «Cerrados», también en Cerrados (D2 de diseño).
+  {
+    const { id } = await uno(
+      `insert into public.flota_unidades (trabajo, descripcion, cliente) values ($1, $2, $3) returning id`,
+      [`Trabajo del buscador ${sello}`, `Tolva de la pestaña vieja ${sello}`, `Transportes Núñez ${sello}`],
+    )
+    const { pagina, errores } = await sesion('sup.mtz')
+    errores.length = 0
+    const encontrado = {}
+    for (const texto of [`pestana ${sello}`, `PESTANA vieja ${sello}`, `vieja tolva ${sello}`, `tolva, vieja (${sello})`, `nunez ${sello}`]) {
+      await pagina.goto(`${BASE}/avance/trabajos?buscar=${encodeURIComponent(texto)}`, { waitUntil: 'networkidle' })
+      encontrado[texto] = await pagina.locator(`a[href="/avance/trabajos/${id}"]`).count()
+    }
+    comprobar(Object.values(encontrado).every((n) => n === 1),
+      `/avance/trabajos (sup.mtz): busca sin tildes y por palabras en cualquier orden (${JSON.stringify(encontrado)})`)
+    const consejo = {}
+    for (const [pestana, estado] of [['En curso', ''], ['Terminados', 'LISTA'], ['Cerrados', 'SALIO']]) {
+      await pagina.goto(`${BASE}/avance/trabajos?${estado ? `estado=${estado}&` : ''}buscar=zzqq${sello}`, { waitUntil: 'networkidle' })
+      consejo[pestana] = await pagina.getByText(/^La búsqueda mira solo la pestaña elegida/).innerText().catch(() => '')
+    }
+    comprobar(consejo['En curso'].endsWith('prueba en «Cerrados».') && consejo.Terminados.endsWith('prueba en «En curso» o en «Cerrados».') && consejo.Cerrados.endsWith('prueba en «En curso».'),
+      `/avance/trabajos (sup.mtz): sin resultados, el consejo nombra las otras pestañas (${JSON.stringify(consejo)})`)
+    comprobar(errores.length === 0, `/avance/trabajos (sup.mtz): al buscar, sin errores de consola${errores.length ? ` (${errores.join(' | ')})` : ''}`)
+  }
+
   // Órdenes: «Limpiar» quita la búsqueda y también la prioridad.
   {
     const { pagina } = await sesion('gerencia')
@@ -675,7 +737,7 @@ for (const ancho of [390, 1280]) {
   {
     const { pagina } = await sesion('rrhh')
     await pagina.goto(`${BASE}/rrhh`, { waitUntil: 'networkidle' })
-    const fila = pagina.locator('details', { hasText: `PERSONA BANCO ${sello}` })
+    const fila = pagina.locator('details', { hasText: PERSONA })
     const texto = (await fila.first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     comprobar(texto.includes('sin ficha en Personal'), `Planillas (RRHH): la persona sin ficha dice cómo entra al costo («${texto.slice(0, 120)}», estado ${planilla.estado})`)
     comprobar((await pagina.getByText('Repartir en partes iguales').count()) === 0 && !texto.includes('Repartido'), 'Planillas (RRHH): sin reparto entre las OT')

@@ -2,7 +2,7 @@
 
 import { Check, MessageSquareWarning, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -272,7 +272,9 @@ function Cifra({ titulo, children }: { titulo: string; children: React.ReactNode
 /** Repartir el 100 % en partes iguales entre los planos; pregunta antes porque pisa los pesos puestos. */
 function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
   const [confirmando, setConfirmando] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(repartirPesoDePlanos, () => setConfirmando(false))
+  // Manda solo la orden, como «Dar por entregados»: sin decir cuál es, el envío
+  // de uno se llevaba la línea de arriba del otro.
+  const { alEnviar, enviando, error, limpiar } = useEnvio(repartirPesoDePlanos, () => setConfirmando(false), { documento: `repartir-peso:${ordenId}` })
 
   if (!confirmando) {
     return (
@@ -308,7 +310,7 @@ function RepartirPeso({ ordenId, cuantos }: { ordenId: string; cuantos: number }
 /** Entregar de una vez todos los planos que faltan, con la misma fecha. */
 function EntregarPendientes({ ordenId, cuantos }: { ordenId: string; cuantos: number }) {
   const [abierto, setAbierto] = useState(false)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(entregarPlanosPendientes, () => setAbierto(false))
+  const { alEnviar, enviando, error, limpiar } = useEnvio(entregarPlanosPendientes, () => setAbierto(false), { documento: `entregar-pendientes:${ordenId}` })
 
   if (!abierto) {
     return (
@@ -492,6 +494,30 @@ function TarjetaPlano({
   const [historial, setHistorial] = useState(false)
   const entregado = Boolean(plano.fecha_entrega)
   const planoId = plano.plano_id ?? ''
+  const lapiz = useRef<HTMLButtonElement>(null)
+  const volverAlLapiz = useRef(false)
+  const [guardando, setGuardando] = useState(false)
+  const [dicho, setDicho] = useState('')
+
+  // La corrección guardada se cierra con la tarjeta ya corregida: `useEnvio`
+  // corre su `alTerminar` en la transición que pone la página al día (`corrige`). Al
+  // cerrarse, el lector oye que se guardó, y el cursor, que se quedaba en la
+  // página, vuelve al lápiz. Solo si quedó sin lugar: a quien ya escribía en
+  // otro plano mientras este se guardaba, el salto le cortaba lo escrito, le
+  // movía la página y cada espacio abría y cerraba este formulario (D1 de diseño,
+  // quincuagésima segunda pasada).
+  function alCerrarLaCorreccion(mensaje?: string) {
+    volverAlLapiz.current = true
+    setModo('ver')
+    if (mensaje) setDicho(mensaje)
+  }
+  useEffect(() => {
+    if (modo !== 'ver' || !volverAlLapiz.current) return
+    volverAlLapiz.current = false
+    const activo = document.activeElement
+    if (activo && activo !== document.body) return
+    lapiz.current?.focus()
+  }, [modo])
 
   return (
     <Tarjeta id={`plano-${planoId}`}>
@@ -533,15 +559,22 @@ function TarjetaPlano({
             {puedeDisenar && (
               <>
                 {!entregado && (
-                  <Boton variante="secundario" tamano="sm" onClick={() => setModo(modo === 'entregar' ? 'ver' : 'entregar')}>
+                  <Boton variante="secundario" tamano="sm" disabled={guardando} onClick={() => setModo(modo === 'entregar' ? 'ver' : 'entregar')}>
                     Entregar
                   </Boton>
                 )}
                 <Boton
+                  ref={lapiz}
                   variante="fantasma"
                   tamano="icono"
                   aria-label="Editar el plano"
-                  onClick={() => setModo(modo === 'editar' ? 'ver' : 'editar')}
+                  ocupado={guardando}
+                  onClick={() => {
+                    // Lo dicho de la corrección anterior se va al abrir otra: si no, la
+                    // siguiente vuelve con el mismo texto y el lector no la anuncia.
+                    setDicho('')
+                    setModo(modo === 'editar' ? 'ver' : 'editar')
+                  }}
                 >
                   <Pencil aria-hidden className="size-4" />
                 </Boton>
@@ -549,6 +582,7 @@ function TarjetaPlano({
                   variante="fantasma"
                   tamano="icono"
                   aria-label="Quitar el plano"
+                  disabled={guardando}
                   onClick={() => setModo(modo === 'quitar' ? 'ver' : 'quitar')}
                 >
                   <Trash2 aria-hidden className="size-4" />
@@ -568,8 +602,9 @@ function TarjetaPlano({
         <FormularioEntrega ordenId={ordenId} planoId={planoId} alTerminar={() => setModo('ver')} />
       )}
       {modo === 'editar' && (
-        <FormularioPlano ordenId={ordenId} plano={plano} etapas={etapas} alTerminar={() => setModo('ver')} />
+        <FormularioPlano ordenId={ordenId} plano={plano} etapas={etapas} alCambiarEnvio={setGuardando} alTerminar={alCerrarLaCorreccion} />
       )}
+      <p role="status" className="sr-only">{dicho}</p>
       {modo === 'quitar' && (
         <ConfirmarQuitar
           accion={quitarPlano}
@@ -617,7 +652,7 @@ function FormularioEntrega({
   planoId: string
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(entregarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(entregarPlano, alTerminar, { documento: planoId })
 
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-end gap-3 border-t border-borde bg-superficie-2 px-4 py-3">
@@ -643,14 +678,26 @@ function FormularioPlano({
   ordenId,
   plano,
   etapas,
+  alCambiarEnvio,
   alTerminar,
 }: {
   ordenId: string
   plano: PlanoCumplimiento
   etapas: { id: string; nombre: string }[]
-  alTerminar: () => void
+  alCambiarEnvio: (enviando: boolean) => void
+  alTerminar: (mensaje?: string) => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(editarPlano, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(editarPlano, (resultado) => alTerminar(resultado.mensaje ?? 'Plano actualizado.'), {
+    documento: plano.plano_id ?? undefined,
+    corrige: true,
+  })
+  // Mientras se guarda, la corrección no se cierra: el lápiz de la tarjeta gira
+  // y «Cancelar», «Entregar» y «Quitar» se apagan. Cerrarla en vuelo y volver a
+  // abrirla también traía lo de antes.
+  useEffect(() => {
+    alCambiarEnvio(enviando)
+    return () => alCambiarEnvio(false)
+  }, [enviando, alCambiarEnvio])
   const id = plano.plano_id ?? ''
 
   return (
@@ -692,7 +739,7 @@ function FormularioPlano({
         </div>
       )}
       <div className="flex justify-end gap-2 sm:col-span-6">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={() => alTerminar()}>
           Cancelar
         </Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>
@@ -718,7 +765,7 @@ function ConfirmarQuitar({
   texto: string
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(accion, alTerminar)
+  const { alEnviar, enviando, error } = useEnvio(accion, alTerminar, { documento: id })
 
   return (
     <form onSubmit={alEnviar} className="flex flex-wrap items-center gap-3 border-t border-borde bg-peligro-suave px-4 py-3">
@@ -1309,7 +1356,8 @@ function FormularioPieza({
   pieza: PiezaCumplimiento
   alTerminar: () => void
 }) {
-  const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar)
+  // Se cierra con la pieza ya corregida (`corrige`), y mientras guarda no se cancela.
+  const { alEnviar, enviando, error } = useEnvio(editarPieza, alTerminar, { corrige: true })
   const id = pieza.id ?? ''
   const uid = useId()
 
@@ -1336,7 +1384,7 @@ function FormularioPieza({
         </div>
       )}
       <div className="flex justify-end gap-2 sm:col-span-5">
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={alTerminar}>
+        <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={alTerminar}>
           Cancelar
         </Boton>
         <Boton type="submit" tamano="sm" cargando={enviando}>

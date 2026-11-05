@@ -10,6 +10,7 @@ export function EncabezadoPagina({
   ayuda,
   migas,
   acciones,
+  estado,
 }: {
   titulo: ReactNode
   /** Lo que cambia y hay que ver de un vistazo: la fecha, el área, un total. */
@@ -21,6 +22,14 @@ export function EncabezadoPagina({
   ayuda?: ReactNode
   migas?: { titulo: string; ruta?: string }[]
   acciones?: ReactNode
+  /**
+   * Lo que dice cómo va lo que se envió con un botón de `acciones` (que sigue
+   * en camino, que entró, por qué no): en su propio renglón, debajo. Junto al
+   * botón lo corría de lugar y, si no cabía, bajaba las acciones a otra fila:
+   * quien volvía a tocar donde estaba no lo encontraba (diseño H3 de la
+   * trigesimoquinta pasada).
+   */
+  estado?: ReactNode
 }) {
   // Unas migas sin ningún enlace no llevan a ninguna parte y casi siempre
   // repiten el título de abajo («Requerimientos» sobre «Requerimientos»): son
@@ -71,6 +80,12 @@ export function EncabezadoPagina({
             empujar la pantalla de costado. */}
         {acciones && <div className="flex min-w-0 flex-wrap items-center gap-2">{acciones}</div>}
       </div>
+      {/* Sin margen mientras no dice nada: las regiones van montadas y vacías, fuera de la vista. */}
+      {estado && (
+        <div data-estado-del-encabezado className="flex flex-col gap-1 text-pretty has-[>:not(.sr-only)]:mt-2 sm:items-end sm:text-right">
+          {estado}
+        </div>
+      )}
     </div>
   )
 }

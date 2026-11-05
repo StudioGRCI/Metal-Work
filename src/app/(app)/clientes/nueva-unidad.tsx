@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { TIPOS_VEHICULO } from '@/lib/dominio/unidades'
-import { useEnvio } from '@/lib/envio'
+import { esPlacaRepetida, TIPOS_VEHICULO } from '@/lib/dominio/unidades'
+import { suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
@@ -18,21 +18,40 @@ export function NuevaUnidad({
   clienteId,
   unidad,
   onCreada,
+  alQuedarEnDuda,
   compacta = false,
 }: {
   clienteId: string
   unidad?: UnidadEditable
-  /** Para los formularios que quieren quedarse con la unidad recién creada. */
+  /**
+   * Para los formularios que quieren quedarse con la unidad recién creada.
+   * `elegir`: la ventana seguía abierta al entrar. Si la persona la cerró con
+   * el alta en camino, la unidad entra igual, pero no se elige (F3 de la
+   * crítica, quincuagésima cuarta pasada).
+   */
   // La placa puede faltar: quien reciba la unidad recién creada la nombra con
   // nombreDeUnidad(), no dando por hecho que hay matrícula.
-  onCreada?: (unidad: {
-    id: string
-    placa: string | null
-    codigo_interno?: string | null
-    numero_chasis?: string | null
-    marca?: string | null
-    modelo?: string | null
-  }) => void
+  onCreada?: (
+    unidad: {
+      id: string
+      placa: string | null
+      codigo_interno?: string | null
+      numero_chasis?: string | null
+      marca?: string | null
+      modelo?: string | null
+    },
+    como: { elegir: boolean },
+  ) => void
+  /**
+   * El alta volvió sin decir si entró (sin respuesta, o el servidor caído a
+   * medio envío): quien guarda la lista de unidades la vuelve a leer y dice
+   * junto a su campo que puede haber quedado. La unidad entraba y no estaba en
+   * «Unidad», donde la ventana mandaba a buscarla, y sin placa se registraba
+   * dos veces (G2 de la crítica, quincuagésima quinta pasada). Corre desde el
+   * envío (`alQuedarEnDuda` de `useEnvio`), aunque la ventana se haya
+   * cancelado y el cliente cambiado: quien escucha mira de qué cliente era.
+   */
+  alQuedarEnDuda?: () => void
   compacta?: boolean
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -40,12 +59,24 @@ export function NuevaUnidad({
   // la unidad nueva, es un alta suelta: se repinta la lista de atrás.
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     guardarUnidad,
-    (r) => {
+    (r, desde) => {
+      const elegir = suVentanaSigueAbierta(desde)
       setAbierto(false)
-      if (r.datos) onCreada?.(r.datos)
+      if (r.datos) onCreada?.(r.datos, { elegir })
     },
-    { refrescar: !onCreada },
+    // Con `unidad` corrige la que la ficha muestra: se cierra con la ficha ya
+    // al día (`corrige`). El alta se cierra al contestar.
+    { refrescar: !onCreada, corrige: Boolean(unidad), alQuedarEnDuda: unidad ? undefined : alQuedarEnDuda },
   )
+  // La placa que el cliente ya tiene es de su campo: lo marca y el cursor va
+  // ahí, con dónde está la que ya existe. Abajo mandaba a buscarla en la ficha,
+  // y en la orden nueva estaba en «Unidad», detrás de la ventana (D5 de
+  // diseño, cuadragésima cuarta pasada).
+  const campoPlaca = useRef<HTMLInputElement>(null)
+  const errorPlaca = esPlacaRepetida(error)
+    ? `${error}${unidad || / desactivada/.test(error ?? '') ? '' : onCreada ? ' Elígela en «Unidad», detrás de esta ventana.' : ' Está en sus unidades, detrás de esta ventana.'}`
+    : null
+  useCursorAlRechazo(enviando, error, () => (errorPlaca ? campoPlaca.current : null))
 
   function abrir() {
     limpiar()
@@ -149,12 +180,14 @@ export function NuevaUnidad({
             etiqueta="Placa"
             htmlFor="nu-placa"
             ayuda="Déjala vacía si el chasis todavía no está matriculado: la unidad se nombra sola con el chasis o el código interno hasta que tenga placa."
+            error={errorPlaca ?? undefined}
           >
             {/* La placa se escribe en mayúsculas y nunca la sabe el
                 navegador: sin esto el teclado del teléfono la empieza en
                 minúscula y el corrector la "arregla". Teclado normal, que la
                 placa peruana lleva letras. */}
             <Entrada
+              ref={campoPlaca}
               id="nu-placa"
               name="placa"
               autoComplete="off"
@@ -203,14 +236,15 @@ export function NuevaUnidad({
             <AreaTexto id="nu-observaciones" name="observaciones" rows={2} defaultValue={unidad?.observaciones ?? ''} />
           </Campo>
 
-          {error && (
+          {error && !errorPlaca && (
             <p role="alert" className="rounded-[var(--radius-base)] bg-peligro-suave px-3 py-2 text-xs text-peligro sm:col-span-3">
               {error}
             </p>
           )}
 
           <div className="flex justify-end gap-2 sm:col-span-3">
-            <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierto(false)}>
+            {/* Apagado solo al corregir (`corrige`): el alta se cancela en vuelo, como siempre. */}
+            <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando && Boolean(unidad)} onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>

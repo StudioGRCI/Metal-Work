@@ -166,7 +166,8 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
+    // El corte a propósito de la sección 7 deja su error de red en la consola.
+    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket') && !/ERR_CONNECTION_RESET|Failed to fetch/.test(m.text())) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
   pagina.on('response', (r) => {
     if (r.status() >= 400) errores.push(`${correo}: ${r.status()} ${r.request().method()} ${r.url().replace(/[?#].*$/, '')}`)
@@ -183,6 +184,53 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   return { pagina, contexto }
 }
 const anchoDe = (pagina) => pagina.evaluate(() => document.documentElement.scrollWidth)
+
+// La acción de servidor que lleva `corte.armado` en su cuerpo llega y se
+// cumple; su respuesta no llega. `quedan` cuenta cuántas veces: la subida
+// repite sola el envío cuando no le llega la respuesta, así que para que la
+// persona vea «No llegó la respuesta» se cortan las dos.
+async function armarCorte(contexto, pagina) {
+  const cdp = await contexto.newCDPSession(pagina)
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response' }] })
+  const corte = { armado: null, quedan: 0, cortadas: 0 }
+  const cuerpo = (r) => r.postData ?? (r.postDataEntries ?? []).map((x) => Buffer.from(x.bytes ?? '', 'base64').toString()).join('')
+  cdp.on('Fetch.requestPaused', async (e) => {
+    const h = Object.fromEntries(Object.entries(e.request.headers).map(([k, v]) => [k.toLowerCase(), v]))
+    if (corte.armado && corte.quedan > 0 && e.request.method === 'POST' && h['next-action'] && cuerpo(e.request).includes(corte.armado)) {
+      if (--corte.quedan === 0) corte.armado = null
+      corte.cortadas++
+      return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'ConnectionReset' }).catch(() => {})
+    }
+    return cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {})
+  })
+  return corte
+}
+
+/**
+ * Envía con las dos respuestas cortadas, cambia algo y vuelve a enviar: el
+ * primer envío ya había entrado. Devuelve lo que la ventana muestra 4 s
+ * después del aviso: antes de 68b43d7 se cerraba sola en menos de uno.
+ */
+async function reenviarTrasElCorte(pagina, corte, v, { boton, marca, cambiar }) {
+  corte.armado = marca
+  corte.quedan = 2
+  await v.getByRole('button', { name: boton }).click()
+  const sinRespuesta = await v.locator('[role="alert"]', { hasText: 'No llegó la respuesta' }).waitFor({ timeout: 45000 }).then(() => true, () => false)
+  await cambiar()
+  await v.getByRole('button', { name: boton }).click()
+  const neutro = v.locator('[data-ya-entro]')
+  await neutro.waitFor({ timeout: 30000 }).catch(() => {})
+  await pagina.waitForTimeout(4000)
+  return {
+    sinRespuesta,
+    cortadas: corte.cortadas,
+    dijo: limpio(await neutro.textContent().catch(() => '')),
+    sigue: await neutro.isVisible().catch(() => false),
+    cursor: await neutro.evaluate((p) => document.activeElement === p).catch(() => false),
+    soloCerrar: (await v.getByRole('button', { name: boton }).count()) === 0
+      && (await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).count()) === 1,
+  }
+}
 
 try {
   // ------------------------------------------------------------ 2. Contabilidad, nota por lo devuelto
@@ -315,6 +363,99 @@ try {
   // Desde la misma dirección, el ancla sola no recarga: se recarga la página.
   await con.reload({ waitUntil: 'networkidle' })
   comprobar((await con.locator(`#notas-credito [data-espera-nota="${ocNumero}"]`).count()) === 1, 'la devolución vuelve a esperar su nota')
+
+  // ------------------------------------------------------------ 7. La respuesta perdida y el reenvío con otro importe
+  // La nota y la devolución del dinero suben su archivo a una ruta nueva en
+  // cada envío: reenviadas tras una respuesta perdida, ya entraron la primera
+  // vez. La ventana lo dice sin rojo y con el cursor en el aviso, solo ofrece
+  // «Cerrar», sigue a la vista hasta que se cierra, el archivo nuevo no queda
+  // suelto y, al volver a abrirla, se puede registrar otra.
+  {
+    const { pagina: c7, contexto: x7 } = await entrar(CUENTAS.contabilidad)
+    const corte = await armarCorte(x7, c7)
+    await c7.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+    await c7.locator(`table [data-registrar-nota="${F1}"]`).click()
+    v = c7.getByRole('dialog')
+    await v.waitFor()
+    await v.locator('select[name="tipo"]').selectOption('DESCUENTO')
+    await v.locator('input[name="numero"]').fill(`FC01-${SUFIJO}7`)
+    await v.locator('input[name="monto"]').fill('3')
+    const motivo7 = `Descuento por embalaje roto ${SUFIJO}`
+    await v.locator('textarea[name="motivo"]').fill(motivo7)
+    await v.locator('input[name="archivo"]').setInputFiles(PDF_NOTA)
+    const vio = await reenviarTrasElCorte(c7, corte, v, {
+      boton: 'Registrar la nota',
+      marca: motivo7,
+      cambiar: () => v.locator('input[name="monto"]').fill('4'),
+    })
+    comprobar(vio.sinRespuesta && vio.cortadas === 2, `[Contabilidad] se pierden las dos respuestas de la nota y la ventana dice «No llegó la respuesta» (${vio.cortadas} cortadas)`)
+    comprobar(vio.dijo.includes('Esta nota de crédito ya quedó registrada la primera vez que la enviaste') && vio.sigue && vio.cursor && vio.soloCerrar,
+      `[Contabilidad] con otro importe, dice sin rojo que ya quedó, con el cursor en el aviso, solo ofrece «Cerrar» y sigue a la vista 4 s después (${JSON.stringify(vio)})`)
+    const notas7 = await consulta(`select monto::float as monto, archivo_ruta from notas_credito_compra where numero = $1`, [`FC01-${SUFIJO}7`])
+    const sueltos7 = await consulta(
+      `select o.name from storage.objects o where o.bucket_id = 'notas-credito' and o.name like $1
+          and not exists (select 1 from notas_credito_compra n where n.archivo_ruta = o.name)
+          and not exists (select 1 from reembolsos_nota_credito r where r.archivo_ruta = o.name)`,
+      [`${f1}/%`],
+    )
+    comprobar(notas7.length === 1 && notas7[0].monto === 3 && sueltos7.length === 0,
+      `[Contabilidad] queda la nota de la primera vez, por 3, y ningún PDF suelto (${notas7.length} nota, ${notas7[0]?.monto}; ${sueltos7.length} sueltos)`)
+    await c7.screenshot({ path: join(CAPTURAS, '7-contabilidad-ya-quedo.png'), fullPage: true })
+    await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+    await v.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+    const enLaTabla = await c7.locator(`table [data-nota-credito="FC01-${SUFIJO}7"]`).waitFor({ timeout: 15000 }).then(() => true, () => false)
+    comprobar(enLaTabla, '[Contabilidad] al cerrar, la tabla ya muestra la nota que entró')
+    await c7.locator(`table [data-registrar-nota="${F1}"]`).click()
+    v = c7.getByRole('dialog')
+    await v.waitFor()
+    const limpia = (await v.locator('[role="alert"]').count()) === 0 && (await v.getByRole('button', { name: 'Registrar la nota' }).count()) === 1
+    comprobar(limpia, '[Contabilidad] al volver a abrir, la ventana llega sin el aviso y deja registrar otra')
+    await v.getByRole('button', { name: 'Cancelar' }).click()
+    await x7.close()
+
+    const { pagina: t7, contexto: y7 } = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
+    const corteT = await armarCorte(y7, t7)
+    await t7.goto(`${BASE}/tesoreria/por-pagar#notas-credito`, { waitUntil: 'networkidle' })
+    const tarjeta7 = t7.locator(`[data-nota-a-favor="FC01-${SUFIJO}1"]`)
+    comprobar(limpio(await tarjeta7.textContent()).includes('A favor S/ 20.00'), '[Tesorería] quitado el descuento, la nota vuelve a tener S/ 20.00 a favor')
+    await tarjeta7.getByRole('button', { name: `El proveedor devolvió lo de la nota FC01-${SUFIJO}1` }).click()
+    v = t7.getByRole('dialog')
+    await v.waitFor()
+    const valor7 = await v.locator('select[name="caja_id"] option', { hasText: CAJA }).getAttribute('value')
+    await v.locator('select[name="caja_id"]').selectOption(valor7)
+    await v.locator('input[name="monto"]').fill('5')
+    await v.locator('input[name="operacion"]').fill(`OP-CORTE-${SUFIJO}`)
+    await v.locator('input[name="archivo"]').setInputFiles(PDF_NOTA)
+    const vioT = await reenviarTrasElCorte(t7, corteT, v, {
+      boton: 'Registrar la devolución',
+      marca: `OP-CORTE-${SUFIJO}`,
+      cambiar: () => v.locator('input[name="monto"]').fill('6'),
+    })
+    comprobar(vioT.sinRespuesta && vioT.dijo.includes('Esta devolución ya quedó registrada la primera vez que la enviaste') && vioT.sigue && vioT.cursor && vioT.soloCerrar,
+      `[Tesorería 390] la devolución del dinero con otro importe: aviso sin rojo, cursor en él, solo «Cerrar», a la vista 4 s después (${JSON.stringify(vioT)})`)
+    const reem7 = await consulta(`select monto::float as monto from reembolsos_nota_credito where nota_credito_id = $1 and operacion = $2`, [n2?.id, `OP-CORTE-${SUFIJO}`])
+    const caja7 = await consulta(`select count(*)::int as n from movimientos_caja m join reembolsos_nota_credito r on r.id = m.origen_id where m.origen = 'REEMBOLSO_NOTA_CREDITO' and r.operacion = $1`, [`OP-CORTE-${SUFIJO}`])
+    const sueltosT = await consulta(
+      `select o.name from storage.objects o where o.bucket_id = 'notas-credito' and o.name like $1
+          and not exists (select 1 from reembolsos_nota_credito r where r.archivo_ruta = o.name)`,
+      [`${n2?.id}/%`],
+    )
+    comprobar(reem7.length === 1 && reem7[0].monto === 5 && caja7[0].n === 1 && sueltosT.length === 0,
+      `[Tesorería 390] queda la devolución de la primera vez, por 5, un solo ingreso en la caja y ninguna constancia suelta (${reem7.length}, ${reem7[0]?.monto}; caja ${caja7[0].n}; ${sueltosT.length} sueltos)`)
+    await t7.screenshot({ path: join(CAPTURAS, '7-tesoreria-ya-quedo.png'), fullPage: true })
+    await v.getByRole('button', { name: 'Cerrar' }).filter({ hasText: 'Cerrar' }).click()
+    await v.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+    await t7.waitForFunction((t) => document.querySelector(`[data-nota-a-favor="${t}"]`)?.textContent?.includes('A favor S/ 15.00'), `FC01-${SUFIJO}1`, { timeout: 15000 }).catch(() => {})
+    comprobar(limpio(await tarjeta7.textContent()).includes('A favor S/ 15.00'), '[Tesorería 390] al cerrar, la nota ya dice S/ 15.00 a favor')
+    await tarjeta7.getByRole('button', { name: `El proveedor devolvió lo de la nota FC01-${SUFIJO}1` }).click()
+    v = t7.getByRole('dialog')
+    await v.waitFor()
+    comprobar((await v.locator('[role="alert"]').count()) === 0 && (await v.locator('input[name="monto"]').inputValue()) === '15.00'
+      && (await v.getByRole('button', { name: 'Registrar la devolución' }).count()) === 1,
+      '[Tesorería 390] al volver a abrir, la ventana propone los 15 que quedan, sin el aviso')
+    await v.getByRole('button', { name: 'Cancelar' }).click()
+    await y7.close()
+  }
 } finally {
   await navegador.close()
   await base.end()

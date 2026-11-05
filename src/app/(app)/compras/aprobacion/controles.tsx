@@ -68,7 +68,7 @@ export function FormularioRegla({ regla, puestos }: { regla: ReglaAprobacion | n
 
 export function DecisionCompra({ id, numero, tipo }: { id: string; numero: string; tipo: 'OC' | 'OS' }) {
   const [rechazando, setRechazando] = useState(false)
-  const aprobacion = useAccion(aprobarCompra)
+  const aprobacion = useAccion(aprobarCompra, undefined, { documento: id })
   const rechazo = useEnvio(rechazarCompra, () => setRechazando(false))
 
   function aprobar() {

@@ -78,13 +78,23 @@ const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
 
+// En el banco, la lista de Adquisiciones con la sesión de Tesorería puede no
+// quedar nunca quieta: un pedido por adelantado a la ficha de un proveedor se
+// queda sin respuesta, y `networkidle` vence a los 30 s. Pasa igual en main
+// (tres de tres vueltas, en el mismo paso). Se espera la carga y, como mucho,
+// 15 s de quietud.
+async function ir(pagina, url) {
+  await pagina.goto(url, { waitUntil: 'load' })
+  await pagina.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
+}
+
 async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima' })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
-  await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', correo)
   await pagina.fill('input[type="password"]', CLAVE)
   await Promise.all([
@@ -118,7 +128,7 @@ async function abrir(pagina, href) {
   return { estado: r.status(), tipo: r.headers()['content-type'] ?? '' }
 }
 
-const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+$/, ''))
+const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 
 // ---------------------------------------------------------------- siembra
@@ -220,7 +230,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
   // Desde #96 sus Consultas van Adquisiciones, Proveedores y Valorización, después de su trabajo.
   comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') > items.indexOf('Órdenes de servicio') && items.indexOf('Órdenes de servicio') > 0,
     'Logística tiene Adquisiciones en Consultas, después de su trabajo')
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const cuerpo = limpio(await pagina.locator('main').textContent())
   comprobar(cuerpo.includes('OC que esperan su factura') && cuerpo.includes(oc1.numero) && cuerpo.includes(oc3.numero),
     'Logística ve las OC que esperan su factura')
@@ -231,7 +241,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 // ------------------------------------------------------------- 2. Contabilidad
 {
   const { pagina, contexto } = await entrar(CUENTAS.contabilidad)
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const casilla = (oc) => pagina.locator(`input[name="ordenes_compra"][value="${oc.id}"]`)
   await casilla(oc1).check()
   comprobar(await casilla(oc3).isDisabled(), 'marcada una OC, la de otro proveedor se apaga')
@@ -286,7 +296,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 // ---------------------------------------------------------------- 3. Tesorería
 {
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
-  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/tesoreria/por-pagar`)
   const factura = pagina.locator('article', { hasText: FA })
   const texto = limpio(await factura.textContent())
   comprobar(texto.includes('contado') && texto.includes('Saldo S/ 1,298.00') && texto.includes(oc1.numero),
@@ -344,9 +354,9 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 // ---------------------------------------------------------- 4. Logística, después
 {
   const { pagina, contexto } = await entrar(CUENTAS.logistica)
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   comprobar(limpio(await grupo(pagina, FA)).includes('Pagada'), 'Logística ve la factura pagada')
-  await pagina.goto(`${BASE}/tesoreria/por-pagar`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/tesoreria/por-pagar`)
   comprobar((await pagina.getByRole('button', { name: 'Registrar pago' }).count()) === 0, 'Logística no paga facturas')
   await contexto.close()
 }
@@ -354,7 +364,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 // --------------------------------------------- 4b. La tabla y sus enlaces
 {
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const cabeza = (await pagina.locator('thead th').allTextContents()).map(limpio)
   console.log('     columnas:', cabeza.join(' · '))
   comprobar(cabeza.slice(0, 4).join('|') === 'RQ|OC|Factura|Fecha de factura', 'las columnas van RQ, OC, factura y su fecha')
@@ -378,18 +388,18 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
   // La pagada ya trae sus vouchers: solo la que falta pagar lleva a Cuentas por pagar.
   comprobar((await primera.getByRole('link', { name: 'Pagar en Cuentas por pagar' }).count()) === 0, 'la factura pagada no manda a pagarla')
   const aPagar = await pagina.locator('tbody tr', { hasText: FB }).first().getByRole('link', { name: 'Pagar en Cuentas por pagar' }).getAttribute('href')
-  await pagina.goto(new URL(aPagar, BASE).toString(), { waitUntil: 'networkidle' })
+  await ir(pagina, new URL(aPagar, BASE).toString())
   const destino = decodeURIComponent(new URL(pagina.url()).hash.slice(1))
   comprobar(destino.startsWith('factura-') && limpio(await pagina.locator(`[id="${destino}"]`).textContent().catch(() => '')).includes(FB),
     'Tesorería salta a pagar la que falta en Cuentas por pagar')
 
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   await pagina.locator('tbody tr', { hasText: FA }).first().getByRole('link', { name: PROVEEDOR }).click()
   await pagina.getByText(`RUC ${RUC}`).waitFor({ timeout: 15000 }).catch(() => {})
   comprobar(limpio(await pagina.locator('main').textContent()).includes(RUC), 'el proveedor abre su ficha en Proveedores')
 
   {
-    await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+    await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
     const texto = limpio(await grupo(pagina, FA))
     comprobar(texto.includes(rq1.numero) && texto.includes(rq2.numero), 'la factura muestra los dos RQ que cubre')
     const credito = pagina.locator('tbody tr', { hasText: FB }).first()
@@ -407,8 +417,9 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
     const esperan = (await consulta(`select numero, referencia from public.compras_sin_factura()`)).map(
       (o) => o.numero ?? `Ref. del proveedor: ${o.referencia}`,
     )
-    await pagina.goto(`${BASE}/adquisiciones?vista=sin-factura`, { waitUntil: 'networkidle' })
-    const sinFactura = limpio(await pagina.locator('table').textContent())
+    await ir(pagina, `${BASE}/adquisiciones?vista=sin-factura`)
+    // Con varias OC esperando, la vista tiene una tabla por grupo: se leen las que se ven.
+    const sinFactura = limpio((await pagina.locator('table:visible').allTextContents()).join(' '))
     comprobar(
       !sinFactura.includes(FA) && !sinFactura.includes(FB) &&
         (esperan.length > 0
@@ -417,16 +428,18 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
       `«Esperan su factura» deja solo las OC que esperan su factura (${esperan.length} en el banco)`,
     )
   }
-  await pagina.goto(`${BASE}/adquisiciones?vista=no-calzan`, { waitUntil: 'networkidle' })
-  const noCalzan = limpio(await pagina.locator('table').textContent())
+  await ir(pagina, `${BASE}/adquisiciones?vista=no-calzan`)
+  // La vista tiene más de una tabla (las de cada grupo, y las escondidas que
+  // esperan su turno): se leen las que se ven.
+  const noCalzan = limpio((await pagina.locator('table:visible').allTextContents()).join(' '))
   comprobar(noCalzan.includes(FB) && !noCalzan.includes(FA), '«No calzan» deja solo la que no calza')
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-tesoreria.png'), fullPage: true })
   await contexto.close()
 }
 {
   const { pagina, contexto } = await entrar(CUENTAS.logistica)
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const primera = pagina.locator('tbody tr', { hasText: FA }).first()
   comprobar((await pagina.getByRole('link', { name: 'Pagar en Cuentas por pagar' }).count()) === 0, 'Logística no tiene el enlace a Cuentas por pagar')
   const oc = await abrir(pagina, await primera.getByRole('link', { name: oc1.numero }).getAttribute('href'))
@@ -436,7 +449,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 }
 {
   const { pagina, contexto } = await entrar(CUENTAS.logistica, { width: 390, height: 844 })
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   const ancho = await pagina.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   comprobar(ancho[0] <= ancho[1], `en el teléfono la página no se ensancha (${ancho[0]} de ${ancho[1]} px)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'adquisiciones-tabla-telefono.png'), fullPage: true })
@@ -444,7 +457,7 @@ const CAJA = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 }
 if (ids[CUENTAS.ventas]) {
   const { pagina, contexto } = await entrar(CUENTAS.ventas)
-  await pagina.goto(`${BASE}/adquisiciones?vista=facturas`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/adquisiciones?vista=facturas`)
   comprobar(pagina.url().includes('/sin-permiso'), 'Ventas no entra a Adquisiciones')
   await contexto.close()
 }
@@ -452,7 +465,7 @@ if (ids[CUENTAS.ventas]) {
 // ------------------------------------------- 5. La detracción en Pagos de servicio
 if ((await consulta(`select 1 from ordenes_servicio where referencia in ('QA-OS-1', 'QA-OS-2')`)).length === 2) {
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
-  await pagina.goto(`${BASE}/tesoreria/pagos-de-servicio`, { waitUntil: 'networkidle' })
+  await ir(pagina, `${BASE}/tesoreria/pagos-de-servicio`)
   const afecta = limpio(await pagina.locator('article', { hasText: 'Arenado y pintado' }).textContent().catch(() => ''))
   comprobar(afecta.includes('Detracción 12 %: S/ 283.00') && afecta.includes('Banco de la Nación') && afecta.includes('código PLANTA'),
     'Tesorería ve la detracción de la OS: 12 % de 2 360.00 con IGV, al Banco de la Nación')

@@ -88,8 +88,8 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await enviar.click()
   await enviar.click({ timeout: 1000 }).catch(() => {})
   await enviar.click({ timeout: 1000 }).catch(() => {})
-  await pagina.locator('[role="status"]').waitFor({ timeout: 20000 })
-  const aviso = await pagina.locator('[role="status"]').innerText()
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
+  const aviso = await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText()
   comprobar(/Requerimiento RQ-\d{4}-\d{4} registrado/.test(aviso), `aviso: «${aviso}»`)
   await filasRq.nth(antes).waitFor({ timeout: 20000 })
   // Un momento más por si un segundo envío colado tardara en pintarse.

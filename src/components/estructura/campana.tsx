@@ -23,8 +23,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
   const [abierta, setAbierta] = useState(false)
   const boton = useRef<HTMLButtonElement>(null)
   const cerrar = () => { setAbierta(false); boton.current?.focus() }
-  const { abrir, marcarTodos, marcando, error } = useAvisos(cerrar)
-  const sinLeerAhora = sinLeer
+  const { abrir, marcarTodos, marcando, error, leido, sinLeer: sinLeerAhora } = useAvisos(sinLeer, cerrar)
 
   return (
     <div className="relative" onKeyDown={e => { if (e.key === 'Escape') cerrar() }}>
@@ -83,10 +82,9 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
             ) : (
               <ul>
                 {avisos.map((a) => {
-                  const leido = Boolean(a.leida_en)
                   const contenido = (
                     <>
-                      <p className={cn('text-xs', leido ? 'text-texto-suave' : 'font-semibold text-texto')}>
+                      <p className={cn('text-xs', leido(a) ? 'text-texto-suave' : 'font-semibold text-texto')}>
                         {a.titulo}
                       </p>
                       {a.cuerpo && (
@@ -104,7 +102,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
                           onClick={() => abrir(a)}
                           className={cn(
                             'block w-full px-4 py-3 text-left hover:bg-superficie-2 disabled:opacity-60',
-                            !leido && 'bg-acento-suave/40',
+                            !leido(a) && 'bg-acento-suave/40',
                           )}
                         >
                           {contenido}

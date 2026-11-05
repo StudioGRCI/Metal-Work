@@ -1,20 +1,24 @@
 'use client'
 
-import { CheckCircle2, ClipboardList, FileSpreadsheet } from 'lucide-react'
+import { CheckCircle2, ClipboardList, FileSpreadsheet, RotateCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Ventana } from '@/components/ui/ventana'
 import { DIAS_DEL_CONTEO, motivoDeFechaDeConteo, TANDA_CONTEO } from '@/lib/dominio/conteo-inicial'
+import { laCompilacionDeLaPestana, laPestanaEsDeOtraCuenta, mientrasSeEnvia, motivoDelFallo, NO_SALIO_SE_ACTUALIZO, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA } from '@/lib/envio'
 import { cantidad, hoyLima, sumarDias } from '@/lib/format'
 
 import { leerConteoInicial, registrarConteoInicial, type FilaConteo } from './acciones'
 
 type Resultado = { estado: 'ok' } | { estado: 'error'; mensaje: string }
+
+const NO_SALIO_OTRA_CUENTA = 'No se envió: en otra pestaña entró otra cuenta. Cuando vuelva la tuya, vuelve a registrarlo; lo registrado no se duplica.'
 const ACEPTA_EXCEL = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 /** El tope con que el servidor abre el libro (`abrirLibro`). */
 const MAXIMO_MB_EXCEL = 8
@@ -36,6 +40,8 @@ export function ConteoInicial() {
   const [filas, setFilas] = useState<FilaConteo[] | null>(null)
   const [resultados, setResultados] = useState<Record<string, Resultado>>({})
   const [registrando, setRegistrando] = useState(false)
+  // Cuántas veces se apretó «Registrar»: el resumen de cada vuelta es otro y recibe el cursor.
+  const [intentos, setIntentos] = useState(0)
   const [fechaLeida, setFechaLeida] = useState('')
   // Lo que la fecha tiene mal se dice en la fecha, antes de leer el Excel; si
   // el servidor la rechaza igual (pasó la medianoche), también va ahí.
@@ -57,7 +63,12 @@ export function ConteoInicial() {
   const pendientes = listas.filter((f) => resultados[f.id]?.estado !== 'ok')
   const hechas = Object.values(resultados).filter((r) => r.estado === 'ok').length
   const fallidas = Object.values(resultados).filter((r) => r.estado === 'error').length
+  // Las que no salieron porque entró otra cuenta: si son todas, se dice con qué se envían.
+  const porLaOtraCuenta = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_OTRA_CUENTA).length
+  // Las que no salieron porque la pestaña es de antes del despliegue: desde aquí no van a salir.
+  const porLaVersion = Object.values(resultados).filter((r) => r.estado === 'error' && r.mensaje === NO_SALIO_SE_ACTUALIZO).length
   const terminado = !registrando && Object.keys(resultados).length > 0
+  const botonRegistrar = pendientes.length === 1 ? 'Registrar 1 material' : `Registrar ${pendientes.length} materiales`
 
   function reiniciar() {
     vuelta.current++
@@ -71,7 +82,7 @@ export function ConteoInicial() {
   function cerrar() {
     if (registrando) return
     setAbierta(false)
-    if (Object.keys(resultados).length > 0) router.refresh()
+    if (Object.keys(resultados).length > 0) refrescarSiEsDeLaPestana(router)
     reiniciar()
   }
 
@@ -104,8 +115,8 @@ export function ConteoInicial() {
         setFilas(r.datos?.filas ?? [])
         setFechaLeida(fecha)
       }
-    } catch {
-      if (esta === vuelta.current) setAvisoArchivo('No se pudo leer el conteo: revisa la conexión y elígelo otra vez')
+    } catch (e) {
+      if (esta === vuelta.current) setAvisoArchivo(motivoDelFallo(e, 'No se pudo leer el conteo: revisa la conexión y elígelo otra vez'))
     } finally {
       setLeyendo(false)
       enCurso.current = false
@@ -114,31 +125,61 @@ export function ConteoInicial() {
 
   async function registrar() {
     if (enCurso.current || pendientes.length === 0) return
+    // La sesión pudo cambiar en otra pestaña sin que la traba llegara: se mira en el acto.
+    if (laPestanaEsDeOtraCuenta()) return
     enCurso.current = true
     setRegistrando(true)
-    try {
-      for (let i = 0; i < pendientes.length; i += TANDA_CONTEO) {
-        const tanda = pendientes.slice(i, i + TANDA_CONTEO)
-        const datos = new FormData()
-        datos.set('fecha', fechaLeida)
-        datos.set('filas', JSON.stringify(tanda.map((f) => ({
-          id: f.id, material_id: f.materialId, contado: f.contado, precio: f.precio, moneda: f.moneda, via: f.via,
-        }))))
-        let nuevos: Record<string, Resultado>
-        try {
-          const r = await registrarConteoInicial(null, datos)
-          nuevos = r.ok
-            ? Object.fromEntries((r.datos?.resultados ?? []).map((x) => [x.id, x.error ? { estado: 'error', mensaje: x.error } : { estado: 'ok' }]))
-            : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
-        } catch {
-          nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.' }]))
+    // Como en la planilla: «Volver a cargar» espera a la última tanda y no
+    // recarga encima de una fila que no entró (D17 de la trigesimotercera pasada).
+    await mientrasSeEnvia(async (entro) => {
+      try {
+        let todas = true
+        for (let i = 0; i < pendientes.length; i += TANDA_CONTEO) {
+          // Tanda por tanda, cada una sale con la sesión de ese momento. Si entró
+          // otra cuenta, lo que falta se queda con su motivo y sale cuando vuelva
+          // la tuya (vigesimotercera pasada).
+          if (laPestanaEsDeOtraCuenta()) {
+            const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_OTRA_CUENTA }]))
+            setResultados((previos) => ({ ...previos, ...quedan }))
+            todas = false
+            break
+          }
+          const tanda = pendientes.slice(i, i + TANDA_CONTEO)
+          const datos = new FormData()
+          datos.set('fecha', fechaLeida)
+          datos.set('compilacion', laCompilacionDeLaPestana() ?? '')
+          datos.set('filas', JSON.stringify(tanda.map((f) => ({
+            id: f.id, material_id: f.materialId, contado: f.contado, precio: f.precio, moneda: f.moneda, via: f.via,
+          }))))
+          let nuevos: Record<string, Resultado>
+          try {
+            const r = await registrarConteoInicial(null, datos)
+            nuevos = r.ok
+              ? Object.fromEntries((r.datos?.resultados ?? []).map((x) => [x.id, x.error ? { estado: 'error', mensaje: x.error } : { estado: 'ok' }]))
+              : Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje: r.error }]))
+          } catch (e) {
+            // Una pestaña de antes del último despliegue: ni esta tanda ni las que
+            // siguen salen desde aquí (vigesimoctava pasada). La causa la dice una
+            // vez el resumen, no cada fila (vigesimonovena).
+            const mensaje = motivoDelFallo(e, 'No se confirmó: vuelve a cargar el archivo; lo registrado no se duplica.')
+            if (mensaje === SE_ACTUALIZO_EL_SISTEMA) {
+              const quedan: Record<string, Resultado> = Object.fromEntries(pendientes.slice(i).map((f) => [f.id, { estado: 'error', mensaje: NO_SALIO_SE_ACTUALIZO }]))
+              setResultados((previos) => ({ ...previos, ...quedan }))
+              todas = false
+              break
+            }
+            nuevos = Object.fromEntries(tanda.map((f) => [f.id, { estado: 'error', mensaje }]))
+          }
+          if (Object.values(nuevos).some((x) => x.estado !== 'ok')) todas = false
+          setResultados((previos) => ({ ...previos, ...nuevos }))
         }
-        setResultados((previos) => ({ ...previos, ...nuevos }))
+        if (todas) entro()
+      } finally {
+        setRegistrando(false)
+        setIntentos((n) => n + 1)
+        enCurso.current = false
       }
-    } finally {
-      setRegistrando(false)
-      enCurso.current = false
-    }
+    })
   }
 
   const resumen = filas ? {
@@ -221,7 +262,9 @@ export function ConteoInicial() {
                         {f.errores.length > 0 && (
                           <ul className="mt-1 list-disc pl-4 text-xs text-peligro">{f.errores.map((e) => <li key={e}>{e}</li>)}</ul>
                         )}
-                        {r?.estado === 'error' && <p role="alert" className="mt-1 text-xs text-peligro">{r.mensaje}</p>}
+                        {r?.estado === 'error' && (
+                          <p role={r.mensaje === NO_SALIO_SE_ACTUALIZO ? undefined : 'alert'} className="mt-1 text-xs text-peligro">{r.mensaje}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 sm:justify-end">
                         {f.estado === 'LISTA' && !r && <Insignia tono={f.via === 'SALDO_INICIAL' ? 'exito' : 'info'}>{f.via === 'SALDO_INICIAL' ? 'Saldo inicial' : 'Ajuste'}</Insignia>}
@@ -238,15 +281,27 @@ export function ConteoInicial() {
               {registrando && (
                 <p role="status" className="text-sm text-texto-suave">Registrando… {hechas + fallidas} de {listas.length}</p>
               )}
+              {/* Se lleva el cursor en cada vuelta, como en la planilla: el botón que se
+                  tocó se apagó mientras registraba, y el cursor caía a la página con
+                  la fila que falló al fondo de la lista (vigesimosexta pasada). */}
               {terminado && (
-                <p role="status" className={fallidas ? 'text-sm text-aviso' : 'text-sm text-exito'}>
-                  {hechas === 1 ? 'Se registró 1 material' : `Se registraron ${hechas} materiales`}{fallidas ? `; ${fallidas} no: revisa el mensaje de cada uno.` : '.'}
-                </p>
+                <AvisoEnfocado key={intentos} aviso={fallidas > 0}>
+                  {hechas === 0 ? 'No se registró ningún material' : hechas === 1 ? 'Se registró 1 material' : `Se registraron ${hechas} materiales`}
+                  {!fallidas
+                    ? '.'
+                    : porLaVersion > 0
+                      ? `; ${porLaVersion === 1 ? '1 no salió' : `${porLaVersion} no salieron`} porque el sistema se actualizó mientras tenías la pantalla abierta${fallidas > porLaVersion ? ` (${fallidas - porLaVersion} más, por el motivo de cada uno)` : ''}. Vuelve a cargar la pantalla y elige el archivo otra vez: lo registrado no se duplica.`
+                      : fallidas === porLaOtraCuenta
+                      ? `; ${fallidas === 1 ? '1 no salió' : `${fallidas} no salieron`} porque entró otra cuenta: «${botonRegistrar}» ${fallidas === 1 ? 'lo envía' : 'los envía'}.`
+                      : `; ${fallidas} no: revisa el mensaje de cada uno.`}
+                </AvisoEnfocado>
               )}
               <div className="flex flex-wrap gap-2">
-                {pendientes.length > 0 && !registrando && (
-                  <Boton onClick={registrar}>
-                    {pendientes.length === 1 ? 'Registrar 1 material' : `Registrar ${pendientes.length} materiales`}
+                {/* Desde una pestaña vieja, «Registrar» volvería a fallar igual. */}
+                {pendientes.length > 0 && !registrando && !porLaVersion && <Boton onClick={registrar}>{botonRegistrar}</Boton>}
+                {porLaVersion > 0 && !registrando && (
+                  <Boton onClick={() => window.location.reload()}>
+                    <RotateCw aria-hidden className="size-4" />Volver a cargar la pantalla
                   </Boton>
                 )}
                 {registrando && <Boton cargando disabled>Registrando</Boton>}

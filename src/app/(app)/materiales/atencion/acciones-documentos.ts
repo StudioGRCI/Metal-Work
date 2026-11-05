@@ -90,21 +90,79 @@ export async function registrarDocumentoCompra(
 
   const supabase = await createClient()
   const ruta = `compra/${datos.data.orden_compra_id}/${datos.data.id}.pdf`
+  // Lo que se responde al anexarlo. La OC con boleta que Tesorería ya pagó
+  // directo cambia el paso siguiente, y eso lo dice la base en el momento.
+  const respuesta = async (monedaOrden: string | null | undefined): Promise<ResultadoAccion<{ revisar: boolean; avisaTesoreria: boolean }>> => {
+    if (numeroParte && montoParte) {
+      return {
+        ok: true,
+        mensaje: `Boleta ${numeroParte} adjuntada por ${moneda(montoParte, monedaOrden === 'USD' ? 'USD' : 'PEN')}: Tesorería la paga en «Boletas de una parte» y lo demás de la OC se paga por su factura.`,
+      }
+    }
+    if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
+    // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
+    // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se
+    // pagó de más, y si va en otra moneda no lo toma sola: a Tesorería le llega
+    // el aviso. Cuenta lo neto: un pago que el proveedor devolvió entero no es
+    // pago. Lo dice la base con la misma regla; si no se pudo leer, no se afirma
+    // el paso siguiente.
+    const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
+    if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
+    const s = situacion?.[0]
+    const pagado = Number(s?.neto ?? 0) > 0
+    const revisar = Boolean(s && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false)
+    const deMas = Number(s?.de_mas ?? 0)
+    const m = s?.moneda === 'USD' ? 'USD' : 'PEN'
+    const avisaTesoreria = Boolean(s && !revisar && pagado && s.factura && (deMas > 0 || s.otra_moneda))
+    // Administración también anexa, pero no entra a Adquisiciones: el anexo lo anula Logística.
+    const anulaQuien = puede(perfil, 'adquisiciones.ver') ? 'anula el anexo en Adquisiciones › OC y OS, en la fila de la OC' : 'pide a Logística que anule el anexo en Adquisiciones'
+    const falta = Number(s?.factura_saldo ?? 0)
+    return {
+      ok: true,
+      datos: { revisar, avisaTesoreria },
+      mensaje: errorSituacion || !s
+        ? `Factura ${numeroFactura} adjuntada a la compra.`
+        : revisar
+          ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagado ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
+        : pagado && s.factura && s.otra_moneda
+          ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura va en otra moneda: no toma ese pago sola. Tesorería recibió el aviso para pasarlo al cambio o registrar la devolución.`
+        : pagado && s.factura && deMas > 0
+          ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura ya estaba pagada o es por menos: se pagaron ${moneda(deMas, m)} de más. Tesorería recibió el aviso para pedir la devolución.`
+        : pagado && s.factura
+          ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya la tenía registrada: toma lo que Tesorería pagó por la boleta${falta > 0 ? `, y lo que falta (${moneda(falta, m)}) se paga por ella` : ''}.`
+        : pagado
+          ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: cuando Contabilidad registre la factura, toma ese pago y solo se paga lo que falte.`
+        : s.factura
+          ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad ya la tenía registrada, y la OC se paga por ella en Cuentas por pagar.`
+          : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
+    }
+  }
+  // El mismo envío repetido (no le llegó la respuesta) recibe la misma respuesta
+  // que la primera vez; con otro número, otra fecha, otro monto de la parte u
+  // otra persona ya no es el mismo, y la pantalla no puede decir que quedó lo
+  // que no se guardó.
+  type Anotado = {
+    orden_compra_id: string; subido_por: string; tipo: string; nombre_archivo: string; numero_documento: string | null
+    fecha_emision: string | null; monto_de_la_parte: number | null; parte_trae_igv: boolean | null
+  }
+  const esElMismo = (d: Anotado) =>
+    d.orden_compra_id === datos.data.orden_compra_id && d.subido_por === perfil.id && d.tipo === datos.data.tipo
+    && d.nombre_archivo === datos.data.nombre_archivo && d.numero_documento === (numeroFactura ?? numeroParte)
+    && d.fecha_emision === (fechaFactura ?? fechaParte)
+    && (d.monto_de_la_parte === null ? montoParte === null : Number(d.monto_de_la_parte) === montoParte)
+    && d.parte_trae_igv === traeIgv
+  const ANOTADO = 'orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv, orden:ordenes_compra_materiales(moneda)'
   const { data: existente, error: errorExistente } = await supabase
     .from('documentos_compra_material')
-    .select('id, orden_compra_id, subido_por, tipo, nombre_archivo, numero_documento, monto_de_la_parte, parte_trae_igv')
+    .select(ANOTADO)
     .eq('id', datos.data.id)
     .maybeSingle()
   if (errorExistente) return { ok: false, error: mensajeDeError(errorExistente) }
   if (existente) {
-    if (existente.orden_compra_id !== datos.data.orden_compra_id || existente.subido_por !== perfil.id
-      || existente.tipo !== datos.data.tipo || existente.nombre_archivo !== datos.data.nombre_archivo
-      // El reintento de la boleta de una parte trae el mismo número, el mismo monto y el mismo IGV.
-      || (esParte && (existente.numero_documento !== numeroParte || Number(existente.monto_de_la_parte) !== montoParte
-        || existente.parte_trae_igv !== traeIgv))) {
-      return { ok: false, error: 'Ese identificador ya pertenece a otro documento. Recarga la compra antes de volver a intentar.' }
+    if (!esElMismo(existente)) {
+      return { ok: false, error: 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
     }
-    return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
+    return respuesta(existente.orden?.moneda)
   }
   const { data: archivo, error: errorSubida } = await supabase.storage
     .from('documentos-compras')
@@ -155,11 +213,12 @@ export async function registrarDocumentoCompra(
   if (error) {
     if (error.code === '23505') {
       const repetido = await supabase.from('documentos_compra_material')
-        .select('orden_compra_id, subido_por, tipo, nombre_archivo').eq('id', datos.data.id).maybeSingle()
-      if (!repetido.error && repetido.data?.orden_compra_id === datos.data.orden_compra_id
-        && repetido.data.subido_por === perfil.id && repetido.data.tipo === datos.data.tipo
-        && repetido.data.nombre_archivo === datos.data.nombre_archivo) {
-        return { ok: true, mensaje: 'El documento ya estaba adjuntado a la compra.' }
+        .select(ANOTADO).eq('id', datos.data.id).maybeSingle()
+      // El PDF de esa ruta es el del documento que entró: no se retira.
+      if (!repetido.error && repetido.data) {
+        return esElMismo(repetido.data)
+          ? respuesta(repetido.data.orden?.moneda)
+          : { ok: false, error: 'Este documento ya quedó adjuntado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.' }
       }
     }
     const { error: errorLimpieza } = await supabase.storage.from('documentos-compras').remove([ruta])
@@ -175,48 +234,7 @@ export async function registrarDocumentoCompra(
   revalidatePath('/almacen/kardex')
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')
-  if (numeroParte && montoParte) {
-    return {
-      ok: true,
-      mensaje: `Boleta ${numeroParte} adjuntada por ${moneda(montoParte, guardado.orden?.moneda === 'USD' ? 'USD' : 'PEN')}: Tesorería la paga en «Boletas de una parte» y lo demás de la OC se paga por su factura.`,
-    }
-  }
-  if (!numeroFactura) return { ok: true, mensaje: 'Documento adjuntado a la compra y disponible para Tesorería.' }
-  // La OC con boleta que Tesorería ya pagó directo: registrada, su factura toma
-  // ese pago (migración 20261020210000); si ya estaba pagada o es por menos, se
-  // pagó de más, y si va en otra moneda no lo toma sola: a Tesorería le llega el
-  // aviso. Cuenta lo neto: un pago que el proveedor devolvió entero no es pago. Lo dice la base con la misma regla; si no se pudo leer, no se afirma
-  // el paso siguiente.
-  const { data: situacion, error: errorSituacion } = await supabase.rpc('situacion_de_pago_de_compra', { p_compra: datos.data.orden_compra_id })
-  if (errorSituacion) console.error('No se pudo leer el pago de la OC después de anexar su factura', errorSituacion)
-  const s = situacion?.[0]
-  const pagado = Number(s?.neto ?? 0) > 0
-  const revisar = Boolean(s && s.en_camino_origen === 'REGISTRADA' && s.en_camino_alcanza === false)
-  const deMas = Number(s?.de_mas ?? 0)
-  const m = s?.moneda === 'USD' ? 'USD' : 'PEN'
-  const avisaTesoreria = Boolean(s && !revisar && pagado && s.factura && (deMas > 0 || s.otra_moneda))
-  // Administración también anexa, pero no entra a Adquisiciones: el anexo lo anula Logística.
-  const anulaQuien = puede(perfil, 'adquisiciones.ver') ? 'anula el anexo en Adquisiciones › OC y OS, en la fila de la OC' : 'pide a Logística que anule el anexo en Adquisiciones'
-  const falta = Number(s?.factura_saldo ?? 0)
-  return {
-    ok: true,
-    datos: { revisar, avisaTesoreria },
-    mensaje: errorSituacion || !s
-      ? `Factura ${numeroFactura} adjuntada a la compra.`
-      : revisar
-        ? `Factura ${numeroFactura} adjuntada a la compra, pero Contabilidad la registró para otras OC y no alcanza también para esta: revisa el número. Si no es de esta OC, ${anulaQuien}${pagado ? '; el pago por su boleta no se toca' : ', y la OC se paga por su boleta'}.`
-      : pagado && s.factura && s.otra_moneda
-        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura va en otra moneda: no toma ese pago sola. Tesorería recibió el aviso para pasarlo al cambio o registrar la devolución.`
-      : pagado && s.factura && deMas > 0
-        ? `Factura ${numeroFactura} adjuntada a la compra. Ojo: Tesorería ya pagó esta OC por su boleta y la factura ya estaba pagada o es por menos: se pagaron ${moneda(deMas, m)} de más. Tesorería recibió el aviso para pedir la devolución.`
-      : pagado && s.factura
-        ? `Factura ${numeroFactura} adjuntada a la compra. Contabilidad ya la tenía registrada: toma lo que Tesorería pagó por la boleta${falta > 0 ? `, y lo que falta (${moneda(falta, m)}) se paga por ella` : ''}.`
-      : pagado
-        ? `Factura ${numeroFactura} adjuntada a la compra. Tesorería ya pagó esta OC por su boleta: cuando Contabilidad registre la factura, toma ese pago y solo se paga lo que falte.`
-      : s.factura
-        ? `Factura ${numeroFactura} adjuntada a la compra: Contabilidad ya la tenía registrada, y la OC se paga por ella en Cuentas por pagar.`
-        : `Factura ${numeroFactura} adjuntada a la compra: Contabilidad la registra con su número y su fecha.`,
-  }
+  return respuesta(guardado.orden?.moneda)
 }
 
 const ANULACION = z.object({

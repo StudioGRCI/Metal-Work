@@ -13,7 +13,8 @@ import { guardarDatosDeCuenta } from './acciones'
 /** El lápiz de una cuenta y su ventana con el DNI. */
 export function EditarDatosDeCuenta({ usuarioId, nombre, documento }: { usuarioId: string; nombre: string; documento: string | null }) {
   const [abierta, setAbierta] = useState(false)
-  const envio = useEnvio(guardarDatosDeCuenta, () => setAbierta(false))
+  // Corrige el DNI que la fila muestra: se cierra con la fila ya al día (`corrige`).
+  const envio = useEnvio(guardarDatosDeCuenta, () => setAbierta(false), { corrige: true })
   return (
     <>
       <Boton type="button" variante="fantasma" tamano="icono" aria-label={`Cambiar el DNI de ${nombre}`} onClick={() => setAbierta(true)}>
@@ -37,7 +38,7 @@ export function EditarDatosDeCuenta({ usuarioId, nombre, documento }: { usuarioI
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="contorno" disabled={envio.enviando} onClick={() => setAbierta(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" cargando={envio.enviando}>

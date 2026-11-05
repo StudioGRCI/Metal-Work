@@ -10,7 +10,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
-import { useEnvio } from '@/lib/envio'
+import { motivoDelFallo, useEnvio } from '@/lib/envio'
 
 import { anularAsistencia, buscarPorDni, marcarAsistencia } from './acciones'
 
@@ -55,7 +55,7 @@ export function Marcador({
     let vigente = true
     buscarPorDni(dni)
       .then((r) => vigente && setRespuesta({ dni, ...r }))
-      .catch(() => vigente && setRespuesta({ dni, id: null, error: 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.' }))
+      .catch((e: unknown) => vigente && setRespuesta({ dni, id: null, error: motivoDelFallo(e, 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.') }))
     return () => {
       vigente = false
     }
@@ -126,7 +126,7 @@ function TarjetaPersona({ persona: p, marcas, marca, anula }: { persona: Persona
   const envio = useEnvio(marcarAsistencia, (r) => {
     setMarcaId(crypto.randomUUID())
     setAviso(r.mensaje ?? null)
-  })
+  }, { documento: p.id })
   const vigentes = marcas.filter((m) => m.anulado_en === null)
   const ingreso = vigentes.find((m) => m.tipo === 'INGRESO')
   const salida = vigentes.find((m) => m.tipo === 'SALIDA')
@@ -224,7 +224,8 @@ function LineaMarca({ marca: m, anula }: { marca: Marca; anula: boolean }) {
       ) : m.tipo === 'INGRESO' ? (
         <Insignia tono="exito">A tiempo</Insignia>
       ) : null}
-      {anula && <AnularMarca marca={m} />}
+      {/* Por marca: con otro día, el motivo escrito para la de antes no pasa a la nueva. */}
+      {anula && <AnularMarca key={m.id} marca={m} />}
     </div>
   )
 }

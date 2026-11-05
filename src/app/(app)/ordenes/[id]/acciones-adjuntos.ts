@@ -24,13 +24,16 @@ const esquemaAdjunto = z.object({
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: z.string().max(120).optional(),
-  tamano_bytes: z.coerce.number().int().min(0).optional(),
+  tamano_bytes: z.coerce.number({ error: 'Falta el tamaño del archivo: vuelve a elegirlo.' }).int().min(1, 'El archivo está vacío: elige otro.'),
 })
 
 export async function registrarAdjunto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   const analisis = esquemaAdjunto.safeParse(Object.fromEntries(datos))
-  if (!analisis.success) return { ok: false, error: 'No se pudo leer el archivo.' }
+  if (!analisis.success) {
+    const vacio = analisis.error.issues.find((i) => i.path[0] === 'tamano_bytes')
+    return { ok: false, error: vacio?.message ?? 'No se pudo leer el archivo.' }
+  }
   const v = analisis.data
 
   if (!puede(perfil, v.tipo === 'CRONOGRAMA' ? PUEDEN_SUBIR_CRONOGRAMA : PUEDEN_SUBIR)) {
@@ -51,16 +54,35 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type ?? null,
-      tamano_bytes: v.tamano_bytes ?? null,
+      tamano_bytes: v.tamano_bytes,
     })
     .select('id')
     .maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  const guardado = v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.'
+  if (error) {
+    // La misma subida otra vez: la primera respuesta se perdió y la pantalla
+    // preguntó de nuevo (`anotarSinDejarloSuelto`). Si su ruta —única, con un
+    // uuid de esta subida— ya está anotada en esta orden, por quien sube y con
+    // este archivo, quedó: se dice como la primera vez, sin duplicarla.
+    if (error.code === '23505') {
+      const { data: ya } = await supabase
+        .from('ot_adjuntos')
+        .select('orden_id, tipo, subido_por, nombre_archivo, tamano_bytes')
+        .eq('ruta_storage', v.ruta_storage)
+        .maybeSingle()
+      if (ya && ya.orden_id === v.orden_id && ya.tipo === v.tipo && ya.subido_por === perfil.id
+        && ya.nombre_archivo === v.nombre_archivo && Number(ya.tamano_bytes) === v.tamano_bytes) {
+        revalidatePath(`/ordenes/${v.orden_id}`)
+        return { ok: true, mensaje: guardado }
+      }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
-  return { ok: true, mensaje: v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.' }
+  return { ok: true, mensaje: guardado }
 }
 
 const esquemaQuitar = z.object({ id: z.guid(), orden_id: z.guid() })

@@ -222,7 +222,11 @@ export async function repartirPesoDePlanos(_previo: unknown, datos: FormData): P
   return { ok: true, mensaje: `Peso repartido: ${parte} % a cada uno de los ${planos.length} planos.` }
 }
 
-const esquemaEditarPlano = esquemaPlano.extend({ plano_id: z.guid() })
+// Sin quién lo elaboró ni la entrega de hoy: el formulario de corregir no los
+// trae y la corrección no los toca. Heredados de agregar, ningún plano se podía
+// corregir: decía «Elige quién elaboró el plano.» sin ese campo en la pantalla
+// (D3 de diseño, quincuagésima pasada; venía de main).
+const esquemaEditarPlano = esquemaPlano.omit({ integrante_id: true, entregar_hoy: true }).extend({ plano_id: z.guid() })
 
 /** Corregir los datos del plano sin alterar su fecha de entrega. */
 export async function editarPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {

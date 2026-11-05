@@ -136,9 +136,10 @@ begin
   perform public.registrar_movimiento_caja(pg_temp.id('m2'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 'egreso', 0.15, 'ITF', null, null, null);
   perform public.registrar_movimiento_caja(pg_temp.id('m3'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 'INGRESO', 5000,
                                            'Cobro de prueba', null, null, 3.75);
-  -- El reintento con el mismo id no registra otro.
+  -- El reintento con el mismo id no registra otro. Es el mismo envío si dice lo
+  -- mismo, escrito con otros espacios o en minúsculas (migración 20261023100000).
   perform public.registrar_movimiento_caja(pg_temp.id('m1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 'EGRESO', 1000,
-                                           'OC-0001-MW Ferretería de prueba', null, null, null);
+                                           'OC-0001-MW Ferretería de prueba', 'PLA_SR_O4_1_26/96', '00123', null);
   perform test.afirmar((select count(*) from public.movimientos_caja where caja_id = pg_temp.id('bcp_pen')) = 3,
                        'tres movimientos: el reintento no duplica');
   perform test.afirmar((select codigo_interno = 'PLA_SR_O4_1_26/96' and descripcion = 'OC-0001-MW Ferretería de prueba'

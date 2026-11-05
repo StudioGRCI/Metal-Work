@@ -7,6 +7,7 @@ import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo
 import { CamposDeCorreccion, useCorreccion } from '@/components/correcciones/justificante'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
@@ -71,12 +72,11 @@ export function CorregirRequerimiento({
           />
         )}
       </Ventana>
-      {/* Al final, para no meterse entre Corregir y Anular, y angosto, para no correr la cabecera de la tarjeta. */}
-      {aviso && (
-        <p role="status" className="order-last basis-full text-sm text-exito sm:max-w-80 sm:text-right">
-          {aviso}
-        </p>
-      )}
+      {/* Al final, para no meterse entre Corregir y Anular, y angosto, para no correr la cabecera de la tarjeta.
+          Siempre puesto: el aviso que nace ya con su texto no se anuncia, y quien no ve oía solo «Corregir». */}
+      <p role="status" className={aviso ? 'order-last basis-full text-sm text-exito sm:max-w-80 sm:text-right' : 'sr-only'}>
+        {aviso}
+      </p>
     </>
   )
 }
@@ -99,10 +99,15 @@ function Formulario({
     rq.lineas.map((l) => ({ item: l.item, cantidad: String(l.cantidad), material_id: l.material_id ?? '' })),
   )
   const { corregir, otra } = useCorreccion(rq.id, corregirRequerimiento)
-  const { alEnviar, enviando, error } = useEnvio(corregir, (r) => {
-    otra()
-    alTerminar(r.mensaje ?? null)
-  })
+  // Corrige lo que el RQ muestra: se cierra con el RQ ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    corregir,
+    (r) => {
+      otra()
+      alTerminar(r.mensaje ?? null)
+    },
+    { corrige: true },
+  )
   const opciones = useMemo(
     () =>
       materiales.map((m) => ({
@@ -231,20 +236,14 @@ function Formulario({
       </fieldset>
 
       <CamposDeCorreccion id={rq.id} disabled={enviando} />
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {sinCambios && <p className="mr-auto text-xs text-texto-suave">Todavía no cambiaste nada.</p>}
-        <Boton type="button" variante="contorno" onClick={() => alTerminar(null)}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={sinCambios}>
-          Corregir
-        </Boton>
-      </div>
+      <PieDeVentana
+        error={error}
+        enviando={enviando}
+        alCancelar={() => alTerminar(null)}
+        texto="Corregir"
+        disabled={sinCambios}
+        nota={sinCambios && 'Todavía no cambiaste nada.'}
+      />
     </form>
   )
 }

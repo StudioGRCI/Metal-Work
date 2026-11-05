@@ -6,13 +6,15 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { DocumentoDeServicio } from '@/lib/datos/logistica'
 import { COMPROBANTES_DE_SERVICIO, etiquetaDocumentoServicio, TIPO_DOCUMENTO_SERVICIO } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { adjuntarDocumentoServicio, anularDocumentoServicio } from './acciones'
 
@@ -63,24 +65,35 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * número, que la base cruza para que el mismo comprobante del proveedor no entre
  * en dos OS—, el contrato del trabajo u otro documento. El archivo sube primero a
  * `documentos-servicio/{orden de servicio}/…` y, si la anotación no entra, se
- * retira. El id se decide al abrir la ventana: un reintento no anota otro.
+ * retira. El id vive fuera de la ventana (`useIdDelEnvio`): un reintento no
+ * anota otro, y si aquel entró, la ventana lo dice al volver a abrirse y el
+ * siguiente lleva otro.
  */
 export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
-  const [documentoId, setDocumentoId] = useState<string | null>(null)
+  const documento = useIdDelEnvio('documento_servicio', undefined, ordenServicioId)
+  const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
 
   async function adjuntar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
     datos.delete('archivo')
     if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: 'Adjunta el archivo.' }
-    if (!documentoId) return { ok: false, error: 'Vuelve a abrir el formulario.' }
+    if (!documento.id) return { ok: false, error: 'Vuelve a abrir el formulario.' }
+    documento.salio()
     datos.set('nombre', archivo.name)
     return subirArchivoFinanzas(BUCKET_DOCUMENTOS_SERVICIO, ordenServicioId, archivo, TIPOS_COMPROBANTE_PAGO, (ruta) => {
       datos.set('ruta', ruta)
       return adjuntarDocumentoServicio(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(adjuntar, () => setDocumentoId(null))
+  const { alEnviar, enviando, error } = useEnvio(
+    adjuntar,
+    () => {
+      setAbierta(false)
+      documento.otro()
+    },
+    { alYaEntrar: documento.otro },
+  )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)
 
@@ -92,7 +105,8 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         tamano="sm"
         onClick={() => {
           setTipo('FACTURA')
-          setDocumentoId(crypto.randomUUID())
+          documento.abrir()
+          setAbierta(true)
         }}
         data-adjuntar-documento-servicio={numero}
       >
@@ -100,13 +114,14 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         Adjuntar documento
       </Boton>
       <Ventana
-        abierta={documentoId !== null}
-        alCerrar={() => setDocumentoId(null)}
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
         titulo={`Documento de la ${numero}`}
         ancho="md"
       >
+        <EnvioAnterior texto={documento.anterior} />
         <form onSubmit={alEnviar} className="space-y-4">
-          <input type="hidden" name="id" value={documentoId ?? ''} />
+          <input type="hidden" name="id" value={documento.id ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo etiqueta="Qué documento es" htmlFor={campo('tipo')} requerido>
@@ -127,19 +142,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
           <Campo etiqueta="Archivo" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setDocumentoId(null)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Adjuntar
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Adjuntar" />
         </form>
       </Ventana>
     </>
@@ -189,19 +192,7 @@ function AnularDocumentoServicio({ documentoId, tipo, etiqueta }: { documentoId:
               placeholder="Por ejemplo: era la factura de otra orden de servicio."
             />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>

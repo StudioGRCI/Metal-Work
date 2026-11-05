@@ -44,7 +44,10 @@ export function NuevoGastoGeneral({ conceptos, mes }: { conceptos: ConceptoParaE
         descripcion="Servicios del local y gastos de operación que no son de una unidad. Se reparten por horas entre las unidades que trabajaron ese mes."
         ancho="lg"
       >
-        <form key={id} onSubmit={alEnviar} className="space-y-4">
+        {/* Con otro mes en la búsqueda, los campos vuelven a empezar: el mes sin
+            tocar pasaba solo al nuevo y el gasto escrito para el A se guardaba en
+            el B. El id del envío se queda, por si el anterior no contestó. */}
+        <form key={`${id}:${mes}`} onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="operacion_id" value={id} />
 
           <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">

@@ -287,8 +287,8 @@ let ocNumero
   await ventana.locator('#ocd-factura-numero').fill(`${serie}-00000071`)
   await ventana.getByRole('button', { name: 'Emitir orden de compra' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 }).catch(() => {})
-  const aviso = limpio(await pagina.locator('[role="status"]').first().innerText().catch(() => ''))
+  await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 }).catch(() => {})
+  const aviso = limpio(await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().innerText().catch(() => ''))
   comprobar(/OC-\d+-MW/.test(aviso) && aviso.includes('Factura adjunta'), `emitió una OC con su factura: «${aviso}»`)
 
   const oc = await uno('select id, numero, codigo_interno, motivo, aprobacion from public.ordenes_compra_materiales where proveedor = $1 order by creado_en limit 1', [proveedor])

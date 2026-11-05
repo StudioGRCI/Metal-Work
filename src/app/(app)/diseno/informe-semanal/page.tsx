@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Download } from 'lucide-react'
 
+import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -84,6 +85,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         className={cn(BASE_BOTON, VARIANTES.secundario, TAMANOS.md)}>
         <Download aria-hidden className="size-4" /> Descargar Word
       </a>} />
+    {/* La semana la elige la búsqueda: con otra, los formularios se montan de
+        nuevo y dicen de cuál son (X1 y H1, cuadragésima quinta pasada). */}
+    <DelDocumento documento={`semana:${inicio}`}>
     <div className="space-y-5">
       {(pendientes.data ?? []).length > 0 && <Tarjeta>
         <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} ayuda="Abre la semana correspondiente para completar tu revisión." />
@@ -244,5 +248,6 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         </TarjetaCuerpo>
       </Tarjeta>
     </div>
+    </DelDocumento>
   </>
 }

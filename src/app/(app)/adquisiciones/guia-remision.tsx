@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { BUCKET_GUIAS_REMISION, MAXIMO_MB_GUIA, NUMERO_GUIA, normalizarNumeroGuia, rutaGuiaRemision } from '@/lib/dominio/logistica'
 import { useEnvio } from '@/lib/envio'
@@ -110,19 +111,7 @@ export function CargarGuia({
               aria-describedby={error ? idError : undefined}
             />
           </Campo>
-          {error && (
-            <p id={idError} role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Cargar guía
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Cargar guía" idError={idError} />
         </form>
       </Ventana>
     </>
@@ -151,19 +140,7 @@ export function AnularGuia({ id, numero }: { id: string; numero: string }) {
           <Campo etiqueta="Por qué se anula" htmlFor={`motivo-guia-${id}`} requerido>
             <AreaTexto id={`motivo-guia-${id}`} name="motivo" rows={3} minLength={5} maxLength={500} required disabled={enviando} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular guía
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular guía" variante="peligro" />
         </form>
       </Ventana>
     </>

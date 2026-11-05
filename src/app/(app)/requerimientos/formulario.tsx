@@ -6,12 +6,14 @@ import { useMemo, useState } from 'react'
 import { EntradaCodigoInterno, type CodigoParaElegir } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS } from '@/lib/dominio/codigos-internos'
 import { CODIGOS_FIJOS_DEL_RQ, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
 import { emitirRequerimiento } from './acciones'
@@ -33,6 +35,12 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
   const soloAdministracion = catalogos.tipos.length === 1 && catalogos.tipos[0] === 'ADMINISTRACION'
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  // El id vive aquí, fuera del formulario que se rehace al abrir: tras «No llegó
+  // la respuesta», cancelar y volver a abrir lleva el mismo, y la base no emite
+  // otro RQ numerado con lo mismo (decimoquinta pasada). Se renueva con el ok,
+  // cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
+  // que aquel RQ entró.
+  const envio = useIdDelEnvio('requerimiento')
   const [aviso, setAviso] = useState<string | null>(null)
   return (
     <>
@@ -40,6 +48,7 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
         type="button"
         onClick={() => {
           setAviso(null)
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -61,14 +70,20 @@ export function NuevoRequerimiento(catalogos: Catalogos) {
         }.`}
         ancho="xl"
       >
-        <FormularioRequerimiento
-          key={vez}
-          {...catalogos}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
-        />
+        <EnvioAnterior texto={envio.anterior} />
+        {envio.id && (
+          <FormularioRequerimiento
+            key={vez}
+            {...catalogos}
+            envio={envio}
+            alCancelar={() => setAbierta(false)}
+            alTerminar={(mensaje) => {
+              setAbierta(false)
+              envio.otro()
+              setAviso(mensaje)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
@@ -96,8 +111,10 @@ function FormularioRequerimiento({
   materiales,
   codigos,
   tipos,
+  envio,
+  alCancelar,
   alTerminar,
-}: Catalogos & { alTerminar: (mensaje: string) => void }) {
+}: Catalogos & { envio: ReturnType<typeof useIdDelEnvio>; alCancelar: () => void; alTerminar: (mensaje: string) => void }) {
   // Cada área pide en un solo requerimiento: al cambiar el tipo cambia la lista.
   const [tipo, setTipo] = useState<TipoRequerimiento>(tipos[0] ?? 'OPERACION')
   const [areaId, setAreaId] = useState('')
@@ -106,11 +123,18 @@ function FormularioRequerimiento({
   // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
   const [codigoEscrito, setCodigoEscrito] = useState('')
   const delTipo = areas.filter((a) => a.requerimiento === tipo)
-  // Decidido aquí: un reintento manda el mismo y la base no duplica el RQ.
-  const [id] = useState(() => crypto.randomUUID())
+  // Un reintento manda el mismo y la base no duplica el RQ.
+  const id = envio.id ?? ''
   // Cada fila tiene su llave para que quitar una del medio no mezcle lo escrito.
   const [insumos, setInsumos] = useState<Insumo[]>(() => [insumoVacio()])
-  const { alEnviar, enviando, error } = useEnvio(emitirRequerimiento, (r) => alTerminar(r.mensaje ?? 'Requerimiento registrado.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo, datos) => {
+      envio.salio()
+      return emitirRequerimiento(previo, datos)
+    },
+    (r) => alTerminar(r.mensaje ?? 'Requerimiento registrado.'),
+    { alYaEntrar: envio.otro },
+  )
   const und = unidades.find((u) => u.codigo === 'UND')?.id ?? ''
 
   const porId = useMemo(() => new Map(materiales.map((m) => [m.id, m])), [materiales])
@@ -384,16 +408,7 @@ function FormularioRequerimiento({
         )}
       </fieldset>
 
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando} disabled={!completos}>
-          Registrar y mandar a Almacén
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar y mandar a Almacén" disabled={!completos} />
     </form>
   )
 }

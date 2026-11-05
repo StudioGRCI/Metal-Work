@@ -189,10 +189,14 @@ select test.afirmar(
 -- El reintento del mismo envío (la señal se cortó) no sube otro.
 select pg_temp.como('sup_mtz');
 set local role authenticated;
+-- El reintento trae lo mismo que el primer envío (migración 20261022194000).
 select test.afirmar(
   public.registrar_reportes_diarios(pg_temp.dia(1), 'Avance del día', 'Lo que se avanzó en los dos códigos', jsonb_build_array(
-    pg_temp.codigo(pg_temp.txt('ra'), pg_temp.txt('a'), jsonb_build_array(pg_temp.trabajo('descripcion', 'Armado del cajón', 30, 4))),
-    pg_temp.codigo(pg_temp.txt('rb'), pg_temp.txt('b'), jsonb_build_array(pg_temp.trabajo('descripcion', 'Corte de planchas', 10, 3)))))
+    pg_temp.codigo(pg_temp.txt('ra'), lower(pg_temp.txt('a')), jsonb_build_array(
+      pg_temp.trabajo('descripcion', 'Armado del cajón', 30, 4))),
+    pg_temp.codigo(pg_temp.txt('rb'), pg_temp.txt('b'), jsonb_build_array(
+      pg_temp.trabajo('subcontrato_id', pg_temp.txt('sc_mtz'), 25, null),
+      pg_temp.trabajo('descripcion', 'Corte de planchas', 10, 3)))))
   = array[pg_temp.id('ra'), pg_temp.id('rb')],
   'el reintento devuelve los mismos dos reportes');
 reset role;
@@ -203,7 +207,7 @@ set local role authenticated;
 select test.debe_fallar(pg_temp.reporte_sql(1, jsonb_build_array(
     pg_temp.codigo(pg_temp.txt('ra'), pg_temp.txt('a'), jsonb_build_array(pg_temp.trabajo('descripcion', 'Armado del cajón', 40))),
     pg_temp.codigo(pg_temp.txt('rc'), pg_temp.txt('b'), jsonb_build_array(pg_temp.trabajo('descripcion', 'Corte de planchas', 20))))),
-  'medio envío repetido no entra', 'Ese reporte ya existe');
+  'medio envío repetido no entra: su primer envío ya quedó', 'ya quedó registrado la primera vez que lo enviaste');
 
 -- ======================================================= 4. Lo que no entra, y no entra nada
 select test.debe_fallar(pg_temp.reporte_sql(0, jsonb_build_array(

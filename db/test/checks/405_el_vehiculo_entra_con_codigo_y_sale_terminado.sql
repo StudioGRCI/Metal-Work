@@ -172,11 +172,15 @@ select test.afirmar((select salida_en is not null from public.registro_vehiculos
   'el de la cochera sale sin esperar avance ni Tesorería');
 -- Al arenado externo sale a medio trabajo y vuelve (migración 20261020168000).
 select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de mantenimiento en 0 % no sale con «Marcar salida»', 'va en 0 %');
-select public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', pg_temp.foto('v4', 'salida'));
+select pg_temp.foto('v4', 'salida') as foto_v4 \gset
+select public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', :'foto_v4');
 select test.afirmar((select salida_en is not null and sale_al_arenado from public.registro_vehiculos where id = pg_temp.id('v4')),
   'pero sí sale al arenado, sin el 100 % ni Tesorería, y queda dicho');
-select test.afirmar(public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', '[]') = pg_temp.id('v4'),
+select test.afirmar(public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', :'foto_v4') = pg_temp.id('v4'),
   'repetir la salida al arenado no hace otra');
+-- Repetir es traer lo mismo: sin la foto ya es otro envío (migración 20261022194000).
+select test.debe_fallar(format($q$select public.registrar_salida_al_arenado(%L, null, 'Sale al arenado', '[]')$q$, pg_temp.txt('v4')),
+  'la salida al arenado con otras fotos no se da por la misma', 'la primera vez que la enviaste');
 select test.debe_fallar(format($q$select public.registrar_salida_al_arenado(%L, null, null, '[]')$q$, pg_temp.txt('v3')),
   'la cochera ya salió y no se vuelve salida al arenado', 'ya salió');
 select public.registrar_ingreso_vehiculo(pg_temp.id('v5'), null, null, 'CHK405_D_26/48', '', '', 'ARENADO', null, null,

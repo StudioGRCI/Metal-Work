@@ -16,8 +16,8 @@ import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
 import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
-import { CargarCodigoYOt, CorregirCotizacion, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
-import { SubirCotizacion } from './subir-cotizacion'
+import { CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
 
@@ -27,6 +27,17 @@ const ESTADOS: Record<string, { etiqueta: string; tono: 'aviso' | 'exito' | 'pel
   RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
 }
+
+// Cómo quedó la versión que se archivó al corregir. La que se corrige antes de
+// que Gerencia la mire se archiva POR_REVISAR, y la franja decía «La anterior
+// era rechazada» sin que nadie la rechazara (funcionalidad H6 de la
+// trigesimoquinta pasada).
+const LA_ANTERIOR: Record<string, string> = {
+  APROBADA: 'La anterior era aprobada.',
+  RECHAZADA: 'La anterior era rechazada.',
+  POR_REVISAR: 'La anterior no llegó a revisarse.',
+}
+const COMO_QUEDO: Record<string, string> = { APROBADA: 'aprobada', RECHAZADA: 'rechazada', POR_REVISAR: 'sin revisar' }
 
 /**
  * «Abrir el PDF» se ve en el navegador; el Word se baja. El PDF lleva además
@@ -182,6 +193,14 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         titulo="Cotización"
         ayuda="Ventas sube la cotización, Gerencia la aprueba y Administración le da el código interno de la unidad y sube su OT. Aprobada, la ven también Contabilidad, que la factura, y Tesorería, que la cobra."
         acciones={puedeSubir && <SubirCotizacion clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />}
+        estado={
+          (puedeSubir || cargaOt) && (
+            <>
+              {puedeSubir && <EstadoDeSubirCotizacion />}
+              {cargaOt && <EstadoDeLaOt />}
+            </>
+          )
+        }
       />
 
       {params.descarga === 'fallo' && (
@@ -331,7 +350,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         <History aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
                           <span className="font-medium">Corregida {fmtFecha(c.archivo_subido_en)}.</span>{' '}
-                          La nueva versión espera a Gerencia. La anterior era {versionAnterior.estado_al_archivar === 'APROBADA' ? 'aprobada' : 'rechazada'}.
+                          La nueva versión espera a Gerencia. {LA_ANTERIOR[versionAnterior.estado_al_archivar ?? ''] ?? LA_ANTERIOR.POR_REVISAR}
                         </span>
                       </p>
                     )}
@@ -364,7 +383,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           {c.versiones.map((v) => (
                             <li key={v.id} className="space-y-0.5 text-xs">
                               <p className="text-texto">
-                                <span className="font-medium">Versión {v.version} · {v.estado_al_archivar === 'APROBADA' ? 'aprobada' : 'rechazada'}</span>
+                                <span className="font-medium">Versión {v.version} · {COMO_QUEDO[v.estado_al_archivar ?? ''] ?? COMO_QUEDO.POR_REVISAR}</span>
                                 <span className="text-texto-tenue">
                                   {' '}
                                   · subida {fmtFecha(v.subido_en)}

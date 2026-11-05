@@ -45,6 +45,7 @@ export async function AtencionMaterialesDeOrden({ ordenId, perfil }: { ordenId: 
       </TarjetaCuerpo>
     </Tarjeta>
     {datos.lineas.length > 0 && <TableroMateriales
+      ordenId={ordenId}
       lineas={datos.lineas}
       existencias={datos.existencias}
       compras={datos.compras}

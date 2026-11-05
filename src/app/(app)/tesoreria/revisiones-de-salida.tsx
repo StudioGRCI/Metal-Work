@@ -62,7 +62,7 @@ export function RevisionesDeSalida({
 }
 
 function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision: RevisionPendiente; cobro?: CobroDelCodigo; abreVehiculos: boolean }) {
-  const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida)
+  const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
   const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-4" data-revision={v.id}>

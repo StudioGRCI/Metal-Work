@@ -64,6 +64,14 @@ const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
  * Se espera la carga completa y, a lo sumo diez segundos, la red quieta.
  */
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+async function esperar(fn, ms = 15000) {
+  const hasta = Date.now() + ms
+  while (Date.now() < hasta) {
+    if (await fn().catch(() => false)) return true
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return false
+}
 async function ir(pagina, url) {
   await pagina.goto(url, { waitUntil: 'load' })
   await quieta(pagina)
@@ -229,12 +237,14 @@ let ordenId = ''
   await v.locator('input[type="number"]').first().fill('6')
   await v.screenshot({ path: `${CAPTURAS}/adm-rqa-a-todos.png` })
   await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-  await pagina.locator('[role="status"]').first().waitFor({ timeout: 20000 })
-  rqa = ((await pagina.locator('[role="status"]').first().innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
+  // El aviso del registro, no el primer `role="status"`: cada tarjeta con «Corregir» lleva el suyo, vacío.
+  const registrado = pagina.locator('[role="status"]', { hasText: /RQA-\d{4}-\d{4}/ }).first()
+  await registrado.waitFor({ timeout: 20000 })
+  rqa = ((await registrado.innerText()).match(/RQA-\d{4}-\d{4}/) ?? [''])[0]
   const fila = await uno(`select id, codigo_interno from public.requerimientos where numero = $1`, [rqa])
   comprobar(fila?.codigo_interno === 'TODOS LOS ACTIVOS', `el ${rqa || 'RQA'} queda cargado a TODOS LOS ACTIVOS`)
-  await pagina.waitForTimeout(800)
-  comprobar(limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 'y la lista lo dice')
+  // La lista se pone al día cuando llega la página nueva; con el banco cargado tarda más de 800 ms.
+  comprobar(await esperar(async () => limpio(await pagina.locator('main').innerText()).includes('TODOS LOS ACTIVOS'), 10000), 'y la lista lo dice')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-rqa-lista.png`, fullPage: true })
   // En el teléfono la lista no ensancha la página (la ventana del RQA se salía por la derecha).
   await pagina.setViewportSize({ width: 390, height: 844 })
@@ -257,7 +267,9 @@ let ordenId = ''
   [salida, materialId, `${rqa} · ítem 1`, foto, fila?.id])
 
   // ---------------------------------------------- 3. Códigos internos, en lectura
-  await ir(pagina, `${BASE}/codigos-internos`)
+  // Buscados por su sello: la lista va de 50 en 50, y el banco que ya corrió otras
+  // tandas tiene más de 50 abiertos, así que A y B podían caer en la segunda página.
+  await ir(pagina, `${BASE}/codigos-internos?q=${sello}`)
   const lista = limpio(await pagina.locator('main').innerText())
   comprobar(lista.includes(A) && lista.includes(B), 've los códigos en la lista de Códigos internos')
   await pagina.screenshot({ path: `${CAPTURAS}/adm-codigos.png`, fullPage: true })
@@ -317,9 +329,11 @@ let ordenId = ''
     await pagina.getByText(`Ya hay una orden de trabajo ${repetido}`).waitFor({ timeout: 30000 }).catch(() => {})
     comprobar(limpio(await pagina.locator('main').innerText()).includes(`Ya hay una orden de trabajo ${repetido}`),
       `con el número ${repetido}, que ya es de otra orden, no se registra y lo dice`)
-    comprobar((await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
-              && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero',
-      'el rechazo queda en el campo del número, con el cursor ahí')
+    // Mientras envía, los campos están trabados: el cursor llega al número cuando se liberan.
+    const enElNumero = async () => (await pagina.locator('#numero').getAttribute('aria-invalid')) === 'true'
+      && (await pagina.evaluate(() => document.activeElement?.id)) === 'numero'
+    const llego = await esperar(enElNumero, 3000)
+    comprobar(llego, `el rechazo queda en el campo del número, con el cursor ahí (${await pagina.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`)})`)
     // El de su campo también es `role="alert"`: se cuentan los que lo dicen.
     comprobar((await pagina.locator('[role="alert"]', { hasText: 'Ya hay una orden de trabajo' }).count()) === 1,
       'y no se repite en el aviso de abajo')
@@ -359,6 +373,12 @@ let ordenId = ''
   comprobar(objeto?.n === 1, 'y sigue en Storage después de registrar (nadie lo quitó al ir a la orden)')
   const vista = limpio(await pagina.locator('main').innerText())
   comprobar(vista.includes('Orden registrada con su PDF'), 'la orden dice que se registró con su PDF')
+  // Vigesimosexta pasada: el cursor quedaba en BODY y el aviso no lo oía nadie.
+  const cursorEnElAviso = await pagina.evaluate(() => {
+    const a = document.activeElement
+    return `${a?.getAttribute('role') ?? a?.tagName}: ${(a?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)}`
+  })
+  comprobar(cursorEnElAviso.startsWith('status: Orden registrada con su PDF'), `y el cursor está en ese aviso, que se lee al llegar («${cursorEnElAviso}»)`)
   comprobar(vista.includes(`OT-banco-${sello}.pdf`), 'y Administración ve su PDF en la orden')
   comprobar((await pagina.getByRole('button', { name: `Quitar OT-banco-${sello}.pdf` }).count()) === 0, 'sin botón para quitar el único PDF de la orden')
   // Con su PDF puesto no hay un campo vacío: «Cambiar el PDF» lo abre y dice cómo se cambia.

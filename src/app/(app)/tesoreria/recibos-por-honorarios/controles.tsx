@@ -8,12 +8,14 @@ import { CuentaDeLaCaja, SinCuentasEnLaCaja } from '@/components/finanzas/cuenta
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoSubcontrato } from '@/lib/archivos-subcontratos'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { MAXIMO_MB_SUBCONTRATOS } from '@/lib/dominio/subcontratos'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, moneda } from '@/lib/format'
 
 import { anularPagoRecibo, registrarPagoRecibo } from './acciones'
@@ -24,7 +26,8 @@ const ACEPTA = 'application/pdf,image/jpeg,image/png,image/webp'
 function sacarArchivo(datos: FormData): File | null {
   const archivo = datos.get('archivo')
   datos.delete('archivo')
-  return archivo instanceof File && archivo.size > 0 ? archivo : null
+  // Uno vacío también cuenta como elegido: lo rechaza la subida diciendo que está vacío.
+  return archivo instanceof File && archivo.name !== '' ? archivo : null
 }
 
 type ReciboAPagar = {
@@ -40,11 +43,15 @@ type ReciboAPagar = {
 /**
  * Tesorería paga el neto de un recibo desde una cuenta de la caja —la caja
  * diaria se mueve sola— y adjunta el voucher. El voucher sube primero a Storage
- * y, si el pago no entra, se retira.
+ * y, si el pago no entra, se retira. El id vive en el botón y no en el
+ * formulario, que se rehace al abrir (`useIdDelEnvio`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y si aquel entró, la
+ * ventana lo dice.
  */
 export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; hoy: string; cuentas: CuentaParaPagar[] }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
+  const pago = useIdDelEnvio('pago_recibo', undefined, recibo.id)
   // De qué cuenta salió, o por qué la caja no se movió: lo dice la página, porque el recibo pagado sale de la lista con su botón.
   const avisar = useAvisoDeLaCaja()
   return (
@@ -54,6 +61,7 @@ export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; ho
         tamano="sm"
         onClick={() => {
           avisar(null)
+          pago.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -69,49 +77,62 @@ export function PagarRecibo({ recibo, hoy, cuentas }: { recibo: ReciboAPagar; ho
         descripcion={`${recibo.subcontratista}: se paga el neto, ${moneda(recibo.neto, recibo.moneda)}. Administración recibe el aviso y ve el voucher.`}
         ancho="sm"
       >
-        <FormularioPago
-          key={vez}
-          recibo={recibo}
-          hoy={hoy}
-          cuentas={cuentas}
-          alCerrar={() => setAbierta(false)}
-          alPagar={(mensaje) => {
-            setAbierta(false)
-            avisar(mensaje)
-          }}
-        />
+        <EnvioAnterior texto={pago.anterior} />
+        {pago.id && (
+          <FormularioPago
+            key={vez}
+            id={pago.id}
+            recibo={recibo}
+            hoy={hoy}
+            cuentas={cuentas}
+            alSalir={pago.salio}
+            alYaEntrar={pago.otro}
+            alCerrar={() => setAbierta(false)}
+            alPagar={(mensaje) => {
+              setAbierta(false)
+              pago.otro()
+              avisar(mensaje)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioPago({
+  id,
   recibo,
   hoy,
   cuentas,
+  alSalir,
+  alYaEntrar,
   alCerrar,
   alPagar,
 }: {
+  /** Un reintento manda el mismo y la base no registra otro pago. */
+  id: string
   recibo: ReciboAPagar
   hoy: string
   cuentas: CuentaParaPagar[]
+  alSalir: () => void
+  alYaEntrar: () => void
   alCerrar: () => void
   alPagar: (mensaje: string | null) => void
 }) {
-  // Decidido aquí: un reintento manda el mismo y la base no registra otro pago.
-  const [id] = useState(() => crypto.randomUUID())
   // El día escrito decide qué se dice de la cuenta (antes de su inicio, o cerrada).
   const [dia, setDia] = useState(hoy)
 
   async function pagar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = sacarArchivo(datos)
     if (!archivo) return { ok: false, error: 'Adjunta el voucher del pago.' }
+    alSalir()
     return subirArchivoSubcontrato(recibo.subcontratoId, archivo, (ruta) => {
       datos.set('ruta', ruta)
       return registrarPagoRecibo(null, datos)
     })
   }
-  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => alPagar(r.mensaje ?? null))
+  const { alEnviar, enviando, error } = useEnvio(pagar, (r) => alPagar(r.mensaje ?? null), { alYaEntrar })
   const prefijo = `pago-${id.slice(0, 8)}`
 
   return (
@@ -132,19 +153,7 @@ function FormularioPago({
       <Campo etiqueta="Voucher" htmlFor={`${prefijo}-archivo`} requerido>
         <ElegirArchivo id={`${prefijo}-archivo`} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_SUBCONTRATOS} required />
       </Campo>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" onClick={alCerrar}>
-          Cancelar
-        </Boton>
-        <Boton type="submit" cargando={enviando} disabled={cuentas.length === 0}>
-          Registrar el pago
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCerrar} texto="Registrar el pago" disabled={cuentas.length === 0} />
     </form>
   )
 }
@@ -176,19 +185,7 @@ export function AnularPago({ pagoId, subcontratoId, numero }: { pagoId: string; 
           <Campo etiqueta="Motivo" htmlFor={`anular-pago-${pagoId}`} requerido>
             <AreaTexto id={`anular-pago-${pagoId}`} name="motivo" required minLength={10} maxLength={500} />
           </Campo>
-          {error && (
-            <p role="alert" className="text-sm text-peligro">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" variante="peligro" cargando={enviando}>
-              Anular
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Anular" variante="peligro" />
         </form>
       </Ventana>
     </>

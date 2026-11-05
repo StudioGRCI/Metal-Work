@@ -588,31 +588,44 @@ export async function tomarPagoDeLaBoleta(_previo: unknown, formulario: FormData
   return { ok: true, mensaje: await loQueTomoLaFactura(supabase, d) }
 }
 
-/** Lo que dice el aviso después de pasar lo pagado por la boleta a una factura, leído de la base. */
+/**
+ * Lo que dice el aviso después de pasar lo pagado por la boleta a una factura,
+ * leído de la base: los montos son los de la toma que quedó (sus filas
+ * comparten factura, quién y la hora de su transacción), no los del
+ * formulario. Antes los del formulario: un reintento con otros montos los
+ * anunciaba aunque la base guardara los primeros (undécima pasada).
+ */
 async function loQueTomoLaFactura(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  d: { factura_id: string; orden_compra_id: string; monto_boleta: number; monto_factura: number },
+  d: { id: string; factura_id: string; orden_compra_id: string },
 ): Promise<string> {
-  const [factura, cuenta, oc] = await Promise.all([
+  const [factura, cuenta, oc, toma] = await Promise.all([
     supabase.from('adquisiciones').select('numero_documento, moneda').eq('id', d.factura_id).maybeSingle(),
     supabase.from('v_cuentas_pagar').select('saldo').eq('id', d.factura_id).maybeSingle(),
     supabase.from('ordenes_compra_materiales').select('moneda').eq('id', d.orden_compra_id).maybeSingle(),
+    supabase.from('pagos_adquisicion').select('registrado_por, creado_en').eq('id', d.id).maybeSingle(),
   ])
-  const error = factura.error ?? cuenta.error ?? oc.error
-  if (error || !factura.data || !cuenta.data || !oc.data) {
+  const filas = toma.data
+    ? await supabase.from('pagos_adquisicion').select('monto, monto_de_la_boleta').eq('adquisicion_id', d.factura_id)
+        .eq('registrado_por', toma.data.registrado_por).eq('creado_en', toma.data.creado_en).not('pago_orden_compra_id', 'is', null)
+    : null
+  const error = factura.error ?? cuenta.error ?? oc.error ?? toma.error ?? filas?.error
+  if (error || !factura.data || !cuenta.data || !oc.data || !filas?.data?.length) {
     if (error) console.error('No se pudo leer cómo quedó la factura que tomó lo pagado por la boleta', error)
     return 'Listo: la factura tomó lo pagado por la boleta. Mírala en «Facturas por pagar».'
   }
+  const montoFactura = filas.data.reduce((s, f) => s + Number(f.monto), 0)
+  const montoBoleta = filas.data.reduce((s, f) => s + Number(f.monto_de_la_boleta ?? 0), 0)
   const mf = factura.data.moneda === 'USD' ? 'USD' : 'PEN'
   const mo = oc.data.moneda === 'USD' ? 'USD' : 'PEN'
   // En otra moneda, con el cambio que salió de los dos montos: soles por dólar.
   const cambio =
     mf === mo
       ? ''
-      : ` (${moneda(d.monto_boleta, mo)}, a S/ ${(mf === 'USD' ? d.monto_boleta / d.monto_factura : d.monto_factura / d.monto_boleta).toFixed(3)} por dólar)`
+      : ` (${moneda(montoBoleta, mo)}, a S/ ${(mf === 'USD' ? montoBoleta / montoFactura : montoFactura / montoBoleta).toFixed(3)} por dólar)`
   const saldo = Number(cuenta.data.saldo ?? 0)
   const resto = saldo > 0 ? ` Le faltan ${moneda(saldo, mf)}: se pagan en «Facturas por pagar».` : ' Queda pagada.'
-  return `La factura ${factura.data.numero_documento} toma ${moneda(d.monto_factura, mf)} de lo pagado por la boleta${cambio}.${resto}`
+  return `La factura ${factura.data.numero_documento} toma ${moneda(montoFactura, mf)} de lo pagado por la boleta${cambio}.${resto}`
 }
 
 /**

@@ -30,7 +30,8 @@ export function MermaDeOrden({ ordenId, merma, puedeFijar, ordenViva }: {
   ordenViva: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
-  const { alEnviar, enviando, error, resultado } = useEnvio(fijarMermaOrden, () => setAbierta(false))
+  // Corrige la merma que la tarjeta muestra: se cierra con ella ya al día (`corrige`).
+  const { alEnviar, enviando, error, resultado } = useEnvio(fijarMermaOrden, () => setAbierta(false), { corrige: true })
   const editable = puedeFijar && ordenViva
 
   return (

@@ -14,10 +14,15 @@ export function EditarResumenAdministracion({ orden, responsables }: {
 }) {
   const [abierta, setAbierta] = useState(false)
   const [mensaje, setMensaje] = useState('')
-  const { alEnviar, enviando, error } = useEnvio(editarResumenAdministracion, (r) => {
-    setAbierta(false)
-    setMensaje(r.mensaje ?? 'Datos guardados.')
-  })
+  // Corrige los datos que la tarjeta muestra: se cierra con ella ya al día (`corrige`).
+  const { alEnviar, enviando, error } = useEnvio(
+    editarResumenAdministracion,
+    (r) => {
+      setAbierta(false)
+      setMensaje(r.mensaje ?? 'Datos guardados.')
+    },
+    { corrige: true },
+  )
   if (!orden.unidad) return null
   return <>
     <Boton variante="secundario" tamano="sm" onClick={() => { setMensaje(''); setAbierta(true) }}>

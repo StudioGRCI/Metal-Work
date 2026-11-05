@@ -74,6 +74,72 @@ function lecturaDelFormulario(formulario: FormData) {
 
 const condicionEnTexto = (c: string) => (c === 'CREDITO' ? 'crédito' : 'contado')
 
+/** «la OC-0001-MW» o «las OC-0001-MW y OC-0002-MW», si se sabe el número de cada una; si no, null. */
+function lasOc(ids: string[], numeroDeOc: Map<string, string>): string | null {
+  const numeros = ids.map((o) => numeroDeOc.get(o) ?? '')
+  if (numeros.length === 0 || numeros.some((n) => !n)) return null
+  // El número ya dice «OC-…»; una referencia suelta lo lleva delante.
+  const conOc = numeros.map((n) => (/^OC\b/i.test(n) ? n : `OC ${n}`))
+  return conOc.length === 1 ? `la ${conOc[0]}` : `las ${conOc.slice(0, -1).join(', ')} y ${conOc.at(-1)}`
+}
+
+/** El motivo de la base después de dos puntos: con su punto, y en minúscula si empieza con una palabra (no con «PDF» u «OC»). */
+function trasDosPuntos(motivo: string) {
+  const t = /[.!?»)]$/.test(motivo.trim()) ? motivo.trim() : `${motivo.trim()}.`
+  return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t
+}
+
+/** Lo que queda en borrador se ve en la lista sin recargar: el aviso manda ahí. */
+function enBorrador(error: string): ResultadoAccion {
+  revalidatePath('/adquisiciones')
+  return { ok: false, error }
+}
+
+const EN_SU_FILA = 'Complétalo en su fila de la lista, en «PDF pendiente»'
+
+/**
+ * El comprobante ya entró en borrador y su PDF no subió. Volver a registrarlo
+ * chocaría con su propio número: se completa en su fila, que la lista muestra
+ * primero, salvo que falte el permiso, que desde la lista tampoco alcanza. El
+ * aviso dice el número: con dos borradores seguidos, se sabe de cuál habla.
+ */
+function borradorSinPdf(numero: string, motivo: string) {
+  const sinPdf = `El comprobante ${numero} quedó en borrador sin su PDF`
+  if (motivo.startsWith('El archivo no se pudo guardar.')) {
+    return `${sinPdf}, que no se pudo guardar. ${EN_SU_FILA}; si vuelve a fallar, avisa al administrador.`
+  }
+  if (/\bpermisos?\b/i.test(motivo)) return `${sinPdf}: ${trasDosPuntos(motivo)} Avisa al administrador.`
+  return `${sinPdf}: ${trasDosPuntos(motivo)} ${EN_SU_FILA}.`
+}
+
+/**
+ * El borrador al que además le faltó una OC, o marcarla como parcial: el PDF
+ * se completa en su fila y lo de la OC, ya registrado, con «Corregir». El aviso
+ * termina en «Después, …»: al completarlo, la pantalla lo recuerda. Pero si lo
+ * frenó una regla de la base (una OC con su factura completa), su motivo ya
+ * dice qué hacer y otro paso lo contradiría. Sin el permiso, o con un fallo del
+ * sistema (la clase 42), «Corregir» tampoco alcanza: el PDF sí se completa en
+ * su fila, y lo de la OC lo destraba el administrador.
+ */
+function borradorSinOc(
+  numero: string,
+  falta: string,
+  error: { message: string; code?: string },
+  queHacer: { hazlo: string; hacerlo: string },
+) {
+  // Tras «quedó en borrador», el «y esto no se guardó» de un fallo de paso
+  // sonaba a que el borrador tampoco (duodécima pasada): lo que no se guardó ya
+  // lo dice «sin marcar…».
+  const motivo = mensajeDeError(error).replace(/ y esto no se guardó\.$/, '.')
+  // «Avisa al administrador» va una vez, al final, con lo que hay que pedirle.
+  const aviso = `El comprobante ${numero} quedó en borrador, sin su PDF y ${falta}: ${trasDosPuntos(motivo.replace(/ Avisa al administrador\.$/, ''))}`
+  if (/\bpermisos?\b/i.test(motivo) || error.code?.startsWith('42')) {
+    return `${aviso} ${EN_SU_FILA}. Después, avisa al administrador para ${queHacer.hacerlo}.`
+  }
+  if (error.code === 'P0001' || error.code?.startsWith('23')) return `${aviso} ${EN_SU_FILA}.`
+  return `${aviso} ${EN_SU_FILA}. Después, ${queHacer.hazlo} con «Corregir».`
+}
+
 /**
  * Contabilidad registra una factura o un recibo. Una factura de compra cubre una
  * o varias OC del mismo proveedor (migración 20261015122000): la principal va en
@@ -95,6 +161,13 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const archivo = formulario.get('pdf')
   const v = entrada.data
   const tieneArchivo = archivo instanceof File && archivo.size > 0
+  // Un PDF elegido y vacío no se deja de lado callado, aunque haya factura de
+  // Logística. La pantalla no manda el campo que nadie tocó; si llega igual
+  // (una pestaña de antes), viene vacío, sin tipo y con un nombre que pone el
+  // servidor («undefined»): lo que dice que se eligió un PDF es su tipo.
+  if (archivo instanceof File && archivo.size === 0 && archivo.type === 'application/pdf') {
+    return { ok: false, error: 'El PDF está vacío: elige otro o quítalo.' }
+  }
   if (!tieneArchivo && !v.documento_compra_id) return { ok: false, error: 'Adjunta el PDF o elige una factura ya subida por Logística.' }
   if (tieneArchivo && (archivo.size < 5 || archivo.size > 10 * 1024 * 1024 || archivo.type !== 'application/pdf')) {
     return { ok: false, error: 'Adjunta un PDF de hasta 10 MB.' }
@@ -111,6 +184,8 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   const id = crypto.randomUUID()
   const supabase = await createClient()
   let ordenes = marcadas.data
+  // El número de cada OC, para decir cuál no entró si el comprobante queda en borrador.
+  const numeroDeOc = new Map<string, string>()
   let principal: string | null = null
   if (v.documento_compra_id) {
     const { data: documento, error: errorDocumento } = await supabase.from('documentos_compra_material')
@@ -148,6 +223,7 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
       return { ok: false, error: 'Una de las OC marcadas ya tiene su factura registrada. Recarga la pantalla.' }
     }
     const conocidas = ordenes.flatMap((o) => porId.get(o) ?? [])
+    for (const c of conocidas) if (c.orden_compra_id) numeroDeOc.set(c.orden_compra_id, c.numero ?? c.referencia ?? '')
     const nombre = (p: string | null) => (p ?? '').trim().toUpperCase()
     const otroProveedor = conocidas.find((c) => nombre(c.proveedor) !== nombre(conocidas[0].proveedor))
     if (otroProveedor) return { ok: false, error: `Una factura es de un solo proveedor: la ${nombreDeOc(otroProveedor)} es de ${otroProveedor.proveedor}.` }
@@ -175,26 +251,46 @@ export async function registrarAdquisicion(_previo: unknown, formulario: FormDat
   if (resto.length > 0) {
     const { data: enlazadas, error: errorEnlace } = await supabase.from('adquisiciones_ordenes_compra')
       .insert(resto.map((o) => ({ adquisicion_id: id, orden_compra_id: o }))).select('id')
-    if (errorEnlace) return { ok: false, error: `El comprobante quedó en borrador sin todas sus OC: ${mensajeDeError(errorEnlace)}` }
+    if (errorEnlace) {
+      const cuales = lasOc(resto, numeroDeOc)
+      return enBorrador(borradorSinOc(v.numero_documento, `sin ${cuales ?? 'todas sus OC'}`, errorEnlace, {
+        hazlo: `agrégale ${cuales ?? 'las OC que faltan'}`,
+        hacerlo: `agregarle ${cuales ?? 'las OC que faltan'}`,
+      }))
+    }
     if ((enlazadas ?? []).length !== resto.length) return { ok: false, error: NO_TOCO_NADA }
   }
   // Las que cubre en parte, mientras sigue en borrador: registrada, solo se cambia con una corrección.
   if (enParte.data.length > 0) {
     const { data: parciales, error: errorParcial } = await supabase.from('adquisiciones_ordenes_compra')
       .update({ parcial: true }).eq('adquisicion_id', id).in('orden_compra_id', enParte.data).select('id')
-    if (errorParcial) return { ok: false, error: `El comprobante quedó en borrador sin marcar las OC parciales: ${mensajeDeError(errorParcial)}` }
+    if (errorParcial) {
+      const cuales = lasOc(enParte.data, numeroDeOc)
+      const unaSola = enParte.data.length === 1
+      const comoParcial = unaSola ? 'como parcial' : 'como parciales'
+      const laOc = cuales ?? (unaSola ? 'su OC' : 'sus OC')
+      // El «Después, …» nombra la OC: al completarlo queda solo, sin el aviso
+      // que la nombraba, y «márcala» no decía cuál (duodécima pasada).
+      return enBorrador(borradorSinOc(v.numero_documento, `sin marcar ${comoParcial} ${laOc}`,
+        errorParcial, { hazlo: `marca ${laOc} ${comoParcial}`, hacerlo: `marcar ${laOc} ${comoParcial}` }))
+    }
     if ((parciales ?? []).length !== enParte.data.length) return { ok: false, error: NO_TOCO_NADA }
   }
   const ruta = bytes ? `adquisiciones/${id}/comprobante.pdf` : null
   if (ruta && bytes) {
     const { error: errorArchivo } = await supabase.storage.from('comprobantes-financieros')
       .upload(ruta, bytes, { contentType: 'application/pdf', upsert: false })
-    if (errorArchivo) return { ok: false, error: `Comprobante creado en borrador, pero no se pudo subir el PDF: ${mensajeDeArchivo(errorArchivo)}` }
+    if (errorArchivo) return enBorrador(borradorSinPdf(v.numero_documento, mensajeDeArchivo(errorArchivo)))
   }
   const { data: registrado, error: errorRegistro } = await supabase.from('adquisiciones')
     .update({ ruta_storage: ruta, estado: 'REGISTRADA' }).eq('id', id)
     .select('id, orden_compra_id, oc:ordenes_compra_materiales!adquisiciones_orden_compra_id_fkey(numero, referencia)').maybeSingle()
-  if (errorRegistro) return { ok: false, error: `Comprobante en borrador: ${mensajeDeError(errorRegistro)}` }
+  if (errorRegistro) {
+    // El PDF ya está guardado: al completarlo desde su fila, se toma ese.
+    const motivo = mensajeDeError(errorRegistro)
+    const queHacer = /\bpermisos?\b/i.test(motivo) ? 'Avisa al administrador.' : `${EN_SU_FILA}.`
+    return enBorrador(`El comprobante ${v.numero_documento} quedó en borrador: ${trasDosPuntos(motivo)} ${queHacer}`)
+  }
   if (!registrado) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/adquisiciones')
   revalidatePath('/tesoreria/por-pagar')

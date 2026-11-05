@@ -16,7 +16,10 @@
  *   5. Hoy anula un egreso con su motivo, cierra el día y lo reabre: el cierre
  *      queda tachado con quién y por qué.
  *   6. Una cuenta con movimientos ya no cambia de saldo inicial al corregirla.
- *   7. En el teléfono la pantalla entra sin desbordarse.
+ *   7. En el teléfono la pantalla entra sin desbordarse, y la flecha deja el
+ *      selector en el día que muestra, con un día escrito o llegando por el menú.
+ *      A lo ancho, a medio ancho y en el teléfono, la flecha no se mueve al
+ *      salir de hoy, y en hoy el selector va en un solo renglón (de 320 a 1440).
  *   8. Gerencia y Contabilidad no la tienen en el menú ni entran por enlace.
  *
  * Necesita en la base del banco las cuentas `*.local@metalwork.test` de
@@ -32,6 +35,7 @@ import pg from 'pg'
 import { chromium } from 'playwright-core'
 
 import { escribirCodigo } from './campo-codigo.mjs'
+import { esperarReactAlNavegar } from './con-react.mjs'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
@@ -82,7 +86,7 @@ const CELULAR = { width: 390, height: 844 }
 
 async function entrar(correo, viewport = { width: 1280, height: 900 }) {
   const contexto = await navegador.newContext({ viewport, isMobile: viewport.width < 500, hasTouch: viewport.width < 500, timezoneId: 'America/Lima' })
-  const pagina = await contexto.newPage()
+  const pagina = esperarReactAlNavegar(await contexto.newPage())
   const errores = []
   pagina.on('console', (m) => {
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(m.text().slice(0, 300))
@@ -409,7 +413,10 @@ const movimientos = (caja, fecha) =>
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria)
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })
-  await pagina.locator('summary', { hasText: 'Cuentas de Tesorería' }).click()
+  // La sección sale abierta sola si algún banco espera la captura de su saldo (las
+  // otras pruebas del banco dejan alguno así): tocar el título entonces la cerraba.
+  const seccion = pagina.locator('details', { has: pagina.locator('summary', { hasText: 'Cuentas de Tesorería' }) })
+  if (!(await seccion.evaluate((d) => d.open))) await seccion.locator('summary').click()
   await pagina.locator(`[data-editar-cuenta="${CHICA}"]`).click()
   const v = pagina.locator(VENTANA)
   comprobar(await v.locator('input[inputmode="decimal"]').isDisabled(), 'con movimientos, el saldo inicial está bloqueado')
@@ -458,7 +465,71 @@ const movimientos = (caja, fecha) =>
       `un día que no existe en la URL (${raro}) abre la caja de hoy`)
   }
   await pagina.screenshot({ path: join(CAPTURAS, 'caja-04-telefono.png'), fullPage: true })
+  // La flecha cambia solo la búsqueda y Next deja montada la pantalla: el
+  // selector, sin control, se quedaba con el día escrito a mano, o con el de
+  // la entrada si se llegó por el menú, debajo de los saldos de otro (H3 de
+  // diseño, cuadragésima sexta pasada).
+  const anteayer = new Date(Date.parse(`${ayer}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  const selectorTras = async (fecha) => {
+    await pagina.waitForURL((u) => u.searchParams.get('fecha') === fecha, { timeout: 20000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    for (let i = 0; i < 20 && (await pagina.locator('#caja-dia').inputValue()) !== fecha; i++) await pagina.waitForTimeout(250)
+    return pagina.locator('#caja-dia').inputValue()
+  }
+  await pagina.goto(delDia(ayer), { waitUntil: 'networkidle' })
+  await pagina.locator('#caja-dia').fill(hoy)
+  await pagina.getByRole('link', { name: 'Día anterior' }).click()
+  const trasEscribir = await selectorTras(anteayer)
+  comprobar(trasEscribir === anteayer, `con un día escrito sin «Ver», la flecha deja el selector en el día que muestra (${trasEscribir}, se ve ${anteayer})`)
+  await pagina.goto(`${BASE}/adquisiciones`, { waitUntil: 'networkidle' })
+  await pagina.locator('nav[aria-label="Secciones"] a[href="/tesoreria/caja-diaria"]').click()
+  await pagina.waitForURL(/\/tesoreria\/caja-diaria$/, { timeout: 20000 })
+  await pagina.waitForLoadState('networkidle')
+  await pagina.getByRole('link', { name: 'Día anterior' }).click()
+  const trasElMenu = await selectorTras(ayer)
+  comprobar(trasElMenu === ayer, `llegando por el menú, la flecha también (${trasElMenu}, se ve ${ayer})`)
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
+
+// La flecha se queda bajo el puntero al salir de hoy: «Día siguiente» y «Hoy»,
+// que en hoy no van, aparecían y la corrían cien píxeles, y el segundo clic
+// caía en la fecha (D3 de diseño, cuadragésima séptima pasada). A medio ancho,
+// además, el selector bajaba a otro renglón. En hoy, el selector va en un solo
+// renglón: en un teléfono angosto el sitio guardado de «Hoy» bajaba solo a
+// otro, vacío (D1 de diseño, cuadragésima octava pasada), y por debajo de
+// unos 330 px también el de «Día siguiente» (D1' de diseño y R23 de
+// realización, cuadragésima novena). 399 es el último ancho sin sitios
+// guardados: en hoy el selector no sube junto al título.
+for (const vista of [
+  { width: 1440, height: 900 },
+  { width: 480, height: 900 },
+  { width: 399, height: 844 },
+  { width: 390, height: 844 },
+  { width: 375, height: 812 },
+  { width: 330, height: 844 },
+  { width: 320, height: 844 },
+]) {
+  const { pagina, contexto, errores } = await entrar(CUENTAS.tesoreria, vista)
+  const anteayer = new Date(Date.parse(`${ayer}T12:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  const flecha = pagina.getByRole('link', { name: 'Día anterior' })
+  await pagina.goto(RUTA, { waitUntil: 'networkidle' })
+  const enHoy = await flecha.boundingBox()
+  const selectorEnHoy = await flecha.locator('xpath=ancestor::form').boundingBox()
+  const punto = { x: enHoy.x + enHoy.width / 2, y: enHoy.y + enHoy.height / 2 }
+  await pagina.mouse.click(punto.x, punto.y)
+  await pagina.waitForURL((u) => u.searchParams.get('fecha') === ayer, { timeout: 20000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  const enAyer = await flecha.boundingBox()
+  await pagina.mouse.click(punto.x, punto.y)
+  await pagina.waitForURL((u) => u.searchParams.get('fecha') === anteayer, { timeout: 20000 }).catch(() => {})
+  const llego = new URL(pagina.url()).searchParams.get('fecha')
+  const donde = (b) => (b ? `${Math.round(b.x)},${Math.round(b.y)}` : '—')
+  comprobar(donde(enHoy) === donde(enAyer) && llego === anteayer,
+    `a ${vista.width} px la flecha no se mueve al salir de hoy y el segundo clic en el mismo punto va a anteayer (hoy ${donde(enHoy)}, ayer ${donde(enAyer)}, llegó a ${llego})`)
+  comprobar(selectorEnHoy && selectorEnHoy.height < 2 * enHoy.height,
+    `a ${vista.width} px, en hoy el selector va en un solo renglón, sin uno vacío debajo (${selectorEnHoy ? `${Math.round(selectorEnHoy.width)}x${Math.round(selectorEnHoy.height)}` : '—'})`)
+  comprobar(errores.length === 0, `a ${vista.width} px, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
 
