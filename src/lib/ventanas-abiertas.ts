@@ -62,9 +62,12 @@ export function alCerrarLaVentana(hacer: () => void): boolean {
  * porque corrige lo que la pantalla muestra y, vuelta a abrir antes de que la
  * pantalla se ponga al día, traía lo de antes (`corrige` de `useAccion`).
  * `guardado`: lo enviado ya entró y la ventana espera a la pantalla al día para
- * cerrarse; el pie lo dice, y el botón que gira ya no parece colgado.
+ * cerrarse; la ventana lo dice, y el botón que gira ya no parece colgado.
+ * `mirando`: no se sabe si entró («No llegó la respuesta», el 502) y la pantalla
+ * se pone al día con la ventana abierta, para que diga si quedó y la ventana
+ * vuelta a abrir no traiga lo de antes.
  */
-export type TrabaDeLaVentana = { trabada: boolean; guardado: boolean }
+export type TrabaDeLaVentana = { trabada: boolean; guardado: boolean; mirando?: boolean }
 
 const trabas = new Map<object, Set<TrabaDeLaVentana>>()
 const alCambiarLasTrabas = new Set<() => void>()
@@ -94,9 +97,9 @@ export function vigilarLasTrabas(avisar: () => void) {
   return () => void alCambiarLasTrabas.delete(avisar)
 }
 
-/** Cómo está trabada esa ventana: un número para que `useSyncExternalStore` lo compare (2, trabada; 1, guardado). */
+/** Cómo está trabada esa ventana: un número para que `useSyncExternalStore` lo compare (2, trabada; 1, guardado; 4, mirando). */
 export function trabaDe(marca: object): number {
   let traba = 0
-  for (const t of trabas.get(marca) ?? []) traba |= (t.trabada ? 2 : 0) | (t.guardado ? 1 : 0)
+  for (const t of trabas.get(marca) ?? []) traba |= (t.trabada ? 2 : 0) | (t.guardado ? 1 : 0) | (t.mirando ? 4 : 0)
   return traba
 }

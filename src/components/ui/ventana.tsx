@@ -4,7 +4,8 @@ import { createContext, useContext, useEffect, useId, useRef, useState, useSyncE
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
-import { useCursorAlRechazo, useVersionDeLaPestana } from '@/lib/envio'
+import { Boton } from '@/components/ui/boton'
+import { useCursorAlRechazo, useEnviosEnCamino, useVersionDeLaPestana, volverACargar } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 import { abrioVentana, cerroVentana, esLaUltimaVentana, trabaDe, vigilarLasTrabas } from '@/lib/ventanas-abiertas'
 
@@ -55,16 +56,22 @@ const TrabaDeLaVentana = createContext(0)
 
 /**
  * Lo que el pie de la ventana tiene que saber de un envío suyo que termina
- * (`trabarLaVentana`): si se puede cancelar, y si lo enviado ya entró y solo
- * falta la pantalla al día.
+ * (`trabarLaVentana`): si se puede cancelar, si lo enviado ya entró y solo
+ * falta la pantalla al día, o si la pantalla se pone al día para decir si entró.
  */
 export function useTrabaDeLaVentana() {
   const traba = useContext(TrabaDeLaVentana)
-  return { trabada: (traba & 2) !== 0, guardado: (traba & 1) !== 0 }
+  return { trabada: (traba & 2) !== 0, guardado: (traba & 1) !== 0, mirando: (traba & 4) !== 0 }
 }
 
-/** Lo que dice el pie mientras la ventana espera a la pantalla al día, con lo enviado ya guardado. */
+/** Lo que dice la ventana mientras espera a la pantalla al día, con lo enviado ya guardado. */
 export const GUARDADO_PONIENDO_AL_DIA = 'Guardado. Poniendo la pantalla al día…'
+
+/**
+ * Cuánto se espera a la pantalla al día antes de decir que tarda. Lo normal es
+ * menos de un segundo; con la señal del taller, unos pocos.
+ */
+const TARDA_EN_PONERSE_AL_DIA = 8000
 
 /**
  * La ventana del sistema: una sola, en lugar de las catorce que había copiadas.
@@ -278,6 +285,7 @@ export function Ventana({
         <div ref={contenido} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <SeActualizoEnLaVentana id={idVieja} alAbrir={viejaAlAbrir} />
           <TrabaDeLaVentana value={traba}>{children}</TrabaDeLaVentana>
+          {traba !== 0 && <MientrasSePoneAlDia traba={traba} />}
         </div>
       </div>
     </div>,
@@ -313,6 +321,71 @@ function SeActualizoEnLaVentana({ id, alAbrir }: { id: string; alAbrir: boolean 
     </p>
   )
   return alAbrir ? texto : <div role="status">{texto}</div>
+}
+
+/**
+ * Debajo de los botones, mientras la ventana trabada espera a la pantalla al
+ * día (`trabarLaVentana`). La pinta la ventana, no cada pie: de las veintitrés
+ * ventanas que corrigen, dieciocho tienen su pie propio y no decían nada en
+ * esos segundos, con la X, «Cancelar» y Escape apagados y solo el botón
+ * girando (D2 de diseño, quincuagésima tercera pasada).
+ *
+ * Nace vacía y el texto llega en la pintada siguiente: la región que nace con
+ * su texto no se anuncia, y el cronograma la traba ya guardado. Al decir algo
+ * se lleva a la vista: debajo de los botones no los empuja, y a 390, con la
+ * ventana rodada hasta el fondo, la línea del pie sacaba «Guardar» por debajo
+ * del borde (D4 de diseño).
+ *
+ * Si la pantalla tarda más de ocho segundos, lo dice. React no pinta la página
+ * nueva mientras haya otro envío de la pestaña en camino —la captura de una
+ * cuenta nueva que sigue subiendo (H4 de funcionalidad)—, y entonces dice que
+ * espera a ese. Sin otro, la pantalla se colgó al ponerse al día (D3 de
+ * diseño): lo dice y ofrece volver a cargar, que no pierde lo guardado. La
+ * ventana sigue sin cerrarse: cerrada, la pantalla de detrás seguiría con lo
+ * de antes, y vuelta a abrir traería lo de antes, que es lo que la traba evita.
+ */
+function MientrasSePoneAlDia({ traba }: { traba: number }) {
+  const guardado = (traba & 1) !== 0
+  const espera = guardado || (traba & 4) !== 0
+  const linea = useRef<HTMLDivElement>(null)
+  const [conTexto, setConTexto] = useState(false)
+  const [tarde, setTarde] = useState(false)
+  const otros = useEnviosEnCamino()
+  useEffect(() => {
+    const cuadro = requestAnimationFrame(() => setConTexto(true))
+    return () => cancelAnimationFrame(cuadro)
+  }, [])
+  useEffect(() => {
+    if (!espera) return
+    const reloj = setTimeout(() => setTarde(true), TARDA_EN_PONERSE_AL_DIA)
+    return () => clearTimeout(reloj)
+  }, [espera])
+  const dice = espera && conTexto
+  useEffect(() => {
+    if (dice) linea.current?.scrollIntoView({ block: 'nearest' })
+  }, [dice, tarde])
+
+  const texto = !tarde
+    ? guardado
+      ? GUARDADO_PONIENDO_AL_DIA
+      : 'Poniendo la pantalla al día…'
+    : otros > 0
+      ? `${guardado ? 'Guardado. ' : ''}La pantalla se pone al día cuando termine el otro envío que va en camino desde esta pestaña.`
+      : guardado
+        ? 'Guardado, pero la pantalla tarda en ponerse al día. Si no se cierra sola, vuelve a cargar: lo guardado no se pierde.'
+        : 'La pantalla tarda en ponerse al día. Si no se suelta sola, copia lo que escribiste y vuelve a cargar.'
+  return (
+    <div ref={linea} className={dice ? 'mt-3 space-y-2 sm:text-right' : undefined}>
+      <p role="status" className={dice ? 'text-xs text-texto-suave' : 'sr-only'}>
+        {dice ? texto : ''}
+      </p>
+      {dice && tarde && otros === 0 && (
+        <Boton type="button" variante="contorno" tamano="sm" onClick={() => void volverACargar()}>
+          Volver a cargar
+        </Boton>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -401,7 +474,12 @@ export function ConfirmarAccion({
   )
 }
 
-/** Dentro de la ventana, para leer su traba: con lo confirmado ya hecho, lo dice y no deja cancelar. */
+/**
+ * Dentro de la ventana, para leer su traba: si algún día confirma una
+ * corrección (`corrige`), «Cancelar» no la cierra mientras espera, como la X.
+ * Hoy sus cinco usos son «quitar» y no la traban; lo que se dice mientras
+ * tanto lo pinta la ventana (`MientrasSePoneAlDia`), no estos botones.
+ */
 function BotonesDeConfirmar({
   alCerrar,
   alConfirmar,
@@ -413,15 +491,9 @@ function BotonesDeConfirmar({
   etiquetaConfirmar: string
   trabajando: boolean
 }) {
-  const { trabada, guardado } = useTrabaDeLaVentana()
+  const { trabada } = useTrabaDeLaVentana()
   return (
     <>
-      {/* Nace con la traba, vacía, como la del pie (`PieDeVentana`). */}
-      {(trabada || guardado) && (
-        <p role="status" className={guardado ? 'mt-3 text-sm text-texto-suave' : 'sr-only'}>
-          {guardado ? 'Hecho. Poniendo la pantalla al día…' : ''}
-        </p>
-      )}
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"

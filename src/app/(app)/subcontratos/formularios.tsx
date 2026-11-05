@@ -370,7 +370,8 @@ function DatosSubcontratista({ subcontratista: s, alTerminar }: { subcontratista
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Boton type="button" variante="contorno" disabled={enviando} onClick={alTerminar}>
+        {/* Apagado solo al corregir (`corrige`): el alta se cancela en vuelo, como siempre. */}
+        <Boton type="button" variante="contorno" disabled={enviando && Boolean(s)} onClick={alTerminar}>
           Cancelar
         </Boton>
         <Boton type="submit" cargando={enviando} disabled={Boolean(avisoRuc)}>

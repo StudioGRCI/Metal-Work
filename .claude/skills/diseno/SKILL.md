@@ -626,20 +626,44 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   deshacía la corrección (D1 de diseño, quincuagésima primera pasada, en el
   plano; F1 de la crítica, quincuagésima segunda, en la actividad, el material
   y el subcontrato). Con `corrige`, la ventana de encima queda trabada desde que
-  sale el envío: sin X, Escape ni fondo, y el «Cancelar» de `PieDeVentana` y de
-  `ConfirmarAccion`, apagado. Si lo rechazan se suelta; si entra, sigue trabada
-  hasta la página nueva y el pie dice «Guardado. Poniendo la pantalla al día…»,
-  porque React espera ahí a cualquier otro envío de la pestaña y el botón que
-  gira parecía colgado. La región que lo dice nace vacía con la traba y se va
-  con ella, no en el pie de toda ventana: una fija era la que encontraba quien
-  busca el aviso de la ventana por `role="status"` (la vista previa del cierre
-  de caja). Un «Cancelar», «No» o «Cerrar» propio, fuera de
-  `PieDeVentana`, va `disabled={enviando}` en su sitio. Un formulario en línea,
-  sin ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control
-  de la fila lo cierra o abre otro igual, que cierre solo el suyo
-  (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Una
-  cadena a mano (el cronograma) usa `trabarLaVentana` igual, y monta su región
-  con el envío.
+  sale el envío: sin X, Escape ni fondo, y el «Cancelar» de `PieDeVentana`,
+  apagado. Si lo rechazan se suelta; si entra, sigue trabada hasta la página
+  nueva y la ventana dice «Guardado. Poniendo la pantalla al día…», porque React
+  espera ahí a cualquier otro envío de la pestaña y el botón que gira parecía
+  colgado. Lo pinta `Ventana` misma, debajo de su contenido
+  (`MientrasSePoneAlDia`), y no cada pie: de las veintitrés ventanas que
+  corrigen, dieciocho tienen pie propio y no decían nada (D2 de diseño,
+  quincuagésima tercera pasada). Ni el pie, ni `ConfirmarAccion`, ni el
+  cronograma pintan una línea suya. La región nace vacía con la traba y se va
+  con ella, no en toda ventana: una fija era la que encontraba quien busca el
+  aviso de la ventana por `role="status"` (la vista previa del cierre de caja).
+  Si a los 8 s la página sigue sin ponerse al día, lo dice: con otro envío de
+  la pestaña en camino, que espera a ese; sin otro, que lo guardado no se
+  pierde, con «Volver a cargar» (D3 y D4). La ventana sigue sin cerrarse:
+  cerrada, la pantalla de detrás seguiría con lo de antes.
+  Tras «No llegó la respuesta» o un 502 de una corrección que pudo entrar, la
+  página se pone al día ya, con la ventana abierta y trabada («Poniendo la
+  pantalla al día…», la traba `mirando`), y no al cerrarla: cancelada y vuelta a
+  abrir antes, traía lo de antes y guardarla deshacía lo que sí entró (H1 de
+  funcionalidad). Solo si `/auth/sesion` contesta: sin servidor, Next recarga
+  el documento entero y se lleva el aviso y lo escrito, y se pone al día al
+  cerrar, como antes.
+  Un «Cancelar», «No» o «Cerrar» propio, fuera de `PieDeVentana`, va apagado
+  mientras se envía **solo si corrige**: el alta con `corrige` según el caso
+  (`corrige: Boolean(unidad)`) se sigue cancelando en vuelo
+  (`disabled={enviando && Boolean(unidad)}`; la suite entera lo encontró roto
+  en la unidad, el material y el subcontratista). Un formulario en línea, sin
+  ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control de
+  la fila lo cierra o abre otro igual, que cierre solo el suyo
+  (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Y
+  mientras se guarda, lo que abre los demás de la lista va apagado: el
+  formulario avisa con `alCambiarEnvio` y la lista guarda un `guardando`, como
+  las notas de verificación y las fechas de las etapas. Abrir otro desmontaba
+  el que iba en camino, y su «Guardado» o su rechazo no salía en ninguna fila
+  (H2 y H3 de funcionalidad). Una cadena a mano (el cronograma) usa
+  `trabarLaVentana` igual, y lo que dice en su tarjeta lo deja para cuando la
+  ventana se cierre (`alCerrarLaVentana`): dicho detrás de una ventana modal,
+  el lector no lo oía y la tarjeta cambiaba sin que nadie la viera (D5).
   **Las altas no llevan `corrige`**: se cierran o se rehacen al contestar, como
   siempre, porque esperar a la página les quitaba el aviso, dejaba el botón
   girando sin decir nada y, con su `useIdDelEnvio` renovado tarde, la ventana

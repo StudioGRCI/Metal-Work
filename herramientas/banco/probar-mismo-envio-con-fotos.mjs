@@ -314,8 +314,9 @@ const SIN_RESPUESTA = 'No llegó la respuesta'
   comprobar(dijo3.includes('enviado a Administración') && fila3.n === 1, `[Logística] el siguiente gasto entra con el id nuevo («${dijo3}»)`)
 
   // El mismo envío repetido tras otra respuesta perdida entra una vez. El id
-  // nuevo llega con la página puesta al día, junto con el botón libre; el
-  // verde ya se ve desde que contestó.
+  // nuevo llega al contestar, con el verde: es un alta, sin `corrige`, y su
+  // `alTerminar` vacía el formulario y lo renueva sin esperar a la página
+  // puesta al día. El `hasta` solo cubre el repintado.
   const id4 = await hasta(() => form.locator('input[name="id"]').inputValue(), (v) => v && v !== id2, 15000)
   const desc4 = `QA-GASTO cuarto ${sello}, mismo envío repetido`
   await llenar('75.5', desc4, pdfs.D)

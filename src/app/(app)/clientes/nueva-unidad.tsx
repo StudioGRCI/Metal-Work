@@ -223,7 +223,8 @@ export function NuevaUnidad({
           )}
 
           <div className="flex justify-end gap-2 sm:col-span-3">
-            <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando} onClick={() => setAbierto(false)}>
+            {/* Apagado solo al corregir (`corrige`): el alta se cancela en vuelo, como siempre. */}
+            <Boton type="button" variante="fantasma" tamano="sm" disabled={enviando && Boolean(unidad)} onClick={() => setAbierto(false)}>
               Cancelar
             </Boton>
             <Boton type="submit" tamano="sm" cargando={enviando}>

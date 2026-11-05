@@ -5,7 +5,7 @@ import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
-import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, trabarLaVentana, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, trabarLaVentana, vecesQueSeCerro, type TrabaDeLaVentana } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -765,12 +765,37 @@ type Opciones = {
    * barrido de la quincuagésima tercera en las demás). Cerrarlo en vuelo y
    * volver a abrirlo era el mismo camino, por eso la traba empieza al enviar. Si
    * el envío no entra, se suelta con el rechazo. Un «Cancelar» propio, fuera de
-   * `PieDeVentana`, va `disabled={enviando}`.
+   * `PieDeVentana`, va apagado mientras se envía solo si corrige: un alta con
+   * `corrige` según el caso (`corrige: Boolean(unidad)`) se sigue cancelando en
+   * vuelo, como siempre (regresión que encontró la suite entera, quincuagésima
+   * tercera pasada). En línea, sin ventana, lo que abre otro formulario de la
+   * misma lista también se apaga mientras este se guarda (`alCambiarEnvio`):
+   * abrirlo desmontaba el que iba en camino, y su desenlace no salía en ninguna
+   * fila (las notas de verificación, las fechas de las etapas).
    *
    * Lo demás se cierra al contestar: un alta no deja nada viejo a la vista, y su
    * formulario queda listo para la siguiente mientras la página se pone al día.
    */
   corrige?: boolean
+}
+
+/**
+ * Si el servidor contesta ahora, en 4 s como mucho. Tras «No llegó la
+ * respuesta», pedir la página sin conexión hace que Next recargue el documento
+ * entero (se lleva el aviso y lo escrito), y `navigator.onLine` dice que sí con
+ * el wifi conectado y sin salida. `/auth/sesion` no repinta nada.
+ */
+async function contestaElServidor(): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.onLine) return false
+  const corte = new AbortController()
+  const tope = setTimeout(() => corte.abort(), 4000)
+  try {
+    return (await fetch('/auth/sesion', { cache: 'no-store', signal: corte.signal })).ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(tope)
+  }
 }
 
 /**
@@ -812,7 +837,7 @@ export function useAccion<T = never>(
       suya.current = null
     }
   }, [])
-  const trabar = (como: { trabada: boolean; guardado: boolean } | null) => {
+  const trabar = (como: TrabaDeLaVentana | null) => {
     traba.current?.()
     traba.current = como ? trabarLaVentana(como) : null
   }
@@ -839,24 +864,37 @@ export function useAccion<T = never>(
    * vez de mandar a leer un aviso que no existe (funcionalidad H1 de la
    * trigesimoquinta pasada). Salvo que se diga junto al botón (`conFotos`).
    */
-  function despuesDelRechazo(
+  async function despuesDelRechazo(
     salida: ResultadoAccion<T>,
     desde: Partida,
     lanzo: boolean,
     { entro, noEntro, otraVezAMedias, de }: { entro: () => void; noEntro: (motivo: string) => void; otraVezAMedias: () => void; de: DeFormulario },
   ) {
     if (salida.ok) return
-    // Lo que no entró deja la ventana como estaba: se puede cancelar.
-    trabar(null)
-    if (salida.arriba) otraVezAMedias()
     const { ventana } = desde
     const desdeVentana = ventana !== null
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
-    if (yaEntro) entro()
-    else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)
     // La subida con su archivo no lanza: devuelve «No llegó la respuesta…» (`anotarSinDejarloSuelto`).
     const pudoEntrar = lanzo || pudoHaberEntrado(salida.error)
-    const ponerAlDia = refrescar && (yaEntro || (pudoEntrar && desdeVentana))
+    // Una corrección que pudo entrar se pone al día ya, en la transición del
+    // envío y con su formulario a la vista: esperaba a que se cerrara la
+    // ventana, y cancelada y vuelta a abrir antes de la pantalla al día traía
+    // lo de antes; guardada así, deshacía lo que sí había entrado (H1 de
+    // funcionalidad, quincuagésima tercera pasada). Mientras tanto la ventana
+    // sigue trabada, sin X ni «Cancelar», y dice que se pone al día; el
+    // formulario en línea tiene su «Cancelar» apagado con `enviando`, que dura
+    // hasta la pantalla nueva. Sin conexión no: Next no consigue la página,
+    // recarga el documento entero y se lleva el aviso y lo escrito; se pone al
+    // día al cerrar, como antes. Se pregunta al servidor antes: `onLine` dice
+    // que sí con el wifi del taller conectado y sin salida.
+    const alDiaYa = corrige && refrescar && pudoEntrar && !yaEntro && (await contestaElServidor())
+    // Lo que no entró deja la ventana como estaba: se puede cancelar.
+    trabar(alDiaYa && desdeVentana && ventana === vecesQueSeCerro() && hayVentanaAbierta() ? { trabada: true, guardado: false, mirando: true } : null)
+    if (salida.arriba) otraVezAMedias()
+    if (yaEntro) entro()
+    else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)
+    if (alDiaYa) iniciar(() => refrescarSiEsDeLaPestana(router))
+    const ponerAlDia = refrescar && !alDiaYa && (yaEntro || (pudoEntrar && desdeVentana))
     if (!desdeVentana) {
       if (yaEntro) alYaEntrar?.()
       if (siSeVa) {
@@ -922,7 +960,7 @@ export function useAccion<T = never>(
           if (e instanceof OtraCuentaEnLaPestana) {
             const corte: ResultadoAccion<T> = { ok: false, error: NO_SE_GUARDO_OTRA_CUENTA }
             setResultado(corte)
-            despuesDelRechazo(corte, desde, false, desenlace)
+            await despuesDelRechazo(corte, desde, false, desenlace)
             return
           }
           let mensaje: string
@@ -936,7 +974,7 @@ export function useAccion<T = never>(
           }
           const fallo: ResultadoAccion<T> = { ok: false, error: mensaje }
           setResultado(fallo)
-          despuesDelRechazo(fallo, desde, true, desenlace)
+          await despuesDelRechazo(fallo, desde, true, desenlace)
           return
         }
         // Una acción que redirige (abrir la orden desde la cotización) no
@@ -948,7 +986,7 @@ export function useAccion<T = never>(
         }
         setResultado(salida)
         if (!salida.ok) {
-          despuesDelRechazo(salida, desde, false, desenlace)
+          await despuesDelRechazo(salida, desde, false, desenlace)
           return
         }
 
@@ -965,8 +1003,9 @@ export function useAccion<T = never>(
         // esa transición todas las acciones en vuelo de la pestaña: si hay otro
         // envío en camino (una subida larga), espera también a que termine, con
         // `refrescar: false` o sin él. Mientras tanto la ventana, si sigue
-        // abierta, dice que ya se guardó (`PieDeVentana`), para que el botón que
-        // gira no parezca colgado, y sigue sin poder cerrarse. Un id de
+        // abierta, dice que ya se guardó (`MientrasSePoneAlDia` en `Ventana`),
+        // para que el botón que gira no parezca colgado, y sigue sin poder
+        // cerrarse; si tarda, lo dice también. Un id de
         // `useIdDelEnvio` no se renueva aquí: el `setId` esperaría a la página, y
         // una ventana abierta entretanto mandaría el id que ya entró.
         trabar(desde.ventana !== null && desde.ventana === vecesQueSeCerro() ? { trabada: true, guardado: true } : null)

@@ -113,7 +113,8 @@ function FormularioMaterial({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Boton type="button" variante="contorno" disabled={enviando} onClick={alCerrar}>
+          {/* Apagado solo al corregir (`corrige`): el alta se cancela en vuelo, como siempre. */}
+          <Boton type="button" variante="contorno" disabled={enviando && material !== null} onClick={alCerrar}>
             Cancelar
           </Boton>
           <Boton type="submit" cargando={enviando}>

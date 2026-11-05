@@ -9,14 +9,14 @@ import { EstadoDelEnvio, useEnvioDeLaVentana, useLoQueDiceLaVentana } from '@/co
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
-import { GUARDADO_PONIENDO_AL_DIA, useTrabaDeLaVentana, Ventana } from '@/components/ui/ventana'
+import { useTrabaDeLaVentana, Ventana } from '@/components/ui/ventana'
 import { MAXIMO_ADJUNTO_MB, NO_SE_SABE_SI_QUEDO, subirAdjunto } from '@/lib/adjuntos'
 import { leerCronograma, type AreaDelTaller, type LecturaCronograma } from '@/lib/cronograma'
 import { ENTRO_OTRA_CUENTA, explicarFallo, laPestanaEsDeOtraCuenta, mientrasSeEnvia, pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { fecha as fmtFecha, numero } from '@/lib/format'
 import { NO_QUEDO_SIN_RESPUESTA } from '@/lib/subida-privada'
-import { trabarLaVentana, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, trabarLaVentana, vecesQueSeCerro } from '@/lib/ventanas-abiertas'
 
 import { cargarCronograma } from './acciones-actividades'
 
@@ -258,16 +258,23 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
             guardado = { ok: false, incierto: true }
           }
         }
-        setCargado({ dice: r.mensaje ?? 'Cronograma cargado.', conExcel: Boolean(guardado?.ok) })
-        setExcel(guardado?.ok ? null : guardado)
+        const dicho: CronogramaCargado = { dice: r.mensaje ?? 'Cronograma cargado.', conExcel: Boolean(guardado?.ok) }
+        const delExcel = guardado?.ok ? null : guardado
+        const decirloEnLaTarjeta = () => {
+          setCargado(dicho)
+          setExcel(delExcel)
+        }
         if (!guardado || guardado.ok) entro()
         // Abierta todavía, se cierra con la tarjeta ya al día, como las
         // correcciones de `useAccion` (`corrige`): React junta el cierre con
-        // la página nueva y el pie dice que ya entró.
+        // la página nueva y la ventana dice que ya entró. La tarjeta lo dice al
+        // cerrarse: las dos regiones a la vez se anunciaban juntas (D5 de
+        // diseño, quincuagésima tercera pasada).
         if (ventana === vecesQueSeCerro()) {
           traba.current?.()
           traba.current = trabarLaVentana({ trabada: true, guardado: true })
-        }
+          if (!alCerrarLaVentana(decirloEnLaTarjeta)) decirloEnLaTarjeta()
+        } else decirloEnLaTarjeta()
         iniciar(() => {
           setAbierto(false)
           refrescarSiEsDeLaPestana(router)
@@ -390,7 +397,7 @@ export function CargarCronograma({ ordenId, areasPropias }: { ordenId: string; a
           {error && <Falla texto={error} />}
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-            <CancelarElCronograma alCancelar={cerrar} enviando={enviando} />
+            <CancelarElCronograma alCancelar={cerrar} />
             <Boton
               type="button"
               tamano="lg"
@@ -418,23 +425,15 @@ function Falla({ texto }: { texto: string }) {
 
 /**
  * «Cancelar» de la ventana del cronograma. Con lo cargado ya adentro, la
- * ventana espera a la tarjeta al día: no se cancela y dice que ya entró
- * (`trabarLaVentana`). Mientras sube, se cancela como siempre y el desenlace
- * se dice en la tarjeta (`useEnvioDeLaVentana`). La región que dice que ya
- * entró nace vacía con el envío, para que se anuncie, y se va con él.
+ * ventana espera a la tarjeta al día: no se cancela (`trabarLaVentana`), y lo
+ * dice la ventana. Mientras sube, se cancela como siempre y el desenlace se
+ * dice en la tarjeta (`useEnvioDeLaVentana`).
  */
-function CancelarElCronograma({ alCancelar, enviando }: { alCancelar: () => void; enviando: boolean }) {
-  const { trabada, guardado } = useTrabaDeLaVentana()
+function CancelarElCronograma({ alCancelar }: { alCancelar: () => void }) {
+  const { trabada } = useTrabaDeLaVentana()
   return (
-    <>
-      {(enviando || guardado) && (
-        <p role="status" className={guardado ? 'self-center text-xs text-texto-suave sm:mr-auto' : 'sr-only'}>
-          {guardado ? GUARDADO_PONIENDO_AL_DIA : ''}
-        </p>
-      )}
-      <Boton type="button" variante="contorno" disabled={trabada} onClick={alCancelar}>
-        Cancelar
-      </Boton>
-    </>
+    <Boton type="button" variante="contorno" disabled={trabada} onClick={alCancelar}>
+      Cancelar
+    </Boton>
   )
 }

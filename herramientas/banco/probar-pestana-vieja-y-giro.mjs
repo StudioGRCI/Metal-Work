@@ -299,7 +299,15 @@
  *       la caja (Tesorería); mientras guardan siguen abiertas con «Cancelar»
  *       apagado, las ventanas sin X ni Escape y el pie dice que ya entró, y
  *       vueltas a abrir enseguida traen lo guardado. Al cerrarse la del plano,
- *       el cursor no salta si la persona ya escribía en otro plano.
+ *       el cursor no salta si la persona ya escribía en otro plano. La ventana
+ *       trabada dice que ya entró aunque su pie sea propio, y Ctrl+Enter no la
+ *       manda otra vez; si tarda más de 8 s, lo dice y ofrece «Volver a cargar»
+ *       (o espera al otro envío de la pestaña que va en camino). Tras «No llegó
+ *       la respuesta» o el 502 de una corrección que entró, se pone al día
+ *       trabada. En línea, mientras una nota de verificación o unas fechas de
+ *       etapa se guardan, las demás filas no se abren; las etapas corregidas
+ *       vuelven con lo guardado, y las altas (material, subcontratista, cuenta)
+ *       se siguen cancelando en vuelo.
  *   En las 1z, las 1za, las 1zb y las 1zc, la línea dicha en otra pantalla llega a la vista.
  *   Las vueltas «al menú y Atrás» esperan a ver la otra pantalla
  *       (`irYVolver`): pegadas a su commit, React dejaba montado lo que se
@@ -310,7 +318,7 @@
  * 1i-sondeo y 1i-sin-senal; 1f también corre 1f-conserva; 1o, 1o-conteo; 1p,
  * las cinco de arriba; 1s, las cinco; 1t, las cuatro; 1u, las cuatro; 1v, las cinco;
  * 1x, las ocho; 1y, las tres; 1z, las seis, las seis 1za, las nueve 1zb,
- * las dos 1zc y las ocho 1zd).
+ * las dos 1zc y las quince 1zd).
  */
 import ExcelJS from 'exceljs'
 import { randomUUID } from 'node:crypto'
@@ -463,6 +471,9 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   // `sesion` cuenta los pedidos a /auth/sesion, donde la pantalla refresca la
   // sesión antes de una acción.
   //
+  // `contar`: cuántas acciones salen con eso en el cuerpo (`contadas`); las de
+  // la campana también son acciones y no cuentan.
+  //
   // `cortarSubida`: la subida a Storage cuya ruta lo lleva se detiene como la
   // `marca`, y al soltarla se corta sin llegar, como la señal que se va.
   // `saltarSubidas`: cuántas de las que calzan pasan antes de la que se corta.
@@ -471,7 +482,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
   const patrones = [{ urlPattern: '*', requestStage: 'Request' }]
   if (compilacion) patrones.push({ urlPattern: '*', requestStage: 'Response' })
   await cdp.send('Fetch.enable', { patterns: patrones })
-  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, cortarSubida: null, saltarSubidas: 0 }
+  const corte = { despliegue: false, conservaIds: false, marca: null, retenidas: 0, esperan: [], acciones: 0, documentos: 0, rsc: 0, storage: [], reescritas: 0, perder: null, perdidas: 0, romper: null, rotas: 0, lento: null, demorados: 0, sesion: 0, cortarSubida: null, saltarSubidas: 0, contar: null, contadas: 0 }
   corte.compilacion = (await pagina.content()).match(/\\"compilacion\\":\\"([^\\"]+)\\"/)?.[1] ?? null
   corte.soltar = () => {
     for (const listo of corte.esperan.splice(0)) listo()
@@ -554,6 +565,7 @@ async function entrar(correo, viewport = { width: 1280, height: 900 }, { compila
     }
     if (e.request.method !== 'POST' || !h['next-action']) return seguir()
     corte.acciones++
+    if (corte.contar && cuerpo(e.request).includes(corte.contar)) corte.contadas++
     if (corte.marca && cuerpo(e.request).includes(corte.marca)) {
       const marca = corte.marca
       corte.marca = null
@@ -5944,8 +5956,9 @@ if (corre('1zd-cursor-en-otro-plano')) {
 // ya dice lo nuevo; vuelta a abrir enseguida trae lo guardado, y guardarla por
 // otro campo no deshace la primera. La actividad de la OT (Diseño), la línea de
 // material de la OT (Diseño) y lo pactado de un subcontrato (Administración).
-async function correccionAlDia({ cuenta, direccion, patron, abrir, formulario, primera, guardar, enBase, pantalla, segunda, vale, cancelar = 'Cancelar', antes, ventana = false, dice = false }) {
+async function correccionAlDia({ cuenta, direccion, patron, abrir, formulario, primera, guardar, enBase, pantalla, segunda, vale, cancelar = 'Cancelar', antes, ventana = false, dice = false, retener, teclear }) {
   const { pagina, contexto, errores, corte } = await entrar(cuenta, { width: 1280, height: 900 })
+  const dialogo = pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').last()
   try {
     await ir(pagina, `${BASE}${direccion}`)
     await antes?.(pagina)
@@ -5955,8 +5968,34 @@ async function correccionAlDia({ cuenta, direccion, patron, abrir, formulario, p
     await primera(form)
     corte.lento = { patron, ms: 6000 }
     const demorados = corte.demorados
+    const retenidas = corte.retenidas
+    if (teclear) {
+      corte.contar = teclear.marca
+      corte.contadas = 0
+    }
+    // `retener`: la acción se detiene antes de salir. La ventana ya está
+    // trabada desde que se envía, no desde que contesta: cerrada en vuelo y
+    // vuelta a abrir, traía lo de antes.
+    if (retener) corte.marca = retener
     const t0 = Date.now()
     await form.getByRole('button', { name: guardar, exact: true }).click()
+    let alSalir = null
+    if (retener) {
+      await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)
+      alSalir = {
+        retenida: corte.retenidas > retenidas,
+        cancelar: await form.getByRole('button', { name: cancelar, exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+        x: await dialogo.getByRole('button', { name: 'Cerrar' }).first().isDisabled({ timeout: 500 }).catch(() => null),
+      }
+      await pagina.keyboard.press('Escape')
+      await pagina.waitForTimeout(300)
+      alSalir.trasEscape = await form.count()
+      // El fondo, a un costado de la ventana.
+      await pagina.mouse.click(5, 450)
+      await pagina.waitForTimeout(300)
+      alSalir.trasElFondo = await form.count()
+      corte.soltar()
+    }
     const entro = await hasta(enBase, (f) => f && vale.primera(f), 20000)
     // La acción ya entró y la página todavía no se pone al día.
     const enVuelo = {
@@ -5965,14 +6004,23 @@ async function correccionAlDia({ cuenta, direccion, patron, abrir, formulario, p
       cancelar: await form.getByRole('button', { name: cancelar, exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
     }
     // En una ventana, ni Escape ni la X la cierran mientras espera a la
-    // pantalla al día; el pie de `PieDeVentana` dice que ya entró.
+    // pantalla al día; la ventana dice que ya entró (`MientrasSePoneAlDia`),
+    // tenga o no `PieDeVentana`.
     if (ventana) {
-      const dialogo = pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').last()
       enVuelo.x = await dialogo.getByRole('button', { name: 'Cerrar' }).first().isDisabled({ timeout: 500 }).catch(() => null)
       await pagina.keyboard.press('Escape')
       await pagina.waitForTimeout(300)
       enVuelo.trasEscape = await form.count()
-      if (dice) enVuelo.dice = limpio(await form.locator('[role="status"]').filter({ hasText: 'Guardado' }).first().innerText({ timeout: 1000 }).catch(() => ''))
+      if (dice) enVuelo.dice = limpio(await dialogo.locator('[role="status"]').filter({ hasText: 'Guardado' }).first().innerText({ timeout: 3000 }).catch(() => ''))
+    }
+    // Ctrl+Enter en un campo de texto (`requestSubmit`, que no mira el botón
+    // apagado) no la manda otra vez mientras la página se pone al día.
+    if (teclear) {
+      await form.locator(teclear.campo).focus()
+      await pagina.keyboard.press('Control+Enter')
+      await pagina.waitForTimeout(500)
+      enVuelo.acciones = corte.contadas
+      corte.contar = null
     }
     await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
     const alCerrar = await pantalla(pagina)
@@ -5985,7 +6033,7 @@ async function correccionAlDia({ cuenta, direccion, patron, abrir, formulario, p
     await form.getByRole('button', { name: guardar, exact: true }).click()
     const final = await hasta(enBase, (f) => f && vale.segunda(f), 20000)
     await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
-    return { entro, enVuelo, alCerrar, cerro, reabierto, final, errores, pagina }
+    return { entro, enVuelo, alSalir, alCerrar, cerro, reabierto, final, errores, pagina }
   } finally {
     corte.lento = null
     await contexto.close()
@@ -6055,6 +6103,7 @@ if (corre('1zd-material-al-dia')) {
     abrir: (p) => fila(p).getByRole('button', { name: /^Editar / }),
     formulario: (p) => p.locator(`#cantidad-${linea.id}`).locator('xpath=ancestor::form'),
     ventana: true,
+    dice: true,
     primera: (f) => f.locator('input[name="cantidad"]').fill('12.5'),
     guardar: 'Guardar material',
     enBase: async () => (await consulta(`select cantidad::float8 as cantidad, observacion from ot_materiales where id = $1`, [linea.id]))[0],
@@ -6068,6 +6117,9 @@ if (corre('1zd-material-al-dia')) {
   })
   comprobar(r.entro && r.enVuelo.abierto === 1 && r.enVuelo.cancelar === true && r.enVuelo.x === true && r.enVuelo.trasEscape === 1,
     `[Diseño 1280] 1zd-material-al-dia. con la acción ya entrada y la página sin ponerse al día, la ventana sigue abierta, «Cancelar» y la X están apagados y Escape no la cierra (${JSON.stringify(r.enVuelo)})`)
+  // Sin `PieDeVentana`: lo dice la ventana (D2 de diseño, quincuagésima tercera pasada).
+  comprobar(r.enVuelo.dice === 'Guardado. Poniendo la pantalla al día…',
+    `[Diseño 1280] 1zd-material-al-dia. mientras tanto la ventana dice que ya entró, aunque su pie es propio («${r.enVuelo.dice}»)`)
   comprobar(/12[.,]5/.test(r.alCerrar),
     `[Diseño 1280] 1zd-material-al-dia. al cerrarse, la fila ya dice la cantidad nueva (${JSON.stringify(r.cerro)}, «${r.alCerrar.slice(0, 160)}»)`)
   comprobar(Number(r.reabierto.cantidad) === 12.5 && r.final?.cantidad === 12.5,
@@ -6090,6 +6142,9 @@ if (corre('1zd-subcontrato-al-dia')) {
     abrir: (p) => p.locator('[data-corregir-subcontrato]'),
     formulario: (p) => p.locator('#corregir-monto').locator('xpath=ancestor::form'),
     ventana: true,
+    dice: true,
+    retener: id,
+    teclear: { campo: '#corregir-descripcion', marca: id },
     primera: (f) => f.locator('#corregir-monto').fill('1500'),
     guardar: 'Guardar',
     enBase: async () => (await consulta(`select monto::float8 as monto, descripcion from subcontratos where id = $1`, [id]))[0],
@@ -6103,6 +6158,12 @@ if (corre('1zd-subcontrato-al-dia')) {
   })
   comprobar(r.entro && r.enVuelo.abierto === 1 && r.enVuelo.cancelar === true && r.enVuelo.x === true && r.enVuelo.trasEscape === 1,
     `[Administración 1280] 1zd-subcontrato-al-dia. con la acción ya entrada y la página sin ponerse al día, la ventana sigue abierta, «Cancelar» y la X están apagados y Escape no la cierra (${JSON.stringify(r.enVuelo)})`)
+  comprobar(r.alSalir?.retenida && r.alSalir.cancelar === true && r.alSalir.x === true && r.alSalir.trasEscape === 1 && r.alSalir.trasElFondo === 1,
+    `[Administración 1280] 1zd-subcontrato-al-dia. con la acción todavía sin salir, la ventana ya está trabada: ni «Cancelar», ni la X, ni Escape, ni el fondo (${JSON.stringify(r.alSalir)})`)
+  comprobar(r.enVuelo.dice === 'Guardado. Poniendo la pantalla al día…',
+    `[Administración 1280] 1zd-subcontrato-al-dia. mientras tanto la ventana dice que ya entró, aunque su pie es propio («${r.enVuelo.dice}»)`)
+  comprobar(r.enVuelo.acciones === 1,
+    `[Administración 1280] 1zd-subcontrato-al-dia. Ctrl+Enter en la descripción no lo manda otra vez mientras la página se pone al día (${r.enVuelo.acciones} acciones)`)
   // Lo pactado y su saldo, los dos primeros montos de la pantalla.
   const montos = r.alCerrar.match(/S\/\s?[\d.,]+/g)?.slice(0, 3) ?? []
   comprobar(montos.length >= 2 && montos.slice(0, 2).every((m) => m.endsWith('1,500.00')),
@@ -6113,8 +6174,8 @@ if (corre('1zd-subcontrato-al-dia')) {
 }
 
 // Una corrección con `PieDeVentana` (la cuenta de Tesorería): mientras espera
-// a la pantalla al día, el pie dice «Guardado. Poniendo la pantalla al día…»
-// y ni «Cancelar», ni la X, ni Escape la cierran. Al cerrarse, la lista ya
+// a la pantalla al día, la ventana dice «Guardado. Poniendo la pantalla al
+// día…» y ni «Cancelar», ni la X, ni Escape la cierran. Al cerrarse, la lista ya
 // dice el nombre nuevo, y vuelta a abrir enseguida no lo devuelve al de antes.
 if (corre('1zd-cuenta-al-dia')) {
   const id = randomUUID()
@@ -6150,12 +6211,441 @@ if (corre('1zd-cuenta-al-dia')) {
   comprobar(r.entro && r.enVuelo.abierto === 1 && r.enVuelo.cancelar === true && r.enVuelo.x === true && r.enVuelo.trasEscape === 1,
     `[Tesorería 1280] 1zd-cuenta-al-dia. con la cuenta ya guardada y la página sin ponerse al día, la ventana sigue abierta, «Cancelar» y la X están apagados y Escape no la cierra (${JSON.stringify(r.enVuelo)})`)
   comprobar(r.enVuelo.dice === 'Guardado. Poniendo la pantalla al día…',
-    `[Tesorería 1280] 1zd-cuenta-al-dia. mientras tanto el pie dice que ya entró («${r.enVuelo.dice}»)`)
+    `[Tesorería 1280] 1zd-cuenta-al-dia. mientras tanto la ventana dice que ya entró («${r.enVuelo.dice}»)`)
   comprobar(r.alCerrar === corregido,
     `[Tesorería 1280] 1zd-cuenta-al-dia. al cerrarse, la lista ya dice el nombre nuevo (${JSON.stringify(r.cerro)}, «${r.alCerrar}»)`)
   comprobar(r.reabierto.nombre === corregido && r.final?.nombre === corregido && r.final?.saldo === 250,
     `[Tesorería 1280] 1zd-cuenta-al-dia. vuelta a abrir enseguida trae el nombre guardado, y cambiar solo el saldo no lo devuelve al de antes (abierta con ${JSON.stringify(r.reabierto)}, en la base ${JSON.stringify(r.final)})`)
   comprobar(r.errores.length === 0, `[Tesorería 1280] 1zd-cuenta-al-dia. sin errores de consola${r.errores.length ? `: ${r.errores[0]}` : ''}`)
+}
+
+// La cuenta de Tesorería, sembrada con la función de la base y su rol, y lo
+// que hace falta para corregirla desde la caja.
+async function cuentaDeTesoreria(nombre) {
+  const id = randomUUID()
+  await comoLaCuenta(CUENTAS.tesoreria, async () => {
+    await base.query(`select guardar_caja($1, $2, 'EFECTIVO', null, 'PEN', 100, current_date, true, null)`, [id, nombre])
+  })
+  const seccion = (p) => p.locator('details', { has: p.locator('summary', { hasText: 'Cuentas de Tesorería' }) })
+  const abrirla = async (p) => {
+    if (!(await seccion(p).evaluate((d) => d.open))) await seccion(p).locator('summary').click()
+    await p.locator(`[data-editar-cuenta^="${nombre}"]`).click({ timeout: 30000 })
+    const form = p.locator(`#cuenta-${id.slice(0, 8)}-nombre`).locator('xpath=ancestor::form')
+    await form.waitFor({ timeout: 10000 })
+    return form
+  }
+  const abrirSeccion = async (p) => {
+    if (!(await seccion(p).evaluate((d) => d.open))) await seccion(p).locator('summary').click()
+  }
+  return {
+    id,
+    abrirla,
+    abrirSeccion,
+    enBase: async () => (await consulta(`select nombre from cajas where id = $1`, [id]))[0]?.nombre ?? null,
+    enLista: async (p) => (await p.locator(`[data-editar-cuenta^="${nombre}"]`).getAttribute('data-editar-cuenta', { timeout: 5000 }).catch(() => '')) ?? '',
+  }
+}
+const laVentana = (p) => p.locator('[role="dialog"]:not([data-nextjs-dialog])').last()
+const loQueDiceLaVentana = (p) => laVentana(p).locator('[role="status"]').allInnerTexts().then((t) => limpio(t.join(' '))).catch(() => '')
+
+// Si la pantalla tarda más de 8 s en ponerse al día, la ventana trabada lo
+// dice. Sin otro envío en camino, ofrece «Volver a cargar», que no pierde lo
+// guardado; con otro envío de la pestaña en camino (un alta retenida), dice
+// que espera a ese y no ofrece nada, y se cierra cuando ese termina (D3 y D4
+// de diseño y H4 de funcionalidad, quincuagésima tercera pasada).
+if (corre('1zd-cuenta-tarda')) {
+  const nombre = `QA-ZDT ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const corregido = `${nombre} corregida`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(corregido)
+    corte.lento = { patron: /\/tesoreria\/caja-diaria/, ms: 20000 }
+    const t0 = Date.now()
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const entro = await hasta(cuenta.enBase, (n) => n === corregido, 20000)
+    const primero = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('Guardado'), 3000)
+    const tarde = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('tarda en ponerse al día'), 15000)
+    const visto = {
+      ms: Date.now() - t0,
+      abierta: await form.count(),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+      boton: await laVentana(pagina).getByRole('button', { name: 'Volver a cargar', exact: true }).isVisible().catch(() => false),
+      // La línea, a la vista: debajo de los botones, sin sacarlos de la ventana (D4).
+      aLaVista: await laVentana(pagina).locator('[role="status"]', { hasText: 'tarda' }).evaluate((e) => {
+        const r = e.getBoundingClientRect()
+        return r.top >= 0 && r.bottom <= window.innerHeight
+      }).catch(() => null),
+    }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-cuenta-tarda.png') })
+    comprobar(entro === corregido && primero === 'Guardado. Poniendo la pantalla al día…',
+      `[Tesorería 1280] 1zd-cuenta-tarda. guardada, la ventana dice primero que ya entró («${primero}»)`)
+    comprobar(tarde === 'Guardado, pero la pantalla tarda en ponerse al día. Si no se cierra sola, vuelve a cargar: lo guardado no se pierde.' && visto.boton && visto.aLaVista && visto.abierta === 1 && visto.cancelar === true,
+      `[Tesorería 1280] 1zd-cuenta-tarda. a los 8 s dice que tarda y ofrece «Volver a cargar», a la vista, y la ventana sigue sin cerrarse («${tarde}», ${JSON.stringify(visto)})`)
+    corte.lento = null
+    // Con el service worker, la recarga no pasa por CDP: se mira la marca.
+    await marcarDocumento(pagina)
+    await laVentana(pagina).getByRole('button', { name: 'Volver a cargar', exact: true }).click()
+    const recargo = await hasta(() => mismoDocumento(pagina), (m) => !m, 15000).then((m) => !m)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const trasRecargar = await hasta(() => cuenta.enLista(pagina), (t) => t === corregido, 15000)
+    comprobar(recargo && trasRecargar === corregido,
+      `[Tesorería 1280] 1zd-cuenta-tarda. «Volver a cargar» recarga, y la caja ya dice el nombre guardado («${trasRecargar}»)`)
+
+    // Con otro envío de la pestaña en camino: el alta de una caja chica con su
+    // foto del conteo, retenida mientras sube (Next pone en fila las acciones,
+    // y un alta retenida en la acción dejaba a la corrección sin salir), y
+    // cancelada su ventana (las altas se cancelan en vuelo). Al soltarla, la
+    // subida se corta: el alta no entra.
+    const alta = `QA-ZDT alta ${sello}`
+    await cuenta.abrirSeccion(pagina)
+    await pagina.locator('[data-agregar-cuenta]').first().click({ timeout: 30000 })
+    const ventanaAlta = laVentana(pagina)
+    await ventanaAlta.locator('input[name="nombre"]').fill(alta)
+    await ventanaAlta.locator('select[name="tipo"]').selectOption('EFECTIVO')
+    await ventanaAlta.locator('input[name="saldo_inicial"]').fill('10')
+    await ventanaAlta.locator('input[type="file"]:not([capture])').first().setInputFiles(fotos.a)
+    const retenidas = corte.retenidas
+    corte.cortarSubida = 'apertura-caja/'
+    await ventanaAlta.getByRole('button', { name: 'Agregar la cuenta', exact: true }).click()
+    await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)
+    const cancelarAlta = ventanaAlta.getByRole('button', { name: 'Cancelar', exact: true })
+    const altaCancela = await cancelarAlta.isEnabled({ timeout: 1000 }).catch(() => false)
+    await cancelarAlta.click({ timeout: 3000 }).catch(() => {})
+    await hasta(() => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), (n) => n === 0, 5000)
+    const otraVez = `${corregido} otra vez`
+    const form2 = await cuenta.abrirla(pagina)
+    await form2.locator('input[name="nombre"]').fill(otraVez)
+    await form2.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const entro2 = await hasta(cuenta.enBase, (n) => n === otraVez, 20000)
+    const espera = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('otro envío'), 15000)
+    const conOtro = {
+      abierta: await form2.count(),
+      boton: await laVentana(pagina).getByRole('button', { name: 'Volver a cargar', exact: true }).count(),
+      lista: await cuenta.enLista(pagina),
+    }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-cuenta-tarda-otro-envio.png') })
+    corte.soltar()
+    await form2.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const alCerrarse = { abierta: await form2.count(), lista: await cuenta.enLista(pagina), alta: (await consulta(`select count(*)::int n from cajas where nombre = $1`, [alta]))[0].n }
+    comprobar(altaCancela && entro2 === otraVez && espera === 'Guardado. La pantalla se pone al día cuando termine el otro envío que va en camino desde esta pestaña.' && conOtro.abierta === 1 && conOtro.boton === 0,
+      `[Tesorería 1280] 1zd-cuenta-tarda. con el alta subiendo su foto, la corrección dice que espera a ese envío, sin ofrecer recargar («${espera}», ${JSON.stringify(conOtro)})`)
+    comprobar(alCerrarse.abierta === 0 && alCerrarse.lista === otraVez && alCerrarse.alta === 0,
+      `[Tesorería 1280] 1zd-cuenta-tarda. al cortarse la subida del alta, la ventana se cierra con la caja al día, y el alta no entró (${JSON.stringify(alCerrarse)})`)
+    comprobar(errores.length === 0, `[Tesorería 1280] 1zd-cuenta-tarda. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    corte.soltar()
+    await contexto.close()
+  }
+}
+
+// Tras «No llegó la respuesta» o el 502 de una corrección que sí entró, la
+// pantalla se pone al día con la ventana abierta y trabada: no se cancela
+// hasta que la caja diga lo que quedó, y vuelta a abrir trae lo guardado. Se
+// cancelaba y volvía a abrir con lo de antes, y guardarla por otro campo
+// deshacía lo que había entrado (H1 de funcionalidad, quincuagésima tercera).
+for (const modo of ['perder', 'romper']) {
+  if (!corre(`1zd-cuenta-sin-respuesta-${modo}`)) continue
+  const nombre = `QA-ZDR ${modo} ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const corregido = `${nombre} corregida`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+  // `perder` y `romper` miran la respuesta: piden `compilacion`.
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(corregido)
+    corte.lento = { patron: /\/tesoreria\/caja-diaria/, ms: 6000 }
+    const demorados = corte.demorados
+    corte[modo] = cuenta.id
+    // Con el service worker, una recarga no pasa por CDP: se mira la marca.
+    await marcarDocumento(pagina)
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const entro = await hasta(cuenta.enBase, (n) => n === corregido, 20000)
+    const aviso = await hasta(() => form.locator('[role="alert"]').allInnerTexts().then((t) => limpio(t.join(' '))), (t) => t.length > 0, 10000)
+    const mirando = await hasta(() => loQueDiceLaVentana(pagina), (t) => t.includes('Poniendo la pantalla al día'), 8000)
+    const mientras = {
+      abierta: await form.count(),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+      x: await laVentana(pagina).getByRole('button', { name: 'Cerrar' }).first().isDisabled({ timeout: 500 }).catch(() => null),
+      lista: await cuenta.enLista(pagina),
+    }
+    await pagina.keyboard.press('Escape')
+    await pagina.waitForTimeout(300)
+    mientras.trasEscape = await form.count()
+    // Al ponerse al día, la ventana se suelta, con el aviso, y la caja de
+    // detrás ya dice lo que entró.
+    const suelta = await hasta(() => form.getByRole('button', { name: 'Cancelar', exact: true }).isEnabled({ timeout: 500 }).catch(() => false), Boolean, 20000)
+    const alDia = { suelta, lista: await cuenta.enLista(pagina), demorados: corte.demorados - demorados, mismoDocumento: await mismoDocumento(pagina) }
+    await form.getByRole('button', { name: 'Cancelar', exact: true }).click()
+    await form.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+    const form2 = await cuenta.abrirla(pagina)
+    const reabierta = await form2.locator('input[name="nombre"]').inputValue()
+    await form2.locator(`#cuenta-${cuenta.id.slice(0, 8)}-saldo`).fill('300')
+    await form2.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const final = await hasta(() => consulta(`select nombre, saldo_inicial::float8 saldo from cajas where id = $1`, [cuenta.id]).then((f) => f[0]), (f) => f?.saldo === 300, 20000)
+    await pagina.screenshot({ path: join(CAPTURAS, `pestana-vieja-1zd-cuenta-sin-respuesta-${modo}.png`) })
+    comprobar(entro === corregido && aviso.length > 0 && mirando.includes('Poniendo la pantalla al día…') && mientras.abierta === 1 && mientras.cancelar === true && mientras.x === true && mientras.trasEscape === 1,
+      `[Tesorería 1280] 1zd-cuenta-sin-respuesta-${modo}. sin la respuesta, la ventana dice el aviso y que se pone al día, y no se cierra mientras tanto («${aviso}» · «${mirando}», ${JSON.stringify(mientras)})`)
+    comprobar(alDia.suelta && alDia.lista === corregido && alDia.demorados > 0 && alDia.mismoDocumento,
+      `[Tesorería 1280] 1zd-cuenta-sin-respuesta-${modo}. se suelta con la caja ya al día, sin recargar el documento (${JSON.stringify(alDia)})`)
+    comprobar(reabierta === corregido && final?.nombre === corregido && final?.saldo === 300,
+      `[Tesorería 1280] 1zd-cuenta-sin-respuesta-${modo}. cancelada y vuelta a abrir trae lo que entró, y cambiar el saldo no la devuelve al nombre de antes (abierta con «${reabierta}», en la base ${JSON.stringify(final)})`)
+    // El 502 que el banco pone en la respuesta lo anota el navegador: es el corte, no un error de la pantalla.
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response/i.test(e))
+    comprobar(propios.length === 0, `[Tesorería 1280] 1zd-cuenta-sin-respuesta-${modo}. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    corte.perder = null
+    corte.romper = null
+    await contexto.close()
+  }
+}
+
+// En línea, mientras una nota de verificación se guarda, las demás no se abren
+// y la suya no se cierra: abrir otra desmontaba la que iba en camino, y vuelta
+// a abrir traía la nota de antes; guardarla así deshacía la corrección (H2 de
+// funcionalidad y D1 de diseño, quincuagésima tercera pasada). Administración.
+if (corre('1zd-nota-otra')) {
+  const [orden] = await consulta(`select id from ordenes_trabajo where estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA') order by numero limit 1`)
+  let pasos
+  await comoLaCuenta(CUENTAS.administracion, async () => {
+    pasos = (await base.query(`insert into ot_verificaciones (orden_id, numero, descripcion, observaciones)
+      select $1, coalesce((select max(numero) from ot_verificaciones where orden_id = $1), 0) + g,
+             'QA-ZDN paso ' || g || ' ' || $2 || ', no es real', 'QA-ZDN nota de antes ' || g
+        from generate_series(1, 2) g returning id, descripcion`, [orden.id, sello])).rows
+  })
+  const [A, B] = pasos
+  const nota = async (x) => (await consulta(`select observaciones from ot_verificaciones where id = $1`, [x.id]))[0]?.observaciones ?? null
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=ficha`)
+    const fila = (x) => pagina.locator('tr').filter({ hasText: x.descripcion }).first()
+    const abre = (x) => fila(x).getByRole('button', { name: /^(Anotar|Editar) observación$/ })
+    const campo = (x) => fila(x).locator('input[name="observaciones"]')
+    await abre(A).click({ timeout: 30000 })
+    await campo(A).waitFor({ timeout: 10000 })
+    const nueva = `QA-ZDN nota A corregida ${sello}`
+    await campo(A).fill(nueva)
+    corte.lento = { patron: new RegExp(`/ordenes/${orden.id}`), ms: 6000 }
+    await fila(A).getByRole('button', { name: 'Guardar nota' }).click()
+    const entro = await hasta(() => nota(A), (n) => n === nueva, 20000)
+    const mientras = {
+      otra: await abre(B).isDisabled({ timeout: 500 }).catch(() => null),
+      cerrar: await fila(A).getByRole('button', { name: 'Cerrar', exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+    }
+    await abre(B).click({ timeout: 1000, force: true }).catch(() => {})
+    await pagina.waitForTimeout(300)
+    mientras.sigueAbierta = await campo(A).count()
+    mientras.bAbierta = await campo(B).count()
+    await campo(A).waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const alCerrar = { fila: limpio(await fila(A).innerText().catch(() => '')), otra: await abre(B).isEnabled({ timeout: 2000 }).catch(() => false) }
+    corte.lento = null
+    await abre(A).click({ timeout: 10000 })
+    await campo(A).waitFor({ timeout: 10000 })
+    const reabierta = await campo(A).inputValue()
+    await campo(A).fill(`${reabierta} y algo más`)
+    await fila(A).getByRole('button', { name: 'Guardar nota' }).click()
+    const final = await hasta(() => nota(A), (n) => n !== nueva, 20000)
+    comprobar(entro === nueva && mientras.otra === true && mientras.cerrar === true && mientras.sigueAbierta === 1 && mientras.bAbierta === 0,
+      `[Administración 1280] 1zd-nota-otra. mientras la nota de A se guarda, la de B no se abre y la de A no se cierra (${JSON.stringify(mientras)})`)
+    comprobar(alCerrar.fila.includes(nueva) && alCerrar.otra,
+      `[Administración 1280] 1zd-nota-otra. al cerrarse, la fila ya dice la nota nueva y la de B se puede abrir (${JSON.stringify(alCerrar).slice(0, 300)})`)
+    comprobar(reabierta === nueva && final === `${nueva} y algo más`,
+      `[Administración 1280] 1zd-nota-otra. vuelta a abrir trae la nota guardada, y lo que se le agrega no deshace la corrección (abierta con «${reabierta}», en la base «${final}»)`)
+    comprobar(errores.length === 0, `[Administración 1280] 1zd-nota-otra. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    await contexto.close()
+  }
+}
+
+// Una orden con etapas libres para corregir: las dos QA-ZDE se siembran con la
+// función de la base y el rol de Diseño. No es la primera ni la última orden
+// (las del cronograma), y solo tiene etapas del banco.
+async function ordenConEtapasDelBanco() {
+  const [orden] = await consulta(`select o.id from ordenes_trabajo o
+                                   where o.plan_etapas_manual and o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA')
+                                     and not exists (select 1 from ot_etapas e where e.orden_id = o.id and e.nombre not like 'QA-ZDE%')
+                                   order by o.numero limit 1 offset 1`)
+  const a = randomUUID()
+  const b = randomUUID()
+  const nombreA = `QA-ZDE A ${sello}`
+  const nombreB = `QA-ZDE B ${sello}`
+  await comoLaCuenta(CUENTAS.diseno, async () => {
+    const [{ id: area }] = (await base.query(`select id from areas where codigo = 'PRD' and activo`)).rows
+    // Solo A y B: las QA-ZDE de vueltas anteriores, sin avance, salen de la orden.
+    const config = [{ id: a, nombre: nombreA, area_id: area, peso_pct: 20 }, { id: b, nombre: nombreB, area_id: area, peso_pct: 20 }]
+    await base.query(`select guardar_etapas_libres($1, $2::jsonb, null)`, [orden.id, JSON.stringify(config)])
+  })
+  return { orden, a, b, nombreA, nombreB }
+}
+
+// Corregir las etapas vuelve a la lista con lo guardado (`corrige`): se
+// cerraba al contestar, vuelto a abrir en ese segundo traía el peso de antes y
+// no la etapa recién agregada, y guardarlo por otro lado devolvía el peso y
+// borraba la nueva (R30 de realización, quincuagésima tercera pasada). Diseño.
+if (corre('1zd-etapas-al-dia')) {
+  const { orden, a, b, nombreB } = await ordenConEtapasDelBanco()
+  const nombreC = `QA-ZDE C ${sello}`
+  const enBase = async () => Object.fromEntries((await consulta(`select id, nombre, peso_pct::float8 as peso from ot_etapas where orden_id = $1`, [orden.id])).map((e) => [e.id === a ? 'a' : e.id === b ? 'b' : e.nombre, { nombre: e.nombre, peso: e.peso }]))
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.diseno, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=etapas`)
+    const abrir = pagina.getByRole('button', { name: 'Editar o agregar etapa' })
+    const form = pagina.locator('form').filter({ has: pagina.getByRole('button', { name: 'Guardar etapas' }) })
+    await abrir.click({ timeout: 30000 })
+    await form.waitFor({ timeout: 10000 })
+    const filas = await form.locator('input[name="etapa_id"]').count()
+    await form.locator(`#peso-${a}`).fill('35')
+    await form.getByRole('button', { name: '+ Agregar etapa' }).click()
+    await form.locator('input[id^="nombre-"]').last().fill(nombreC)
+    await form.locator('select[id^="area-"]').last().selectOption({ index: 1 })
+    await form.locator('input[id^="peso-"]').last().fill('5')
+    corte.lento = { patron: new RegExp(`/ordenes/${orden.id}`), ms: 6000 }
+    await form.getByRole('button', { name: 'Guardar etapas' }).click()
+    const entro = await hasta(enBase, (f) => f?.a?.peso === 35 && f[nombreC], 20000)
+    const mientras = {
+      abierto: await form.count(),
+      cancelar: await form.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+    }
+    await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const alCerrar = limpio(await pagina.locator('main').innerText().catch(() => ''))
+    corte.lento = null
+    await abrir.click({ timeout: 10000 })
+    await form.waitFor({ timeout: 10000 })
+    const reabierto = { filas: await form.locator('input[name="etapa_id"]').count(), pesoA: await form.locator(`#peso-${a}`).inputValue() }
+    await form.locator(`#nombre-${b}`).fill(`${nombreB} renombrada`)
+    await form.getByRole('button', { name: 'Guardar etapas' }).click()
+    const final = await hasta(enBase, (f) => f?.b?.nombre === `${nombreB} renombrada`, 20000)
+    await form.waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    comprobar(entro && mientras.abierto === 1 && mientras.cancelar === true,
+      `[Diseño 1280] 1zd-etapas-al-dia. con las etapas ya en la base y la página sin ponerse al día, el formulario sigue abierto y «Cancelar» está apagado (${JSON.stringify(mientras)})`)
+    comprobar(alCerrar.includes(nombreC),
+      `[Diseño 1280] 1zd-etapas-al-dia. al cerrarse, la lista ya trae la etapa agregada`)
+    comprobar(reabierto.filas === filas + 1 && Number(reabierto.pesoA) === 35 && final?.a?.peso === 35 && final?.[nombreC],
+      `[Diseño 1280] 1zd-etapas-al-dia. vuelto a abrir trae el peso y la etapa guardados, y renombrar otra no los deshace (abierto con ${JSON.stringify(reabierto)}, antes ${filas} filas; en la base ${JSON.stringify(final)})`)
+    comprobar(errores.length === 0, `[Diseño 1280] 1zd-etapas-al-dia. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    await contexto.close()
+  }
+}
+
+// Mientras unas fechas se guardan, ninguna fila abre ni cierra las suyas: abrir
+// otra desmontaba la que iba en camino, y vuelta a abrir traía el fin de antes
+// y lo mandaba (H3 de funcionalidad, quincuagésima tercera pasada).
+// Administración, que programa las etapas.
+if (corre('1zd-programacion-otra')) {
+  const { orden, a, b, nombreA, nombreB } = await ordenConEtapasDelBanco()
+  const [{ inicio, fin }] = await consulta(`select (current_date + 30)::text inicio, (current_date + 45)::text fin`)
+  const fechas = async () => (await consulta(`select fecha_inicio_programada::text inicio, fecha_fin_programada::text fin from ot_etapas where id = $1`, [a]))[0]
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=etapas`)
+    const fila = (id) => pagina.locator(`#etapa-${id}`)
+    const boton = (id) => fila(id).getByRole('button', { name: /^(Cerrar|Cambiar fechas|Programar fechas)$/ })
+    await boton(a).click({ timeout: 30000 })
+    await pagina.locator(`#inicio-${a}`).fill(inicio)
+    await pagina.locator(`#fin-${a}`).fill(fin)
+    corte.lento = { patron: new RegExp(`/ordenes/${orden.id}`), ms: 6000 }
+    await fila(a).getByRole('button', { name: 'Guardar fechas' }).click()
+    const entro = await hasta(fechas, (f) => f?.fin === fin, 20000)
+    const mientras = {
+      propio: await boton(a).isDisabled({ timeout: 500 }).catch(() => null),
+      otro: await boton(b).isDisabled({ timeout: 500 }).catch(() => null),
+      cancelar: await fila(a).getByRole('button', { name: 'Cancelar', exact: true }).isDisabled({ timeout: 500 }).catch(() => null),
+    }
+    await pagina.locator(`#fin-${a}`).waitFor({ state: 'detached', timeout: 20000 }).catch(() => {})
+    const alCerrar = { otro: await boton(b).isEnabled({ timeout: 2000 }).catch(() => false) }
+    corte.lento = null
+    await boton(a).click({ timeout: 10000 })
+    const reabierta = { inicio: await pagina.locator(`#inicio-${a}`).inputValue(), fin: await pagina.locator(`#fin-${a}`).inputValue() }
+    await pagina.locator(`#inicio-${a}`).fill((await consulta(`select (current_date + 31)::text d`))[0].d)
+    await fila(a).getByRole('button', { name: 'Guardar fechas' }).click()
+    const final = await hasta(fechas, (f) => f && f.inicio !== inicio, 20000)
+    comprobar(entro?.fin === fin && mientras.propio === true && mientras.otro === true && mientras.cancelar === true,
+      `[Administración 1280] 1zd-programacion-otra. mientras se guardan las fechas de «${nombreA}», ni su «Cerrar» ni el de «${nombreB}» se tocan (${JSON.stringify(mientras)})`)
+    comprobar(alCerrar.otro && reabierta.inicio === inicio && reabierta.fin === fin && final?.fin === fin,
+      `[Administración 1280] 1zd-programacion-otra. al cerrarse se libera la otra fila, vuelta a abrir trae las fechas guardadas y cambiar el inicio no devuelve el fin (abierta con ${JSON.stringify(reabierta)}, en la base ${JSON.stringify(final)})`)
+    comprobar(errores.length === 0, `[Administración 1280] 1zd-programacion-otra. sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+  } finally {
+    corte.lento = null
+    await contexto.close()
+  }
+}
+
+// Las altas que comparten formulario con su corrección (`corrige` según el
+// caso) se siguen cancelando en vuelo: el material nuevo del catálogo (Diseño)
+// y el subcontratista nuevo (Administración). La unidad nueva lo prueba
+// 1t-motivo-arriba. Con «Cancelar» apagado en vuelo, la suite entera lo encontró.
+if (corre('1zd-altas-cancelan')) {
+  const casos = [
+    {
+      cuenta: CUENTAS.diseno,
+      puesto: 'Diseño',
+      que: 'el material nuevo',
+      direccion: '/materiales',
+      abrir: (p) => p.getByRole('button', { name: 'Nuevo material', exact: true }),
+      marca: `QA-ZDX material ${sello}`,
+      llenar: async (v, marca) => {
+        await v.locator('#fm-descripcion, [name="descripcion"]').first().fill(marca)
+        await v.locator('select[name="categoria_id"]').selectOption({ index: 1 })
+        await v.locator('select[name="unidad_medida_id"]').selectOption({ index: 1 })
+        const confirmar = v.locator('input[name="confirmar_unidad"]')
+        if (await confirmar.count()) await confirmar.check()
+      },
+      enviar: 'Guardar',
+    },
+    {
+      cuenta: CUENTAS.administracion,
+      puesto: 'Administración',
+      que: 'el subcontratista nuevo',
+      direccion: '/subcontratos?vista=subcontratistas',
+      abrir: (p) => p.locator('[data-nuevo-subcontratista]'),
+      marca: `QA-ZDX subcontratista ${sello}`,
+      llenar: async (v, marca) => {
+        const cuerpo = String(Date.now()).slice(-8)
+        const base10 = `10${cuerpo}`.slice(0, 10)
+        const suma = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2].reduce((t, peso, i) => t + Number(base10[i]) * peso, 0)
+        let digito = 11 - (suma % 11)
+        if (digito === 10) digito = 0
+        if (digito === 11) digito = 1
+        await v.locator('input[name="ruc"]').fill(`${base10}${digito}`)
+        await v.locator('input[name="nombre"]').fill(marca)
+      },
+      enviar: 'Dar de alta',
+    },
+  ]
+  for (const caso of casos) {
+    const { pagina, contexto, errores, corte } = await entrar(caso.cuenta, { width: 1280, height: 900 })
+    try {
+      await ir(pagina, `${BASE}${caso.direccion}`)
+      await caso.abrir(pagina).first().click({ timeout: 30000 })
+      const v = laVentana(pagina)
+      await v.waitFor({ timeout: 10000 })
+      await caso.llenar(v, caso.marca)
+      const retenidas = corte.retenidas
+      corte.marca = caso.marca
+      await v.getByRole('button', { name: caso.enviar, exact: true }).click()
+      const retenida = await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)
+      const cancelar = v.getByRole('button', { name: 'Cancelar', exact: true })
+      const enVuelo = { retenida: retenida > retenidas, cancelar: await cancelar.isEnabled({ timeout: 1000 }).catch(() => false) }
+      await cancelar.click({ timeout: 3000 }).catch(() => {})
+      enVuelo.cerrada = (await hasta(() => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), (n) => n === 0, 5000)) === 0
+      corte.soltar()
+      await pagina.waitForTimeout(1500)
+      comprobar(enVuelo.retenida && enVuelo.cancelar && enVuelo.cerrada,
+        `[${caso.puesto} 1280] 1zd-altas-cancelan. ${caso.que} se cancela mientras se envía, como siempre (${JSON.stringify(enVuelo)})`)
+      comprobar(errores.length === 0, `[${caso.puesto} 1280] 1zd-altas-cancelan. ${caso.que}, sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    } finally {
+      corte.soltar()
+      await contexto.close()
+    }
+  }
 }
 
 // El motivo de la base llega con su punto, y detrás va «; » o «. »: decía
