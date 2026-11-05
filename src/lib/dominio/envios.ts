@@ -29,6 +29,13 @@ export const CLAVES_DEL_ENVIO = [
   'movimiento_almacen',
   'movimiento_caja',
   'transferencia_caja',
+  // RR. HH. y la cuenta nueva de la caja (20261023200000): tras «No llegó la
+  // respuesta», el registro siguiente decía «ya quedó» y se perdía lo escrito.
+  'observacion_personal',
+  'permiso_personal',
+  'tareo',
+  'uso_saldo',
+  'cuenta_caja',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

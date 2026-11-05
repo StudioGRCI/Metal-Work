@@ -365,7 +365,8 @@ select public.registrar_ingreso_almacen(current_setting('prueba.d2')::uuid, curr
 select test.afirmar(pg_temp.separado('far', 'CHK416-X') = 3, '«Stock en almacén» da los 3 faros a CHK416-X');
 -- El mismo envío hacia otra unidad no es un reintento; con el mismo código escrito distinto, sí.
 select test.debe_fallar($q$select pg_temp.salida('s5', 'far', 2, null, 'CHK416-Y')$q$,
-  'el mismo envío hacia otra unidad no se toma por reintento', 'ya existe con otros datos');
+  'el mismo envío hacia otra unidad no se toma por reintento: la primera salida ya quedó (20261023200000)',
+  'Esta salida ya quedó registrada la primera vez que la enviaste');
 select test.afirmar(pg_temp.salida('s5', 'far', 2, null, ' chk416-x ') = current_setting('prueba.s5')::uuid,
   'con el mismo código, aunque escrito con espacios y en minúsculas, es el reintento');
 -- Para otra unidad hay solo los 2 libres, no los devueltos de CHK416-X.

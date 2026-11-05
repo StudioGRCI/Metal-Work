@@ -12,6 +12,7 @@ select test.crear_usuario('Ana', 'Prueba', 'admin-abasto@demo.pe', 'ADMIN', (sel
 select test.crear_usuario('Dina', 'Rojas', 'dina@demo.pe', 'DISENO', (select id from public.sedes limit 1)) as diseno_id \gset
 select test.crear_usuario('Ciro', 'Luna', 'ciro@demo.pe', 'COMPRADOR', (select id from public.sedes limit 1)) as comprador_id \gset
 select test.crear_usuario('Alma', 'Vera', 'alma@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacen_id \gset
+select test.crear_usuario('Aldo', 'Vera', 'aldo@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacen2_id \gset
 select test.crear_usuario('Mario', 'Paz', 'mario@demo.pe', 'SUPERVISOR', (select id from public.sedes limit 1)) as mtz_id \gset
 select test.crear_usuario('Sonia', 'Rey', 'sonia@demo.pe', 'SUPERVISOR', (select id from public.sedes limit 1)) as acb_id \gset
 
@@ -184,6 +185,21 @@ select test.debe_fallar(
 select set_config('prueba.ingreso', gen_random_uuid()::text, true);
 select public.registrar_recepcion_material(current_setting('prueba.ingreso')::uuid,
   current_setting('prueba.compra_linea')::uuid, 6, 'GUIA-PRUEBA-001');
+-- La respuesta se perdió y se vuelve a enviar con el mismo id (20261023200000):
+-- lo mismo devuelve la misma recepción; otra cantidad u otra guía ya no es el
+-- mismo envío, y el primero quedó.
+select test.afirmar(public.registrar_recepcion_material(current_setting('prueba.ingreso')::uuid,
+  current_setting('prueba.compra_linea')::uuid, 6, ' GUIA-PRUEBA-001 ') = current_setting('prueba.ingreso')::uuid,
+  'la misma recepción repetida devuelve la misma');
+select test.debe_fallar(format('select public.registrar_recepcion_material(%L, %L, 5, ''GUIA-PRUEBA-001'')',
+  current_setting('prueba.ingreso'), current_setting('prueba.compra_linea')),
+  'otra cantidad con el mismo id dice que la primera ya quedó', 'Esta recepción ya quedó registrada la primera vez que la enviaste');
+select test.debe_fallar(format('select public.registrar_recepcion_material(%L, %L, 6, ''GUIA-PRUEBA-002'')',
+  current_setting('prueba.ingreso'), current_setting('prueba.compra_linea')),
+  'otra guía con el mismo id tampoco', 'ya quedó registrada la primera vez');
+select test.afirmar((select count(*) = 1 and min(cantidad) = 6 from public.movimientos_materiales
+                      where orden_compra_detalle_id = current_setting('prueba.compra_linea')::uuid and tipo = 'INGRESO'),
+  'queda una sola recepción, con la cantidad de la primera vez');
 do $$
 declare v_rechazado boolean := false;
 begin
@@ -214,6 +230,18 @@ select public.despachar_material_con_foto(current_setting('prueba.despacho')::uu
   current_setting('prueba.req_linea')::uuid, 4, :'mtz_id', 'Mario Paz', pg_temp.foto_despacho('prueba.despacho'));
 select public.despachar_material_con_foto(current_setting('prueba.despacho')::uuid,
   current_setting('prueba.req_linea')::uuid, 4, :'mtz_id', 'Mario Paz', pg_temp.foto_despacho('prueba.despacho'));
+select test.debe_fallar(format('select public.despachar_material_con_foto(%L, %L, 3, %L, ''Mario Paz'', %L)',
+  current_setting('prueba.despacho'), current_setting('prueba.req_linea'), :'mtz_id', pg_temp.foto_despacho('prueba.despacho')),
+  'otra cantidad en el despacho con el mismo id dice que el primero ya quedó', 'Este despacho ya quedó registrado la primera vez que lo enviaste');
+reset role;
+select test.como_usuario(:'almacen2_id');
+set local role authenticated;
+select test.debe_fallar(format('select public.registrar_recepcion_material(%L, %L, 6, ''GUIA-PRUEBA-001'')',
+  current_setting('prueba.ingreso'), current_setting('prueba.compra_linea')),
+  'la recepción de otra persona de Almacén no se da por suya', 'Esta recepción ya existe con otros datos');
+reset role;
+select test.como_usuario(:'almacen_id');
+set local role authenticated;
 
 do $$
 declare v_rechazado boolean := false;

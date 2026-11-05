@@ -6,17 +6,24 @@ import { useState } from 'react'
 import { CodigoInternoConLista } from '@/components/codigo-interno/elegir-codigo'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
+import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { Ventana } from '@/components/ui/ventana'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { MOTIVO_OBSERVACION, TIPO_OBSERVACION } from '@/lib/dominio/rrhh'
-import { useEnvio } from '@/lib/envio'
+import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 
 import { anularObservacion, registrarObservacion } from './acciones'
 
 type Persona = { id: string; nombre: string; cargo: string | null }
 
-/** El botón «Registrar observación» y su ventana. */
+/**
+ * El botón «Registrar observación» y su ventana. El id vive aquí, fuera del
+ * formulario que se rehace al abrir (`useIdDelEnvio`): tras «No llegó la
+ * respuesta», cancelar y volver a abrir lleva el mismo, y la base dice si ya
+ * quedó en vez de registrar dos veces o dar por guardado lo cambiado.
+ */
 export function RegistrarObservacion({
   personal,
   hoy,
@@ -32,12 +39,14 @@ export function RegistrarObservacion({
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
+  const envio = useIdDelEnvio('observacion_personal')
   return (
     <>
       <Boton
         type="button"
         onClick={() => {
           setAviso(null)
+          envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
         }}
@@ -57,40 +66,58 @@ export function RegistrarObservacion({
         descripcion="Lo que pasó, a quién y por qué. Queda en su historial: no se borra, se anula con su motivo."
         ancho="lg"
       >
-        <FormularioObservacion
-          key={vez}
-          personal={personal}
-          hoy={hoy}
-          personaInicial={personaInicial}
-          codigos={codigos}
-          alTerminar={(mensaje) => {
-            setAbierta(false)
-            setAviso(mensaje)
-          }}
-        />
+        <EnvioAnterior texto={envio.anterior} />
+        {envio.id && (
+          <FormularioObservacion
+            key={vez}
+            envio={envio}
+            personal={personal}
+            hoy={hoy}
+            personaInicial={personaInicial}
+            codigos={codigos}
+            alCancelar={() => setAbierta(false)}
+            alTerminar={(mensaje) => {
+              setAbierta(false)
+              setAviso(mensaje)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
 }
 
 function FormularioObservacion({
+  envio,
   personal,
   hoy,
   personaInicial,
   codigos,
+  alCancelar,
   alTerminar,
 }: {
+  envio: ReturnType<typeof useIdDelEnvio>
   personal: Persona[]
   hoy: string
   personaInicial?: string
   codigos: CodigoParaElegir[] | null
+  alCancelar: () => void
   alTerminar: (mensaje: string) => void
 }) {
-  // Decidido aquí: un reintento manda el mismo id y la base no duplica.
-  const [id] = useState(() => crypto.randomUUID())
+  const id = envio.id ?? ''
   const [persona, setPersona] = useState(personaInicial ?? '')
   const [tipo, setTipo] = useState('OBSERVACION')
-  const { alEnviar, enviando, error } = useEnvio(registrarObservacion, (r) => alTerminar(r.mensaje ?? 'Registrada.'))
+  const { alEnviar, enviando, error } = useEnvio(
+    (previo: unknown, datos: FormData) => {
+      envio.salio()
+      return registrarObservacion(previo, datos)
+    },
+    (r) => {
+      envio.otro()
+      alTerminar(r.mensaje ?? 'Registrada.')
+    },
+    { alYaEntrar: envio.otro },
+  )
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
@@ -153,16 +180,7 @@ function FormularioObservacion({
           </Campo>
         )}
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-peligro">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
-        <Boton type="submit" cargando={enviando}>
-          Registrar
-        </Boton>
-      </div>
+      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Registrar" />
     </form>
   )
 }

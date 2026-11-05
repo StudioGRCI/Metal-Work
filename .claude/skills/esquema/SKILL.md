@@ -335,3 +335,14 @@ política `borrar_*` eliminada y el `grant delete` revocado.
   porque el nombre de la columna ya no lo dice. La guarda de la `20261023130000`
   y el check 434 miran todas las funciones de la base: una copiada de una
   versión vieja se detiene ahí.
+- **Un `case` como condición de un `if` de plpgsql va entre paréntesis.**
+  `if v.tipo = case when … end then` no compila («syntax error at or near
+  then»): el `then` del `if` se lee como parte del `case`. Se escribe
+  `if v.tipo = (case when … end) then` (le pasó a la `20261023200000`).
+- **Un parámetro nuevo con valor por omisión hace ambigua la llamada vieja.**
+  Con `guardar_caja` de nueve y otra de diez con `p_alta boolean default
+  false`, PostgREST no sabe cuál elegir para una llamada con nueve nombres y
+  responde con error (PGRST203). La nueva va sin valor por omisión y la vieja
+  queda como envoltorio `language sql` que llama a la nueva; la acción manda
+  los diez y, mientras producción no tenga la migración, reintenta con nueve
+  si recibe PGRST202 (`20261023200000`, `tesoreria/caja-diaria/acciones.ts`).

@@ -10,6 +10,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import { type Almacen, ALMACENES, exigeFormato, redondearCantidad, topeDeCantidad } from '@/lib/dominio/almacen'
@@ -289,6 +290,12 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
     setCodigoAceptado('')
     setVolver(!hecha || hecha.requerimiento_id !== deAtencion ? null : cantidadEnviada.current >= hecha.pendiente ? 'ENTREGAR' : 'VER')
     cerrar({ cancelada: false })
+  }, {
+    // El id vive fuera de la ventana: tras «No llegó la respuesta», volver a
+    // abrir lleva el mismo. Si la base dice que la primera ya quedó, la salida
+    // siguiente es otra (20261023200000); antes ese id quedaba pegado hasta
+    // recargar y cada salida siguiente decía que ya existía.
+    alYaEntrar: () => setId(crypto.randomUUID()),
   })
 
   const linea = lineasRq.find((l) => l.linea_id === lineaId)
@@ -756,10 +763,13 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
             </Campo>
           </div>
 
-          {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
-          <Boton type="submit" cargando={enviando} disabled={conSaldo.length === 0 || sinNada || unidadSinCodigo || (destino === 'CODIGO' && placaDeVarios)}>
-            Confirmar salida
-          </Boton>
+          <PieDeVentana
+            error={error}
+            enviando={enviando}
+            alCancelar={() => cerrar({ cancelada: true })}
+            texto="Confirmar salida"
+            disabled={conSaldo.length === 0 || sinNada || unidadSinCodigo || (destino === 'CODIGO' && placaDeVarios)}
+          />
         </form>
       </Ventana>
     </>
