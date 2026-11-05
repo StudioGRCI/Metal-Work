@@ -673,7 +673,11 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   nace de esa recarga lo dice arriba, en ámbar: qué ventana se cerró, que no se
   sabe si se guardó y que se mire antes de escribirlo otra vez (G1 de la
   crítica, quincuagésima quinta pasada). Lo escrito no vuelve: cada ventana
-  tendría que saber llenar sus campos.
+  tendría que saber llenar sus campos. Lo mismo sin ventana a la vista —el
+  formulario en línea que corrige su tarjeta, o la ventana cancelada en
+  vuelo—: se anota con `anotarQueSePoneAlDia` y arriba se dice qué era (`que`
+  de `siSeVa`); la nota del paso se iba con lo escrito y sin aviso (D de
+  funcionalidad, quincuagésima sexta pasada).
   Un «Cancelar», «No» o «Cerrar» propio, fuera de `PieDeVentana`, va apagado
   mientras se envía **solo si corrige**: el alta con `corrige` según el caso
   (`corrige: Boolean(unidad)`) se sigue cancelando en vuelo
@@ -684,7 +688,23 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   (`suVentanaSigueAbierta(desde)`) y, si la ventana ya se cerró, lo suma a la
   lista y dice junto a su campo que quedó registrado, sin elegirlo. La orden
   nueva tomaba la unidad cancelada en lugar de la que la persona había elegido
-  entretanto (F3 de la crítica, quincuagésima cuarta pasada). Un formulario en línea, sin
+  entretanto (F3 de la crítica, quincuagésima cuarta pasada). Lo que el alta
+  deja **en duda** (sin respuesta, el 502) va por `alQuedarEnDuda` de
+  `useEnvio`: corre desde el envío, una vez, aunque la ventana se haya
+  cancelado, haya otra abierta o el formulario ya no esté. Como efecto sobre
+  `error` no corría con otra ventana abierta —el rechazo se suelta con ella— ni
+  con el formulario desmontado al cambiar de cliente (M3 de realización y C de
+  funcionalidad, quincuagésima sexta pasada). Quien guarda la lista busca lo
+  enviado **sin pedir la página entera**: la orden nueva vuelve a leer las
+  unidades desde el navegador, y busca el cliente por su documento y la
+  carrocería por su código, que no se repiten. Un `router.refresh()` sin
+  conexión, o tras el 502 que dejó la duda, recargaba el documento y se
+  llevaba la orden escrita (F-A); con la sesión muerta, la llevaba a
+  /ingresar (N2 de la crítica). La lectura que falla no vacía la lista ni
+  suelta lo elegido: lo dice junto al campo y vuelve a leer con la conexión o
+  al volver a la pestaña (F-B). Si falla con 401 o 403, es la sesión y no la
+  conexión, y se dice así: que entre de nuevo en otra pestaña y vuelva (N3).
+  Un formulario en línea, sin
   ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control de
   la fila lo cierra o abre otro igual, que cierre solo el suyo
   (`setAbierto((a) => (a === id ? null : a))`) o una `key` con lo guardado. Y

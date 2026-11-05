@@ -1,13 +1,13 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useState } from 'react'
 
 import { crearCarroceria } from '@/app/(app)/configuracion/acciones'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { quedoEnDuda, suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
 
 
 /**
@@ -23,8 +23,11 @@ export function NuevaCarroceria({
 }: {
   /** `elegir`: la ventana seguía abierta al entrar (como en `NuevaUnidad`). */
   onCreada?: (carroceria: { id: string; nombre: string }, como: { elegir: boolean }) => void
-  /** El alta volvió sin decir si entró: quien guarda la lista la pone al día (como en `NuevaUnidad`). */
-  alQuedarEnDuda?: () => void
+  /**
+   * El alta volvió sin decir si entró: quien guarda la lista la busca por su
+   * código, que sale del nombre y no se repite (como en `NuevaUnidad`).
+   */
+  alQuedarEnDuda?: (enviado: { nombre: string }) => void
 }) {
   const [abierto, setAbierto] = useState(false)
   const [tipoUnidad, setTipoUnidad] = useState('')
@@ -36,13 +39,8 @@ export function NuevaCarroceria({
     (r, desde) => {
       if (r.datos) onCreada?.(r.datos, { elegir: suVentanaSigueAbierta(desde) })
     },
-    { refrescar: !onCreada },
+    { refrescar: !onCreada, alQuedarEnDuda: alQuedarEnDuda && ((datos) => alQuedarEnDuda({ nombre: String(datos.get('nombre') ?? '').trim() })) },
   )
-  const error = resultado && !resultado.ok ? resultado.error : null
-  const avisarLaDuda = useEffectEvent(() => alQuedarEnDuda?.())
-  useEffect(() => {
-    if (error && quedoEnDuda(error)) avisarLaDuda()
-  }, [error])
 
   function abrir() {
     limpiar()

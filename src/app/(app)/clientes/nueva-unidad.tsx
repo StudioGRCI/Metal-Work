@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
 import { esPlacaRepetida, TIPOS_VEHICULO } from '@/lib/dominio/unidades'
-import { quedoEnDuda, suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
 
 import { guardarUnidad } from './acciones'
@@ -47,7 +47,9 @@ export function NuevaUnidad({
    * medio envío): quien guarda la lista de unidades la vuelve a leer y dice
    * junto a su campo que puede haber quedado. La unidad entraba y no estaba en
    * «Unidad», donde la ventana mandaba a buscarla, y sin placa se registraba
-   * dos veces (G2 de la crítica, quincuagésima quinta pasada).
+   * dos veces (G2 de la crítica, quincuagésima quinta pasada). Corre desde el
+   * envío (`alQuedarEnDuda` de `useEnvio`), aunque la ventana se haya
+   * cancelado y el cliente cambiado: quien escucha mira de qué cliente era.
    */
   alQuedarEnDuda?: () => void
   compacta?: boolean
@@ -64,7 +66,7 @@ export function NuevaUnidad({
     },
     // Con `unidad` corrige la que la ficha muestra: se cierra con la ficha ya
     // al día (`corrige`). El alta se cierra al contestar.
-    { refrescar: !onCreada, corrige: Boolean(unidad) },
+    { refrescar: !onCreada, corrige: Boolean(unidad), alQuedarEnDuda: unidad ? undefined : alQuedarEnDuda },
   )
   // La placa que el cliente ya tiene es de su campo: lo marca y el cursor va
   // ahí, con dónde está la que ya existe. Abajo mandaba a buscarla en la ficha,
@@ -75,10 +77,6 @@ export function NuevaUnidad({
     ? `${error}${unidad || / desactivada/.test(error ?? '') ? '' : onCreada ? ' Elígela en «Unidad», detrás de esta ventana.' : ' Está en sus unidades, detrás de esta ventana.'}`
     : null
   useCursorAlRechazo(enviando, error, () => (errorPlaca ? campoPlaca.current : null))
-  const avisarLaDuda = useEffectEvent(() => alQuedarEnDuda?.())
-  useEffect(() => {
-    if (!unidad && error && quedoEnDuda(error)) avisarLaDuda()
-  }, [error, unidad])
 
   function abrir() {
     limpiar()

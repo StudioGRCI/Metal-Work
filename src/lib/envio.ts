@@ -5,7 +5,7 @@ import { consultarEnvio } from '@/app/(app)/acciones-envio'
 import { pudoHaberEntrado, yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import { contarLoQueEntro, MAXIMO_PENDIENTES, type ClaveDelEnvio, type LoQueEntro } from '@/lib/dominio/envios'
 import { cuentaDeEnvios } from '@/lib/dominio/envios-en-camino'
-import { alCerrarLaVentana, cuandoSeCerro, hayVentanaAbierta, laRecargaSeLlevoLaVentana, trabarLaVentana, vecesQueSeCerro, type TrabaDeLaVentana } from '@/lib/ventanas-abiertas'
+import { alCerrarLaVentana, anotarQueSePoneAlDia, cuandoSeCerro, hayVentanaAbierta, laRecargaSeLlevoLaVentana, trabarLaVentana, vecesQueSeCerro, type TrabaDeLaVentana } from '@/lib/ventanas-abiertas'
 
 type Exito<T> = Extract<ResultadoAccion<T>, { ok: true }>
 
@@ -603,15 +603,20 @@ export function decirQueYaHabiaEntradoSiSeFue(desde: Partida, { que, enlace }: S
  * Si al nacer la pantalla la recarga del documento se había llevado una
  * ventana que se ponía al día sin saber si lo suyo entró
  * (`laRecargaSeLlevoLaVentana`), lo dice arriba, en el tono de lo que quedó a
- * medias y con el camino de vuelta a su pantalla. Se queda hasta quitarla: lo
- * que la persona tiene que hacer es mirar, y ningún envío lo resuelve solo.
+ * medias y con el camino de vuelta a su pantalla. Sin ventana (un formulario
+ * en línea, o la ventana ya cancelada), dice qué era (`que` de `SiSeVa`). Se
+ * queda hasta quitarla: lo que la persona tiene que hacer es mirar, y ningún
+ * envío lo resuelve solo.
  */
 export function decirLoQueSeLlevoLaRecarga() {
   const recarga = laRecargaSeLlevoLaVentana()
   if (!recarga) return
   const ventana = recarga.titulo ? `la ventana «${recarga.titulo}»` : 'la ventana que tenías abierta'
   ponerIdaQueNoSalio({
-    dice: `La pantalla se volvió a cargar entera mientras se ponía al día, y se cerró ${ventana} con lo que habías escrito. No se sabe si se guardó: mira si quedó antes de escribirlo otra vez.`,
+    dice:
+      recarga.que !== undefined
+        ? `La pantalla se volvió a cargar entera mientras se ponía al día, y no se sabe si se guardó ${recarga.que}: mira si quedó antes de escribirlo otra vez.`
+        : `La pantalla se volvió a cargar entera mientras se ponía al día, y se cerró ${ventana} con lo que habías escrito. No se sabe si se guardó: mira si quedó antes de escribirlo otra vez.`,
     enlace: 'Volver a esa pantalla',
     url: recarga.ruta,
     rechazo: true,
@@ -820,6 +825,17 @@ type Opciones = {
    * formulario queda listo para la siguiente mientras la página se pone al día.
    */
   corrige?: boolean
+  /**
+   * El envío volvió sin decir si entró (sin respuesta, el servidor caído a
+   * medio envío), con lo que se mandó. Corre una vez, en el acto, aunque la
+   * ventana se haya cancelado, el formulario se haya desmontado o haya otra
+   * ventana abierta: como efecto sobre `error` no corría si la persona había
+   * abierto otra ventana —el rechazo se suelta con ella— ni si el formulario
+   * ya no estaba (M3 de realización y C de funcionalidad, quincuagésima sexta
+   * pasada). Para quien guarda la lista donde lo enviado tendría que aparecer
+   * (la orden nueva con sus altas).
+   */
+  alQuedarEnDuda?: (datos: FormData, desde: Partida) => void
 }
 
 /**
@@ -879,7 +895,7 @@ export function useAccion<T = never>(
   alTerminar?: (resultado: Exito<T>, desde: Partida) => void,
   opciones: Opciones = {},
 ) {
-  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA, corrige = false } = opciones
+  const { refrescar = true, alYaEntrar, siSeVa = SI_SE_VA_DE_LA_PANTALLA, corrige = false, alQuedarEnDuda } = opciones
   const deLaPantalla = useContext(DocumentoDeLaPantalla)
   const documento = deLaPantalla === undefined ? opciones.documento : opciones.documento === undefined ? deLaPantalla : `${deLaPantalla}/${opciones.documento}`
   const router = useRouter()
@@ -934,7 +950,7 @@ export function useAccion<T = never>(
     salida: ResultadoAccion<T>,
     desde: Partida,
     lanzo: boolean,
-    { entro, noEntro, otraVezAMedias, de }: { entro: () => void; noEntro: (motivo: string) => void; otraVezAMedias: () => void; de: DeFormulario },
+    { entro, noEntro, otraVezAMedias, de, datos }: { entro: () => void; noEntro: (motivo: string) => void; otraVezAMedias: () => void; de: DeFormulario; datos: FormData },
   ) {
     if (salida.ok) return
     const { ventana } = desde
@@ -942,6 +958,7 @@ export function useAccion<T = never>(
     const yaEntro = yaEntroLaPrimeraVez(salida.error)
     // La subida con su archivo no lanza: devuelve «No llegó la respuesta…» (`anotarSinDejarloSuelto`).
     const pudoEntrar = lanzo || pudoHaberEntrado(salida.error)
+    if (pudoEntrar && !yaEntro) alQuedarEnDuda?.(datos, desde)
     // Una corrección que pudo entrar se pone al día ya, en la transición del
     // envío y con su formulario a la vista: esperaba a que se cerrara la
     // ventana, y cancelada y vuelta a abrir antes de la pantalla al día traía
@@ -961,6 +978,12 @@ export function useAccion<T = never>(
     const alDiaYa = quizasAlDia && (await sePuedePonerAlDia())
     // Lo que no entró deja la ventana como estaba: se puede cancelar.
     trabar(alDiaYa && suVentana() ? { trabada: true, guardado: false, mirando: true } : null)
+    // Sin su ventana a la vista (en línea, o cancelada en vuelo) también se
+    // anota, para que la pantalla que nazca de una recarga entera diga qué no
+    // se sabe si quedó: la nota del paso se iba con lo escrito y sin aviso (D
+    // de funcionalidad, quincuagésima sexta pasada). Se suelta como la traba,
+    // con la pantalla ya al día.
+    if (alDiaYa && !suVentana()) traba.current = anotarQueSePoneAlDia(siSeVa?.que ?? SI_SE_VA_DE_LA_PANTALLA.que)
     if (salida.arriba) otraVezAMedias()
     if (yaEntro) entro()
     else if (desdeVentana && ventana !== vecesQueSeCerro() && !seDiceJuntoAlBoton.has(accion)) noEntro(salida.error)
@@ -1012,7 +1035,7 @@ export function useAccion<T = never>(
     const desde: Partida = { ...partida(), de }
 
     iniciar(() => mientrasSeEnvia(async (entro, noEntro, otraVezAMedias) => {
-      const desenlace = { entro, noEntro, otraVezAMedias, de }
+      const desenlace = { entro, noEntro, otraVezAMedias, de, datos }
       // Mientras Next navega por la redirección de la acción, el botón sigue
       // bloqueado: soltarlo dejaba pasar un segundo envío en ese instante.
       let soltar = true

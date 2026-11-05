@@ -6925,6 +6925,42 @@ for (const modo of ['entro', 'no-entro']) {
   }
 }
 
+// Y la que sí llega no deja nada: mientras se pone al día la marca está, al
+// terminar se quita, y una recarga a mano después no dice que se cerró la
+// ventana (M1 de la crítica, quincuagésima sexta pasada: nada lo comprobaba).
+if (corre('1zd-pagina-no-llega-control')) {
+  const nombre = `QA-ZDL control ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const corregido = `${nombre} corregida`
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+  const marca = () => pagina.evaluate(() => sessionStorage.getItem('metal-work:al-dia-con-la-ventana')).catch(() => 'sin leer')
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(corregido)
+    await marcarDocumento(pagina)
+    corte.romper = cuenta.id
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    const durante = await hasta(marca, (m) => typeof m === 'string' && m.includes('"titulo"'), 10000)
+    // Puesta al día, la ventana se queda abierta para que se mire si quedó
+    // (`mirando`): lo que importa es que la marca se fue y nada recargó.
+    const quitada = await hasta(marca, (m) => m === null, 20000)
+    await pagina.waitForTimeout(500)
+    const tras = { rotas: corte.rotas, quitada: quitada === null, ventanas: await pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), mismo: await mismoDocumento(pagina), marca: await marca(), linea: await idaQueNoSalio(pagina), enBase: await cuenta.enBase() }
+    await pagina.reload()
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    await pagina.waitForTimeout(800)
+    const trasRecargar = await idaQueNoSalio(pagina)
+    comprobar(Boolean(durante) && tras.rotas === 1 && tras.quitada && tras.ventanas === 1 && tras.mismo && tras.marca === null && tras.linea === '' && tras.enBase === corregido && trasRecargar === '',
+      `[Tesorería 1280] 1zd-pagina-no-llega-control. la puesta al día que llega quita la marca, y la recarga a mano de después no dice nada (${JSON.stringify({ durante: Boolean(durante), ...tras, trasRecargar })})`)
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response/i.test(e))
+    comprobar(propios.length === 0, `[Tesorería 1280] 1zd-pagina-no-llega-control. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } finally {
+    corte.romper = null
+    await contexto.close()
+  }
+}
+
 // En la orden nueva, el alta de la unidad cuya respuesta se pierde después de
 // guardar: la unidad existía y no estaba en «Unidad», donde la ventana mandaba
 // a buscarla, y sin placa se registraba dos veces (G2 de la crítica,
@@ -7014,6 +7050,505 @@ if (corre('1zd-alta-sin-respuesta-orden-nueva')) {
   } finally {
     corte.perder = null
     corte.soltar()
+    await contexto.close()
+  }
+}
+
+// En la orden nueva, el cliente y la carrocería cuya respuesta no llega no
+// piden la página entera: se buscan desde el navegador por su documento o su
+// código y, si están, se suman a la lista sin elegirlos. Con el 502 de la
+// acción y el del repintado, o sin conexión, `router.refresh()` recargaba el
+// documento y se llevaba la orden escrita sin decir nada (F-A de
+// funcionalidad, quincuagésima sexta pasada). Sin conexión no se encuentra; se
+// dice que registrarlo otra vez con el mismo documento no lo repite, y al
+// volver la conexión queda elegido. Administración.
+if (corre('1zd-cliente-carroceria-en-duda')) {
+  const rucLibre = async (prefijo) =>
+    (await consulta(`select n from (select $2 || lpad($1::text, 7, '0') || d as n from generate_series(0, 9) d) x
+                      where public.ruc_es_valido(n) and not exists (select 1 from clientes c where c.numero_documento = x.n) limit 1`, [sello, prefijo]))[0]?.n ?? null
+  const ruc1 = await rucLibre('207')
+  const ruc3 = await rucLibre('206')
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  const enLaLista = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    const n = await pagina.getByRole('option', { name: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).count()
+    await pagina.keyboard.press('Escape')
+    return n
+  }
+  const valor = (campo) => pagina.locator(`select[name="${campo}"]`).inputValue({ timeout: 3000 }).catch(() => null)
+  const aparte = () => pagina.locator('[data-registrado-aparte]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+  const alerta = (v) => v.locator('[role="alert"]').allInnerTexts().then((t) => limpio(t.join(' '))).catch(() => '')
+  const escrito = `QA-ZDV orden escrita a mano ${sello}`
+  const descripcion = () => pagina.locator('textarea[name="descripcion"]').inputValue({ timeout: 2000 }).catch(() => null)
+  const cerrarVentana = async (v) => {
+    await v.getByRole('button', { name: /^(Cancelar|Cerrar)$/ }).first().click({ timeout: 3000 }).catch(() => {})
+    await hasta(() => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), (n) => n === 0, 5000)
+  }
+  const clientesCon = async (ruc) => (await consulta(`select count(*)::int n from clientes where numero_documento = $1`, [ruc]))[0].n
+  try {
+    if (!ruc1 || !ruc3) throw new Error('Faltan dos RUC libres')
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await pagina.locator('textarea[name="descripcion"]').fill(escrito)
+    await marcarDocumento(pagina)
+
+    // 1. El cliente: 502 después de guardar, y el repintado también roto si se pidiera.
+    const razon1 = `QA-ZDV CLIENTE ${sello} S.A.C.`
+    await pagina.getByRole('button', { name: 'Nuevo cliente', exact: true }).click()
+    const v1 = laVentana(pagina)
+    await v1.waitFor({ timeout: 10000 })
+    await v1.locator('#nc-tipo').selectOption('RUC')
+    await v1.locator('#nc-numero').fill(ruc1)
+    await v1.locator('#nc-razon').fill(razon1)
+    corte.romper = razon1
+    corte.romperRsc = /\/ordenes\/nueva/
+    await v1.getByRole('button', { name: 'Registrar cliente', exact: true }).click()
+    const aviso1 = await hasta(() => alerta(v1), (t) => t.length > 0, 15000)
+    const dice1 = await hasta(aparte, (t) => t.includes('quedó registrado aunque no llegó'), 10000)
+    await cerrarVentana(v1)
+    const tras1 = { rotas: corte.rotas, rscRotos: corte.rscRotos, mismo: await mismoDocumento(pagina), escrito: (await descripcion()) === escrito, cliente: await valor('cliente_id'), enLista: await enLaLista('cliente_id', razon1), enBase: await clientesCon(ruc1), aviso: aviso1.slice(0, 50), dice: dice1 }
+    comprobar(tras1.rotas === 1 && tras1.rscRotos === 0 && tras1.mismo && tras1.escrito && tras1.cliente === '' && tras1.enLista === 1 && tras1.enBase === 1
+      && aviso1.startsWith('El servidor no pudo completar el envío')
+      && dice1 === `El cliente ${razon1} quedó registrado aunque no llegó la respuesta. Está en la lista, sin elegir.`,
+      `[Administración 1280] 1zd-cliente-carroceria-en-duda. el cliente que entró con el 502 se busca sin recargar: queda en la lista, sin elegir, y la orden escrita sigue (${JSON.stringify(tras1)})`)
+    await pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
+
+    // 2. La carrocería, igual.
+    const nombre2 = `QA-ZDV carroceria ${sello}`
+    await pagina.getByRole('button', { name: 'Nuevo tipo de carrocería', exact: true }).click()
+    const v2 = laVentana(pagina)
+    await v2.waitFor({ timeout: 10000 })
+    await v2.locator('#ncar-nombre').fill(nombre2)
+    corte.romper = nombre2
+    corte.romperRsc = /\/ordenes\/nueva/
+    await v2.getByRole('button', { name: 'Agregar al catálogo', exact: true }).click()
+    const aviso2 = await hasta(() => alerta(v2), (t) => t.length > 0, 15000)
+    const dice2 = await hasta(aparte, (t) => t.includes('quedó registrada aunque no llegó'), 10000)
+    await cerrarVentana(v2)
+    const [{ n: carrocerias }] = await consulta(`select count(*)::int n from tipos_carroceria where nombre = $1`, [nombre2])
+    const tras2 = { rotas: corte.rotas, rscRotos: corte.rscRotos, mismo: await mismoDocumento(pagina), escrito: (await descripcion()) === escrito, carroceria: await valor('tipo_carroceria_id'), enLista: await enLaLista('tipo_carroceria_id', nombre2), enBase: carrocerias, aviso: aviso2.slice(0, 50), dice: dice2 }
+    comprobar(tras2.rotas === 2 && tras2.rscRotos === 0 && tras2.mismo && tras2.escrito && tras2.carroceria === '' && tras2.enLista === 1 && tras2.enBase === 1
+      && aviso2.startsWith('El servidor no pudo completar el envío')
+      && dice2 === `La carrocería ${nombre2} quedó registrada aunque no llegó la respuesta. Está en la lista, sin elegir.`,
+      `[Administración 1280] 1zd-cliente-carroceria-en-duda. la carrocería que entró con el 502 se busca sin recargar: queda en la lista, sin elegir, y la orden escrita sigue (${JSON.stringify(tras2)})`)
+    await pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
+    corte.romperRsc = null
+
+    // 3. Sin conexión: no se encuentra, y se dice cómo seguir. Con la conexión
+    // de vuelta, registrarlo otra vez lo deja elegido.
+    const razon3 = `QA-ZDV OTRO ${sello} S.A.C.`
+    await pagina.getByRole('button', { name: 'Nuevo cliente', exact: true }).click()
+    const v3 = laVentana(pagina)
+    await v3.waitFor({ timeout: 10000 })
+    await v3.locator('#nc-tipo').selectOption('RUC')
+    await v3.locator('#nc-numero').fill(ruc3)
+    await v3.locator('#nc-razon').fill(razon3)
+    await contexto.setOffline(true)
+    await v3.getByRole('button', { name: 'Registrar cliente', exact: true }).click()
+    const aviso3 = await hasta(() => alerta(v3), (t) => t.length > 0, 15000)
+    const dice3 = await hasta(aparte, (t) => t.includes(razon3), 10000)
+    await pagina.waitForTimeout(800)
+    const mientras = { mismo: await mismoDocumento(pagina), escrito: (await descripcion()) === escrito, aviso: aviso3.slice(0, 40), dice: dice3, enBase: await clientesCon(ruc3) }
+    await contexto.setOffline(false)
+    await v3.getByRole('button', { name: 'Registrar cliente', exact: true }).click()
+    const [c3] = await hasta(() => consulta(`select id from clientes where numero_documento = $1`, [ruc3]), (f) => f.length > 0, 15000)
+    const elegido = await hasta(() => valor('cliente_id'), (v) => v === c3?.id, 10000)
+    await cerrarVentana(v3)
+    const tras3 = { ...mientras, elegido: Boolean(c3) && elegido === c3.id, despues: await aparte(), mismoAlFinal: await mismoDocumento(pagina) }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-cliente-carroceria-en-duda.png') }).catch(() => {})
+    comprobar(mientras.mismo && mientras.escrito && mientras.enBase === 0 && aviso3.startsWith('No llegó la respuesta')
+      && dice3 === `No llegó la respuesta del cliente ${razon3}: puede haber quedado. Regístralo otra vez con el mismo documento: si ya estaba, no se repite y queda elegido.`
+      && tras3.elegido && !tras3.despues.includes(razon3) && tras3.mismoAlFinal,
+      `[Administración 1280] 1zd-cliente-carroceria-en-duda. sin conexión no recarga, dice cómo seguir, y con la conexión de vuelta registrarlo otra vez lo elige (${JSON.stringify(tras3)})`)
+    // Lo que se ve es del banco: el 502 y el corte de la conexión que anota el navegador.
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response|ERR_INTERNET_DISCONNECTED|Failed to fetch|NetworkError|network error|Load failed/i.test(e))
+    comprobar(propios.length === 0, `[Administración 1280] 1zd-cliente-carroceria-en-duda. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-cliente-carroceria-en-duda. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    await contexto.setOffline(false).catch(() => {})
+    corte.romper = null
+    corte.romperRsc = null
+    await contexto.close()
+  }
+}
+
+// Con la sesión muerta, las altas de la orden nueva no entran (la acción vuelve
+// como «El servidor no pudo…») y quedaban en duda: el refresco iba a /ingresar
+// y se llevaba la orden escrita, y la relectura vaciaba «Unidad» y soltaba la
+// unidad elegida, con un aviso que culpaba a la respuesta (N2 y N3 de la
+// crítica, quincuagésima sexta pasada). Ahora la orden se queda, la lista
+// también, y junto al campo se dice que la sesión terminó. Administración.
+if (corre('1zd-orden-nueva-sin-sesion')) {
+  const [A] = await consulta(`select c.id, c.razon_social, min(u.placa) placa from clientes c
+                                join unidades u on u.cliente_id = c.id and u.activo and nullif(btrim(u.placa), '') is not null
+                               where c.activo group by c.id, c.razon_social order by c.razon_social limit 1`)
+  const [{ n: ruc } = {}] = await consulta(`select n from (select '205' || lpad($1::text, 7, '0') || d as n from generate_series(0, 9) d) x
+                                             where public.ruc_es_valido(n) and not exists (select 1 from clientes c where c.numero_documento = x.n) limit 1`, [sello])
+  const { pagina, contexto, errores } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 })
+  const elegirEn = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first().click()
+  }
+  const valor = (campo) => pagina.locator(`select[name="${campo}"]`).inputValue({ timeout: 3000 }).catch(() => null)
+  const aparte = () => pagina.locator('[data-registrado-aparte]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+  const quitarAparte = () => pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).first().click({ timeout: 3000 }).catch(() => {})
+  const alerta = (v) => v.locator('[role="alert"]').allInnerTexts().then((t) => limpio(t.join(' '))).catch(() => '')
+  const cerrarVentana = async (v) => {
+    await v.getByRole('button', { name: /^(Cancelar|Cerrar)$/ }).first().click({ timeout: 3000 }).catch(() => {})
+    await hasta(() => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count(), (n) => n === 0, 5000)
+  }
+  const escrito = `QA-ZDX orden escrita a mano ${sello}`
+  const sigue = async () => ({
+    direccion: new URL(pagina.url()).pathname,
+    mismo: await mismoDocumento(pagina),
+    escrito: (await pagina.locator('textarea[name="descripcion"]').inputValue({ timeout: 2000 }).catch(() => null)) === escrito,
+  })
+  const VOLVER = 'Entra de nuevo en otra pestaña y vuelve a esta'
+  try {
+    if (!A || !ruc) throw new Error('Falta un cliente con unidad o un RUC libre')
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await pagina.locator('textarea[name="descripcion"]').fill(escrito)
+    await elegirEn('cliente_id', A.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    await elegirEn('unidad_id', A.placa)
+    const unidadElegida = await valor('unidad_id')
+    await marcarDocumento(pagina)
+    await matarLaSesion(contexto)
+
+    // 1. El cliente.
+    const razon = `QA-ZDX CLIENTE ${sello} S.A.C.`
+    await pagina.getByRole('button', { name: 'Nuevo cliente', exact: true }).click()
+    const v1 = laVentana(pagina)
+    await v1.waitFor({ timeout: 10000 })
+    await v1.locator('#nc-tipo').selectOption('RUC')
+    await v1.locator('#nc-numero').fill(ruc)
+    await v1.locator('#nc-razon').fill(razon)
+    await v1.getByRole('button', { name: 'Registrar cliente', exact: true }).click()
+    const aviso1 = await hasta(() => alerta(v1), (t) => t.length > 0, 15000)
+    const dice1 = await hasta(aparte, (t) => t.includes('la sesión terminó'), 10000)
+    await cerrarVentana(v1)
+    const [{ n: enBase1 }] = await consulta(`select count(*)::int n from clientes where numero_documento = $1`, [ruc])
+    const tras1 = { ...(await sigue()), enBase: enBase1, aviso: aviso1.slice(0, 50), dice: dice1 }
+    comprobar(tras1.direccion === '/ordenes/nueva' && tras1.mismo && tras1.escrito && enBase1 === 0
+      && dice1 === `No se sabe si quedó el cliente ${razon}: la sesión terminó. ${VOLVER}, y regístralo otra vez aquí con el mismo documento: si ya estaba, no se repite y queda elegido.`,
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. el cliente no se lleva la orden a /ingresar, y junto al campo se dice que la sesión terminó (${JSON.stringify(tras1)})`)
+    await quitarAparte()
+
+    // 2. La carrocería.
+    const nombre = `QA-ZDX carroceria ${sello}`
+    await pagina.getByRole('button', { name: 'Nuevo tipo de carrocería', exact: true }).click()
+    const v2 = laVentana(pagina)
+    await v2.waitFor({ timeout: 10000 })
+    await v2.locator('#ncar-nombre').fill(nombre)
+    await v2.getByRole('button', { name: 'Agregar al catálogo', exact: true }).click()
+    await hasta(() => alerta(v2), (t) => t.length > 0, 15000)
+    const dice2 = await hasta(aparte, (t) => t.includes('la sesión terminó'), 10000)
+    await cerrarVentana(v2)
+    const [{ n: enBase2 }] = await consulta(`select count(*)::int n from tipos_carroceria where nombre = $1`, [nombre])
+    const tras2 = { ...(await sigue()), enBase: enBase2, dice: dice2 }
+    comprobar(tras2.direccion === '/ordenes/nueva' && tras2.mismo && tras2.escrito && enBase2 === 0
+      && dice2 === `No se sabe si quedó la carrocería ${nombre}: la sesión terminó. ${VOLVER}, y regístrala otra vez aquí con el mismo nombre: si ya estaba, no se repite y queda elegida.`,
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la carrocería tampoco, y dice lo mismo (${JSON.stringify(tras2)})`)
+    await quitarAparte()
+
+    // 3. La unidad: la relectura no vacía «Unidad» ni suelta la elegida.
+    const placa = `ZX${sello.slice(-4)}`
+    await pagina.getByRole('button', { name: 'Nueva unidad', exact: true }).click()
+    const v3 = laVentana(pagina)
+    await v3.waitFor({ timeout: 10000 })
+    await v3.locator('#nu-marca').fill('QA')
+    await v3.locator('#nu-modelo').fill(`ZDX ${sello}`)
+    await v3.locator('#nu-anio').fill('2020')
+    await v3.locator('#nu-placa').fill(placa)
+    await v3.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
+    await hasta(() => alerta(v3), (t) => t.length > 0, 15000)
+    const dice3 = await hasta(aparte, (t) => t.includes('la sesión terminó'), 10000)
+    await cerrarVentana(v3)
+    const ayuda = await pagina.getByText('No se pudieron leer sus unidades', { exact: false }).first().innerText({ timeout: 3000 }).then(limpio).catch(() => '')
+    const [{ n: enBase3 }] = await consulta(`select count(*)::int n from unidades where replace(placa, '-', '') = $1`, [placa])
+    const tras3 = { ...(await sigue()), enBase: enBase3, unidad: (await valor('unidad_id')) === unidadElegida, dice: dice3, ayuda }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-orden-nueva-sin-sesion.png') }).catch(() => {})
+    comprobar(tras3.direccion === '/ordenes/nueva' && tras3.mismo && tras3.escrito && enBase3 === 0 && tras3.unidad && Boolean(unidadElegida)
+      && dice3 === `No se sabe si quedó la unidad que registrabas: la sesión terminó. ${VOLVER}, y búscala en «Unidad» antes de registrarla otra vez.`
+      && ayuda === `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER}: se leen otra vez.`,
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la unidad elegida se queda, y junto al campo se dice que la sesión terminó (${JSON.stringify(tras3)})`)
+    // Lo que se ve es del navegador: la sesión que el banco dejó sin valer, y la
+    // redirección a /ingresar que le llega a Next como «An unexpected response…».
+    const propios = errores.filter((e) => !/refresco-que-no-vale|Invalid Refresh Token|AuthApiError|JWT|401|403|An unexpected response was received from the server/i.test(e))
+    comprobar(propios.length === 0, `[Administración 1280] 1zd-orden-nueva-sin-sesion. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-orden-nueva-sin-sesion. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    await contexto.close()
+  }
+}
+
+// La unidad en duda con su ventana cancelada: si la persona abrió otra ventana
+// mientras tanto, o eligió otro cliente, el aviso de la duda no salía —como
+// efecto sobre el rechazo no corría: con otra ventana el rechazo se suelta con
+// ella, y cambiar de cliente desmonta el formulario (M3 de realización y C de
+// funcionalidad, quincuagésima sexta pasada)—. Ahora corre desde el envío. Y
+// la relectura de «Unidad» que llega tarde no borra la unidad registrada y
+// elegida entretanto (la crítica de la quincuagésima sexta). Administración.
+if (corre('1zd-unidad-en-duda')) {
+  const clientes = await consulta(`with c as (select id, razon_social from clientes where activo order by razon_social, id limit 500)
+                                   select c.id, c.razon_social, min(u.placa) placa from c
+                                     join unidades u on u.cliente_id = c.id and u.activo and nullif(btrim(u.placa), '') is not null
+                                    group by c.id, c.razon_social order by c.razon_social limit 2`)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  const elegirEn = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    await pagina.getByRole('option', { name: new RegExp(texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first().click()
+  }
+  const enLaLista = async (campo, texto) => {
+    await pagina.locator(`#${campo}`).click()
+    await pagina.locator('input[type="search"]:focus').waitFor({ timeout: 10000 })
+    await pagina.keyboard.type(texto)
+    const n = await pagina.getByRole('option', { name: new RegExp(texto) }).count()
+    await pagina.keyboard.press('Escape')
+    return n
+  }
+  const valor = (campo) => pagina.locator(`select[name="${campo}"]`).inputValue({ timeout: 3000 }).catch(() => null)
+  const aparte = () => pagina.locator('[data-registrado-aparte]').allInnerTexts().then((t) => limpio(t.join(' | '))).catch(() => '')
+  const quitarAparte = () => pagina.locator('[data-registrado-aparte]').getByRole('button', { name: 'Quitar este aviso' }).first().click({ timeout: 3000 }).catch(() => {})
+  const ventanas = () => pagina.locator('[role="dialog"]:not([data-nextjs-dialog])').count()
+  const llenarUnidad = async (v, placa) => {
+    await v.locator('#nu-marca').fill('QA')
+    await v.locator('#nu-modelo').fill(`ZDW ${sello}`)
+    await v.locator('#nu-anio').fill('2020')
+    await v.locator('#nu-placa').fill(placa)
+  }
+  const unidadCon = (placa) => consulta(`select id, cliente_id from unidades where replace(placa, '-', '') = $1`, [placa]).then((f) => f[0] ?? null)
+  /** Abre «Nueva unidad», la llena y la envía con la respuesta retenida; la cancela en vuelo. */
+  const altaCancelada = async (placa) => {
+    await pagina.getByRole('button', { name: 'Nueva unidad', exact: true }).click()
+    const v = laVentana(pagina)
+    await v.waitFor({ timeout: 10000 })
+    await llenarUnidad(v, placa)
+    const retenidas = corte.retenidas
+    corte.marca = placa
+    corte.perder = placa
+    await v.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
+    const retenida = (await hasta(() => corte.retenidas, (n) => n > retenidas, 15000)) > retenidas
+    await v.getByRole('button', { name: 'Cancelar', exact: true }).click({ timeout: 3000 }).catch(() => {})
+    const cerrada = (await hasta(ventanas, (n) => n === 0, 5000)) === 0
+    return { retenida, cerrada }
+  }
+  const DICE = 'No llegó la respuesta de la unidad que registrabas: puede haber quedado. Búscala en «Unidad» antes de registrarla otra vez.'
+  try {
+    if (clientes.length < 2) throw new Error('Faltan dos clientes con unidades')
+    const [A, B] = clientes
+    await ir(pagina, `${BASE}/ordenes/nueva`)
+    await marcarDocumento(pagina)
+    await elegirEn('cliente_id', A.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const clienteA = await valor('cliente_id')
+
+    // 1. Con otra ventana abierta cuando la respuesta se pierde.
+    const placa1 = `ZQ${sello.slice(-4)}`
+    const enVuelo1 = await altaCancelada(placa1)
+    await pagina.getByRole('button', { name: 'Nuevo cliente', exact: true }).click()
+    const otra = laVentana(pagina)
+    await otra.waitFor({ timeout: 10000 })
+    corte.soltar()
+    const creada1 = await hasta(() => unidadCon(placa1), Boolean, 20000)
+    const dice1 = await hasta(aparte, (t) => t.includes('No llegó la respuesta de la unidad'), 10000)
+    const conOtra = await ventanas()
+    await otra.getByRole('button', { name: 'Cancelar', exact: true }).click({ timeout: 3000 }).catch(() => {})
+    await hasta(ventanas, (n) => n === 0, 5000)
+    const tras1 = { ...enVuelo1, perdidas: corte.perdidas, conOtra, creada: Boolean(creada1), dice: dice1, enLista: await enLaLista('unidad_id', placa1), unidad: await valor('unidad_id') }
+    comprobar(enVuelo1.retenida && enVuelo1.cerrada && tras1.perdidas === 1 && conOtra === 1 && tras1.creada && dice1 === DICE && tras1.enLista === 1 && tras1.unidad === '',
+      `[Administración 1280] 1zd-unidad-en-duda. con otra ventana abierta cuando la respuesta se pierde, junto al campo se dice y «Unidad» la tiene, sin elegirla (${JSON.stringify(tras1)})`)
+    await quitarAparte()
+
+    // 2. Con otro cliente elegido cuando la respuesta se pierde: se dice de cuál.
+    const placa2 = `ZR${sello.slice(-4)}`
+    const enVuelo2 = await altaCancelada(placa2)
+    await elegirEn('cliente_id', B.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    corte.soltar()
+    const creada2 = await hasta(() => unidadCon(placa2), Boolean, 20000)
+    const dice2 = await hasta(aparte, (t) => t.includes('No llegó la respuesta de la unidad'), 10000)
+    const tras2 = { ...enVuelo2, perdidas: corte.perdidas, deA: creada2?.cliente_id === clienteA, clienteB: (await valor('cliente_id')) !== clienteA, dice: dice2, enLista: await enLaLista('unidad_id', placa2), unidad: await valor('unidad_id') }
+    comprobar(enVuelo2.retenida && enVuelo2.cerrada && tras2.perdidas === 2 && tras2.deA && tras2.clienteB && tras2.enLista === 0 && tras2.unidad === ''
+      && dice2 === `No llegó la respuesta de la unidad que registrabas en ${A.razon_social}: puede haber quedado en ese cliente. Míralo antes de registrarla otra vez.`,
+      `[Administración 1280] 1zd-unidad-en-duda. con otro cliente elegido cuando la respuesta se pierde, se dice en cuál pudo quedar y no entra a la lista del nuevo (${JSON.stringify(tras2)})`)
+    await quitarAparte()
+
+    // 3. La relectura de la duda llega tarde: la unidad registrada y elegida
+    // mientras tanto se queda en «Unidad», elegida.
+    await elegirEn('cliente_id', A.razon_social)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const placa3 = `ZP${sello.slice(-4)}`
+    await pagina.getByRole('button', { name: 'Nueva unidad', exact: true }).click()
+    const v3 = laVentana(pagina)
+    await v3.waitFor({ timeout: 10000 })
+    await llenarUnidad(v3, placa3)
+    const demorados = corte.demorados
+    corte.perder = placa3
+    corte.lento = { patron: /\/rest\/v1\/unidades/, ms: 6000 }
+    await v3.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
+    const demorada = (await hasta(() => corte.demorados, (n) => n > demorados, 15000)) > demorados
+    corte.lento = null
+    await v3.getByRole('button', { name: 'Cancelar', exact: true }).click({ timeout: 3000 }).catch(() => {})
+    await hasta(ventanas, (n) => n === 0, 5000)
+    const placa4 = `ZO${sello.slice(-4)}`
+    await pagina.getByRole('button', { name: 'Nueva unidad', exact: true }).click()
+    const v4 = laVentana(pagina)
+    await v4.waitFor({ timeout: 10000 })
+    await llenarUnidad(v4, placa4)
+    await v4.getByRole('button', { name: 'Registrar unidad', exact: true }).click()
+    const creada4 = await hasta(() => unidadCon(placa4), Boolean, 20000)
+    const elegida = await hasta(() => valor('unidad_id'), (v) => v === creada4?.id, 10000)
+    // Llega la relectura demorada.
+    await pagina.waitForTimeout(6500)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const tras3 = { demorada, elegidaAntes: Boolean(creada4) && elegida === creada4.id, unidad: (await valor('unidad_id')) === creada4?.id, enLista4: await enLaLista('unidad_id', placa4), enLista3: await enLaLista('unidad_id', placa3) }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-unidad-en-duda.png') }).catch(() => {})
+    comprobar(tras3.demorada && tras3.elegidaAntes && tras3.unidad && tras3.enLista4 === 1 && tras3.enLista3 === 1,
+      `[Administración 1280] 1zd-unidad-en-duda. la relectura que llega tarde trae la de la duda y no borra la registrada y elegida entretanto (${JSON.stringify(tras3)})`)
+    const propios = errores.filter((e) => !/ERR_CONNECTION_RESET|Failed to fetch|NetworkError|network error|Load failed/i.test(e))
+    comprobar((await mismoDocumento(pagina)) && propios.length === 0, `[Administración 1280] 1zd-unidad-en-duda. sin recargar y sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-unidad-en-duda. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.perder = null
+    corte.lento = null
+    corte.soltar()
+    await contexto.close()
+  }
+}
+
+// En línea, sin ventana: la nota del paso que vuelve con el 502 y cuyo
+// repintado también falla. Next recarga el documento entero y la nota escrita
+// se iba sin aviso (D de funcionalidad, quincuagésima sexta pasada). La
+// pantalla que nace de la recarga dice arriba que no se sabe si se guardó.
+// Administración.
+if (corre('1zd-nota-pagina-no-llega')) {
+  const [orden] = await consulta(`select o.id from ordenes_trabajo o where o.estado not in ('BORRADOR', 'ENTREGADA', 'FACTURADA', 'ANULADA')
+    and coalesce((select max(v.numero) from ot_verificaciones v where v.orden_id = o.id), 0) <= 38 order by o.numero limit 1`)
+  let paso
+  await comoLaCuenta(CUENTAS.administracion, async () => {
+    paso = (await base.query(`insert into ot_verificaciones (orden_id, numero, descripcion, observaciones)
+      select $1, coalesce((select max(numero) from ot_verificaciones where orden_id = $1), 0) + 1,
+             'QA-ZDP paso ' || $2 || ', no es real', 'QA-ZDP nota de antes'
+      returning id, descripcion`, [orden.id, sello])).rows[0]
+  })
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.administracion, { width: 1280, height: 900 }, { compilacion: true })
+  try {
+    await ir(pagina, `${BASE}/ordenes/${orden.id}?vista=ficha`)
+    const fila = pagina.locator('tr').filter({ hasText: paso.descripcion }).first()
+    await fila.getByRole('button', { name: /^(Anotar|Editar) observación$/ }).click({ timeout: 30000 })
+    const campo = fila.locator('input[name="observaciones"]')
+    await campo.waitFor({ timeout: 10000 })
+    const escrita = `QA-ZDP nota larga escrita a mano ${sello}`
+    await campo.fill(escrita)
+    await marcarDocumento(pagina)
+    corte.romper = escrita
+    corte.romperRsc = new RegExp(`/ordenes/${orden.id}`)
+    await fila.getByRole('button', { name: 'Guardar nota' }).click()
+    const recargo = await hasta(() => mismoDocumento(pagina), (m) => !m, 20000).then((m) => !m)
+    await pagina.waitForLoadState('networkidle').catch(() => {})
+    const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('se volvió a cargar'), 10000)
+    const [{ observaciones }] = await consulta(`select observaciones from ot_verificaciones where id = $1`, [paso.id])
+    const tras = {
+      recargo,
+      rotas: corte.rotas,
+      rscRotos: corte.rscRotos,
+      tono: await pagina.locator('[data-ida-que-no-salio]').getAttribute('data-ida-que-no-salio', { timeout: 2000 }).catch(() => null),
+      aLaVista: await lineaALaVista(pagina),
+      enBase: observaciones === escrita,
+    }
+    await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-nota-pagina-no-llega.png') }).catch(() => {})
+    comprobar(tras.recargo && tras.rotas === 1 && tras.rscRotos === 1 && tras.enBase && tras.tono === 'a-medias' && tras.aLaVista
+      && dice === 'La pantalla se volvió a cargar entera mientras se ponía al día, y no se sabe si se guardó lo que enviaste: mira si quedó antes de escribirlo otra vez.',
+      `[Administración 1280] 1zd-nota-pagina-no-llega. la nota en línea que se lleva la recarga se dice arriba, en ámbar («${dice}», ${JSON.stringify(tras)})`)
+    const propios = errores.filter((e) => !/502|Bad Gateway|unexpected response/i.test(e))
+    comprobar(propios.length === 0, `[Administración 1280] 1zd-nota-pagina-no-llega. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Administración 1280] 1zd-nota-pagina-no-llega. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.romper = null
+    corte.romperRsc = null
+    await contexto.close()
+  }
+}
+
+// La pregunta y la espera de una corrección que pudo entrar son la misma línea
+// del pie de la ventana: no se dicen antes de 400 ms y no se vuelven a montar
+// entre una y otra. Vuelta a montar, o dichas aunque duraran 50 ms, el pie
+// saltaba (H3 de diseño, quincuagésima quinta pasada). Con la pregunta lenta
+// (1,5 s): «Comprobando…» asoma pasados los 400 ms y la misma línea pasa a
+// «Poniendo la pantalla al día…» sin quedar vacía; con la rápida, no asoma.
+// Tesorería.
+for (const ritmo of ['lenta', 'rapida']) {
+  if (!corre(`1zd-pregunta-${ritmo}`)) continue
+  const nombre = `QA-ZDQ ${ritmo} ${sello}`
+  const cuenta = await cuentaDeTesoreria(nombre)
+  const { pagina, contexto, errores, corte } = await entrar(CUENTAS.tesoreria, { width: 1280, height: 900 }, { compilacion: true })
+  try {
+    await ir(pagina, `${BASE}/tesoreria/caja-diaria`)
+    const form = await cuenta.abrirla(pagina)
+    await form.locator('input[name="nombre"]').fill(`${nombre} corregida`)
+    await pagina.evaluate(() => {
+      const ids = new WeakMap()
+      let n = 0
+      const idDe = (el) => {
+        if (!ids.has(el)) ids.set(el, ++n)
+        return ids.get(el)
+      }
+      window.__linea = [{ t: performance.now(), dice: '' }]
+      window.__alerta = null
+      const mirar = () => {
+        const d = [...document.querySelectorAll('[role="dialog"]')].at(-1)
+        const t = performance.now()
+        if (d && window.__alerta === null && /No llegó la respuesta/.test(d.querySelector('[role="alert"]')?.textContent ?? '')) window.__alerta = t
+        const lineas = d ? [...d.querySelectorAll('p[role="status"]')].filter((p) => /Comprobando|Poniendo la pantalla|Todavía no llega|tarda en ponerse/.test(p.textContent ?? '')) : []
+        const dice = lineas.map((p) => `${idDe(p)}:${p.textContent}`).join('|')
+        if (window.__linea.at(-1).dice !== dice) window.__linea.push({ t, dice })
+      }
+      new MutationObserver(mirar).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true })
+    })
+    if (ritmo === 'lenta') corte.lento = { patron: /\/auth\/sesion\?comprobar/, ms: 1500 }
+    corte.perder = cuenta.id
+    await form.getByRole('button', { name: 'Guardar', exact: true }).click()
+    await hasta(() => pagina.evaluate(() => window.__alerta), (t) => t !== null, 15000)
+    await pagina.waitForTimeout(ritmo === 'lenta' ? 4000 : 2500)
+    const { linea, alerta } = await pagina.evaluate(() => ({ linea: window.__linea, alerta: window.__alerta }))
+    const comprobando = linea.filter((x) => x.dice.includes('Comprobando'))
+    const poniendo = linea.filter((x) => x.dice.includes('Poniendo la pantalla'))
+    const nodo = (x) => x?.dice.split(':')[0] ?? null
+    const desde = comprobando[0] ? Math.round(comprobando[0].t - alerta) : null
+    const entreAmbas = comprobando[0] && poniendo[0] ? linea.filter((x) => x.t >= comprobando[0].t && x.t < poniendo[0].t) : []
+    const tras = {
+      perdidas: corte.perdidas,
+      demorados: corte.demorados,
+      desde,
+      mismoNodo: comprobando[0] && poniendo[0] ? nodo(comprobando[0]) === nodo(poniendo[0]) : null,
+      sinVaciarse: entreAmbas.every((x) => x.dice !== ''),
+      cambios: linea.map((x) => `${Math.round(x.t - (alerta ?? 0))}ms ${x.dice.slice(0, 40)}`).slice(0, 8),
+      enBase: (await cuenta.enBase()) === `${nombre} corregida`,
+    }
+    if (ritmo === 'lenta') {
+      comprobar(tras.perdidas === 1 && tras.demorados >= 1 && tras.enBase && desde !== null && desde >= 300 && poniendo.length > 0 && tras.mismoNodo === true && tras.sinVaciarse,
+        `[Tesorería 1280] 1zd-pregunta-lenta. «Comprobando…» asoma pasados los 400 ms y la misma línea pasa a «Poniendo la pantalla al día…» sin vaciarse (${JSON.stringify(tras)})`)
+    } else {
+      comprobar(tras.perdidas === 1 && tras.enBase && comprobando.length === 0,
+        `[Tesorería 1280] 1zd-pregunta-rapida. la pregunta que contesta enseguida no se dice (${JSON.stringify(tras)})`)
+    }
+    const propios = errores.filter((e) => !/ERR_CONNECTION_RESET|Failed to fetch|NetworkError|network error|Load failed/i.test(e))
+    comprobar(propios.length === 0, `[Tesorería 1280] 1zd-pregunta-${ritmo}. sin otros errores de consola${propios.length ? `: ${propios[0]}` : ''}`)
+  } catch (e) {
+    comprobar(false, `[Tesorería 1280] 1zd-pregunta-${ritmo}. ${String(e?.message ?? e).slice(0, 300)}`)
+  } finally {
+    corte.perder = null
+    corte.lento = null
     await contexto.close()
   }
 }

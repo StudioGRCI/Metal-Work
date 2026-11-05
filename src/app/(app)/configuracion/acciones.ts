@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
+import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -173,13 +174,7 @@ export async function crearCarroceria(
   const supabase = await createClient()
 
   // El código sale del nombre: mayúsculas, sin tildes, con guiones bajos.
-  const codigo = v.nombre
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40)
+  const codigo = codigoDeCarroceria(v.nombre)
 
   // Si ya existe uno con ese nombre se devuelve el que estaba para no duplicar el catálogo.
   const { data: existente } = await supabase

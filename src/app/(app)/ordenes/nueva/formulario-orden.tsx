@@ -14,15 +14,18 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
-import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
+import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
+import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { etiquetasDePuesto } from '@/lib/format'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { NuevoCliente } from '@/components/comercial/nuevo-cliente'
+
+import type { Enums } from '@/types/database'
 
 import { crearOrden } from '../acciones'
 
@@ -108,23 +111,49 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // Las unidades dependen del cliente: se cargan al vuelo para no traer al
   // navegador toda la flota de todos los clientes. `releer`: el alta de una
   // unidad volvió sin decir si entró, y se vuelven a leer (`unidadEnDuda`).
+  // La lectura que falla (sin conexión, o con la sesión muerta) no toca la
+  // lista: vaciaba «Unidad» y soltaba la unidad elegida (F-B de funcionalidad,
+  // quincuagésima sexta pasada; N3 de su crítica). Lo dice junto al campo, por
+  // qué, y vuelve a leer al volver la conexión o a esta pestaña.
   const [releer, setReleer] = useState(0)
+  const [sinLeer, setSinLeer] = useState<{ clienteId: string; porSesion: boolean } | null>(null)
+  // Las dadas de alta aquí: una lectura que sale antes de su alta y llega
+  // después no las trae, y reemplazar la lista con ella borraba de «Unidad» la
+  // recién creada y elegida; la orden salía sin unidad (H3 de funcionalidad,
+  // quincuagésima quinta pasada, que la relectura de la duda volvió a abrir:
+  // crítica de la quincuagésima sexta). Se suman a lo que llegue.
+  const creadasAqui = useRef<{ clienteId: string; unidad: NonNullable<typeof cargadas>['unidades'][number] }[]>([])
   useEffect(() => {
     if (!clienteId) return
 
     let vigente = true
+    const volverALeer = () => setReleer((n) => n + 1)
     createClient()
       .from('unidades')
       .select('id, placa, marca, codigo_interno, numero_chasis, modelo')
       .eq('cliente_id', clienteId)
       .eq('activo', true)
       .order('placa')
-      .then(({ data }) => {
-        if (vigente) setCargadas({ clienteId, unidades: data ?? [] })
+      .then(({ data, error, status }) => {
+        if (!vigente) return
+        if (error) {
+          const porSesion = sinSesion(status)
+          setSinLeer({ clienteId, porSesion })
+          if (porSesion) setAparte((a) => (a.unidad === DUDA_UNIDAD ? { ...a, unidad: DUDA_UNIDAD_SIN_SESION } : a))
+          window.addEventListener('online', volverALeer, { once: true })
+          window.addEventListener('focus', volverALeer, { once: true })
+          return
+        }
+        setSinLeer(null)
+        const leidas = data ?? []
+        const propias = creadasAqui.current.filter((c) => c.clienteId === clienteId && !leidas.some((u) => u.id === c.unidad.id)).map((c) => c.unidad)
+        setCargadas({ clienteId, unidades: [...propias, ...leidas] })
       })
 
     return () => {
       vigente = false
+      window.removeEventListener('online', volverALeer)
+      window.removeEventListener('focus', volverALeer)
     }
   }, [clienteId, releer])
 
@@ -161,6 +190,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
       return
     }
     const fila = { ...u, marca: null }
+    creadasAqui.current = [...creadasAqui.current.filter((c) => c.unidad.id !== u.id), { clienteId, unidad: fila }]
     setCargadas((previas) =>
       previas?.clienteId === clienteId
         ? { clienteId, unidades: [fila, ...previas.unidades.filter((x) => x.id !== u.id)] }
@@ -178,21 +208,61 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   // medio envío): se vuelve a leer su lista y junto al campo se dice que puede
   // haber quedado. La unidad entraba y no estaba en «Unidad», donde la ventana
   // mandaba a buscarla, y sin placa se registraba dos veces (G2 de la crítica,
-  // quincuagésima quinta pasada). El cliente y la carrocería vienen del
-  // catálogo de la página: se pone al día.
+  // quincuagésima quinta pasada). Corre desde el envío aunque la ventana se
+  // haya cancelado (`alQuedarEnDuda` de `useEnvio`): si entretanto se eligió
+  // otro cliente, la unidad sería del de antes, y se dice de cuál.
   function unidadEnDuda() {
+    if (clienteAhora.current !== clienteId) {
+      const de = clienteElegido?.razon_social ?? 'el cliente que tenías elegido'
+      setAparte((a) => ({ ...a, unidad: `No llegó la respuesta de la unidad que registrabas en ${de}: puede haber quedado en ese cliente. Míralo antes de registrarla otra vez.` }))
+      return
+    }
     setReleer((n) => n + 1)
-    setAparte((a) => ({ ...a, unidad: 'No llegó la respuesta de la unidad que registrabas: puede haber quedado. Búscala en «Unidad» antes de registrarla otra vez.' }))
+    setAparte((a) => ({ ...a, unidad: DUDA_UNIDAD }))
   }
 
-  function clienteEnDuda() {
-    refrescarSiEsDeLaPestana(router)
-    setAparte((a) => ({ ...a, cliente: 'No llegó la respuesta del cliente que registrabas: puede haber quedado. Búscalo en «Cliente» antes de registrarlo otra vez.' }))
+  // El cliente y la carrocería no se repiten (el alta que encuentra el suyo
+  // devuelve el que estaba): se buscan desde el navegador por su documento o
+  // su código y, si están, se suman a la lista. Con `router.refresh()` se
+  // pedía la página entera, y sin conexión, o con el 502 que dejó la duda,
+  // Next recargaba el documento y se llevaba la orden escrita sin decir nada
+  // (F-A de funcionalidad, quincuagésima sexta pasada). Si no se encuentra,
+  // registrarlo otra vez no lo duplica. Con la sesión muerta la acción tampoco
+  // llega (vuelve como «El servidor no pudo…») y la búsqueda no lee: se dice
+  // que es la sesión, no la conexión (N2 de la crítica, quincuagésima sexta).
+  async function clienteEnDuda({ tipo_documento, numero_documento, razon_social }: { tipo_documento: Enums<'tipo_documento_cliente'>; numero_documento: string; razon_social: string }) {
+    const duda = `No llegó la respuesta del cliente ${razon_social}: puede haber quedado. Regístralo otra vez con el mismo documento: si ya estaba, no se repite y queda elegido.`
+    setAparte((a) => ({ ...a, cliente: duda }))
+    if (!numero_documento) return
+    const { data, status } = await createClient()
+      .from('clientes')
+      .select('id, razon_social, tipo_documento, numero_documento')
+      .eq('tipo_documento', tipo_documento)
+      .eq('numero_documento', numero_documento)
+      .eq('activo', true)
+      .maybeSingle()
+    if (sinSesion(status)) {
+      setAparte((a) => (a.cliente === duda ? { ...a, cliente: `No se sabe si quedó el cliente ${razon_social}: la sesión terminó. ${VOLVER_A_ENTRAR}, y regístralo otra vez aquí con el mismo documento: si ya estaba, no se repite y queda elegido.` } : a))
+      return
+    }
+    if (!data) return
+    setClientesNuevos((lista) => (lista.some((x) => x.id === data.id) ? lista : [data, ...lista]))
+    setAparte((a) => (a.cliente === duda ? { ...a, cliente: `El cliente ${data.razon_social} quedó registrado aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
   }
 
-  function carroceriaEnDuda() {
-    refrescarSiEsDeLaPestana(router)
-    setAparte((a) => ({ ...a, carroceria: 'No llegó la respuesta de la carrocería que registrabas: puede haber quedado. Búscala en «Tipo de carrocería» antes de registrarla otra vez.' }))
+  async function carroceriaEnDuda({ nombre }: { nombre: string }) {
+    const duda = `No llegó la respuesta de la carrocería ${nombre}: puede haber quedado. Regístrala otra vez con el mismo nombre: si ya estaba, no se repite y queda elegida.`
+    setAparte((a) => ({ ...a, carroceria: duda }))
+    const codigo = codigoDeCarroceria(nombre)
+    if (!codigo) return
+    const { data, status } = await createClient().from('tipos_carroceria').select('id, nombre').eq('codigo', codigo).eq('activo', true).maybeSingle()
+    if (sinSesion(status)) {
+      setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `No se sabe si quedó la carrocería ${nombre}: la sesión terminó. ${VOLVER_A_ENTRAR}, y regístrala otra vez aquí con el mismo nombre: si ya estaba, no se repite y queda elegida.` } : a))
+      return
+    }
+    if (!data) return
+    setCarroceriasNuevas((lista) => (lista.some((x) => x.id === data.id) ? lista : [data, ...lista]))
+    setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `La carrocería ${data.nombre} quedó registrada aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))
   }
 
   function carroceriaCreada(t: { id: string; nombre: string }, { elegir }: { elegir: boolean }) {
@@ -361,7 +431,11 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               htmlFor="unidad_id"
               requerido={esGarantia}
               ayuda={
-                clienteId && unidades.length === 0
+                clienteId && sinLeer?.clienteId === clienteId
+                  ? sinLeer.porSesion
+                    ? `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER_A_ENTRAR}: se leen otra vez.`
+                    : 'No se pudieron leer sus unidades. Se vuelven a leer al volver la conexión.'
+                  : clienteId && unidades.length === 0
                   ? 'Este cliente no tiene unidades registradas'
                   : esGarantia
                     ? 'La garantía va con la unidad que vuelve, y la unidad con su código interno.'
@@ -606,6 +680,17 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
 // Si su rechazo vuelve cuando la persona ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
 const SI_SE_VA: SiSeVa = { que: 'la orden', enlace: 'Volver a la orden nueva' }
+
+// Lo que se dice junto al campo cuando el alta de la unidad volvió sin decir si
+// entró, y cuando además la lista no se pudo leer porque la sesión terminó.
+const DUDA_UNIDAD = 'No llegó la respuesta de la unidad que registrabas: puede haber quedado. Búscala en «Unidad» antes de registrarla otra vez.'
+const VOLVER_A_ENTRAR = 'Entra de nuevo en otra pestaña y vuelve a esta'
+const DUDA_UNIDAD_SIN_SESION = `No se sabe si quedó la unidad que registrabas: la sesión terminó. ${VOLVER_A_ENTRAR}, y búscala en «Unidad» antes de registrarla otra vez.`
+
+// 401 o 403 en una lectura que la cuenta sí puede hacer: la sesión ya no vale
+// (el token vencido, o sin sesión, y anon no lee estas tablas). Lo que se
+// escribió sigue en la pantalla, y lo que se envíe tampoco llegaría.
+const sinSesion = (status: number) => status === 401 || status === 403
 
 /** Cómo guarda la base el número del papel (migración 20261021110000); `null` si todavía no es un número. */
 function comoQuedaElNumero(escrito: string): string | null {

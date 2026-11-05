@@ -103,32 +103,53 @@ const SE_PONIA_AL_DIA = 'metal-work:al-dia-con-la-ventana'
 // Solo quita lo anotado por esta pantalla: al nacer, la pantalla que viene de
 // la recarga no tiene trabas, y no tiene que borrar lo que la anterior dejó.
 let anotada = false
+// Lo que se pone al día sin su ventana a la vista (`anotarQueSePoneAlDia`).
+const sinVentana = new Set<{ que: string }>()
 
 function anotarLaPuestaAlDia() {
-  let titulo: string | null = null
-  for (const [marca, suyas] of trabas) if ([...suyas].some((t) => t.mirando)) titulo = titulos.get(marca) ?? ''
-  if (titulo === null && !anotada) return
+  let anotado: { titulo: string } | { que: string } | null = null
+  for (const [marca, suyas] of trabas) if ([...suyas].some((t) => t.mirando)) anotado = { titulo: titulos.get(marca) ?? '' }
+  if (anotado === null) for (const { que } of sinVentana) anotado = { que }
+  if (anotado === null && !anotada) return
   try {
-    if (titulo === null) sessionStorage.removeItem(SE_PONIA_AL_DIA)
-    else sessionStorage.setItem(SE_PONIA_AL_DIA, JSON.stringify({ titulo, ruta: location.pathname + location.search, en: Date.now() }))
+    if (anotado === null) sessionStorage.removeItem(SE_PONIA_AL_DIA)
+    else sessionStorage.setItem(SE_PONIA_AL_DIA, JSON.stringify({ ...anotado, ruta: location.pathname + location.search, en: Date.now() }))
   } catch {}
-  anotada = titulo !== null
+  anotada = anotado !== null
 }
 
 /**
- * La ventana que se ponía al día cuando el documento se recargó: su título y
- * la dirección de su pantalla. Se lee una vez, al nacer la pantalla. Lo anotado
- * hace más de diez minutos ya no es de esta recarga.
+ * Lo mismo que la traba `mirando`, para lo que se pone al día sin su ventana a
+ * la vista: un formulario en línea que corrige su tarjeta (la nota del paso),
+ * o el envío cuya ventana se canceló en vuelo. Una recarga entera se llevaba
+ * lo escrito sin decir nada (D de funcionalidad, quincuagésima sexta pasada).
+ * `que`: cómo se llama lo enviado («la nota», «lo que enviaste»). Se quita
+ * llamando a lo que devuelve.
  */
-export function laRecargaSeLlevoLaVentana(): { titulo: string; ruta: string } | null {
+export function anotarQueSePoneAlDia(que: string): () => void {
+  const esta = { que }
+  sinVentana.add(esta)
+  anotarLaPuestaAlDia()
+  return () => {
+    if (sinVentana.delete(esta)) anotarLaPuestaAlDia()
+  }
+}
+
+/**
+ * Lo que se ponía al día cuando el documento se recargó: el título de su
+ * ventana, o qué era si no la tenía a la vista (`que`), y la dirección de su
+ * pantalla. Se lee una vez, al nacer la pantalla. Lo anotado hace más de diez
+ * minutos ya no es de esta recarga.
+ */
+export function laRecargaSeLlevoLaVentana(): { titulo: string; que?: string; ruta: string } | null {
   try {
     const anotado = sessionStorage.getItem(SE_PONIA_AL_DIA)
     if (!anotado) return null
     sessionStorage.removeItem(SE_PONIA_AL_DIA)
-    const { titulo, ruta, en } = JSON.parse(anotado) as { titulo?: unknown; ruta?: unknown; en?: unknown }
-    if (typeof titulo !== 'string' || typeof ruta !== 'string' || typeof en !== 'number') return null
+    const { titulo, que, ruta, en } = JSON.parse(anotado) as { titulo?: unknown; que?: unknown; ruta?: unknown; en?: unknown }
+    if ((typeof titulo !== 'string' && typeof que !== 'string') || typeof ruta !== 'string' || typeof en !== 'number') return null
     if (!ruta.startsWith('/') || ruta.startsWith('//') || Date.now() - en > 10 * 60_000) return null
-    return { titulo, ruta }
+    return typeof que === 'string' ? { titulo: '', que, ruta } : { titulo: titulo as string, ruta }
   } catch {
     return null
   }

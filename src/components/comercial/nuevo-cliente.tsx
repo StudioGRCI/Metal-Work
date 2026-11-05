@@ -1,13 +1,14 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useState } from 'react'
 
 import { crearClienteRapido } from '@/app/(app)/clientes/acciones'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
-import { quedoEnDuda, suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
+import { suVentanaSigueAbierta, useEnvio } from '@/lib/envio'
+import type { Enums } from '@/types/database'
 
 /**
  * Alta de cliente sin salir del formulario.
@@ -23,8 +24,11 @@ export function NuevoCliente({
 }: {
   /** `elegir`: la ventana seguía abierta al entrar (como en `NuevaUnidad`). */
   onCreado?: (cliente: { id: string; razon_social: string; numero_documento: string }, como: { elegir: boolean }) => void
-  /** El alta volvió sin decir si entró: quien guarda la lista la pone al día (como en `NuevaUnidad`). */
-  alQuedarEnDuda?: () => void
+  /**
+   * El alta volvió sin decir si entró: quien guarda la lista lo busca por su
+   * documento, que no se repite (como en `NuevaUnidad`).
+   */
+  alQuedarEnDuda?: (enviado: { tipo_documento: Enums<'tipo_documento_cliente'>; numero_documento: string; razon_social: string }) => void
 }) {
   const [abierto, setAbierto] = useState(false)
   // Hay que avisar a quien abrió la ventana en cuanto el cliente existe, sin
@@ -35,13 +39,18 @@ export function NuevoCliente({
     (r, desde) => {
       if (r.datos) onCreado?.(r.datos, { elegir: suVentanaSigueAbierta(desde) })
     },
-    { refrescar: !onCreado },
+    {
+      refrescar: !onCreado,
+      alQuedarEnDuda:
+        alQuedarEnDuda &&
+        ((datos) =>
+          alQuedarEnDuda({
+            tipo_documento: String(datos.get('tipo_documento') ?? '') as Enums<'tipo_documento_cliente'>,
+            numero_documento: String(datos.get('numero_documento') ?? '').trim(),
+            razon_social: String(datos.get('razon_social') ?? '').trim().toUpperCase(),
+          })),
+    },
   )
-  const error = resultado && !resultado.ok ? resultado.error : null
-  const avisarLaDuda = useEffectEvent(() => alQuedarEnDuda?.())
-  useEffect(() => {
-    if (error && quedoEnDuda(error)) avisarLaDuda()
-  }, [error])
 
   function abrir() {
     limpiar()
