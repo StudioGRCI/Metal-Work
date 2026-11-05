@@ -6771,7 +6771,9 @@ if (corre('1zd-correccion-colgada')) {
 // persona había elegido entretanto, y la orden —un documento numerado— salía
 // con ella (F3 de la crítica, quincuagésima cuarta pasada). Junto al campo se
 // dice que quedó registrada; en la lista está, sin elegir. Lo mismo con el
-// cliente nuevo, que además borraba la unidad elegida. Y la unidad que entra
+// cliente nuevo, que además borraba la unidad elegida, y con la carrocería;
+// de esos dos se dice que «ya está», también del que ya estaba antes (H1 de
+// realización, quincuagésima octava pasada). Y la unidad que entra
 // después de cambiar el cliente es del de antes: no va en la lista del nuevo.
 // Administración.
 if (corre('1zd-altas-cancelan-orden-nueva')) {
@@ -6857,8 +6859,49 @@ if (corre('1zd-altas-cancelan-orden-nueva')) {
     const dice2 = await hasta(aparte, (t) => t.includes(razon), 5000)
     const tras2 = { cliente: await valor('cliente_id'), unidad: await valor('unidad_id'), enLista: await enLaLista('cliente_id', `QA-ZDU CLIENTE ${sello}`), dice: dice2 }
     comprobar(enVuelo2.retenida && enVuelo2.cancela && enVuelo2.cerrada && Boolean(creado2) && tras2.cliente === clienteA && tras2.unidad === elegida && tras2.enLista === 1
-      && dice2 === `El cliente ${razon} quedó registrado aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
+      && dice2 === `El cliente ${razon} ya está registrado, aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
       `[Administración 1280] 1zd-altas-cancelan-orden-nueva. el cliente cancelado en vuelo entra a la lista sin cambiar el cliente ni la unidad elegidos (${JSON.stringify({ enVuelo2, ...tras2 })})`)
+    const quitarSuAviso = async (texto) => {
+      await pagina.locator('[data-registrado-aparte]', { hasText: texto }).getByRole('button', { name: 'Quitar este aviso' }).click({ timeout: 3000 }).catch(() => {})
+      await hasta(aparte, (t) => !t.includes(texto), 5000)
+    }
+    await quitarSuAviso(razon)
+
+    // 2b. El mismo documento otra vez, con otra razón social: el alta devuelve el
+    // que estaba. No se dice que «quedó registrado» (H1 de realización,
+    // quincuagésima octava pasada), ni se repite.
+    const otraRazon = `QA-ZDU OTRA ${sello} S.A.C.`
+    const enVuelo2b = await altaRetenida('Nuevo cliente', async (v) => {
+      await v.locator('#nc-tipo').selectOption('RUC')
+      await v.locator('#nc-numero').fill(ruc)
+      await v.locator('#nc-razon').fill(otraRazon)
+    }, 'Registrar cliente', otraRazon)
+    corte.soltar()
+    const dice2b = await hasta(aparte, (t) => t.includes(razon), 20000)
+    const [{ n: conEseRuc }] = await consulta(`select count(*)::int n from clientes where numero_documento = $1`, [ruc])
+    const tras2b = { cliente: await valor('cliente_id'), unidad: await valor('unidad_id'), conEseRuc, dice: dice2b }
+    comprobar(enVuelo2b.retenida && enVuelo2b.cancela && enVuelo2b.cerrada && conEseRuc === 1 && tras2b.cliente === clienteA && tras2b.unidad === elegida
+      && dice2b === `El cliente ${razon} ya está registrado, aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
+      `[Administración 1280] 1zd-altas-cancelan-orden-nueva. el cliente que ya estaba, cancelado en vuelo, dice que ya está, no que quedó, y no se repite (${JSON.stringify({ enVuelo2b, ...tras2b })})`)
+    await quitarSuAviso(razon)
+
+    // 2c y 2d. La carrocería nueva cancelada en vuelo, y la misma otra vez: la
+    // segunda devuelve la que estaba. Las dos «ya está en el catálogo».
+    const carroceria = `QA-ZDU carroceria ${sello}`
+    for (const vez of ['nueva', 'otra vez']) {
+      const antes = await valor('tipo_carroceria_id')
+      const enVuelo = await altaRetenida('Nuevo tipo de carrocería', async (v) => {
+        await v.locator('#ncar-nombre').fill(carroceria)
+      }, 'Agregar al catálogo', carroceria)
+      corte.soltar()
+      const dice = await hasta(aparte, (t) => t.includes(carroceria), 20000)
+      const [{ n: enCatalogo }] = await consulta(`select count(*)::int n from tipos_carroceria where nombre = $1`, [carroceria])
+      const tras = { carroceria: await valor('tipo_carroceria_id'), antes, enCatalogo, enLista: await enLaLista('tipo_carroceria_id', carroceria), dice }
+      comprobar(enVuelo.retenida && enVuelo.cancela && enVuelo.cerrada && enCatalogo === 1 && tras.carroceria === antes && tras.enLista === 1
+        && dice === `La carrocería ${carroceria} ya está en el catálogo, aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.`,
+        `[Administración 1280] 1zd-altas-cancelan-orden-nueva. la carrocería ${vez}, cancelada en vuelo, ya está en el catálogo y en la lista, sin elegir ni repetirse (${JSON.stringify({ enVuelo, ...tras })})`)
+      await quitarSuAviso(carroceria)
+    }
 
     // 3. La unidad que entra después de cambiar el cliente: es del de antes.
     const placa3 = `ZW${sello.slice(-4)}`
@@ -7237,6 +7280,7 @@ if (corre('1zd-orden-nueva-sin-sesion')) {
     await elegirEn('unidad_id', A.placa)
     const unidadElegida = await valor('unidad_id')
     await marcarDocumento(pagina)
+    const sesionBuena = (await contexto.cookies()).filter((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name))
     await matarLaSesion(contexto)
 
     // 1. El cliente.
@@ -7288,16 +7332,35 @@ if (corre('1zd-orden-nueva-sin-sesion')) {
     await hasta(() => alerta(v3), (t) => t.length > 0, 15000)
     const dice3 = await hasta(aparte, (t) => t.includes('la sesión terminó'), 10000)
     await cerrarVentana(v3)
-    // Al pie del campo y a la vista, no en el globo de la «i» (H1 de diseño, quincuagésima séptima pasada).
-    const pie = pagina.locator('p:not([role])', { hasText: 'No se pudieron leer sus unidades' }).first()
+    // Al pie del campo y a la vista, no en el globo de la «i» (H1 de diseño,
+    // quincuagésima séptima pasada); y como la lista ya se había leído, dice
+    // que es la de antes, no que no se pudo leer (Menor 1 de diseño, 58.ª).
+    const pie = pagina.locator('p:not([role])', { hasText: 'La lista de sus unidades es la de antes' }).first()
     const ayuda = await pie.innerText({ timeout: 3000 }).then(limpio).catch(() => '')
     const [{ n: enBase3 }] = await consulta(`select count(*)::int n from unidades where replace(placa, '-', '') = $1`, [placa])
-    const tras3 = { ...(await sigue()), enBase: enBase3, unidad: (await valor('unidad_id')) === unidadElegida, dice: dice3, ayuda, aLaVista: await pie.isVisible().catch(() => false), enGlobo: await pagina.locator('[role="tooltip"]', { hasText: 'No se pudieron leer' }).count() }
+    const tras3 = { ...(await sigue()), enBase: enBase3, unidad: (await valor('unidad_id')) === unidadElegida, dice: dice3, ayuda, aLaVista: await pie.isVisible().catch(() => false), enGlobo: await pagina.locator('[role="tooltip"]', { hasText: 'es la de antes' }).count() }
     await pagina.screenshot({ path: join(CAPTURAS, 'pestana-vieja-1zd-orden-nueva-sin-sesion.png') }).catch(() => {})
     comprobar(tras3.direccion === '/ordenes/nueva' && tras3.mismo && tras3.escrito && enBase3 === 0 && tras3.unidad && Boolean(unidadElegida) && tras3.aLaVista && tras3.enGlobo === 0
       && dice3 === `No se sabe si quedó la unidad que registrabas: la sesión terminó. ${VOLVER}, y búscala en «Unidad» antes de registrarla otra vez.`
-      && ayuda === `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER}: se leen otra vez.`,
-      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la unidad elegida se queda, y al pie del campo, a la vista, se dice que la sesión terminó (${JSON.stringify(tras3)})`)
+      && ayuda === `La lista de sus unidades es la de antes: la sesión terminó. ${VOLVER}: se pone al día.`,
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. la unidad elegida se queda, y al pie del campo, a la vista, se dice que la lista es la de antes porque la sesión terminó (${JSON.stringify(tras3)})`)
+
+    // 4. Se entra de nuevo y se vuelve a la pestaña: la lista se pone al día y
+    // junto al campo ya no dice que la sesión terminó; la duda sigue.
+    await contexto.clearCookies({ name: /^sb-.+-auth-token(\.\d+)?$/ })
+    await contexto.addCookies(sesionBuena)
+    await pagina.evaluate(() => window.dispatchEvent(new Event('focus')))
+    const dice4 = await hasta(aparte, (t) => !t.includes('la sesión terminó'), 15000)
+    // El pie de «Unidad»: el <p> sin rol hijo de la raíz del Campo (la etiqueta va en su primer hijo).
+    const ayuda4 = await pagina.evaluate(() => {
+      const raiz = document.querySelector('label[for="unidad_id"]')?.parentElement?.parentElement
+      return [...(raiz?.children ?? [])].filter((e) => e.tagName === 'P' && !e.getAttribute('role')).map((e) => e.textContent.trim()).join(' | ')
+    })
+    const tras4 = { ...(await sigue()), unidad: (await valor('unidad_id')) === unidadElegida, dice: dice4, ayuda: ayuda4 }
+    comprobar(tras4.direccion === '/ordenes/nueva' && tras4.mismo && tras4.escrito && tras4.unidad
+      && dice4 === 'No llegó la respuesta de la unidad que registrabas: puede haber quedado. Búscala en «Unidad» antes de registrarla otra vez.'
+      && ayuda4 === 'Vehículo sobre el que se ejecuta el trabajo',
+      `[Administración 1280] 1zd-orden-nueva-sin-sesion. de vuelta con la sesión, la lista se pone al día y junto al campo queda la duda, sin la sesión (${JSON.stringify(tras4)})`)
     // Lo que se ve es del navegador: la sesión que el banco dejó sin valer, y la
     // redirección a /ingresar que le llega a Next como «An unexpected response…».
     const propios = errores.filter((e) => !/refresco-que-no-vale|Invalid Refresh Token|AuthApiError|JWT|401|403|An unexpected response was received from the server/i.test(e))

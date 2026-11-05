@@ -707,8 +707,14 @@ y tono). Si aparece un texto `CREDITO_30` en pantalla, falta su mapa.
   el wifi conectado y sin salida no llega 'online'). Si falla con 401 o 403, es
   la sesión y no la conexión, y se dice así: que entre de nuevo en otra
   pestaña y vuelva (N3). Mientras la de otro cliente está en camino dice
-  «Leyendo sus unidades…», no que no tiene. Lo encontrado tras la duda «ya
-  está», no «quedó»: pudo estar desde antes (H2 de la 57.ª).
+  «Leyendo sus unidades…», no que no tiene; si lo que falla es la relectura
+  tras la duda, la lista que se ve es la de antes y lo dice así, no que no se
+  pudieron leer (Menor 1 de diseño, 58.ª). Lo encontrado tras la duda, y el
+  cliente o la carrocería que entran con la ventana ya cerrada, «ya está»,
+  no «quedó»: el alta que encuentra el suyo devuelve el que estaba (H2 de la
+  57.ª, H1 de realización de la 58.ª). `SeleccionBuscable` vacía de origen
+  dice «No hay nada que elegir.» aunque se haya escrito algo: el consejo de
+  escribir menos va solo cuando hay opciones (H3 de diseño, 58.ª).
   Un formulario en línea, sin
   ventana, lleva lo mismo a mano: su «Cancelar» apagado y, si otro control de
   la fila lo cierra o abre otro igual, que cierre solo el suyo

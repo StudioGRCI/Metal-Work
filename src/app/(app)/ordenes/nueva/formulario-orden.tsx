@@ -152,6 +152,8 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
           return
         }
         setSinLeer(null)
+        // Ya se entró de nuevo: la duda sigue, pero la sesión ya no es el motivo.
+        setAparte((a) => (a.unidad === DUDA_UNIDAD_SIN_SESION ? { ...a, unidad: DUDA_UNIDAD } : a))
         const leidas = data ?? []
         const propias = creadasAqui.current.filter((c) => c.clienteId === clienteId && !leidas.some((u) => u.id === c.unidad.id)).map((c) => c.unidad)
         setCargadas({ clienteId, unidades: [...propias, ...leidas] })
@@ -173,11 +175,18 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const unidades = cargadas?.clienteId === clienteId ? cargadas.unidades : []
   const noSeLeyeron = clienteId && sinLeer?.clienteId === clienteId ? sinLeer : null
   const leyendoUnidades = Boolean(clienteId) && !noSeLeyeron && cargadas?.clienteId !== clienteId
+  // La que falló es la relectura tras la duda: la lista que se ve se leyó
+  // antes, y decir «no se pudieron leer» junto a ella no era cierto (Menor 1
+  // de diseño, quincuagésima octava pasada).
+  const listaDeAntes = cargadas?.clienteId === clienteId
 
+  // «Ya está», no «quedó»: el alta que encuentra el suyo devuelve el que
+  // estaba, y decir que quedó afirmaba un registro que no hubo (H1 de
+  // realización, quincuagésima octava pasada; H2 de la 57.ª en la duda).
   function clienteCreado(c: Catalogos['clientes'][number], { elegir }: { elegir: boolean }) {
     setClientesNuevos((lista) => (lista.some((x) => x.id === c.id) ? lista : [c, ...lista]))
     if (!elegir) {
-      setAparte((a) => ({ ...a, cliente: `El cliente ${c.razon_social} quedó registrado aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
+      setAparte((a) => ({ ...a, cliente: `El cliente ${c.razon_social} ya está registrado, aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
       return
     }
     setClienteId(c.id)
@@ -283,7 +292,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   function carroceriaCreada(t: { id: string; nombre: string }, { elegir }: { elegir: boolean }) {
     setCarroceriasNuevas((lista) => (lista.some((x) => x.id === t.id) ? lista : [t, ...lista]))
     if (!elegir) {
-      setAparte((a) => ({ ...a, carroceria: `La carrocería ${t.nombre} quedó registrada aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
+      setAparte((a) => ({ ...a, carroceria: `La carrocería ${t.nombre} ya está en el catálogo, aunque cerraste su ventana antes de que contestara. Está en la lista, sin elegir.` }))
       return
     }
     setCarroceriaId(t.id)
@@ -450,9 +459,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               ayudaEnIcono={noSeLeyeron ? false : undefined}
               ayuda={
                 noSeLeyeron
-                  ? noSeLeyeron.porSesion
-                    ? `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER_A_ENTRAR}: se leen otra vez.`
-                    : 'No se pudieron leer sus unidades. Se vuelven a pedir solas hasta que lleguen.'
+                  ? listaDeAntes
+                    ? noSeLeyeron.porSesion
+                      ? `La lista de sus unidades es la de antes: la sesión terminó. ${VOLVER_A_ENTRAR}: se pone al día.`
+                      : 'La lista de sus unidades es la de antes: no se pudo poner al día. Se vuelve a pedir sola hasta que llegue.'
+                    : noSeLeyeron.porSesion
+                      ? `No se pudieron leer sus unidades: la sesión terminó. ${VOLVER_A_ENTRAR}: se leen otra vez.`
+                      : 'No se pudieron leer sus unidades. Se vuelven a pedir solas hasta que lleguen.'
                   : leyendoUnidades
                   ? 'Leyendo sus unidades…'
                   : clienteId && unidades.length === 0
