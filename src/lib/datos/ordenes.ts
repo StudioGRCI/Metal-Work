@@ -86,7 +86,7 @@ export async function conAvanceDelCodigo<T extends { id: string | null; avance_p
 }
 
 /** Estados en los que la orden sigue viva en el taller. */
-const ESTADOS_ABIERTOS: Enums<'estado_ot'>[] = [
+export const ESTADOS_ABIERTOS: Enums<'estado_ot'>[] = [
   'APROBADA',
   'PROGRAMADA',
   'EN_PROCESO',

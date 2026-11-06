@@ -93,7 +93,7 @@ grant select, insert, delete on storage.objects to authenticated;
 
 -- ======================================================= 1. Lo que Diseño lleva en el código
 -- Diseño carga un plano para Maestranza y otro para Producción, una línea de
--- materiales y las seis etapas; Requerimientos emite el RQ del código.
+-- materiales y su par de etapas; Requerimientos emite el RQ del código.
 select pg_temp.como('diseno_dis');
 set local role authenticated;
 insert into storage.objects (bucket_id, name, owner, owner_id, metadata) values
@@ -106,7 +106,7 @@ select public.registrar_plano_codigo(pg_temp.id('p1'), pg_temp.id('r1'), pg_temp
 select public.registrar_plano_codigo(pg_temp.id('p2'), pg_temp.id('r2'), pg_temp.txt('codigo'), '002', 'Bastidor',
   pg_temp.id('prd'), null, 'bastidor.pdf', 30);
 select public.guardar_material_codigo(null, pg_temp.txt('codigo'), pg_temp.id('mat1'), 4.5, pg_temp.id('p1'), 'Para el piso');
-select test.afirmar(public.etapas_de_siempre_codigo(pg_temp.txt('codigo')) = 6, 'Diseño arma las seis etapas del código');
+select test.afirmar(public.etapas_de_siempre_codigo(pg_temp.txt('codigo')) = 2, 'Diseño arma su par de etapas del código');
 reset role;
 
 select pg_temp.como('requerimientos_req');
@@ -126,8 +126,8 @@ begin
     perform test.afirmar(
       (select planos from public.codigos_internos_de_diseno() where codigo = pg_temp.txt('codigo')) = 2
       and (select materiales from public.codigos_internos_de_diseno() where codigo = pg_temp.txt('codigo')) = 1
-      and (select etapas from public.codigos_internos_de_diseno() where codigo = pg_temp.txt('codigo')) = 6,
-      v_clave || ' ve el código en la lista, con sus dos planos, su material y sus seis etapas');
+      and (select etapas from public.codigos_internos_de_diseno() where codigo = pg_temp.txt('codigo')) = 2,
+      v_clave || ' ve el código en la lista, con sus dos planos, su material y sus dos etapas');
     perform test.afirmar(
       (select count(*) from public.codigo_interno_planos(pg_temp.txt('codigo'))) = 2
       and (select count(*) from public.codigo_planos where codigo_interno = pg_temp.txt('codigo')) = 2
@@ -141,8 +141,8 @@ begin
       and (select disenado from public.codigo_interno_materiales_comparados(pg_temp.txt('codigo'))
             where material_id = pg_temp.id('mat1')) = 4.5
       and (select count(*) from public.codigo_interno_lo_pedido(pg_temp.txt('codigo'))) = 1
-      and (select count(*) from public.codigo_interno_etapas(pg_temp.txt('codigo'))) = 6
-      and (select count(*) from public.codigo_etapas where codigo_interno = pg_temp.txt('codigo')) = 6,
+      and (select count(*) from public.codigo_interno_etapas(pg_temp.txt('codigo'))) = 2
+      and (select count(*) from public.codigo_etapas where codigo_interno = pg_temp.txt('codigo')) = 2,
       v_clave || ' ve la lista de materiales comparada, lo pedido por RQ y las etapas');
 
     -- Mira, no cambia nada.

@@ -1,8 +1,9 @@
-import { FileText } from 'lucide-react'
+import { FileText, Truck } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
 import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
 import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/codigo-interno/materiales'
+import { ListaDxf } from '@/components/codigo-interno/dxf'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -14,6 +15,7 @@ import {
   areasDePlanos,
   areasParaEtapas,
   codigosDeDiseno,
+  dxfDeCodigo,
   etapasDeCodigo,
   historialDePlano,
   listaDeMateriales,
@@ -25,24 +27,28 @@ import {
   type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
+import { AREAS_DE_ETAPA_DE_DISENO, VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { cantidad, fecha, hoyLima } from '@/lib/format'
+import { cantidad, fecha, fechaHora, hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 import {
   AnularPlano,
   CambiarPeso,
+  CargarDxf,
   CargarPlano,
   CorregirEtapa,
   CorregirMaterial,
-  EtapasDeSiempre,
   FormularioEtapa,
   FormularioMaterial,
   MarcarEtapa,
   MoverEtapa,
+  ParDeEtapas,
+  QuitarDxf,
   QuitarEtapa,
+  QuitarFicha,
   QuitarMaterial,
+  SubirFicha,
   SubirRevision,
 } from './formularios'
 
@@ -57,7 +63,7 @@ export const metadata = { title: 'Código interno · Diseño' }
  * 20261015200000).
  */
 export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'/diseno/codigo'>) {
-  await exigirPermiso('diseno.codigos')
+  const perfil = await exigirPermiso('diseno.codigos')
   const params = await searchParams
   const codigo = typeof params.codigo === 'string' ? normalizarCodigo(params.codigo) : ''
   if (codigo.length < 2 || codigo.length > 60) notFound()
@@ -85,7 +91,7 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
         // El código lo elige la búsqueda: con otro, todo se monta de nuevo (X1).
         <DelDocumento documento={`codigo:${codigo}`}>
           <div className="space-y-5">
-            <OrdenesDelCodigo ordenes={ordenes} />
+            <OrdenesDelCodigo ordenes={ordenes} yo={perfil.id} />
 
             <div className="grid grid-cols-3 gap-3">
               <Indicador
@@ -123,12 +129,14 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
 /**
  * La OT del código: con qué se trabaja y para cuándo. Un código puede tener más
  * de una (otro trabajo para la misma unidad): van todas, la más nueva primero.
+ * Junto a cada una, la ficha técnica del camión o tracto que Diseño adjunta.
  */
-function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
+function OrdenesDelCodigo({ ordenes, yo }: { ordenes: OrdenDelCodigo[]; yo: string }) {
   if (ordenes.length === 0) {
     return (
       <p className="rounded-[var(--radius-base)] bg-superficie-2 px-3 py-2 text-sm text-texto-suave">
-        Este código todavía no tiene OT: llega cuando Gerencia aprueba su cotización.
+        Este código todavía no tiene OT: llega cuando Administración la carga, sobre la cotización que aprobó Gerencia. Ahí también se le adjunta la
+        ficha técnica del vehículo.
       </p>
     )
   }
@@ -136,34 +144,52 @@ function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
     <Tarjeta>
       <TarjetaCabecera
         titulo={ordenes.length === 1 ? 'Orden de trabajo' : 'Órdenes de trabajo'}
-        ayuda="La que Administración cargó al darle su código interno. Es la guía para los planos, los materiales y las etapas."
+        ayuda="La que Administración cargó al darle su código interno. Es la guía para los planos, los materiales y las etapas. Junto a ella va la ficha técnica del camión o tracto."
       />
       <TarjetaCuerpo>
         <ul className="divide-y divide-borde">
           {ordenes.map((o) => (
-            <li key={o.id} className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 space-y-0.5">
-                <p className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-semibold tabular text-texto">OT {o.numero}</span>
-                  <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
-                </p>
-                <p className="text-sm text-texto-suave">
-                  {[o.descripcion, o.cliente].filter(Boolean).join(' · ')}
-                  {o.fecha_entrega ? ` · entrega prometida ${fecha(o.fecha_entrega)}` : ''}
-                </p>
+            <li key={o.id} className="space-y-2 py-2.5 first:pt-0 last:pb-0">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold tabular text-texto">OT {o.numero}</span>
+                    <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
+                  </p>
+                  <p className="text-sm text-texto-suave">
+                    {[o.descripcion, o.cliente].filter(Boolean).join(' · ')}
+                    {o.fecha_entrega ? ` · entrega prometida ${fecha(o.fecha_entrega)}` : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+                  {o.url ? (
+                    <a href={o.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0">
+                      <FileText aria-hidden className="size-4 shrink-0" />
+                      Abrir el PDF de la OT
+                    </a>
+                  ) : (
+                    <span className="text-xs text-texto-tenue">{o.pdf_nombre ? 'No se pudo abrir el PDF: recarga la página.' : 'Sin PDF'}</span>
+                  )}
+                  <SubirFicha ordenId={o.id} numero={o.numero} />
+                </div>
               </div>
-              {o.url ? (
-                <a
-                  href={o.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-acento hover:underline sm:min-h-0"
-                >
-                  <FileText aria-hidden className="size-4 shrink-0" />
-                  Abrir el PDF de la OT
-                </a>
-              ) : (
-                <span className="text-xs text-texto-tenue">{o.pdf_nombre ? 'No se pudo abrir el PDF: recarga la página.' : 'Sin PDF'}</span>
+              {o.fichas.length > 0 && (
+                <ul aria-label={`Fichas técnicas de la OT ${o.numero}`} className="space-y-1">
+                  {o.fichas.map((f) => (
+                    <li key={f.id} className="flex items-center gap-2 text-sm" data-ficha={f.nombre}>
+                      <Truck aria-hidden className="size-4 shrink-0 text-texto-suave" />
+                      {f.url ? (
+                        <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-acento hover:underline">
+                          {f.nombre}
+                        </a>
+                      ) : (
+                        <span className="min-w-0 truncate text-texto">{f.nombre}</span>
+                      )}
+                      <span className="shrink-0 text-xs text-texto-suave">Ficha técnica · {fechaHora(f.subido_en)}</span>
+                      {f.subido_por === yo && <QuitarFicha id={f.id} ordenId={o.id} nombre={f.nombre} />}
+                    </li>
+                  ))}
+                </ul>
               )}
             </li>
           ))}
@@ -177,6 +203,7 @@ function OrdenesDelCodigo({ ordenes }: { ordenes: OrdenDelCodigo[] }) {
 async function Vista({ vista, codigo }: { vista: VistaDiseno; codigo: string }) {
   if (vista === 'materiales') return <VistaMateriales codigo={codigo} />
   if (vista === 'etapas') return <VistaEtapas codigo={codigo} />
+  if (vista === 'dxf') return <VistaDxf codigo={codigo} />
   return <VistaPlanos codigo={codigo} />
 }
 
@@ -288,49 +315,88 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
 }
 
 async function VistaEtapas({ codigo }: { codigo: string }) {
-  const [etapas, areas, planos] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas(), planosDeCodigo(codigo)])
+  const [etapas, todasLasAreas, planos] = await Promise.all([etapasDeCodigo(codigo), areasParaEtapas(), planosDeCodigo(codigo)])
+  // Diseño solo pone etapas de Maestranza (habilitado) y de Producción (ensamblaje).
+  const areas = todasLasAreas.filter((a) => (AREAS_DE_ETAPA_DE_DISENO as readonly string[]).includes(a.codigo))
   const hoy = hoyLima()
+  const deDiseno = etapas.filter((e) => !e.padre_id && !e.de_area)
   return (
     <>
-      {etapas.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCabecera
-            titulo="Todavía no hay etapas"
-            ayuda="Carga las de siempre —Diseño y planos, Habilitado (Maestranza), Armado (Producción), Arenado y pintura (Acabados), Trámites y Entrega— y ponles sus fechas, o agrégalas una por una."
-          />
-          <TarjetaCuerpo>
-            <EtapasDeSiempre codigo={codigo} />
-          </TarjetaCuerpo>
-        </Tarjeta>
-      ) : (
+      <Tarjeta>
+        <TarjetaCabecera
+          titulo={deDiseno.length === 0 ? 'Las etapas del juego de planos' : 'Otro juego de planos'}
+          ayuda="Por cada juego de planos, Diseño pone dos etapas: Habilitado para Maestranza y Ensamblaje para Producción. Cada supervisor les agrega sus subetapas; Acabados y las demás áreas agregan las suyas."
+        />
+        <TarjetaCuerpo>
+          <ParDeEtapas codigo={codigo} primero={deDiseno.length === 0} />
+        </TarjetaCuerpo>
+      </Tarjeta>
+
+      {etapas.length > 0 && (
         <Tarjeta>
           <TarjetaCabecera
             titulo="Etapas de la unidad"
             descripcion={`${resumenEtapas(etapas, hoy)}.`}
-            ayuda="El supervisor de cada área marca cuándo empezó y terminó la suya; el avance sale de su reporte diario."
+            ayuda="Debajo de cada etapa, las subetapas que puso su área. Las etapas y subetapas que agregó un área las corrige y las quita su supervisor; el avance sale de su reporte diario."
           />
           <TarjetaCuerpo>
             <ListaEtapas
               etapas={etapas}
               hoy={hoy}
               conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)}
-              acciones={(e, i) => (
-                <>
+              acciones={(e, lugar) =>
+                e.de_area || e.padre_id ? (
                   <MarcarEtapa etapa={e} hoy={hoy} />
-                  <MoverEtapa id={e.id} nombre={e.nombre} primera={i === 0} ultima={i === etapas.length - 1} />
-                  <CorregirEtapa codigo={codigo} areas={areas} etapa={e} />
-                  <QuitarEtapa id={e.id} nombre={e.nombre} />
-                </>
-              )}
+                ) : (
+                  <>
+                    <MarcarEtapa etapa={e} hoy={hoy} />
+                    <MoverEtapa id={e.id} nombre={e.nombre} primera={lugar.primera} ultima={lugar.ultima} />
+                    <CorregirEtapa codigo={codigo} areas={areas} etapa={e} />
+                    {lugar.subetapas.length === 0 && <QuitarEtapa id={e.id} nombre={e.nombre} />}
+                  </>
+                )
+              }
             />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Agregar una etapa" ayuda="Va al final; súbela con las flechas. La fecha comprometida es contra la que se mide si va a tiempo." />
+        <TarjetaCabecera
+          titulo="Agregar una etapa"
+          ayuda="Solo de Maestranza o de Producción: las de las demás áreas las agrega su supervisor. Va al final; súbela con las flechas. La fecha comprometida es contra la que se mide si va a tiempo."
+        />
         <TarjetaCuerpo>
           <FormularioEtapa codigo={codigo} areas={areas} />
+        </TarjetaCuerpo>
+      </Tarjeta>
+    </>
+  )
+}
+
+/** Los DXF comprimidos del código: Diseño los sube y Maestranza los descarga. */
+async function VistaDxf({ codigo }: { codigo: string }) {
+  const archivos = await dxfDeCodigo(codigo)
+  return (
+    <>
+      <Tarjeta>
+        <TarjetaCabecera
+          titulo="Cargar DXF"
+          ayuda={`Los DXF que generaste, en un .zip, .rar o .7z de hasta 50 MB. Solo los ven Diseño y Maestranza; al supervisor de Maestranza le llega el aviso.`}
+        />
+        <TarjetaCuerpo>
+          <CargarDxf codigo={codigo} />
+        </TarjetaCuerpo>
+      </Tarjeta>
+
+      <Tarjeta>
+        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que Maestranza descarga para cortar. Si uno se subió por error, quítalo: queda en el historial." />
+        <TarjetaCuerpo>
+          {archivos.length === 0 ? (
+            <p className="text-sm text-texto-suave">Todavía no hay DXF. Carga el primero con el formulario de arriba.</p>
+          ) : (
+            <ListaDxf archivos={archivos} acciones={(d) => <QuitarDxf id={d.id} nombre={d.nombre_archivo} />} />
+          )}
         </TarjetaCuerpo>
       </Tarjeta>
     </>

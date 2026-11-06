@@ -1,7 +1,8 @@
 import 'server-only'
 
+import { ESTADOS_ABIERTOS } from '@/lib/datos/ordenes'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
-import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
+import { AREAS_DE_PLANOS, BUCKET_DXF } from '@/lib/dominio/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
@@ -301,14 +302,30 @@ export type EtapaDeCodigo = {
   primer_reporte: string | null
   ultimo_reporte: string | null
   avance_reportado: number | null
+  /** La etapa de arriba de la que es subetapa (la agrega el supervisor del área). */
+  padre_id: string | null
+  /** La agregó el supervisor de su área, no Diseño: la corrige y la quita él. */
+  de_area: boolean
 }
 
 /** Las etapas de un código en su orden, o las de todos si no se da código. */
 export async function etapasDeCodigo(codigo: string | null): Promise<EtapaDeCodigo[]> {
   const supabase = await createClient()
   // Sin código son las etapas de todos: con seis por unidad, unos 170 códigos ya pasan de mil.
-  const { data, error } = await todasLasFilas(() => supabase.rpc('codigo_interno_etapas', { p_codigo: codigo }), ['codigo', 'orden', 'id'])
+  // De quién es la etapa y de cuál cuelga no está en la función (su firma no se
+  // cambia en producción): se lee de la tabla, con el mismo RLS, solo las que
+  // tienen algo distinto de lo de siempre (subetapas y etapas de un área).
+  const deArea = () => {
+    const q = supabase.from('codigo_etapas').select('id, padre_id, de_area').is('quitada_en', null).or('padre_id.not.is.null,de_area.is.true')
+    return codigo ? q.eq('codigo_interno', normalizarCodigo(codigo)) : q
+  }
+  const [{ data, error }, { data: marcas, error: errorMarcas }] = await Promise.all([
+    todasLasFilas(() => supabase.rpc('codigo_interno_etapas', { p_codigo: codigo }), ['codigo', 'orden', 'id']),
+    todasLasFilas(deArea, ['id']),
+  ])
   if (error) throw new Error(`No se pudieron leer las etapas: ${error.message}`)
+  if (errorMarcas) throw new Error(`No se pudo leer de qué área es cada etapa: ${errorMarcas.message}`)
+  const marca = new Map((marcas ?? []).map((m) => [m.id, m]))
   return (data ?? []).flatMap((e) =>
     e.id && e.codigo
       ? [
@@ -329,6 +346,8 @@ export async function etapasDeCodigo(codigo: string | null): Promise<EtapaDeCodi
             primer_reporte: e.primer_reporte,
             ultimo_reporte: e.ultimo_reporte,
             avance_reportado: e.avance_reportado === null ? null : Number(e.avance_reportado),
+            padre_id: marca.get(e.id)?.padre_id ?? null,
+            de_area: marca.get(e.id)?.de_area ?? false,
           },
         ]
       : [],
@@ -388,7 +407,11 @@ export type OrdenDelCodigo = {
   cliente: string | null
   pdf_nombre: string | null
   url: string | null
+  /** Las fichas técnicas del camión o tracto que Diseño adjuntó a la OT. */
+  fichas: FichaDeOrden[]
 }
+
+export type FichaDeOrden = { id: string; nombre: string; subido_por: string | null; subido_en: string; url: string | null }
 
 /**
  * Las OT de un código interno (migración 20261016900000): Administración las
@@ -410,6 +433,7 @@ export async function ordenesDelCodigo(codigo: string): Promise<OrdenDelCodigo[]
     for (const f of firmados ?? []) if (f.path && f.signedUrl) enlaces.set(f.path, f.signedUrl)
   }
 
+  const fichas = await fichasDeOrdenes(filas.map((f) => f.id))
   return filas.map((f) => ({
     id: f.id,
     numero: f.numero,
@@ -419,5 +443,142 @@ export async function ordenesDelCodigo(codigo: string): Promise<OrdenDelCodigo[]
     cliente: f.cliente,
     pdf_nombre: f.pdf_ruta ? f.pdf_nombre : null,
     url: (f.pdf_ruta && enlaces.get(f.pdf_ruta)) ?? null,
+    fichas: fichas.get(f.id) ?? [],
   }))
+}
+
+/**
+ * Las fichas técnicas del vehículo de cada OT (`ot_adjuntos` tipo
+ * FICHA_VEHICULO, migración 20261106100000), con su enlace para abrirlas.
+ */
+async function fichasDeOrdenes(ids: string[]): Promise<Map<string, FichaDeOrden[]>> {
+  const porOrden = new Map<string, FichaDeOrden[]>()
+  if (ids.length === 0) return porOrden
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ot_adjuntos')
+    .select('id, orden_id, nombre_archivo, ruta_storage, subido_por, creado_en')
+    .eq('tipo', 'FICHA_VEHICULO')
+    .in('orden_id', ids)
+    .order('creado_en', { ascending: false })
+  if (error) throw new Error(`No se pudo leer la ficha técnica de la OT: ${error.message}`)
+  const filas = data ?? []
+  const enlaces = new Map<string, string>()
+  if (filas.length > 0) {
+    const { data: firmados } = await supabase.storage.from('adjuntos-ot').createSignedUrls(filas.map((f) => f.ruta_storage), 600)
+    for (const f of firmados ?? []) if (f.path && f.signedUrl) enlaces.set(f.path, f.signedUrl)
+  }
+  for (const f of filas) {
+    const lista = porOrden.get(f.orden_id) ?? []
+    lista.push({ id: f.id, nombre: f.nombre_archivo, subido_por: f.subido_por, subido_en: f.creado_en, url: enlaces.get(f.ruta_storage) ?? null })
+    porOrden.set(f.orden_id, lista)
+  }
+  return porOrden
+}
+
+/** La OT con que se nombra un código en las listas de Diseño. */
+export type OtDeCodigo = {
+  numero: string
+  estado: string
+  abierta: boolean
+  fecha_registro: string | null
+  cliente: string | null
+  cliente_id: string | null
+  unidad: { placa: string | null; codigo_interno: string | null; numero_chasis: string | null; marca: string | null; modelo: string | null } | null
+}
+
+/**
+ * La OT de cada código, como la nombra «Unidades en taller»: la abierta que
+ * entró primero; si no tiene abierta, la última que tuvo. Las listas de Diseño
+ * van en el orden en que entraron las OT (observaciones de Diseño, 2026-11-06).
+ */
+export async function otPorCodigo(): Promise<Map<string, OtDeCodigo>> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(
+    () =>
+      supabase
+        .from('ot_resumen')
+        .select('id, numero, estado, cliente_id, cliente, unidad_id, placa, codigo_interno, numero_chasis, marca, modelo, fecha_registro')
+        .neq('estado', 'ANULADA')
+        .not('codigo_interno', 'is', null),
+    ['fecha_registro.asc.nullslast', 'numero', 'id'],
+  )
+  if (error) throw new Error(`No se pudo leer la OT de cada código: ${error.message}`)
+  const abiertos: readonly string[] = ESTADOS_ABIERTOS
+  const porCodigo = new Map<string, OtDeCodigo>()
+  for (const o of data ?? []) {
+    if (!o.numero || !o.codigo_interno || !o.estado) continue
+    const codigo = normalizarCodigo(o.codigo_interno)
+    const ot: OtDeCodigo = {
+      numero: o.numero,
+      estado: o.estado,
+      abierta: abiertos.includes(o.estado),
+      fecha_registro: o.fecha_registro,
+      cliente: o.cliente,
+      cliente_id: o.cliente_id,
+      unidad: o.unidad_id
+        ? { placa: o.placa, codigo_interno: o.codigo_interno, numero_chasis: o.numero_chasis, marca: o.marca, modelo: o.modelo }
+        : null,
+    }
+    const antes = porCodigo.get(codigo)
+    // Vienen de la más antigua a la más nueva: la primera abierta se queda; sin
+    // abierta, la última cerrada.
+    if (!antes?.abierta) porCodigo.set(codigo, ot)
+  }
+  return porCodigo
+}
+
+/** Un comprimido de DXF de un código, con su enlace de descarga. */
+export type DxfDeCodigo = {
+  id: string
+  codigo: string
+  descripcion: string
+  nombre_archivo: string
+  ruta: string
+  tamano_bytes: number
+  subido_en: string
+  url: string | null
+}
+
+/**
+ * Los DXF comprimidos de un código, o de todos los que la persona ve. Los ven
+ * Diseño y el supervisor de Maestranza (`puede_ver_dxf`); el enlace descarga el
+ * archivo con el nombre que tenía.
+ */
+export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: { conEnlace?: boolean } = {}): Promise<DxfDeCodigo[]> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(() => {
+    const q = supabase
+      .from('codigo_dxf')
+      .select('id, codigo_interno, descripcion, nombre_archivo, ruta, tamano_bytes, subido_en')
+      .is('quitado_en', null)
+    return codigo ? q.eq('codigo_interno', normalizarCodigo(codigo)) : q
+  }, ['codigo_interno', 'subido_en.desc', 'id'])
+  if (error) throw new Error(`No se pudieron leer los DXF: ${error.message}`)
+  const archivos = (data ?? []).map((f) => ({
+    id: f.id,
+    codigo: f.codigo_interno,
+    descripcion: f.descripcion,
+    nombre_archivo: f.nombre_archivo,
+    ruta: f.ruta,
+    tamano_bytes: Number(f.tamano_bytes),
+    subido_en: f.subido_en,
+    url: null,
+  }))
+  return conEnlace ? conEnlaceDeDescarga(archivos) : archivos
+}
+
+/**
+ * El enlace de descarga de cada DXF, uno por uno: cada enlace descarga con el
+ * nombre de su archivo, no con el id. Para firmar solo los que se muestran.
+ */
+export async function conEnlaceDeDescarga(archivos: DxfDeCodigo[]): Promise<DxfDeCodigo[]> {
+  if (archivos.length === 0) return archivos
+  const supabase = await createClient()
+  return Promise.all(
+    archivos.map(async (f) => {
+      const { data } = await supabase.storage.from(BUCKET_DXF).createSignedUrl(f.ruta, 600, { download: f.nombre_archivo })
+      return { ...f, url: data?.signedUrl ?? null }
+    }),
+  )
 }

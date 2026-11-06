@@ -151,8 +151,14 @@ select test.afirmar((select peso from public.codigo_planos where id = pg_temp.id
   'la compuerta queda en 0 % (corregir dos veces da lo mismo)');
 select test.debe_fallar(format('update public.codigo_planos set nombre = ''Otra'' where id = %L', pg_temp.txt('p1')),
   'el resto del plano sigue sin corregirse por debajo', 'permission denied');
-select test.afirmar(public.etapas_de_siempre_codigo(pg_temp.txt('codigo')) = 6, 'Diseño arma las seis etapas del código');
+select test.afirmar(public.etapas_de_siempre_codigo(pg_temp.txt('codigo')) = 2, 'Diseño arma su par: Habilitado y Ensamblaje');
 reset role;
+-- Las otras cuatro etapas de arriba, sin actividades, como las de un código de
+-- antes de la 20261106100000 (armazón como dueño): el resto se reparte en seis.
+insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, creado_por)
+select pg_temp.txt('codigo'), o, n, a, pg_temp.id('diseno')
+  from (values (3, 'Diseño y planos', null::uuid), (4, 'Arenado y pintura', pg_temp.id('acb')),
+               (5, 'Trámites: homologación y tarjeta', null), (6, 'Entrega', null)) v(o, n, a);
 
 -- Un supervisor no reparte la unidad.
 select pg_temp.como('sup_mtz');
@@ -308,9 +314,9 @@ reset role;
 
 -- ======================================================= 5. El porcentaje de la unidad
 -- Planos: el cajón (40 %) en 50 % aporta 20; el bastidor (30 %) sin reporte, 0; la compuerta, 0 %.
--- El 30 % que Diseño no repartió va por las seis etapas, sin volver a contar el
+-- El 30 % que Diseño no repartió va por las seis etapas de arriba, sin volver a contar el
 -- cajón, que ya aportó lo suyo: Diseño 0, Habilitado (Maestranza) el corte en 10,
--- Armado (Producción) el subcontrato en 26, Acabados 0, Trámites 0, Entrega 0:
+-- Ensamblaje (Producción) el subcontrato en 26, Acabados 0, Trámites 0, Entrega 0:
 -- 36 / 6 = 6, por 30 % = 1,8. La unidad va en 20 + 1,8 = 22 % (con el cajón
 -- también en la etapa habría salido 23: contado dos veces).
 select pg_temp.como('gerente');
@@ -329,7 +335,7 @@ select test.afirmar(
   'Gerencia ve lo que aporta cada plano: el cajón 20, el bastidor 0');
 select test.afirmar(
   (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Habilitado') = 10
-  and (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Armado') = 26,
+  and (select avance_reportado from public.codigo_interno_etapas(pg_temp.txt('codigo')) where nombre = 'Ensamblaje') = 26,
   'cada etapa dice el promedio de las actividades de su área sin el cajón, que ya contó por su plano');
 select test.afirmar(
   (select peso = 70 and de_planos = 20 and resto = 6 and resto_por = 'ETAPAS'

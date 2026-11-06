@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Camera, FileCode, FileSpreadsheet, FileText, FileUp, ImageIcon, type LucideIcon } from 'lucide-react'
+import { Camera, FileArchive, FileCode, FileSpreadsheet, FileText, FileUp, ImageIcon, type LucideIcon } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
 import { tamanoArchivo } from '@/lib/format'
@@ -29,6 +29,8 @@ function tipoDe(accept: string, conCamara: boolean): Tipo {
   const foto = t.some((x) => x.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(x))
   if (excel) return { que: 'Elegir el Excel', formato: 'Solo Excel (.xlsx)', noEs: 'No es un Excel (.xlsx)', Icono: FileSpreadsheet }
   if (xml) return { que: 'Elegir el XML', formato: 'XML o ZIP de SUNAT', noEs: 'No es un XML ni un ZIP', Icono: FileCode }
+  // Los DXF de Diseño, comprimidos.
+  if (t.includes('.7z')) return { que: 'Elegir el comprimido', formato: 'ZIP, RAR o 7Z', noEs: 'No es un .zip, .rar ni .7z', Icono: FileArchive }
   if (pdf && word) return { que: 'Elegir el PDF o el Word', formato: 'PDF o Word', noEs: 'No es un PDF ni un Word', Icono: FileText }
   if (pdf && foto) return { que: 'Elegir el PDF o la foto', formato: 'PDF, JPG, PNG o WEBP', noEs: 'No es un PDF ni una foto', Icono: FileUp }
   if (pdf) return { que: 'Elegir el PDF', formato: 'Solo PDF', noEs: 'No es un PDF', Icono: FileText }
@@ -77,6 +79,10 @@ const FIRMAS: Record<string, { que: string; es: (b: Uint8Array) => boolean }> = 
   '.xlsx': { que: 'un Excel', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
   '.docx': { que: 'un Word', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
   '.doc': { que: 'un Word', es: (b) => b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0 },
+  // Los comprimidos de los DXF: «PK», «Rar!» y la firma del 7-Zip.
+  '.zip': { que: 'un .zip', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
+  '.rar': { que: 'un .rar', es: (b) => b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21 },
+  '.7z': { que: 'un .7z', es: (b) => b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf && b[4] === 0x27 && b[5] === 0x1c },
 }
 
 /**

@@ -64,6 +64,37 @@ select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo
   'ni a nombre de otro', 'row-level security');
 reset role;
 
+-- ============================================ 2b. La ficha técnica del vehículo (migración 20261106100000)
+-- Diseño la adjunta junto a la OT, en PDF o en foto, con su nombre propio
+-- `ficha-…`: así no deja un PDF que pase por el de la orden.
+select test.como_usuario(:'diseno_id');
+set local role authenticated;
+select set_config('prueba.ficha', 'ot/' || current_setting('prueba.orden') || '/ficha-' || gen_random_uuid() || '.jpg', true);
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('adjuntos-ot', current_setting('prueba.ficha'), current_setting('prueba.diseno'), '{"mimetype":"image/jpeg","size":4096}'::jsonb);
+insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+values (current_setting('prueba.orden')::uuid, 'FICHA_VEHICULO', 'ficha-tracto.jpg', current_setting('prueba.ficha'), 'image/jpeg', 4096,
+        current_setting('prueba.diseno')::uuid);
+select test.afirmar((select count(*) from public.ot_adjuntos where orden_id = current_setting('prueba.orden')::uuid and tipo = 'FICHA_VEHICULO') = 1,
+  'Diseño adjunta la ficha técnica del vehículo a la orden, en foto');
+select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+                                  values (%L, 'ORDEN', 'orden.pdf', %L, 'application/pdf', 10, %L)$q$,
+                               current_setting('prueba.orden'), 'ot/' || current_setting('prueba.orden') || '/ficha-' || gen_random_uuid() || '.pdf',
+                               current_setting('prueba.diseno')),
+  'pero la ficha no se anota como el PDF de la orden', 'row-level security');
+select test.debe_fallar(format($q$insert into public.ot_adjuntos (orden_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+                                  values (%L, 'FICHA_VEHICULO', 'ficha.pdf', %L, 'application/pdf', 10, %L)$q$,
+                               current_setting('prueba.orden'), current_setting('prueba.pdf'), current_setting('prueba.diseno')),
+  'ni una ficha con la ruta de otro archivo', 'row-level security');
+reset role;
+select test.como_usuario(:'almacen_id');
+set local role authenticated;
+select test.debe_fallar(format($q$insert into storage.objects (bucket_id, name, owner_id, metadata)
+                                  values ('adjuntos-ot', %L, %L, '{"mimetype":"application/pdf","size":10}'::jsonb)$q$,
+                               'ot/' || current_setting('prueba.orden') || '/ficha-' || gen_random_uuid() || '.pdf', current_setting('prueba.almacen')),
+  'Almacén no adjunta fichas', 'row-level security');
+reset role;
+
 -- ============================================ 3. Quien no carga cronogramas no guarda el Excel
 select test.como_usuario(:'almacen_id');
 set local role authenticated;

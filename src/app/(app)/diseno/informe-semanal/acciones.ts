@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
 import { CLAVES_AREA, CLAVES_TAREA } from '@/lib/dominio/informe-diseno'
 import { finSemanaDiseno, inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
+import { hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -13,70 +14,33 @@ async function exigirDiseno() {
   return puede(perfil, 'diseno.preparar_informe') ? perfil : null
 }
 
+/**
+ * Una actividad del día, como se hizo (observaciones de Diseño, 2026-11-06):
+ * el colaborador no planifica, anota lo que hizo y en qué día. Va con la
+ * misma fecha de inicio y de entrega, y no puede ser de un día que no llegó.
+ */
 export async function registrarTareaDiseno(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirDiseno()
-  if (!perfil) return { ok: false, error: 'No tienes permiso para registrar tareas de Diseño.' }
+  if (!perfil) return { ok: false, error: 'No tienes permiso para registrar actividades de Diseño.' }
   const entrada = z.object({
     id: z.guid(),
     orden_id: z.guid(),
     integrante_id: z.guid(),
     tipo: z.enum(CLAVES_TAREA),
     componente: z.string().trim().min(2).max(200),
-    fecha_inicio: z.iso.date(),
-    fecha_entrega: z.iso.date(),
+    fecha: z.iso.date(),
     observacion: z.string().trim().max(1500),
   }).safeParse(Object.fromEntries(datos))
-  if (!entrada.success || entrada.data.fecha_entrega < entrada.data.fecha_inicio) {
-    return { ok: false, error: 'Indica OT, colaborador, tarea y fechas válidas.' }
-  }
+  if (!entrada.success) return { ok: false, error: 'Indica la OT, el colaborador, la actividad, el componente y el día.' }
+  const { fecha, ...resto } = entrada.data
+  if (fecha > hoyLima()) return { ok: false, error: 'Anota la actividad el día que la hiciste: esa fecha todavía no llegó.' }
   const db = await createClient()
   const { data, error } = await db.from('diseno_tareas')
-    .insert({ ...entrada.data, creado_por: perfil.id }).select('id').maybeSingle()
+    .insert({ ...resto, fecha_inicio: fecha, fecha_entrega: fecha, creado_por: perfil.id }).select('id').maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/diseno/informe-semanal')
-  return { ok: true, mensaje: 'Tarea de Diseño registrada para el informe semanal.' }
-}
-
-/**
- * Una fila del avance de planos, como en el formato: el entregable, cuántos
- * planos y piezas tiene, a qué áreas se entregó. La base comprueba que la
- * persona sea colaboradora de esa OT y que la semana no se haya enviado.
- */
-export async function registrarEntregaPlanos(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
-  const perfil = await exigirDiseno()
-  if (!perfil) return { ok: false, error: 'No tienes permiso para registrar el avance de los planos.' }
-  const entrada = z.object({
-    id: z.guid(),
-    semana_inicio: z.iso.date(),
-    orden_id: z.guid(),
-    integrante_id: z.guid(),
-    tipo_plano: z.string().trim().min(2).max(200),
-    n_planos: z.coerce.number().int().min(1).max(999),
-    n_piezas: z.coerce.number().int().min(0).max(9999),
-    fecha_entrega: z.union([z.iso.date(), z.literal('')]),
-    estado: z.enum(['CULMINADO', 'EN_PROCESO']),
-  }).safeParse(Object.fromEntries(datos))
-  const areas = z.array(z.enum(CLAVES_AREA)).safeParse(datos.getAll('entregado_a'))
-  if (!entrada.success || !areas.success) {
-    return { ok: false, error: 'Indica la OT, la persona, el tipo de plano y cuántos planos y piezas son.' }
-  }
-  const v = entrada.data
-  if (inicioSemanaDiseno(v.semana_inicio) !== v.semana_inicio) return { ok: false, error: 'La semana debe empezar un lunes.' }
-  if (v.fecha_entrega && (v.fecha_entrega < v.semana_inicio || v.fecha_entrega > finSemanaDiseno(v.semana_inicio))) {
-    return { ok: false, error: 'La fecha de entrega tiene que caer dentro de la semana del informe.' }
-  }
-  if (v.estado === 'CULMINADO' && areas.data.length === 0) {
-    return { ok: false, error: 'Marca a qué área se entregaron los planos.' }
-  }
-  const db = await createClient()
-  const { data, error } = await db.from('diseno_entregas_planos').insert({
-    ...v, fecha_entrega: v.fecha_entrega || null, entregado_a: [...new Set(areas.data)], creado_por: perfil.id,
-  }).select('id').maybeSingle()
-  if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data) return { ok: false, error: NO_TOCO_NADA }
-  revalidatePath('/diseno/informe-semanal')
-  return { ok: true, mensaje: `Entrega registrada: ${v.n_planos} ${v.n_planos === 1 ? 'plano' : 'planos'}.` }
+  return { ok: true, mensaje: 'Actividad anotada en el informe de su semana.' }
 }
 
 /** Quitar una tarea o una entrega mal cargada. Solo las propias y con la semana abierta. */
