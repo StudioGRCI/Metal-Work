@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, rutaPlanoCodigo } from '@/lib/dominio/diseno-codigos'
+import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, extensionDxf, rutaPlanoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cantidad } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
@@ -19,7 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /** Diseño, el supervisor y Gerencia leen lo mismo: se repintan juntos. */
 function repintar() {
-  for (const ruta of ['/diseno/codigo', '/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/planos', '/codigos-internos', '/codigos-internos/detalle']) {
+  for (const ruta of ['/diseno/codigo', '/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf', '/planos', '/codigos-internos', '/codigos-internos/detalle']) {
     revalidatePath(ruta)
   }
 }
@@ -277,17 +277,29 @@ export async function quitarMaterial(_previo: unknown, formulario: FormData): Pr
   return { ok: true, mensaje: 'Línea quitada de la lista.' }
 }
 
-/** Las seis etapas de siempre, para un código que todavía no tiene ninguna. */
-export async function cargarEtapasDeSiempre(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+/**
+ * El par de etapas de Diseño para un juego de planos: Habilitado (Maestranza) y
+ * Ensamblaje (Producción). Sin juego es el del código; con juego («Caja»,
+ * «Chasis») van con su nombre, para el segundo juego de la misma unidad.
+ */
+export async function cargarParDeEtapas(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: SOLO_DISENO }
-  const codigo = texto(60).min(2).safeParse(formulario.get('codigo'))
-  if (!codigo.success) return { ok: false, error: NO_SE_RECONOCE }
+  const datos = z.object({ codigo: texto(60).min(2), juego: texto(60).nullable() }).safeParse({
+    codigo: formulario.get('codigo'),
+    juego: opcional(formulario.get('juego')),
+  })
+  if (!datos.success) {
+    return { ok: false, error: datos.error.issues[0]?.path[0] === 'juego' ? 'El nombre del juego de planos pasa de 60 letras.' : NO_SE_RECONOCE }
+  }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('etapas_de_siempre_codigo', { p_codigo: codigo.data })
+  const { error } = await supabase.rpc('par_de_etapas_codigo', { p_codigo: datos.data.codigo, p_juego: datos.data.juego as string })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
-  return { ok: true, mensaje: `${data ?? 6} etapas cargadas. Ponles sus fechas.` }
+  return {
+    ok: true,
+    mensaje: `Habilitado y Ensamblaje${datos.data.juego ? ` de «${datos.data.juego}»` : ''} cargados. Ponles su fecha comprometida; Maestranza y Producción les agregan sus subetapas.`,
+  }
 }
 
 const FECHA = z.preprocess((v) => (v === '' || v === null ? null : v), z.iso.date().nullable())
@@ -319,7 +331,7 @@ export async function guardarEtapa(_previo: unknown, formulario: FormData): Prom
       ok: false,
       error:
         campo === 'nombre'
-          ? 'Escribe el nombre de la etapa, por ejemplo Habilitado o Arenado y pintura.'
+          ? 'Escribe el nombre de la etapa, por ejemplo Habilitado o Ensamblaje.'
           : campo === 'inicio_plan' || campo === 'fin_plan'
             ? 'Revisa las fechas de la etapa.'
             : NO_SE_RECONOCE,
@@ -339,10 +351,15 @@ export async function guardarEtapa(_previo: unknown, formulario: FormData): Prom
   return { ok: true, mensaje: datos.data.id ? 'Etapa corregida.' : 'Etapa agregada al final.' }
 }
 
-/** Subir o bajar una etapa un lugar. */
+const NO_ES_TUYA = 'No tienes permiso para cambiar esta etapa.'
+
+/**
+ * Subir o bajar una etapa un lugar entre las de su nivel. Diseño mueve las
+ * suyas; el supervisor, las que agregó su área (la base mira cuál es cuál).
+ */
 export async function moverEtapa(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: SOLO_DISENO }
+  if (!puede(perfil, ['diseno.codigos', 'codigos_internos.area'])) return { ok: false, error: NO_ES_TUYA }
   const datos = z.object({ id: z.guid(), arriba: z.enum(['1', '0']) }).safeParse({ id: formulario.get('id'), arriba: formulario.get('arriba') })
   if (!datos.success) return { ok: false, error: NO_SE_RECONOCE }
   const supabase = await createClient()
@@ -393,10 +410,10 @@ export async function marcarEtapa(_previo: unknown, formulario: FormData): Promi
   }
 }
 
-/** Quitar una etapa que sobra. Queda en el historial. */
+/** Quitar una etapa que sobra: Diseño las suyas, el supervisor las de su área. Queda en el historial. */
 export async function quitarEtapa(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: SOLO_DISENO }
+  if (!puede(perfil, ['diseno.codigos', 'codigos_internos.area'])) return { ok: false, error: NO_ES_TUYA }
   const id = z.guid().safeParse(formulario.get('id'))
   if (!id.success) return { ok: false, error: NO_SE_RECONOCE }
   const supabase = await createClient()
@@ -404,4 +421,121 @@ export async function quitarEtapa(_previo: unknown, formulario: FormData): Promi
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
   return { ok: true, mensaje: 'Etapa quitada.' }
+}
+
+const ETAPA_DE_AREA = z.object({
+  id: z.guid().nullable(),
+  codigo: texto(60).nullable(),
+  padre: z.guid().nullable(),
+  area: z.guid().nullable(),
+  nombre: texto(120).min(2),
+  inicio_plan: FECHA,
+  fin_plan: FECHA,
+})
+
+/**
+ * Lo que agrega el supervisor de cada área (migración 20261106100000): una
+ * subetapa debajo de la etapa de Diseño de su área (con `padre`), una etapa
+ * propia de su área (con `codigo` y `area`), o corrige una de las suyas (con `id`).
+ */
+export async function guardarEtapaDeArea(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'codigos_internos.area')) return { ok: false, error: 'Las etapas de un área las agrega su supervisor.' }
+  const datos = ETAPA_DE_AREA.safeParse({
+    id: opcional(formulario.get('id')),
+    codigo: opcional(formulario.get('codigo')),
+    padre: opcional(formulario.get('padre')),
+    area: opcional(formulario.get('area')),
+    nombre: formulario.get('nombre'),
+    inicio_plan: formulario.get('inicio_plan'),
+    fin_plan: formulario.get('fin_plan'),
+  })
+  if (!datos.success) {
+    const campo = datos.error.issues[0]?.path[0]
+    return {
+      ok: false,
+      error:
+        campo === 'nombre'
+          ? 'Escribe el nombre, por ejemplo Corte de planchas o Arenado.'
+          : campo === 'inicio_plan' || campo === 'fin_plan'
+            ? 'Revisa las fechas.'
+            : campo === 'area'
+              ? 'Elige el área.'
+              : NO_SE_RECONOCE,
+    }
+  }
+  if (!datos.data.id && !datos.data.padre && !datos.data.codigo) return { ok: false, error: 'Elige el código interno de la unidad.' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('guardar_etapa_de_area', {
+    p_id: datos.data.id as string,
+    p_codigo: datos.data.codigo as string,
+    p_padre: datos.data.padre as string,
+    p_area: datos.data.area as string,
+    p_nombre: datos.data.nombre,
+    p_inicio_plan: datos.data.inicio_plan as string,
+    p_fin_plan: datos.data.fin_plan as string,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  repintar()
+  return { ok: true, mensaje: datos.data.id ? 'Corregida.' : datos.data.padre ? 'Subetapa agregada.' : 'Etapa agregada.' }
+}
+
+const DXF = z.object({
+  id: z.guid(),
+  codigo: texto(60).min(2),
+  descripcion: texto(200).min(3),
+  nombre_archivo: texto(200).min(1),
+})
+
+/**
+ * Registrar un comprimido de DXF ya subido a `dxf-codigo/{id}.{ext}`. La base
+ * mira que el archivo esté, sea de quien lo registra y no pase de 50 MB, y le
+ * avisa al supervisor de Maestranza.
+ */
+export async function registrarDxf(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: 'Los DXF los sube el encargado de Diseño.' }
+  const datos = DXF.safeParse({
+    id: formulario.get('id'),
+    codigo: formulario.get('codigo'),
+    descripcion: formulario.get('descripcion'),
+    nombre_archivo: formulario.get('nombre_archivo'),
+  })
+  if (!datos.success) {
+    const campo = datos.error.issues[0]?.path[0]
+    return {
+      ok: false,
+      error:
+        campo === 'descripcion'
+          ? 'Escribe qué traen los DXF, por ejemplo «Corte de planchas del cajón».'
+          : campo === 'nombre_archivo'
+            ? 'Elige el archivo comprimido (.zip, .rar o .7z).'
+            : NO_SE_RECONOCE,
+    }
+  }
+  const ext = extensionDxf(datos.data.nombre_archivo)
+  if (!ext) return { ok: false, error: 'Los DXF se suben comprimidos: .zip, .rar o .7z.' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('registrar_dxf_codigo', {
+    p_id: datos.data.id,
+    p_codigo: datos.data.codigo,
+    p_descripcion: datos.data.descripcion,
+    p_nombre_archivo: datos.data.nombre_archivo,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  repintar()
+  return { ok: true, mensaje: 'DXF cargados. A los supervisores de Maestranza y Producción les llegó el aviso.' }
+}
+
+/** Quitar un comprimido que se subió por error o que ya no va. Queda en el historial. */
+export async function quitarDxf(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: 'Los DXF los quita el encargado de Diseño.' }
+  const id = z.guid().safeParse(formulario.get('id'))
+  if (!id.success) return { ok: false, error: NO_SE_RECONOCE }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('quitar_dxf_codigo', { p_id: id.data })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  repintar()
+  return { ok: true, mensaje: 'Archivo quitado. Maestranza ya no lo ve.' }
 }

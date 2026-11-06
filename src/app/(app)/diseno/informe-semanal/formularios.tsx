@@ -4,10 +4,10 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { AREAS_QUE_RECIBEN, CLAVES_AREA, ESTADOS_ENTREGA, TAREAS_DISENO } from '@/lib/dominio/informe-diseno'
+import { TAREAS_DISENO } from '@/lib/dominio/informe-diseno'
 import { useAccion, useEnvio } from '@/lib/envio'
 import type { Tablas } from '@/types/database'
-import { guardarInformeDiseno, quitarRegistroInforme, registrarEntregaPlanos, registrarTareaDiseno, transitarInforme } from './acciones'
+import { guardarInformeDiseno, quitarRegistroInforme, registrarTareaDiseno, transitarInforme } from './acciones'
 
 /** Una OT elegible: la que tiene colaboradores de Diseño en su equipo, con su código como lo escribe el formato. */
 export type OrdenElegible = { id: string; etiqueta: string }
@@ -43,6 +43,7 @@ function OtYPersona({ prefijo, ordenes, personas, ordenId, setOrdenId }: {
   </>
 }
 
+/** Una actividad del día: qué se hizo, en qué unidad, quién y qué día. Sin planificar. */
 export function FormularioTareaDiseno({ ordenes, personas, hoy }: { ordenes: OrdenElegible[]; personas: Persona[]; hoy: string }) {
   const [ordenId, setOrdenId] = useState('')
   const [clave, setClave] = useState(() => crypto.randomUUID())
@@ -50,84 +51,27 @@ export function FormularioTareaDiseno({ ordenes, personas, hoy }: { ordenes: Ord
   return <form key={clave} onSubmit={envio.alEnviar} className="grid gap-3 sm:grid-cols-2">
     <input type="hidden" name="id" value={clave} />
     <OtYPersona prefijo="tarea" ordenes={ordenes} personas={personas} ordenId={ordenId} setOrdenId={setOrdenId} />
-    <Campo etiqueta="Tarea a ejecutar" htmlFor="tarea-tipo" requerido>
+    <Campo etiqueta="Actividad" htmlFor="tarea-tipo" requerido>
       <Seleccion id="tarea-tipo" name="tipo" required defaultValue="">
-        <option value="">Elige la tarea</option>
+        <option value="">Elige la actividad</option>
         {Object.entries(TAREAS_DISENO).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}
       </Seleccion>
     </Campo>
     <Campo etiqueta="Componente" htmlFor="tarea-componente" requerido>
       <Entrada id="tarea-componente" name="componente" minLength={2} maxLength={200} required placeholder="Ej.: Brida para junta cardánica" />
     </Campo>
-    <Campo etiqueta="Fecha de inicio" htmlFor="tarea-inicio" requerido>
-      <Entrada id="tarea-inicio" name="fecha_inicio" type="date" defaultValue={hoy} required />
+    <Campo etiqueta="Día" htmlFor="tarea-fecha" requerido ayuda="El día que la hiciste: hoy o uno anterior.">
+      <Entrada id="tarea-fecha" name="fecha" type="date" defaultValue={hoy} max={hoy} required />
     </Campo>
-    <Campo etiqueta="Fecha de entrega" htmlFor="tarea-fin" requerido>
-      <Entrada id="tarea-fin" name="fecha_entrega" type="date" defaultValue={hoy} required />
-    </Campo>
-    <Campo etiqueta="Observación" htmlFor="tarea-observacion" className="sm:col-span-2">
+    <Campo etiqueta="Observación" htmlFor="tarea-observacion">
       <AreaTexto id="tarea-observacion" name="observacion" maxLength={1500} rows={2} />
     </Campo>
     {envio.error && <p role="alert" className="text-sm text-peligro sm:col-span-2">{envio.error}</p>}
     {envio.resultado?.ok && <p role="status" className="text-sm text-exito sm:col-span-2">{envio.resultado.mensaje}</p>}
-    <div className="sm:col-span-2"><Boton type="submit" cargando={envio.enviando}>Registrar tarea</Boton></div>
+    <div className="sm:col-span-2"><Boton type="submit" cargando={envio.enviando}>Anotar actividad</Boton></div>
   </form>
 }
 
-export function FormularioEntregaPlanos({ ordenes, personas, inicio, fin }: {
-  ordenes: OrdenElegible[]
-  personas: Persona[]
-  inicio: string
-  fin: string
-}) {
-  const [ordenId, setOrdenId] = useState('')
-  const [estado, setEstado] = useState<keyof typeof ESTADOS_ENTREGA>('CULMINADO')
-  const [clave, setClave] = useState(() => crypto.randomUUID())
-  const envio = useEnvio(registrarEntregaPlanos, () => { setClave(crypto.randomUUID()); setEstado('CULMINADO') })
-  return <form key={clave} onSubmit={envio.alEnviar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-    <input type="hidden" name="id" value={clave} />
-    <input type="hidden" name="semana_inicio" value={inicio} />
-    <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-4">
-      <OtYPersona prefijo="entrega" ordenes={ordenes} personas={personas} ordenId={ordenId} setOrdenId={setOrdenId} />
-    </div>
-    <Campo etiqueta="Tipo de plano" htmlFor="entrega-tipo" requerido className="sm:col-span-2 lg:col-span-4"
-      ayuda="Qué se entregó, como en el formato: «HAB/ARM envolturas y tapas», «Plano para corte DXF», «Plano de ensamble».">
-      <Entrada id="entrega-tipo" name="tipo_plano" minLength={2} maxLength={200} required />
-    </Campo>
-    <Campo etiqueta="N.º de planos" htmlFor="entrega-planos" requerido>
-      <Entrada id="entrega-planos" name="n_planos" type="number" inputMode="numeric" min={1} max={999} step={1} required />
-    </Campo>
-    <Campo etiqueta="N.º de piezas" htmlFor="entrega-piezas" requerido>
-      <Entrada id="entrega-piezas" name="n_piezas" type="number" inputMode="numeric" min={0} max={9999} step={1} defaultValue={0} required />
-    </Campo>
-    <Campo etiqueta="Fecha de entrega" htmlFor="entrega-fecha">
-      <Entrada id="entrega-fecha" name="fecha_entrega" type="date" min={inicio} max={fin} />
-    </Campo>
-    <Campo etiqueta="Estado" htmlFor="entrega-estado" requerido>
-      <Seleccion id="entrega-estado" name="estado" value={estado} onChange={(e) => setEstado(e.target.value as keyof typeof ESTADOS_ENTREGA)} required>
-        {Object.entries(ESTADOS_ENTREGA).map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}
-      </Seleccion>
-    </Campo>
-    <fieldset className="sm:col-span-2 lg:col-span-4">
-      <legend className="text-xs font-medium text-texto-suave">
-        Entregado a{estado === 'CULMINADO' && <span className="ml-0.5 text-peligro">*</span>}
-      </legend>
-      <div className="mt-1.5 flex flex-wrap gap-2">
-        {CLAVES_AREA.map((area) => (
-          <label key={area} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde px-3 text-sm text-texto has-[:checked]:border-acento has-[:checked]:bg-acento-suave">
-            <input type="checkbox" name="entregado_a" value={area} defaultChecked={area !== 'ACB'} className="size-4 accent-[var(--acento)]" />
-            {AREAS_QUE_RECIBEN[area]}
-          </label>
-        ))}
-      </div>
-    </fieldset>
-    {envio.error && <p role="alert" className="text-sm text-peligro sm:col-span-2 lg:col-span-4">{envio.error}</p>}
-    {envio.resultado?.ok && <p role="status" className="text-sm text-exito sm:col-span-2 lg:col-span-4">{envio.resultado.mensaje}</p>}
-    <div className="sm:col-span-2 lg:col-span-4"><Boton type="submit" cargando={envio.enviando}>Registrar entrega</Boton></div>
-  </form>
-}
-
-/** Quitar una fila propia mientras la semana está abierta. */
 export function QuitarRegistro({ id, tabla, descripcion }: { id: string; tabla: 'tarea' | 'entrega'; descripcion: string }) {
   const accion = useAccion(quitarRegistroInforme, undefined, { documento: `${tabla}:${id}` })
   return <span className="inline-flex items-center gap-2">

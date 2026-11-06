@@ -7,7 +7,7 @@
  *      en PDF; un archivo que no es PDF no entra.
  *   2. Diseño arma la lista de materiales (con coma decimal) desde el plano y
  *      la ve contra lo comprado y lo salido.
- *   3. Diseño carga las etapas de siempre y le pone a «Habilitado» una fecha
+ *   3. Diseño carga el par Habilitado y Ensamblaje y le pone a «Habilitado» una fecha
  *      comprometida que ya pasó: sale vencida.
  *   4. El supervisor de Maestranza tiene «Planos y etapas» en el menú, ve solo
  *      el plano de su área, abre el PDF, lo marca recibido y marca «Habilitado»
@@ -134,9 +134,9 @@ async function cargarPlano(pagina, { numero, nombre, area, archivo, peso = '25' 
 
   // ---------------------------------------------------------------- 3. etapas
   await pagina.goto(enlace('etapas'), { waitUntil: 'networkidle' })
-  await pagina.getByRole('button', { name: 'Cargar las etapas de siempre' }).click()
-  await pagina.locator('[data-etapa="Entrega"]').waitFor({ timeout: 30000 })
-  comprobar((await pagina.locator('[data-etapa]').count()) === 6, 'seis etapas de siempre')
+  await pagina.getByRole('button', { name: 'Cargar Habilitado y Ensamblaje' }).click()
+  await pagina.locator('[data-etapa="Ensamblaje"]').waitFor({ timeout: 30000 })
+  comprobar((await pagina.locator('[data-etapa]').count()) === 2, 'el par de Diseño: Habilitado y Ensamblaje')
   await pagina.getByRole('button', { name: 'Corregir la etapa Habilitado' }).click()
   const ventana = pagina.locator('[role="dialog"]')
   const hace = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10)
@@ -200,11 +200,11 @@ let revisionMtz = null
   const { pagina, errores } = await entrar('gerente@local.test')
   await pagina.goto(`${BASE}/codigos-internos`, { waitUntil: 'networkidle' })
   const fila = pagina.locator(`[data-codigo="${CODIGO}"]`)
-  comprobar((await texto(fila)).includes('2 planos') && (await texto(fila)).includes('Etapa Diseño y planos'), 'en la lista: sus planos y la etapa en curso')
+  comprobar((await texto(fila)).includes('2 planos') && (await texto(fila)).includes('Etapa Ensamblaje'), 'en la lista: sus planos y la etapa en curso')
   const detalle = `${BASE}/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO })}`
   await pagina.goto(`${detalle}&vista=etapas`, { waitUntil: 'networkidle' })
-  comprobar((await pagina.locator('[data-etapa]').count()) === 6 && (await texto(pagina.locator('[data-etapa="Habilitado"]'))).includes('Terminó'),
-    'Gerencia ve las seis etapas y Habilitado terminada tarde')
+  comprobar((await pagina.locator('[data-etapa]').count()) === 2 && (await texto(pagina.locator('[data-etapa="Habilitado"]'))).includes('Terminó'),
+    'Gerencia ve las dos etapas y Habilitado terminada tarde')
   await pagina.goto(`${detalle}&vista=planos`, { waitUntil: 'networkidle' })
   comprobar((await texto(pagina.locator('section[data-area="Maestranza"]'))).includes('Recibido por Maestranza'), 've el plano recibido por Maestranza')
   await pagina.goto(`${detalle}&vista=materiales`, { waitUntil: 'networkidle' })

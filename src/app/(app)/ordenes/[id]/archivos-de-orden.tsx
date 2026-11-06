@@ -1,6 +1,6 @@
 'use client'
 
-import { FileSpreadsheet, FileText, RefreshCw, Trash2 } from 'lucide-react'
+import { FileSpreadsheet, FileText, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react'
 
@@ -24,7 +24,7 @@ const SI_SE_VA: SiSeVa = { que: 'el PDF de la orden', enlace: 'Volver a la orden
 
 export type AdjuntoEnPantalla = {
   id: string
-  tipo: 'ORDEN' | 'CRONOGRAMA'
+  tipo: 'ORDEN' | 'CRONOGRAMA' | 'FICHA_VEHICULO'
   nombre_archivo: string
   tamano_bytes: number | null
   creado_en: string
@@ -331,7 +331,7 @@ function FilaAdjunto({
       tacho.current?.focus()
     }
   }, [confirmando])
-  const Icono = a.tipo === 'CRONOGRAMA' ? FileSpreadsheet : FileText
+  const Icono = a.tipo === 'CRONOGRAMA' ? FileSpreadsheet : a.tipo === 'FICHA_VEHICULO' ? Truck : FileText
   const vigente = Boolean(quedaria)
   const cuando = fechaHora(a.creado_en)
 
@@ -353,7 +353,9 @@ function FilaAdjunto({
             <p className="truncate text-sm font-medium text-texto">{a.nombre_archivo}</p>
           )}
           <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-texto-suave">
-            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : 'Orden de trabajo', tamano(a.tamano_bytes)].filter(Boolean).join(' · ')}
+            {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : a.tipo === 'FICHA_VEHICULO' ? 'Ficha técnica del vehículo' : 'Orden de trabajo', tamano(a.tamano_bytes)]
+              .filter(Boolean)
+              .join(' · ')}
             {/* Con la hora: dos PDF del mismo día se veían iguales. Entera, sin partir «p. m.». */}
             <span className="whitespace-nowrap">· {cuando}</span>
             {vigente && <Insignia tono="exito">Vigente</Insignia>}

@@ -848,34 +848,49 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
     porPlanos ? partesDelAvance(codigo) : Promise.resolve(null),
   ])
   // La etapa ya viene sin las actividades de un plano con porcentaje: ese cuenta por su lado.
-  const valeDe = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : (e.avance_reportado ?? 0))
+  // Como en la base (migración 20261106100000): cuentan las etapas de arriba, y la que
+  // tiene subetapas vale el promedio de ellas, salvo que ya terminó.
+  const valeSola = (e: (typeof etapas)[number]) => (e.fin_real ? 100 : (e.avance_reportado ?? 0))
+  const subetapasDe = (id: string) => etapas.filter((s) => s.padre_id === id)
+  const valeDe = (e: (typeof etapas)[number]) => {
+    const subs = subetapasDe(e.id)
+    if (e.fin_real || subs.length === 0) return valeSola(e)
+    return subs.reduce((t, s) => t + valeSola(s), 0) / subs.length
+  }
   const listaEtapas = (
     <ul className="space-y-2">
-      {etapas.map((e, i) => {
-        const vale = valeDe(e)
-        return (
-          <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
-            <span className="min-w-0">
-              <span className="text-texto">
-                {i + 1}. {e.nombre}
-              </span>{' '}
-              <span className="text-xs text-texto-suave">
-                {e.area ?? 'Sin área del taller'} ·{' '}
-                {e.fin_real
-                  ? `terminada el ${fecha(e.fin_real)}`
-                  : e.avance_reportado !== null
-                    ? porPlanos
-                      ? 'sin terminar: lo que reporta su área fuera de los planos'
-                      : 'sin terminar: lo que reporta su área'
-                    : e.reportes > 0 && porPlanos
-                      ? 'sin terminar: su área solo reportó planos con %, que cuentan arriba'
-                      : 'sin terminar y sin reporte diario'}
+      {etapas
+        .filter((e) => !e.padre_id)
+        .map((e, i) => {
+          const vale = valeDe(e)
+          const subs = subetapasDe(e.id)
+          return (
+            <li key={e.id} className="grid grid-cols-[1fr_8rem] items-center gap-3 text-sm" data-etapa={e.nombre} data-vale={Math.round(vale)}>
+              <span className="min-w-0">
+                <span className="text-texto">
+                  {i + 1}. {e.nombre}
+                </span>{' '}
+                <span className="text-xs text-texto-suave">
+                  {e.area ?? 'Sin área del taller'} ·{' '}
+                  {e.fin_real
+                    ? `terminada el ${fecha(e.fin_real)}`
+                    : subs.length > 0
+                      ? `sin terminar: el promedio de sus ${subs.length} subetapas (${subs.map((x) => `${x.nombre} ${porcentaje(valeSola(x))}`).join(', ')})`
+                      : e.avance_reportado !== null
+                        ? porPlanos
+                          ? 'sin terminar: lo que reporta su área fuera de los planos'
+                          : 'sin terminar: lo que reporta su área'
+                        : e.reportes > 0 && porPlanos
+                          ? 'sin terminar: su área solo reportó planos con %, que cuentan arriba'
+                          : e.reportes > 0 && !e.inicio_real
+                            ? 'todavía no empieza'
+                            : 'sin terminar y sin reporte diario'}
+                </span>
               </span>
-            </span>
-            <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
-          </li>
-        )
-      })}
+              <Progreso valor={vale} mostrarValor etiqueta={`Lo que vale ${e.nombre}`} />
+            </li>
+          )
+        })}
     </ul>
   )
   if (avance.fuente !== 'PLANOS') {
@@ -883,7 +898,7 @@ async function ComoSaleElAvance({ codigo, avance }: { codigo: string; avance: Av
       <Tarjeta data-como-sale>
         <TarjetaCabecera
           titulo={`Cómo sale el ${porcentaje(avance.avance)}`}
-          ayuda="Es el promedio de las etapas que armó Diseño, todas con el mismo peso. La etapa terminada vale 100 %; la que no, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
+          ayuda="Es el promedio de las etapas de la unidad (las de Diseño y las que agregó cada área), todas con el mismo peso. La etapa terminada vale 100 %; la que tiene subetapas, el promedio de ellas; las demás, lo que su área reporta de este código en el reporte diario (el promedio del último avance de cada una de sus actividades); sin reporte, o sin empezar cuando el área tiene otras etapas, 0 %. Cuando Diseño ponga a cada plano su porcentaje de la unidad, lo repartido en planos se medirá plano por plano."
         />
         <TarjetaCuerpo>{listaEtapas}</TarjetaCuerpo>
       </Tarjeta>

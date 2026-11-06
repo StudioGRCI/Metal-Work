@@ -14,7 +14,8 @@ const esquema = z.object({
 
 export async function registrarVersionPlano(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['diseno.planos', 'diseno.subir_pdf'])) return { ok: false, error: 'No tienes permiso para adjuntar versiones de planos.' }
+  // Solo el encargado de Diseño: el colaborador ya no sube planos (migración 20261106100000).
+  if (!puede(perfil, 'diseno.planos')) return { ok: false, error: 'Los planos los sube el encargado de Diseño, después de su revisión.' }
   const analisis = esquema.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: 'Elige el plano, el área y un PDF válido.' }
   const v = analisis.data

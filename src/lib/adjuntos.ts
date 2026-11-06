@@ -21,24 +21,31 @@ export const NO_SE_SABE_SI_QUEDO = 'No llegó la respuesta. Recarga la orden y m
 const TIPOS = {
   pdf: 'application/pdf',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  jpg: 'image/jpeg',
+  png: 'image/png',
 } as const
 
 export async function subirAdjunto(
   ordenId: string,
   archivo: File,
-  tipo: 'ORDEN' | 'CRONOGRAMA',
+  tipo: 'ORDEN' | 'CRONOGRAMA' | 'FICHA_VEHICULO',
 ): Promise<ResultadoAccion> {
   const esPdf = archivo.type === TIPOS.pdf || /\.pdf$/i.test(archivo.name)
   const esExcel = archivo.type === TIPOS.xlsx || /\.xlsx$/i.test(archivo.name)
+  const esJpg = archivo.type === TIPOS.jpg || /\.jpe?g$/i.test(archivo.name)
+  const esPng = archivo.type === TIPOS.png || /\.png$/i.test(archivo.name)
 
   if (tipo === 'ORDEN' && !esPdf) return { ok: false, error: 'La orden se sube en PDF.' }
   if (tipo === 'CRONOGRAMA' && !esExcel) return { ok: false, error: 'El cronograma se sube en Excel (.xlsx).' }
+  if (tipo === 'FICHA_VEHICULO' && !esPdf && !esJpg && !esPng) return { ok: false, error: 'La ficha técnica se sube en PDF o en foto (JPG o PNG).' }
   if (archivo.size > MAXIMO_ADJUNTO_MB * 1024 * 1024) {
     return { ok: false, error: `El archivo pesa más de ${MAXIMO_ADJUNTO_MB} MB.` }
   }
 
-  const ruta = `ot/${ordenId}/${crypto.randomUUID()}.${esPdf ? 'pdf' : 'xlsx'}`
-  const contentType = esPdf ? TIPOS.pdf : TIPOS.xlsx
+  const ext = tipo === 'CRONOGRAMA' ? 'xlsx' : esPdf ? 'pdf' : esJpg ? 'jpg' : 'png'
+  // La ficha lleva nombre propio: la política de Diseño solo le deja subir `ficha-…`.
+  const ruta = `ot/${ordenId}/${tipo === 'FICHA_VEHICULO' ? 'ficha-' : ''}${crypto.randomUUID()}.${ext}`
+  const contentType = TIPOS[ext]
   const supabase = createClient()
 
   // La cadena pudo empezar con la cuenta de la pantalla y llegar aquí con la

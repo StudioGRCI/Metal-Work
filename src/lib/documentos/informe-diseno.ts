@@ -136,9 +136,12 @@ export async function generarInformeDiseno(datos: DatosInformeDiseno, logo: Buff
   if (!informe) throw new Error('Guarda el informe antes de descargarlo.')
 
   const disenadores = [...new Set([...datos.tareas.map((t) => t.responsable), ...datos.entregas.map((e) => e.responsable)])].sort()
+  // Las actividades del día (observaciones de Diseño, 2026-11-06): una fecha, la
+  // del día en que se hizo. Las de antes, con inicio y entrega distintos, dicen las dos.
   const tareas = datos.tareas.map((t, i) => [
     String(i + 1), codigoInternoOt(t.codigo_interno, t.ot), siglaCarroceria(t.tipo_unidad), nombreTarea(t.tipo).toUpperCase(),
-    t.componente.toUpperCase(), fecha(t.fecha_inicio), fecha(t.fecha_entrega), t.responsable.toUpperCase(),
+    t.componente.toUpperCase(), t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`,
+    t.responsable.toUpperCase(),
   ])
   const entregas = datos.entregas.map((e, i) => [
     String(i + 1), codigoInternoOt(e.codigo_interno, e.ot), siglaCarroceria(e.tipo_unidad), String(e.n_planos), String(e.n_piezas),
@@ -148,6 +151,8 @@ export async function generarInformeDiseno(datos: DatosInformeDiseno, logo: Buff
   const totalPlanos = datos.entregas.reduce((s, e) => s + e.n_planos, 0)
   const totalPiezas = datos.entregas.reduce((s, e) => s + e.n_piezas, 0)
   const conclusion = planosPorArea(datos.entregas)
+  // La última sección numerada antes de las de texto: 3 con el avance de planos, 2 sin él.
+  const n = entregas.length === 0 ? 2 : 3
 
   const dato = (nombre: string, valor: string) => new Paragraph({
     spacing: { after: 40 }, children: [texto(`${nombre}: `, { negrita: true, tamano: 24 }), texto(valor, { tamano: 24 })],
@@ -171,34 +176,37 @@ export async function generarInformeDiseno(datos: DatosInformeDiseno, logo: Buff
 
         ...seccion('1. Resumen', informe.resumen, true),
 
-        titulo('2. Planificación de Modelado'),
-        new Paragraph({ spacing: { after: 100 }, children: [texto('Todas las unidades tienen Código interno para la fabricación, las unidades por garantía o mantenimiento tienen OT, se debe registrar de ese modo.')] }),
+        titulo('2. Actividades diarias'),
+        new Paragraph({ spacing: { after: 100 }, children: [texto('Las actividades de cada día, según el requerimiento del día y la urgencia. Todas las unidades tienen Código interno para la fabricación; las unidades por garantía o mantenimiento, su OT.')] }),
         new Paragraph({ children: [texto('Diseñadores:', { negrita: true })] }),
         ...(disenadores.length ? disenadores : ['—']).map((d, i) => new Paragraph({ children: [texto(`${i + 1}. ${d}`)] })),
         new Paragraph({ children: [] }),
         tabla([
           { titulo: 'Ítem', ancho: 5, centro: true }, { titulo: 'Código Interno / OT', ancho: 20 }, { titulo: 'Tipo de Carrocería', ancho: 9, centro: true },
-          { titulo: 'Tarea a ejecutar', ancho: 16 }, { titulo: 'Componente', ancho: 26 }, { titulo: 'Fecha de inicio', ancho: 9, centro: true },
-          { titulo: 'Fecha de entrega', ancho: 9, centro: true }, { titulo: 'Responsable', ancho: 14 },
+          { titulo: 'Actividad', ancho: 16 }, { titulo: 'Componente', ancho: 28 }, { titulo: 'Fecha', ancho: 12, centro: true },
+          { titulo: 'Responsable', ancho: 14 },
         ], tareas),
 
-        titulo('3. Avance de planos o culminación'),
-        tabla([
-          { titulo: 'Ítem', ancho: 5, centro: true }, { titulo: 'Código Interno / OT', ancho: 19 }, { titulo: 'Tipo de carrocería', ancho: 8, centro: true },
-          { titulo: 'N° de planos', ancho: 7, derecha: true }, { titulo: 'N° de piezas', ancho: 7, derecha: true }, { titulo: 'Tipo de plano', ancho: 26 },
-          { titulo: 'Fecha de entrega', ancho: 9, centro: true }, { titulo: 'Estado', ancho: 9, centro: true }, { titulo: 'Responsable', ancho: 14 },
-        ], entregas, entregas.length ? ['', 'TOTAL', '', String(totalPlanos), String(totalPiezas), '', '', '', ''] : undefined),
-        new Paragraph({ spacing: { before: 160 }, children: [texto('CONCLUSIÓN:', { negrita: true })] }),
-        ...(conclusion.length
-          ? conclusion.map((a) => vineta(`${a.planos} PLANOS ENTREGADOS A ${a.nombre.toUpperCase()}.`))
-          : [vineta('No se entregaron planos esta semana.')]),
+        // El avance de planos ya no lo lleva el colaborador: sale solo en las semanas de antes que lo tienen.
+        ...(entregas.length === 0
+          ? []
+          : [
+              titulo('3. Avance de planos o culminación'),
+              tabla([
+                { titulo: 'Ítem', ancho: 5, centro: true }, { titulo: 'Código Interno / OT', ancho: 19 }, { titulo: 'Tipo de carrocería', ancho: 8, centro: true },
+                { titulo: 'N° de planos', ancho: 7, derecha: true }, { titulo: 'N° de piezas', ancho: 7, derecha: true }, { titulo: 'Tipo de plano', ancho: 26 },
+                { titulo: 'Fecha de entrega', ancho: 9, centro: true }, { titulo: 'Estado', ancho: 9, centro: true }, { titulo: 'Responsable', ancho: 14 },
+              ], entregas, ['', 'TOTAL', '', String(totalPlanos), String(totalPiezas), '', '', '', '']),
+              new Paragraph({ spacing: { before: 160 }, children: [texto('CONCLUSIÓN:', { negrita: true })] }),
+              ...conclusion.map((a) => vineta(`${a.planos} PLANOS ENTREGADOS A ${a.nombre.toUpperCase()}.`)),
+            ]),
 
-        ...seccion('4. Problemas / incidencias', informe.incidencias),
-        ...seccion('5. Acciones correctivas', informe.acciones),
-        ...seccion('6. Control de Cambios y No Conformidades', informe.no_conformidades),
-        ...seccion('7. Indicadores de gestión', informe.indicadores),
-        ...seccion('8. Plan de Trabajo – Semana Siguiente', informe.plan_siguiente),
-        ...seccion('9. Conclusiones y Recomendaciones', informe.conclusiones),
+        ...seccion(`${n + 1}. Problemas / incidencias`, informe.incidencias),
+        ...seccion(`${n + 2}. Acciones correctivas`, informe.acciones),
+        ...seccion(`${n + 3}. Control de Cambios y No Conformidades`, informe.no_conformidades),
+        ...seccion(`${n + 4}. Indicadores de gestión`, informe.indicadores),
+        ...seccion(`${n + 5}. Plan de Trabajo – Semana Siguiente`, informe.plan_siguiente),
+        ...seccion(`${n + 6}. Conclusiones y Recomendaciones`, informe.conclusiones),
       ],
     }],
   })

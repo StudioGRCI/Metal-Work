@@ -19,7 +19,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 import {
-  DecisionInforme, FormularioEntregaPlanos, FormularioInformeDiseno, FormularioTareaDiseno, QuitarRegistro, type OrdenElegible,
+  DecisionInforme, FormularioInformeDiseno, FormularioTareaDiseno, QuitarRegistro, type OrdenElegible,
 } from './formularios'
 
 export const metadata = { title: 'Informe semanal · Diseño e Ingeniería' }
@@ -129,55 +129,56 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Planificación de modelado"
-          ayuda="Todas las unidades tienen código interno para la fabricación; las de garantía o mantenimiento, su OT. Cada tarea sale en la semana de sus fechas." />
+        <TarjetaCabecera titulo="Actividades diarias"
+          ayuda="Lo que se hizo cada día, según el requerimiento del día y la urgencia: sin planificar y sin atarlo a los planos. Todas las unidades tienen código interno; las de garantía o mantenimiento, su OT." />
         <TarjetaCuerpo className="space-y-4">
           <p className="text-sm text-texto"><span className="font-medium">Diseñadores:</span> {disenadores.length ? disenadores.join(', ') : 'Todavía nadie registró trabajo esta semana.'}</p>
           {/* El vacío va fuera de la tabla, y en el teléfono la tabla deja sus
               columnas esenciales: con ocho se deslizaba de costado y el aviso
               se cortaba en «Aún no hay pla» (auditoría del 27/10/2026). */}
           {datos.tareas.length === 0 ? (
-            <SinDatos enTabla={false} titulo="Aún no hay tareas esta semana" descripcion={escribe ? 'Registra la primera con el formulario de abajo.' : undefined} />
+            <SinDatos enTabla={false} titulo="Aún no hay actividades esta semana" descripcion={escribe ? 'Anota la de hoy con el formulario de abajo.' : undefined} />
           ) : (
           <Tabla>
             <TablaCabecera><tr>
-              <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH>Tarea a ejecutar</TH><TH className="hidden md:table-cell">Componente</TH>
-              <TH className="hidden md:table-cell">Inicio</TH><TH>Entrega</TH><TH className="hidden md:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
+              <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH>Actividad</TH><TH className="hidden md:table-cell">Componente</TH>
+              <TH className="hidden md:table-cell">Día</TH><TH className="hidden md:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
             </tr></TablaCabecera>
             <tbody>
               {datos.tareas.map((t, i) => <TR key={t.id}>
                 <TD className="tabular hidden text-texto-suave sm:table-cell">{i + 1}</TD>
-                <TD className="font-medium sm:whitespace-nowrap">{codigoInternoOt(t.codigo_interno, t.ot)}</TD>
+                <TD className="font-medium break-all sm:break-normal sm:whitespace-nowrap">{codigoInternoOt(t.codigo_interno, t.ot)}</TD>
                 <TD className="hidden sm:table-cell">{siglaCarroceria(t.tipo_unidad)}</TD>
                 <TD className="sm:whitespace-nowrap">
                   {nombreTarea(t.tipo)}
+                  {/* En el teléfono el día va debajo, para que no se esconda. */}
+                  <span className="tabular block text-xs text-texto md:hidden">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</span>
                   {/* Lo que en el monitor tiene columna propia. */}
-                  <span className="block text-xs text-texto-suave md:hidden">{t.componente} · {t.responsable} · desde el {fecha(t.fecha_inicio)}</span>
+                  <span className="block text-xs text-texto-suave md:hidden">{t.componente} · {t.responsable}</span>
                   {t.observacion && <span className="block text-xs text-texto-suave md:hidden">{t.observacion}</span>}
                 </TD>
                 <TD className="hidden min-w-48 md:table-cell">{t.componente}{t.observacion && <span className="block text-xs text-texto-suave">{t.observacion}</span>}</TD>
-                <TD className="tabular hidden whitespace-nowrap md:table-cell">{fecha(t.fecha_inicio)}</TD>
-                <TD className="tabular whitespace-nowrap">{fecha(t.fecha_entrega)}</TD>
+                {/* Las de antes, planificadas, dicen las dos fechas. */}
+                <TD className="tabular hidden whitespace-nowrap md:table-cell">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</TD>
                 <TD className="hidden whitespace-nowrap md:table-cell">{t.responsable}</TD>
-                {escribe && <TD>{t.creado_por === perfil.id && <QuitarRegistro id={t.id} tabla="tarea" descripcion={`la tarea ${t.componente}`} />}</TD>}
+                {escribe && <TD>{t.creado_por === perfil.id && <QuitarRegistro id={t.id} tabla="tarea" descripcion={`la actividad ${t.componente}`} />}</TD>}
               </TR>)}
             </tbody>
           </Tabla>
           )}
           {escribe && (elegibles.length
-            ? <div className="rounded-[var(--radius-base)] border border-borde p-4"><h3 className="mb-3 text-sm font-semibold text-texto">Registrar una tarea</h3>
+            ? <div className="rounded-[var(--radius-base)] border border-borde p-4"><h3 className="mb-3 text-sm font-semibold text-texto">Anotar una actividad</h3>
                 <FormularioTareaDiseno ordenes={elegibles} personas={equipo.data ?? []} hoy={hoyLima()} /></div>
             : <p className="text-sm text-texto-suave">No hay OT con colaboradores de Diseño en su equipo. Diseño los agrega en la pestaña Planos de cada OT, en «Personas que elaboran los planos».</p>)}
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <Tarjeta>
+      {/* El avance de planos ya no lo lleva el colaborador: los planos los sube el
+          encargado cuando están revisados. Queda a la vista en las semanas de antes. */}
+      {datos.entregas.length > 0 && <Tarjeta>
         <TarjetaCabecera titulo="Avance de planos o culminación"
-          ayuda="Cada entregable con su número de planos y de piezas. La conclusión suma los planos entregados a cada área." />
+          ayuda="Lo que se registró antes de que los planos los subiera solo el encargado de Diseño. Ya no se anota aquí." />
         <TarjetaCuerpo className="space-y-4">
-          {datos.entregas.length === 0 ? (
-            <SinDatos enTabla={false} titulo="Aún no hay planos registrados esta semana" descripcion={escribe ? 'Registra cada entregable con el formulario de abajo.' : undefined} />
-          ) : (
           <Tabla>
             <TablaCabecera><tr>
               <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH className="text-right">N.º planos</TH>
@@ -216,19 +217,14 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
               </tr>
             </tbody>
           </Tabla>
-          )}
           {porArea.length > 0 && <div>
             <h3 className="text-sm font-semibold text-texto">Conclusión</h3>
             <ul className="mt-1 list-disc pl-5 text-sm text-texto">
               {porArea.map((a) => <li key={a.area}><span className="tabular font-medium">{a.planos}</span> planos entregados a {a.nombre}.</li>)}
             </ul>
           </div>}
-          {escribe && elegibles.length > 0 && <div className="rounded-[var(--radius-base)] border border-borde p-4">
-            <h3 className="mb-3 text-sm font-semibold text-texto">Registrar una entrega de planos</h3>
-            <FormularioEntregaPlanos ordenes={elegibles} personas={equipo.data ?? []} inicio={inicio} fin={datos.fin} />
-          </div>}
         </TarjetaCuerpo>
-      </Tarjeta>
+      </Tarjeta>}
 
       <Tarjeta>
         <TarjetaCabecera titulo="Contenido del informe" ayuda="Las secciones del formato, en su orden. Las tablas de arriba entran solas al Word." />
