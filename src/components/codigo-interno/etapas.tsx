@@ -129,13 +129,18 @@ function FilaEtapa({
         {!sub && e.area_id && (e.reportes > 0 || (e.area_codigo !== null && AREAS_QUE_REPORTAN.includes(e.area_codigo))) && (
           <div className={e.avance_reportado !== null ? 'grid max-w-md grid-cols-[1fr_6.5rem] items-center gap-3 text-xs' : 'text-xs'}>
             <span className="text-texto-suave">
-              {e.reportes > 0
+              {/* El reporte es del área en el código, no de la etapa: con dos juegos de
+                  planos o subetapas, la que no empezó no lo toma (migración 20261106100000). */}
+              {e.reportes > 0 && !e.inicio_real && !e.fin_real && e.avance_reportado === null
+                ? `Todavía no empieza: el reporte diario de ${e.area} cuenta para esta etapa desde que empiece`
+                : e.reportes > 0
                 ? `${e.reportes} ${e.reportes === 1 ? 'reporte diario' : 'reportes diarios'} de ${e.area}, ${
                     e.primer_reporte === e.ultimo_reporte ? `el ${fecha(e.ultimo_reporte)}` : `del ${fecha(e.primer_reporte)} al ${fecha(e.ultimo_reporte)}`
                   }`
                 : `${e.area} no subió reportes de este código`}
               {conPlanosConPeso &&
                 e.reportes > 0 &&
+                (e.inicio_real || e.fin_real || e.avance_reportado !== null) &&
                 (e.avance_reportado !== null
                   ? ' · sin los planos con % de la unidad, que cuentan aparte'
                   : ' · solo reportó planos con % de la unidad, que cuentan aparte')}

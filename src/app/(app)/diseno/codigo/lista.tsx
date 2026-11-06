@@ -81,9 +81,12 @@ export async function ListaDeCodigosDeDiseno({
   const filtros = FILTROS[vista]
   const filtro = filtros.find((f) => f.valor === params.ver) ?? null
 
+  // Almacén y Supervisión (seguimiento) no leen la OT: no se pregunta, para no
+  // decirles «Sin OT todavía» de una unidad que sí la tiene.
+  const veOt = !seguimiento
   const [codigosSueltos, ots, dxf] = await Promise.all([
     codigosDeDiseno(),
-    otPorCodigo(),
+    veOt ? otPorCodigo() : Promise.resolve(new Map<string, OtDeCodigo>()),
     vista === 'dxf' && !seguimiento ? dxfDeCodigo(null, { conEnlace: false }) : Promise.resolve([]),
   ])
   const dxfPorCodigo = new Map<string, number>()
@@ -131,7 +134,7 @@ export async function ListaDeCodigosDeDiseno({
       )}
 
       <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador="Código, OT, cliente o placa" />
+        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT, cliente o placa' : 'Código, placa o vehículo'} />
         <PastillaFiltro
           ruta={ruta}
           clave="ver"
@@ -170,7 +173,7 @@ export async function ListaDeCodigosDeDiseno({
                 data-codigo={c.codigo}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <Nombre c={c} />
+                  <Nombre c={c} veOt={veOt} />
                   <Resumen c={c} vista={vista} />
                 </div>
               </Link>
@@ -206,14 +209,14 @@ function ordenarPorIngresoDeOt(filas: Fila[]): Fila[] {
  * La fila se nombra como en «Unidades en taller»: la OT con su estado, y debajo
  * la unidad y el cliente. El código va al lado, que es por donde se busca.
  */
-function Nombre({ c }: { c: Fila }) {
+function Nombre({ c, veOt }: { c: Fila; veOt: boolean }) {
   if (!c.ot) {
     return (
       <div className="min-w-0">
         <p className="font-mono font-semibold break-all text-texto">{c.codigo}</p>
         <p className="text-xs text-texto-suave">
-          {c.unidad ? `${c.unidad} · ` : ''}
-          <span className="text-texto-tenue">Sin OT todavía</span>
+          {c.unidad && veOt ? `${c.unidad} · ` : c.unidad}
+          {veOt && <span className="text-texto-tenue">Sin OT todavía</span>}
         </p>
       </div>
     )

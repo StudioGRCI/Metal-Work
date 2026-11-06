@@ -938,7 +938,7 @@ export function FormularioEtapaDeArea({
 }
 
 /** Abrir en una ventana el formulario de subetapa, o la corrección de una etapa del área. */
-export function VentanaEtapaDeArea({ padre, etapa }: { padre?: { id: string; nombre: string }; etapa?: EtapaEditable }) {
+export function VentanaEtapaDeArea({ padre, etapa, codigo }: { padre?: { id: string; nombre: string }; etapa?: EtapaEditable; codigo?: string }) {
   const [abierta, setAbierta] = useState(false)
   return (
     <>
@@ -956,7 +956,10 @@ export function VentanaEtapaDeArea({ padre, etapa }: { padre?: { id: string; nom
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={etapa ? `Corregir «${etapa.nombre}»` : `Subetapa de «${padre?.nombre}»`}
-        descripcion={etapa ? undefined : 'Según el material que vas a procesar o lo que vas a ensamblar. Cuenta en el avance de la etapa de arriba.'}
+        descripcion={[
+          codigo ? `Unidad ${codigo}.` : null,
+          etapa ? null : 'Según el material que vas a procesar o lo que vas a ensamblar. Cuenta en el avance de la etapa de arriba.',
+        ].filter(Boolean).join(' ') || undefined}
         ancho="xl"
       >
         <FormularioEtapaDeArea padre={padre} etapa={etapa} alTerminar={() => setAbierta(false)} />

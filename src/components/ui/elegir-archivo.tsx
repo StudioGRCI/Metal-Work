@@ -32,7 +32,10 @@ function tipoDe(accept: string, conCamara: boolean): Tipo {
   // Los DXF de Diseño, comprimidos.
   if (t.includes('.7z')) return { que: 'Elegir el comprimido', formato: 'ZIP, RAR o 7Z', noEs: 'No es un .zip, .rar ni .7z', Icono: FileArchive }
   if (pdf && word) return { que: 'Elegir el PDF o el Word', formato: 'PDF o Word', noEs: 'No es un PDF ni un Word', Icono: FileText }
-  if (pdf && foto) return { que: 'Elegir el PDF o la foto', formato: 'PDF, JPG, PNG o WEBP', noEs: 'No es un PDF ni una foto', Icono: FileUp }
+  if (pdf && foto) {
+    const webp = t.some((x) => x === '.webp' || x === 'image/webp' || x === 'image/*')
+    return { que: 'Elegir el PDF o la foto', formato: webp ? 'PDF, JPG, PNG o WEBP' : 'PDF, JPG o PNG', noEs: 'No es un PDF ni una foto', Icono: FileUp }
+  }
   if (pdf) return { que: 'Elegir el PDF', formato: 'Solo PDF', noEs: 'No es un PDF', Icono: FileText }
   if (foto) {
     // Con `capture`, el teléfono y la tableta abren la cámara de frente, sin la

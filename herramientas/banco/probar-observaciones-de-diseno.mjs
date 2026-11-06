@@ -9,13 +9,14 @@
  *   2. Diseño ve la lista de Planos con la OT y el cliente, en el orden en que
  *      entraron las OT; adjunta la ficha técnica del vehículo junto a la OT;
  *      sube un DXF comprimido; carga el par Habilitado y Ensamblaje de otro
- *      juego de planos; al agregar una etapa solo le ofrece Maestranza y Producción.
+ *      juego de planos, que no hereda el avance del área, y no agrega etapas sueltas.
  *   3. El supervisor de Maestranza descarga los DXF y le agrega una subetapa al
  *      Habilitado; el de Producción no ve los DXF; el de Acabados agrega su etapa.
  *   4. Gerencia no entra a los DXF.
  *
- * Usa la base de las semillas del manual (`mw_manual`, con
- * `7-observaciones-diseno.sql`): los códigos A y C y sus OT.
+ * Usa la base de las semillas del manual (`mw_manual`): las de
+ * /mnt/project-files/manual/v4/Diseno/proyecto-editable-diseno.tar.gz, con
+ * `7-observaciones-diseno.sql`. Los códigos A y C y sus OT.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE, BANCO_CHROMIUM.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -118,6 +119,18 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
   const rqDespues = Number((await uno(`select count(*) n from requerimientos where creado_por = $1`, [colaborador])).n)
   comprobar(rqDespues === rqAntes + 1, `y queda en la base a su nombre (${rqAntes} → ${rqDespues})`)
 
+  // Corrige y anula solo los suyos: en el RQ de otra persona no tiene los botones.
+  const ajeno = await uno(`select numero from requerimientos where tipo = 'OPERACION' and creado_por <> $1 and estado in ('POR_ATENDER','SIN_STOCK') limit 1`, [colaborador])
+  const suyo = await uno(`select numero from requerimientos where creado_por = $1 and estado = 'POR_ATENDER' order by creado_en desc limit 1`, [colaborador])
+  await ir(pagina, '/requerimientos')
+  if (ajeno) {
+    const t = pagina.locator(`[data-rq="${ajeno.numero}"]`)
+    comprobar((await t.count()) === 0 || (await t.getByRole('button', { name: /^(Anular|Corregir)/ }).count()) === 0,
+      `en el RQ de otra persona (${ajeno.numero}) no tiene Anular ni Corregir`)
+  }
+  comprobar((await pagina.locator(`[data-rq="${suyo.numero}"]`).getByRole('button', { name: /^Anular/ }).count()) === 1,
+    `en el suyo (${suyo.numero}) sí puede anular`)
+
   await ir(pagina, '/almacen/stock')
   comprobar((await pagina.locator('main').innerText()).length > 50 && !pagina.url().includes('sin-permiso'), 'mira el stock antes de pedir')
 
@@ -204,8 +217,8 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
 
   // El par de etapas de otro juego de planos, y solo Maestranza o Producción.
   await ir(pagina, codigoEn('/diseno/codigo', A, 'etapas'))
-  const opciones = await pagina.locator('#etapa-area-nueva option').allInnerTexts()
-  comprobar(opciones.length === 3 && opciones.includes('Maestranza') && opciones.includes('Producción'), `al agregar una etapa, solo Maestranza o Producción (${opciones.join(' / ')})`)
+  comprobar((await pagina.locator('#etapa-area-nueva').count()) === 0 && (await pagina.getByText('Agregar una etapa', { exact: true }).count()) === 0,
+    'Diseño ya no agrega etapas sueltas: solo el par de cada juego')
   comprobar((await pagina.locator('[data-subetapa]').count()) >= 4, 'las subetapas de Maestranza y Producción salen debajo de su etapa')
   const juego = `Caja ${sello}`
   await pagina.locator('#par-juego').fill(juego)
@@ -215,6 +228,17 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
   const par = await consulta(`select e.nombre, a.codigo area from codigo_etapas e join areas a on a.id = e.area_id
                                where e.codigo_interno = $1 and e.nombre like '%: ' || $2 and e.quitada_en is null order by e.orden`, [A, juego])
   comprobar(par.map((p) => `${p.nombre}/${p.area}`).join() === `Habilitado: ${juego}/MTZ,Ensamblaje: ${juego}/PRD`, `el par del juego «${juego}» (${par.map((p) => p.nombre).join(', ')})`)
+  // El reporte diario es del área: el Habilitado del juego nuevo, sin empezar, no
+  // hereda el avance que Maestranza reportó para el que ya empezó.
+  const avances = Object.fromEntries((await consulta(
+    `select nombre, avance_reportado::float a from codigo_interno_etapas_calculado($1) where nombre in ('Habilitado', $2)`,
+    [A, `Habilitado: ${juego}`],
+  )).map((r) => [r.nombre, r.a]))
+  comprobar(avances['Habilitado'] > 0 && avances[`Habilitado: ${juego}`] === null,
+    `el Habilitado nuevo no hereda el avance del área (${JSON.stringify(avances)})`)
+  await ir(pagina, codigoEn('/diseno/codigo', A, 'etapas'))
+  comprobar((await pagina.locator(`[data-etapa="Habilitado: ${juego}"]`).innerText()).includes('Todavía no empieza'),
+    'y la pantalla dice que todavía no empieza, sin la barra del área')
   await pagina.screenshot({ path: `${CAPTURAS}/diseno-etapas.png`, fullPage: true })
   comprobar(errores.length === 0, `sin errores de consola como Diseño ${errores.join(' | ')}`)
   await contexto.close()

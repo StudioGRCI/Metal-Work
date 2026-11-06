@@ -142,22 +142,24 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           <Tabla>
             <TablaCabecera><tr>
               <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH>Actividad</TH><TH className="hidden md:table-cell">Componente</TH>
-              <TH>Día</TH><TH className="hidden md:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
+              <TH className="hidden md:table-cell">Día</TH><TH className="hidden md:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
             </tr></TablaCabecera>
             <tbody>
               {datos.tareas.map((t, i) => <TR key={t.id}>
                 <TD className="tabular hidden text-texto-suave sm:table-cell">{i + 1}</TD>
-                <TD className="font-medium sm:whitespace-nowrap">{codigoInternoOt(t.codigo_interno, t.ot)}</TD>
+                <TD className="font-medium break-all sm:break-normal sm:whitespace-nowrap">{codigoInternoOt(t.codigo_interno, t.ot)}</TD>
                 <TD className="hidden sm:table-cell">{siglaCarroceria(t.tipo_unidad)}</TD>
                 <TD className="sm:whitespace-nowrap">
                   {nombreTarea(t.tipo)}
+                  {/* En el teléfono el día va debajo, para que no se esconda. */}
+                  <span className="tabular block text-xs text-texto md:hidden">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</span>
                   {/* Lo que en el monitor tiene columna propia. */}
                   <span className="block text-xs text-texto-suave md:hidden">{t.componente} · {t.responsable}</span>
                   {t.observacion && <span className="block text-xs text-texto-suave md:hidden">{t.observacion}</span>}
                 </TD>
                 <TD className="hidden min-w-48 md:table-cell">{t.componente}{t.observacion && <span className="block text-xs text-texto-suave">{t.observacion}</span>}</TD>
                 {/* Las de antes, planificadas, dicen las dos fechas. */}
-                <TD className="tabular whitespace-nowrap">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</TD>
+                <TD className="tabular hidden whitespace-nowrap md:table-cell">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</TD>
                 <TD className="hidden whitespace-nowrap md:table-cell">{t.responsable}</TD>
                 {escribe && <TD>{t.creado_por === perfil.id && <QuitarRegistro id={t.id} tabla="tarea" descripcion={`la actividad ${t.componente}`} />}</TD>}
               </TR>)}

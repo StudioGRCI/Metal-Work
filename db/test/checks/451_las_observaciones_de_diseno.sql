@@ -97,6 +97,23 @@ select pg_temp.como('diseno_colaborador_dis');
 select test.debe_fallar($q$insert into public.ot_plano_versiones (id) values (gen_random_uuid())$q$,
   'la versión de un plano en la OT no entra con la sesión del colaborador', 'encargado de Diseño');
 
+-- Corrige y anula solo los RQ que registró él: los de los demás son del puesto Requerimientos.
+insert into public.requerimientos (id, numero, area_id, codigo_interno, justificacion, creado_por)
+values ('45100000-0000-4000-8000-000000000001', 'RQ-9451-2026', pg_temp.id('mtz'), 'CHK451_SR_O4_1_26/51', 'De otra persona, para el check', pg_temp.id('comprador_log')),
+       ('45100000-0000-4000-8000-000000000002', 'RQ-9452-2026', pg_temp.id('mtz'), 'CHK451_SR_O4_1_26/51', 'Del colaborador, para el check', pg_temp.id('diseno_colaborador_dis'));
+select pg_temp.como('diseno_colaborador_dis');
+select test.debe_fallar($q$update public.requerimientos set justificacion = 'La cambia el colaborador' where id = '45100000-0000-4000-8000-000000000001'$q$,
+  'el colaborador no corrige ni anula el RQ de otra persona', 'registró otra persona');
+select test.debe_fallar($q$insert into public.requerimiento_lineas (requerimiento_id, item, descripcion, cantidad) values ('45100000-0000-4000-8000-000000000001', 9, 'Algo más', 1)$q$,
+  'ni le agrega insumos', 'registró otra persona');
+-- Con el suyo pasa esta regla y llega a la de siempre: se corrige con su justificante.
+select test.debe_fallar($q$update public.requerimientos set justificacion = 'La corrige el colaborador' where id = '45100000-0000-4000-8000-000000000002'$q$,
+  'el suyo pasa esta regla (lo frena la de siempre: se corrige con justificante)', 'corrígelo con su justificante');
+select pg_temp.como('comprador_log');
+select test.debe_fallar($q$update public.requerimientos set justificacion = 'Otro puesto' where id = '45100000-0000-4000-8000-000000000001'$q$,
+  'a los demás puestos esta regla no los toca (los frena la de siempre)', 'corrígelo con su justificante');
+select set_config('request.jwt.claim.sub', '', true), set_config('request.jwt.claims', '', true);
+
 -- ============================================ 2. Los DXF: Diseño los sube, Maestranza los ve
 select pg_temp.como('diseno_dis');
 set local role authenticated;
@@ -161,9 +178,11 @@ select test.debe_fallar($q$select public.etapas_de_siempre_codigo(current_settin
   'el mismo par no se arma dos veces', 'ya tiene las etapas de ese juego');
 select test.afirmar(public.par_de_etapas_codigo(current_setting('prueba.codigo'), ' Caja ') = 2, 'otro juego de planos, otro par');
 select test.debe_fallar($q$select public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Arenado y pintura', pg_temp.id('acb'), null, null)$q$,
-  'Diseño no pone etapas de Acabados', 'Las demás las agrega cada área');
-select test.debe_fallar($q$select public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Trámites', null, null, null)$q$,
-  'ni etapas sin área', 'Maestranza (habilitado) o de Producción');
+  'Diseño no pone etapas sueltas: solo el par de cada juego', 'dos etapas por juego de planos');
+select test.debe_fallar($q$select public.guardar_etapa_codigo(pg_temp.etapa('Habilitado'), null, 'Habilitado', pg_temp.id('acb'), null, null)$q$,
+  'ni pasa una suya a Acabados', 'Las demás las agrega cada área');
+select test.debe_fallar($q$select public.guardar_etapa_codigo(pg_temp.etapa('Habilitado'), null, 'Habilitado', null, null, null)$q$,
+  'ni la deja sin área', 'Maestranza (habilitado) o de Producción');
 reset role;
 select test.afirmar(
   (select string_agg(e.nombre || '>' || a.codigo, ', ' order by e.orden) from public.codigo_etapas e join public.areas a on a.id = e.area_id

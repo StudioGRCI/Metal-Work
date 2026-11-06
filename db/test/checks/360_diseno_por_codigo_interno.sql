@@ -358,9 +358,19 @@ set local role authenticated;
 select test.afirmar(public.etapas_de_siempre_codigo(lower(current_setting('prueba.codigo'))) = 2, 'el par de Diseño: Habilitado y Ensamblaje');
 select test.debe_fallar($q$select public.etapas_de_siempre_codigo(current_setting('prueba.codigo'))$q$,
   'no se repiten', 'ya tiene las etapas');
-select set_config('prueba.e7', public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Prueba de carga',
-  pg_temp.id('prd'), null, null)::text, true);
+-- Solo esas dos por juego de planos: una etapa suelta ya no la pone Diseño.
+select test.debe_fallar($q$select public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Prueba de carga', pg_temp.id('prd'), null, null)$q$,
+  'Diseño no agrega etapas sueltas', 'dos etapas por juego de planos');
+reset role;
+-- La etapa de más la agrega el área, y la ordena su supervisor.
+select pg_temp.como('supervisor_prd');
+set local role authenticated;
+select set_config('prueba.e7', public.guardar_etapa_de_area(null, current_setting('prueba.codigo'), null, pg_temp.id('prd'),
+  'Prueba de carga', null, null)::text, true);
 select public.mover_etapa_codigo(pg_temp.id('e7'), true);
+reset role;
+select pg_temp.como('diseno_dis');
+set local role authenticated;
 select set_config('prueba.hab', (select id::text from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
   and nombre = 'Habilitado'), true);
 select set_config('prueba.arm', (select id::text from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
@@ -373,8 +383,8 @@ reset role;
 select test.afirmar(
   (select array_agg(nombre order by orden) from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
       and quitada_en is null)
-  = array['Habilitado', 'Prueba de carga', 'Ensamblaje'],
-  'en el orden del taller, con la nueva subida un lugar antes del ensamblaje');
+  = array['Habilitado', 'Ensamblaje', 'Prueba de carga'],
+  'la etapa del área va después; subirla no la pasa delante de las de Diseño (se mueve entre las de su área)');
 
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
@@ -428,7 +438,7 @@ select test.afirmar(
 select test.afirmar(
   (select etapas from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 3
   and (select etapas_terminadas from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 1
-  and (select etapa_actual from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 'Prueba de carga'
+  and (select etapa_actual from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 'Ensamblaje'
   and (select materiales from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 2
   and not exists (select 1 from public.codigos_internos_de_diseno() where codigo = 'PLANTA'),
   'en la lista de Gerencia: tres etapas, una terminada, la que sigue abierta primero y dos materiales; PLANTA no sale');
@@ -439,11 +449,19 @@ reset role;
 select pg_temp.como('diseno_dis');
 set local role authenticated;
 select public.marcar_etapa_codigo(pg_temp.id('hab'), 'REABRIR', null, 'Hay que rehacer el doblez');
+select test.debe_fallar($q$select public.quitar_etapa_codigo(pg_temp.id('e7'))$q$,
+  'la etapa que agregó el área no la quita Diseño', 'supervisor de su área');
+reset role;
+select pg_temp.como('supervisor_prd');
+set local role authenticated;
 select public.quitar_etapa_codigo(pg_temp.id('e7'));
+reset role;
+select pg_temp.como('diseno_dis');
+set local role authenticated;
 select test.afirmar(
   (select fin_real from public.codigo_etapas where id = pg_temp.id('hab')) is null
   and (select count(*) from public.codigo_interno_etapas(current_setting('prueba.codigo'))) = 2,
-  'Diseño reabre con su porqué y quita la etapa que sobraba');
+  'Diseño reabre con su porqué, y Producción quita la etapa que sobraba');
 reset role;
 select test.debe_fallar($q$delete from public.codigo_etapas where id = pg_temp.id('e7')$q$, 'una etapa no se borra', 'no se borra');
 

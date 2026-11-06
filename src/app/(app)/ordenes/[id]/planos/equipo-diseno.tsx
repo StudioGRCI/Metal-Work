@@ -29,7 +29,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
     titulo="Personas que elaboran los planos"
     descripcion={`${responsable?.nombre ?? 'Sin responsable'} · ${colaboradores} ${colaboradores === 1 ? 'colaborador' : 'colaboradores'} · ${catalogos.planos.length} ${catalogos.planos.length === 1 ? 'plano' : 'planos'}`}>
     <div className="space-y-5">
-      <p className="text-xs text-texto-suave">Para que el colaborador pueda subir el PDF, registra su nombre aquí y asígnalo en «Quién preparó cada plano». Después Jefatura de Diseño revisa el archivo.</p>
+      <p className="text-xs text-texto-suave">Registra aquí a quien elabora los planos de esta OT: el colaborador solo anota sus actividades del día en las OT donde figura. Los planos los sube el encargado de Diseño después de revisarlos.</p>
       {equipo.length === 0 && <p className="rounded-[var(--radius-base)] bg-superficie-2 p-3 text-sm text-texto-suave">
         Aún no se han anotado personas para esta OT.
       </p>}

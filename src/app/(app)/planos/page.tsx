@@ -92,12 +92,15 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   }
   const hoy = hoyLima()
 
+  const veOt = puede(perfil, 'ordenes.ver')
   const [planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
     planosDeCodigo(null),
     etapasDeCodigo(null),
     // La base solo se los da a Maestranza (`puede_ver_dxf`): para las demás áreas sale vacío.
     dxfDeCodigo(null, { conEnlace: false }),
-    otPorCodigo(),
+    // La OT la ve quien tiene `ordenes.ver` (el jefe de producción); el supervisor
+    // de área trabaja por código y no la lee: no se le pregunta a la base.
+    veOt ? otPorCodigo() : Promise.resolve(new Map<string, OtDeCodigo>()),
     codigosParaElegir(),
     areasParaEtapas(),
   ])
@@ -163,7 +166,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
       />
 
       <div className="mb-4 space-y-3">
-        <BuscadorSimple ruta="/planos" etiqueta="Buscar código interno" marcador="Código, OT o cliente" />
+        <BuscadorSimple ruta="/planos" etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT o cliente' : 'Código interno'} />
         <PastillaFiltro
           ruta="/planos"
           clave="ver"
@@ -231,12 +234,12 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                           <>
                             <MarcarEtapa etapa={e} hoy={hoy} />
                             {/* Debajo de cualquier etapa de arriba de su área, el supervisor pone sus subetapas. */}
-                            {!e.padre_id && <VentanaEtapaDeArea padre={{ id: e.id, nombre: e.nombre }} />}
+                            {!e.padre_id && <VentanaEtapaDeArea padre={{ id: e.id, nombre: e.nombre }} codigo={codigo} />}
                             {/* Lo que agregó el área lo corrige, lo mueve y lo quita su supervisor; lo de Diseño, Diseño. */}
                             {(e.de_area || e.padre_id) && (
                               <>
                                 <MoverEtapa id={e.id} nombre={e.nombre} primera={lugar.primera} ultima={lugar.ultima} />
-                                <VentanaEtapaDeArea etapa={e} />
+                                <VentanaEtapaDeArea etapa={e} codigo={codigo} />
                                 {lugar.subetapas.length === 0 && <QuitarEtapa id={e.id} nombre={e.nombre} />}
                               </>
                             )}

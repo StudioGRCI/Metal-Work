@@ -17,7 +17,7 @@ export function ListaDxf({ archivos, acciones }: { archivos: DxfDeCodigo[]; acci
           <FileArchive aria-hidden className="size-5 shrink-0 text-texto-suave" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-texto">{d.descripcion}</p>
-            <p className="truncate text-xs text-texto-suave">
+            <p className="text-xs break-all text-texto-suave">
               {d.nombre_archivo} · {tamanoArchivo(d.tamano_bytes)} · {fechaHora(d.subido_en)}
             </p>
           </div>

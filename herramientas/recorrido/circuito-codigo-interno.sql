@@ -199,13 +199,19 @@ begin
       raise exception 'Diseño no ve la OT del código con su PDF';
     end if;
 
+    -- Desde la 20261106100000 Diseño pone el par Habilitado (Maestranza) y
+    -- Ensamblaje (Producción); Acabados agrega su etapa.
     v_paso := 'Diseño arma las etapas';
     reset role; perform pg_temp.ensayo_como((k->>'DISENO')::uuid);
-    v_e1 := public.guardar_etapa_codigo(null, c, 'Habilitado', v_mtz, v_hoy - 3, v_ayer);
-    v_e2 := public.guardar_etapa_codigo(null, c, 'Armado y soldadura', v_prd, v_ayer, v_hoy + 5);
-    v_e3 := public.guardar_etapa_codigo(null, c, 'Arenado y pintura', v_acb, v_hoy + 5, v_hoy + 10);
-    v_e4 := public.guardar_etapa_codigo(null, c, 'Entrega', null, v_hoy + 11, v_hoy + 12);
+    perform public.par_de_etapas_codigo(c, null);
+    select id into v_e1 from public.codigo_etapas where codigo_interno = c and nombre = 'Habilitado' and quitada_en is null;
+    select id into v_e2 from public.codigo_etapas where codigo_interno = c and nombre = 'Ensamblaje' and quitada_en is null;
+    perform public.guardar_etapa_codigo(v_e1, null, 'Habilitado', v_mtz, v_hoy - 3, v_ayer);
+    perform public.guardar_etapa_codigo(v_e2, null, 'Ensamblaje', v_prd, v_ayer, v_hoy + 5);
     perform public.marcar_etapa_codigo(v_e1, 'FIN', v_ayer, null);
+    v_paso := 'Acabados agrega su etapa';
+    reset role; perform pg_temp.ensayo_como((k->>'SUPERVISOR_ACB')::uuid);
+    v_e3 := public.guardar_etapa_de_area(null, c, null, v_acb, 'Arenado y pintura', v_hoy + 5, v_hoy + 10);
 
     v_paso := 'Diseño carga la lista de materiales y un plano';
     reset role;

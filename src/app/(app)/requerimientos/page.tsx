@@ -155,7 +155,8 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               // se recoge y qué falta; lo entregado y lo anulado, al presionar.
               insumosAbiertos={Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO')}
               enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
-              anula={tipos.includes(r.tipo as TipoRequerimiento)}
+              // El colaborador de Diseño solo pide: corrige y anula los suyos (migración 20261106100000).
+              anula={tipos.includes(r.tipo as TipoRequerimiento) && (perfil.rol.codigo !== 'DISENO_COLABORADOR' || r.creado_por === perfil.id)}
               materiales={catalogos?.materiales ?? []}
               codigos={catalogos?.codigos ?? null}
               correcciones={correcciones.get(r.id)}

@@ -53,7 +53,8 @@ declare
     'etapas_de_siempre_codigo', '5d309a253c0eda6b7252c30b0b944e62',
     'mover_etapa_codigo', 'cae7aae6307b58796cd9aa3bcaf27dc3',
     'quitar_etapa_codigo', '85e730f233d5b550f9c65d3162157ca6',
-    'codigo_interno_avance_planos_calculado', '436686e9d5742d04c0bf395fa276a256');
+    'codigo_interno_avance_planos_calculado', '436686e9d5742d04c0bf395fa276a256',
+    'codigo_interno_etapas_calculado', '9abb06d2ac5a4794004ad63e4018da00');
   f record;
 begin
   for f in select p.proname, md5(replace(p.prosrc, E'\r', '')) as huella
@@ -79,6 +80,38 @@ select r.id, x.permiso
   cross join (values ('requerimientos.emitir'), ('requerimientos.ver'), ('almacen.stock')) as x(permiso)
  where r.codigo = 'DISENO_COLABORADOR'
 on conflict do nothing;
+
+-- `requerimientos.emitir` es el permiso del puesto Requerimientos, que registra,
+-- corrige y anula los RQ de operación de todas las áreas. El colaborador de
+-- Diseño solo pide: corrige y anula los RQ que registró él, no los de los demás.
+create or replace function public.fn_el_colaborador_solo_toca_sus_rq()
+returns trigger language plpgsql set search_path to 'public' as $$
+declare v_dueno uuid;
+begin
+  if public.usuario_actual() is null or public.mi_rol() is distinct from 'DISENO_COLABORADOR' then
+    return coalesce(new, old);
+  end if;
+  if tg_table_name = 'requerimientos' then
+    v_dueno := old.creado_por;
+  else
+    select r.creado_por into v_dueno from public.requerimientos r where r.id = coalesce(new.requerimiento_id, old.requerimiento_id);
+  end if;
+  if v_dueno is distinct from public.usuario_actual() then
+    raise exception 'Ese requerimiento lo registró otra persona: tú corriges y anulas solo los tuyos.'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+revoke all on function public.fn_el_colaborador_solo_toca_sus_rq() from public, anon, authenticated;
+drop trigger if exists trg_el_colaborador_solo_toca_sus_rq on public.requerimientos;
+create trigger trg_el_colaborador_solo_toca_sus_rq
+  before update on public.requerimientos
+  for each row execute function public.fn_el_colaborador_solo_toca_sus_rq();
+drop trigger if exists trg_el_colaborador_solo_toca_sus_rq on public.requerimiento_lineas;
+create trigger trg_el_colaborador_solo_toca_sus_rq
+  before insert or update or delete on public.requerimiento_lineas
+  for each row execute function public.fn_el_colaborador_solo_toca_sus_rq();
 
 -- Los planos los sube el encargado de Diseño: el colaborador ya no carga el PDF
 -- de un plano en la OT. La función de la OT exigía `diseno.planos` o
@@ -211,6 +244,16 @@ on conflict (id) do update set file_size_limit = excluded.file_size_limit, allow
 -- La ruta es {id}.{zip|rar|7z}. Lo sube Diseño; lo ve quien lo subió (para
 -- comprobarlo antes de registrarlo) y quien ve los DXF del código que lo
 -- nombra. Uno suelto lo retira su dueño mientras ninguna fila lo nombre.
+-- Si un archivo del bucket ya es un DXF registrado (quitado o no). Lo mira sin
+-- el RLS de quien pregunta: la política de borrar el archivo suelto no puede
+-- depender de qué filas ve el que borra.
+create or replace function public.dxf_esta_registrado(p_ruta text)
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (select 1 from public.codigo_dxf d where d.ruta = p_ruta);
+$$;
+revoke all on function public.dxf_esta_registrado(text) from public, anon;
+grant execute on function public.dxf_esta_registrado(text) to authenticated;
+
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'dxf_codigo_subir') then
     create policy dxf_codigo_subir on storage.objects for insert to authenticated with check (
@@ -227,7 +270,7 @@ do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'dxf_codigo_quitar_suelto') then
     create policy dxf_codigo_quitar_suelto on storage.objects for delete to authenticated using (
       bucket_id = 'dxf-codigo' and owner_id = (select auth.uid())::text
-      and not exists (select 1 from public.codigo_dxf d where d.ruta = objects.name));
+      and not public.dxf_esta_registrado(objects.name));
   end if;
 end $$;
 
@@ -257,8 +300,15 @@ begin
 
   select * into v_hay from public.codigo_dxf where id = p_id;
   if found then
-    if v_hay.subido_por = v_yo and v_hay.codigo_interno = v_codigo and v_hay.ruta = v_ruta then
+    -- El mismo envío otra vez (el doble toque, la red que reintenta): es todo
+    -- lo que el envío lleva. Con otra descripción u otro nombre no es el mismo.
+    if v_hay.subido_por = v_yo and v_hay.codigo_interno = v_codigo and v_hay.ruta = v_ruta
+       and v_hay.descripcion = v_desc and v_hay.nombre_archivo = v_archivo then
       return p_id;
+    end if;
+    if v_hay.subido_por = v_yo and v_hay.codigo_interno = v_codigo then
+      raise exception 'Ese comprimido ya quedó registrado como «%» la primera vez que lo enviaste: recarga la pantalla.', v_hay.descripcion
+        using errcode = 'check_violation';
     end if;
     raise exception 'Ese archivo ya quedó registrado en otro código: recarga la pantalla.' using errcode = 'check_violation';
   end if;
@@ -328,7 +378,6 @@ do $$ begin
 end $$;
 -- (b) Las subetapas se leen y se cuentan por su etapa.
 -- Entero, no parcial: la llave foránea solo puede usar un índice sin condición (check 190).
-drop index if exists public.idx_codigo_etapas_padre;
 create index if not exists idx_codigo_etapas_padre_id on public.codigo_etapas (padre_id);
 
 -- Las áreas a las que Diseño les pone su etapa.
@@ -397,6 +446,12 @@ declare
   v_id     uuid;
 begin
   perform public.exigir_permiso('diseno.codigos');
+  -- «Diseño define solo dos etapas por cada juego de planos»: las pone
+  -- `par_de_etapas_codigo`. Aquí solo se corrigen; una de más la agrega el área.
+  if p_id is null then
+    raise exception 'Diseño pone dos etapas por juego de planos: cárgalas con «Cargar Habilitado y Ensamblaje». Una etapa de más la agrega el supervisor de su área.'
+      using errcode = 'check_violation';
+  end if;
   if p_id is not null then
     select * into v_etapa from public.codigo_etapas where id = p_id for update;
     if not found or v_etapa.quitada_en is not null then
@@ -440,7 +495,7 @@ begin
 end;
 $$;
 comment on function public.guardar_etapa_codigo(uuid, text, text, uuid, date, date) is
-  'Diseño agrega (p_id vacío) o corrige una etapa suya de un código interno: nombre, área (Maestranza o Producción), inicio y fecha comprometida. Exige diseno.codigos.';
+  'Diseño corrige una etapa suya de un código interno: nombre, área (Maestranza o Producción), inicio y fecha comprometida. Agregar ya no: el par lo pone par_de_etapas_codigo. Exige diseno.codigos.';
 revoke all on function public.guardar_etapa_codigo(uuid, text, text, uuid, date, date) from public, anon;
 grant execute on function public.guardar_etapa_codigo(uuid, text, text, uuid, date, date) to authenticated;
 
@@ -553,9 +608,14 @@ begin
     raise exception 'La etapa «%» la mueve %.', v_etapa.nombre,
       case when v_etapa.de_area then 'el supervisor de su área' else 'Diseño' end using errcode = 'check_violation';
   end if;
+  -- Se cambia de lugar con la vecina del mismo dueño: una subetapa entre las de
+  -- su etapa; una de Diseño entre las de Diseño; una del área entre las de su
+  -- área. Así nadie mueve lo de otro sin verlo en su pantalla.
   select * into v_otra from public.codigo_etapas e
    where e.codigo_interno = v_etapa.codigo_interno and e.quitada_en is null
      and e.padre_id is not distinct from v_etapa.padre_id
+     and (e.padre_id is not null
+          or (e.de_area = v_etapa.de_area and (not v_etapa.de_area or e.area_id is not distinct from v_etapa.area_id)))
      and case when p_arriba then e.orden < v_etapa.orden else e.orden > v_etapa.orden end
    order by case when p_arriba then -e.orden else e.orden end
    limit 1
@@ -601,6 +661,58 @@ end;
 $$;
 revoke all on function public.quitar_etapa_codigo(uuid) from public, anon;
 grant execute on function public.quitar_etapa_codigo(uuid) to authenticated;
+
+-- El reporte diario dice cuánto avanzó el ÁREA en el código, no cada etapa. Con
+-- una sola etapa por área (como antes) es lo mismo; con dos juegos de planos, o
+-- con subetapas, una etapa que todavía no empieza heredaba el avance de la otra:
+-- «Habilitado: Caja», sin empezar, salía al 100 %. Desde ahora, si el área tiene
+-- más de una etapa de arriba en el código, la que no empezó no toma su reporte
+-- (queda sin avance reportado y vale 0); la que ya empezó sí. La subetapa sigue a
+-- su etapa: toma el reporte si su etapa lo toma.
+create or replace function public.codigo_interno_etapas_calculado(p_codigo text default null::text)
+returns table(id uuid, codigo text, orden smallint, nombre text, area_id uuid, area text, area_codigo text,
+              inicio_plan date, fin_plan date, inicio_real date, fin_real date, nota text,
+              actualizado_en timestamp with time zone, reportes integer, primer_reporte date, ultimo_reporte date,
+              avance_reportado numeric)
+language plpgsql stable set search_path to 'public' as $function$
+#variable_conflict use_column
+-- obs-diseno-2026-11-06
+declare
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+begin
+  return query
+  with viva as (
+    select e.*,
+           count(*) filter (where e.padre_id is null) over (partition by e.codigo_interno, e.area_id) as del_area
+      from public.codigo_etapas e
+     where e.quitada_en is null and (v_codigo is null or e.codigo_interno = v_codigo)
+  ), etapa as (
+    -- La subetapa sigue a su etapa: toma el reporte del área si su etapa lo toma.
+    select v.*, coalesce(p.del_area, v.del_area) as del_area_arriba,
+           coalesce(p.inicio_real, v.inicio_real) as inicio_arriba,
+           case when v.padre_id is null then v.fin_real else p.fin_real end as fin_arriba
+      from viva v left join viva p on p.id = v.padre_id
+  ), reporte as (
+    select public.normalizar_codigo_interno(r.codigo_interno) as codigo, r.area_id, r.id, r.fecha, r.creado_en
+      from public.reportes_diarios r
+     where r.anulado_en is null and r.area_id is not null
+       and (v_codigo is null or public.normalizar_codigo_interno(r.codigo_interno) = v_codigo)
+  ), por_area as (
+    select r.codigo, r.area_id, count(*)::integer as reportes, min(r.fecha) as primero, max(r.fecha) as ultimo
+      from reporte r group by r.codigo, r.area_id
+  )
+  select e.id, e.codigo_interno, e.orden, e.nombre, e.area_id, a.nombre::text, a.codigo::text,
+         e.inicio_plan, e.fin_plan, e.inicio_real, e.fin_real, e.nota, e.actualizado_en,
+         coalesce(pa.reportes, 0), pa.primero, pa.ultimo,
+         case when e.del_area_arriba > 1 and e.inicio_arriba is null and e.fin_arriba is null
+                   and e.inicio_real is null and e.fin_real is null then null else av.avance end
+    from etapa e
+    left join public.areas a on a.id = e.area_id
+    left join por_area pa on pa.codigo = e.codigo_interno and pa.area_id = e.area_id
+    left join public.codigo_interno_resto_por_area_calculado(v_codigo) av on av.codigo = e.codigo_interno and av.area_id = e.area_id
+   order by e.codigo_interno, e.orden;
+end;
+$function$;
 
 -- El avance: las etapas de arriba. La que tiene subetapas vale su promedio (100
 -- la terminada; las demás, lo que reporta su área), salvo que ya terminó.

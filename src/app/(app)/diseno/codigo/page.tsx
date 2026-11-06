@@ -39,7 +39,6 @@ import {
   CargarPlano,
   CorregirEtapa,
   CorregirMaterial,
-  FormularioEtapa,
   FormularioMaterial,
   MarcarEtapa,
   MoverEtapa,
@@ -176,16 +175,16 @@ function OrdenesDelCodigo({ ordenes, yo }: { ordenes: OrdenDelCodigo[]; yo: stri
               {o.fichas.length > 0 && (
                 <ul aria-label={`Fichas técnicas de la OT ${o.numero}`} className="space-y-1">
                   {o.fichas.map((f) => (
-                    <li key={f.id} className="flex items-center gap-2 text-sm" data-ficha={f.nombre}>
+                    <li key={f.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm" data-ficha={f.nombre}>
                       <Truck aria-hidden className="size-4 shrink-0 text-texto-suave" />
                       {f.url ? (
-                        <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-acento hover:underline">
+                        <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0 break-all text-acento hover:underline">
                           {f.nombre}
                         </a>
                       ) : (
-                        <span className="min-w-0 truncate text-texto">{f.nombre}</span>
+                        <span className="min-w-0 break-all text-texto">{f.nombre}</span>
                       )}
-                      <span className="shrink-0 text-xs text-texto-suave">Ficha técnica · {fechaHora(f.subido_en)}</span>
+                      <span className="text-xs text-texto-suave">Ficha técnica · {fechaHora(f.subido_en)}</span>
                       {f.subido_por === yo && <QuitarFicha id={f.id} ordenId={o.id} nombre={f.nombre} />}
                     </li>
                   ))}
@@ -361,15 +360,6 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
         </Tarjeta>
       )}
 
-      <Tarjeta>
-        <TarjetaCabecera
-          titulo="Agregar una etapa"
-          ayuda="Solo de Maestranza o de Producción: las de las demás áreas las agrega su supervisor. Va al final; súbela con las flechas. La fecha comprometida es contra la que se mide si va a tiempo."
-        />
-        <TarjetaCuerpo>
-          <FormularioEtapa codigo={codigo} areas={areas} />
-        </TarjetaCuerpo>
-      </Tarjeta>
     </>
   )
 }

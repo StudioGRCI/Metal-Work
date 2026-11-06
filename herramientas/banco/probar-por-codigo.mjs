@@ -123,11 +123,11 @@ async function marcarPuntos(pagina, fase, observado) {
 
   await pagina.goto(`${BASE}/seguimiento`, { waitUntil: 'networkidle' })
   const fila = pagina.locator(`a[data-codigo="${CODIGO}"]`)
-  comprobar((await fila.count()) === 1 && (await texto(fila)).includes('6'), 'el código sale en Seguimiento con sus etapas')
+  comprobar((await fila.count()) === 1 && (await texto(fila)).includes('2'), 'el código sale en Seguimiento con sus etapas')
   await fila.click()
   await pagina.waitForURL((u) => u.pathname === '/seguimiento/codigo', { timeout: 30000 })
   await pagina.waitForLoadState('networkidle')
-  comprobar((await pagina.locator('[data-etapa]').count()) === 6, 'abre el código en Etapas: las seis')
+  comprobar((await pagina.locator('[data-etapa]').count()) === 2, 'abre el código en Etapas: las dos de Diseño')
 
   await pagina.goto(seguimiento('materiales'), { waitUntil: 'networkidle' })
   comprobar((await pagina.locator('[data-material="BCO-PLA3"]').count()) === 1, 've la lista de Diseño contra lo comprado y lo salido')
