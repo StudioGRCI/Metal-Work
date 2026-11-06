@@ -364,7 +364,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
   )
 }
 
-/** Los DXF comprimidos del código: Diseño los sube y Maestranza los descarga. */
+/** Los DXF comprimidos del código: Diseño los sube; Maestranza y Producción los descargan. */
 async function VistaDxf({ codigo }: { codigo: string }) {
   const archivos = await dxfDeCodigo(codigo)
   return (
@@ -372,7 +372,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cargar DXF"
-          ayuda={`Los DXF que generaste, en un .zip, .rar o .7z de hasta 50 MB. Solo los ven Diseño y Maestranza; al supervisor de Maestranza le llega el aviso.`}
+          ayuda={`Los DXF que generaste, en un .zip, .rar o .7z de hasta 50 MB. Solo los ven Diseño, Maestranza y Producción; a sus supervisores les llega el aviso.`}
         />
         <TarjetaCuerpo>
           <CargarDxf codigo={codigo} />
@@ -380,7 +380,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que Maestranza descarga para cortar. Si uno se subió por error, quítalo: queda en el historial." />
+        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que descargan Maestranza, para cortar, y Producción. Si uno se subió por error, quítalo: queda en el historial." />
         <TarjetaCuerpo>
           {archivos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay DXF. Carga el primero con el formulario de arriba.</p>

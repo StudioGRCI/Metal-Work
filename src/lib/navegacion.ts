@@ -149,14 +149,14 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Los DXF comprimidos que Diseño genera para el corte: un acceso aparte,
-      // solo de Diseño y Maestranza (observaciones de Diseño, 2026-11-06).
-      // Maestranza los baja desde «Planos y etapas».
+      // solo de Diseño, Maestranza y Producción (observaciones de Diseño,
+      // 2026-11-06). Los supervisores los bajan desde «Planos y etapas».
       {
         titulo: 'Archivos DXF',
         ruta: '/diseno/dxf',
         icono: FileArchive,
         permiso: 'diseno.codigos',
-        descripcion: 'Los DXF de cada unidad, comprimidos, para que Maestranza los corte',
+        descripcion: 'Los DXF de cada unidad, comprimidos, para Maestranza y Producción',
         disponible: true,
       },
       // El catálogo chico del que Diseño elige al desglosar los materiales de

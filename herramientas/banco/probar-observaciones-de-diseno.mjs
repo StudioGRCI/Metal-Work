@@ -11,7 +11,8 @@
  *      sube un DXF comprimido; carga el par Habilitado y Ensamblaje de otro
  *      juego de planos, que no hereda el avance del área, y no agrega etapas sueltas.
  *   3. El supervisor de Maestranza descarga los DXF y le agrega una subetapa al
- *      Habilitado; el de Producción no ve los DXF; el de Acabados agrega su etapa.
+ *      Habilitado; el de Producción también ve los DXF; el de Acabados no los ve y
+ *      agrega su etapa.
  *   4. Gerencia no entra a los DXF.
  *
  * Usa la base de las semillas del manual (`mw_manual`): las de
@@ -279,11 +280,17 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
 {
   const { pagina, contexto } = await entrar('sup.prd')
   await ir(pagina, `/planos?q=${encodeURIComponent(A)}`)
-  comprobar((await pagina.locator('[data-dxf]').count()) === 0, 'Producción no ve los DXF')
+  const dxfA = Number((await uno(`select count(*) n from codigo_dxf where codigo_interno = $1 and quitado_en is null`, [A])).n)
+  comprobar(dxfA > 0 && (await pagina.locator('[data-dxf]').count()) === dxfA, `Producción también ve los ${dxfA} DXF del código`)
+  const aviso = await uno(`select count(*) n from notificaciones n join usuarios u on u.id = n.usuario_id
+                           where u.correo = 'sup.prd.local@metalwork.test' and n.titulo = $1`, [`DXF nuevos: ${A}`])
+  comprobar(Number(aviso.n) >= 1, 'y le llegó el aviso')
   await contexto.close()
 }
 {
   const { pagina, contexto, errores } = await entrar('sup.acb')
+  await ir(pagina, `/planos?q=${encodeURIComponent(A)}`)
+  comprobar((await pagina.locator('[data-dxf]').count()) === 0, 'Acabados no ve los DXF')
   await ir(pagina, '/planos')
   await pagina.locator('summary', { hasText: 'Agregar una etapa de' }).click()
   await pagina.getByRole('combobox', { name: 'Unidad' }).click()

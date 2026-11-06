@@ -29,7 +29,7 @@ export const AREAS_DE_ETAPA_DE_DISENO = ['MTZ', 'PRD'] as const
 
 /**
  * Los DXF comprimidos de cada código (`dxf-codigo/{id}.{zip|rar|7z}`). Los sube
- * Diseño; los ven Diseño y Maestranza.
+ * Diseño; los ven Diseño, Maestranza y Producción.
  */
 export const BUCKET_DXF = 'dxf-codigo'
 export const MAXIMO_MB_DXF = 50

@@ -67,7 +67,7 @@ const terminadoEn = (c: DelCodigo) =>
  * Lo que Diseño le dejó al área, por código interno: los planos que van a su
  * área, para abrirlos y marcar que los recibió, las etapas que hace su área,
  * para marcar cuándo empezó y cuándo terminó y agregarles sus subetapas, y a
- * Maestranza los DXF para cortar. Cada área agrega también sus propias etapas
+ * Maestranza y Producción los DXF. Cada área agrega también sus propias etapas
  * (observaciones de Diseño, 2026-11-06). Desde el 2026-10-15 el supervisor
  * ya no abre la OT: los materiales y lo pedido de cada código los ve en
  * «Materiales y pedidos». El supervisor ve solo lo de su
@@ -96,7 +96,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const [planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
     planosDeCodigo(null),
     etapasDeCodigo(null),
-    // La base solo se los da a Maestranza (`puede_ver_dxf`): para las demás áreas sale vacío.
+    // La base solo se los da a Maestranza y Producción (`puede_ver_dxf`): para Acabados sale vacío.
     dxfDeCodigo(null, { conEnlace: false }),
     // La OT la ve quien tiene `ordenes.ver` (el jefe de producción); el supervisor
     // de área trabaja por código y no la lee: no se le pregunta a la base.
@@ -161,7 +161,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo="Planos y etapas"
-        ayuda={`Los planos que Diseño cargó para ${cualquierArea ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${cualquierArea ? 'cada área' : 'tu área'}: agrégales sus subetapas y marca cuándo empezó y cuándo terminó cada una. Maestranza descarga aquí los DXF. Cuando un código tiene todos sus planos recibidos y sus etapas terminadas, pasa a «Terminados».`}
+        ayuda={`Los planos que Diseño cargó para ${cualquierArea ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${cualquierArea ? 'cada área' : 'tu área'}: agrégales sus subetapas y marca cuándo empezó y cuándo terminó cada una. Maestranza y Producción descargan aquí los DXF. Cuando un código tiene todos sus planos recibidos y sus etapas terminadas, pasa a «Terminados».`}
         migas={[{ titulo: 'Supervisión' }, { titulo: 'Planos y etapas' }]}
       />
 

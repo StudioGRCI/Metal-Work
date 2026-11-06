@@ -7,7 +7,7 @@ import { fechaHora, tamanoArchivo } from '@/lib/format'
 /**
  * Los DXF comprimidos de un código (migración 20261106100000): qué traen, el
  * archivo para descargarlo con su nombre y cuándo se subió. Diseño pone en
- * `acciones` el botón para quitarlo; Maestranza solo los descarga.
+ * `acciones` el botón para quitarlo; Maestranza y Producción solo los descargan.
  */
 export function ListaDxf({ archivos, acciones }: { archivos: DxfDeCodigo[]; acciones?: (d: DxfDeCodigo) => ReactNode }) {
   return (

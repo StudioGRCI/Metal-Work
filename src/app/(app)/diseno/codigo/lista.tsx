@@ -49,7 +49,7 @@ const DESCRIPCION: Record<VistaDiseno, string> = {
     'Lo que lleva cada unidad según Diseño, por código interno: contra esa lista se mira lo que Logística compró y lo que salió del almacén. No genera requerimientos: los sigue pidiendo cada área.',
   etapas:
     'Por cada juego de planos, Diseño pone dos etapas: Habilitado para Maestranza y Ensamblaje para Producción, con su fecha comprometida. Cada supervisor les agrega sus subetapas, y Acabados y las demás áreas agregan las suyas.',
-  dxf: 'Los DXF de cada unidad, comprimidos en .zip, .rar o .7z. Los sube Diseño y los descarga Maestranza para cortar; nadie más los ve.',
+  dxf: 'Los DXF de cada unidad, comprimidos en .zip, .rar o .7z. Los sube Diseño y los descargan Maestranza y Producción; nadie más los ve.',
 }
 
 const DESCRIPCION_SEGUIMIENTO =

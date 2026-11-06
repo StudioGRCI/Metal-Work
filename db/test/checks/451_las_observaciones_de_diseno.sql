@@ -114,7 +114,7 @@ select test.debe_fallar($q$update public.requerimientos set justificacion = 'Otr
   'a los demás puestos esta regla no los toca (los frena la de siempre)', 'corrígelo con su justificante');
 select set_config('request.jwt.claim.sub', '', true), set_config('request.jwt.claims', '', true);
 
--- ============================================ 2. Los DXF: Diseño los sube, Maestranza los ve
+-- ============================================ 2. Los DXF: Diseño los sube, Maestranza y Producción los ven
 select pg_temp.como('diseno_dis');
 set local role authenticated;
 select pg_temp.subir_dxf('dxf1', 'zip', 'diseno_dis');
@@ -135,8 +135,8 @@ select test.afirmar(
   (select count(*) from public.codigo_dxf where id = pg_temp.id('dxf1') and codigo_interno = current_setting('prueba.codigo')
       and descripcion = 'Corte de planchas del chasis' and tamano_bytes = 512000 and ruta = current_setting('prueba.dxf1') || '.zip') = 1
   and pg_temp.avisos('supervisor_mtz', 'DXF nuevos') = 1
-  and pg_temp.avisos('supervisor_prd', 'DXF nuevos') = 0 and pg_temp.avisos('diseno_dis', 'DXF nuevos') = 0,
-  'queda una vez, con el código escrito siempre igual, y le avisa solo a Maestranza');
+  and pg_temp.avisos('supervisor_prd', 'DXF nuevos') = 1 and pg_temp.avisos('diseno_dis', 'DXF nuevos') = 0,
+  'queda una vez, con el código escrito siempre igual, y les avisa a Maestranza y a Producción');
 
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
@@ -148,13 +148,20 @@ select test.debe_fallar($q$select pg_temp.subir_dxf('dxf2', 'zip', 'supervisor_m
 reset role;
 select pg_temp.como('supervisor_prd');
 set local role authenticated;
+select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 1
+  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 1,
+  'el supervisor de Producción también ve el DXF y su archivo');
+select test.debe_fallar($q$select public.quitar_dxf_codigo(pg_temp.id('dxf1'))$q$, 'pero no lo quita', 'diseno.codigos');
+reset role;
+select pg_temp.como('supervisor_acb');
+set local role authenticated;
 select test.afirmar((select count(*) from public.codigo_dxf) = 0
-  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Producción no ve los DXF');
+  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Acabados no ve los DXF');
 reset role;
 select pg_temp.como('gerente_gge');
 set local role authenticated;
 select test.afirmar((select count(*) from public.codigo_dxf) = 0
-  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Gerencia tampoco: son de Diseño y Maestranza');
+  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Gerencia no: son de Diseño, Maestranza y Producción');
 reset role;
 
 select pg_temp.como('diseno_dis');

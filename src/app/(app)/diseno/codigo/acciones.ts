@@ -524,7 +524,7 @@ export async function registrarDxf(_previo: unknown, formulario: FormData): Prom
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
-  return { ok: true, mensaje: 'DXF cargados. Al supervisor de Maestranza le llegó el aviso.' }
+  return { ok: true, mensaje: 'DXF cargados. A los supervisores de Maestranza y Producción les llegó el aviso.' }
 }
 
 /** Quitar un comprimido que se subió por error o que ya no va. Queda en el historial. */

@@ -18,9 +18,11 @@
 --    `ot_adjuntos`, con `tipo = 'FICHA_VEHICULO'`, y la ve quien ve la OT.
 --
 -- 3. LOS DXF COMPRIMIDOS que Diseño genera para el corte van en un acceso
---    aparte, solo para Diseño y Maestranza: Diseño sube el .zip, .rar o .7z por
---    código interno, y el supervisor de Maestranza lo ve y lo descarga. Nadie
---    más los lee, ni Gerencia ni Producción. Se quitan, no se borran.
+--    aparte, solo para Diseño, Maestranza y Producción: Diseño sube el .zip,
+--    .rar o .7z por código interno, y los supervisores de Maestranza y de
+--    Producción (y el jefe de producción) los ven y los descargan; DKS lo pidió
+--    así el 2026-11-06. Nadie más los lee, ni Gerencia ni Acabados. Se quitan,
+--    no se borran.
 --
 -- 4. LAS ETAPAS. «El área de diseño define solo dos etapas específicas por
 --    cada par de juego de planos entregados: el primero para Maestranza, que es
@@ -175,7 +177,7 @@ alter policy mw_subir_adjuntos_ot on storage.objects
                    -- La ficha va con nombre propio: Diseño no puede dejar un PDF que pase por el de la orden.
                    or (public.tiene_permiso('diseno.codigos') and name ~ '^ot/[0-9a-fA-F-]{36}/ficha-[0-9a-f-]{36}\.(pdf|jpg|png)$')));
 
--- 3. Los DXF comprimidos, solo para Diseño y Maestranza ------------------------------------------
+-- 3. Los DXF comprimidos, solo para Diseño, Maestranza y Producción ------------------------------------------
 create table if not exists public.codigo_dxf (
   id               uuid primary key,
   codigo_interno   text not null,
@@ -201,7 +203,7 @@ create table if not exists public.codigo_dxf (
     and (quitado_en is null) = (quitado_por is null))
 );
 comment on table public.codigo_dxf is
-  'Los DXF comprimidos (.zip, .rar, .7z) que Diseño genera para cada código interno. Los sube Diseño; los ven Diseño y el supervisor de Maestranza. Se quitan, no se borran.';
+  'Los DXF comprimidos (.zip, .rar, .7z) que Diseño genera para cada código interno. Los sube Diseño; los ven Diseño y los supervisores de Maestranza y de Producción. Se quitan, no se borran.';
 -- (b) Diseño y Maestranza los leen por código. Las llaves a usuarios no llevan
 -- índice: las cuentas no se borran.
 create index if not exists idx_codigo_dxf_codigo on public.codigo_dxf (codigo_interno, subido_en) where quitado_en is null;
@@ -214,13 +216,14 @@ create or replace trigger trg_codigo_dxf_no_se_borra
   before delete on public.codigo_dxf
   for each row execute function public.fn_codigo_no_se_borra();
 
--- Quién los ve: Diseño y quien supervisa Maestranza (el jefe de producción,
--- que ve todas las áreas, también).
+-- Quién los ve: Diseño y quien supervisa Maestranza o Producción (el jefe de
+-- producción, que ve todas las áreas, también).
 create or replace function public.puede_ver_dxf()
 returns boolean language sql stable security definer set search_path to 'public' as $$
   select public.es_admin() or public.tiene_permiso('diseno.codigos')
       or (public.tiene_permiso('codigos_internos.area')
-          and public.puede_hoja_de_area((select a.id from public.areas a where a.codigo = 'MTZ')));
+          and (public.puede_hoja_de_area((select a.id from public.areas a where a.codigo = 'MTZ'))
+               or public.puede_hoja_de_area((select a.id from public.areas a where a.codigo = 'PRD'))));
 $$;
 revoke all on function public.puede_ver_dxf() from public, anon;
 grant execute on function public.puede_ver_dxf() to authenticated;
@@ -328,20 +331,20 @@ begin
   insert into public.codigo_dxf (id, codigo_interno, descripcion, nombre_archivo, ruta, tamano_bytes, subido_por)
   values (p_id, v_codigo, v_desc, v_archivo, v_ruta, (v_objeto.metadata->>'size')::bigint, v_yo);
 
-  -- El aviso al supervisor de Maestranza, que es quien corta.
+  -- El aviso a los supervisores de Maestranza, que corta, y de Producción, que ensambla.
   insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
   select u.id, 'DXF nuevos: ' || v_codigo, v_desc || ' (' || v_archivo || ').', '/planos?q=' || replace(v_codigo, '/', '%2F'),
          'codigo_dxf', p_id
     from public.usuarios u
     join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'codigos_internos.area'
    where u.activo and u.id is distinct from v_yo
-     and (u.area_id = (select a.id from public.areas a where a.codigo = 'MTZ')
+     and (u.area_id in (select a.id from public.areas a where a.codigo in ('MTZ', 'PRD'))
           or exists (select 1 from public.roles_permisos x where x.rol_id = u.rol_id and x.permiso_codigo = 'produccion.cualquier_area'));
   return p_id;
 end;
 $$;
 comment on function public.registrar_dxf_codigo(uuid, text, text, text) is
-  'Diseño registra un comprimido de DXF (.zip, .rar, .7z, hasta 50 MB) ya subido a dxf-codigo/{id}.{ext} para un código interno, y avisa a Maestranza. Exige diseno.codigos.';
+  'Diseño registra un comprimido de DXF (.zip, .rar, .7z, hasta 50 MB) ya subido a dxf-codigo/{id}.{ext} para un código interno, y avisa a Maestranza y a Producción. Exige diseno.codigos.';
 revoke all on function public.registrar_dxf_codigo(uuid, text, text, text) from public, anon;
 grant execute on function public.registrar_dxf_codigo(uuid, text, text, text) to authenticated;
 

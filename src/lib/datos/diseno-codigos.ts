@@ -542,7 +542,7 @@ export type DxfDeCodigo = {
 
 /**
  * Los DXF comprimidos de un código, o de todos los que la persona ve. Los ven
- * Diseño y el supervisor de Maestranza (`puede_ver_dxf`); el enlace descarga el
+ * Diseño y los supervisores de Maestranza y Producción (`puede_ver_dxf`); el enlace descarga el
  * archivo con el nombre que tenía.
  */
 export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: { conEnlace?: boolean } = {}): Promise<DxfDeCodigo[]> {
