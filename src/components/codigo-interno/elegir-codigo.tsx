@@ -157,7 +157,9 @@ export function EntradaCodigoInterno({
   const abiertos: Opcion[] = [
     ...fijosQueValen.map((f) => ({ codigo: f.codigo, detalle: f.detalle, registrada: false })),
     ...deLista.filter((o) => o.registrada),
-    ...deLista.filter((o) => !o.registrada),
+    // Las OT de mantenimiento y garantía no son del padrón, pero son trabajos vigentes: antes que los sueltos.
+    ...deLista.filter((o) => !o.registrada && esCodigoDeOt(o.codigo)),
+    ...deLista.filter((o) => !o.registrada && !esCodigoDeOt(o.codigo)),
   ]
   // Las variantes que ya conviven en el sistema (`PLA_SR_O4…` con O y con cero):
   // cada una avisa de su gemela, y dice cuál es la del padrón de unidades.
@@ -608,7 +610,7 @@ function EstadoDelCodigo({
           {gemelas.length > 0 && (
             <span className="block text-aviso">
               Ojo: hay {gemelas.length === 1 ? 'otro casi igual' : 'otros casi iguales'}. Revisa que sea este
-              {origenDe(abiertoIgual) ? `, que es el ${origenDe(abiertoIgual) === 'de la OT' ? 'de la OT' : 'del padrón'}` : ''}.
+              {esCodigoDeOt(abiertoIgual.codigo) ? ', que es el de la OT' : abiertoIgual.registrada ? ', que es el del padrón' : ''}.
             </span>
           )}
         </>
@@ -619,7 +621,7 @@ function EstadoDelCodigo({
             <span className={SUBRAYADO}>
               Cambiar a <span className="font-mono break-all">{o.codigo}</span>
             </span>
-            {(o.registrada || abiertoIgual.registrada) && (
+            {(origenDe(o) || origenDe(abiertoIgual)) && (
               <span className="font-normal text-texto-suave">({origenDe(o) ?? 'no está en el padrón'})</span>
             )}
           </button>

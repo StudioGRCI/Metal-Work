@@ -96,9 +96,9 @@ select test.afirmar(public.es_codigo_de_ot('ot  9455-2026') and public.es_codigo
 select test.como_usuario(:'req_id');
 set local role authenticated;
 select test.afirmar(
-  (select unidad = 'Mantenimiento · QAA-455 · Volvo FH 455' and registrada and not cerrado
+  (select unidad = 'Mantenimiento · QAA-455 · Volvo FH 455' and not registrada and not cerrado
      from public.codigos_internos_para_elegir() where codigo = 'OT 9455-2026'),
-  'Requerimientos ve la OT de mantenimiento con su placa y su vehículo');
+  'Requerimientos ve la OT de mantenimiento con su placa y su vehículo (no es una unidad del padrón)');
 select test.afirmar(
   (select unidad = 'Mantenimiento · QA CLIENTE 455' from public.codigos_internos_para_elegir() where codigo = 'OT 9456-2026'),
   'la que no tiene unidad, con su cliente');

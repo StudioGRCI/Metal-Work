@@ -64,7 +64,7 @@
 do $$
 declare
   conocidas constant jsonb := '{
-    "codigos_internos_para_elegir()": ["ecd61d39ccf3f33ca0f7655cc821fd40", "18ad558f14cc210e38b0ca165edf189f", "2579a4b914aabe315397f954c00c7ac1"],
+    "codigos_internos_para_elegir()": ["ecd61d39ccf3f33ca0f7655cc821fd40", "18ad558f14cc210e38b0ca165edf189f", "e3a02c456a790c845d05c0fb0a1ebd36"],
     "dar_por_terminada_la_garantia(uuid,text)": ["c3ec30bfc7a28c7ec477f39e468fa6fc", "d7cfe455f4cc33df4170d1e31f90a22f"],
     "fn_ot_garantia_con_su_unidad()": ["ea1c79c804600764ac1663ea511691c2", "dff562441149daef324ab2a5ffcb8735"],
     "registrar_ingreso_vehiculo(uuid,text,text,text,text,text,text,timestamp with time zone,text,jsonb)": ["d104813a177931d5c5212f2e8efff2be", "a64a7a922a74f5838b3060e4ff01a857"],
@@ -731,7 +731,9 @@ begin
   )
   select c.codigo, coalesce(u.texto, ot.texto, p.texto),
          exists (select 1 from public.codigo_interno_cierres k where k.codigo = c.codigo and k.reabierto_en is null),
-         coalesce(u.activa, false) or ot.codigo is not null
+         -- `registrada` sigue siendo «de una unidad del padrón»: la OT no lo es,
+         -- y «RQ por unidad» la usa para listar las unidades (20261120300000).
+         coalesce(u.activa, false)
     from conocido c
     left join unidad u on u.codigo = c.codigo
     left join ot on ot.codigo = c.codigo
@@ -741,7 +743,7 @@ begin
 end;
 $$;
 comment on function public.codigos_internos_para_elegir() is
-  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, observaciones, reporte diario, orden de compra, servicio, subcontrato, salida del almacén sin RQ), con su unidad, si su costeo está cerrado (sin montos) y si es de una unidad del padrón o de una OT de mantenimiento o garantía («OT 2921-2026», migración 20261120500000).';
+  'Los códigos internos que se ofrecen en los formularios (requerimiento, caja diaria, costeo de horas, observaciones, reporte diario, orden de compra, servicio, subcontrato, salida del almacén sin RQ), con su unidad, si su costeo está cerrado (sin montos) y si es de una unidad del padrón. Desde la migración 20261120500000 ofrece también las OT de mantenimiento y de garantía («OT 2921-2026»), que no son del padrón.';
 
 -- Los códigos del reporte diario y del costeo de horas de RR. HH.: los mismos
 -- de 20261014180000, más las OT de mantenimiento y de garantía que no están

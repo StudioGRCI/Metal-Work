@@ -58,6 +58,7 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+const sinTildes = (t) => (t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase()
 
 // ------------------------------------------------------------ armazón
 const anio = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric' }).format(new Date())
@@ -84,6 +85,8 @@ await consulta(
   [orden.id, PLACA.replace('-', '')],
 )
 const [req] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.requerimientos])
+// Lo de esta corrida, aunque otra haya dejado un RQ igual hace un minuto.
+const [{ inicio }] = await consulta(`select now() as inicio`)
 const [adm] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.administracion])
 const [{ niples }] = await consulta(
   `select count(*)::int as niples from public.materiales m join public.categorias_material c on c.id = m.categoria_id
@@ -296,7 +299,6 @@ let registroId = null
   await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
   const electricas = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
   // «SISTEMA ELECTRICO» y «Sistema eléctrico» son un solo grupo: salen los de las dos.
-  const sinTildes = (t) => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase()
   comprobar(electricas.length === electricos && electricas.every((o) => sinTildes(o).includes('SISTEMA ELECTRICO')),
     `con SISTEMA ELECTRICO salen sus ${electricos} insumos, también los de «Sistema eléctrico» (${electricas.length})`)
   await v.getByRole('listbox').getByRole('option').first().click()
@@ -307,10 +309,10 @@ let registroId = null
     `select r.numero, r.codigo_interno, c.nombre as categoria from public.requerimientos r
        join public.requerimiento_lineas l on l.requerimiento_id = r.id
        join public.materiales m on m.id = l.material_id join public.categorias_material c on c.id = m.categoria_id
-      where r.creado_por = $1 and r.codigo_interno = $2 and r.creado_en > now() - interval '5 minutes'`,
-    [req.id, CODIGO_OT],
+      where r.creado_por = $1 and r.codigo_interno = $2 and r.creado_en > $3`,
+    [req.id, CODIGO_OT, inicio],
   )
-  comprobar(rqs.length === 1 && rqs[0].categoria === 'SISTEMA ELECTRICO', `en la base: el RQ entra con ${CODIGO_OT} y el insumo eléctrico (${JSON.stringify(rqs)})`)
+  comprobar(rqs.length === 1 && sinTildes(rqs[0].categoria) === 'SISTEMA ELECTRICO', `en la base: el RQ entra con ${CODIGO_OT} y el insumo eléctrico (${JSON.stringify(rqs)})`)
   comprobar(errores.length === 0, `Requerimientos sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
 }
