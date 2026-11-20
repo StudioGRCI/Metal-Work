@@ -68,11 +68,12 @@ export type RequerimientoListado = {
   numero: string
   /** OPERACION o ADMINISTRACION (`TIPO_REQUERIMIENTO`). */
   tipo: string
+  area_id: string
   area: string
+  /** Quien lo registró: el supervisor (`rq_exigir_del_area`) y el colaborador de Diseño corrigen y anulan solo los suyos. */
+  creado_por: string | null
   codigo_interno: string
   justificacion: string
-  /** Quién lo registró: el colaborador de Diseño corrige y anula solo los suyos. */
-  creado_por: string
   fecha_requerida: string | null
   estado: string
   motivo_anulacion: string | null
@@ -109,7 +110,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, codigo_interno, justificacion, creado_por, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -173,10 +174,11 @@ export async function cargarRequerimientos(
       id: r.id,
       numero: r.numero,
       tipo: r.tipo,
+      area_id: r.area_id,
       area: r.area?.nombre ?? '—',
+      creado_por: r.creado_por,
       codigo_interno: r.codigo_interno,
       justificacion: r.justificacion,
-      creado_por: r.creado_por,
       fecha_requerida: r.fecha_requerida,
       estado: r.estado,
       motivo_anulacion: r.motivo_anulacion,

@@ -859,13 +859,13 @@ export type Database = {
           descripcion: string
           nombre_archivo: string
           ruta: string
-          envio: string
           tamano_bytes: number
           subido_por: string
           subido_en: string
           quitado_en: string | null
           quitado_por: string | null
           actualizado_en: string
+          envio: string
         }
         Insert: {
           id: string
@@ -873,13 +873,13 @@ export type Database = {
           descripcion: string
           nombre_archivo: string
           ruta: string
-          envio: string
           tamano_bytes: number
           subido_por?: string
           subido_en?: string
           quitado_en?: string | null
           quitado_por?: string | null
           actualizado_en?: string
+          envio: string
         }
         Update: {
           id?: string
@@ -887,13 +887,13 @@ export type Database = {
           descripcion?: string
           nombre_archivo?: string
           ruta?: string
-          envio?: string
           tamano_bytes?: number
           subido_por?: string
           subido_en?: string
           quitado_en?: string | null
           quitado_por?: string | null
           actualizado_en?: string
+          envio?: string
         }
         Relationships: [
           {
@@ -12247,6 +12247,12 @@ export type Database = {
         }
         Returns: string
       }
+      cerrar_aviso_dxf_sin_archivos: {
+        Args: {
+          p_envio: string | null
+        }
+        Returns: null
+      }
       cerrar_costeo_codigo: {
         Args: {
           p_codigo: string | null
@@ -16164,6 +16170,15 @@ export type Database = {
         Args: {
           p_tipo: string | null
           p_paso: string | null
+        }
+        Returns: null
+      }
+      rq_exigir_del_area: {
+        Args: {
+          p_tipo: string | null
+          p_paso: string | null
+          p_area_id: string | null
+          p_creado_por: string | null
         }
         Returns: null
       }

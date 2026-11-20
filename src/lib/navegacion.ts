@@ -203,8 +203,18 @@ export const NAVEGACION = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.ver'],
+        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area', 'requerimientos.ver'],
         descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
+        disponible: true,
+      },
+      // El supervisor pide el material de cada unidad de su área desde la
+      // tarjeta de la unidad (migración 20261120300000).
+      {
+        titulo: 'RQ por unidad',
+        ruta: '/requerimientos/unidades',
+        icono: ClipboardList,
+        permiso: 'requerimientos.area',
+        descripcion: 'Las unidades de tu área, cada una con sus requerimientos, para pedir el material de cada una',
         disponible: true,
       },
       {
@@ -779,7 +789,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // «Listo en almacén», al que también lo lleva el aviso) y al final el stock
   // de Almacén, que consulta para saber qué hay.
   SUPERVISOR: {
-    grupos: [{ titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos', '/almacen/stock'] }],
+    grupos: [
+      { titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock'] },
+    ],
+    // En el teléfono, RQ abre la lista, que lleva la cifra de lo listo para
+    // recoger; «Por unidad» es su primera pestaña.
     telefono: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos'],
   },
   // Mira todas las áreas sin trabajar en ninguna: cada una con su nombre y en

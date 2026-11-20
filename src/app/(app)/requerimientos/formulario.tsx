@@ -31,61 +31,97 @@ type Catalogos = {
 }
 
 /** El botón «Nuevo requerimiento» y su ventana. */
-export function NuevoRequerimiento(catalogos: Catalogos) {
+export function NuevoRequerimiento(catalogos: Catalogos & { areaFija?: AreaParaRequerimiento }) {
   const soloAdministracion = catalogos.tipos.length === 1 && catalogos.tipos[0] === 'ADMINISTRACION'
-  const [abierta, setAbierta] = useState(false)
-  const [vez, setVez] = useState(0)
-  // El id vive aquí, fuera del formulario que se rehace al abrir: tras «No llegó
-  // la respuesta», cancelar y volver a abrir lleva el mismo, y la base no emite
-  // otro RQ numerado con lo mismo (decimoquinta pasada). Se renueva con el ok,
-  // cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
-  // que aquel RQ entró.
-  const envio = useIdDelEnvio('requerimiento')
-  const [aviso, setAviso] = useState<string | null>(null)
+  const ventana = useVentanaDelRequerimiento()
   return (
     <>
-      <Boton
-        type="button"
-        onClick={() => {
-          setAviso(null)
-          envio.abrir()
-          setVez((v) => v + 1)
-          setAbierta(true)
-        }}
-      >
+      <Boton type="button" onClick={() => ventana.abrir(null)}>
         <Plus aria-hidden className="size-4" />
         {soloAdministracion ? 'Nuevo requerimiento de Administración' : 'Nuevo requerimiento'}
       </Boton>
-      {aviso && (
+      {ventana.aviso && (
         <p role="status" className="basis-full text-sm text-exito">
-          {aviso}
+          {ventana.aviso}
         </p>
       )}
-      <Ventana
-        abierta={abierta}
-        alCerrar={() => setAbierta(false)}
-        titulo={soloAdministracion ? 'Nuevo requerimiento de Administración' : 'Nuevo requerimiento'}
-        descripcion={`Lo que un área necesita. El número lo pone el sistema y le llega primero a Almacén: lo que tiene lo separa y lo que falta lo compra ${
-          soloAdministracion ? 'la administradora' : 'Logística'
-        }.`}
-        ancho="xl"
-      >
-        <EnvioAnterior texto={envio.anterior} />
-        {envio.id && (
-          <FormularioRequerimiento
-            key={vez}
-            {...catalogos}
-            envio={envio}
-            alCancelar={() => setAbierta(false)}
-            alTerminar={(mensaje) => {
-              setAbierta(false)
-              envio.otro()
-              setAviso(mensaje)
-            }}
-          />
-        )}
-      </Ventana>
+      <VentanaDelRequerimiento {...catalogos} ventana={ventana} />
     </>
+  )
+}
+
+/**
+ * Lo que la ventana del requerimiento recuerda entre una apertura y otra: si
+ * está abierta, para qué código (`null`: lo elige quien pide), el aviso del
+ * último registrado y el id del envío.
+ *
+ * El id vive aquí, fuera del formulario que se rehace al abrir: tras «No llegó
+ * la respuesta», cancelar y volver a abrir lleva el mismo, y la base no emite
+ * otro RQ numerado con lo mismo (decimoquinta pasada). Se renueva con el ok,
+ * cuando la base dice que ya quedó o cuando, al volver a abrir, la base dice
+ * que aquel RQ entró. «RQ por unidad» abre la misma ventana desde cada unidad.
+ */
+export function useVentanaDelRequerimiento() {
+  const [abierta, setAbierta] = useState(false)
+  const [vez, setVez] = useState(0)
+  const [codigo, setCodigo] = useState<string | null>(null)
+  const envio = useIdDelEnvio('requerimiento')
+  const [aviso, setAviso] = useState<string | null>(null)
+  return {
+    abierta,
+    vez,
+    codigo,
+    envio,
+    aviso,
+    abrir(paraCodigo: string | null) {
+      setAviso(null)
+      envio.abrir()
+      setCodigo(paraCodigo)
+      setVez((v) => v + 1)
+      setAbierta(true)
+    },
+    cerrar() {
+      setAbierta(false)
+    },
+    terminar(mensaje: string) {
+      setAbierta(false)
+      envio.otro()
+      setAviso(mensaje)
+    },
+  }
+}
+
+/** La ventana del requerimiento nuevo, que abre `useVentanaDelRequerimiento`. */
+export function VentanaDelRequerimiento({
+  ventana,
+  areaFija,
+  ...catalogos
+}: Catalogos & { ventana: ReturnType<typeof useVentanaDelRequerimiento>; areaFija?: AreaParaRequerimiento }) {
+  const soloAdministracion = catalogos.tipos.length === 1 && catalogos.tipos[0] === 'ADMINISTRACION'
+  const titulo = soloAdministracion ? 'Nuevo requerimiento de Administración' : ventana.codigo ? `Nuevo requerimiento para ${ventana.codigo}` : 'Nuevo requerimiento'
+  return (
+    <Ventana
+      abierta={ventana.abierta}
+      alCerrar={ventana.cerrar}
+      titulo={titulo}
+      descripcion={`Lo que ${areaFija ? `${areaFija.nombre} necesita` : 'un área necesita'}. El número lo pone el sistema y le llega primero a Almacén: lo que tiene lo separa y lo que falta lo compra ${
+        soloAdministracion ? 'la administradora' : 'Logística'
+      }.`}
+      ancho="xl"
+    >
+      <EnvioAnterior texto={ventana.envio.anterior} />
+      {ventana.envio.id && (
+        <FormularioRequerimiento
+          key={ventana.vez}
+          {...catalogos}
+          areaFija={areaFija}
+          codigoFijo={ventana.codigo}
+          envio={ventana.envio}
+          alCancelar={ventana.cerrar}
+          alTerminar={ventana.terminar}
+        />
+      )}
+    </Ventana>
   )
 }
 
@@ -111,13 +147,23 @@ function FormularioRequerimiento({
   materiales,
   codigos,
   tipos,
+  areaFija,
+  codigoFijo,
   envio,
   alCancelar,
   alTerminar,
-}: Catalogos & { envio: ReturnType<typeof useIdDelEnvio>; alCancelar: () => void; alTerminar: (mensaje: string) => void }) {
+}: Catalogos & {
+  /** El supervisor pide solo para su área: no se elige. */
+  areaFija?: AreaParaRequerimiento
+  /** La unidad desde la que se abrió («RQ por unidad»): no se elige. */
+  codigoFijo?: string | null
+  envio: ReturnType<typeof useIdDelEnvio>
+  alCancelar: () => void
+  alTerminar: (mensaje: string) => void
+}) {
   // Cada área pide en un solo requerimiento: al cambiar el tipo cambia la lista.
   const [tipo, setTipo] = useState<TipoRequerimiento>(tipos[0] ?? 'OPERACION')
-  const [areaId, setAreaId] = useState('')
+  const [areaId, setAreaId] = useState(areaFija?.id ?? '')
   // El de Administración puede ir a un código o a todos los que trabajan.
   const [aTodos, setATodos] = useState(false)
   // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
@@ -156,6 +202,28 @@ function FormularioRequerimiento({
     Number(x.cantidad) > 0 && (x.nuevo ? x.descripcion.trim().length >= 3 && x.unidad_medida_id && x.categoria_id : x.material_id),
   )
 
+  const unidadFija = codigoFijo ? codigos?.find((c) => c.codigo === codigoFijo)?.unidad : null
+  // Con el área y el código puestos, lo primero que se escribe es la justificación.
+  const todoFijo = Boolean(areaFija && codigoFijo && tipos.length === 1)
+  const fechaRequerida = (
+    <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">
+      <Entrada id="rq-fecha" name="fecha_requerida" type="date" min={hoyLima()} />
+    </Campo>
+  )
+  const justificacion = (
+    <Campo etiqueta="Justificación" htmlFor="rq-justificacion" requerido>
+      <AreaTexto
+        id="rq-justificacion"
+        name="justificacion"
+        required
+        minLength={10}
+        maxLength={1000}
+        rows={2}
+        placeholder="Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó."
+      />
+    </Campo>
+  )
+
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="operacion_id" value={id} />
@@ -192,18 +260,43 @@ function FormularioRequerimiento({
             </Seleccion>
           </Campo>
         )}
-        <Campo etiqueta="Área que lo necesita" htmlFor="rq-area" requerido>
-          <Seleccion id="rq-area" name="area_id" required value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-            <option value="" disabled>
-              Elige el área
-            </option>
-            {delTipo.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nombre}
+        {areaFija && codigoFijo ? (
+          // Pedido desde la tarjeta de la unidad: área y código en una línea, y
+          // el cursor empieza en la justificación, que es lo primero que se escribe.
+          <div className="sm:col-span-2">
+            <input type="hidden" name="area_id" value={areaFija.id} />
+            <input type="hidden" name="codigo_interno" value={codigoFijo} />
+            <p id="rq-para" className="flex flex-wrap items-baseline gap-x-2 text-sm text-texto">
+              <span className="text-xs font-medium text-texto-suave">Para</span>
+              <span className="font-medium">{areaFija.nombre}</span>
+              <span aria-hidden className="text-texto-tenue">·</span>
+              <span className="font-mono font-medium">{codigoFijo}</span>
+              {unidadFija && <span className="text-texto-suave">{unidadFija}</span>}
+            </p>
+          </div>
+        ) : areaFija ? (
+          <div className="space-y-1.5">
+            <input type="hidden" name="area_id" value={areaFija.id} />
+            <p className="text-xs font-medium text-texto-suave">Área que lo necesita</p>
+            <p id="rq-area" className="flex min-h-10 items-center text-sm font-medium text-texto">
+              {areaFija.nombre}
+            </p>
+            <p className="text-xs text-texto-tenue">Pides para tu área.</p>
+          </div>
+        ) : (
+          <Campo etiqueta="Área que lo necesita" htmlFor="rq-area" requerido>
+            <Seleccion id="rq-area" name="area_id" required value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+              <option value="" disabled>
+                Elige el área
               </option>
-            ))}
-          </Seleccion>
-        </Campo>
+              {delTipo.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nombre}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
+        )}
         {tipo === 'ADMINISTRACION' && (
           <Campo
             etiqueta="Se carga a"
@@ -218,7 +311,16 @@ function FormularioRequerimiento({
             </Seleccion>
           </Campo>
         )}
-        {tipo === 'ADMINISTRACION' && aTodos ? (
+        {areaFija && codigoFijo ? null : codigoFijo ? (
+          <div className="space-y-1.5">
+            <input type="hidden" name="codigo_interno" value={codigoFijo} />
+            <p className="text-xs font-medium text-texto-suave">Código interno</p>
+            <p id="rq-codigo" className="flex min-h-10 flex-wrap items-center gap-x-2 text-sm text-texto">
+              <span className="font-mono font-medium">{codigoFijo}</span>
+              {unidadFija && <span className="text-texto-suave">{unidadFija}</span>}
+            </p>
+          </div>
+        ) : tipo === 'ADMINISTRACION' && aTodos ? (
           <input type="hidden" name="codigo_interno" value={CODIGO_TODOS_LOS_ACTIVOS} />
         ) : (
           <Campo
@@ -242,21 +344,10 @@ function FormularioRequerimiento({
             />
           </Campo>
         )}
-        <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">
-          <Entrada id="rq-fecha" name="fecha_requerida" type="date" min={hoyLima()} />
-        </Campo>
+        {!todoFijo && fechaRequerida}
       </div>
-      <Campo etiqueta="Justificación" htmlFor="rq-justificacion" requerido>
-        <AreaTexto
-          id="rq-justificacion"
-          name="justificacion"
-          required
-          minLength={10}
-          maxLength={1000}
-          rows={2}
-          placeholder="Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó."
-        />
-      </Campo>
+      {justificacion}
+      {todoFijo && <div className="grid gap-4 sm:grid-cols-2">{fechaRequerida}</div>}
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-texto">Insumos</legend>
