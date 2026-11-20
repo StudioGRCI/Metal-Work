@@ -125,6 +125,7 @@ reset role;
 -- ============================================ 4. Almacén: rq1 sin stock, rq2 con stock
 select pg_temp.como('almacenero_alm');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(current_setting('prueba.rq1')::uuid, 'No queda plancha de 2 mm');
 select public.rq_marcar_sin_stock(current_setting('prueba.rq1')::uuid, 'otra vez');
 select public.rq_marcar_listo_en_almacen(current_setting('prueba.rq2')::uuid, 'Está en el estante B');

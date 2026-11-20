@@ -170,6 +170,7 @@ select test.debe_fallar(format($q$select public.corregir_requerimiento('%s', '%s
   '{"lineas": [{"item": 1, "cantidad": 1}]}'::jsonb)$q$, current_setting('prueba.c2'), current_setting('prueba.rq')),
   'Almacén no corrige el requerimiento', 'permiso');
 -- Revisa el stock: tiene 2 de 6.
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq')::uuid, '[{"item": 1, "en_stock": 2}]'::jsonb, null);
 reset role;
 

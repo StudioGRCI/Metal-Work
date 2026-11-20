@@ -174,6 +174,7 @@ reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
 select public.rq_revisar_stock(pg_temp.id('rq1'), '[{"item": 1, "en_stock": 4}]', null);
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(pg_temp.id('rq2'), '[{"item": 1, "en_stock": 6}, {"item": 2, "en_stock": 0}]', null);
 select public.rq_revisar_stock(pg_temp.id('rq3'), '[{"item": 1, "en_stock": 0}]', null);
 select public.rq_revisar_stock(pg_temp.id('rq4'), '[{"item": 1, "en_stock": 2}]', null);

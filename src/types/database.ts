@@ -3588,6 +3588,7 @@ export type Database = {
           codigo_almacen_origen: string | null
           unidad_pendiente: boolean
           stock_minimo: number | null
+          compra_por_mayor: number | null
         }
         Insert: {
           id?: string
@@ -3613,6 +3614,7 @@ export type Database = {
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
           stock_minimo?: number | null
+          compra_por_mayor?: number | null
         }
         Update: {
           id?: string
@@ -3638,6 +3640,7 @@ export type Database = {
           codigo_almacen_origen?: string | null
           unidad_pendiente?: boolean
           stock_minimo?: number | null
+          compra_por_mayor?: number | null
         }
         Relationships: [
           {
@@ -9462,6 +9465,89 @@ export type Database = {
           }
         ]
       }
+      requerimiento_sustentos: {
+        Row: {
+          id: string
+          requerimiento_linea_id: string
+          material_id: string | null
+          cantidad: number
+          exceso: number
+          metrado: number | null
+          sustento: string
+          sustentado_por: string
+          sustentado_en: string
+          decision: string | null
+          nota_decision: string | null
+          decidido_por: string | null
+          decidido_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          requerimiento_linea_id: string
+          material_id?: string | null
+          cantidad: number
+          exceso: number
+          metrado?: number | null
+          sustento: string
+          sustentado_por?: string
+          sustentado_en?: string
+          decision?: string | null
+          nota_decision?: string | null
+          decidido_por?: string | null
+          decidido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          requerimiento_linea_id?: string
+          material_id?: string | null
+          cantidad?: number
+          exceso?: number
+          metrado?: number | null
+          sustento?: string
+          sustentado_por?: string
+          sustentado_en?: string
+          decision?: string | null
+          nota_decision?: string | null
+          decidido_por?: string | null
+          decidido_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requerimiento_sustentos_decidido_por_fkey"
+            columns: ["decidido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_sustentos_linea_fkey"
+            columns: ["requerimiento_linea_id"]
+            isOneToOne: true
+            referencedRelation: "requerimiento_lineas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_sustentos_material_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requerimiento_sustentos_sustentado_por_fkey"
+            columns: ["sustentado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       requerimientos: {
         Row: {
           id: string
@@ -9491,6 +9577,7 @@ export type Database = {
           tipo: string
           faltante_al_entregar: string | null
           motivo_del_faltante: string | null
+          con_metrado: boolean
         }
         Insert: {
           id?: string
@@ -9520,6 +9607,7 @@ export type Database = {
           tipo?: string
           faltante_al_entregar?: string | null
           motivo_del_faltante?: string | null
+          con_metrado?: boolean
         }
         Update: {
           id?: string
@@ -9549,6 +9637,7 @@ export type Database = {
           tipo?: string
           faltante_al_entregar?: string | null
           motivo_del_faltante?: string | null
+          con_metrado?: boolean
         }
         Relationships: [
           {
@@ -11982,6 +12071,15 @@ export type Database = {
         }
         Returns: string
       }
+      autorizar_insumos: {
+        Args: {
+          p_requerimiento: string | null
+          p_items: number[] | null
+          p_autoriza: boolean | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       avance_de_ordenes: {
         Args: {
           p_ordenes: string[] | null
@@ -12915,6 +13013,12 @@ export type Database = {
           recibido_en: string | null
           recibido_por_area: string | null
         }[]
+      }
+      codigo_sin_metrado: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: boolean
       }
       codigos_internos_avance: {
         Args: {
@@ -13972,6 +14076,16 @@ export type Database = {
         }
         Returns: string
       }
+      en_camino_por_material: {
+        Args: {
+          p_sin?: string | null
+        }
+        Returns: {
+          material_id: string | null
+          en_camino: number | null
+          ocs: string | null
+        }[]
+      }
       en_mano_de_la_linea_de_compra: {
         Args: {
           p_detalle: string | null
@@ -14214,6 +14328,14 @@ export type Database = {
           p_activa: boolean | null
           p_monto_desde: number | null
           p_rol_aprobador: string | null
+        }
+        Returns: string
+      }
+      fijar_stock_de_seguridad: {
+        Args: {
+          p_material: string | null
+          p_minimo: number | null
+          p_por_mayor: number | null
         }
         Returns: string
       }
@@ -14498,6 +14620,12 @@ export type Database = {
           cantidad: number | null
         }[]
       }
+      insumos_fuera_de_metrado: {
+        Args: {
+          p_requerimiento: string | null
+        }
+        Returns: string
+      }
       jornadas_validadas: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -14671,6 +14799,44 @@ export type Database = {
         }
         Returns: {
           periodo: string | null
+        }[]
+      }
+      metrado_de_requerimientos: {
+        Args: {
+          p_requerimientos: string[] | null
+        }
+        Returns: {
+          linea_id: string | null
+          requerimiento_id: string | null
+          item: number | null
+          estado: string | null
+          metrado: number | null
+          pedido_antes: number | null
+          exceso: number | null
+          planos: string | null
+          sustento: string | null
+          sustentado_por: string | null
+          sustentado_en: string | null
+          decision: string | null
+          nota_decision: string | null
+          decidido_por: string | null
+          decidido_en: string | null
+        }[]
+      }
+      metrado_por_linea: {
+        Args: {
+          p_requerimientos: string[] | null
+        }
+        Returns: {
+          linea_id: string | null
+          requerimiento_id: string | null
+          item: number | null
+          aplica: boolean | null
+          metrado: number | null
+          pedido_antes: number | null
+          exceso: number | null
+          sustento_id: string | null
+          estado: string | null
         }[]
       }
       mi_rol: {
@@ -16080,6 +16246,31 @@ export type Database = {
           area: string | null
         }[]
       }
+      reposicion_de_stock: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          material_id: string | null
+          codigo: string | null
+          descripcion: string | null
+          unidad: string | null
+          almacen: string | null
+          categoria: string | null
+          existencia: number | null
+          libre: number | null
+          en_camino: number | null
+          en_camino_ocs: string | null
+          stock_minimo: number | null
+          compra_por_mayor: number | null
+          salio_90_dias: number | null
+          comprar: number | null
+        }[]
+      }
+      requerimientos_por_autorizar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          requerimiento_id: string | null
+        }[]
+      }
       resolver_observacion_ot: {
         Args: {
           p_id: string | null
@@ -16820,6 +17011,18 @@ export type Database = {
         }
         Returns: string
       }
+      stock_al_aprobar_compras: {
+        Args: {
+          p_compras: string[] | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          material_id: string | null
+          existencia: number | null
+          en_camino: number | null
+          en_camino_ocs: string | null
+        }[]
+      }
       stock_en_almacen: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -16984,6 +17187,13 @@ export type Database = {
         Args: {
           p_desde: string | null
           p_dias: number | null
+        }
+        Returns: string
+      }
+      sustentar_insumos: {
+        Args: {
+          p_requerimiento: string | null
+          p_lineas: Json | null
         }
         Returns: string
       }

@@ -51,6 +51,8 @@ begin
 end $$;
 
 -- Almacén y los pedidos, como dueño: lo que se prueba aquí es la lectura.
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 do $$
 declare
   v_reg uuid := current_setting('prueba.req')::uuid;
@@ -105,6 +107,7 @@ begin
   perform set_config('prueba.ot', (select id::text from public.ordenes_trabajo where descripcion = 'Tolva de prueba · check 346'), true);
   update public.regla_aprobacion_compras set activa = false where unica;
 end $$;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 -- Logística compra para el código: 4 × 10.00 + 1 × 15.50 = 55.50 sin IGV.
 select test.como_usuario(:'comprador_id');

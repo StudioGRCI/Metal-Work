@@ -25,6 +25,8 @@ values ('8414-2026', :'cliente_id', :'unidad_id', :'carroceria_id', :'sede_id', 
 -- Y una salida con precio, para que el costo tenga algo que comparar: 4 planchas
 -- de S/ 25 (se arma como dueño: lo que se prueba es la lista, no la salida).
 select set_config('prueba.admin', :'admin_id', true);
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 do $$
 declare
   v_m uuid;
@@ -41,6 +43,7 @@ begin
   values (gen_random_uuid(), 'SALIDA', v_m, 4, 'SALIDA_GENERAL', 'Para la tolva', current_setting('prueba.admin')::uuid,
           'Área de Maestranza', 'CHK413_26/43', 'CHK413_26/43', 4);
 end $$;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 set local role authenticated;
 select test.como_usuario(:'gerente_id');

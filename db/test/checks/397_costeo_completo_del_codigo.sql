@@ -352,6 +352,8 @@ end $$;
 select test.crear_usuario('Dina', 'Diseño', 'diseno397@demo.pe', 'DISENO', (select id from public.sedes where codigo = 'QA97')) as diseno_id \gset
 select set_config('prueba.diseno', :'diseno_id', true);
 select set_config('prueba.costo_antes', (select (x.costo_pen)::text from public.codigos_internos_costo_calculado('CHK397_A_26/01') x), true);
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 do $$
 declare
   v_m uuid;
@@ -369,6 +371,7 @@ begin
   values (gen_random_uuid(), 'SALIDA', v_m, 10, 'SALIDA_GENERAL', 'Para la tolva', current_setting('prueba.oficina')::uuid,
           'Área de Maestranza', 'CHK397_A_26/01', 'CHK397_A_26/01', 10);
 end $$;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 do $$
 declare k jsonb; v uuid;
