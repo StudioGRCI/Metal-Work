@@ -41,9 +41,13 @@
 --     DKS el 2026-11-20 al resumirle cómo se aplicaba;
 --   * la OT de garantía ya no exige que su unidad tenga código interno: la
 --     exigía solo para que el vehículo pudiera entrar por el código;
---   * un código escrito con la forma de una OT («OT 9999-2026») tiene que ser
---     el de una OT de mantenimiento o de garantía que existe: si no, el costo
---     iba a un código suelto que se lee como si fuera la OT.
+--   * un código escrito con la forma de una OT («OT 9999-2026», o el número
+--     solo, «2921-2026») tiene que ser el de una OT de mantenimiento o de
+--     garantía que existe, y escrito como la lista lo escribe: si no, el costo
+--     iba a un código suelto que se lee como si fuera la OT;
+--   * los gastos que Administración aprueba en la pestaña Costos de esas OT van
+--     también al código de su OT, y no al de la unidad
+--     (`codigo_interno_lineas_gastos_ot`).
 --
 -- La versión de diez parámetros de `registrar_ingreso_vehiculo` queda como
 -- envoltorio de la nueva, sin OT: la pantalla de antes del despliegue sigue
@@ -64,13 +68,14 @@
 do $$
 declare
   conocidas constant jsonb := '{
+    "codigo_interno_lineas_gastos_ot(text)": ["c5ec178b0ac5d248d93e47e81941dba4", "f3c850ad5789986c70ee695be067a6a8"],
     "codigos_internos_para_elegir()": ["ecd61d39ccf3f33ca0f7655cc821fd40", "18ad558f14cc210e38b0ca165edf189f", "e3a02c456a790c845d05c0fb0a1ebd36"],
     "dar_por_terminada_la_garantia(uuid,text)": ["c3ec30bfc7a28c7ec477f39e468fa6fc", "d7cfe455f4cc33df4170d1e31f90a22f"],
     "fn_ot_garantia_con_su_unidad()": ["ea1c79c804600764ac1663ea511691c2", "dff562441149daef324ab2a5ffcb8735"],
     "registrar_ingreso_vehiculo(uuid,text,text,text,text,text,text,timestamp with time zone,text,jsonb)": ["d104813a177931d5c5212f2e8efff2be", "a64a7a922a74f5838b3060e4ff01a857"],
     "rrhh_codigos_internos()": ["79f36ca09fa18fc77b81464adb07e3b2", "7649ddc609fc8e444cbd2faef7cc3cbc"],
     "vehiculo_lo_que_falta_para_salir(uuid,boolean)": ["df7c8cb7e291177910174f2660611bff", "c4cc620bdcd635248d22fcae493b48f7"],
-    "vehiculos_codigos_para_ingreso()": ["4bf333007107ea838d7dcd8ab85e3335", "947e2abec3f73a93ada1b83a895a9e85"],
+    "vehiculos_codigos_para_ingreso()": ["4bf333007107ea838d7dcd8ab85e3335", "4c7a8bdbaa2df4da2a9ac4796ead8dad"],
     "vehiculos_estado_de_salida(uuid[])": ["0f57ffcff788a8cb6140ef2dafebcad1", "df877340c1a7bd33820e6f1368425a30"]
   }';
   firma text;
@@ -101,15 +106,16 @@ comment on function public.codigo_de_la_ot(text) is
 revoke all on function public.codigo_de_la_ot(text) from public, anon;
 grant execute on function public.codigo_de_la_ot(text) to authenticated;
 
--- Si lo escrito tiene la forma del número de una OT: «OT 2921-2026», y también
--- a medias o mal escrito («ot2921», «OT-2921-2026»). Ningún código de unidad
--- empieza así (en producción no había ninguno el 2026-11-20).
+-- Si lo escrito tiene la forma del número de una OT: «OT 2921-2026», también a
+-- medias o mal escrito («ot2921», «OT-2921-2026»), o el número solo, como viene
+-- en el papel («2921-2026», «2921»). Ningún código de unidad empieza así: en
+-- producción, el 2026-11-20, todos empezaban con letras.
 create or replace function public.es_codigo_de_ot(p_codigo text)
 returns boolean language sql immutable set search_path to 'public' as $$
-  select coalesce(upper(btrim(coalesce(p_codigo, ''))) ~ '^OT[^A-Z0-9]*[0-9]', false);
+  select coalesce(upper(btrim(coalesce(p_codigo, ''))) ~ '^(OT[^A-Z0-9]*[0-9]|[0-9]{1,6}([^A-Z0-9]+[0-9]{2,4})?$)', false);
 $$;
 comment on function public.es_codigo_de_ot(text) is
-  'Si lo escrito tiene la forma del número de una OT («OT 2921-2026», también a medias o con otros separadores): no es el código de una unidad. Migración 20261120500000.';
+  'Si lo escrito tiene la forma del número de una OT («OT 2921-2026», también a medias o con otros separadores, o el número solo, «2921-2026»): no es el código de una unidad. Migración 20261120500000.';
 revoke all on function public.es_codigo_de_ot(text) from public, anon;
 grant execute on function public.es_codigo_de_ot(text) to authenticated;
 
@@ -137,6 +143,12 @@ begin
     raise exception '% no es el código de una unidad: tiene la forma del número de una OT. Escribe el código interno de la unidad.',
       v_codigo using errcode = 'check_violation';
   end if;
+  -- El número solo, como viene en el papel: la OT se elige de la lista, que la
+  -- escribe con «OT » delante. Guardado así, el costo no llegaría a la OT.
+  if v_codigo !~ '^OT' then
+    raise exception '% parece el número de una OT: elige la OT de la lista, que la escribe con «OT» delante («OT 2921-2026»).',
+      v_codigo using errcode = 'check_violation';
+  end if;
   if not exists (select 1 from public.ordenes_trabajo o
                   where o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA')
                     and public.codigo_de_la_ot(o.numero) = v_codigo) then
@@ -150,19 +162,57 @@ comment on function public.fn_el_codigo_de_ot_es_de_su_ot() is
   'Un código con forma de OT («OT 2921-2026») es el de una OT de mantenimiento o de garantía que existe, y ninguna unidad se llama así. Migración 20261120500000.';
 revoke all on function public.fn_el_codigo_de_ot_es_de_su_ot() from public, anon, authenticated;
 
--- Las tablas donde la gente escribe o elige el código: las mismas que suma la
--- lista de los formularios, más la unidad y las observaciones del personal.
+-- Todas las tablas que guardan un código: las que suma la lista de los
+-- formularios, la unidad, las observaciones del personal, el ingreso de un
+-- vehículo (por Cochera u «Otro» el código se escribe a mano, y de ahí pasaba
+-- a la lista de todos los formularios), la factura de venta y lo de Diseño.
 do $$
 declare
   t text;
 begin
   foreach t in array array['requerimientos', 'ordenes_compra_materiales', 'ordenes_servicio', 'reportes_diarios',
                            'tareos', 'subcontratos', 'movimientos_materiales', 'movimientos_caja',
-                           'observaciones_personal', 'unidades'] loop
+                           'observaciones_personal', 'unidades', 'registro_vehiculos', 'facturas_venta',
+                           'codigo_planos', 'codigo_etapas', 'codigo_materiales', 'codigo_actividades'] loop
     execute format('create or replace trigger trg_%s_codigo_de_ot before insert or update of codigo_interno on public.%I
                       for each row execute function public.fn_el_codigo_de_ot_es_de_su_ot()', t, t);
   end loop;
 end $$;
+
+-- Los gastos que Administración aprueba en la pestaña Costos de una OT iban al
+-- código de su unidad. En una OT de mantenimiento o de garantía eso los cargaba
+-- a la fabricación de la unidad, si tenía código, y a ningún código si no.
+-- Van al de su OT, como su RQ, su caja y sus horas. Las demás OT, igual que
+-- antes (migración 20261017300000).
+create or replace function public.codigo_interno_lineas_gastos_ot(p_codigo text)
+returns table (codigo text, fuente text, fecha date, concepto text, detalle text, cantidad numeric, unidad text,
+               horas numeric, precio_unitario numeric, moneda text, monto numeric, sin_precio integer,
+               documento text, referencia_id uuid)
+language sql stable set search_path to 'public' as $$
+  with gasto as (
+    select g.id, g.fecha, g.tipo, g.descripcion, g.monto, g.moneda, g.area_id, o.numero,
+           public.normalizar_codigo_interno(case when o.tipo_trabajo::text in ('MANTENIMIENTO', 'GARANTIA')
+                                                 then public.codigo_de_la_ot(o.numero) else u.codigo_interno end) as codigo
+      from public.ot_gastos_areas g
+      join public.ordenes_trabajo o on o.id = g.orden_id
+      left join public.unidades u on u.id = o.unidad_id
+     where g.estado = 'APROBADO' and o.estado <> 'ANULADA'
+  )
+  select x.codigo, 'GASTOS_OT'::text, x.fecha,
+         (case x.tipo when 'TRAMITE' then 'Trámite' when 'COMISION' then 'Comisión' when 'SERVICIO' then 'Servicio'
+                      when 'TRANSPORTE' then 'Transporte' when 'VIATICO' then 'Viático' when 'SUBCONTRATO' then 'Subcontrato'
+                      else 'Gasto' end || ': ' || x.descripcion)::text,
+         ('Gasto aprobado en la OT ' || x.numero || coalesce(' · ' || a.nombre, ''))::text,
+         1::numeric, 'gasto'::text, null::numeric,
+         x.monto, x.moneda::text, x.monto, 0, x.numero::text, x.id
+    from gasto x
+    left join public.areas a on a.id = x.area_id
+   where x.codigo is not null
+     and (public.normalizar_codigo_interno(p_codigo) is null or x.codigo = public.normalizar_codigo_interno(p_codigo))
+$$;
+comment on function public.codigo_interno_lineas_gastos_ot(text) is
+  'Los gastos que Administración aprobó en la pestaña Costos de las OT, como líneas del costeo, en su moneda: los de una OT de mantenimiento o de garantía van al código de su OT («OT 2921-2026»), los demás al de su unidad (migraciones 20261017300000 y 20261120500000). Sin los pendientes, los observados ni los de una OT anulada. No pide permiso: la llama codigo_interno_lineas.';
+revoke all on function public.codigo_interno_lineas_gastos_ot(text) from public, anon, authenticated;
 
 -- ---------------------------- 2. el trabajo de la OT, dado por terminado
 comment on table public.ot_garantia_terminada is
@@ -331,6 +381,22 @@ $$;
 comment on function public.vehiculos_estado_de_salida(uuid[]) is
   'Para cada ingreso en la planta: si es trabajo del taller, el avance de su código (o, si entró con una OT de garantía o de mantenimiento, el número de esa OT y si su trabajo está terminado), la última respuesta de Tesorería y lo que le falta para pedir la revisión y para salir (null si nada). Exige vehiculos.ver o vehiculos.registrar.';
 
+-- Si el vehículo de la OT está en el arenado externo: su último ingreso por
+-- esa OT salió al arenado. Vuelve por ella aunque Administración la haya dado
+-- por terminada mientras estaba fuera; si no, quedaba sin puerta: atado a la
+-- fabricación de su unidad o por la cochera, sin el visto de Tesorería (lo vio
+-- el auditor de funcionamiento). Ayudante interno de las funciones del ingreso.
+create or replace function public.ot_con_su_vehiculo_en_el_arenado(p_orden uuid)
+returns boolean language sql stable set search_path to 'public' as $$
+  -- El que sigue en la planta va primero: ese no está en el arenado.
+  select coalesce((select r.sale_al_arenado and r.salida_en is not null from public.registro_vehiculos r
+                    where r.orden_id = p_orden and r.anulado_en is null
+                    order by (r.salida_en is null) desc, r.ingreso_en desc, r.salida_en desc limit 1), false);
+$$;
+comment on function public.ot_con_su_vehiculo_en_el_arenado(uuid) is
+  'Si el último ingreso del vehículo por esa OT salió al arenado externo: vuelve por ella aunque esté terminada. Migración 20261120500000.';
+revoke all on function public.ot_con_su_vehiculo_en_el_arenado(uuid) from public, anon, authenticated;
+
 -- ------------------------------------ 4. lo que ofrece la ventana del ingreso
 -- Los códigos para fabricación y arenado: su OT vigente es la de la unidad que
 -- no es de mantenimiento ni de garantía, que entran por su número; la unidad
@@ -359,10 +425,11 @@ begin
                    order by x.creado_en desc limit 1) o on true
     left join public.clientes cl on cl.id = u.cliente_id
    where u.activo and public.normalizar_codigo_interno(u.codigo_interno) is not null
-     -- La unidad con una OT de mantenimiento o de garantía abierta entra por esa OT.
+     -- La unidad con una OT de mantenimiento o de garantía abierta entra por esa
+     -- OT, y la que salió al arenado con ella vuelve por ella aunque esté terminada.
      and not exists (select 1 from public.ordenes_trabajo g
                       where g.unidad_id = u.id and g.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and g.estado <> 'ANULADA'
-                        and not public.orden_garantia_terminada(g.id))
+                        and (not public.orden_garantia_terminada(g.id) or public.ot_con_su_vehiculo_en_el_arenado(g.id)))
    order by 1;
 end;
 $$;
@@ -391,12 +458,12 @@ begin
     left join public.unidades u on u.id = o.unidad_id
     left join public.clientes cl on cl.id = coalesce(u.cliente_id, o.cliente_id)
    where o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and o.estado <> 'ANULADA'
-     and not public.orden_garantia_terminada(o.id)
+     and (not public.orden_garantia_terminada(o.id) or public.ot_con_su_vehiculo_en_el_arenado(o.id))
    order by o.creado_en desc;
 end;
 $$;
 comment on function public.vehiculos_ots_para_ingreso() is
-  'Las OT de mantenimiento y de garantía con las que puede entrar un vehículo (ni anuladas ni con su trabajo terminado), con su cliente, su unidad si la tiene y si ya está en la planta. Exige vehiculos.registrar. Migración 20261120500000.';
+  'Las OT de mantenimiento y de garantía con las que puede entrar un vehículo (ni anuladas ni con su trabajo terminado, salvo que su vehículo esté en el arenado), con su cliente, su unidad si la tiene y si ya está en la planta. Exige vehiculos.registrar. Migración 20261120500000.';
 revoke all on function public.vehiculos_ots_para_ingreso() from public, anon;
 grant execute on function public.vehiculos_ots_para_ingreso() to authenticated;
 
@@ -468,7 +535,7 @@ begin
     if v_ot.estado = 'ANULADA' then
       raise exception 'La OT % está anulada: con ella no entra ningún vehículo.', v_ot.numero using errcode = 'check_violation';
     end if;
-    if public.orden_garantia_terminada(v_ot.id) then
+    if public.orden_garantia_terminada(v_ot.id) and not public.ot_con_su_vehiculo_en_el_arenado(v_ot.id) then
       raise exception 'El trabajo de la OT % ya está terminado: con ella no vuelve a entrar el vehículo.', v_ot.numero
         using errcode = 'check_violation';
     end if;
@@ -494,6 +561,16 @@ begin
       v_unidad_texto := coalesce(nullif(btrim(coalesce(public.vehiculo_descripcion_de_unidad(v_unidad.id), '')), ''), v_unidad_texto);
     elsif coalesce(v_placa, v_chasis) is null then
       raise exception 'Anota la placa o el número de chasis: la OT % no tiene su unidad registrada.', v_ot.numero
+        using errcode = 'check_violation';
+    elsif exists (
+            select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id
+             where o.id <> v_ot.id and o.estado not in ('ANULADA', 'TERMINADA', 'ENTREGADA', 'FACTURADA')
+               and not (o.tipo_trabajo in ('GARANTIA', 'MANTENIMIENTO') and public.orden_garantia_terminada(o.id))
+               and ((v_placa is not null and public.normalizar_placa(u.placa) = v_placa)
+                 or (v_chasis is not null and upper(btrim(coalesce(u.numero_chasis, ''))) = v_chasis))) then
+      -- La placa escrita a mano es de una unidad con OT en el taller: entraba
+      -- como mantenimiento y salía sin el 100 % de su fabricación, como en la cochera.
+      raise exception 'Esa placa o ese chasis es de un vehículo con OT en el taller: entra con su motivo y su código interno o su OT.'
         using errcode = 'check_violation';
     end if;
     -- El cliente de la unidad; si la unidad no lo tiene, el de la OT.
@@ -532,6 +609,21 @@ begin
         case v_ot.tipo_trabajo when 'MANTENIMIENTO' then 'Mantenimiento' else 'Garantía' end
         using errcode = 'check_violation';
     end if;
+    -- Salió al arenado con su OT de mantenimiento o de garantía y esa OT se dio
+    -- por terminada mientras estaba fuera: vuelve por ella, no por el código.
+    select o.* into v_ot
+      from (select r.orden_id, r.sale_al_arenado from public.registro_vehiculos r
+             where r.unidad_id = v_unidad.id and r.anulado_en is null
+             order by (r.salida_en is null) desc, r.ingreso_en desc, r.salida_en desc limit 1) ult
+      join public.ordenes_trabajo o on o.id = ult.orden_id
+     where ult.sale_al_arenado and o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and o.estado <> 'ANULADA';
+    if found then
+      raise exception 'El vehículo del código % salió al arenado con la OT % de %: vuelve con el motivo % y esa OT.',
+        v_codigo, v_ot.numero,
+        case v_ot.tipo_trabajo when 'MANTENIMIENTO' then 'mantenimiento' else 'garantía' end,
+        case v_ot.tipo_trabajo when 'MANTENIMIENTO' then 'Mantenimiento' else 'Garantía' end
+        using errcode = 'check_violation';
+    end if;
     select o.id into v_orden from public.ordenes_trabajo o
      where o.unidad_id = v_unidad.id and o.estado <> 'ANULADA'
        and o.tipo_trabajo not in ('MANTENIMIENTO', 'GARANTIA')
@@ -564,6 +656,12 @@ begin
              and public.codigo_de_la_ot(o.numero) = public.normalizar_codigo_interno(v_codigo)) then
     -- La OT de mantenimiento o de garantía escrita como código en la cochera.
     raise exception 'La % es de un trabajo en el taller: elige el motivo (mantenimiento o garantía) y su OT.',
+      public.normalizar_codigo_interno(v_codigo) using errcode = 'check_violation';
+  elsif v_codigo is not null and public.es_codigo_de_ot(v_codigo) then
+    -- Otro número de OT (una que no existe, una ya terminada o el número solo):
+    -- por Cochera u «Otro» el código es el de la unidad. Escrito así, pasaba a la
+    -- lista de todos los formularios como si fuera una OT (auditor de realización).
+    raise exception '% tiene la forma del número de una OT: por Cochera u «Otro» se anota el código interno de la unidad, o nada. Si el vehículo viene a trabajo, elige su motivo y su OT.',
       public.normalizar_codigo_interno(v_codigo) using errcode = 'check_violation';
   elsif v_codigo is not null and exists (
           select 1 from public.unidades u join public.ordenes_trabajo o on o.unidad_id = u.id

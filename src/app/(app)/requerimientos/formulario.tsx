@@ -405,6 +405,7 @@ function FormularioRequerimiento({
                     <SeleccionBuscable
                       id={`rq-mat-${x.clave}`}
                       requerido
+                      aria-describedby={x.soltado && !x.material_id ? `rq-soltado-${x.clave}` : undefined}
                       valor={x.material_id}
                       onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '', soltado: '' })}
                       marcador={x.grupo ? 'Elige del grupo…' : 'Elige del catálogo de Almacén…'}
@@ -415,6 +416,11 @@ function FormularioRequerimiento({
                         return (!m || delGrupo(m, x.grupo)) && !insumos.some((y) => y.material_id === o.valor)
                       })}
                     />
+                    {/* Pegado a su campo: en el teléfono, debajo de la fila quedaba tras Cantidad, Unidad y la papelera.
+                        Siempre puesto, vacío si no hay nada que decir: el que nace con su texto no se anuncia. */}
+                    <p id={`rq-soltado-${x.clave}`} role="status" className={x.soltado && !x.material_id ? 'text-xs text-aviso' : 'sr-only'}>
+                      {x.soltado && !x.material_id ? `«${x.soltado}» no es de este grupo: elige el insumo otra vez.` : ''}
+                    </p>
                   </Campo>
                 )}
                 <Campo etiqueta="Cantidad" htmlFor={`rq-cant-${x.clave}`} requerido>
@@ -463,10 +469,6 @@ function FormularioRequerimiento({
                   <Trash2 aria-hidden className="size-4" />
                 </Boton>
               </div>
-              {/* Siempre puesto, vacío si no hay nada que decir: el que nace con su texto no se anuncia. */}
-              <p role="status" className={x.soltado && !x.nuevo && !x.material_id ? 'text-xs text-aviso' : 'sr-only'}>
-                {x.soltado && !x.nuevo && !x.material_id ? `«${x.soltado}» no es de este grupo: elige el insumo otra vez.` : ''}
-              </p>
               {x.nuevo ? (
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_auto] sm:items-end">
                   <Campo etiqueta="Categoría" htmlFor={`rq-cat-${x.clave}`} requerido>

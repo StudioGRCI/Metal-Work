@@ -25,13 +25,15 @@ export type RegistroVehiculo = {
   motivo_anulacion: string | null
   /** La unidad del padrón; null si entró con la placa a mano (cochera, otro, o la OT sin unidad). */
   unidad_id: string | null
+  /** La OT de mantenimiento o de garantía con que entró (migración 20261120500000); null si entró por código o placa. */
+  orden_id: string | null
   /** Cuántas fotos se tomaron al entrar y al salir (las de antes del 2026-10-15 entraron sin fotos). */
   fotos_ingreso: number
   fotos_salida: number
 }
 
 const COLUMNAS =
-  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion, unidad_id'
+  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion, unidad_id, orden_id'
 
 type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida'> & { fotos: { momento: string }[] | null }
 

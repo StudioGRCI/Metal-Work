@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO, motivoExigeCodigo, motivoPorOt } from '@/lib/dominio/requerimientos'
+import { conQueVuelveDelArenado, horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO, motivoExigeCodigo, motivoPorOt } from '@/lib/dominio/requerimientos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -156,14 +156,14 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
   if (!analisis.data.alArenado) return { ok: true, mensaje: 'Salida registrada.' }
   // El de mantenimiento o garantía vuelve por su OT, no con el motivo Arenado:
   // la base no lo deja volver por el código mientras su OT esté abierta.
-  const { data: salio } = await supabase.from('registro_vehiculos').select('motivo, codigo_interno').eq('id', analisis.data.id).maybeSingle()
-  return {
-    ok: true,
-    mensaje:
-      salio && motivoPorOt(salio.motivo) && salio.codigo_interno
-        ? `Salida al arenado registrada: vuelve con el motivo ${salio.motivo === 'MANTENIMIENTO' ? 'Mantenimiento' : 'Garantía'} y su ${salio.codigo_interno}.`
-        : 'Salida al arenado registrada: vuelve con el motivo Arenado.',
-  }
+  const { data: salio, error: sinLeer } = await supabase
+    .from('registro_vehiculos')
+    .select('motivo, codigo_interno')
+    .eq('id', analisis.data.id)
+    .maybeSingle()
+  // Sin saber con qué entró, no se dice con qué vuelve: decir «Arenado» a uno de mantenimiento lo haría rechazar al volver.
+  if (sinLeer || !salio) return { ok: true, mensaje: 'Salida al arenado registrada.' }
+  return { ok: true, mensaje: `Salida al arenado registrada: vuelve con ${conQueVuelveDelArenado(salio.motivo, salio.codigo_interno)}.` }
 }
 
 /** Un ingreso mal anotado se anula con motivo; no se borra. */

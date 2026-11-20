@@ -13,14 +13,27 @@ export function normalizarCodigo(codigo: string): string {
 }
 
 /**
- * Si lo escrito tiene la forma del número de una OT («OT 2921-2026», también a
- * medias o con otros separadores): el mantenimiento y la garantía se costean
- * por el número de su OT, y ningún código de unidad empieza así. La base mira
- * lo mismo (`es_codigo_de_ot`, migración 20261120500000) y no acepta uno que no
- * sea de una OT que existe.
+ * Si lo escrito tiene la forma del número de una OT: «OT 2921-2026», también a
+ * medias o con otros separadores, o el número solo, como viene en el papel
+ * («2921-2026», «2921»). El mantenimiento y la garantía se costean por el
+ * número de su OT, y ningún código de unidad empieza así (todos empiezan con
+ * letras). La base mira lo mismo (`es_codigo_de_ot`, migración 20261120500000)
+ * y no acepta uno que no sea el de una OT que existe.
  */
 export function esCodigoDeOt(codigo: string): boolean {
-  return /^OT[^A-Z0-9]*[0-9]/.test(codigo.trim().toUpperCase())
+  return /^(OT[^A-Z0-9]*[0-9]|[0-9]{1,6}([^A-Z0-9]+[0-9]{2,4})?$)/.test(codigo.trim().toUpperCase())
+}
+
+/**
+ * El código con que se costea una OT. La de mantenimiento o de garantía no
+ * tiene código interno: va por el de su OT («OT 2921-2026», `codigo_de_la_ot`),
+ * aunque su unidad tenga el de su fabricación; sus materiales, su caja, sus
+ * horas y los gastos de su pestaña Costos se cargan ahí (migración
+ * 20261120500000). Las demás, por el código de su unidad. Vacío si no tiene.
+ */
+export function codigoDeCosteoDeLaOt(orden: { tipo_trabajo: string; numero: string }, codigoDeLaUnidad: string | null | undefined): string {
+  if (orden.tipo_trabajo === 'MANTENIMIENTO' || orden.tipo_trabajo === 'GARANTIA') return normalizarCodigo(`OT ${orden.numero}`)
+  return normalizarCodigo(codigoDeLaUnidad ?? '')
 }
 
 /**

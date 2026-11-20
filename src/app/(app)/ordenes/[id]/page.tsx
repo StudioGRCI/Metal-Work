@@ -28,7 +28,7 @@ import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
-import { CODIGO_SIN_AVANCE, enlaceCodigo, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import {
   accesoriosDeOrden,
   personalDelTaller,
@@ -189,9 +189,10 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const merma = verMerma ? await mermaDeOrden(id) : null
   const puedeVerControlEntrega = puede(perfil, 'costos.controlar_ot') || puede(perfil, 'costos.ver') || puede(perfil, 'costos.solicitar_pago')
   // Con código interno, la pestaña Costos muestra arriba el costo del código,
-  // que es el de la unidad: lo de la OT es solo una parte. Las dos lecturas van a la vez.
+  // que es el de la unidad: lo de la OT es solo una parte. El mantenimiento y la
+  // garantía, el de su OT («OT 2921-2026»). Las dos lecturas van a la vez.
   const codigoDeLaUnidad =
-    normalizarCodigo((orden.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '') || null
+    codigoDeCosteoDeLaOt(orden, (orden.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno) || null
   const conCodigo = codigoDeLaUnidad !== null && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
   const [datosCostos, costoDelCodigo] = await Promise.all([
     vista === 'costos' || (vista === 'entrega' && puedeVerControlEntrega)

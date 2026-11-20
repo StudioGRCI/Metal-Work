@@ -388,7 +388,7 @@ export function EntradaCodigoInterno({
           autoCapitalize="characters"
           spellCheck={false}
           // Corto: en la caja diaria el campo mide 227 px y «Escribe el código o la unidad» salía cortado.
-          placeholder={codigos === null ? undefined : 'Código, placa o marca'}
+          placeholder={codigos === null ? undefined : 'Código, placa o N.º de OT'}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={lista}
@@ -638,7 +638,11 @@ function EstadoDelCodigo({
     } else if (ofrecidas.length > 0) {
       texto = (
         <span className="text-aviso">
-          {parecido ? 'No está en la lista, pero se parece a uno que sí: tócalo si es ese.' : 'No es un código. Elige uno:'}
+          {parecido
+            ? 'No está en la lista, pero se parece a uno que sí: tócalo si es ese.'
+            : esCodigoDeOt(escrito)
+              ? 'Elige la OT de la lista:'
+              : 'No es un código. Elige uno:'}
         </span>
       )
       salidas = (

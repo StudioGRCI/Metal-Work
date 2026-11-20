@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -16,7 +17,7 @@ import {
 } from '@/lib/datos/vehiculos'
 import { esCodigoDeOt } from '@/lib/dominio/codigos-internos'
 import { definirRevisionSalida } from '@/lib/dominio/ficha-vehiculo'
-import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
+import { conQueVuelveDelArenado, MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -54,6 +55,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
     estadosDeSalida(enPlanta ? [r.id] : []),
   ])
   const estado = estados.get(r.id)
+  const verOt = puede(perfil, 'ordenes.ver')
 
   return (
     <>
@@ -71,6 +73,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               bloqueoSalida={estado?.falta_para_salir ?? null}
               // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
               alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
+              vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
             />
           )
         }
@@ -95,17 +98,25 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               <Dato titulo="Código interno">{r.codigo_interno}</Dato>
             )}
             {/* Garantía y mantenimiento van por su OT: la salida espera que Administración dé por terminado el trabajo. */}
-            {estado?.exige && estado.garantia_ot && (
+            {estado?.exige && estado.garantia_ot ? (
               <Dato titulo={r.motivo === 'MANTENIMIENTO' ? 'OT de mantenimiento' : 'OT de garantía'}>
                 <span data-garantia-salida={estado.garantia_estado ?? ''}>
-                  {estado.garantia_ot} ·{' '}
+                  <OtDelIngreso codigo={estado.garantia_ot} orden={verOt ? r.orden_id : null} /> ·{' '}
                   {estado.garantia_estado === 'TERMINADA'
-                    ? r.motivo === 'MANTENIMIENTO' ? 'mantenimiento terminado' : 'garantía terminada'
+                    ? r.motivo === 'MANTENIMIENTO' ? 'terminado' : 'terminada'
                     : estado.garantia_estado === 'ANULADA'
                       ? 'OT anulada'
-                      : r.motivo === 'MANTENIMIENTO' ? 'mantenimiento por terminar' : 'garantía por terminar'}
+                      : 'por terminar'}
                 </span>
               </Dato>
+            ) : (
+              // Ya salió o se anuló: la OT con que entró sigue a la vista, para saber a qué trabajo fue.
+              r.codigo_interno &&
+              esCodigoDeOt(r.codigo_interno) && (
+                <Dato titulo={r.motivo === 'MANTENIMIENTO' ? 'OT de mantenimiento' : r.motivo === 'GARANTIA' ? 'OT de garantía' : 'OT'}>
+                  <OtDelIngreso codigo={r.codigo_interno.replace(/^OT[^0-9]*/i, '')} orden={verOt ? r.orden_id : null} />
+                </Dato>
+              )
             )}
             {estado?.exige && !estado.garantia_ot && (
               <Dato titulo="Avance del código">
@@ -195,6 +206,17 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
         )}
       </div>
     </>
+  )
+}
+
+/** El código de la OT del ingreso, con su enlace si la cuenta puede ver las órdenes. */
+function OtDelIngreso({ codigo, orden }: { codigo: string; orden: string | null }) {
+  return orden ? (
+    <Link href={`/ordenes/${orden}`} className="text-acento underline-offset-2 hover:underline">
+      {codigo}
+    </Link>
+  ) : (
+    <>{codigo}</>
   )
 }
 

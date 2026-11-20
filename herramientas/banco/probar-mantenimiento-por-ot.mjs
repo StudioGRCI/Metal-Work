@@ -204,7 +204,7 @@ let registroId = null
 
   await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
   const dato = limpio(await pagina.locator('[data-garantia-salida]').innerText().catch(() => ''))
-  comprobar(dato.includes(NUMERO) && dato.includes('mantenimiento por terminar'), `el detalle dice «${dato}»`)
+  comprobar(dato.includes(NUMERO) && dato.includes('· por terminar'), `el detalle dice «${dato}»`)
   const revision = limpio(await pagina.locator('#revision-salida').innerText().catch(() => ''))
   comprobar(revision.includes('dé por terminado el mantenimiento'), `la revisión de Tesorería espera el mantenimiento: «${revision.slice(0, 160)}»`)
   comprobar(errores.length === 0, `Requerimientos sin errores de consola (${errores.join(' | ')})`)
@@ -265,6 +265,17 @@ let registroId = null
   const lista = limpio(await v.getByRole('listbox').innerText().catch(() => ''))
   comprobar(lista.includes('No hay OT abierta de mantenimiento ni de garantía con ese número') && !lista.includes('como código nuevo'),
     `«OT 9999-2026» dice que no hay esa OT y no se ofrece como código nuevo («${lista.slice(0, 120)}»)`)
+  // El número solo, como viene en el papel, tampoco: ni el que no existe ni el de la OT que sí.
+  await codigo.fill('9999-2026')
+  await v.getByRole('listbox').waitFor({ timeout: 10000 }).catch(() => {})
+  const sola = limpio(await v.getByRole('listbox').innerText().catch(() => ''))
+  comprobar(sola.includes('No hay OT abierta de mantenimiento ni de garantía con ese número') && !sola.includes('como código nuevo'),
+    `«9999-2026» tampoco se ofrece como código nuevo («${sola.slice(0, 120)}»)`)
+  await codigo.fill(NUMERO)
+  await v.getByRole('listbox').getByRole('option', { name: new RegExp(NUMERO) }).first().waitFor({ timeout: 10000 }).catch(() => {})
+  const conNumero = limpio(await v.getByRole('listbox').innerText().catch(() => ''))
+  comprobar(conNumero.includes(CODIGO_OT) && !conNumero.includes('como código nuevo'),
+    `«${NUMERO}» ofrece la OT y no un código nuevo («${conNumero.slice(0, 120)}»)`)
   await codigo.fill(`ot ${NUMERO.split('-')[0]}`)
   const opcion = v.getByRole('listbox').getByRole('option', { name: new RegExp(NUMERO) })
   await opcion.first().waitFor({ timeout: 10000 }).catch(() => {})

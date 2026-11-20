@@ -297,6 +297,16 @@ export function motivoPorOt(motivo: string): boolean {
 }
 
 /**
+ * Con qué vuelve del arenado externo: el de mantenimiento o garantía, por su
+ * OT, aunque Administración la haya dado por terminada mientras estaba fuera;
+ * los demás, con el motivo Arenado y su código. La base no deja otra puerta.
+ */
+export function conQueVuelveDelArenado(motivo: string, codigo: string | null): string {
+  if (motivoPorOt(motivo) && codigo) return `el motivo ${motivo === 'MANTENIMIENTO' ? 'Mantenimiento' : 'Garantía'} y su ${codigo}`
+  return 'el motivo «Arenado»'
+}
+
+/**
  * La hora que se escribe en un `datetime-local` es la del taller. Perú no
  * cambia de hora, así que se le pega su desfase y la base la guarda bien.
  */

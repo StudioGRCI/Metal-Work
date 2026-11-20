@@ -184,7 +184,7 @@ let registroId = null
 
   await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
   const dato = limpio(await pagina.locator('[data-garantia-salida]').innerText().catch(() => ''))
-  comprobar(dato.includes(NUMERO) && dato.includes('garantía por terminar'), `el detalle dice «${dato}»`)
+  comprobar(dato.includes(NUMERO) && dato.includes('· por terminar'), `el detalle dice «${dato}»`)
   comprobar((await pagina.locator('[data-avance-salida]').count()) === 0, 'y no muestra el avance del código')
   comprobar(errores.length === 0, `Requerimientos sin errores de consola (${errores.join(' | ')})`)
   await contexto.close()
@@ -249,7 +249,7 @@ let registroId = null
   comprobar(await fila.getByRole('button', { name: 'Marcar salida' }).isDisabled(), 'sin el visto de Tesorería sigue sin salir')
   await pagina.goto(`${BASE}/vehiculos/${registroId}`, { waitUntil: 'networkidle' })
   const dato = limpio(await pagina.locator('[data-garantia-salida]').innerText().catch(() => ''))
-  comprobar(dato.includes('garantía terminada'), `el detalle dice «${dato}»`)
+  comprobar(dato.includes('· terminada'), `el detalle dice «${dato}»`)
   const revision = limpio(await pagina.locator('#revision-salida').innerText().catch(() => ''))
   comprobar(!revision.includes('100 %') && !revision.includes('dé por terminada'),
     `la revisión de Tesorería ya no espera el avance ni la garantía: «${revision.slice(0, 160)}»`)

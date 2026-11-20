@@ -14,7 +14,7 @@ import {
   type EstadoDeSalida,
   type RegistroVehiculo,
 } from '@/lib/datos/vehiculos'
-import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
+import { conQueVuelveDelArenado, MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -169,6 +169,7 @@ function FilaVehiculo({
             bloqueoSalida={estado?.falta_para_salir ?? null}
             // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
             alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
+            vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
           />
         )}
       </TD>
