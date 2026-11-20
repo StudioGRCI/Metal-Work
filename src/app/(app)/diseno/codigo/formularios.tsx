@@ -27,7 +27,7 @@ import {
   rutaPlanoCodigo,
   type VistaDiseno,
 } from '@/lib/dominio/diseno-codigos'
-import { pasoTrasLoQueQuedo, useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana, useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -993,6 +993,7 @@ export function CargarDxf({ codigo }: { codigo: string }) {
   // Quedó una parte del envío: la descripción se traba, para que lo que falta
   // entre en el mismo envío y el mismo aviso, con la misma descripción.
   const [aMedias, setAMedias] = useState(false)
+  const router = useRouter()
   // Tras cargar, el formulario se arma de nuevo (vacío): el cursor vuelve a «Qué traen».
   const volverAlInicio = useRef(false)
   const nuevoEnvio = () => {
@@ -1045,7 +1046,20 @@ export function CargarDxf({ codigo }: { codigo: string }) {
           // corta la cadena callada: se dice qué quedó y qué falta.
           const r = quedaron.length === 0 ? await subir() : await pasoTrasLoQueQuedo(subir)
           if (!r.ok && !yaEntroLaPrimeraVez(r.error)) {
-            if (quedaron.length === 0) return { ok: false, error: archivos.length === 1 ? r.error : `No subió ninguno. «${archivo.name}»: ${r.error}` }
+            if (quedaron.length === 0) {
+              if (!pudoHaberEntrado(r.error)) return { ok: false, error: archivos.length === 1 ? r.error : `No subió ninguno. «${archivo.name}»: ${r.error}` }
+              // El primero pudo entrar: no se dice que no subió, y la descripción
+              // se traba para que el reenvío vaya con la misma.
+              setAMedias(true)
+              refrescarSiEsDeLaPestana(router)
+              return {
+                ok: false,
+                error:
+                  archivos.length === 1
+                    ? r.error
+                    : `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. Vuelve a enviar ahora los ${archivos.length}, sin recargar: así no se repite ninguno.`,
+              }
+            }
             // No se promete que reenviar todo no repite: tras salir o recargar,
             // el envío es otro y los que ya quedaron saldrían dos veces.
             const faltan = archivos.slice(i).map((a) => `«${a.name}»`).join(', ')
@@ -1056,6 +1070,8 @@ export function CargarDxf({ codigo }: { codigo: string }) {
               ? `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. ${yaQuedo} Vuelve a enviar ahora los que faltan (${faltan}), sin recargar: así no se repite ninguno.`
               : `${yaQuedo} «${archivo.name}» no subió: ${r.error} Envía solo los que faltan: ${faltan}.`
             setAMedias(true)
+            // Los que quedaron se ven en la lista ya: la pantalla se repinta sola solo con el último.
+            refrescarSiEsDeLaPestana(router)
             return { ok: false, error: lo, arriba: lo }
           }
           quedaron.push(`«${archivo.name}»`)
