@@ -4,7 +4,7 @@
  *
  *   1. Diseño carga tres planos con su % de la unidad: el que pasa del 100 %
  *      no entra y lo escrito no se pierde; después le baja el % a uno con
- *      «Cambiar %» y carga las etapas de siempre.
+ *      «Cambiar %» y carga el par Habilitado y Ensamblaje.
  *   2. El supervisor de Maestranza, en el teléfono, reporta el plano de su
  *      área y abre su propia actividad «Corte de materia prima» en 9 %.
  *   3. Al día siguiente la continúa: el formulario pide de 10 a 100; un 9 no
@@ -187,9 +187,9 @@ await base.query('commit')
   await pagina.screenshot({ path: join(CAPTURAS, 'avance-real-diseno-planos.png'), fullPage: true })
 
   await pagina.goto(enlace('etapas'), { waitUntil: 'networkidle' })
-  await pagina.getByRole('button', { name: 'Cargar las etapas de siempre' }).click()
-  await pagina.locator('[data-etapa="Entrega"]').waitFor({ timeout: 30000 })
-  comprobar((await pagina.locator('[data-etapa]').count()) === 6, 'Diseño carga las seis etapas de siempre')
+  await pagina.getByRole('button', { name: 'Cargar Habilitado y Ensamblaje' }).click()
+  await pagina.locator('[data-etapa="Ensamblaje"]').waitFor({ timeout: 30000 })
+  comprobar((await pagina.locator('[data-etapa]').count()) === 2, 'Diseño carga el par: Habilitado y Ensamblaje')
   comprobar(errores.length === 0, `Diseño sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

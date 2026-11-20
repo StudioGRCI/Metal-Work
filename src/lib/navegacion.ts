@@ -15,6 +15,7 @@ import {
   Coins,
   CreditCard,
   DraftingCompass,
+  FileArchive,
   FileSpreadsheet,
   FileText,
   HandCoins,
@@ -147,6 +148,17 @@ export const NAVEGACION = [
         descripcion: 'Las etapas de cada unidad con su fecha comprometida y cómo van',
         disponible: true,
       },
+      // Los DXF que Diseño genera para el corte en plasma: un acceso aparte,
+      // solo de Diseño, Maestranza y Producción (observaciones de Diseño,
+      // 2026-11-06). Los supervisores los bajan desde «Planos y etapas».
+      {
+        titulo: 'Archivos DXF',
+        ruta: '/diseno/dxf',
+        icono: FileArchive,
+        permiso: 'diseno.codigos',
+        descripcion: 'Los DXF de cada unidad para el corte, para Maestranza y Producción',
+        disponible: true,
+      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
@@ -164,7 +176,7 @@ export const NAVEGACION = [
         // Lo llena el colaborador y lo aprueba Diseño; ahí termina (migración
         // 20261001213000). Administración ya no lo recibe.
         permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general'],
-        descripcion: 'Tareas de colaboradores y planos aprobados en Word',
+        descripcion: 'Las actividades del día de los colaboradores, en el Word del formato',
         disponible: true,
       },
       // La hace la jefatura de Diseño y la recibe Administración; nadie más la
@@ -385,7 +397,7 @@ export const NAVEGACION = [
         ruta: '/planos',
         icono: DraftingCompass,
         permiso: 'codigos_internos.area',
-        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
+        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, las etapas de tu área y los DXF para el corte',
         disponible: true,
       },
       // Maestranza pidió el 2026-10-15 ver lo que Almacén tiene antes de
@@ -705,16 +717,22 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // mantiene. La evaluación es de cada cierto tiempo: al final de su grupo.
   DISENO: {
     grupos: [
-      { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas'] },
+      { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
       { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
     telefono: ['/diseno/planos', '/diseno/etapas', '/diseno/materiales', '/ordenes'],
   },
+  // Desde el 2026-11-06 (observaciones de Diseño): anota sus actividades del
+  // día, revisa la OT y pide el material por requerimiento, mirando antes el
+  // stock de Almacén. Los planos ya no los sube: los sube el encargado.
   DISENO_COLABORADOR: {
-    grupos: [{ titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] }],
-    telefono: ['/diseno/informe-semanal', '/ordenes', '/'],
+    grupos: [
+      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] },
+      { titulo: 'Material', rutas: ['/requerimientos', '/almacen/stock'] },
+    ],
+    telefono: ['/diseno/informe-semanal', '/ordenes', '/requerimientos', '/'],
   },
   // Administración lee clientes, unidades, catálogos y costos porque carga la
   // OT y ve su costo; pero la valorización es de Logística (la pantalla
@@ -925,6 +943,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/diseno/planos', corto: 'Planos' },
   { ruta: '/diseno/materiales', corto: 'Materiales' },
   { ruta: '/diseno/etapas', corto: 'Etapas' },
+  { ruta: '/diseno/dxf', corto: 'DXF' },
   { ruta: '/planos', corto: 'Planos' },
   { ruta: '/seguimiento', corto: 'Seguimiento' },
   { ruta: '/seguimiento?vista=materiales', corto: 'Materiales' },

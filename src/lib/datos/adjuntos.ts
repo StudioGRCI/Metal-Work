@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 export type Adjunto = {
   id: string
   orden_id: string
-  tipo: 'ORDEN' | 'CRONOGRAMA'
+  tipo: 'ORDEN' | 'CRONOGRAMA' | 'FICHA_VEHICULO'
   nombre_archivo: string
   ruta_storage: string
   mime_type: string | null

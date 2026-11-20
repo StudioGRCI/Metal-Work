@@ -852,6 +852,66 @@ export type Database = {
           }
         ]
       }
+      codigo_dxf: {
+        Row: {
+          id: string
+          codigo_interno: string
+          descripcion: string
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          subido_por: string
+          subido_en: string
+          quitado_en: string | null
+          quitado_por: string | null
+          actualizado_en: string
+          envio: string
+        }
+        Insert: {
+          id: string
+          codigo_interno: string
+          descripcion: string
+          nombre_archivo: string
+          ruta: string
+          tamano_bytes: number
+          subido_por?: string
+          subido_en?: string
+          quitado_en?: string | null
+          quitado_por?: string | null
+          actualizado_en?: string
+          envio: string
+        }
+        Update: {
+          id?: string
+          codigo_interno?: string
+          descripcion?: string
+          nombre_archivo?: string
+          ruta?: string
+          tamano_bytes?: number
+          subido_por?: string
+          subido_en?: string
+          quitado_en?: string | null
+          quitado_por?: string | null
+          actualizado_en?: string
+          envio?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codigo_dxf_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_dxf_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       codigo_etapas: {
         Row: {
           id: string
@@ -870,6 +930,8 @@ export type Database = {
           quitada_en: string | null
           quitada_por: string | null
           actualizado_en: string
+          padre_id: string | null
+          de_area: boolean
         }
         Insert: {
           id?: string
@@ -888,6 +950,8 @@ export type Database = {
           quitada_en?: string | null
           quitada_por?: string | null
           actualizado_en?: string
+          padre_id?: string | null
+          de_area?: boolean
         }
         Update: {
           id?: string
@@ -906,6 +970,8 @@ export type Database = {
           quitada_en?: string | null
           quitada_por?: string | null
           actualizado_en?: string
+          padre_id?: string | null
+          de_area?: boolean
         }
         Relationships: [
           {
@@ -927,6 +993,13 @@ export type Database = {
             columns: ["creado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "codigo_etapas_padre_id_fkey"
+            columns: ["padre_id"]
+            isOneToOne: false
+            referencedRelation: "codigo_etapas"
             referencedColumns: ["id"]
           },
           {
@@ -11877,6 +11950,12 @@ export type Database = {
         }
         Returns: string
       }
+      area_de_etapa_de_diseno: {
+        Args: {
+          p_area: string | null
+        }
+        Returns: boolean
+      }
       armar_ficha_ot: {
         Args: {
           p_orden: string | null
@@ -12167,6 +12246,12 @@ export type Database = {
           p_nombre_archivo: string | null
         }
         Returns: string
+      }
+      cerrar_aviso_dxf_sin_archivos: {
+        Args: {
+          p_envio: string | null
+        }
+        Returns: null
       }
       cerrar_costeo_codigo: {
         Args: {
@@ -13726,6 +13811,12 @@ export type Database = {
           lineas: Json | null
         }[]
       }
+      dxf_esta_registrado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       editar_carroceria_ventas: {
         Args: {
           p_id: string | null
@@ -14183,6 +14274,18 @@ export type Database = {
           p_codigo: string | null
           p_nombre: string | null
           p_area: string | null
+          p_inicio_plan: string | null
+          p_fin_plan: string | null
+        }
+        Returns: string
+      }
+      guardar_etapa_de_area: {
+        Args: {
+          p_id: string | null
+          p_codigo: string | null
+          p_padre: string | null
+          p_area: string | null
+          p_nombre: string | null
           p_inicio_plan: string | null
           p_fin_plan: string | null
         }
@@ -14912,6 +15015,13 @@ export type Database = {
           sin_completar: boolean | null
         }[]
       }
+      par_de_etapas_codigo: {
+        Args: {
+          p_codigo: string | null
+          p_juego: string | null
+        }
+        Returns: number
+      }
       partes_con_boleta_de_la_compra: {
         Args: {
           p_compra: string | null
@@ -15195,6 +15305,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_tocar_etapa: {
+        Args: {
+          p_etapa: string | null
+        }
+        Returns: boolean
+      }
       puede_ver_area_material: {
         Args: {
           p_area: string | null
@@ -15202,6 +15318,10 @@ export type Database = {
         Returns: boolean
       }
       puede_ver_codigos_de_diseno: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      puede_ver_dxf: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
@@ -15267,6 +15387,18 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: string
+      }
+      quitar_dxf_codigo: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: string
+      }
+      quitar_dxf_envio: {
+        Args: {
+          p_envio: string | null
+        }
+        Returns: number
       }
       quitar_etapa_codigo: {
         Args: {
@@ -15419,6 +15551,16 @@ export type Database = {
           p_caja: string | null
           p_monto_cuenta: number | null
           p_deja_pagada: boolean | null
+        }
+        Returns: string
+      }
+      registrar_dxf_codigo: {
+        Args: {
+          p_id: string | null
+          p_codigo: string | null
+          p_descripcion: string | null
+          p_nombre_archivo: string | null
+          p_envio: string | null
         }
         Returns: string
       }

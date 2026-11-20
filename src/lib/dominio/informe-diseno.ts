@@ -15,7 +15,7 @@ export const FORMATO_INFORME_DISENO = {
   area: 'Diseño',
 } as const
 
-/** Las tareas de la tabla «Planificación de modelado», con el nombre que usa el formato. */
+/** Las actividades de la tabla «Actividades diarias», con el nombre que usa el formato. */
 export const TAREAS_DISENO = {
   MODELADO: 'Modelado',
   MODELADO_3D: 'Modelado 3D',

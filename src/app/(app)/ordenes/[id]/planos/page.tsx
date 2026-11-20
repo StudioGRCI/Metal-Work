@@ -82,7 +82,10 @@ export default async function PaginaPlanos({ params, searchParams }: {
             nombre: `${e.etapa ?? 'Etapa'} · ${areasEtapas.find(a => a.id === e.area_id)?.nombre ?? 'Área'}`,
           }))}
           puedeDisenar={puede(perfil, 'diseno.planos')}
-          puedeSubirPdf={puede(perfil, 'diseno.subir_pdf')}
+          // El colaborador de Diseño ya no sube planos: los planos pasan dos o tres
+          // revisiones y los sube el encargado (observaciones de Diseño, 2026-11-06;
+          // la base lo cierra en la migración 20261106100000). Aquí solo los consulta.
+          puedeSubirPdf={false}
           areaPropia={manoDelTaller}
           ordenViva={abierta} motivoInactiva={motivoInactiva} />
         {/* Quién dibuja es configuración: se toca al empezar la OT y después
