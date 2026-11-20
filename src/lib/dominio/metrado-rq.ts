@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { cantidad as cifra } from '@/lib/format'
 
 /**
  * Cómo está un insumo de RQ frente al metrado de Diseño (migración
@@ -23,3 +24,19 @@ export const frenaElRq = (estado: EstadoMetrado | undefined) =>
 
 /** Quien pidió puede escribir (o reescribir) su sustento. */
 export const pideSustento = (estado: EstadoMetrado | undefined) => estado === 'SIN_SUSTENTO' || estado === 'POR_AUTORIZAR' || estado === 'RECHAZADO'
+
+/** Lo que hace falta del metrado para explicar un insumo; lo trae `metrado_de_requerimientos`. */
+type MetradoParaExplicar = { metrado: number | null; pedido_antes: number; exceso: number; planos: string | null }
+
+/**
+ * La cuenta del insumo contra el metrado, en una frase: cuánto metró Diseño
+ * para el código, cuánto ya pidieron los RQ anteriores y cuánto se pasa.
+ */
+export function cuentaDelMetrado(m: MetradoParaExplicar, unidad: string): string {
+  const u = unidad ? ` ${unidad}` : ''
+  if (m.metrado === null) return 'No está en el metrado de Diseño de este código.'
+  const antes = m.pedido_antes > 0 ? `; los RQ anteriores ya pidieron ${cifra(m.pedido_antes)}${u}` : ''
+  const planos = m.planos ? ` (${m.planos})` : ''
+  const pasa = m.exceso > 0 ? `: se pasa ${cifra(m.exceso)}${u}` : ''
+  return `Diseño metró ${cifra(m.metrado)}${u}${planos}${antes}${pasa}.`
+}

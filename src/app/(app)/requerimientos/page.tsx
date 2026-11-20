@@ -5,6 +5,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { correccionesDe } from '@/lib/datos/correcciones'
+import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
 import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -64,7 +65,14 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // cifra verde de arriba. Las cifras siguen contando todos.
   const soloRecoger = !soloUno && params.ver === 'recoger'
   const mostrados = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
-  const correcciones = await correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id))
+  const [correcciones, metrado] = await Promise.all([
+    correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id)),
+    // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa.
+    metradoDeRequerimientos(mostrados.map((r) => r.id)).catch((e: unknown) => {
+      console.error('Requerimientos: no se pudo leer el metrado de Diseño.', e)
+      return null
+    }),
+  ])
   // El supervisor pide para su área y nada más: el formulario no le ofrece otra.
   const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id && a.requerimiento === 'OPERACION') : undefined
   // Lo corrige y lo anula quien lleva su tipo; el supervisor, solo los que registró él.
@@ -87,9 +95,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         titulo="Requerimientos"
         ayuda={
           pideSuArea
-            ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges y anulas solo los que registraste tú.'
+            ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges, sustentas y anulas solo los que registraste tú.'
             : emite
-            ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
+            ? 'Lo que cada área necesita, con el código interno y su justificación. La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. Almacén lo revisa insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
             : supervisaArea
               ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
               : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
@@ -178,6 +186,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               materiales={catalogos?.materiales ?? []}
               codigos={catalogos?.codigos ?? null}
               correcciones={correcciones.get(r.id)}
+              metrado={metrado}
             />
           ))}
         </div>

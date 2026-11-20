@@ -69,13 +69,13 @@ export const ALMACENES: Record<Almacen, Def & { regla: string; formato: string |
   ACCESORIOS: {
     etiqueta: 'Accesorios', tono: 'info',
     descripcion: 'Sistemas y accesorios de la unidad: hidráulico, eléctrico, frenos, suspensión.',
-    regla: 'Sale para una unidad con código interno, o a PLANTA u OFICINA solo si su requerimiento lo pide. Lo que entró para una unidad no sale para otra.',
+    regla: 'Sale solo con el requerimiento que lo pide, y el material que pidió o el que se compró para él: para su unidad, o a PLANTA u OFICINA si su requerimiento es de ahí. Lo que entró para una unidad no sale para otra.',
     formato: null,
   },
   MATERIA_PRIMA: {
     etiqueta: 'Materia prima', tono: 'aviso',
     descripcion: 'Planchas, perfiles y tubos de acero: el almacén más costoso.',
-    regla: 'La salida queda abierta hasta adjuntar el formato de recepción firmado por Almacén y por quien recibe.',
+    regla: 'Sale solo con el requerimiento que la pide, y el material que pidió o el que se compró para él. La salida queda abierta hasta adjuntar el formato de recepción firmado por Almacén y por quien recibe.',
     formato: 'Formato de recepción de materia prima',
   },
   EPP: {

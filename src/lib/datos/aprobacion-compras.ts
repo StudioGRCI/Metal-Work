@@ -14,6 +14,12 @@ export type LineaParaAprobar = {
   unidad: string | null
   cantidad: number
   precio_unitario: number | null
+  /**
+   * Cuánto hay del material en el almacén y cuánto ya viene en otras OC abiertas
+   * (`stock_al_aprobar_compras`, migración 20261120420000): para no aprobar dos
+   * veces la misma compra. Vacío en la OS, o si no se pudo leer.
+   */
+  stock?: { existencia: number; en_camino: number; en_camino_ocs: string | null } | null
 }
 
 /** Una orden de compra (OC) o de servicio (OS) en la bandeja de Gerencia. */
@@ -159,12 +165,21 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   // y si la OC va con factura o con boleta: `documentos_por_aprobar` no lo trae,
   // y sin eso la pantalla sumaría el IGV a una compra que no lo lleva.
   const idsOc = (compras.data ?? []).flatMap((c) => (c.tipo !== 'OS' && c.id ? [c.id] : []))
-  const [insumos, comprobante] = await Promise.all([
+  const [insumos, comprobante, stock] = await Promise.all([
     insumosPorCompra(supabase, idsOc),
     idsOc.length ? supabase.from('ordenes_compra_materiales').select('id, con_factura').in('id', idsOc) : Promise.resolve({ data: [], error: null }),
+    idsOc.length ? supabase.rpc('stock_al_aprobar_compras', { p_compras: idsOc }) : Promise.resolve({ data: [], error: null }),
   ])
   if (comprobante.error) throw new Error(`No se pudo leer si las compras van con factura: ${comprobante.error.message}`)
   const conFactura = new Map((comprobante.data ?? []).map((o) => [o.id, o.con_factura ?? true]))
+  // Sin el stock, la orden se aprueba igual: solo no dice cuánto hay.
+  if (stock.error) console.error('Aprobación de compras: no se pudo leer el stock de Almacén.', stock.error.message)
+  const stockDe = new Map(
+    (stock.error ? [] : (stock.data ?? [])).map((f) => [
+      `${f.orden_compra_id}:${f.codigo}`,
+      { existencia: Number(f.existencia ?? 0), en_camino: Number(f.en_camino ?? 0), en_camino_ocs: f.en_camino_ocs },
+    ]),
+  )
 
   return {
     regla: regla.data
@@ -202,7 +217,9 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         motivo_rechazo: c.motivo_rechazo,
         ordenes: c.ordenes ?? [],
         unidades: c.unidades ?? [],
-        lineas: (c.lineas as LineaParaAprobar[] | null) ?? [],
+        lineas: ((c.lineas as LineaParaAprobar[] | null) ?? []).map((l) =>
+          c.tipo === 'OS' ? l : { ...l, stock: stockDe.get(`${c.id}:${l.material_codigo}`) ?? null },
+        ),
         codigo_interno: c.tipo === 'OS' ? (porId.get(c.id ?? '')?.codigo_interno ?? null) : null,
         requerimientos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.requerimientos ?? []),
         codigos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.codigos ?? []),

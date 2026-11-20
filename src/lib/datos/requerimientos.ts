@@ -126,6 +126,8 @@ export async function cargarRequerimientos(
     soloAbiertos?: boolean
     tipo?: 'OPERACION' | 'ADMINISTRACION'
     id?: string
+    /** Solo estos RQ: los que esperan el visto de Diseño, por ejemplo. */
+    ids?: string[]
     area?: string
     codigo?: string
     conEntregado?: boolean
@@ -136,6 +138,7 @@ export async function cargarRequerimientos(
   if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.id) consulta = consulta.eq('id', opciones.id)
+  if (opciones.ids) consulta = consulta.in('id', opciones.ids)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
   const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)

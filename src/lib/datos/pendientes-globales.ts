@@ -736,12 +736,12 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
 
   // Los requerimientos abiertos se leen una vez: Almacén, Logística, la
   // administradora y el supervisor cuentan cosas distintas de la misma lista.
-  let abiertos: Promise<{ estado: string; tipo: string | null; area_id: string | null }[]> | null = null
+  let abiertos: Promise<{ id: string; estado: string; tipo: string | null; area_id: string | null; creado_por: string | null }[]> | null = null
   const rqAbiertos = () =>
     (abiertos ??= (async () => {
       const { data, error } = await supabase
         .from('requerimientos')
-        .select('estado, tipo, area_id')
+        .select('id, estado, tipo, area_id, creado_por')
         .in('estado', [...ESTADOS_RQ_ABIERTOS])
         .limit(1000)
       if (error) throw new Error('No se pudo consultar el pendiente.')
@@ -750,11 +750,57 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   const atiende = quienAtiende(perfil)
   const rqQueTeTocan = (estado: string) => async () =>
     (await rqAbiertos()).filter((r) => r.estado === estado && leTocaAtender(r, atiende)).length
+  // Los RQ con algún insumo que se pasa del metrado de Diseño sin su visto
+  // (migración 20261120400000), y con cuál falta el sustento de quien pidió.
+  let frenados: Promise<{ frenados: Set<string>; sinSustento: Set<string> }> | null = null
+  const rqFrenados = () =>
+    (frenados ??= (async () => {
+      const ids = (await rqAbiertos()).map((r) => r.id)
+      if (ids.length === 0) return { frenados: new Set<string>(), sinSustento: new Set<string>() }
+      const { data, error } = await supabase.rpc('metrado_de_requerimientos', { p_requerimientos: ids })
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      const filas = data ?? []
+      return {
+        frenados: new Set(filas.filter((m) => ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO'].includes(m.estado ?? '')).map((m) => m.requerimiento_id ?? '')),
+        sinSustento: new Set(filas.filter((m) => m.estado === 'SIN_SUSTENTO' || m.estado === 'RECHAZADO').map((m) => m.requerimiento_id ?? '')),
+      }
+    })())
 
   if (atiende.recibe) tareas.push({
     clave: 'rq_por_revisar', ruta: '/requerimientos/atencion', tono: 'aviso',
     texto: n => plural(n, 'requerimiento por revisar insumo por insumo', 'requerimientos por revisar insumo por insumo'),
-    contar: rqQueTeTocan('POR_ATENDER'),
+    // El que espera el visto de Diseño todavía no le toca a Almacén.
+    contar: async () => {
+      const [lista, { frenados }] = await Promise.all([rqAbiertos(), rqFrenados()])
+      return lista.filter((r) => r.estado === 'POR_ATENDER' && leTocaAtender(r, atiende) && !frenados.has(r.id)).length
+    },
+  })
+  // Quien registró el RQ escribe por qué un insumo se pasa del metrado: quien
+  // lleva su tipo, y el supervisor que pide por unidad, solo los suyos.
+  const sustentaDe = {
+    OPERACION: puede(perfil, 'requerimientos.emitir'),
+    ADMINISTRACION: puede(perfil, 'requerimientos.administracion'),
+  }
+  const sustentaLosSuyos = puede(perfil, 'requerimientos.area')
+  const leTocaSustentar = (r: { tipo: string | null; creado_por: string | null }) =>
+    sustentaDe[tipoDeRequerimiento(r)] || (sustentaLosSuyos && tipoDeRequerimiento(r) === 'OPERACION' && r.creado_por === perfil.id)
+  if (perfil.rol.codigo !== 'ADMIN' && (sustentaDe.OPERACION || sustentaDe.ADMINISTRACION || sustentaLosSuyos)) tareas.push({
+    clave: 'rq_por_sustentar', ruta: '/requerimientos', tono: 'peligro',
+    texto: n => plural(n, 'requerimiento se pasa del metrado y espera tu sustento', 'requerimientos se pasan del metrado y esperan tu sustento'),
+    contar: async () => {
+      const [lista, { sinSustento }] = await Promise.all([rqAbiertos(), rqFrenados()])
+      return lista.filter((r) => sinSustento.has(r.id) && leTocaSustentar(r)).length
+    },
+  })
+  // Diseño: lo que se pasa del metrado y ya tiene su sustento.
+  if (perfil.rol.codigo !== 'ADMIN' && puede(perfil, 'requerimientos.autorizar_metrado')) tareas.push({
+    clave: 'rq_por_autorizar', ruta: '/requerimientos/metrado', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento pide más que el metrado y espera tu visto', 'requerimientos piden más que el metrado y esperan tu visto'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('requerimientos_por_autorizar')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
   })
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
     clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',

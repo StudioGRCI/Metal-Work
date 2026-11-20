@@ -135,12 +135,25 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'El requerimiento no quedó registrado. Recarga la pantalla.' }
 
-  const { data: emitido } = await supabase.from('requerimientos').select('numero').eq('id', cabecera.data.operacion_id).maybeSingle()
+  const [{ data: emitido }, { data: metrado }] = await Promise.all([
+    supabase.from('requerimientos').select('numero').eq('id', cabecera.data.operacion_id).maybeSingle(),
+    // Lo que se pasa del metrado de Diseño espera su sustento antes de que Almacén lo revise.
+    supabase.rpc('metrado_de_requerimientos', { p_requerimientos: [cabecera.data.operacion_id] }),
+  ])
+  const sePasan = (metrado ?? []).filter((m) => m.estado === 'SIN_SUSTENTO').map((m) => m.item)
 
   revalidatePath('/requerimientos')
   revalidatePath('/requerimientos/unidades')
   revalidatePath('/requerimientos/atencion')
-  return { ok: true, mensaje: `Requerimiento ${emitido?.numero ?? ''} registrado. Ya le llegó a Almacén para revisar el stock.` }
+  const numero = emitido?.numero ?? ''
+  if (sePasan.length > 0) {
+    const cuales = sePasan.length === 1 ? `El insumo ${sePasan[0]} se pasa` : `Los insumos ${sePasan.slice(0, -1).join(', ')} y ${sePasan.at(-1)} se pasan`
+    return {
+      ok: true,
+      mensaje: `Requerimiento ${numero} registrado. ${cuales} del metrado de Diseño: escribe por qué en su tarjeta, con «Escribir el sustento». Almacén lo revisa cuando Diseño lo autorice.`,
+    }
+  }
+  return { ok: true, mensaje: `Requerimiento ${numero} registrado. Ya le llegó a Almacén para revisar el stock.` }
 }
 
 /**

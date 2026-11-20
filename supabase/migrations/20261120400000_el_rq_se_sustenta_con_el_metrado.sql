@@ -306,9 +306,11 @@ revoke all on function public.requerimientos_por_autorizar() from public, anon;
 grant execute on function public.requerimientos_por_autorizar() to authenticated;
 
 -- 6. El sustento de quien pidió --------------------------------------------------------
--- Lo escribe quien puede registrar ese tipo de RQ (`rq_exigir`), uno por insumo
--- que se pasa. Si ya esperaba el visto, se reemplaza: la última palabra de quien
--- pidió es la que lee Diseño. A Diseño le llega el aviso.
+-- Lo escribe quien puede corregir ese RQ, uno por insumo que se pasa: quien
+-- lleva su tipo y el supervisor que lo registró para su área
+-- (`rq_exigir_del_area`, migración 20261120300000). Si ya esperaba el visto, se
+-- reemplaza: la última palabra de quien pidió es la que lee Diseño. A Diseño le
+-- llega el aviso.
 create or replace function public.sustentar_insumos(p_requerimiento uuid, p_lineas jsonb)
 returns uuid language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -323,7 +325,7 @@ begin
   if not found then
     raise exception 'El requerimiento no existe.';
   end if;
-  perform public.rq_exigir(v_rq.tipo, 'REGISTRAR');
+  perform public.rq_exigir_del_area(v_rq.tipo, 'CORREGIR', v_rq.area_id, v_rq.creado_por);
   if v_rq.estado in ('ANULADO', 'ENTREGADO') then
     raise exception 'El requerimiento % ya está %: no se sustenta.', v_rq.numero,
       case v_rq.estado when 'ANULADO' then 'anulado' else 'entregado' end using errcode = 'check_violation';
