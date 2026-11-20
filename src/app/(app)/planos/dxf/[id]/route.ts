@@ -13,10 +13,13 @@ import { createClient } from '@/lib/supabase/server'
  * política de `codigo_dxf` y la del archivo (`puede_ver_dxf`): Diseño y los
  * supervisores de Maestranza y de Producción; uno quitado ya no baja.
  */
+const texto = (mensaje: string, status: number) =>
+  new NextResponse(mensaje, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } })
+
 export async function GET(_request: Request, context: RouteContext<'/planos/dxf/[id]'>) {
   await exigirPermiso(['diseno.codigos', 'codigos_internos.area'])
   const { id } = await context.params
-  if (!z.guid().safeParse(id).success) return NextResponse.json({ error: 'El DXF no está disponible.' }, { status: 404 })
+  if (!z.guid().safeParse(id).success) return texto('Este DXF no está disponible.', 404)
   const supabase = await createClient()
   const { data: fila, error } = await supabase
     .from('codigo_dxf')
@@ -24,10 +27,11 @@ export async function GET(_request: Request, context: RouteContext<'/planos/dxf/
     .eq('id', id)
     .is('quitado_en', null)
     .maybeSingle()
-  if (error) return NextResponse.json({ error: 'No se pudo leer el DXF.' }, { status: 500 })
-  if (!fila) return NextResponse.json({ error: 'El DXF no está disponible: Diseño lo quitó o no es de tu área.' }, { status: 404 })
+  if (error) return texto('No se pudo leer el DXF. Vuelve a intentar en un momento.', 500)
+  // Texto llano y no JSON: es lo que ve quien tocó «Descargar» en una lista vieja.
+  if (!fila) return texto('Este DXF ya no está: Diseño lo quitó, o no es de tu área. Vuelve a Planos y etapas y recarga la página.', 404)
 
   const { data: enlace } = await supabase.storage.from(BUCKET_DXF).createSignedUrl(fila.ruta, 300, { download: fila.nombre_archivo })
-  if (!enlace?.signedUrl) return NextResponse.json({ error: `No se pudo preparar la descarga de ${fila.nombre_archivo}.` }, { status: 502 })
+  if (!enlace?.signedUrl) return texto(`No se pudo preparar la descarga de ${fila.nombre_archivo}. Vuelve a intentar en un momento.`, 502)
   return NextResponse.redirect(enlace.signedUrl, 303)
 }

@@ -1062,17 +1062,23 @@ export function CargarDxf({ codigo }: { codigo: string }) {
             }
             // No se promete que reenviar todo no repite: tras salir o recargar,
             // el envío es otro y los que ya quedaron saldrían dos veces.
-            const faltan = archivos.slice(i).map((a) => `«${a.name}»`).join(', ')
-            const yaQuedo = `Quedaron ${quedaron.length} de ${archivos.length} (${quedaron.join(', ')}).`
-            // Sin respuesta no se sabe si entró: se dice así, con el mensaje que la
-            // pantalla reconoce (`pudoHaberEntrado`), para que se ponga al día.
-            const lo = pudoHaberEntrado(r.error)
-              ? `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. ${yaQuedo} Vuelve a enviar ahora los que faltan (${faltan}), sin recargar: así no se repite ninguno.`
-              : `${yaQuedo} «${archivo.name}» no subió: ${r.error} Envía solo los que faltan: ${faltan}.`
+            // Hasta cinco nombres: con un juego grande, el resto se cuenta.
+            const nombres = (lista: string[]) => (lista.length > 5 ? `${lista.slice(0, 5).join(', ')} y ${lista.length - 5} más` : lista.join(', '))
+            const pendientes = archivos.slice(i).map((a) => `«${a.name}»`)
+            const yaQuedo = `${quedaron.length === 1 ? 'Quedó' : 'Quedaron'} ${quedaron.length} de ${archivos.length} (${nombres(quedaron)}).`
+            const duda = pudoHaberEntrado(r.error)
+            // En la pantalla: los elegidos siguen ahí y llevan el mismo id, así
+            // que tocar otra vez no repite ninguno. Sin respuesta no se sabe si
+            // entró: se dice así, con el mensaje que la pantalla reconoce.
+            const lo = duda
+              ? `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. ${yaQuedo} Vuelve a tocar «Cargar DXF» sin cambiar lo elegido ni recargar: los que ya quedaron no se repiten.`
+              : `${yaQuedo} «${archivo.name}» no subió: ${r.error} Vuelve a tocar «Cargar DXF» sin cambiar lo elegido ni recargar: los que ya quedaron no se repiten.`
+            // Si ya se fue de la pantalla, lo elegido se perdió: que elija solo lo que falta.
+            const arriba = `${duda ? `De «${archivo.name}» no se sabe si quedó. ` : ''}${yaQuedo} Elige solo los que faltan: ${nombres(pendientes)}.`
             setAMedias(true)
             // Los que quedaron se ven en la lista ya: la pantalla se repinta sola solo con el último.
             refrescarSiEsDeLaPestana(router)
-            return { ok: false, error: lo, arriba: lo }
+            return { ok: false, error: lo, arriba }
           }
           quedaron.push(`«${archivo.name}»`)
         }
@@ -1115,6 +1121,7 @@ export function CargarDxf({ codigo }: { codigo: string }) {
           required
           disabled={enviando}
           readOnly={aMedias}
+          className={aMedias ? 'bg-superficie-2' : undefined}
           aria-describedby={aMedias ? 'dxf-a-medias' : undefined}
         />
         {aMedias && (
