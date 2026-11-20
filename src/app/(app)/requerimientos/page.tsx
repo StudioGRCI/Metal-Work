@@ -25,14 +25,18 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const perfil = await exigirPermiso([
     'requerimientos.emitir',
     'requerimientos.administracion',
+    'requerimientos.area',
     'requerimientos.ver',
     'compras.crear',
     'almacen.recibir',
   ])
   // Cada requerimiento lo lleva su dueño: el de operación, Requerimientos; el
-  // de Administración, la administradora (migración 20261015162000).
+  // de Administración, la administradora (migración 20261015162000). El
+  // supervisor registra el de operación de su propia área (20261120300000).
+  const soloSuArea = !puede(perfil, 'requerimientos.emitir') && puede(perfil, 'requerimientos.area')
+  const pideSuArea = soloSuArea && perfil.area_id !== null
   const tipos: TipoRequerimiento[] = [
-    ...(puede(perfil, 'requerimientos.emitir') ? (['OPERACION'] as const) : []),
+    ...(puede(perfil, 'requerimientos.emitir') || pideSuArea ? (['OPERACION'] as const) : []),
     ...(puede(perfil, 'requerimientos.administracion') ? (['ADMINISTRACION'] as const) : []),
   ]
   const emite = tipos.length > 0
@@ -61,6 +65,11 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const soloRecoger = !soloUno && params.ver === 'recoger'
   const mostrados = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
   const correcciones = await correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id))
+  // El supervisor pide para su área y nada más: el formulario no le ofrece otra.
+  const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id) : undefined
+  // Lo corrige y lo anula quien lleva su tipo; el supervisor, solo los que registró él.
+  const loLleva = (r: (typeof requerimientos)[number]) =>
+    pideSuArea ? r.tipo === 'OPERACION' && r.creado_por === perfil.id : tipos.includes(r.tipo as TipoRequerimiento)
   // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
   const filtros = new URLSearchParams()
   if (pedida) filtros.set('tipo', pedida)
@@ -77,14 +86,16 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       <EncabezadoPagina
         titulo="Requerimientos"
         ayuda={
-          emite
+          pideSuArea
+            ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges y anulas solo los que registraste tú.'
+            : emite
             ? 'Lo que cada área necesita, con el código interno y su justificación. Al registrarlo lo revisa Almacén insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
             : supervisaArea
               ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
               : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
-        acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} />}
+        acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} areaFija={areaFija} />}
       />
 
       <Vistas
@@ -92,6 +103,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         className="mb-3"
         vistas={(supervisaArea
           ? [
+              ...(pideSuArea
+                ? [{ clave: 'unidades', titulo: 'Por unidad', href: '/requerimientos/unidades', activa: false, descripcion: 'Las unidades de tu área, para pedir por cada una' }]
+                : []),
               { clave: 'mia', titulo: 'De tu área', href: '/requerimientos', activa: Boolean(deSuArea), descripcion: undefined },
               { clave: 'todas', titulo: 'Todas las áreas', href: '/requerimientos?area=todas', activa: !deSuArea, descripcion: undefined },
             ]
@@ -104,7 +118,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
             }))
         ).map((v) => ({
           ...v,
-          href: codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href,
+          href: codigo && v.clave !== 'unidades' ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href,
           activa: !soloUno && v.activa,
           cuenta: !soloUno && v.activa ? mostrados.length : undefined,
         }))}
@@ -155,7 +169,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               // se recoge y qué falta; lo entregado y lo anulado, al presionar.
               insumosAbiertos={Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO')}
               enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
-              anula={tipos.includes(r.tipo as TipoRequerimiento)}
+              anula={loLleva(r)}
               materiales={catalogos?.materiales ?? []}
               codigos={catalogos?.codigos ?? null}
               correcciones={correcciones.get(r.id)}

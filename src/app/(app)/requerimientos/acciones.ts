@@ -67,9 +67,14 @@ function lineasDelFormulario(formulario: FormData): unknown {
  * el de Administración, de la administradora.
  */
 const PERMISO_DEL_TIPO = {
-  OPERACION: { permiso: 'requerimientos.emitir', quien: 'El requerimiento de operación lo lleva el área de Requerimientos.' },
-  ADMINISTRACION: { permiso: 'requerimientos.administracion', quien: 'El requerimiento de Administración lo lleva la administradora.' },
-} as const
+  // El supervisor (`requerimientos.area`) registra el de su propia área: la base
+  // (`rq_exigir_del_area`) le niega el área que no es la suya.
+  OPERACION: {
+    permiso: ['requerimientos.emitir', 'requerimientos.area'],
+    quien: 'El requerimiento de operación lo llevan el área de Requerimientos y el supervisor de cada área.',
+  },
+  ADMINISTRACION: { permiso: ['requerimientos.administracion'], quien: 'El requerimiento de Administración lo lleva la administradora.' },
+} as const satisfies Record<string, { permiso: readonly string[]; quien: string }>
 
 /**
  * El requerimiento (RQ o RQA) que se registra y le llega primero a Almacén.
@@ -80,7 +85,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   const tipo = z.enum(['OPERACION', 'ADMINISTRACION']).safeParse(dato(formulario, 'tipo'))
   if (!tipo.success) return { ok: false, error: 'Elige si el requerimiento es de operación o de Administración.' }
   const delTipo = PERMISO_DEL_TIPO[tipo.data]
-  if (!puede(perfil, delTipo.permiso)) return { ok: false, error: delTipo.quien }
+  if (!puede(perfil, [...delTipo.permiso])) return { ok: false, error: delTipo.quien }
 
   const cabecera = z
     .object({
@@ -132,6 +137,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   const { data: emitido } = await supabase.from('requerimientos').select('numero').eq('id', cabecera.data.operacion_id).maybeSingle()
 
   revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/unidades')
   revalidatePath('/requerimientos/atencion')
   return { ok: true, mensaje: `Requerimiento ${emitido?.numero ?? ''} registrado. Ya le llegó a Almacén para revisar el stock.` }
 }
@@ -142,7 +148,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
  */
 export async function anularRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area'])) {
     return { ok: false, error: 'No tienes permiso para anular requerimientos.' }
   }
 
@@ -164,6 +170,7 @@ export async function anularRequerimiento(_previo: unknown, formulario: FormData
   if (data !== analisis.data.id) return { ok: false, error: 'El requerimiento no se anuló. Recarga la pantalla.' }
 
   revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/unidades')
   revalidatePath('/requerimientos/atencion')
   return { ok: true, mensaje: 'Requerimiento anulado. Queda con su número y su motivo.' }
 }
@@ -200,7 +207,7 @@ const CAMBIOS_RQ = z.object({
  */
 export async function corregirRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])) {
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area'])) {
     return { ok: false, error: 'No tienes permiso para corregir requerimientos.' }
   }
   const id = z.guid().safeParse(formulario.get('id'))
@@ -224,6 +231,7 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
   if (data !== id.data) return { ok: false, error: 'El requerimiento no se corrigió. Recarga la pantalla.' }
 
   revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/unidades')
   revalidatePath('/requerimientos/atencion')
   // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar
   // (corregir_requerimiento: por revisar o listo, Almacén; si no, quien compra).

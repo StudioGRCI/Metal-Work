@@ -16031,6 +16031,15 @@ export type Database = {
         }
         Returns: null
       }
+      rq_exigir_del_area: {
+        Args: {
+          p_tipo: string | null
+          p_paso: string | null
+          p_area_id: string | null
+          p_creado_por: string | null
+        }
+        Returns: null
+      }
       rq_marcar_en_atencion: {
         Args: {
           p_id: string | null
