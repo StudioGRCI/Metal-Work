@@ -38,7 +38,7 @@ import {
   situacionDeEntrega,
   tiempoEnTaller,
 } from '@/lib/dominio/expediente'
-import { CODIGO_SIN_AVANCE, enlaceCodigo, faltanteDelCosto, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, enlaceCodigo, faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, porcentajeYMonto, numero, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -114,7 +114,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     observacionesDeOrden(id),
     verCotizacion ? cotizacionPdfDeOrden(id) : Promise.resolve(null),
     leyendoOrden.then((o) => {
-      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      const codigo = o ? codigoDeCosteoDeLaOt(o, (o.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno) : ''
       return o && verCosteo && codigo !== '' && codigo !== CODIGO_SIN_AVANCE
         ? costoDeOrdenes([{ id: o.id, codigo_interno: codigo }], { conMargen: verMargen }).then((m) => m.get(o.id) ?? null)
         : null
@@ -122,7 +122,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     // Con código interno el taller empieza con la primera etapa del código y sus reportes son los del
     // código: la OT decía «Todavía no empieza» con Maestranza terminada (auditoría del 27/10/2026).
     leyendoOrden.then(async (o) => {
-      const codigo = normalizarCodigo((o?.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno ?? '')
+      const codigo = o ? codigoDeCosteoDeLaOt(o, (o.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno) : ''
       if (!o || codigo === '' || codigo === CODIGO_SIN_AVANCE) return null
       // Cada lectura con la llave que pide su función, y solo si el puesto la tiene:
       // las etapas, `puede_ver_codigos_de_diseno()`; los reportes, `codigos_internos.ver`
@@ -160,7 +160,8 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
     numero_chasis: string | null
   } | null
   const tipoCarroceria = orden.tipo_carroceria as unknown as { nombre: string } | null
-  const codigoDeLaUnidad = normalizarCodigo(unidad?.codigo_interno ?? '')
+  // El mantenimiento y la garantía se costean por su OT, no por el código de la unidad.
+  const codigoDeLaUnidad = codigoDeCosteoDeLaOt(orden, unidad?.codigo_interno)
   const porCodigo = verCosteo && codigoDeLaUnidad !== '' && codigoDeLaUnidad !== CODIGO_SIN_AVANCE
   const delCodigo = porCodigo ? costoDelCodigo : null
 

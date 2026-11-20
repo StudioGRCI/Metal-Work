@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { DocumentoControlVehicular } from '@/lib/documentos/control-vehicular'
 import { leerLogoDocumento } from '@/lib/documentos/logo'
+import { esCodigoDeOt } from '@/lib/dominio/codigos-internos'
 import { exigirPermiso } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -44,7 +45,12 @@ export async function GET(_request: Request, context: RouteContext<'/vehiculos/[
 
   const buffer = await renderToBuffer(
     <DocumentoControlVehicular
-      referencia={{ etiqueta: 'Código interno', valor: r.codigo_interno ?? '' }}
+      // El mantenimiento y la garantía no tienen código interno: van por el número de su OT.
+      referencia={
+        r.codigo_interno && esCodigoDeOt(r.codigo_interno)
+          ? { etiqueta: 'N.º de OT', valor: r.codigo_interno.replace(/^OT[^0-9]*/i, '') }
+          : { etiqueta: 'Código interno', valor: r.codigo_interno ?? '' }
+      }
       cliente={r.empresa}
       items={items.data ?? []}
       control={{ ...(ficha.data ?? FICHA_EN_BLANCO), placa }}

@@ -12,6 +12,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS } from '@/lib/dominio/codigos-internos'
+import { delGrupo, detalleDelMaterial, gruposDeInsumo } from '@/lib/dominio/grupos-de-insumo'
 import { CODIGOS_FIJOS_DEL_RQ, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
@@ -128,6 +129,10 @@ export function VentanaDelRequerimiento({
 /** Un insumo mientras se llena: del catálogo, o un material nuevo con su nombre. */
 type Insumo = {
   clave: string
+  /** El grupo con que se busca en el catálogo (Sistema eléctrico, Niplería…); vacío, todos. No viaja a la base. */
+  grupo: string
+  /** El insumo que se soltó al cambiar de grupo, para decirlo; vacío si no se soltó ninguno. No viaja a la base. */
+  soltado: string
   material_id: string
   nuevo: boolean
   descripcion: string
@@ -137,7 +142,7 @@ type Insumo = {
 }
 
 function insumoVacio(): Insumo {
-  return { clave: crypto.randomUUID(), material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
+  return { clave: crypto.randomUUID(), grupo: '', soltado: '', material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
 }
 
 function FormularioRequerimiento({
@@ -185,14 +190,11 @@ function FormularioRequerimiento({
 
   const porId = useMemo(() => new Map(materiales.map((m) => [m.id, m])), [materiales])
   const opciones = useMemo(
-    () =>
-      materiales.map((m) => ({
-        valor: m.id,
-        etiqueta: m.descripcion,
-        detalle: [m.codigo, m.unidad_pendiente ? 'unidad por confirmar' : m.unidad, m.categoria].filter(Boolean).join(' · '),
-      })),
+    () => materiales.map((m) => ({ valor: m.id, etiqueta: m.descripcion, detalle: detalleDelMaterial(m) })),
     [materiales],
   )
+  // Los accesorios se buscan por grupo: al elegirlo salen todos sus insumos del catálogo.
+  const grupos = useMemo(() => gruposDeInsumo(materiales), [materiales])
 
   function cambiar(clave: string, cambios: Partial<Insumo>) {
     setInsumos((lista) => lista.map((x) => (x.clave === clave ? { ...x, ...cambios } : x)))
@@ -329,8 +331,8 @@ function FormularioRequerimiento({
             requerido
             ayuda={
               tipo === 'ADMINISTRACION'
-                ? 'Elige el de la unidad, si es para una; si es para la oficina, OFICINA. Busca por el código, la placa o la marca.'
-                : 'Elige el de la unidad; si no es para una, PLANTA. Busca por el código, la placa o la marca.'
+                ? 'Elige el de la unidad, si es para una; si es para la oficina, OFICINA. Para mantenimiento o garantía, el N.º de su OT. Busca por el código, la placa o la marca.'
+                : 'Elige el de la unidad; para mantenimiento o garantía, el N.º de su OT («OT 2921-2026»); si no es para una, PLANTA. Busca por el código, la OT, la placa o la marca.'
             }
           >
             <EntradaCodigoInterno
@@ -352,7 +354,8 @@ function FormularioRequerimiento({
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-texto">Insumos</legend>
         <p className="text-xs text-texto-suave">
-          Elige cada insumo del catálogo de Almacén, con el nombre que usa Almacén. Si no está, pídelo como material nuevo: Almacén lo da de alta al revisarlo.
+          Elige cada insumo del catálogo de Almacén; un accesorio, por su grupo (Sistema eléctrico, Niplería…). Si no está, pídelo como material
+          nuevo: Almacén lo da de alta al revisarlo.
         </p>
         {insumos.map((x, i) => {
           const material = porId.get(x.material_id)
@@ -360,7 +363,30 @@ function FormularioRequerimiento({
           const eligeUnidad = x.nuevo || Boolean(material?.unidad_pendiente)
           return (
             <div key={x.clave} className="space-y-2 rounded-lg border border-borde p-3">
+              {/* El grupo va en su propio renglón: en una columna angosta se cortaba su nombre y cuántos tiene. */}
               <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_7rem_7rem_auto] sm:items-end">
+                {!x.nuevo && grupos.length > 0 && (
+                  <Campo etiqueta={`Grupo del insumo ${i + 1}`} htmlFor={`rq-grupo-${x.clave}`} className="sm:col-span-4 sm:max-w-md">
+                    <Seleccion
+                      id={`rq-grupo-${x.clave}`}
+                      value={x.grupo}
+                      onChange={(e) => {
+                        const grupo = e.target.value
+                        // El insumo elegido que no es del grupo nuevo se suelta: el buscador ya no lo ofrece.
+                        const elegido = porId.get(x.material_id)
+                        const sigue = !x.material_id || !elegido || delGrupo(elegido, grupo)
+                        cambiar(x.clave, sigue ? { grupo, soltado: '' } : { grupo, material_id: '', unidad_medida_id: '', soltado: elegido.descripcion })
+                      }}
+                    >
+                      <option value="">Todos los grupos</option>
+                      {grupos.map((g) => (
+                        <option key={g.clave} value={g.clave}>
+                          {g.nombre} ({g.cuantos})
+                        </option>
+                      ))}
+                    </Seleccion>
+                  </Campo>
+                )}
                 {x.nuevo ? (
                   <Campo etiqueta={`Insumo ${i + 1} · material nuevo`} htmlFor={`rq-desc-${x.clave}`} requerido>
                     <Entrada
@@ -379,12 +405,22 @@ function FormularioRequerimiento({
                     <SeleccionBuscable
                       id={`rq-mat-${x.clave}`}
                       requerido
+                      aria-describedby={x.soltado && !x.material_id ? `rq-soltado-${x.clave}` : undefined}
                       valor={x.material_id}
-                      onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '' })}
-                      marcador="Elige del catálogo de Almacén…"
+                      onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '', soltado: '' })}
+                      marcador={x.grupo ? 'Elige del grupo…' : 'Elige del catálogo de Almacén…'}
                       marcadorBusqueda="Nombre o código del material…"
-                      opciones={opciones.filter((o) => o.valor === x.material_id || !insumos.some((y) => y.material_id === o.valor))}
+                      opciones={opciones.filter((o) => {
+                        const m = porId.get(o.valor)
+                        if (o.valor === x.material_id) return true
+                        return (!m || delGrupo(m, x.grupo)) && !insumos.some((y) => y.material_id === o.valor)
+                      })}
                     />
+                    {/* Pegado a su campo: en el teléfono, debajo de la fila quedaba tras Cantidad, Unidad y la papelera.
+                        Siempre puesto, vacío si no hay nada que decir: el que nace con su texto no se anuncia. */}
+                    <p id={`rq-soltado-${x.clave}`} role="status" className={x.soltado && !x.material_id ? 'text-xs text-aviso' : 'sr-only'}>
+                      {x.soltado && !x.material_id ? `«${x.soltado}» no es de este grupo: elige el insumo otra vez.` : ''}
+                    </p>
                   </Campo>
                 )}
                 <Campo etiqueta="Cantidad" htmlFor={`rq-cant-${x.clave}`} requerido>

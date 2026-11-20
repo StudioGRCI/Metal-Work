@@ -109,9 +109,9 @@ select test.afirmar(
 
 select test.debe_fallar(pg_temp.ingreso_sql('v1', 'ABC405', null, 'FABRICACION'),
   'para fabricación no entra un vehículo sin código interno', 'Elige el código interno');
-select test.debe_fallar(pg_temp.ingreso_sql('v1', null, 'NO_EXISTE_405', 'MANTENIMIENTO'),
+select test.debe_fallar(pg_temp.ingreso_sql('v1', null, 'NO_EXISTE_405', 'ARENADO'),
   'ni con un código que no es de ninguna unidad', 'no es de ninguna unidad');
-select test.debe_fallar(pg_temp.ingreso_sql('v1', null, 'CHK405_B_26/46', 'GARANTIA'),
+select test.debe_fallar(pg_temp.ingreso_sql('v1', null, 'CHK405_B_26/46', 'FABRICACION'),
   'ni con un código sin OT', 'no tiene una OT vigente');
 select test.debe_fallar(pg_temp.ingreso_sql('v1', null, 'CHK405_C_26/47', 'ARENADO'),
   'ni con un código cuya OT está anulada', 'no tiene una OT vigente');
@@ -132,7 +132,7 @@ select test.como_usuario(:'req_id');
 set local role authenticated;
 select test.afirmar((select en_planta from public.vehiculos_codigos_para_ingreso() where codigo_interno = 'CHK405_A_26/45'),
   'el código que ya entró figura en la planta');
-select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'CHK405_A_26/45', 'MANTENIMIENTO'),
+select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'CHK405_A_26/45', 'ARENADO'),
   'el mismo código no entra dos veces sin haber salido', 'ya está en la planta');
 -- La cochera no es trabajo: entra con la placa, como antes.
 select public.registrar_ingreso_vehiculo(pg_temp.id('v3'), 'XYZ405', null, null, 'Camioneta del cliente', 'QA CLIENTE 405',
@@ -145,9 +145,9 @@ select test.debe_fallar(pg_temp.ingreso_sql('v2', null, 'chk405-d 26/48', 'OTRO'
 select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, null, '9bm405000aa000001', null, 'Tolva', 'X', 'COCHERA', null, null, pg_temp.foto('v2', 'ingreso'))$q$,
   pg_temp.txt('v2')), 'ni por el chasis, mientras su OT sigue en el taller', 'tiene una OT en el taller');
 -- La unidad sin cliente entra con el de su OT, sin que nadie lo escriba.
--- (Por mantenimiento: la garantía pide su propia OT de garantía desde la
--- migración 20261021120000, check 416.)
-select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'MANTENIMIENTO', null, null,
+-- (Desde la migración 20261120500000 el mantenimiento y la garantía entran
+-- por el número de su OT, no por el código: check 455.)
+select public.registrar_ingreso_vehiculo(pg_temp.id('v4'), null, null, 'CHK405_D_26/48', '', '', 'FABRICACION', null, null,
   pg_temp.foto('v4', 'ingreso'));
 select test.afirmar((select empresa = 'QA CLIENTE 405' from public.registro_vehiculos where id = pg_temp.id('v4')),
   'la unidad sin cliente entra con el cliente de su OT');
@@ -171,7 +171,7 @@ select public.registrar_salida_vehiculo(pg_temp.id('v3'), null, null, pg_temp.fo
 select test.afirmar((select salida_en is not null from public.registro_vehiculos where id = pg_temp.id('v3')),
   'el de la cochera sale sin esperar avance ni Tesorería');
 -- Al arenado externo sale a medio trabajo y vuelve (migración 20261020168000).
-select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de mantenimiento en 0 % no sale con «Marcar salida»', 'va en 0 %');
+select test.debe_fallar(pg_temp.salida_sql('v4'), 'el de fabricación en 0 % no sale con «Marcar salida»', 'va en 0 %');
 select pg_temp.foto('v4', 'salida') as foto_v4 \gset
 select public.registrar_salida_al_arenado(pg_temp.id('v4'), null, 'Sale al arenado', :'foto_v4');
 select test.afirmar((select salida_en is not null and sale_al_arenado from public.registro_vehiculos where id = pg_temp.id('v4')),

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO, motivoExigeCodigo } from '@/lib/dominio/requerimientos'
+import { conQueVuelveDelArenado, horaDeLima, MAXIMO_FOTOS_VEHICULO, MOTIVOS_VEHICULO, motivoExigeCodigo, motivoPorOt } from '@/lib/dominio/requerimientos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -43,7 +43,9 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
       placa: z.string().max(15, 'La placa pasa de 15 caracteres.'),
       chasis: z.string().max(40, 'El número de chasis pasa de 40 caracteres.'),
       codigo_interno: z.string().max(60, 'El código interno pasa de 60 caracteres.'),
-      // Con código interno, el vehículo y la empresa salen de la unidad (la base los pone).
+      // Mantenimiento y garantía entran por su OT, no por código (migración 20261120500000).
+      orden_id: z.union([z.literal(''), z.guid('Elige la OT: recarga la pantalla si no aparece.')]),
+      // Con código interno o con OT, el vehículo y la empresa salen de la unidad (la base los pone).
       unidad: z.string().max(120, 'La descripción pasa de 120 caracteres.'),
       empresa: z.string().max(160, 'La empresa pasa de 160 caracteres.'),
       motivo: z.enum(MOTIVOS_VEHICULO, { message: 'Elige el motivo del ingreso.' }),
@@ -56,6 +58,7 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
       placa: dato(formulario, 'placa'),
       chasis: dato(formulario, 'chasis'),
       codigo_interno: dato(formulario, 'codigo_interno'),
+      orden_id: dato(formulario, 'orden_id'),
       unidad: dato(formulario, 'unidad'),
       empresa: dato(formulario, 'empresa'),
       motivo: dato(formulario, 'motivo'),
@@ -65,7 +68,12 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el ingreso.' }
   const d = analisis.data
-  if (motivoExigeCodigo(d.motivo)) {
+  const porOt = motivoPorOt(d.motivo)
+  if (porOt) {
+    if (!d.orden_id) {
+      return { ok: false, error: `Elige la OT de ${d.motivo === 'GARANTIA' ? 'garantía' : 'mantenimiento'}: el vehículo entra por el número de su OT.` }
+    }
+  } else if (motivoExigeCodigo(d.motivo)) {
     if (!d.codigo_interno) return { ok: false, error: 'Elige el código interno: el trabajo del taller entra con su código y su OT.' }
   } else {
     if (!d.placa && !d.chasis && !d.codigo_interno) {
@@ -78,18 +86,27 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
   if (d.ingreso_en && !cuando) return { ok: false, error: 'La fecha y hora de ingreso no es válida.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('registrar_ingreso_vehiculo', {
+  const datos = {
     p_id: d.operacion_id,
     p_placa: d.placa || null,
     p_chasis: d.chasis || null,
-    p_codigo_interno: d.codigo_interno || null,
+    // Con OT, el código es el de la OT y lo pone la base.
+    p_codigo_interno: porOt ? null : d.codigo_interno || null,
     p_unidad: d.unidad,
     p_empresa: d.empresa,
     p_motivo: d.motivo,
     p_ingreso_en: cuando,
     p_observacion: d.observacion || null,
     p_fotos: d.fotos,
-  })
+  }
+  // La OT va solo con mantenimiento o garantía. Lo demás sale por la versión de
+  // diez parámetros, que existe con o sin la migración 20261120500000: si la
+  // pantalla se despliega antes que la migración, la fabricación, el arenado y
+  // la cochera siguen entrando.
+  // Los tipos generados conocen solo la de once (como `guardar_caja`): la de diez va con su molde.
+  const { data, error } = porOt
+    ? await supabase.rpc('registrar_ingreso_vehiculo', { ...datos, p_orden: d.orden_id })
+    : await supabase.rpc('registrar_ingreso_vehiculo', datos as typeof datos & { p_orden: null })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.operacion_id) return { ok: false, error: 'El ingreso no quedó registrado. Recarga la pantalla.' }
 
@@ -136,7 +153,17 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
   if (data !== analisis.data.id) return { ok: false, error: 'La salida no quedó registrada. Recarga la pantalla.' }
 
   revalidatePath('/vehiculos', 'layout')
-  return { ok: true, mensaje: analisis.data.alArenado ? 'Salida al arenado registrada: vuelve con el motivo Arenado.' : 'Salida registrada.' }
+  if (!analisis.data.alArenado) return { ok: true, mensaje: 'Salida registrada.' }
+  // El de mantenimiento o garantía vuelve por su OT, no con el motivo Arenado:
+  // la base no lo deja volver por el código mientras su OT esté abierta.
+  const { data: salio, error: sinLeer } = await supabase
+    .from('registro_vehiculos')
+    .select('motivo, codigo_interno')
+    .eq('id', analisis.data.id)
+    .maybeSingle()
+  // Sin saber con qué entró, no se dice con qué vuelve: decir «Arenado» a uno de mantenimiento lo haría rechazar al volver.
+  if (sinLeer || !salio) return { ok: true, mensaje: 'Salida al arenado registrada.' }
+  return { ok: true, mensaje: `Salida al arenado registrada: vuelve con ${conQueVuelveDelArenado(salio.motivo, salio.codigo_interno)}.` }
 }
 
 /** Un ingreso mal anotado se anula con motivo; no se borra. */

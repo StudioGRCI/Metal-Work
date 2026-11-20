@@ -471,7 +471,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                   : clienteId && unidades.length === 0
                   ? 'Este cliente no tiene unidades registradas'
                   : esGarantia
-                    ? 'La garantía va con la unidad que vuelve, y la unidad con su código interno.'
+                    ? 'La garantía va con la unidad que vuelve: su vehículo entra a la planta por el número de esta OT.'
                     : 'Vehículo sobre el que se ejecuta el trabajo'
               }
             >

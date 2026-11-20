@@ -42,12 +42,15 @@ export function ControlesVehiculo({
   cuentaId,
   bloqueoSalida = null,
   alArenado = false,
+  vuelveDelArenado = 'el motivo «Arenado»',
 }: {
   id: string
   nombre: string
   cuentaId: string
   bloqueoSalida?: string | null
   alArenado?: boolean
+  /** Con qué vuelve (`conQueVuelveDelArenado`): el de mantenimiento o garantía, por su OT. */
+  vuelveDelArenado?: string
 }) {
   const [paso, setPaso] = useState<Paso | null>(null)
   // Si la salida ya había entrado la primera vez, las fotos de este envío no
@@ -154,7 +157,7 @@ export function ControlesVehiculo({
           paso === 'ANULAR'
             ? 'Para un ingreso que se anotó mal. No se borra: queda con su motivo.'
             : paso === 'ARENADO'
-              ? 'Sale a medio trabajo, sin esperar el 100 % ni a Tesorería, y vuelve con el motivo «Arenado». Con fotos de cómo sale.'
+              ? `Sale a medio trabajo, sin esperar a que termine ni a Tesorería, y vuelve con ${vuelveDelArenado}. Con fotos de cómo sale.`
               : 'El vehículo deja la planta, con fotos de cómo sale. La salida ya marcada no se corrige.'
         }
         ancho={sale ? 'lg' : 'md'}

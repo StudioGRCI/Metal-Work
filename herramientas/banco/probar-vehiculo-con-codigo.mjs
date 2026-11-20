@@ -180,12 +180,15 @@ let registroId = null
   // El mismo código no entra otra vez mientras está en la planta.
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   v = pagina.locator('[role="dialog"]')
-  await v.locator('#veh-motivo').selectOption('MANTENIMIENTO')
+  // Por el retorno del arenado, que también entra por el código (el
+  // mantenimiento y la garantía entran por su OT desde la migración 20261120500000).
+  await v.locator('#veh-motivo').selectOption('ARENADO')
   // Si quedan otros códigos libres (los deja quien probó antes en esta base), se
   // mira que este no esté entre ellos; si no queda ninguno, que lo diga y no
   // pida fotos.
   const ya = limpio(await v.locator('#veh-codigo').innerText())
-  if (ya.includes('ya está en la planta')) {
+  // «el único ya está» o «los 2 ya están»: otra vuelta del banco pudo dejar otro adentro.
+  if (/ya están? en la planta/.test(ya)) {
     comprobar(true, `el código que ya entró no se ofrece otra vez: «${ya}»`)
     comprobar((await v.locator('input[type="file"]').count()) === 0, 'y sin código que elegir, la ventana no pide fotos')
   } else {

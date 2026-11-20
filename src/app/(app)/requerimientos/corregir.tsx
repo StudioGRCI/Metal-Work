@@ -12,6 +12,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { detalleDelMaterial } from '@/lib/dominio/grupos-de-insumo'
 import { CODIGOS_FIJOS_DEL_RQ, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
@@ -110,11 +111,7 @@ function Formulario({
   )
   const opciones = useMemo(
     () =>
-      materiales.map((m) => ({
-        valor: m.id,
-        etiqueta: m.descripcion,
-        detalle: [m.codigo, m.unidad_pendiente ? 'unidad por confirmar' : m.unidad, m.categoria].filter(Boolean).join(' · '),
-      })),
+      materiales.map((m) => ({ valor: m.id, etiqueta: m.descripcion, detalle: detalleDelMaterial(m) })),
     [materiales],
   )
   // El material cambia mientras Almacén no revisó; nada cambia en un insumo que ya va en una OC viva.
@@ -152,7 +149,7 @@ function Formulario({
       <input type="hidden" name="id" value={rq.id} />
       <input type="hidden" name="cambios" value={JSON.stringify(cambios)} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Código interno" htmlFor={`rq-corr-codigo-${rq.id}`} requerido ayuda="Busca por el código, la placa o la marca.">
+        <Campo etiqueta="Código interno" htmlFor={`rq-corr-codigo-${rq.id}`} requerido ayuda="El de la unidad, o el N.º de la OT de mantenimiento o garantía. Busca por el código, la OT, la placa o la marca.">
           <EntradaCodigoInterno
             id={`rq-corr-codigo-${rq.id}`}
             requerido
