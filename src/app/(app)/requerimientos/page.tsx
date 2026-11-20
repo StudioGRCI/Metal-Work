@@ -6,6 +6,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { correccionesDe } from '@/lib/datos/correcciones'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
+import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -64,30 +65,38 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // `?ver=recoger` deja solo los que tienen algo para recoger en Almacén: es la
   // cifra verde de arriba. Las cifras siguen contando todos.
   const soloRecoger = !soloUno && params.ver === 'recoger'
-  const mostrados = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
+  const recogen = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
   const [correcciones, metrado] = await Promise.all([
-    correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id)),
-    // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa.
-    metradoDeRequerimientos(mostrados.map((r) => r.id)).catch((e: unknown) => {
+    correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
+    // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
+    // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa, y arriba se avisa.
+    metradoDeRequerimientos(requerimientos.map((r) => r.id)).catch((e: unknown) => {
       console.error('Requerimientos: no se pudo leer el metrado de Diseño.', e)
       return null
     }),
   ])
   // El supervisor pide para su área y nada más: el formulario no le ofrece otra.
   const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id && a.requerimiento === 'OPERACION') : undefined
-  // Lo corrige y lo anula quien lleva su tipo; el supervisor, solo los que registró él.
+  // Lo corrige, lo sustenta y lo anula quien lleva su tipo; el supervisor, solo los que registró él.
   const loLleva = (r: (typeof requerimientos)[number]) =>
     pideSuArea ? r.tipo === 'OPERACION' && r.creado_por === perfil.id : tipos.includes(r.tipo as TipoRequerimiento)
+  // `?ver=sustentar` deja solo los que esperan el sustento de quien mira: es el
+  // enlace del pendiente «se pasa del metrado y espera tu sustento».
+  const porSustentar = metrado ? requerimientos.filter((r) => loLleva(r) && esperaSuSustento(r, metrado)) : []
+  const soloSustentar = !soloUno && !soloRecoger && params.ver === 'sustentar'
+  const mostrados = soloSustentar ? porSustentar : recogen
   // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
   const filtros = new URLSearchParams()
   if (pedida) filtros.set('tipo', pedida)
   if (supervisaArea && !deSuArea) filtros.set('area', 'todas')
   if (codigo) filtros.set('codigo', codigo)
   const sinRecoger = `/requerimientos${filtros.size > 0 ? `?${filtros}` : ''}`
+  filtros.set('ver', 'sustentar')
+  const conSustentar = `/requerimientos?${filtros}`
   filtros.set('ver', 'recoger')
   const conRecoger = `/requerimientos?${filtros}`
   const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
-  const vacio = listaVacia({ soloRecoger, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
+  const vacio = listaVacia({ soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
 
   return (
     <>
@@ -95,9 +104,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         titulo="Requerimientos"
         ayuda={
           pideSuArea
-            ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges, sustentas y anulas solo los que registraste tú.'
+            ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código, si Diseño ya lo cargó: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges, sustentas y anulas solo los que registraste tú.'
             : emite
-            ? 'Lo que cada área necesita, con el código interno y su justificación. La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. Almacén lo revisa insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
+            ? 'Lo que cada área necesita, con el código interno y su justificación. La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código, si Diseño ya lo cargó: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. Almacén lo revisa insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
             : supervisaArea
               ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. El código interno muestra solo los RQ de esa unidad. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
               : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
@@ -154,6 +163,33 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         </p>
       )}
 
+      {metrado === null && requerimientos.length > 0 && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
+          No se pudo leer el metrado de Diseño: las tarjetas no dicen qué insumo se pasa ni cuál espera tu sustento. Vuelve a cargar la
+          pantalla en un momento.
+        </p>
+      )}
+
+      {!soloUno && !soloSustentar && porSustentar.length > 0 && (
+        <p className="mb-3 rounded-[var(--radius-base)] border border-peligro bg-peligro-suave px-3 py-2 text-sm text-texto" data-esperan-sustento>
+          {porSustentar.length === 1
+            ? `El ${porSustentar[0].numero} se pasa del metrado de Diseño y espera tu sustento.`
+            : `${porSustentar.length} requerimientos se pasan del metrado de Diseño y esperan tu sustento.`}{' '}
+          <Link href={conSustentar} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+            {porSustentar.length === 1 ? 'Ver solo ese' : 'Ver solo esos'}
+          </Link>
+        </p>
+      )}
+
+      {soloSustentar && (
+        <p className="mb-3 text-sm text-texto-suave">
+          Solo los que se pasan del metrado y esperan tu sustento.{' '}
+          <Link href={sinRecoger} className="font-medium text-acento hover:underline">
+            Ver todos
+          </Link>
+        </p>
+      )}
+
       {soloRecoger && (
         <p className="mb-3 text-sm text-texto-suave">
           Solo los que tienen algo para recoger en Almacén.{' '}
@@ -163,7 +199,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         </p>
       )}
 
-      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={soloRecoger ? null : conRecoger} />}
+      {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={soloRecoger ? null : conRecoger} metrado={metrado} />}
 
       {mostrados.length === 0 ? (
         !soloUno && (
@@ -201,6 +237,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
  */
 function listaVacia({
   soloRecoger,
+  soloSustentar,
   codigo,
   deSuArea,
   emite,
@@ -209,6 +246,7 @@ function listaVacia({
   verTodos,
 }: {
   soloRecoger: boolean
+  soloSustentar: boolean
   codigo: string | undefined
   deSuArea: boolean
   emite: boolean
@@ -223,6 +261,13 @@ function listaVacia({
       {texto}
     </Link>
   )
+  if (soloSustentar) {
+    return {
+      titulo: 'Ninguno espera tu sustento',
+      descripcion: 'Lo que pediste entra en el metrado de Diseño, o ya lo sustentaste y lo tiene Diseño.',
+      accion: enlace(sinRecoger, 'Ver todos'),
+    }
+  }
   if (soloRecoger) {
     return {
       titulo: 'Nada para recoger en Almacén todavía',

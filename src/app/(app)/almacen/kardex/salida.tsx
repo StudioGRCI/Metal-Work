@@ -569,7 +569,7 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
 
           <Campo etiqueta="Material" htmlFor="sal-material" requerido
             error={sinRqNoSale(elegido, linea)
-              ? `${elegido?.almacen === 'MATERIA_PRIMA' ? 'La materia prima' : 'Un accesorio'} sale solo con el requerimiento que lo pide: ${lineasRq.length > 0 ? 'elígelo arriba, en «Requerimiento que atiende».' : 'ningún RQ abierto lo pide. Si hace falta, el área lo pide por requerimiento.'}`
+              ? `${elegido?.almacen === 'MATERIA_PRIMA' ? 'La materia prima sale solo con el requerimiento que la pide' : 'Un accesorio sale solo con el requerimiento que lo pide'}: ${lineasRq.length > 0 ? 'elígelo arriba, en «Requerimiento que atiende».' : 'ningún RQ abierto lo pide. Si hace falta, el área lo pide por requerimiento.'}`
               : undefined}
             ayuda={conSaldo.length === 0 ? (linea?.material_id ? 'No hay saldo libre del material que pide el RQ ni del que se compró para él.' : 'No hay materiales con saldo libre. Registra primero su ingreso.') : undefined}>
             <SeleccionBuscable

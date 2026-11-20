@@ -5,6 +5,7 @@ import { cache } from 'react'
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
@@ -757,9 +758,12 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     (frenados ??= (async () => {
       const ids = (await rqAbiertos()).map((r) => r.id)
       if (ids.length === 0) return { frenados: new Set<string>(), sinSustento: new Set<string>() }
-      const { data, error } = await supabase.rpc('metrado_de_requerimientos', { p_requerimientos: ids })
+      // Una fila por insumo: pasa de mil antes que los RQ, y Supabase corta en mil sin avisar.
+      const { data: filas, error } = await todasLasFilas(
+        () => supabase.rpc('metrado_de_requerimientos', { p_requerimientos: ids }),
+        ['linea_id'],
+      )
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      const filas = data ?? []
       return {
         frenados: new Set(filas.filter((m) => ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO'].includes(m.estado ?? '')).map((m) => m.requerimiento_id ?? '')),
         sinSustento: new Set(filas.filter((m) => m.estado === 'SIN_SUSTENTO' || m.estado === 'RECHAZADO').map((m) => m.requerimiento_id ?? '')),
@@ -785,7 +789,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   const leTocaSustentar = (r: { tipo: string | null; creado_por: string | null }) =>
     sustentaDe[tipoDeRequerimiento(r)] || (sustentaLosSuyos && tipoDeRequerimiento(r) === 'OPERACION' && r.creado_por === perfil.id)
   if (perfil.rol.codigo !== 'ADMIN' && (sustentaDe.OPERACION || sustentaDe.ADMINISTRACION || sustentaLosSuyos)) tareas.push({
-    clave: 'rq_por_sustentar', ruta: '/requerimientos', tono: 'peligro',
+    clave: 'rq_por_sustentar', ruta: '/requerimientos?ver=sustentar', tono: 'peligro',
     texto: n => plural(n, 'requerimiento se pasa del metrado y espera tu sustento', 'requerimientos se pasan del metrado y esperan tu sustento'),
     contar: async () => {
       const [lista, { sinSustento }] = await Promise.all([rqAbiertos(), rqFrenados()])

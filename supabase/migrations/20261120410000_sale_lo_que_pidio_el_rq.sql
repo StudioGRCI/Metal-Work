@@ -13,11 +13,16 @@
 --
 --   · La que atiende un insumo de RQ es del material que pidió ese insumo o del
 --     que Logística compró para él (otra marca, otra medida: lo que llegó de su
---     OC). Si hace falta otro, quien pidió corrige el RQ con su justificante
---     (`corregir_requerimiento`), que es la modificación sustentada.
+--     OC). Si hace falta otro, quien pidió lo pide en otro RQ, que vuelve a
+--     pasar por el metrado de Diseño: es la modificación sustentada. Corregir
+--     el material del insumo ya no se puede una vez que Almacén revisó el stock
+--     (`corregir_requerimiento`), y la salida siempre viene después.
 --   · El insumo que se pasa del metrado de Diseño sin su visto no sale
 --     (migración 20261120400000).
 --   · La materia prima y los accesorios salen solo contra el RQ que los pide.
+--     Si el RQ es de otro código (uno de PLANTA) y la salida va a una unidad
+--     que tiene su metrado de Diseño, no sale: lo pide el área con el código de
+--     esa unidad, y así pasa por su metrado.
 --     Los consumibles y el EPP siguen saliendo como hoy, con quien recibe y la
 --     foto.
 --   · La planilla «¿Sin internet?» no cambia: anota lo que ya salió del almacén
@@ -48,8 +53,9 @@ begin
     v_almacen := public.almacen_de_material(new.material_id);
     if v_almacen in ('MATERIA_PRIMA', 'ACCESORIOS')
        and coalesce(current_setting('metalwork.desde_planilla', true), '') <> 'si' then
-      raise exception '% sale solo con el requerimiento que lo pide: elige el RQ en la salida. Si nadie lo pidió, el área lo pide por requerimiento.',
-        case v_almacen when 'MATERIA_PRIMA' then 'La materia prima' else 'Un accesorio' end
+      raise exception '%: elige el RQ en la salida. Si nadie lo pidió, el área lo pide por requerimiento.',
+        case v_almacen when 'MATERIA_PRIMA' then 'La materia prima sale solo con el requerimiento que la pide'
+                       else 'Un accesorio sale solo con el requerimiento que lo pide' end
         using errcode = 'check_violation';
     end if;
     return new;
@@ -70,8 +76,21 @@ begin
                       where i.orden_compra_detalle_id = v_linea.orden_compra_detalle_id
                         and v_linea.orden_compra_detalle_id is not null
                         and i.tipo = 'INGRESO' and i.material_id = new.material_id) then
-    raise exception 'El requerimiento % pide «%» en el insumo %: sale ese material o el que se compró para él. Si hace falta otro, quien lo pidió corrige el requerimiento con su justificante.',
+    raise exception 'El requerimiento % pide «%» en el insumo %: sale ese material o el que se compró para él. Si hace falta otro, quien lo pidió lo pide en otro requerimiento.',
       v_rq.numero, v_linea.descripcion, v_linea.item using errcode = 'check_violation';
+  end if;
+
+  -- Un RQ de PLANTA (u otro código) no lleva materia prima ni accesorios a una
+  -- unidad con metrado: ese pedido no pasó por el metrado de esa unidad.
+  v_almacen := public.almacen_de_material(new.material_id);
+  if v_almacen in ('MATERIA_PRIMA', 'ACCESORIOS')
+     and new.codigo_interno is not null
+     and public.normalizar_codigo_interno(new.codigo_interno) is distinct from public.normalizar_codigo_interno(v_rq.codigo_interno)
+     and not public.codigo_sin_metrado(new.codigo_interno)
+     and exists (select 1 from public.codigo_materiales c
+                  where c.codigo_interno = public.normalizar_codigo_interno(new.codigo_interno) and c.quitado_en is null) then
+    raise exception 'El requerimiento % es para %: no sale hacia %, que tiene su metrado de Diseño. El área lo pide en un requerimiento con el código %.',
+      v_rq.numero, v_rq.codigo_interno, new.codigo_interno, new.codigo_interno using errcode = 'check_violation';
   end if;
 
   select m.estado into v_estado from public.metrado_por_linea(array[v_linea.requerimiento_id]) m where m.linea_id = v_linea.id;

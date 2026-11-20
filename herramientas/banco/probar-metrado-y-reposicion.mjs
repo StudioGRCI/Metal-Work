@@ -257,7 +257,7 @@ try {
   const deDisco = () => alm.pagina.locator(`tr[data-material]`, { hasText: disco.descripcion }).first()
   let texto = limpio(await deDisco().innerText().catch(() => ''))
   comprobar(texto.includes('Bajo el mínimo') && texto.includes('Sin mínimo') === false, `el disco sale por reponer: «${texto.slice(0, 200)}»`)
-  const cambiar = deDisco().getByRole('button', { name: `Mínimo y compra por mayor de ${disco.descripcion}` })
+  const cambiar = deDisco().getByRole('button', { name: `Cambiar el mínimo de ${disco.descripcion}` })
   await hidratado(cambiar)
   await cambiar.click()
   ventana = alm.pagina.getByRole('dialog')
@@ -312,11 +312,21 @@ try {
   const ger = await entrar(CUENTAS.gerencia)
   await ger.pagina.goto(`${BASE}/compras/aprobacion`, { waitUntil: 'networkidle' })
   const stock = ger.pagina.locator('[data-stock-al-aprobar]')
-  const lineas = (await stock.allInnerTexts()).map(limpio)
-  comprobar(lineas.some((l) => l.startsWith('En almacén:') && l.includes('ya vienen 4') && l.includes(oc1)),
-    `en la OC por aprobar dice cuánto hay y que ya vienen 4 en ${oc1}: ${JSON.stringify(lineas.slice(0, 4))}`)
-  comprobar(ger.errores.length === 0, `sin errores de consola para Gerencia (${ger.errores.join(' | ')})`)
+  // Las dos esperan a Gerencia: ninguna «ya viene», cada una dice que la otra también está por aprobar.
+  let lineas = (await stock.allInnerTexts()).map(limpio)
+  comprobar(lineas.some((l) => l.startsWith('En almacén:') && /Otra OC también por aprobar: 4/.test(l) && l.includes(oc1)) &&
+    !lineas.some((l) => /Ya vienen? 4/.test(l)),
+    `con las dos OC por aprobar dice cuánto hay y que ${oc1} también espera, sin «ya viene»: ${JSON.stringify(lineas.slice(0, 4))}`)
   await ger.pagina.screenshot({ path: join(carpeta, '7-gerencia.png'), fullPage: true })
+  // Gerencia aprueba la primera: en la segunda, esos 4 ya vienen.
+  await como('gerencia')
+  await consulta(`select public.aprobar_compra($1)`, [oc[0]])
+  await ger.pagina.reload({ waitUntil: 'networkidle' })
+  lineas = (await stock.allInnerTexts()).map(limpio)
+  comprobar(lineas.some((l) => /Ya vienen 4/.test(l) && l.includes(oc1)),
+    `aprobada ${oc1}, en la otra OC dice que ya vienen 4 en ${oc1}: ${JSON.stringify(lineas.slice(0, 4))}`)
+  comprobar(ger.errores.length === 0, `sin errores de consola para Gerencia (${ger.errores.join(' | ')})`)
+  await ger.pagina.screenshot({ path: join(carpeta, '7-gerencia-aprobada.png'), fullPage: true })
 
   // ------------------------------------------- 8. La materia prima sin RQ no sale
   await alm.pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
@@ -326,8 +336,8 @@ try {
   ventana = alm.pagina.locator('[role="dialog"]')
   await ventana.waitFor()
   await ventana.locator('select[name="material_id"]').selectOption(plancha.id)
-  await esperar(async () => (await ventana.getByText('sale solo con el requerimiento que lo pide').count()) > 0, 5000)
-  const error = limpio(await ventana.getByText('sale solo con el requerimiento que lo pide').first().innerText().catch(() => ''))
+  await esperar(async () => (await ventana.getByText(/sale solo con el requerimiento que l[ao] pide/).count()) > 0, 5000)
+  const error = limpio(await ventana.getByText(/sale solo con el requerimiento que l[ao] pide/).first().innerText().catch(() => ''))
   comprobar(error.startsWith('La materia prima sale solo con el requerimiento'), `sin RQ, el campo lo dice antes de enviar: «${error}»`)
   comprobar(alm.errores.length === 0, `sin errores de consola en el kardex (${alm.errores.join(' | ')})`)
 } finally {

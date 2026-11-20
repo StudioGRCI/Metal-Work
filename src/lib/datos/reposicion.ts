@@ -17,9 +17,13 @@ export type MaterialParaReponer = {
   categoria: string | null
   existencia: number
   libre: number
+  /** Lo que viene en OC aprobadas (o que no la necesitan) y todavía no entró al kardex. */
   en_camino: number
   /** En qué OC viene, nombradas. */
   en_camino_ocs: string | null
+  /** Lo que piden otras OC que todavía esperan a Gerencia: también cuenta para no comprarlo dos veces. */
+  por_aprobar: number
+  por_aprobar_ocs: string | null
   stock_minimo: number | null
   compra_por_mayor: number | null
   salio_90_dias: number
@@ -50,6 +54,8 @@ export async function reposicionDeStock(): Promise<MaterialParaReponer[]> {
             libre: numero(f.libre),
             en_camino: numero(f.en_camino),
             en_camino_ocs: f.en_camino_ocs,
+            por_aprobar: numero(f.por_aprobar),
+            por_aprobar_ocs: f.por_aprobar_ocs,
             stock_minimo: oNulo(f.stock_minimo),
             compra_por_mayor: oNulo(f.compra_por_mayor),
             salio_90_dias: numero(f.salio_90_dias),

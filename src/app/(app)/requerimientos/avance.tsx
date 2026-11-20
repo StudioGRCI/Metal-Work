@@ -18,11 +18,18 @@ const COLOR: Record<Tono, string> = {
  * cuando los insumos van separados, cuántos hay en cada etapa. Es de Atención
  * de requerimiento; la lista de Requerimientos lo dice en pasos (`tarjeta.tsx`).
  */
-export function AvanceDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
+export function AvanceDelRequerimiento({
+  rq,
+  frenado,
+}: {
+  rq: RequerimientoListado
+  /** El RQ frenado por el metrado: la etapa dice quién lo tiene, no «Almacén revisa». */
+  frenado?: { etiqueta: string; tono: Tono }
+}) {
   if (!rq.avance) return null
   // Entregado con faltante no es «Entregado» a secas: parte no salió. Y si ya
   // se entregó, la insignia de al lado lo dice: la etapa no lo repite.
-  const etapa = rq.avance.etapa === 'ENTREGADO' && rq.faltante_al_entregar ? ENTREGADO_CON_FALTANTE : ETAPA_AVANCE_RQ[rq.avance.etapa]
+  const etapa = frenado ?? (rq.avance.etapa === 'ENTREGADO' && rq.faltante_al_entregar ? ENTREGADO_CON_FALTANTE : ETAPA_AVANCE_RQ[rq.avance.etapa])
   const repite = rq.estado === 'ENTREGADO' && rq.avance.etapa === 'ENTREGADO'
   const resumen = resumenDeEtapas(rq.lineas.map((l) => l.etapa))
   return (

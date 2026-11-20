@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { PackageX, ShieldAlert, Truck } from 'lucide-react'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -9,6 +10,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { reposicionDeStock, type MaterialParaReponer } from '@/lib/datos/reposicion'
 import { ALMACENES, esAlmacen } from '@/lib/dominio/almacen'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cantidad } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -38,13 +40,19 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
   const compra = puede(perfil, 'compras.crear')
   const params = await searchParams
   const vista: Vista = VISTAS.some((v) => v.valor === params.vista) ? (params.vista as Vista) : 'reponer'
+  const q = typeof params.q === 'string' ? params.q.trim().slice(0, 80) : ''
+  const palabras = palabrasDeBusqueda(q)
 
-  const todos = await reposicionDeStock()
+  // El buscador filtra todo, también las cifras: buscar «disco» dice cuántos discos faltan.
+  const todos = (await reposicionDeStock()).filter((m) => palabras.length === 0 || coincide(palabras, [m.codigo, m.descripcion, m.categoria]))
   const porReponer = todos.filter((m) => m.comprar > 0)
   const sinMinimo = todos.filter((m) => m.stock_minimo === null && m.salio_90_dias > 0)
   const mostrados = vista === 'reponer' ? porReponer : vista === 'sin-minimo' ? sinMinimo : todos
-  const enCamino = todos.filter((m) => m.stock_minimo !== null && m.en_camino > 0).length
-  const vacio = {
+  const enCamino = todos.filter((m) => m.stock_minimo !== null && m.en_camino + m.por_aprobar > 0).length
+  const conQ = (href: string) => (q ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(q)}` : href)
+  const vacio = q
+    ? { titulo: 'Ningún material coincide', descripcion: `Nada de esta vista coincide con «${q}».` }
+    : {
     reponer: {
       titulo: 'Nada por reponer',
       descripcion: 'Todo lo que tiene mínimo está por encima, contando lo que ya viene en camino.',
@@ -61,25 +69,26 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
       <EncabezadoPagina
         titulo="Reposición de stock"
         descripcion="Lo que está bajo su stock de seguridad y cuánto comprar, contando lo que ya viene en otra orden de compra."
-        ayuda="«Hay» es la existencia del kardex; «libre», lo que no está separado para un requerimiento o una unidad. «En camino» es lo que una OC no rechazada ni anulada pidió y todavía no entró al kardex: así no se compra dos veces. «Comprar» es la compra por mayor, o lo que falta para el mínimo si es más; con la compra por mayor vacía, lo que falta para el mínimo. Almacén fija el mínimo y la compra por mayor; cuando lo que hay baja del mínimo, el sistema avisa a Almacén y a Logística."
+        ayuda="«Hay» es la existencia del kardex; «libre», lo que no está separado para un requerimiento o una unidad. «En camino» es lo que una OC aprobada (o que no necesita aprobación) pidió y todavía no entró al kardex; debajo, lo que piden otras OC que todavía esperan a Gerencia. Las dos cuentan para no comprar dos veces. «Comprar» es la compra por mayor, o lo que falta para el mínimo si es más; con la compra por mayor vacía, lo que falta para el mínimo. Almacén fija el mínimo y la compra por mayor; cuando lo que hay baja del mínimo, el sistema avisa a Almacén y a Logística."
         migas={[{ titulo: 'Almacén' }, { titulo: 'Reposición de stock' }]}
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3" data-resumen-reposicion>
+      {/* En el teléfono las cifras ya van en las pastillas de abajo: las tarjetas ocupaban media pantalla. */}
+      <div className="mb-4 hidden gap-3 sm:grid sm:grid-cols-3" data-resumen-reposicion>
         <Indicador
           titulo="Por reponer"
           valor={porReponer.length}
           icono={ShieldAlert}
           tono={porReponer.length > 0 ? 'peligro' : 'neutro'}
           pie={porReponer.length === 1 ? 'material no llega al mínimo' : 'materiales no llegan al mínimo'}
-          href={vista === 'reponer' ? undefined : '/almacen/reposicion'}
+          href={vista === 'reponer' ? undefined : conQ('/almacen/reposicion')}
         />
         <Indicador
           titulo="Ya en camino"
           valor={enCamino}
           icono={Truck}
           tono={enCamino > 0 ? 'acento' : 'neutro'}
-          pie={enCamino === 1 ? 'material con mínimo viene en una OC' : 'materiales con mínimo vienen en una OC'}
+          pie={enCamino === 1 ? 'material con mínimo viene en una OC, aprobada o por aprobar' : 'materiales con mínimo vienen en una OC, aprobada o por aprobar'}
         />
         <Indicador
           titulo="Sin mínimo"
@@ -87,7 +96,7 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
           icono={PackageX}
           tono={sinMinimo.length > 0 ? 'aviso' : 'neutro'}
           pie="salieron en 90 días y no avisan si se acaban"
-          href={vista === 'sin-minimo' ? undefined : '/almacen/reposicion?vista=sin-minimo'}
+          href={vista === 'sin-minimo' ? undefined : conQ('/almacen/reposicion?vista=sin-minimo')}
         />
       </div>
 
@@ -97,12 +106,16 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
         vistas={VISTAS.map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
-          href: v.valor === 'reponer' ? '/almacen/reposicion' : `/almacen/reposicion?vista=${v.valor}`,
+          href: conQ(v.valor === 'reponer' ? '/almacen/reposicion' : `/almacen/reposicion?vista=${v.valor}`),
           activa: vista === v.valor,
           descripcion: v.descripcion,
           cuenta: v.valor === 'reponer' ? porReponer.length : v.valor === 'sin-minimo' ? sinMinimo.length : todos.length,
         }))}
       />
+
+      <div className="mb-3 max-w-md">
+        <BuscadorSimple ruta="/almacen/reposicion" etiqueta="Buscar material" marcador="Código o descripción, por ejemplo disco" />
+      </div>
 
       {compra && porReponer.length > 0 && (
         <p className="mb-3 text-sm text-texto-suave">
@@ -167,19 +180,30 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
         </p>
         {bajoMinimo(m) && (
           <Insignia tono={m.comprar > 0 ? 'peligro' : 'aviso'} className="mt-1">
-            {m.comprar > 0 ? 'Bajo el mínimo' : 'Bajo el mínimo, ya viene'}
+            {m.comprar > 0 ? 'Bajo el mínimo' : m.en_camino > 0 ? 'Bajo el mínimo, ya viene' : 'Bajo el mínimo, en una OC por aprobar'}
           </Insignia>
         )}
       </TD>
       <Cifra nombre="Hay">
         {cantidad(m.existencia)} {u}
-        {m.libre < m.existencia && <span className="block text-[11px] text-texto-suave">libre {cantidad(m.libre)}</span>}
+        {m.libre < m.existencia && <span className="block text-xs text-texto-suave">libre {cantidad(m.libre)}</span>}
       </Cifra>
       <Cifra nombre="En camino">
-        {m.en_camino > 0 ? (
+        {m.en_camino > 0 || m.por_aprobar > 0 ? (
           <>
-            {cantidad(m.en_camino)} {u}
-            {m.en_camino_ocs && <span className="block text-[11px] break-words whitespace-normal text-texto-suave">{m.en_camino_ocs}</span>}
+            {m.en_camino > 0 ? (
+              <>
+                {cantidad(m.en_camino)} {u}
+                {m.en_camino_ocs && <span className="block text-xs break-words whitespace-normal text-texto-suave">{m.en_camino_ocs}</span>}
+              </>
+            ) : (
+              <span className="text-texto-tenue">—</span>
+            )}
+            {m.por_aprobar > 0 && (
+              <span className="block text-xs break-words whitespace-normal text-aviso" data-por-aprobar>
+                y {cantidad(m.por_aprobar)} {u} por aprobar{m.por_aprobar_ocs ? ` en ${m.por_aprobar_ocs}` : ''}
+              </span>
+            )}
           </>
         ) : (
           <span className="text-texto-tenue">—</span>
@@ -194,7 +218,7 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
           </>
         )}
         {m.compra_por_mayor !== null && (
-          <span className="block text-[11px] text-texto-suave">
+          <span className="block text-xs text-texto-suave">
             por mayor {cantidad(m.compra_por_mayor)} {u}
           </span>
         )}
