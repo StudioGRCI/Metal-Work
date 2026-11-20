@@ -267,8 +267,8 @@ export function resumenDeEtapas(etapas: (string | null)[]): string {
 /** Por qué entra un vehículo a la planta (los formatos MW/JM/CON-FOR-VIG de portería). */
 export const MOTIVO_VEHICULO: Record<string, Def> = {
   FABRICACION: { etiqueta: 'Fabricación', tono: 'acento', descripcion: 'Chasis o unidad para fabricarle la carrocería.' },
-  MANTENIMIENTO: { etiqueta: 'Mantenimiento', tono: 'info', descripcion: 'Unidad de un cliente para mantenimiento.' },
-  GARANTIA: { etiqueta: 'Garantía', tono: 'aviso', descripcion: 'Unidad que vuelve por garantía.' },
+  MANTENIMIENTO: { etiqueta: 'Mantenimiento', tono: 'info', descripcion: 'Unidad de un cliente para mantenimiento: entra con el N.º de su OT.' },
+  GARANTIA: { etiqueta: 'Garantía', tono: 'aviso', descripcion: 'Unidad que vuelve por garantía: entra con el N.º de su OT de garantía.' },
   ARENADO: { etiqueta: 'Retorno de arenado', tono: 'neutro', descripcion: 'Vuelve del arenado externo.' },
   COCHERA: { etiqueta: 'Cochera', tono: 'neutro', descripcion: 'Vehículo de un tercero que se guarda en la cochera.' },
   OTRO: { etiqueta: 'Otro', tono: 'neutro', descripcion: 'Cualquier otro motivo; se cuenta en la observación.' },
@@ -277,13 +277,23 @@ export const MOTIVO_VEHICULO: Record<string, Def> = {
 export const MOTIVOS_VEHICULO = Object.keys(MOTIVO_VEHICULO) as [string, ...string[]]
 
 /**
- * Los motivos que son trabajo del taller: entran con el código interno de una
- * unidad con OT y salen con el 100 % del avance y la revisión de Tesorería
+ * Los motivos que son trabajo del taller: salen con la revisión de Tesorería
  * atendida. Gemelo de `vehiculo_motivo_exige_codigo` (migración 20261020166000).
  */
 const MOTIVOS_CON_CODIGO = new Set(['FABRICACION', 'MANTENIMIENTO', 'GARANTIA', 'ARENADO'])
 export function motivoExigeCodigo(motivo: string): boolean {
   return MOTIVOS_CON_CODIGO.has(motivo)
+}
+
+/**
+ * Los que no tienen código interno: entran eligiendo su OT por el número, su
+ * código es «OT 2921-2026» y salen cuando Administración da por terminado el
+ * trabajo (migración 20261120500000). Fabricación y retorno del arenado entran
+ * por el código de la unidad y salen con el 100 % de su avance.
+ */
+const MOTIVOS_POR_OT = new Set(['MANTENIMIENTO', 'GARANTIA'])
+export function motivoPorOt(motivo: string): boolean {
+  return MOTIVOS_POR_OT.has(motivo)
 }
 
 /**

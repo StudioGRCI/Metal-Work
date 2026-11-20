@@ -182,17 +182,23 @@ export async function cambiarEstadoOrden(
 
 /**
  * Administración da por terminada la garantía cuando el taller avisa
- * (decisión de DKS, migración 20261021120000). La base exige el mismo permiso,
+ * (decisión de DKS, migración 20261021120000), y desde la 20261120500000
+ * también el mantenimiento, que va por su OT. La base exige el mismo permiso,
  * `ordenes.editar`, deja la OT como está y avisa a Requerimientos si el
  * vehículo está en la planta: con el visto de Tesorería, sale.
  */
 export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.editar')) {
-    return { ok: false, error: 'No tienes permiso para dar por terminada la garantía.' }
+    return { ok: false, error: 'No tienes permiso para dar por terminada la garantía ni el mantenimiento.' }
   }
   const analisis = z
-    .object({ orden_id: z.guid(), nota: z.string().trim().max(500, 'La nota va en 500 caracteres como máximo.').optional() })
+    .object({
+      orden_id: z.guid(),
+      nota: z.string().trim().max(500, 'La nota va en 500 caracteres como máximo.').optional(),
+      // Solo para el mensaje: qué trabajo es lo decide la base por la OT.
+      tipo: z.enum(['GARANTIA', 'MANTENIMIENTO']).optional(),
+    })
     .safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Datos incompletos.' }
 
@@ -206,7 +212,7 @@ export async function darPorTerminadaLaGarantia(_previo: unknown, datos: FormDat
 
   revalidatePath(`/ordenes/${analisis.data.orden_id}`)
   revalidatePath('/vehiculos')
-  return { ok: true, mensaje: 'Garantía terminada.' }
+  return { ok: true, mensaje: analisis.data.tipo === 'MANTENIMIENTO' ? 'Mantenimiento terminado.' : 'Garantía terminada.' }
 }
 
 const esquemaPonerCliente = z.object({

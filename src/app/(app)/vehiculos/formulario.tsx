@@ -17,13 +17,14 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
-import type { CodigoParaIngreso } from '@/lib/datos/vehiculos'
+import type { CodigoParaIngreso, OtParaIngreso } from '@/lib/datos/vehiculos'
 import {
   BUCKET_FOTOS_VEHICULO,
   MAXIMO_FOTOS_VEHICULO,
   MAXIMO_MB_FOTO_VEHICULO,
   MOTIVO_VEHICULO,
   motivoExigeCodigo,
+  motivoPorOt,
 } from '@/lib/dominio/requerimientos'
 import { useEnvio, usePestanaDeLaVersionAnterior } from '@/lib/envio'
 
@@ -39,7 +40,15 @@ import { registrarIngresoVehiculo } from './acciones'
  * terminó de subir…»), el vehículo quedaba sin registro y nada lo decía
  * (vigesimosexta pasada).
  */
-export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; codigos: CodigoParaIngreso[] }) {
+export function NuevoIngresoVehiculo({
+  cuentaId,
+  codigos,
+  ots,
+}: {
+  cuentaId: string
+  codigos: CodigoParaIngreso[]
+  ots: OtParaIngreso[]
+}) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -92,6 +101,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
           key={vez}
           cuentaId={cuentaId}
           codigos={codigos}
+          ots={ots}
           fotos={envio.fotos}
           setFotos={envio.setFotos}
           alCancelar={cerrar}
@@ -107,6 +117,7 @@ export function NuevoIngresoVehiculo({ cuentaId, codigos }: { cuentaId: string; 
 function FormularioIngreso({
   cuentaId,
   codigos,
+  ots,
   fotos,
   setFotos,
   alCancelar,
@@ -116,6 +127,7 @@ function FormularioIngreso({
 }: {
   cuentaId: string
   codigos: CodigoParaIngreso[]
+  ots: OtParaIngreso[]
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
   alCancelar: () => void
@@ -130,23 +142,27 @@ function FormularioIngreso({
   const [id] = useState(() => crypto.randomUUID())
   const [motivo, setMotivo] = useState('')
   const [codigo, setCodigo] = useState('')
+  const [ordenId, setOrdenId] = useState('')
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const listas = fotosParaEnviar(fotos).length
-  // El trabajo del taller entra con el código de una unidad con OT, y de ahí
-  // salen el cliente y el vehículo (migración 20261020166000).
-  const conCodigo = motivoExigeCodigo(motivo)
-  // Por garantía entra el código con su OT de garantía abierta, y esa es la OT
-  // que se muestra y la que espera la salida (migración 20261021120000).
-  const porGarantia = motivo === 'GARANTIA'
-  const posibles = porGarantia ? codigos.filter((c) => c.garantia_numero) : codigos
-  const otDe = (c: CodigoParaIngreso) => (porGarantia ? (c.garantia_numero ?? c.orden_numero) : c.orden_numero)
-  const elegido = conCodigo ? posibles.find((c) => c.codigo_interno === codigo) : undefined
-  const libres = posibles.filter((c) => !c.en_planta)
-  const enPlanta = posibles.length - libres.length
-  const faltaCodigo = conCodigo && !elegido
-  // Sin código que elegir, no se piden fotos que no van a servir.
-  const sinCodigos = conCodigo && libres.length === 0
+  // Mantenimiento y garantía no tienen código interno: entran eligiendo su OT
+  // por el número, y su código es el de la OT (migración 20261120500000).
+  const porOt = motivoPorOt(motivo)
+  const trabajo = motivo === 'GARANTIA' ? 'garantía' : 'mantenimiento'
+  const otsDelMotivo = porOt ? ots.filter((o) => o.tipo === motivo) : []
+  const otsLibres = otsDelMotivo.filter((o) => !o.en_planta)
+  const otsEnPlanta = otsDelMotivo.length - otsLibres.length
+  const otElegida = otsLibres.find((o) => o.orden_id === ordenId)
+  // La fabricación y el retorno del arenado entran con el código de una unidad
+  // con OT, y de ahí salen el cliente y el vehículo (migración 20261020166000).
+  const conCodigo = motivoExigeCodigo(motivo) && !porOt
+  const elegido = conCodigo ? codigos.find((c) => c.codigo_interno === codigo) : undefined
+  const libres = codigos.filter((c) => !c.en_planta)
+  const enPlanta = codigos.length - libres.length
+  const faltaCodigo = (conCodigo && !elegido) || (porOt && !otElegida)
+  // Sin código ni OT que elegir, no se piden fotos que no van a servir.
+  const sinCodigos = (conCodigo && libres.length === 0) || (porOt && otsLibres.length === 0)
   const pideDatos = Boolean(motivo) && !sinCodigos
   return (
     <form
@@ -162,9 +178,24 @@ function FormularioIngreso({
             etiqueta="Motivo"
             htmlFor="veh-motivo"
             requerido
-            ayuda={motivo ? MOTIVO_VEHICULO[motivo]?.descripcion : 'Primero el motivo: el trabajo del taller entra con su código interno.'}
+            ayuda={
+              motivo
+                ? MOTIVO_VEHICULO[motivo]?.descripcion
+                : 'Primero el motivo: la fabricación entra con su código interno; el mantenimiento y la garantía, con el N.º de su OT.'
+            }
           >
-            <Seleccion id="veh-motivo" name="motivo" required value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+            <Seleccion
+              id="veh-motivo"
+              name="motivo"
+              required
+              value={motivo}
+              onChange={(e) => {
+                setMotivo(e.target.value)
+                // Lo elegido para otro motivo no vale para este.
+                setCodigo('')
+                setOrdenId('')
+              }}
+            >
               <option value="" disabled>
                 Elige el motivo
               </option>
@@ -180,7 +211,84 @@ function FormularioIngreso({
           </Campo>
         </div>
 
-        {conCodigo ? (
+        {porOt ? (
+          <>
+            <Campo
+              etiqueta={`N.º de OT de ${trabajo}`}
+              htmlFor="veh-orden"
+              requerido
+              ayuda={
+                otsLibres.length === 0
+                  ? undefined
+                  : `Las OT de ${trabajo} que no están anuladas ni terminadas. El cliente y el vehículo de su unidad se cargan solos.${
+                      otsEnPlanta > 0
+                        ? ` ${otsEnPlanta === 1 ? 'Una ya está' : `${otsEnPlanta} ya están`} en la planta y no se ofrece${otsEnPlanta === 1 ? '' : 'n'}.`
+                        : ''
+                    }`
+              }
+            >
+              {otsLibres.length === 0 ? (
+                <p id="veh-orden" className="text-sm text-texto">
+                  No hay OT de {trabajo} por ingresar
+                  {otsEnPlanta > 0 ? `: ${otsEnPlanta === 1 ? 'la única ya está' : `las ${otsEnPlanta} ya están`} en la planta` : ''}.
+                </p>
+              ) : (
+                <SeleccionBuscable
+                  id="veh-orden"
+                  name="orden_id"
+                  requerido
+                  permiteVaciar={false}
+                  marcador={`Elige la OT de ${trabajo}`}
+                  marcadorBusqueda="N.º de OT, placa o cliente…"
+                  valor={ordenId}
+                  onChange={setOrdenId}
+                  opciones={otsLibres.map((o) => ({
+                    valor: o.orden_id,
+                    etiqueta: `OT ${o.orden_numero}`,
+                    detalle: [o.cliente, o.placa, o.unidad].filter(Boolean).join(' · '),
+                  }))}
+                />
+              )}
+            </Campo>
+            {otsLibres.length === 0 && otsEnPlanta === 0 && (
+              <p className="text-sm text-texto-suave">
+                {motivo === 'GARANTIA'
+                  ? 'Por garantía entra el vehículo con su OT de garantía: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía.'
+                  : 'Por mantenimiento entra el vehículo con su OT de mantenimiento: Administración la registra en Órdenes de trabajo.'}{' '}
+                Si solo se guarda, elige «Cochera».
+              </p>
+            )}
+            {otElegida && (
+              <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm" data-ot-elegida={otElegida.orden_numero}>
+                <p className="font-medium text-texto">{otElegida.unidad ?? 'La OT no tiene su unidad registrada: anota la placa o el chasis y el vehículo.'}</p>
+                <p className="text-texto-suave">
+                  {otElegida.cliente} · se costea como <span className="tabular">OT {otElegida.orden_numero}</span>
+                  {otElegida.estado === 'BORRADOR' ? ' · espera la aprobación de Gerencia' : ''}
+                </p>
+              </div>
+            )}
+            {otElegida && (
+              // La llave es la OT: al cambiarla, la placa y el chasis vuelven a los de su unidad.
+              <div key={otElegida.orden_id} className="grid gap-4 sm:grid-cols-2">
+                <Campo
+                  etiqueta="Placa"
+                  htmlFor="veh-placa"
+                  ayuda={otElegida.placa ? 'La de la unidad.' : otElegida.unidad ? 'Si ya tiene.' : 'La placa o el chasis: al menos uno.'}
+                >
+                  <Entrada id="veh-placa" name="placa" maxLength={15} autoComplete="off" defaultValue={otElegida.placa ?? ''} className="uppercase" />
+                </Campo>
+                <Campo etiqueta="N.º de chasis" htmlFor="veh-chasis" ayuda={otElegida.chasis ? 'El de la unidad.' : 'Si es un chasis nuevo o no tiene placa.'}>
+                  <Entrada id="veh-chasis" name="chasis" maxLength={40} autoComplete="off" defaultValue={otElegida.chasis ?? ''} className="uppercase" />
+                </Campo>
+                {!otElegida.unidad && (
+                  <Campo etiqueta="Vehículo" htmlFor="veh-unidad" requerido className="sm:col-span-2">
+                    <Entrada id="veh-unidad" name="unidad" required minLength={2} maxLength={120} placeholder="Camioneta Toyota Hilux" />
+                  </Campo>
+                )}
+              </div>
+            )}
+          </>
+        ) : conCodigo ? (
           <>
             <Campo
               etiqueta="Código interno"
@@ -189,14 +297,14 @@ function FormularioIngreso({
               ayuda={
                 libres.length === 0
                   ? undefined
-                  : `Solo los códigos con su OT${porGarantia ? ' de garantía' : ''}. El cliente y el vehículo se cargan solos.${
+                  : `Solo los códigos con su OT. El cliente y el vehículo se cargan solos.${
                       enPlanta > 0 ? ` ${enPlanta === 1 ? 'Uno ya está' : `${enPlanta} ya están`} en la planta y no se ofrece${enPlanta === 1 ? '' : 'n'}.` : ''
                     }`
               }
             >
               {libres.length === 0 ? (
                 <p id="veh-codigo" className="text-sm text-texto">
-                  No hay códigos con OT{porGarantia ? ' de garantía abierta' : ''} por ingresar{enPlanta > 0 ? `: ${enPlanta === 1 ? 'el único ya está' : `los ${enPlanta} ya están`} en la planta` : ''}.
+                  No hay códigos con OT por ingresar{enPlanta > 0 ? `: ${enPlanta === 1 ? 'el único ya está' : `los ${enPlanta} ya están`} en la planta` : ''}.
                 </p>
               ) : (
                 <SeleccionBuscable
@@ -210,7 +318,7 @@ function FormularioIngreso({
                   onChange={setCodigo}
                   opciones={libres.map((c) => ({
                     valor: c.codigo_interno,
-                    etiqueta: `${c.codigo_interno} · OT ${otDe(c)}`,
+                    etiqueta: `${c.codigo_interno} · OT ${c.orden_numero}`,
                     detalle: [c.cliente, c.placa].filter(Boolean).join(' · '),
                   }))}
                 />
@@ -219,17 +327,15 @@ function FormularioIngreso({
             {/* Si los códigos están en la planta, no falta ninguna OT: no se pide otra. */}
             {libres.length === 0 && enPlanta === 0 && (
               <p className="text-sm text-texto-suave">
-                {porGarantia
-                  ? 'Por garantía entra el código con su OT de garantía: Administración la registra en Órdenes de trabajo, sin cotización y de tipo Garantía.'
-                  : 'Un vehículo entra a trabajo solo con su código interno y su OT, y el código nace cuando Gerencia aprueba la cotización con su OT.'}{' '}
-                Si solo se guarda, elige «Cochera».
+                Un vehículo entra a fabricación solo con su código interno y su OT, y el código nace cuando se aprueba la cotización y
+                Administración carga su OT. Si solo se guarda, elige «Cochera».
               </p>
             )}
             {elegido && (
               <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 p-3 text-sm" data-codigo-elegido={elegido.codigo_interno}>
                 <p className="font-medium text-texto">{elegido.unidad}</p>
                 <p className="text-texto-suave">
-                  {elegido.cliente} · OT <span className="tabular">{otDe(elegido)}</span>
+                  {elegido.cliente} · OT <span className="tabular">{elegido.orden_numero}</span>
                 </p>
               </div>
             )}

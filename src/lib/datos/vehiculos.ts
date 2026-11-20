@@ -56,7 +56,11 @@ export async function cargarVehiculos(vista: 'en_planta' | 'historial'): Promise
   return (data ?? []).map((f) => conConteo(f as FilaConFotos))
 }
 
-/** Un código interno que puede entrar a la planta: su unidad tiene una OT que no está anulada. */
+/**
+ * Un código interno que puede entrar a la planta por fabricación o retorno del
+ * arenado: su unidad tiene una OT que no está anulada ni es de mantenimiento o
+ * garantía, que entran por el número de su OT (`OtParaIngreso`).
+ */
 export type CodigoParaIngreso = {
   codigo_interno: string
   orden_numero: string
@@ -66,8 +70,6 @@ export type CodigoParaIngreso = {
   chasis: string | null
   /** Ya entró y no ha salido: no entra otra vez. */
   en_planta: boolean
-  /** Su OT de garantía abierta, si tiene: con el motivo «Garantía» solo entran estos, con esta OT. */
-  garantia_numero: string | null
 }
 
 /** Los códigos que ofrece la ventana del ingreso, con todo lo que se carga solo (`vehiculos_codigos_para_ingreso`). */
@@ -86,7 +88,49 @@ export async function codigosParaIngreso(): Promise<CodigoParaIngreso[]> {
             placa: f.placa,
             chasis: f.chasis,
             en_planta: Boolean(f.en_planta),
-            garantia_numero: f.garantia_numero,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * Una OT de mantenimiento o de garantía con la que puede entrar un vehículo
+ * (`vehiculos_ots_para_ingreso`, migración 20261120500000): esos trabajos no
+ * tienen código interno y van por el número de su OT.
+ */
+export type OtParaIngreso = {
+  orden_id: string
+  orden_numero: string
+  tipo: string
+  estado: string
+  cliente: string
+  /** El vehículo de su unidad; null si la OT no tiene unidad y hay que anotarlo. */
+  unidad: string | null
+  placa: string | null
+  chasis: string | null
+  /** Su vehículo ya entró y no ha salido: no entra otra vez. */
+  en_planta: boolean
+}
+
+/** Las OT que ofrece la ventana del ingreso por mantenimiento o garantía. */
+export async function otsParaIngreso(): Promise<OtParaIngreso[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('vehiculos_ots_para_ingreso')
+  if (error) throw new Error(`No se pudo leer las OT de mantenimiento y garantía: ${error.message}`)
+  return (data ?? []).flatMap((f) =>
+    f.orden_id && f.orden_numero && f.tipo
+      ? [
+          {
+            orden_id: f.orden_id,
+            orden_numero: f.orden_numero,
+            tipo: f.tipo,
+            estado: f.estado ?? '',
+            cliente: f.cliente ?? '',
+            unidad: f.unidad_id ? (f.unidad ?? '') : null,
+            placa: f.placa,
+            chasis: f.chasis,
+            en_planta: Boolean(f.en_planta),
           },
         ]
       : [],
@@ -104,9 +148,12 @@ export type EstadoDeSalida = {
   tesoreria: string | null
   falta_para_pedir: string | null
   falta_para_salir: string | null
-  /** Si entró por garantía: el número de su OT de garantía, que es lo que espera la salida en vez del avance. */
+  /**
+   * Si entró por garantía o por mantenimiento: el número de esa OT, que es lo
+   * que espera la salida en vez del avance (el motivo del ingreso dice cuál).
+   */
   garantia_ot: string | null
-  /** «TERMINADA» cuando Administración la dio por terminada; si no, el estado de la OT. */
+  /** «TERMINADA» cuando Administración dio por terminado su trabajo; si no, el estado de la OT. */
   garantia_estado: string | null
 }
 

@@ -89,13 +89,16 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
             </Dato>
             {r.placa && r.chasis && <Dato titulo="Chasis">{r.chasis}</Dato>}
             {r.codigo_interno && (r.placa || r.chasis) && <Dato titulo="Código interno">{r.codigo_interno}</Dato>}
+            {/* Garantía y mantenimiento van por su OT: la salida espera que Administración dé por terminado el trabajo. */}
             {estado?.exige && estado.garantia_ot && (
-              <Dato titulo="OT de garantía">
+              <Dato titulo={r.motivo === 'MANTENIMIENTO' ? 'OT de mantenimiento' : 'OT de garantía'}>
                 <span data-garantia-salida={estado.garantia_estado ?? ''}>
                   {estado.garantia_ot} ·{' '}
                   {estado.garantia_estado === 'TERMINADA'
-                    ? 'garantía terminada'
-                    : estado.garantia_estado === 'ANULADA' ? 'OT anulada' : 'garantía por terminar'}
+                    ? r.motivo === 'MANTENIMIENTO' ? 'mantenimiento terminado' : 'garantía terminada'
+                    : estado.garantia_estado === 'ANULADA'
+                      ? 'OT anulada'
+                      : r.motivo === 'MANTENIMIENTO' ? 'mantenimiento por terminar' : 'garantía por terminar'}
                 </span>
               </Dato>
             )}
@@ -157,6 +160,7 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
           salio={Boolean(r.salida_en)}
           alArenado={r.sale_al_arenado}
           estado={estado}
+          motivo={r.motivo}
         />
 
         <Momento
@@ -257,6 +261,7 @@ function RevisionDeTesoreria({
   salio,
   alArenado,
   estado,
+  motivo,
 }: {
   registro: string
   ficha: FichaDeVehiculo | null
@@ -265,6 +270,7 @@ function RevisionDeTesoreria({
   salio: boolean
   alArenado: boolean
   estado: EstadoDeSalida | undefined
+  motivo: string
 }) {
   const ultima = revisiones[0]
   const esperando = ultima?.estado === 'PENDIENTE'
@@ -288,7 +294,9 @@ function RevisionDeTesoreria({
           // El porqué ya está arriba, junto al avance: aquí no se repite.
           <p className="text-sm text-texto-suave">
             {estado.garantia_ot
-              ? 'Se pide cuando Administración dé por terminada la garantía.'
+              ? motivo === 'MANTENIMIENTO'
+                ? 'Se pide cuando Administración dé por terminado el mantenimiento.'
+                : 'Se pide cuando Administración dé por terminada la garantía.'
               : 'Se pide cuando el código llegue al 100 % del avance.'}
           </p>
         ) : lista ? (

@@ -120,6 +120,7 @@ tiene esas cuentas ni esa OT. Si vuelve a caerse, es que una migración nueva o
 | `caja-de-prueba.mjs` | Ayudante de las pruebas que pagan o cobran: da de alta una cuenta de prueba y la elige en la ventana, porque desde la migración `20261019100000` cada pago pide su cuenta. |
 | `con-react.mjs` | Ayudante: `esperarReactAlNavegar(pagina)` hace que cada `goto` y `reload` espere a que React tome cada control de la pantalla. `networkidle` llega antes en una lista larga, y el primer clic se perdía. |
 | `consulta-del-envio.mjs` | Ayudante: reconoce la pregunta que hace la ventana al abrirse (`consultarEnvio(clave, ids)`, con la lista vacía si no hay nada pendiente; `conIds` para la que lleva alguno), para las suites que la detienen y comprueban que de verdad se detuvo. |
+| `probar-mantenimiento-por-ot.mjs` | El mantenimiento y la garantía van por el N.º de su OT (observaciones del área de Requerimientos, 2026-11-20), con la cuenta de cada puesto: Requerimientos, en el teléfono, registra el ingreso por mantenimiento eligiendo la OT (sin unidad: anota la placa y el vehículo) y queda con el código «OT 9455-AAAA»; la salida espera a Administración, que lo da por terminado desde la OT con un aviso a Requerimientos; en el RQ, el buscador de código ofrece la OT de mantenimiento y el insumo se busca por grupo (NIPLERÍA, SISTEMA ELECTRICO) con todos sus insumos. Arma la OT de mantenimiento 9455-AAAA sin unidad. `probar-garantia-terminada.mjs` hace lo mismo con la garantía, que entra por su OT. |
 
 ## Lo que respeta y lo que no
 

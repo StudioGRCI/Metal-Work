@@ -12254,6 +12254,12 @@ export type Database = {
           cliente: string | null
         }[]
       }
+      codigo_de_la_ot: {
+        Args: {
+          p_numero: string | null
+        }
+        Returns: string
+      }
       codigo_interno_actividades: {
         Args: {
           p_codigo: string | null
@@ -13912,6 +13918,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      es_codigo_de_ot: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: boolean
+      }
       es_laborable: {
         Args: {
           p_fecha: string | null
@@ -15527,6 +15539,7 @@ export type Database = {
           p_ingreso_en: string | null
           p_observacion: string | null
           p_fotos: Json | null
+          p_orden: string | null
         }
         Returns: string
       }
@@ -17053,6 +17066,21 @@ export type Database = {
           falta_para_salir: string | null
           garantia_ot: string | null
           garantia_estado: string | null
+        }[]
+      }
+      vehiculos_ots_para_ingreso: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_id: string | null
+          orden_numero: string | null
+          tipo: string | null
+          estado: string | null
+          cliente: string | null
+          unidad_id: string | null
+          unidad: string | null
+          placa: string | null
+          chasis: string | null
+          en_planta: boolean | null
         }[]
       }
     }
