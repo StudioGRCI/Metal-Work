@@ -1,11 +1,13 @@
 import Link from 'next/link'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { metradoDeRequerimientos, requerimientosPorAutorizar, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { enlaceDisenoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cuentaDelMetrado, ESTADO_METRADO } from '@/lib/dominio/metrado-rq'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
@@ -22,8 +24,12 @@ export const metadata = { title: 'Insumos por autorizar' }
  * sustento de quien pidió; abajo lo que todavía espera ese sustento, por si el
  * metrado del código está incompleto y basta con cargarlo.
  */
-export default async function PaginaPorAutorizar() {
+export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/requerimientos/metrado'>) {
   const perfil = await exigirPermiso('requerimientos.autorizar_metrado')
+  // Por código interno (o por RQ, área o insumo): con varios RQ la bandeja se hacía larga en el teléfono.
+  const params = await searchParams
+  const q = typeof params.codigo === 'string' ? params.codigo.trim().slice(0, 80) : ''
+  const palabras = palabrasDeBusqueda(q)
   const cargaMetrado = puede(perfil, 'diseno.codigos')
   // Los 300 abiertos más recientes, y además los que esperan el visto aunque sean
   // más antiguos: el globo los cuenta todos, y la bandeja no puede dejar uno fuera.
@@ -35,8 +41,12 @@ export default async function PaginaPorAutorizar() {
   const de = (r: RequerimientoListado, estados: MetradoDelInsumo['estado'][]) =>
     r.lineas.filter((l) => estados.includes(metrado.get(l.id)?.estado ?? 'NO_APLICA'))
   // El más antiguo primero: es el que lleva más tiempo frenando a Almacén.
-  const porAutorizar = abiertos.filter((r) => de(r, ['POR_AUTORIZAR']).length > 0).reverse()
-  const sinSustento = abiertos.filter((r) => de(r, ['POR_AUTORIZAR']).length === 0 && de(r, ['SIN_SUSTENTO', 'RECHAZADO']).length > 0).reverse()
+  const busca = (r: RequerimientoListado) =>
+    palabras.length === 0 || coincide(palabras, [r.codigo_interno, r.numero, r.area, ...r.lineas.map((l) => l.descripcion)])
+  const porAutorizar = abiertos.filter((r) => de(r, ['POR_AUTORIZAR']).length > 0 && busca(r)).reverse()
+  const sinSustento = abiertos
+    .filter((r) => de(r, ['POR_AUTORIZAR']).length === 0 && de(r, ['SIN_SUSTENTO', 'RECHAZADO']).length > 0 && busca(r))
+    .reverse()
 
   return (
     <>
@@ -47,6 +57,15 @@ export default async function PaginaPorAutorizar() {
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por autorizar' }]}
       />
 
+      <div className="mb-4 max-w-md">
+        <BuscadorSimple
+          ruta="/requerimientos/metrado"
+          clave="codigo"
+          etiqueta="Buscar por código interno"
+          marcador="Código interno, RQ o insumo"
+        />
+      </div>
+
       <ConAvisos>
         <section aria-labelledby="por-autorizar" className="space-y-3">
           <h2 id="por-autorizar" className="text-sm font-semibold text-texto">
@@ -54,11 +73,19 @@ export default async function PaginaPorAutorizar() {
           </h2>
           {porAutorizar.length === 0 ? (
             <Tarjeta>
-              <SinDatos
-                enTabla={false}
-                titulo="Nada espera tu visto"
-                descripcion="Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí y te llega el aviso."
-              />
+              {q ? (
+                <SinDatos
+                  enTabla={false}
+                  titulo="Nada de lo que espera tu visto coincide"
+                  descripcion={`Ningún requerimiento por autorizar coincide con «${q}». Prueba con otro código o borra la búsqueda.`}
+                />
+              ) : (
+                <SinDatos
+                  enTabla={false}
+                  titulo="Nada espera tu visto"
+                  descripcion="Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí y te llega el aviso."
+                />
+              )}
             </Tarjeta>
           ) : (
             porAutorizar.map((r) => (
@@ -111,7 +138,7 @@ export default async function PaginaPorAutorizar() {
                       <p className="text-xs text-texto-suave">{cuentaDelMetrado(m, l.unidad)}</p>
                       {m.estado === 'RECHAZADO' && m.nota_decision && (
                         <p className="text-xs break-words text-texto-suave">
-                          <span className="font-medium text-texto">Tu nota:</span> {m.nota_decision}
+                          <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
                         </p>
                       )}
                     </li>

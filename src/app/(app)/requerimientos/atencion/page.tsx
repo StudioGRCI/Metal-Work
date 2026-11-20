@@ -14,7 +14,7 @@ import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metr
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
-import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems } from '@/lib/dominio/metrado-rq'
+import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
 import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -411,9 +411,12 @@ function Fila({
         <div className="flex flex-col items-start gap-2 px-3 pb-3 empty:hidden sm:items-end sm:p-0">
           {recibe && freno && (
             <p className="max-w-xs text-xs text-texto-suave sm:text-right" data-espera-metrado>
-              <span className="font-medium text-aviso">{freno.freno === 'DISENO' ? 'Espera el visto de Diseño.' : 'Espera el sustento de quien pidió.'}</span>{' '}
+              <span className={`font-medium ${freno.freno === 'DISENO' ? 'text-aviso' : 'text-peligro'}`}>
+                {freno.freno === 'DISENO' ? 'Espera el visto de Diseño.' : 'Espera el sustento de quien pidió.'}
+              </span>{' '}
               {freno.items.length === 1 ? `El insumo ${freno.items[0]} se pasa` : `Los insumos ${listaDeItems(freno.items)} se pasan`} del
-              metrado de Diseño: lo revisas cuando Diseño lo autorice o amplíe el metrado. Te llega el aviso.
+              metrado de Diseño. {queFaltaDelFreno(freno)}. Lo revisas cuando Diseño {freno.items.length === 1 ? 'lo' : 'los'} autorice o amplíe el
+              metrado; te llega el aviso.
             </p>
           )}
           {recibe && rq.estado === 'POR_ATENDER' && !freno && (

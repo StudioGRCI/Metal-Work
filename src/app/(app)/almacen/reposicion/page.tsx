@@ -51,7 +51,13 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
   const enCamino = todos.filter((m) => m.stock_minimo !== null && m.en_camino + m.por_aprobar > 0).length
   const conQ = (href: string) => (q ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(q)}` : href)
   const vacio = q
-    ? { titulo: 'Ningún material coincide', descripcion: `Nada de esta vista coincide con «${q}».` }
+    ? {
+        titulo: 'Ningún material coincide',
+        descripcion:
+          vista === 'todos'
+            ? `Nada coincide con «${q}». Prueba con otra palabra o con el código, o borra la búsqueda.`
+            : `Nada de esta vista coincide con «${q}». Míralo en «Todos» o borra la búsqueda.`,
+      }
     : {
     reponer: {
       titulo: 'Nada por reponer',
@@ -162,7 +168,7 @@ function Cifra({ nombre, children, className }: { nombre: string; children: Reac
   return (
     <TD className={`flex items-baseline justify-between gap-3 py-0.5 sm:table-cell sm:py-2 sm:text-right ${className ?? ''}`}>
       <span className="text-xs text-texto-suave sm:hidden">{nombre}</span>
-      <span className="tabular">{children}</span>
+      <span className="tabular text-right">{children}</span>
     </TD>
   )
 }
@@ -176,7 +182,7 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
         <p className="break-words text-texto">{m.descripcion}</p>
         <p className="text-xs text-texto-suave">
           <span className="font-mono">{m.codigo}</span> · {almacen}
-          {m.categoria ? ` · ${m.categoria}` : ''}
+          {m.categoria && m.categoria !== almacen ? ` · ${m.categoria}` : ''}
         </p>
         {bajoMinimo(m) && (
           <Insignia tono={m.comprar > 0 ? 'peligro' : 'aviso'} className="mt-1">

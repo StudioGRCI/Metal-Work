@@ -184,7 +184,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       {soloSustentar && (
         <p className="mb-3 text-sm text-texto-suave">
           Solo los que se pasan del metrado y esperan tu sustento.{' '}
-          <Link href={sinRecoger} className="font-medium text-acento hover:underline">
+          <Link href={sinRecoger} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
             Ver todos
           </Link>
         </p>

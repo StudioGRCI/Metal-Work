@@ -9,7 +9,7 @@ import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
-import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, pideSustento } from '@/lib/dominio/metrado-rq'
+import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
   estadoDelRequerimiento,
@@ -120,6 +120,7 @@ export function ResumenDeRequerimientos({
   let noComprados = 0
   let revisar = 0
   let frenados = 0
+  const rqFrenados = new Set<string>()
   // Lo que Gerencia pidió distinguir de un vistazo (PR #76): los dos momentos del recojo del proveedor.
   let esperanRecojo = 0
   let enRecojo = 0
@@ -131,7 +132,10 @@ export function ResumenDeRequerimientos({
       const p = partesDelInsumo(l, rq.estado)
       if (!p) continue
       if (p.recoger > 0) recoger++
-      if (p.revisar > 0 && frenado) frenados++
+      if (p.revisar > 0 && frenado) {
+        frenados++
+        rqFrenados.add(rq.id)
+      }
       else if (p.revisar > 0) revisar++
       // Lo que la OC no compró ya no lo trae nadie: se cuenta aparte, no como de Logística.
       if (p.porLlegar > 0 && laCompraQuedoCorta(l, p)) noComprados++
@@ -196,7 +200,8 @@ export function ResumenDeRequerimientos({
             {revisar === 1 ? 'insumo sin revisar el stock' : 'insumos sin revisar el stock'}
             {frenados > 0 && (
               <span className="block text-aviso" data-esperan-metrado>
-                y {frenados} de {frenados === 1 ? 'un RQ que espera' : 'RQ que esperan'} el sustento o a Diseño
+                y {frenados} {frenados === 1 ? 'insumo' : 'insumos'} de{' '}
+                {rqFrenados.size === 1 ? 'un RQ que espera' : `${rqFrenados.size} RQ que esperan`} el sustento o a Diseño
               </span>
             )}
           </>
@@ -432,6 +437,7 @@ function InsumosConPartes({
   metrado: Map<string, MetradoDelInsumo> | null
 }) {
   const partes = rq.lineas.map((l) => partesDelInsumo(l, rq.estado))
+  const frenanElRq = (metrado && frenoDelRq(rq, metrado)?.items) ?? []
   const cuenta = (k: keyof PartesDelInsumo) => partes.filter((p) => p && p[k] > 0).length
   const fichas = [
     { n: cuenta('recoger'), texto: 'para recoger', tono: 'exito' as Tono },
@@ -462,7 +468,7 @@ function InsumosConPartes({
       </summary>
       <ul className="divide-y divide-borde border-t border-borde">
         {rq.lineas.map((l, i) => (
-          <InsumoConPartes key={l.item} linea={l} partes={partes[i]} rq={rq} metrado={metrado?.get(l.id)} />
+          <InsumoConPartes key={l.item} linea={l} partes={partes[i]} rq={rq} metrado={metrado?.get(l.id)} frenanElRq={frenanElRq} />
         ))}
       </ul>
     </details>
@@ -477,11 +483,14 @@ function InsumoConPartes({
   partes,
   rq,
   metrado,
+  frenanElRq,
 }: {
   linea: LineaRequerimiento
   partes: PartesDelInsumo | null
   rq: RequerimientoListado
   metrado: MetradoDelInsumo | undefined
+  /** Los insumos que frenan la revisión de todo el RQ; vacío si no frena. */
+  frenanElRq: number[]
 }) {
   const frena = frenaElRq(metrado?.estado) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO'
   const tono = tonoPorLlegar(l, partes)
@@ -544,7 +553,9 @@ function InsumoConPartes({
                     ? metrado?.estado === 'POR_AUTORIZAR'
                       ? 'por revisar cuando Diseño lo autorice'
                       : 'por revisar cuando se sustente y Diseño lo autorice'
-                    : 'por revisar: Almacén ve si lo tiene'}
+                    : frenanElRq.length > 0
+                      ? `por revisar cuando Diseño autorice ${frenanElRq.length === 1 ? 'el insumo' : 'los insumos'} ${listaDeItems(frenanElRq)}`
+                      : 'por revisar: Almacén ve si lo tiene'}
                 </span>
               </Parte>
             )}
@@ -604,10 +615,7 @@ function Parte({ color, cifra, children, ...props }: { color: string; cifra: str
 }
 
 /** «2», «2 y 5», «2, 4 y 5». */
-const items = (lineas: LineaRequerimiento[]) => {
-  const n = lineas.map((l) => String(l.item))
-  return n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}`
-}
+const items = (lineas: LineaRequerimiento[]) => listaDeItems(lineas.map((l) => l.item))
 
 /**
  * Lo que frena el RQ por el metrado de Diseño (migración 20261120400000): qué
@@ -652,8 +660,14 @@ function FrenoDelMetrado({
         <p className="text-xs text-texto">
           {sinSustento.length > 0
             ? `${rechazados.length > 0 ? `Diseño no autorizó ${rechazados.length === 1 ? 'el' : 'los'} ${items(rechazados)}: corrige la cantidad o sustenta otra vez. ` : ''}${
+                esperan.length > 0
+                  ? `Diseño ya tiene el sustento ${esperan.length === 1 ? 'del insumo' : 'de los insumos'} ${items(esperan)}. `
+                  : ''
+              }${
                 sustenta
-                  ? `Escribe por qué ${sinSustento.length === 1 ? 'hace' : 'hacen'} falta y Diseño lo autoriza o no.`
+                  ? esperan.length > 0
+                    ? `Escribe por qué ${sinSustento.length === 1 ? 'hace falta el' : 'hacen falta los'} ${items(sinSustento)}, y Diseño lo autoriza o no.`
+                    : `Escribe por qué ${sinSustento.length === 1 ? 'hace' : 'hacen'} falta y Diseño lo autoriza o no.`
                   : 'Quien registró el requerimiento escribe por qué hace falta, y Diseño lo autoriza o no.'
               }`
             : `Diseño tiene el sustento de ${esperan.length === 1 ? 'el insumo' : 'los insumos'} ${items(esperan)}: falta su visto.`}{' '}
@@ -664,7 +678,7 @@ function FrenoDelMetrado({
         <SustentarInsumos
           id={rq.id}
           numero={rq.numero}
-          insumos={frenados.map((l) => {
+          insumos={(sinSustento.length > 0 ? sinSustento : frenados).map((l) => {
             const m = metrado.get(l.id)!
             return {
               item: l.item,

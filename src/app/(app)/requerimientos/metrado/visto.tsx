@@ -13,7 +13,6 @@ import { useEnvio } from '@/lib/envio'
 import { useAvisar } from '../atencion/avisos'
 import { autorizarInsumos } from './acciones'
 
-/** «1», «1 y 2», «1, 2 y 3». */
 export type InsumoPorAutorizar = {
   item: number
   /** «40 KG Plancha LAC 3 mm». */

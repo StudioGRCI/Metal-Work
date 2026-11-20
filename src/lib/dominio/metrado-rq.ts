@@ -60,12 +60,30 @@ export const FRENO_DEL_RQ: Record<FrenoDelRq, { etiqueta: string; tono: Tono; et
 export function frenoDelRq(
   rq: { estado: string; lineas: { id: string; item: number }[] },
   metrado: Map<string, { estado: EstadoMetrado }>,
-): { freno: FrenoDelRq; items: number[] } | null {
+): { freno: FrenoDelRq; items: number[]; sinSustento: number[]; enDiseno: number[] } | null {
   if (rq.estado !== 'POR_ATENDER') return null
   const frenados = rq.lineas.filter((l) => frenaElRq(metrado.get(l.id)?.estado))
   if (frenados.length === 0) return null
-  const freno = frenados.every((l) => metrado.get(l.id)?.estado === 'POR_AUTORIZAR') ? 'DISENO' : 'SUSTENTO'
-  return { freno, items: frenados.map((l) => l.item) }
+  const enDiseno = frenados.filter((l) => metrado.get(l.id)?.estado === 'POR_AUTORIZAR').map((l) => l.item)
+  const sinSustento = frenados.filter((l) => metrado.get(l.id)?.estado !== 'POR_AUTORIZAR').map((l) => l.item)
+  return { freno: sinSustento.length === 0 ? 'DISENO' : 'SUSTENTO', items: frenados.map((l) => l.item), sinSustento, enDiseno }
+}
+
+/**
+ * Qué falta en un RQ frenado, nombrando aparte los insumos sin sustento y los
+ * que ya tiene Diseño: en un RQ mixto, «los insumos 1 y 2 esperan el sustento»
+ * pedía otra vez el que ya estaba enviado.
+ */
+export function queFaltaDelFreno(f: { sinSustento: number[]; enDiseno: number[] }): string {
+  const sin =
+    f.sinSustento.length === 1
+      ? `Al insumo ${listaDeItems(f.sinSustento)} le falta el sustento`
+      : `A los insumos ${listaDeItems(f.sinSustento)} les falta el sustento`
+  const conDiseno =
+    f.enDiseno.length === 1 ? `el insumo ${listaDeItems(f.enDiseno)} ya está con Diseño` : `los insumos ${listaDeItems(f.enDiseno)} ya están con Diseño`
+  if (f.enDiseno.length === 0) return sin
+  if (f.sinSustento.length === 0) return `Diseño tiene el sustento de ${f.enDiseno.length === 1 ? 'el insumo' : 'los insumos'} ${listaDeItems(f.enDiseno)} y falta su visto`
+  return `${sin}; ${conDiseno}`
 }
 
 /**

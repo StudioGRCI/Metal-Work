@@ -212,7 +212,7 @@ try {
   comprobar(aviso, 'arriba dice que el insumo quedó autorizado')
   await esperar(async () => (await dis.pagina.locator('#sin-sustento').count()) > 0)
   const espera = limpio(await dis.pagina.locator('section', { has: dis.pagina.locator('#sin-sustento') }).innerText().catch(() => ''))
-  comprobar(espera.includes(RQ) && espera.includes('Diseño no lo autorizó') && espera.includes('Tu nota'),
+  comprobar(espera.includes(RQ) && espera.includes('Diseño no lo autorizó') && espera.includes('Diseño: El metrado no lleva faros'),
     'el RQ pasa a «Esperan el sustento de quien pidió», con su nota')
   comprobar(dis.errores.length === 0, `sin errores de consola para Diseño (${dis.errores.join(' | ')})`)
   await dis.pagina.screenshot({ path: join(carpeta, '3-diseno.png'), fullPage: true })
