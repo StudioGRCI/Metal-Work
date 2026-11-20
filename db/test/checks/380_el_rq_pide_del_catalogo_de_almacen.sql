@@ -131,6 +131,7 @@ select test.debe_fallar(format($q$select public.rq_revisar_stock('%s', '[{"item"
   current_setting('prueba.rq1'), current_setting('prueba.m4')),
   'el insumo que ya tiene material no se cambia en la revisión', 'ya tiene su material');
 -- El 3 se asocia al disco que ya existe; el 5 se da de alta solo.
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq1')::uuid, format('[{"item": 1, "en_stock": 4}, {"item": 2, "en_stock": 0},
   {"item": 3, "en_stock": 1, "material_id": "%s"}, {"item": 4, "en_stock": 0}, {"item": 5, "en_stock": 0}]', current_setting('prueba.m1'))::jsonb, null);
 reset role;

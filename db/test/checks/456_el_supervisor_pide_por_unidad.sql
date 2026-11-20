@@ -160,6 +160,7 @@ select test.debe_fallar($q$select public.rq_exigir_del_area('OPERACION', 'REGIST
 reset role;
 
 -- ======================================== 6. Almacén lo atiende, un solo aviso
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select pg_temp.como('alm');
 set local role authenticated;
 select public.rq_marcar_listo_en_almacen(pg_temp.id('rq1'), null);

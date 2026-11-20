@@ -140,6 +140,7 @@ reset role;
 -- ============================================ 2. Sin stock y una OC por aprobar
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(current_setting('prueba.rq')::uuid, 'No queda plancha de 2 mm');
 reset role;
 select pg_temp.como('comprador');

@@ -355,6 +355,11 @@ select test.afirmar(pg_temp.salida('s9', 'dis', 1, 'rq8') = current_setting('pru
   'el reintento de una salida que ya entró la devuelve, aunque su RQ ya se entregó');
 reset role;
 
+-- Las secciones 7 y 7b sacan accesorios por código sin RQ, como antes de la regla
+-- de la salida (20261120410000): lo que prueban es de quién es lo devuelto y a
+-- qué código sale un accesorio. La regla nueva la prueba el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
+
 -- ============================================ 7. El accesorio devuelto vuelve a ser de su unidad
 select pg_temp.como('almacenero');
 set local role authenticated;
@@ -426,6 +431,8 @@ reset role;
 select test.afirmar((select string_agg(codigo_interno, ',' order by codigo_interno) from public.movimientos_materiales
                       where id in (current_setting('prueba.s15')::uuid, current_setting('prueba.s16')::uuid)) = 'OFICINA,PLANTA',
   'las dos salidas quedan con el código de su RQ: OFICINA y PLANTA');
+
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 -- ============================================ 7c. El código de una unidad con dos espacios la encuentra
 -- La lista muestra «CHK416 UNI» (los espacios juntados) y la salida lo manda
@@ -593,6 +600,7 @@ reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
 select public.rq_revisar_stock(current_setting('prueba.rq14')::uuid, '[{"item": 1, "en_stock": 2}]', null);
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq15')::uuid, '[{"item": 1, "en_stock": 1}]', null);
 select test.afirmar((select libre = 0 and separado = 5 from public.stock_libre_en_almacen(array[current_setting('prueba.fa2')::uuid]))
                     and pg_temp.separado('fa2', 'CHK416-U') = 3 and pg_temp.separado('fa2', 'PLANTA') = 2,
@@ -616,8 +624,18 @@ select public.registrar_ingreso_almacen(current_setting('prueba.d4')::uuid, curr
 select test.afirmar((select existencia = 4 and libre = 0 from public.stock_libre_en_almacen(array[current_setting('prueba.fa2')::uuid]))
                     and pg_temp.separado('fa2', 'CHK416-U') = 3 and pg_temp.separado('fa2', 'PLANTA') = 1,
   'el faro devuelto vuelve a ser del RQ de PLANTA, y CHK416-U sigue con 3');
--- Sin RQ hacia la unidad, se le descuenta a ella, como antes.
+-- Sin RQ hacia la unidad, se le descuenta a ella, como antes. Desde la regla de
+-- la salida (20261120410000) un accesorio ya no sale sin RQ; lo que se prueba es
+-- la cuenta de las salidas de antes, que siguen en el kardex.
+reset role;
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
+select pg_temp.como('almacenero');
+set local role authenticated;
 select pg_temp.salida('s20', 'fa2', 1, null, 'chk416-u');
+reset role;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
+select pg_temp.como('almacenero');
+set local role authenticated;
 select test.afirmar(pg_temp.separado('fa2', 'CHK416-U') = 2 and (select libre = 0 from public.stock_libre_en_almacen(array[current_setting('prueba.fa2')::uuid])),
   'una salida sin RQ hacia CHK416-U sí se le descuenta a la unidad');
 reset role;
@@ -1026,6 +1044,11 @@ select test.afirmar(pg_temp.de_la_unidad('s40') = 0 and pg_temp.cifras('f15') = 
   'anotada en 0, la unidad figura con sus 3 y lo libre no sube (con la función: CHK416-U 1 y libre 2): ' || pg_temp.cifras('f15'));
 reset role;
 
+-- De 12q en adelante, los accesorios salen por código y sin RQ, como antes de la
+-- regla de la salida (20261120410000): lo que se prueba es a qué código y a qué
+-- vehículo va la salida. La regla nueva la prueba el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
+
 -- 12q. Un código de la lista es ese código aunque se escriba como la placa de
 -- un vehículo sin código interno: «CHK416» lo usa un RQ, y la salida va a
 -- CHK416 y queda en el vehículo CHK-416 (12i), que la lleva al costeo de su
@@ -1105,6 +1128,7 @@ select pg_temp.emitir('rq30', 'CHK416-U', 'f17', 2);
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq30')::uuid, '[{"item": 1, "en_stock": 2}]', null);
 select pg_temp.salida('s44', 'f17', 2, 'rq30');
 select set_config('prueba.cifras_s44', pg_temp.cifras('f17'), true);
@@ -1181,6 +1205,7 @@ select test.afirmar((select upper(codigo_interno) = 'CHK 417' and unidad_id is n
                        from public.movimientos_materiales where id = current_setting('prueba.s49')::uuid),
   'con un RQ cuyo código es la placa de dos vehículos, sale con ese código y sin vehículo');
 reset role;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 do $$ begin raise notice 'OK 416: el circuito del RQ sin cabos sueltos'; end $$;
 rollback;

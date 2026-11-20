@@ -192,6 +192,44 @@ begin
 end;
 $$;
 
+-- Desde la migración 20261120400000, el insumo de materia prima o accesorio de
+-- un RQ de unidad que se pasa del metrado de Diseño (o que no está en él)
+-- espera el sustento y el visto de Diseño antes de que Almacén lo revise,
+-- Logística lo compre o salga del almacén. Un código sin ningún metrado no se
+-- mide, así que en los checks de antes casi siempre devuelve 0; queda para el
+-- que use un código con metrado: este ayudante da el visto a lo que se pase en
+-- los RQ que hay en ese momento, como lo daría Diseño, y devuelve cuántos
+-- insumos autorizó. Se llama después de registrar (o corregir) los RQ y
+-- antes de la revisión de Almacén. Lo que el check 457 prueba es la regla.
+create or replace function test.metrado_autorizado()
+returns integer language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_filas integer := 0;
+  v record;
+begin
+  for v in
+    select m.linea_id, m.estado, m.metrado, m.exceso, l.material_id, l.cantidad, q.creado_por
+      from public.metrado_por_linea(array(select id from public.requerimientos where con_metrado)) m
+      join public.requerimiento_lineas l on l.id = m.linea_id
+      join public.requerimientos q on q.id = l.requerimiento_id
+     where m.estado in ('SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO')
+  loop
+    if v.estado = 'POR_AUTORIZAR' then
+      update public.requerimiento_sustentos
+         set decision = 'AUTORIZADO', decidido_por = v.creado_por, decidido_en = now()
+       where requerimiento_linea_id = v.linea_id and decision is null;
+    else
+      insert into public.requerimiento_sustentos (requerimiento_linea_id, material_id, cantidad, exceso, metrado,
+                                                  sustento, sustentado_por, decision, decidido_por, decidido_en)
+      values (v.linea_id, v.material_id, v.cantidad, v.exceso, v.metrado,
+              'Visto de prueba (test.metrado_autorizado)', v.creado_por, 'AUTORIZADO', v.creado_por, now());
+    end if;
+    v_filas := v_filas + 1;
+  end loop;
+  return v_filas;
+end;
+$$;
+
 -- Las pruebas de RLS se ejecutan con "set role authenticated", así que ese rol
 -- necesita poder llamar a los ayudantes de prueba.
 grant usage on schema test to authenticated;

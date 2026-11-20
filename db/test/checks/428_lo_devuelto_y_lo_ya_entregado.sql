@@ -229,12 +229,15 @@ select 'CHK428-2', 'Disco de otra marca 428', categoria_id, unidad_medida_id fro
 insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por)
 select gen_random_uuid(), 'INGRESO', id, 10, 'INGRESO_GENERAL', 'Otra marca K', current_setting('prueba.almacenero')::uuid
   from public.materiales where codigo = 'CHK428-2';
+-- Una entrega con otro material de antes de la regla de la salida (20261120410000): aquí se prueba lo que se devuelve de la OC; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
                                            registrado_por, codigo_unidad, codigo_interno, requerimiento_linea_id)
 select gen_random_uuid(), 'SALIDA', (select id from public.materiales where codigo = 'CHK428-2'), l.cantidad, 'SALIDA_GENERAL', 'Vale K',
        'Operario de prueba K', current_setting('prueba.almacenero')::uuid, 'CHK428_A', 'CHK428_A', l.id
   from public.requerimiento_lineas l
  where l.requerimiento_id in (current_setting('prueba.rq_a')::uuid, current_setting('prueba.rq_b')::uuid);
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('almacenero');
 set local role authenticated;
 do $$

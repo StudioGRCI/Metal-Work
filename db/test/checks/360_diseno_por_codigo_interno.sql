@@ -303,6 +303,7 @@ select public.emitir_requerimiento(pg_temp.id('rq'), pg_temp.id('mtz'), lower(cu
 reset role;
 select pg_temp.como('almacenero_alm');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq'), 'No hay plancha');
 reset role;
 insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
@@ -315,6 +316,8 @@ select public.emitir_compra_del_requerimiento(pg_temp.id('oc'), pg_temp.id('rq')
   null, 'CONTADO', 0, 'PEN', true);
 reset role;
 -- La salida se arma como dueño: lo que se prueba es la lectura.
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 do $$
 declare v_sal uuid := gen_random_uuid();
 begin
@@ -330,6 +333,7 @@ begin
   values (gen_random_uuid(), 'INGRESO', pg_temp.id('mat3'), 1, 'DEVOLUCION', 'Sobró', pg_temp.id('almacenero_alm'), v_sal);
 end $$;
 
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
 select test.afirmar(

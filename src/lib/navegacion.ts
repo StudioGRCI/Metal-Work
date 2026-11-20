@@ -25,6 +25,7 @@ import {
   Landmark,
   Layers,
   LayoutDashboard,
+  PackagePlus,
   ListChecks,
   ListOrdered,
   MessageSquareWarning,
@@ -159,6 +160,16 @@ export const NAVEGACION = [
         descripcion: 'Los DXF de cada unidad para el corte, para Maestranza y Producción',
         disponible: true,
       },
+      // El visto de Diseño a lo que un RQ pide de más sobre el metrado del
+      // código (Almacén, 20/11/2026: ningún RQ sin sustento técnico).
+      {
+        titulo: 'Insumos por autorizar',
+        ruta: '/requerimientos/metrado',
+        icono: BadgeCheck,
+        permiso: 'requerimientos.autorizar_metrado',
+        descripcion: 'Lo que un requerimiento pide de más sobre el metrado del código, con el sustento de quien lo pidió',
+        disponible: true,
+      },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
       // la orden: nombre, unidad y especificación. Sin stock ni almacén.
       {
@@ -280,6 +291,16 @@ export const NAVEGACION = [
         icono: Warehouse,
         permiso: 'almacen.ver',
         descripcion: 'Lo que ven Supervisión y quien pide: cuánto hay libre de cada material y cuánto es de cada código interno',
+        disponible: true,
+      },
+      // El stock de seguridad de lo que más rota y la compra por mayor (Almacén,
+      // 20/11/2026): lo que está por debajo y cuánto pedir, con lo que ya viene.
+      {
+        titulo: 'Reposición de stock',
+        ruta: '/almacen/reposicion',
+        icono: PackagePlus,
+        permiso: ['almacen.ver', 'almacen.stock'],
+        descripcion: 'Lo que está bajo su stock de seguridad y cuánto comprar, con lo que ya viene en camino',
         disponible: true,
       },
     ],
@@ -611,7 +632,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/stock'] },
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -625,7 +646,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       {
         titulo: 'Logística',
-        rutas: ['/requerimientos/atencion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
+        rutas: ['/requerimientos/atencion', '/almacen/reposicion', '/compras/gestion', '/compras/ordenes', '/compras/servicios'],
       },
       // Las tres que DKS nombró el 2026-10-15, en su orden. Adquisiciones, en
       // lectura: qué OC ya tienen su factura y si calza. «Aprobación de
@@ -715,14 +736,18 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // área, la lista de materiales y las etapas, primero. Después la OT, que la
   // ve solo Diseño, y el informe de su equipo; luego los catálogos que
   // mantiene. La evaluación es de cada cierto tiempo: al final de su grupo.
+  // Desde el 2026-11-20, arriba lo que frena a Almacén: el visto a lo que un
+  // RQ pide de más sobre el metrado. En el teléfono le cede su pestaña las
+  // etapas, que se cargan en el escritorio; la OT se queda.
   DISENO: {
     grupos: [
+      { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
       { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
-    telefono: ['/diseno/planos', '/diseno/etapas', '/diseno/materiales', '/ordenes'],
+    telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/materiales', '/ordenes'],
   },
   // Desde el 2026-11-06 (observaciones de Diseño): anota sus actividades del
   // día, revisa la OT y pide el material por requerimiento, mirando antes el
@@ -928,6 +953,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },
   { ruta: '/requerimientos/atencion', corto: 'Atención' },
+  { ruta: '/requerimientos/metrado', corto: 'Autorizar' },
   { ruta: '/vehiculos', corto: 'Vehículos' },
   { ruta: '/requerimientos/gasto-por-codigo', corto: 'Gasto' },
   { ruta: '/rrhh/asistencia', corto: 'Asistencia' },
@@ -957,4 +983,5 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/tesoreria/caja-diaria', corto: 'Caja' },
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
+  { ruta: '/almacen/reposicion', corto: 'Reposición' },
 ]

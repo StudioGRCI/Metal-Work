@@ -36,7 +36,7 @@ export default async function PaginaAprobacionCompras() {
   // Las mismas tres puertas que `documentos_por_aprobar` en la base.
   if (!aprueba && !configura && !puede(perfil, 'compras.ver')) redirect('/sin-permiso')
 
-  const [{ regla, compras, puestos }, anulables] = await Promise.all([
+  const [{ regla, compras, puestos, stockSinLeer }, anulables] = await Promise.all([
     cargarAprobacionCompras({ puestos: configura }),
     aprueba ? cargarComprasAnulables() : Promise.resolve([]),
   ])
@@ -65,6 +65,11 @@ export default async function PaginaAprobacionCompras() {
           <h2 className="text-base font-semibold text-texto">
             Por aprobar <span className="tabular text-texto-suave">({pendientes.length})</span>
           </h2>
+          {stockSinLeer && pendientes.some((c) => c.tipo !== 'OS') && (
+            <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status">
+              No se pudo leer cuánto hay en el almacén y cuánto ya viene en otras órdenes. Recarga la pantalla antes de aprobar una compra.
+            </p>
+          )}
           {pendientes.length === 0 ? (
             <Tarjeta>
               <SinDatos
@@ -322,6 +327,25 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                       {l.material_codigo}
                       <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : deRq ? 'De RQ' : 'Almacén'}</span>
                     </p>
+                    {/* Para no aprobar dos veces la misma compra (Almacén, 20/11/2026): lo
+                        que ya viene, aparte de lo que otras OC piden y también esperan. */}
+                    {l.stock && (
+                      <p className="mt-0.5 text-xs text-texto-suave" data-stock-al-aprobar>
+                        {l.stock.existencia > 0 ? `En almacén: ${cantidad(l.stock.existencia)} ${l.unidad ?? ''}` : 'En almacén: no hay'}
+                        {l.stock.en_camino > 0 && (
+                          <span className="block font-medium text-aviso" data-ya-viene>
+                            Ya viene{l.stock.en_camino === 1 ? '' : 'n'} {cantidad(l.stock.en_camino)} {l.unidad ?? ''}
+                            {l.stock.en_camino_ocs ? ` en ${l.stock.en_camino_ocs}` : ''}
+                          </span>
+                        )}
+                        {l.stock.por_aprobar > 0 && (
+                          <span className="block font-medium text-texto" data-por-aprobar>
+                            {l.stock.por_aprobar_ocs?.includes(',') ? 'Otras OC' : 'Otra OC'} también por aprobar: {cantidad(l.stock.por_aprobar)} {l.unidad ?? ''}
+                            {l.stock.por_aprobar_ocs ? ` en ${l.stock.por_aprobar_ocs}` : ''}
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
                     {l.orden ?? (deRq ? '—' : 'Almacén')}

@@ -170,11 +170,14 @@ select correlativo_actual as sa_antes from public.series_documentarias where tip
 insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, registrado_por)
 values (gen_random_uuid(), 'INGRESO', 'SALDO_INICIAL', :'mp_id', 10, 'Saldo 403', :'admin_id'),
        (gen_random_uuid(), 'INGRESO', 'SALDO_INICIAL', :'cons_id', 10, 'Saldo 403', :'admin_id');
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 insert into public.movimientos_materiales
   (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre, codigo_unidad, registrado_por, numero_salida)
 values (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'mp_id', 2, 'Vale 403-1', 'Julio Ramírez', 'QA_403_1', :'admin_id', 'SA-9999-2026'),
        (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'cons_id', 1, 'Vale 403-2', 'Julio Ramírez', 'QA_403_1', :'admin_id', null),
        (gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', :'mp_id', 1, 'Vale 403-3', 'Julio Ramírez', 'QA_403_1', :'admin_id', null);
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 select test.afirmar(
   (select numero_salida from public.movimientos_materiales where documento_referencia = 'Vale 403-1')

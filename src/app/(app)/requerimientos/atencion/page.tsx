@@ -10,9 +10,11 @@ import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { insumosPorSacarDelKardex, type InsumoPorSacar } from '@/lib/datos/kardex'
+import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
+import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
 import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -82,16 +84,30 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // «Entregado» pide antes la salida del kardex de cada insumo: a quien despacha
   // se le dice cuántos faltan en cada RQ listo.
   const listos = despacha ? requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').map((r) => r.id) : []
-  const [catalogo, correcciones, stock, porSacar] = await Promise.all([
+  const [catalogo, correcciones, stock, porSacar, metradoLeido] = await Promise.all([
     hayNuevos ? catalogoParaRequerimiento() : Promise.resolve<MaterialParaRequerimiento[]>([]),
     correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id)),
     stockDelSistema(hayNuevos ? null : porRevisar),
     insumosPorSacarDelKardex(listos),
+    // Lo que se pasa del metrado de Diseño espera su visto: Almacén no lo revisa y
+    // Logística no lo compra. Si no se pudo leer, la base igual lo frena al enviar.
+    metradoDeRequerimientos(requerimientos.map((r) => r.id)).catch((e: unknown) => {
+      console.error('Atención: no se pudo leer el metrado de Diseño.', e)
+      return null
+    }),
   ])
+  const metrado = metradoLeido ?? new Map<string, MetradoDelInsumo>()
   const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
-  const meToca = requerimientos.filter((r) => leTocaAtender(r, { recibe, despacha, compraDe })).length
-  const grupos = compra ? insumosPorComprar(requerimientos, compraDe) : []
+  // El que espera el sustento o el visto de Diseño todavía no le toca a Almacén:
+  // no cuenta como suyo y va después de los que sí puede revisar.
+  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
+  const meToca = requerimientos.filter(leToca).length
+  if (vista === 'abiertos') {
+    const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
+    requerimientos.sort((a, b) => orden(a) - orden(b))
+  }
+  const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
   const cuenta = { abiertos: requerimientos.length, comprar: porComprar, todos: requerimientos.length }
 
@@ -120,6 +136,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
           </p>
         )}
       </Vistas>
+
+      {metradoLeido === null && requerimientos.length > 0 && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
+          No se pudo leer el metrado de Diseño. Si un requerimiento se pasa del metrado, el sistema no deja revisarlo ni comprarlo y
+          dice por qué. Vuelve a cargar la pantalla en un momento.
+        </p>
+      )}
 
       {vista === 'comprar' && paraComprar ? (
         <PorComprar grupos={grupos} preseleccion={preseleccion} {...paraComprar} />
@@ -161,6 +184,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                       stockDelCatalogo={stockDelCatalogo}
                       porSacar={porSacar === null ? null : porSacar[r.id] ?? []}
                       correcciones={correcciones.get(r.id)}
+                      metrado={metrado}
                     />
                   ))
                 )}
@@ -219,7 +243,11 @@ function faltaComprar(l: RequerimientoListado['lineas'][number]) {
  * ya revisó, que no tenía completos y que no van en una OC viva. Solo los del
  * tipo que compra quien mira.
  */
-function insumosPorComprar(requerimientos: RequerimientoListado[], compraDe: CompraDe): GrupoPorComprar[] {
+function insumosPorComprar(
+  requerimientos: RequerimientoListado[],
+  compraDe: CompraDe,
+  metrado: Map<string, MetradoDelInsumo>,
+): GrupoPorComprar[] {
   return (['OPERACION', 'ADMINISTRACION'] as const)
     .filter((tipo) => compraDe[tipo])
     .map((tipo) => ({
@@ -229,7 +257,8 @@ function insumosPorComprar(requerimientos: RequerimientoListado[], compraDe: Com
         .filter((r) => tipoDeRequerimiento(r) === tipo && (r.estado === 'SIN_STOCK' || r.estado === 'EN_ATENCION'))
         .flatMap((r) =>
           r.lineas
-            .filter((l) => l.en_stock !== null && l.en_stock < l.cantidad && (!l.orden_compra || l.compra_rechazada))
+            // Lo que se pasa del metrado sin el visto de Diseño no va en una OC (la base lo rechaza).
+            .filter((l) => l.en_stock !== null && l.en_stock < l.cantidad && (!l.orden_compra || l.compra_rechazada) && !frenaElRq(metrado.get(l.id)?.estado))
             .map((l) => ({
               id: l.id,
               requerimiento_id: r.id,
@@ -261,6 +290,7 @@ function Fila({
   stockDelCatalogo,
   porSacar,
   correcciones,
+  metrado,
 }: {
   rq: RequerimientoListado
   recibe: boolean
@@ -276,14 +306,20 @@ function Fila({
   /** Insumos de este RQ que falta sacar del kardex; `null` si no se pudo leer. */
   porSacar: InsumoPorSacar[] | null
   correcciones: CorreccionVista[] | undefined
+  metrado: Map<string, MetradoDelInsumo>
 }) {
   const estado = estadoDelRequerimiento(rq)
+  // Los insumos que se pasan del metrado sin el visto de Diseño.
+  const frenados = rq.lineas.filter((l) => frenaElRq(metrado.get(l.id)?.estado))
+  // Por atender y frenado: la etapa y la insignia dicen quién lo tiene, no «Almacén revisa».
+  const freno = frenoDelRq(rq, metrado)
+  const enEspera = freno ? FRENO_DEL_RQ[freno.freno] : undefined
   const administracion = rq.tipo === 'ADMINISTRACION'
   const quienCompra = administracion ? 'la administradora' : 'Logística'
   // Quien compra genera la OC mientras el RQ está por comprar o en compra y
   // queda algún insumo que Almacén no tenía completo y sin su OC viva.
   const generaOc = compra && paraComprar && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION')
-    && rq.lineas.some((l) => faltaComprar(l) && (!l.orden_compra || l.compra_rechazada))
+    && rq.lineas.some((l) => faltaComprar(l) && (!l.orden_compra || l.compra_rechazada) && !frenados.includes(l))
   const pasos = [
     [`Registrado ${fechaHora(rq.creado_en)}`, rq.fecha_requerida ? `se necesita el ${fecha(rq.fecha_requerida)}` : null].filter(Boolean).join(' · '),
     rq.revision_stock_en && rq.estado !== 'LISTO_EN_ALMACEN' && rq.estado !== 'ENTREGADO' ? `Almacén revisó ${fechaHora(rq.revision_stock_en)}` : null,
@@ -338,13 +374,26 @@ function Fila({
                   </>
                 )}
               </span>
+              {frenados.includes(l) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO' && (
+                <Insignia tono={ESTADO_METRADO[metrado.get(l.id)!.estado].tono} className="mt-0.5" data-metrado={metrado.get(l.id)!.estado}>
+                  {ESTADO_METRADO[metrado.get(l.id)!.estado].etiqueta}
+                </Insignia>
+              )}
             </li>
           ))}
         </ul>
       </TD>
       <TD className="block pt-1 pb-3 align-top sm:table-cell sm:py-2">
-        {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : rq.estado}
-        <AvanceDelRequerimiento rq={rq} />
+        {enEspera ? (
+          <Insignia tono={enEspera.tono} data-freno={freno?.freno}>
+            {enEspera.etiqueta}
+          </Insignia>
+        ) : estado ? (
+          <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+        ) : (
+          rq.estado
+        )}
+        <AvanceDelRequerimiento rq={rq} frenado={enEspera && { etiqueta: enEspera.etapa, tono: enEspera.tono }} />
         <ul className="mt-1 space-y-0.5 text-xs text-texto-suave">
           {pasos.map((p) =>
             typeof p === 'string' ? (
@@ -360,7 +409,17 @@ function Fila({
       {/* Sin acciones, la celda no deja un hueco en el teléfono. */}
       <TD className="block p-0 align-top sm:table-cell sm:px-3 sm:py-2 sm:text-right">
         <div className="flex flex-col items-start gap-2 px-3 pb-3 empty:hidden sm:items-end sm:p-0">
-          {recibe && rq.estado === 'POR_ATENDER' && (
+          {recibe && freno && (
+            <p className="max-w-xs text-xs text-texto-suave sm:text-right" data-espera-metrado>
+              <span className={`font-medium ${freno.freno === 'DISENO' ? 'text-aviso' : 'text-peligro'}`}>
+                {freno.freno === 'DISENO' ? 'Espera el visto de Diseño.' : 'Espera el sustento de quien pidió.'}
+              </span>{' '}
+              {freno.items.length === 1 ? `El insumo ${freno.items[0]} se pasa` : `Los insumos ${listaDeItems(freno.items)} se pasan`} del
+              metrado de Diseño. {queFaltaDelFreno(freno)}. Cuando Diseño {freno.items.length === 1 ? 'lo' : 'los'} autorice te llega el aviso; si
+              en cambio amplía el metrado, queda para revisar aquí.
+            </p>
+          )}
+          {recibe && rq.estado === 'POR_ATENDER' && !freno && (
             <RevisarStock
               id={rq.id}
               numero={rq.numero}
