@@ -19,11 +19,52 @@ export function rutaPlanoCodigo(plano: string, revision: string) {
   return `${plano}/${revision}.pdf`
 }
 
+/**
+ * Las dos áreas a las que Diseño les pone su etapa, por cada juego de planos:
+ * Maestranza (habilitado) y Producción (ensamblaje). Las subetapas y las etapas
+ * de las demás áreas las agrega el supervisor de cada una (observaciones de
+ * Diseño, 2026-11-06; migración 20261106100000).
+ */
+export const AREAS_DE_ETAPA_DE_DISENO = ['MTZ', 'PRD'] as const
+
+/**
+ * Los DXF de cada código para el corte en plasma (`dxf-codigo/{id}.{dxf|zip|rar|7z}`):
+ * el .dxf suelto, varios a la vez, o comprimidos. Los sube Diseño; los ven
+ * Diseño, Maestranza y Producción (DKS, 2026-11-06 y 2026-11-20).
+ */
+export const BUCKET_DXF = 'dxf-codigo'
+export const MAXIMO_MB_DXF = 50
+/** Cuántos archivos se eligen de una vez: un juego de piezas para el corte, con holgura. */
+export const MAXIMO_ARCHIVOS_DXF = 100
+export const EXTENSIONES_DXF = ['dxf', 'zip', 'rar', '7z'] as const
+export type ExtensionDxf = (typeof EXTENSIONES_DXF)[number]
+/** Lo que acepta el campo: el .dxf o el comprimido. */
+export const ACEPTA_DXF = '.dxf,.zip,.rar,.7z'
+
+/** El tipo con que se sube cada archivo: el que el bucket acepta. */
+export const TIPO_DXF: Record<ExtensionDxf, string> = {
+  dxf: 'application/dxf',
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+}
+
+/** La extensión del archivo por su nombre, o null si no es .dxf, .zip, .rar ni .7z. */
+export function extensionDxf(nombre: string): ExtensionDxf | null {
+  const ext = nombre.trim().toLowerCase().split('.').pop() ?? ''
+  return (EXTENSIONES_DXF as readonly string[]).includes(ext) ? (ext as ExtensionDxf) : null
+}
+
+export function rutaDxf(id: string, ext: ExtensionDxf) {
+  return `${id}.${ext}`
+}
+
 /** Las secciones del código en Diseño, en el orden de su trabajo. */
 export const VISTAS_DISENO = [
   { valor: 'planos', etiqueta: 'Planos', titulo: 'Planos' },
   { valor: 'materiales', etiqueta: 'Materiales', titulo: 'Gestión de materiales' },
   { valor: 'etapas', etiqueta: 'Etapas', titulo: 'Control de etapas' },
+  { valor: 'dxf', etiqueta: 'DXF', titulo: 'Archivos DXF' },
 ] as const
 
 export type VistaDiseno = (typeof VISTAS_DISENO)[number]['valor']

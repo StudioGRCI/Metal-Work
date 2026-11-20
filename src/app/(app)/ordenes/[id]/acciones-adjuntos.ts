@@ -8,8 +8,8 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Los archivos de la orden (migración 099): el PDF de la orden de trabajo y el
- * Excel del cronograma. El archivo viaja del navegador a Storage; acá solo se
+ * Los archivos de la orden (migración 099): el PDF de la orden de trabajo, el
+ * Excel del cronograma y la ficha técnica del vehículo (migración 20261106100000). El archivo viaja del navegador a Storage; acá solo se
  * anota en la orden. Los permisos son los mismos que piden la política de
  * `ot_adjuntos` y las de Storage: quien arma la hoja, la oficina que hace
  * órdenes, y quien las abre desde el taller.
@@ -17,10 +17,18 @@ import { createClient } from '@/lib/supabase/server'
 const PUEDEN_SUBIR = ['produccion.actividades', 'ordenes.editar', 'ordenes.crear', 'ordenes.abrir_taller']
 // Diseño carga el cronograma y guarda su Excel, no el PDF de la orden (migración 20261022113000).
 const PUEDEN_SUBIR_CRONOGRAMA = [...PUEDEN_SUBIR, 'diseno.planos']
+// El encargado de Diseño adjunta la ficha técnica del camión o tracto (migración 20261106100000).
+const PUEDEN_SUBIR_FICHA = [...PUEDEN_SUBIR, 'diseno.codigos']
+const PUEDEN: Record<'ORDEN' | 'CRONOGRAMA' | 'FICHA_VEHICULO', string[]> = {
+  ORDEN: PUEDEN_SUBIR,
+  CRONOGRAMA: PUEDEN_SUBIR_CRONOGRAMA,
+  FICHA_VEHICULO: PUEDEN_SUBIR_FICHA,
+}
+const GUARDADO = { ORDEN: 'PDF guardado en la orden.', CRONOGRAMA: 'Excel guardado en la orden.', FICHA_VEHICULO: 'Ficha técnica guardada en la orden.' }
 
 const esquemaAdjunto = z.object({
   orden_id: z.guid(),
-  tipo: z.enum(['ORDEN', 'CRONOGRAMA']),
+  tipo: z.enum(['ORDEN', 'CRONOGRAMA', 'FICHA_VEHICULO']),
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: z.string().max(120).optional(),
@@ -36,7 +44,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
   }
   const v = analisis.data
 
-  if (!puede(perfil, v.tipo === 'CRONOGRAMA' ? PUEDEN_SUBIR_CRONOGRAMA : PUEDEN_SUBIR)) {
+  if (!puede(perfil, PUEDEN[v.tipo])) {
     return { ok: false, error: 'No tienes permiso para subir archivos a la orden.' }
   }
 
@@ -59,7 +67,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
     .select('id')
     .maybeSingle()
 
-  const guardado = v.tipo === 'ORDEN' ? 'PDF guardado en la orden.' : 'Excel guardado en la orden.'
+  const guardado = GUARDADO[v.tipo]
   if (error) {
     // La misma subida otra vez: la primera respuesta se perdió y la pantalla
     // preguntó de nuevo (`anotarSinDejarloSuelto`). Si su ruta —única, con un
@@ -82,6 +90,7 @@ export async function registrarAdjunto(_previo: unknown, datos: FormData): Promi
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${v.orden_id}`)
+  if (v.tipo === 'FICHA_VEHICULO') revalidatePath('/diseno/codigo')
   return { ok: true, mensaje: guardado }
 }
 

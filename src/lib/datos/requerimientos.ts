@@ -70,7 +70,7 @@ export type RequerimientoListado = {
   tipo: string
   area_id: string
   area: string
-  /** Quien lo registró: el supervisor corrige y anula solo los suyos (`rq_exigir_del_area`). */
+  /** Quien lo registró: el supervisor (`rq_exigir_del_area`) y el colaborador de Diseño corrigen y anulan solo los suyos. */
   creado_por: string | null
   codigo_interno: string
   justificacion: string

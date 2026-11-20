@@ -1,32 +1,51 @@
 'use client'
 
-import { ArrowDown, ArrowUp, Check, FileUp, FolderOpen, ListPlus, Pencil, Percent, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, FileArchive, FileUp, FolderOpen, ListPlus, Pencil, Percent, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 
+import { quitarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, ElegirArchivos } from '@/components/ui/elegir-archivo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
-import { BUCKET_PLANOS_CODIGO, MAXIMO_MB_PLANO, enlaceDisenoCodigo, rutaPlanoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
-import { useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
+import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
+import {
+  ACEPTA_DXF,
+  BUCKET_DXF,
+  BUCKET_PLANOS_CODIGO,
+  MAXIMO_ARCHIVOS_DXF,
+  MAXIMO_MB_DXF,
+  MAXIMO_MB_PLANO,
+  TIPO_DXF,
+  enlaceDisenoCodigo,
+  extensionDxf,
+  rutaDxf,
+  rutaPlanoCodigo,
+  type VistaDiseno,
+} from '@/lib/dominio/diseno-codigos'
+import { pasoTrasLoQueQuedo, refrescarSiEsDeLaPestana, useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
 import {
   anularPlano,
-  cargarEtapasDeSiempre,
+  cargarParDeEtapas,
   fijarPesoPlano,
   guardarEtapa,
+  guardarEtapaDeArea,
   guardarMaterial,
   marcarEtapa,
   moverEtapa,
+  quitarDxf,
+  quitarEnvioDxf,
   quitarEtapa,
   quitarMaterial,
   recibirPlano,
+  registrarDxf,
   registrarPlano,
   subirRevision,
 } from './acciones'
@@ -536,31 +555,53 @@ export function QuitarMaterial({ id, nombre }: { id: string; nombre: string }) {
 
 // ------------------------------------------------------------------ Etapas
 
-/** Las seis etapas de siempre, de un toque, para el código que no tiene ninguna. */
-export function EtapasDeSiempre({ codigo }: { codigo: string }) {
-  const { ejecutar, enviando, error } = useAccion(cargarEtapasDeSiempre)
+/**
+ * El par de Diseño por cada juego de planos: Habilitado (Maestranza) y
+ * Ensamblaje (Producción). El primer juego va sin nombre; el segundo de la
+ * misma unidad lleva el suyo («Caja», «Chasis»).
+ */
+export function ParDeEtapas({ codigo, primero }: { codigo: string; primero: boolean }) {
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const [vuelta, setVuelta] = useState(0)
+  const { alEnviar, enviando, error } = useEnvio(cargarParDeEtapas, (r) => {
+    setMensaje(r.mensaje ?? null)
+    setVuelta((v) => v + 1)
+  })
   return (
-    <div className="space-y-1">
-      <Boton
-        type="button"
-        cargando={enviando}
-        onClick={() => {
-          const datos = new FormData()
-          datos.set('codigo', codigo)
-          ejecutar(datos)
-        }}
+    <form
+      key={vuelta}
+      onSubmit={(e) => {
+        setMensaje(null)
+        alEnviar(e)
+      }}
+      className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+    >
+      <input type="hidden" name="codigo" value={codigo} />
+      <Campo
+        etiqueta="Juego de planos"
+        htmlFor="par-juego"
+        requerido={!primero}
+        ayuda={primero ? 'Déjalo vacío si la unidad lleva un solo juego.' : 'El nombre del otro juego, para no confundir sus etapas.'}
       >
+        <Entrada id="par-juego" name="juego" maxLength={60} autoComplete="off" placeholder="Caja" required={!primero} disabled={enviando} />
+      </Campo>
+      <Boton type="submit" cargando={enviando}>
         <ListPlus aria-hidden className="size-4" />
-        Cargar las etapas de siempre
+        Cargar Habilitado y Ensamblaje
       </Boton>
-      <Alerta error={error} />
-    </div>
+      <div className="sm:col-span-2">
+        <Alerta error={error} mensaje={mensaje} />
+      </div>
+    </form>
   )
 }
 
 type EtapaEditable = { id: string; nombre: string; area_id: string | null; inicio_plan: string | null; fin_plan: string | null }
 
-/** Agregar una etapa (al final) o corregir nombre, área y fechas (con `etapa`). */
+/**
+ * Agregar una etapa de Diseño (al final) o corregir nombre, área y fechas (con
+ * `etapa`). Diseño solo pone etapas de Maestranza y de Producción: `areas` trae esas dos.
+ */
 export function FormularioEtapa({
   codigo,
   areas,
@@ -608,9 +649,11 @@ export function FormularioEtapa({
           disabled={enviando}
         />
       </Campo>
-      <Campo etiqueta="La hace" htmlFor={`etapa-area-${id}`}>
-        <Seleccion id={`etapa-area-${id}`} name="area" defaultValue={etapa?.area_id ?? ''} disabled={enviando}>
-          <option value="">Ningún área del taller</option>
+      <Campo etiqueta="La hace" htmlFor={`etapa-area-${id}`} requerido>
+        <Seleccion id={`etapa-area-${id}`} name="area" defaultValue={etapa?.area_id ?? ''} required disabled={enviando}>
+          <option value="" disabled>
+            Elige el área
+          </option>
           {areas.map((a) => (
             <option key={a.id} value={a.id}>
               {a.nombre}
@@ -784,6 +827,461 @@ export function MarcarEtapa({
           </div>
         </form>
       </Ventana>
+    </>
+  )
+}
+
+// ------------------------------------------------------------------ Etapas de cada área
+
+/**
+ * Lo que agrega el supervisor: una subetapa debajo de la etapa de Diseño de su
+ * área (con `padre`), una etapa propia de su área para un código (con `codigos`
+ * y `areas`), o corrige una de las suyas (con `etapa`).
+ */
+export function FormularioEtapaDeArea({
+  padre,
+  codigos,
+  areas,
+  etapa,
+  alTerminar,
+}: {
+  padre?: { id: string; nombre: string }
+  /** Las unidades a las que el área puede ponerle una etapa: el código, con su OT y su placa. */
+  codigos?: OpcionBuscable[]
+  areas?: Area[]
+  etapa?: EtapaEditable
+  alTerminar?: () => void
+}) {
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const [vuelta, setVuelta] = useState(0)
+  const [codigo, setCodigo] = useState('')
+  const { alEnviar, enviando, error } = useEnvio(
+    guardarEtapaDeArea,
+    (r) => {
+      if (alTerminar) return alTerminar()
+      setMensaje(r.mensaje ?? null)
+      setVuelta((v) => v + 1)
+      setCodigo('')
+    },
+    { corrige: Boolean(etapa) },
+  )
+  const id = etapa?.id ?? padre?.id ?? 'propia'
+  const propia = !etapa && !padre
+  return (
+    <form
+      key={vuelta}
+      onSubmit={(e) => {
+        setMensaje(null)
+        alEnviar(e)
+      }}
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_auto] lg:items-end"
+    >
+      {etapa && <input type="hidden" name="id" value={etapa.id} />}
+      {padre && <input type="hidden" name="padre" value={padre.id} />}
+      {propia && (
+        <>
+          <Campo etiqueta="Unidad" htmlFor="etapa-area-codigo" requerido className="sm:col-span-2 lg:col-span-2">
+            <SeleccionBuscable
+              id="etapa-area-codigo"
+              name="codigo"
+              opciones={codigos ?? []}
+              valor={codigo}
+              onChange={setCodigo}
+              marcador="Elige el código interno"
+              marcadorBusqueda="Código, OT o placa"
+              requerido
+              deshabilitado={enviando}
+            />
+          </Campo>
+          {areas && areas.length === 1 ? (
+            <input type="hidden" name="area" value={areas[0].id} />
+          ) : (
+            <Campo etiqueta="Área" htmlFor="etapa-area-area" requerido className="sm:col-span-2 lg:col-span-2">
+              <Seleccion id="etapa-area-area" name="area" required defaultValue="" disabled={enviando}>
+                <option value="" disabled>
+                  Elige el área
+                </option>
+                {(areas ?? []).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </Seleccion>
+            </Campo>
+          )}
+        </>
+      )}
+      <Campo etiqueta={padre ? `Subetapa de ${padre.nombre}` : 'Etapa'} htmlFor={`etapa-de-area-nombre-${id}`} requerido>
+        <Entrada
+          id={`etapa-de-area-nombre-${id}`}
+          name="nombre"
+          maxLength={120}
+          autoComplete="off"
+          placeholder={padre ? 'Corte de planchas' : 'Arenado y pintura'}
+          defaultValue={etapa?.nombre ?? ''}
+          required
+          disabled={enviando}
+        />
+      </Campo>
+      <Campo etiqueta="Empieza" htmlFor={`etapa-de-area-inicio-${id}`}>
+        <Entrada id={`etapa-de-area-inicio-${id}`} name="inicio_plan" type="date" defaultValue={etapa?.inicio_plan ?? ''} disabled={enviando} />
+      </Campo>
+      <Campo etiqueta="Comprometida" htmlFor={`etapa-de-area-fin-${id}`}>
+        <Entrada id={`etapa-de-area-fin-${id}`} name="fin_plan" type="date" defaultValue={etapa?.fin_plan ?? ''} disabled={enviando} />
+      </Campo>
+      <Boton type="submit" cargando={enviando}>
+        {etapa ? <Pencil aria-hidden className="size-4" /> : <ListPlus aria-hidden className="size-4" />}
+        {etapa ? 'Guardar' : padre ? 'Agregar subetapa' : 'Agregar etapa'}
+      </Boton>
+      <div className="sm:col-span-2 lg:col-span-4">
+        <Alerta error={error} mensaje={mensaje} />
+      </div>
+    </form>
+  )
+}
+
+/** Abrir en una ventana el formulario de subetapa, o la corrección de una etapa del área. */
+export function VentanaEtapaDeArea({ padre, etapa, codigo }: { padre?: { id: string; nombre: string }; etapa?: EtapaEditable; codigo?: string }) {
+  const [abierta, setAbierta] = useState(false)
+  return (
+    <>
+      {etapa ? (
+        <Boton type="button" variante="fantasma" tamano="icono" onClick={() => setAbierta(true)} aria-label={`Corregir ${etapa.nombre}`}>
+          <Pencil aria-hidden className="size-4" />
+        </Boton>
+      ) : (
+        <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)}>
+          <ListPlus aria-hidden className="size-4" />
+          Subetapa
+        </Boton>
+      )}
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={etapa ? `Corregir «${etapa.nombre}»` : `Subetapa de «${padre?.nombre}»`}
+        descripcion={[
+          codigo ? `Unidad ${codigo}.` : null,
+          etapa ? null : 'Según el material que vas a procesar o lo que vas a ensamblar. Cuenta en el avance de la etapa de arriba.',
+        ].filter(Boolean).join(' ') || undefined}
+        ancho="xl"
+      >
+        <FormularioEtapaDeArea padre={padre} etapa={etapa} alTerminar={() => setAbierta(false)} />
+      </Ventana>
+    </>
+  )
+}
+
+// ------------------------------------------------------------------ DXF
+
+/** El mismo archivo elegido otra vez: su nombre, su peso y cuándo se guardó. */
+const huellaDxf = (a: File) => `${a.name}|${a.size}|${a.lastModified}`
+
+/**
+ * Subir los DXF de un código para el corte: uno o varios .dxf sueltos, o el
+ * comprimido (.zip, .rar o .7z), hasta 50 MB cada uno. Cada archivo sube
+ * primero a `dxf-codigo/{id}.{ext}` y después se registra; si el registro
+ * falla, ese archivo suelto se retira (ver `subirArchivoPrivado`). Los que se
+ * eligen juntos van con el mismo envío y a Maestranza y Producción les llega
+ * un solo aviso. Si uno falla a medio camino, volver a enviar no duplica los
+ * que ya quedaron: cada archivo conserva su id hasta que el envío termina.
+ */
+export function CargarDxf({ codigo }: { codigo: string }) {
+  const [envio, setEnvio] = useState(() => crypto.randomUUID())
+  const ids = useRef(new Map<string, string>())
+  const [mensaje, setMensaje] = useState<string | null>(null)
+  const [estado, setEstado] = useState<string | null>(null)
+  // Quedó una parte del envío: la descripción se traba, para que lo que falta
+  // entre en el mismo envío y el mismo aviso, con la misma descripción.
+  const [aMedias, setAMedias] = useState(false)
+  const router = useRouter()
+  // Tras cargar, el formulario se arma de nuevo (vacío): el cursor vuelve a «Qué traen».
+  const volverAlInicio = useRef(false)
+  const nuevoEnvio = () => {
+    ids.current = new Map()
+    volverAlInicio.current = true
+    setAMedias(false)
+    setEnvio(crypto.randomUUID())
+  }
+  const { alEnviar, enviando, error } = useEnvio(
+    async (_previo, datos) => {
+      setMensaje(null)
+      const archivos = datos.getAll('archivos').filter((a): a is File => a instanceof File && a.name !== '')
+      if (archivos.length === 0) return { ok: false, error: 'Elige los .dxf, o el comprimido (.zip, .rar o .7z).' }
+      if (archivos.length > MAXIMO_ARCHIVOS_DXF) {
+        return { ok: false, error: `Son ${archivos.length} archivos y el tope es ${MAXIMO_ARCHIVOS_DXF} de una vez: súbelos en dos envíos.` }
+      }
+      for (const a of archivos) {
+        if (!extensionDxf(a.name) || a.size < 1 || a.size > MAXIMO_MB_DXF * 1024 * 1024) {
+          return { ok: false, error: `«${a.name}» no sirve: van .dxf, o comprimidos en .zip, .rar o .7z, de hasta ${MAXIMO_MB_DXF} MB cada uno.` }
+        }
+      }
+      datos.delete('archivos')
+      const quedaron: string[] = []
+      try {
+        for (const [i, archivo] of archivos.entries()) {
+          const ext = extensionDxf(archivo.name)!
+          const huella = huellaDxf(archivo)
+          const id = ids.current.get(huella) ?? crypto.randomUUID()
+          ids.current.set(huella, id)
+          if (archivos.length > 1) setEstado(`Subiendo ${i + 1} de ${archivos.length}: ${archivo.name}`)
+          const delArchivo = new FormData()
+          for (const [k, v] of datos) delArchivo.set(k, v)
+          delArchivo.set('id', id)
+          delArchivo.set('envio', envio)
+          delArchivo.set('nombre_archivo', archivo.name.trim().slice(0, 200))
+          // La pantalla se repinta una vez, con el último: no una por archivo.
+          if (i === archivos.length - 1) delArchivo.set('ultimo', '1')
+          // Con su tipo puesto: el navegador manda el que trae el archivo, y para
+          // el .dxf cada uno pone otro, o ninguno (Windows).
+          const conTipo = new File([archivo], archivo.name, { type: TIPO_DXF[ext], lastModified: archivo.lastModified })
+          const subir = () =>
+            subirArchivoPrivado({
+              bucket: BUCKET_DXF,
+              ruta: rutaDxf(id, ext),
+              archivo: conTipo,
+              contentType: TIPO_DXF[ext],
+              registrar: () => registrarDxf(null, delArchivo),
+            })
+          // Con alguno ya registrado, que entre otra cuenta en otra pestaña no
+          // corta la cadena callada: se dice qué quedó y qué falta.
+          const r = quedaron.length === 0 ? await subir() : await pasoTrasLoQueQuedo(subir)
+          if (!r.ok && !yaEntroLaPrimeraVez(r.error)) {
+            if (quedaron.length === 0) {
+              if (!pudoHaberEntrado(r.error)) return { ok: false, error: archivos.length === 1 ? r.error : `No subió ninguno. «${archivo.name}»: ${r.error}` }
+              // El primero pudo entrar: no se dice que no subió, y la descripción
+              // se traba para que el reenvío vaya con la misma.
+              setAMedias(true)
+              refrescarSiEsDeLaPestana(router)
+              return {
+                ok: false,
+                error:
+                  archivos.length === 1
+                    ? r.error
+                    : `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. Vuelve a enviar ahora los ${archivos.length}, sin recargar: así no se repite ninguno.`,
+              }
+            }
+            // No se promete que reenviar todo no repite: tras salir o recargar,
+            // el envío es otro y los que ya quedaron saldrían dos veces.
+            // Hasta cinco nombres: con un juego grande, el resto se cuenta.
+            const nombres = (lista: string[]) => (lista.length > 5 ? `${lista.slice(0, 5).join(', ')} y ${lista.length - 5} más` : lista.join(', '))
+            const pendientes = archivos.slice(i).map((a) => `«${a.name}»`)
+            const yaQuedo = `${quedaron.length === 1 ? 'Quedó' : 'Quedaron'} ${quedaron.length} de ${archivos.length} (${nombres(quedaron)}).`
+            const duda = pudoHaberEntrado(r.error)
+            // En la pantalla: los elegidos siguen ahí y llevan el mismo id, así
+            // que tocar otra vez no repite ninguno. Sin respuesta no se sabe si
+            // entró: se dice así, con el mensaje que la pantalla reconoce.
+            const lo = duda
+              ? `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. ${yaQuedo} Vuelve a tocar «Cargar DXF» sin cambiar lo elegido ni recargar: los que ya quedaron no se repiten.`
+              : `${yaQuedo} «${archivo.name}» no subió: ${r.error} Vuelve a tocar «Cargar DXF» sin cambiar lo elegido ni recargar: los que ya quedaron no se repiten.`
+            // Si ya se fue de la pantalla, lo elegido se perdió: que elija solo lo que falta.
+            const arriba = `${duda ? `De «${archivo.name}» no se sabe si quedó. ` : ''}${yaQuedo} Elige solo los que faltan: ${nombres(pendientes)}.`
+            setAMedias(true)
+            // Los que quedaron se ven en la lista ya: la pantalla se repinta sola solo con el último.
+            refrescarSiEsDeLaPestana(router)
+            return { ok: false, error: lo, arriba }
+          }
+          quedaron.push(`«${archivo.name}»`)
+        }
+      } finally {
+        setEstado(null)
+      }
+      return {
+        ok: true,
+        mensaje:
+          archivos.length === 1
+            ? 'DXF cargado. A los supervisores de Maestranza y Producción les llegó el aviso.'
+            : `${archivos.length} archivos cargados. A los supervisores de Maestranza y Producción les llegó un aviso con todos.`,
+      }
+    },
+    (r) => {
+      setMensaje(r.mensaje ?? 'DXF cargados.')
+      nuevoEnvio()
+    },
+    { alYaEntrar: nuevoEnvio, siSeVa: { que: 'los DXF', enlace: 'Volver a los DXF' } },
+  )
+  const aviso = useRef<HTMLParagraphElement>(null)
+  useCursorAlRechazo(enviando, error, () => aviso.current)
+  // Cuando el formulario nuevo deja de estar trabado: el campo apagado no toma el cursor.
+  useEffect(() => {
+    if (!volverAlInicio.current || enviando) return
+    volverAlInicio.current = false
+    document.getElementById('dxf-descripcion')?.focus()
+  }, [envio, enviando])
+  return (
+    <div className="grid gap-3">
+    <form key={envio} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
+      <input type="hidden" name="codigo" value={codigo} />
+      <Campo etiqueta="Qué traen" htmlFor="dxf-descripcion" requerido>
+        <Entrada
+          id="dxf-descripcion"
+          name="descripcion"
+          maxLength={200}
+          autoComplete="off"
+          placeholder="Corte de planchas del cajón"
+          required
+          disabled={enviando}
+          readOnly={aMedias}
+          className={aMedias ? 'bg-superficie-2' : undefined}
+          aria-describedby={aMedias ? 'dxf-a-medias' : undefined}
+        />
+        {aMedias && (
+          <p id="dxf-a-medias" className="mt-1 text-xs text-texto-suave">
+            Lo que falta entra con esta misma descripción, en el mismo aviso.
+          </p>
+        )}
+      </Campo>
+      <Campo etiqueta="Archivos DXF" htmlFor="dxf-archivos" requerido>
+        <ElegirArchivos
+          id="dxf-archivos"
+          name="archivos"
+          accept={ACEPTA_DXF}
+          hastaMb={MAXIMO_MB_DXF}
+          hasta={MAXIMO_ARCHIVOS_DXF}
+          required
+          disabled={enviando}
+        />
+      </Campo>
+      <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+        <Boton type="submit" cargando={enviando}>
+          <FileArchive aria-hidden className="size-4" />
+          Cargar DXF
+        </Boton>
+      </div>
+    </form>
+    {/* Fuera del formulario, que se arma de nuevo al terminar: así se anuncia. */}
+    <p aria-live="polite" className="text-sm text-texto-suave wrap-anywhere empty:hidden">
+      {estado}
+    </p>
+    <Alerta error={error} mensaje={mensaje} aviso={aviso} />
+    </div>
+  )
+}
+
+/** Quitar de una vez todos los archivos de un envío que se subió por error. */
+export function QuitarEnvioDxf({ envio, descripcion, cuantos }: { envio: string; descripcion: string; cuantos: number }) {
+  const [abierta, setAbierta] = useState(false)
+  const { ejecutar, enviando, error } = useAccion(quitarEnvioDxf, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="fantasma" tamano="sm" className="shrink-0" onClick={() => setAbierta(true)} aria-label={`Quitar los ${cuantos} de «${descripcion}»`}>
+        <Trash2 aria-hidden className="size-4" />
+        Quitar los {cuantos}
+      </Boton>
+      <ConfirmarAccion
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Quitar los ${cuantos} archivos`}
+        detalle={`«${descripcion}» deja de verse en Maestranza y Producción, con sus ${cuantos} archivos. Queda en el historial.`}
+        trabajando={enviando}
+        error={error}
+        alConfirmar={() => {
+          const datos = new FormData()
+          datos.set('envio', envio)
+          ejecutar(datos)
+        }}
+      />
+    </>
+  )
+}
+
+export function QuitarDxf({ id, nombre }: { id: string; nombre: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const { ejecutar, enviando, error } = useAccion(quitarDxf, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="fantasma" tamano="icono" onClick={() => setAbierta(true)} aria-label={`Quitar ${nombre}`}>
+        <Trash2 aria-hidden className="size-4" />
+      </Boton>
+      <ConfirmarAccion
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Quitar el DXF"
+        detalle={`«${nombre}» deja de verse en Maestranza y Producción. Queda en el historial.`}
+        trabajando={enviando}
+        error={error}
+        alConfirmar={() => {
+          const datos = new FormData()
+          datos.set('id', id)
+          ejecutar(datos)
+        }}
+      />
+    </>
+  )
+}
+
+// ------------------------------------------------------------------ Ficha técnica
+
+const ACEPTA_FICHA = 'application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png'
+
+/**
+ * Adjuntar a la OT la ficha técnica del camión o tracto, en PDF o en foto. Va
+ * a la orden como sus otros archivos (`ot_adjuntos`), y se ve también desde ella.
+ */
+export function SubirFicha({ ordenId, numero }: { ordenId: string; numero: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    async (_previo, datos) => {
+      const archivo = datos.get('archivo')
+      if (!(archivo instanceof File) || archivo.size < 1) return { ok: false, error: 'Elige la ficha técnica: PDF, JPG o PNG.' }
+      return subirAdjunto(ordenId, archivo, 'FICHA_VEHICULO')
+    },
+    () => setAbierta(false),
+    { siSeVa: { que: 'la ficha técnica', enlace: 'Volver al código' } },
+  )
+  return (
+    <>
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          limpiar()
+          setAbierta(true)
+        }}
+      >
+        <FileUp aria-hidden className="size-4" />
+        Adjuntar ficha técnica
+      </Boton>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Ficha técnica · OT ${numero}`}
+        descripcion="La del camión o tracto que llega para la unidad: en PDF o en foto. Queda junto a la OT."
+        ancho="sm"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          <Campo etiqueta="Ficha técnica" htmlFor={`ficha-${ordenId}`} requerido>
+            <ElegirArchivo id={`ficha-${ordenId}`} name="archivo" accept={ACEPTA_FICHA} hastaMb={MAXIMO_ADJUNTO_MB} required disabled={enviando} />
+          </Campo>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Adjuntar" />
+        </form>
+      </Ventana>
+    </>
+  )
+}
+
+export function QuitarFicha({ id, ordenId, nombre }: { id: string; ordenId: string; nombre: string }) {
+  const [abierta, setAbierta] = useState(false)
+  const { ejecutar, enviando, error } = useAccion(quitarAdjunto, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="fantasma" tamano="icono" onClick={() => setAbierta(true)} aria-label={`Quitar la ficha ${nombre}`}>
+        <Trash2 aria-hidden className="size-4" />
+      </Boton>
+      <ConfirmarAccion
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Quitar la ficha técnica"
+        detalle={`«${nombre}» sale de la OT. Si te equivocaste de archivo, adjunta el correcto después.`}
+        trabajando={enviando}
+        error={error}
+        alConfirmar={() => {
+          const datos = new FormData()
+          datos.set('id', id)
+          datos.set('orden_id', ordenId)
+          ejecutar(datos)
+        }}
+      />
     </>
   )
 }

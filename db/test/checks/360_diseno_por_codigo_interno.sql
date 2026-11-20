@@ -354,26 +354,37 @@ reset role;
 -- ============================================ 5. Las etapas
 select pg_temp.como('diseno_dis');
 set local role authenticated;
-select test.afirmar(public.etapas_de_siempre_codigo(lower(current_setting('prueba.codigo'))) = 6, 'las seis etapas de siempre');
+-- Desde la 20261106100000 Diseño arma el par Habilitado (Maestranza) y Ensamblaje (Producción).
+select test.afirmar(public.etapas_de_siempre_codigo(lower(current_setting('prueba.codigo'))) = 2, 'el par de Diseño: Habilitado y Ensamblaje');
 select test.debe_fallar($q$select public.etapas_de_siempre_codigo(current_setting('prueba.codigo'))$q$,
-  'no se repiten', 'ya tiene etapas');
-select set_config('prueba.e7', public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Prueba de carga',
-  null, null, null)::text, true);
+  'no se repiten', 'ya tiene las etapas');
+-- Solo esas dos por juego de planos: una etapa suelta ya no la pone Diseño.
+select test.debe_fallar($q$select public.guardar_etapa_codigo(null, current_setting('prueba.codigo'), 'Prueba de carga', pg_temp.id('prd'), null, null)$q$,
+  'Diseño no agrega etapas sueltas', 'dos etapas por juego de planos');
+reset role;
+-- La etapa de más la agrega el área, y la ordena su supervisor.
+select pg_temp.como('supervisor_prd');
+set local role authenticated;
+select set_config('prueba.e7', public.guardar_etapa_de_area(null, current_setting('prueba.codigo'), null, pg_temp.id('prd'),
+  'Prueba de carga', null, null)::text, true);
 select public.mover_etapa_codigo(pg_temp.id('e7'), true);
+reset role;
+select pg_temp.como('diseno_dis');
+set local role authenticated;
 select set_config('prueba.hab', (select id::text from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
   and nombre = 'Habilitado'), true);
 select set_config('prueba.arm', (select id::text from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
-  and nombre = 'Armado'), true);
+  and nombre = 'Ensamblaje'), true);
 select public.guardar_etapa_codigo(pg_temp.id('hab'), null, 'Habilitado', pg_temp.id('mtz'),
   (now() at time zone 'America/Lima')::date - 10, (now() at time zone 'America/Lima')::date - 3);
-select test.debe_fallar($q$select public.guardar_etapa_codigo(pg_temp.id('arm'), null, 'Armado', pg_temp.id('prd'),
+select test.debe_fallar($q$select public.guardar_etapa_codigo(pg_temp.id('arm'), null, 'Ensamblaje', pg_temp.id('prd'),
   current_date, current_date - 1)$q$, 'lo comprometido no va antes del inicio', 'anterior al inicio');
 reset role;
 select test.afirmar(
   (select array_agg(nombre order by orden) from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo')
       and quitada_en is null)
-  = array['Diseño y planos', 'Habilitado', 'Armado', 'Arenado y pintura', 'Trámites: homologación y tarjeta', 'Prueba de carga', 'Entrega'],
-  'en el orden del taller, con la nueva subida un lugar antes de la entrega');
+  = array['Habilitado', 'Ensamblaje', 'Prueba de carga'],
+  'la etapa del área va después; subirla no la pasa delante de las de Diseño (se mueve entre las de su área)');
 
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
@@ -425,12 +436,12 @@ select test.afirmar(
   and (select reportes from public.codigo_interno_etapas(current_setting('prueba.codigo')) where id = pg_temp.id('arm')) = 0,
   'Gerencia ve en la etapa de Maestranza su reporte y su avance (80 y 40: 60 %), y en la de Producción nada todavía');
 select test.afirmar(
-  (select etapas from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 7
+  (select etapas from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 3
   and (select etapas_terminadas from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 1
-  and (select etapa_actual from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 'Diseño y planos'
+  and (select etapa_actual from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 'Ensamblaje'
   and (select materiales from public.codigos_internos_de_diseno() where codigo = current_setting('prueba.codigo')) = 2
   and not exists (select 1 from public.codigos_internos_de_diseno() where codigo = 'PLANTA'),
-  'en la lista de Gerencia: siete etapas, una terminada, la que sigue abierta primero y dos materiales; PLANTA no sale');
+  'en la lista de Gerencia: tres etapas, una terminada, la que sigue abierta primero y dos materiales; PLANTA no sale');
 select test.debe_fallar($q$select public.marcar_etapa_codigo(pg_temp.id('arm'), 'INICIO', current_date, null)$q$,
   'Gerencia mira, no marca', 'la marca Diseño');
 reset role;
@@ -438,11 +449,19 @@ reset role;
 select pg_temp.como('diseno_dis');
 set local role authenticated;
 select public.marcar_etapa_codigo(pg_temp.id('hab'), 'REABRIR', null, 'Hay que rehacer el doblez');
+select test.debe_fallar($q$select public.quitar_etapa_codigo(pg_temp.id('e7'))$q$,
+  'la etapa que agregó el área no la quita Diseño', 'supervisor de su área');
+reset role;
+select pg_temp.como('supervisor_prd');
+set local role authenticated;
 select public.quitar_etapa_codigo(pg_temp.id('e7'));
+reset role;
+select pg_temp.como('diseno_dis');
+set local role authenticated;
 select test.afirmar(
   (select fin_real from public.codigo_etapas where id = pg_temp.id('hab')) is null
-  and (select count(*) from public.codigo_interno_etapas(current_setting('prueba.codigo'))) = 6,
-  'Diseño reabre con su porqué y quita la etapa que sobraba');
+  and (select count(*) from public.codigo_interno_etapas(current_setting('prueba.codigo'))) = 2,
+  'Diseño reabre con su porqué, y Producción quita la etapa que sobraba');
 reset role;
 select test.debe_fallar($q$delete from public.codigo_etapas where id = pg_temp.id('e7')$q$, 'una etapa no se borra', 'no se borra');
 
