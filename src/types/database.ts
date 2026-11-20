@@ -17018,6 +17018,7 @@ export type Database = {
         Returns: {
           orden_compra_id: string | null
           material_id: string | null
+          codigo: string | null
           existencia: number | null
           en_camino: number | null
           en_camino_ocs: string | null

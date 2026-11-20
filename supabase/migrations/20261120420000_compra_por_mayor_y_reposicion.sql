@@ -170,7 +170,7 @@ grant execute on function public.reposicion_de_stock() to authenticated;
 -- almacén y cuánto ya viene en otras OC abiertas, y en cuáles. Lo ve quien
 -- aprueba compras y quien ve el stock.
 create or replace function public.stock_al_aprobar_compras(p_compras uuid[])
-returns table (orden_compra_id uuid, material_id uuid, existencia numeric, en_camino numeric, en_camino_ocs text)
+returns table (orden_compra_id uuid, material_id uuid, codigo text, existencia numeric, en_camino numeric, en_camino_ocs text)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 declare v_oc uuid;
@@ -181,9 +181,10 @@ begin
   end if;
   foreach v_oc in array coalesce(p_compras, '{}') loop
     return query
-    select v_oc, d.material_id, coalesce(e.existencia, 0)::numeric, coalesce(c.en_camino, 0), c.ocs
+    select v_oc, d.material_id, m.codigo::text, coalesce(e.existencia, 0)::numeric, coalesce(c.en_camino, 0), c.ocs
       from (select distinct x.material_id from public.orden_compra_material_detalles x
              where x.orden_compra_id = v_oc and x.material_id is not null) d
+      join public.materiales m on m.id = d.material_id
       left join public.v_existencias_materiales e on e.material_id = d.material_id
       left join public.en_camino_por_material(v_oc) c on c.material_id = d.material_id;
   end loop;

@@ -66,13 +66,22 @@ const NO_SON_UNIDAD = [CODIGO_FIJO_PLANTA.codigo, CODIGO_FIJO_OFICINA.codigo, CO
 const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp']
 
 /**
- * Si el material puede salir para el ítem de RQ elegido: uno de su almacén, o
- * lo que llegó de su compra aunque Logística lo haya comprado de otra categoría
- * (la base acepta lo mismo, migración 20261020196000). Sin RQ, cualquiera.
+ * Si el material puede salir para el ítem de RQ elegido: el que pidió o lo que
+ * llegó de su compra, otra marca u otra medida (Almacén, 20/11/2026: no se
+ * entrega lo que no coincide con lo pedido; la base acepta lo mismo, migración
+ * 20261120410000). El insumo sin material, de antes de que Almacén lo asociara,
+ * con uno de su almacén. Sin RQ, cualquiera: la materia prima y los accesorios
+ * los rechaza la base, y el campo lo dice antes (`sinRqNoSale`).
  */
 function sirvePara(m: MaterialParaSalida, linea: LineaRqParaElegir | undefined) {
-  return !linea?.almacen || !m.almacen || m.almacen === linea.almacen || m.id === linea.material_comprado
+  if (!linea) return true
+  if (linea.material_id) return m.id === linea.material_id || m.id === linea.material_comprado
+  return !linea.almacen || !m.almacen || m.almacen === linea.almacen || m.id === linea.material_comprado
 }
+
+/** La materia prima y los accesorios salen solo contra el RQ que los pide (migración 20261120410000). */
+const sinRqNoSale = (m: MaterialParaSalida | undefined, linea: LineaRqParaElegir | undefined) =>
+  !linea && (m?.almacen === 'MATERIA_PRIMA' || m?.almacen === 'ACCESORIOS')
 
 /**
  * Las partes de lo que hay, en orden, sin pasar de lo que hay: si se separó de
@@ -541,7 +550,7 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
 
           {lineasRq.length > 0 && (
             <Campo etiqueta="Requerimiento que atiende" htmlFor="sal-rq"
-              ayuda="Opcional. Si la salida atiende un ítem de requerimiento, la cantidad se descuenta de lo pedido y el destino lo pone el RQ.">
+              ayuda="Obligatorio para la materia prima y los accesorios. Con el ítem elegido sale el material que pidió (o el que se compró para él), la cantidad se descuenta de lo pedido y el destino lo pone el RQ.">
               <SeleccionBuscable
                 id="sal-rq"
                 name="requerimiento_linea_id"
@@ -559,7 +568,10 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
           )}
 
           <Campo etiqueta="Material" htmlFor="sal-material" requerido
-            ayuda={conSaldo.length === 0 ? 'No hay materiales con saldo libre. Registra primero su ingreso.' : undefined}>
+            error={sinRqNoSale(elegido, linea)
+              ? `${elegido?.almacen === 'MATERIA_PRIMA' ? 'La materia prima' : 'Un accesorio'} sale solo con el requerimiento que lo pide: ${lineasRq.length > 0 ? 'elígelo arriba, en «Requerimiento que atiende».' : 'ningún RQ abierto lo pide. Si hace falta, el área lo pide por requerimiento.'}`
+              : undefined}
+            ayuda={conSaldo.length === 0 ? (linea?.material_id ? 'No hay saldo libre del material que pide el RQ ni del que se compró para él.' : 'No hay materiales con saldo libre. Registra primero su ingreso.') : undefined}>
             <SeleccionBuscable
               id="sal-material"
               name="material_id"

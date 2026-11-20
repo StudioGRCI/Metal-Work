@@ -322,6 +322,18 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
                       {l.material_codigo}
                       <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : deRq ? 'De RQ' : 'Almacén'}</span>
                     </p>
+                    {/* Para no aprobar dos veces la misma compra (Almacén, 20/11/2026). */}
+                    {l.stock && (
+                      <p className="text-[11px] text-texto-suave" data-stock-al-aprobar>
+                        {l.stock.existencia > 0 ? `En almacén: ${cantidad(l.stock.existencia)} ${l.unidad ?? ''}` : 'En almacén: no hay'}
+                        {l.stock.en_camino > 0 && (
+                          <span className="font-medium text-aviso">
+                            {' · '}ya viene{l.stock.en_camino === 1 ? '' : 'n'} {cantidad(l.stock.en_camino)} {l.unidad ?? ''}
+                            {l.stock.en_camino_ocs ? ` en ${l.stock.en_camino_ocs}` : ''}
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
                     {l.orden ?? (deRq ? '—' : 'Almacén')}
