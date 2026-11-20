@@ -7,7 +7,8 @@
  *      archivos de un mismo envío, y a Maestranza y Producción les llega un
  *      solo aviso que los cuenta.
  *   2. Un PDF con el nombre cambiado a .dxf se marca en rojo y no se envía.
- *   3. Diseño carga además un .zip, como antes.
+ *   3. Diseño carga además un .zip, como antes, y quita de una vez un envío
+ *      de dos .dxf que subió por error.
  *   4. El supervisor de Maestranza ve los DXF en Planos y etapas, bajo una sola
  *      descripción, y descarga cada .dxf con su nombre y su contenido; el de
  *      Producción también los ve; el de Acabados no.
@@ -85,8 +86,16 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
 const estado = async (pagina) =>
   limpio(await pagina.locator('[role="status"], [role="alert"]').filter({ hasText: /\S/ }).first().innerText({ timeout: 30000 }).catch(() => ''))
 const idDe = async (correo) => (await uno(`select id from usuarios where correo = $1`, [`${correo}.local@metalwork.test`])).id
+// Los avisos de esta corrida: su descripción lleva el sello.
 const avisos = async (correo) =>
-  (await base.query(`select cuerpo, leida_en from notificaciones where usuario_id = $1 and titulo = $2 order by creado_en`, [await idDe(correo), `DXF nuevos: ${CODIGO}`])).rows
+  (await base.query(`select cuerpo, leida_en from notificaciones where usuario_id = $1 and titulo = $2 and cuerpo like $3 order by creado_en`, [
+    await idDe(correo),
+    `DXF nuevos: ${CODIGO}`,
+    `%${sello}%`,
+  ])).rows
+// El aviso de este envío, no el que quedó en pantalla del anterior.
+const esperarAviso = async (pagina, patron) =>
+  limpio(await pagina.locator('[role="status"], [role="alert"]').filter({ hasText: patron }).first().innerText({ timeout: 60000 }).catch(async () => `(no llegó; en pantalla: ${await estado(pagina)})`))
 const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: 'dxf' })}`
 
 // ------------------------------------------------ 1–3. Diseño
@@ -101,7 +110,7 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   await form.locator('#dxf-archivos').setInputFiles([DXFS[0], FALSO])
   await pagina.waitForTimeout(600)
   const caja = limpio(await form.innerText())
-  comprobar(/no es un \.dxf de verdad/i.test(caja) && /Uno no sirve/.test(caja), `el PDF con nombre .dxf sale en rojo: «${caja.slice(0, 220)}»`)
+  comprobar(/no es un \.dxf de verdad/i.test(caja) && caja.includes(`«${nombre(FALSO)}» no sirve`), `el PDF con nombre .dxf sale en rojo y con su nombre: «${caja.slice(0, 220)}»`)
   const antes = Number((await uno(`select count(*) n from codigo_dxf where codigo_interno = $1`, [CODIGO])).n)
   await form.getByRole('button', { name: 'Cargar DXF' }).click()
   await pagina.waitForTimeout(1500)
@@ -116,8 +125,10 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   comprobar(/3 archivos elegidos/.test(elegidos) && DXFS.every((r) => elegidos.includes(nombre(r))), `dice cuántos eligió y sus nombres: «${elegidos.slice(0, 260)}»`)
   await pagina.screenshot({ path: `${CAPTURAS}/1-diseno-tres-dxf-elegidos.png`, fullPage: true })
   await form.getByRole('button', { name: 'Cargar DXF' }).click()
-  const aviso1 = await estado(pagina)
+  const aviso1 = await esperarAviso(pagina, /archivos cargados|no subió|No se/)
   comprobar(/3 archivos cargados/.test(aviso1), `Diseño ve que quedaron los tres: «${aviso1}»`)
+  await pagina.waitForTimeout(500)
+  comprobar((await pagina.evaluate(() => document.activeElement?.id)) === 'dxf-descripcion', 'tras cargar, el cursor vuelve a «Qué traen»')
   await pagina.waitForTimeout(800)
   const filas = (await base.query(`select nombre_archivo, ruta, envio, tamano_bytes from codigo_dxf where descripcion = $1 order by nombre_archivo`, [`Cartelas y piso ${sello}`])).rows
   comprobar(
@@ -140,11 +151,55 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   await form.locator('#dxf-descripcion').fill(`Juego comprimido ${sello}`)
   await form.locator('#dxf-archivos').setInputFiles([ZIP])
   await form.getByRole('button', { name: 'Cargar DXF' }).click()
-  const aviso2 = await estado(pagina)
+  const aviso2 = await esperarAviso(pagina, /DXF cargado\.|no subió|No se/)
   comprobar(/DXF cargado\./.test(aviso2), `el .zip sigue entrando: «${aviso2}»`)
   await pagina.waitForTimeout(800)
   comprobar((await avisos('sup.mtz')).length === 2, 'y su aviso es otro, aparte del de los tres .dxf')
-  comprobar(errores.length === 0, `sin errores en la consola de Diseño ${errores.join(' | ')}`)
+  await ir(pagina, enVista)
+
+  // Se corta a la mitad: el segundo archivo no llega al almacenamiento. Se
+  // dice qué quedó y qué falta, la descripción se traba y lo que falta entra
+  // en el mismo envío y el mismo aviso.
+  let subidas = 0
+  await pagina.route('**/storage/v1/object/dxf-codigo/**', (ruta) => {
+    if (ruta.request().method() === 'POST' && ++subidas === 2) return ruta.abort()
+    return ruta.continue()
+  })
+  await form.locator('#dxf-descripcion').fill(`A medias ${sello}`)
+  await form.locator('#dxf-archivos').setInputFiles(DXFS)
+  await form.getByRole('button', { name: 'Cargar DXF' }).click()
+  const medias = await esperarAviso(pagina, /Quedaron|no subió|No se/)
+  comprobar(/Quedaron 1 de 3/.test(medias) && /Envía solo los que faltan/.test(medias) && !/no se repiten/.test(medias), `a medias dice qué quedó y qué falta: «${medias.slice(0, 260)}»`)
+  comprobar(await form.locator('#dxf-descripcion').evaluate((el) => el.readOnly), 'y traba la descripción')
+  await pagina.unroute('**/storage/v1/object/dxf-codigo/**')
+  await form.locator('#dxf-archivos').setInputFiles(DXFS.slice(1))
+  await form.getByRole('button', { name: 'Cargar DXF' }).click()
+  comprobar(/2 archivos cargados/.test(await esperarAviso(pagina, /2 archivos cargados|Quedaron|No se/)), 'los que faltaban entran')
+  await pagina.waitForTimeout(800)
+  const mediasFilas = (await base.query(`select envio from codigo_dxf where descripcion = $1 and quitado_en is null`, [`A medias ${sello}`])).rows
+  const mediasAvisos = (await avisos('sup.mtz')).filter((a) => a.cuerpo.startsWith(`A medias ${sello}`))
+  comprobar(
+    mediasFilas.length === 3 && new Set(mediasFilas.map((f) => f.envio)).size === 1 && mediasAvisos.length === 1 && /\(3 archivos/.test(mediasAvisos[0].cuerpo),
+    `quedan los tres, sin repetir, en un envío y un aviso (${mediasFilas.length} filas, ${mediasAvisos.length} aviso: «${mediasAvisos[0]?.cuerpo}»)`,
+  )
+  await ir(pagina, enVista)
+
+  // Un envío al código equivocado se quita entero.
+  await form.locator('#dxf-descripcion').fill(`Por error ${sello}`)
+  await form.locator('#dxf-archivos').setInputFiles(DXFS.slice(0, 2))
+  await form.getByRole('button', { name: 'Cargar DXF' }).click()
+  comprobar(/2 archivos cargados/.test(await esperarAviso(pagina, /2 archivos cargados|no subió|No se/)), 'carga dos más por error')
+  await ir(pagina, enVista)
+  await pagina.getByRole('button', { name: `Quitar los 2 de «Por error ${sello}»` }).click()
+  await pagina.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name: /Quitar|Confirmar|Sí/ }).last().click()
+  await pagina.waitForTimeout(1500)
+  const quitados = await uno(`select count(*) filter (where quitado_en is not null) q, count(*) n from codigo_dxf where descripcion = $1`, [`Por error ${sello}`])
+  comprobar(Number(quitados.q) === 2 && Number(quitados.n) === 2, `«Quitar los 2» los quita de una vez y quedan en el historial (${quitados.q} de ${quitados.n})`)
+  await ir(pagina, enVista)
+  comprobar(!limpio(await pagina.locator('main').innerText()).includes(`Por error ${sello}`), 'y ya no salen en la lista')
+  // El corte a propósito de la subida deja su «Failed to load resource» en la consola: ese no cuenta.
+  const otros = errores.filter((e) => !/Failed to load resource: net::ERR_FAILED/.test(e))
+  comprobar(otros.length === 0, `sin errores en la consola de Diseño ${otros.join(' | ')}`)
   await contexto.close()
 }
 
@@ -159,7 +214,8 @@ for (const [puesto, nombreArea] of [['sup.mtz', 'Maestranza'], ['sup.prd', 'Prod
   if (puesto === 'sup.mtz') {
     await seccion.screenshot({ path: `${CAPTURAS}/3-maestranza-telefono-dxf.png` })
     for (const r of DXFS) {
-      const enlace = seccion.getByRole('link', { name: `Descargar ${nombre(r)}` })
+      // Del envío «Cartelas y piso»: «A medias» trae archivos con el mismo nombre.
+      const enlace = seccion.locator('li').filter({ hasText: `Cartelas y piso ${sello}` }).first().getByRole('link', { name: `Descargar ${nombre(r)}` })
       const descarga = await Promise.all([pagina.waitForEvent('download', { timeout: 15000 }), enlace.click()]).then(([d]) => d).catch(() => null)
       const bajado = descarga ? readFileSync(await descarga.path()).toString() : null
       comprobar(

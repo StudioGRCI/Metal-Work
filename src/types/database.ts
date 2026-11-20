@@ -15388,6 +15388,12 @@ export type Database = {
         }
         Returns: string
       }
+      quitar_dxf_envio: {
+        Args: {
+          p_envio: string | null
+        }
+        Returns: number
+      }
       quitar_etapa_codigo: {
         Args: {
           p_id: string | null

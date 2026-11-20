@@ -34,8 +34,8 @@ export const AREAS_DE_ETAPA_DE_DISENO = ['MTZ', 'PRD'] as const
  */
 export const BUCKET_DXF = 'dxf-codigo'
 export const MAXIMO_MB_DXF = 50
-/** Cuántos archivos se eligen de una vez: un juego de piezas para el corte. */
-export const MAXIMO_ARCHIVOS_DXF = 40
+/** Cuántos archivos se eligen de una vez: un juego de piezas para el corte, con holgura. */
+export const MAXIMO_ARCHIVOS_DXF = 100
 export const EXTENSIONES_DXF = ['dxf', 'zip', 'rar', '7z'] as const
 export type ExtensionDxf = (typeof EXTENSIONES_DXF)[number]
 /** Lo que acepta el campo: el .dxf o el comprimido. */

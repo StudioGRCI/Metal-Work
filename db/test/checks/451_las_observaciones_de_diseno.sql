@@ -199,13 +199,21 @@ select test.afirmar((select count(*) from public.codigo_dxf) = 0
   and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Gerencia no: son de Diseño, Maestranza y Producción');
 reset role;
 
+select pg_temp.como('supervisor_mtz');
+set local role authenticated;
+select test.debe_fallar($q$select public.quitar_dxf_envio(pg_temp.id('env2'))$q$, 'Maestranza no quita un envío', 'diseno.codigos');
+reset role;
 select pg_temp.como('diseno_dis');
 set local role authenticated;
+select test.afirmar(public.quitar_dxf_envio(pg_temp.id('env2')) = 3, 'Diseño quita los tres del envío de una vez');
+select test.afirmar(public.quitar_dxf_envio(pg_temp.id('env2')) = 0, 'otra vez no quita nada más');
 select public.quitar_dxf_codigo(pg_temp.id('dxf1'));
 select test.debe_fallar($q$delete from public.codigo_dxf where id = pg_temp.id('dxf1')$q$, 'nadie borra la fila', 'permission denied');
 reset role;
 select test.afirmar((select quitado_por from public.codigo_dxf where id = pg_temp.id('dxf1')) = pg_temp.id('diseno_dis'),
   'quitado, queda con quién lo quitó');
+select test.afirmar((select count(*) from public.codigo_dxf where envio = pg_temp.id('env2') and quitado_por = pg_temp.id('diseno_dis')) = 3,
+  'el envío quitado queda entero en el historial, con quién lo quitó');
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
 select test.afirmar((select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 0,

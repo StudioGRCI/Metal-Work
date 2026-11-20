@@ -87,7 +87,7 @@ export async function ListaDeCodigosDeDiseno({
   const [codigosSueltos, ots, dxf] = await Promise.all([
     codigosDeDiseno(),
     veOt ? otPorCodigo() : Promise.resolve(new Map<string, OtDeCodigo>()),
-    vista === 'dxf' && !seguimiento ? dxfDeCodigo(null, { conEnlace: false }) : Promise.resolve([]),
+    vista === 'dxf' && !seguimiento ? dxfDeCodigo(null) : Promise.resolve([]),
   ])
   const dxfPorCodigo = new Map<string, number>()
   for (const d of dxf) dxfPorCodigo.set(d.codigo, (dxfPorCodigo.get(d.codigo) ?? 0) + 1)
@@ -251,7 +251,7 @@ function Resumen({ c, vista }: { c: Fila; vista: VistaDiseno }) {
       <span className="text-xs text-texto-suave">Sin DXF</span>
     ) : (
       <span className="text-xs text-texto">
-        {c.dxf} {c.dxf === 1 ? 'archivo DXF' : 'archivos DXF'}
+        {c.dxf} {c.dxf === 1 ? 'archivo' : 'archivos'}
       </span>
     )
   }

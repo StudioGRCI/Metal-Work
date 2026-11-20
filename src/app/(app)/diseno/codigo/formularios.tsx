@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, Check, FileArchive, FileUp, FolderOpen, ListPlus, Pencil, Percent, Play, RotateCcw, Trash2, Flag, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 
 import { quitarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { Boton } from '@/components/ui/boton'
@@ -27,7 +27,7 @@ import {
   rutaPlanoCodigo,
   type VistaDiseno,
 } from '@/lib/dominio/diseno-codigos'
-import { useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { pasoTrasLoQueQuedo, useAccion, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { cantidad } from '@/lib/format'
 import { subirArchivoPrivado } from '@/lib/subida-privada'
 
@@ -41,6 +41,7 @@ import {
   marcarEtapa,
   moverEtapa,
   quitarDxf,
+  quitarEnvioDxf,
   quitarEtapa,
   quitarMaterial,
   recibirPlano,
@@ -989,8 +990,15 @@ export function CargarDxf({ codigo }: { codigo: string }) {
   const ids = useRef(new Map<string, string>())
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [estado, setEstado] = useState<string | null>(null)
+  // Quedó una parte del envío: la descripción se traba, para que lo que falta
+  // entre en el mismo envío y el mismo aviso, con la misma descripción.
+  const [aMedias, setAMedias] = useState(false)
+  // Tras cargar, el formulario se arma de nuevo (vacío): el cursor vuelve a «Qué traen».
+  const volverAlInicio = useRef(false)
   const nuevoEnvio = () => {
     ids.current = new Map()
+    volverAlInicio.current = true
+    setAMedias(false)
     setEnvio(crypto.randomUUID())
   }
   const { alEnviar, enviando, error } = useEnvio(
@@ -1007,31 +1015,42 @@ export function CargarDxf({ codigo }: { codigo: string }) {
         }
       }
       datos.delete('archivos')
-      let quedaron = 0
+      const quedaron: string[] = []
       try {
-        for (const archivo of archivos) {
+        for (const [i, archivo] of archivos.entries()) {
           const ext = extensionDxf(archivo.name)!
           const huella = huellaDxf(archivo)
           const id = ids.current.get(huella) ?? crypto.randomUUID()
           ids.current.set(huella, id)
-          if (archivos.length > 1) setEstado(`Subiendo ${quedaron + 1} de ${archivos.length}: ${archivo.name}`)
+          if (archivos.length > 1) setEstado(`Subiendo ${i + 1} de ${archivos.length}: ${archivo.name}`)
           const delArchivo = new FormData()
           for (const [k, v] of datos) delArchivo.set(k, v)
           delArchivo.set('id', id)
           delArchivo.set('envio', envio)
           delArchivo.set('nombre_archivo', archivo.name.trim().slice(0, 200))
-          const r = await subirArchivoPrivado({
-            bucket: BUCKET_DXF,
-            ruta: rutaDxf(id, ext),
-            archivo,
-            contentType: TIPO_DXF[ext],
-            registrar: () => registrarDxf(null, delArchivo),
-          })
+          // La pantalla se repinta una vez, con el último: no una por archivo.
+          if (i === archivos.length - 1) delArchivo.set('ultimo', '1')
+          const subir = () =>
+            subirArchivoPrivado({
+              bucket: BUCKET_DXF,
+              ruta: rutaDxf(id, ext),
+              archivo,
+              contentType: TIPO_DXF[ext],
+              registrar: () => registrarDxf(null, delArchivo),
+            })
+          // Con alguno ya registrado, que entre otra cuenta en otra pestaña no
+          // corta la cadena callada: se dice qué quedó y qué falta.
+          const r = quedaron.length === 0 ? await subir() : await pasoTrasLoQueQuedo(subir)
           if (!r.ok && !yaEntroLaPrimeraVez(r.error)) {
-            const antes = quedaron === 0 ? '' : `Quedaron ${quedaron} de ${archivos.length}. `
-            return { ok: false, error: `${antes}«${archivo.name}» no subió: ${r.error} Vuelve a enviar: los que ya quedaron no se repiten.` }
+            if (quedaron.length === 0) return { ok: false, error: archivos.length === 1 ? r.error : `No subió ninguno. «${archivo.name}»: ${r.error}` }
+            // No se promete que reenviar todo no repite: tras salir o recargar,
+            // el envío es otro y los que ya quedaron saldrían dos veces.
+            const faltan = archivos.slice(i).map((a) => `«${a.name}»`).join(', ')
+            const lo = `Quedaron ${quedaron.length} de ${archivos.length} (${quedaron.join(', ')}). «${archivo.name}» no subió: ${r.error} Envía solo los que faltan: ${faltan}.`
+            setAMedias(true)
+            return { ok: false, error: lo, arriba: lo }
           }
-          quedaron++
+          quedaron.push(`«${archivo.name}»`)
         }
       } finally {
         setEstado(null)
@@ -1052,11 +1071,33 @@ export function CargarDxf({ codigo }: { codigo: string }) {
   )
   const aviso = useRef<HTMLParagraphElement>(null)
   useCursorAlRechazo(enviando, error, () => aviso.current)
+  // Cuando el formulario nuevo deja de estar trabado: el campo apagado no toma el cursor.
+  useEffect(() => {
+    if (!volverAlInicio.current || enviando) return
+    volverAlInicio.current = false
+    document.getElementById('dxf-descripcion')?.focus()
+  }, [envio, enviando])
   return (
+    <div className="grid gap-3">
     <form key={envio} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="codigo" value={codigo} />
       <Campo etiqueta="Qué traen" htmlFor="dxf-descripcion" requerido>
-        <Entrada id="dxf-descripcion" name="descripcion" maxLength={200} autoComplete="off" placeholder="Corte de planchas del cajón" required disabled={enviando} />
+        <Entrada
+          id="dxf-descripcion"
+          name="descripcion"
+          maxLength={200}
+          autoComplete="off"
+          placeholder="Corte de planchas del cajón"
+          required
+          disabled={enviando}
+          readOnly={aMedias}
+          aria-describedby={aMedias ? 'dxf-a-medias' : undefined}
+        />
+        {aMedias && (
+          <p id="dxf-a-medias" className="mt-1 text-xs text-texto-suave">
+            Lo que falta entra con esta misma descripción, en el mismo aviso.
+          </p>
+        )}
       </Campo>
       <Campo etiqueta="Archivos DXF" htmlFor="dxf-archivos" requerido>
         <ElegirArchivos
@@ -1074,16 +1115,41 @@ export function CargarDxf({ codigo }: { codigo: string }) {
           <FileArchive aria-hidden className="size-4" />
           Cargar DXF
         </Boton>
-        {estado && (
-          <span aria-live="polite" className="text-sm text-texto-suave wrap-anywhere">
-            {estado}
-          </span>
-        )}
-      </div>
-      <div className="sm:col-span-2">
-        <Alerta error={error} mensaje={mensaje} aviso={aviso} />
       </div>
     </form>
+    {/* Fuera del formulario, que se arma de nuevo al terminar: así se anuncia. */}
+    <p aria-live="polite" className="text-sm text-texto-suave wrap-anywhere empty:hidden">
+      {estado}
+    </p>
+    <Alerta error={error} mensaje={mensaje} aviso={aviso} />
+    </div>
+  )
+}
+
+/** Quitar de una vez todos los archivos de un envío que se subió por error. */
+export function QuitarEnvioDxf({ envio, descripcion, cuantos }: { envio: string; descripcion: string; cuantos: number }) {
+  const [abierta, setAbierta] = useState(false)
+  const { ejecutar, enviando, error } = useAccion(quitarEnvioDxf, () => setAbierta(false))
+  return (
+    <>
+      <Boton type="button" variante="fantasma" tamano="sm" className="shrink-0" onClick={() => setAbierta(true)} aria-label={`Quitar los ${cuantos} de «${descripcion}»`}>
+        <Trash2 aria-hidden className="size-4" />
+        Quitar los {cuantos}
+      </Boton>
+      <ConfirmarAccion
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo={`Quitar los ${cuantos} archivos`}
+        detalle={`«${descripcion}» deja de verse en Maestranza y Producción, con sus ${cuantos} archivos. Queda en el historial.`}
+        trabajando={enviando}
+        error={error}
+        alConfirmar={() => {
+          const datos = new FormData()
+          datos.set('envio', envio)
+          ejecutar(datos)
+        }}
+      />
+    </>
   )
 }
 

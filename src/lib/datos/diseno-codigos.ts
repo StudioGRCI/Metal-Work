@@ -2,7 +2,7 @@ import 'server-only'
 
 import { ESTADOS_ABIERTOS } from '@/lib/datos/ordenes'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
-import { AREAS_DE_PLANOS, BUCKET_DXF } from '@/lib/dominio/diseno-codigos'
+import { AREAS_DE_PLANOS } from '@/lib/dominio/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
@@ -539,15 +539,19 @@ export type DxfDeCodigo = {
   envio: string
   tamano_bytes: number
   subido_en: string
-  url: string | null
+  /**
+   * La descarga (`/planos/dxf/{id}`): firma el enlace en el momento del toque.
+   * Firmado al pintar la lista vencía a los diez minutos, y con un juego de
+   * muchos .dxf bajados uno por uno el último ya no bajaba.
+   */
+  url: string
 }
 
 /**
  * Los DXF de un código, o de todos los que la persona ve. Los ven
- * Diseño y los supervisores de Maestranza y Producción (`puede_ver_dxf`); el enlace descarga el
- * archivo con el nombre que tenía.
+ * Diseño y los supervisores de Maestranza y Producción (`puede_ver_dxf`).
  */
-export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: { conEnlace?: boolean } = {}): Promise<DxfDeCodigo[]> {
+export async function dxfDeCodigo(codigo: string | null): Promise<DxfDeCodigo[]> {
   const supabase = await createClient()
   const { data, error } = await todasLasFilas(() => {
     const q = supabase
@@ -557,7 +561,7 @@ export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: {
     return codigo ? q.eq('codigo_interno', normalizarCodigo(codigo)) : q
   }, ['codigo_interno', 'subido_en.desc', 'id'])
   if (error) throw new Error(`No se pudieron leer los DXF: ${error.message}`)
-  const archivos = (data ?? []).map((f) => ({
+  return (data ?? []).map((f) => ({
     id: f.id,
     codigo: f.codigo_interno,
     descripcion: f.descripcion,
@@ -566,22 +570,6 @@ export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: {
     envio: f.envio,
     tamano_bytes: Number(f.tamano_bytes),
     subido_en: f.subido_en,
-    url: null,
+    url: `/planos/dxf/${f.id}`,
   }))
-  return conEnlace ? conEnlaceDeDescarga(archivos) : archivos
-}
-
-/**
- * El enlace de descarga de cada DXF, uno por uno: cada enlace descarga con el
- * nombre de su archivo, no con el id. Para firmar solo los que se muestran.
- */
-export async function conEnlaceDeDescarga(archivos: DxfDeCodigo[]): Promise<DxfDeCodigo[]> {
-  if (archivos.length === 0) return archivos
-  const supabase = await createClient()
-  return Promise.all(
-    archivos.map(async (f) => {
-      const { data } = await supabase.storage.from(BUCKET_DXF).createSignedUrl(f.ruta, 600, { download: f.nombre_archivo })
-      return { ...f, url: data?.signedUrl ?? null }
-    }),
-  )
 }

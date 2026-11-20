@@ -526,7 +526,9 @@ export const ElegirArchivos = React.forwardRef<HTMLInputElement, ElegirArchivosP
   const avisoGeneral = demasiados
     ? `Son ${archivos.length} y el tope es ${hasta} de una vez: toca para elegir menos`
     : malos.length > 0
-      ? `${malos.length === 1 ? 'Uno no sirve' : `${malos.length} no sirven`}: toca para elegir otra vez`
+      ? archivos.length === 1
+        ? avisoDe(archivos[0])!
+        : `${malos.length === 1 ? `«${malos[0].name}» no sirve` : `${malos.length} no sirven (${malos.map((a) => a.name).join(', ')})`}: toca para elegir otra vez`
       : falta && required && archivos.length === 0
         ? `Faltan ${tipo.que.replace(/^Elegir\s+/, '')}.`
         : null
@@ -543,8 +545,8 @@ export const ElegirArchivos = React.forwardRef<HTMLInputElement, ElegirArchivosP
   const pie =
     avisoGeneral ??
     (archivos.length > 0
-      ? `${tamanoArchivo(total)} · toca para cambiarlos`
-      : [tipo.formato, limite, hasta ? `hasta ${hasta} de una vez` : ''].filter(Boolean).join(', '))
+      ? `${tamanoArchivo(total)} · ${archivos.length === 1 ? 'toca para cambiarlo' : 'toca para cambiarlos'}`
+      : [tipo.formato, [limite, hasta ? `${hasta} a la vez` : ''].filter(Boolean).join(' y ')].filter(Boolean).join(', '))
   const mal = Boolean(avisoGeneral)
 
   return (
@@ -614,9 +616,6 @@ export const ElegirArchivos = React.forwardRef<HTMLInputElement, ElegirArchivosP
             )
           })}
         </ul>
-      )}
-      {archivos.length === 1 && avisoDe(archivos[0]) && (
-        <p className="text-xs text-peligro">{avisoDe(archivos[0])!.replace(/: toca para elegir otro$/, '')}</p>
       )}
     </div>
   )

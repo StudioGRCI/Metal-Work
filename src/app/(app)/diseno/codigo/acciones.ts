@@ -528,7 +528,8 @@ export async function registrarDxf(_previo: unknown, formulario: FormData): Prom
     p_envio: datos.data.envio,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
-  repintar()
+  // De un envío de varios, la pantalla se repinta con el último: no una vez por archivo.
+  if (formulario.get('ultimo') === '1') repintar()
   return { ok: true, mensaje: 'DXF cargado. A los supervisores de Maestranza y Producción les llegó el aviso.' }
 }
 
@@ -543,4 +544,17 @@ export async function quitarDxf(_previo: unknown, formulario: FormData): Promise
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
   return { ok: true, mensaje: 'Archivo quitado. Maestranza y Producción ya no lo ven.' }
+}
+
+/** Quitar de una vez todos los archivos de un envío que se subió por error. Quedan en el historial. */
+export async function quitarEnvioDxf(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: 'Los DXF los quita el encargado de Diseño.' }
+  const envio = z.guid().safeParse(formulario.get('envio'))
+  if (!envio.success) return { ok: false, error: NO_SE_RECONOCE }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('quitar_dxf_envio', { p_envio: envio.data })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  repintar()
+  return { ok: true, mensaje: `${cantidad(data ?? 0)} ${data === 1 ? 'archivo quitado' : 'archivos quitados'}. Maestranza y Producción ya no los ven.` }
 }

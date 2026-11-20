@@ -10,7 +10,6 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import {
   areasParaEtapas,
-  conEnlaceDeDescarga,
   dxfDeCodigo,
   etapasDeCodigo,
   otPorCodigo,
@@ -97,7 +96,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     planosDeCodigo(null),
     etapasDeCodigo(null),
     // La base solo se los da a Maestranza y Producción (`puede_ver_dxf`): para Acabados sale vacío.
-    dxfDeCodigo(null, { conEnlace: false }),
+    dxfDeCodigo(null),
     // La OT la ve quien tiene `ordenes.ver` (el jefe de producción); el supervisor
     // de área trabaja por código y no la lee: no se le pregunta a la base.
     veOt ? otPorCodigo() : Promise.resolve(new Map<string, OtDeCodigo>()),
@@ -138,9 +137,6 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const enPagina = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
-  // El enlace de descarga solo de los DXF que se van a ver.
-  const firmados = new Map((await conEnlaceDeDescarga(enPagina.flatMap(([, c]) => c.dxf))).map((d) => [d.id, d]))
-  const mostrar = enPagina.map(([codigo, c]) => [codigo, { ...c, dxf: c.dxf.map((d) => firmados.get(d.id) ?? d) }] as const)
   const cualquierArea = puede(perfil, 'produccion.cualquier_area')
   // Para la etapa propia: las unidades que el sistema conoce, con su OT y su placa.
   const opcionesDeCodigo = (codigosConocidos ?? [])
@@ -193,7 +189,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
         </details>
       )}
 
-      {mostrar.length === 0 ? (
+      {enPagina.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
             <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
@@ -202,7 +198,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
         </Tarjeta>
       ) : (
         <ul className="space-y-4">
-          {mostrar.map(([codigo, { planos: deCodigo, etapas: susEtapas, dxf: susDxf }]) => (
+          {enPagina.map(([codigo, { planos: deCodigo, etapas: susEtapas, dxf: susDxf }]) => (
             <li key={codigo} data-codigo={codigo}>
               <Tarjeta>
                 <TarjetaCabecera

@@ -44,6 +44,7 @@ import {
   MoverEtapa,
   ParDeEtapas,
   QuitarDxf,
+  QuitarEnvioDxf,
   QuitarEtapa,
   QuitarFicha,
   QuitarMaterial,
@@ -372,7 +373,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cargar DXF"
-          ayuda={`Los .dxf para el corte en plasma: elige varios a la vez, o un .zip, .rar o .7z, de hasta 50 MB cada uno. Solo los ven Diseño, Maestranza y Producción; a sus supervisores les llega un aviso por envío.`}
+          ayuda="Los .dxf para el corte en plasma, varios a la vez, o comprimidos. Solo los ven Diseño, Maestranza y Producción; a sus supervisores les llega un aviso por envío."
         />
         <TarjetaCuerpo>
           <CargarDxf codigo={codigo} />
@@ -380,12 +381,16 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que descargan Maestranza, para cortar, y Producción. Si uno se subió por error, quítalo: queda en el historial." />
+        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que descargan Maestranza, para cortar, y Producción. Si uno o un envío entero se subió por error, quítalo: queda en el historial." />
         <TarjetaCuerpo>
           {archivos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay DXF. Carga el primero con el formulario de arriba.</p>
           ) : (
-            <ListaDxf archivos={archivos} acciones={(d) => <QuitarDxf id={d.id} nombre={d.nombre_archivo} />} />
+            <ListaDxf
+              archivos={archivos}
+              acciones={(d) => <QuitarDxf id={d.id} nombre={d.nombre_archivo} />}
+              accionesDeEnvio={(g) => (g.length > 1 ? <QuitarEnvioDxf envio={g[0].envio} descripcion={g[0].descripcion} cuantos={g.length} /> : null)}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
