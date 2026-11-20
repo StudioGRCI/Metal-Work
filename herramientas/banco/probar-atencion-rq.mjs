@@ -8,7 +8,7 @@
  *   3. Logística lo ve por comprar y lo marca en compra; su menú arranca por Atención.
  *   4. Almacén lo deja listo en almacén y lo entrega con faltante (no hay salida
  *      en el kardex de un material nuevo sin stock); pasa al historial.
- *   5. El supervisor del área ve el RQ en Requerimientos, sin botones.
+ *   5. El supervisor del área ve el RQ en Requerimientos, sin botones (lo registró otro).
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111) y los correos
  * REQUERIMIENTOS, ALMACEN, LOGISTICA y SUPERVISOR si no son `*.local@metalwork.test`.
@@ -241,7 +241,9 @@ const codigo = `PLA_SR_O4_1_26/${sello.slice(-2)}`
   await pagina.goto(`${BASE}/requerimientos`, { waitUntil: 'networkidle' })
   const fila = pagina.locator('[data-rq]', { hasText: codigo })
   comprobar((await fila.count()) === 1, 'el supervisor ve el RQ')
-  comprobar((await pagina.getByRole('button', { name: 'Nuevo requerimiento' }).count()) === 0 && (await fila.getByRole('button').count()) === 0, 'sin botones')
+  // Desde el PR #180 el supervisor registra los RQ de su área («Nuevo requerimiento»),
+  // pero el que registró otro no lo corrige, ni lo sustenta, ni lo anula.
+  comprobar((await fila.getByRole('button').count()) === 0, 'el RQ que registró otro, sin botones')
   comprobar(errores.length === 0, `sin errores de consola como Supervisión ${errores.join(' | ')}`)
   await contexto.close()
 }
