@@ -12,6 +12,8 @@
 --   3. La compra por mayor y la lista de reposición; el aviso de stock bajo dice
 --      cuánto comprar.
 --   4. Gerencia ve lo que hay y lo que viene en otras OC al aprobar.
+--   5. El supervisor que pide por unidad (20261120300000) sustenta los suyos y
+--      no los de otro supervisor.
 --
 -- Cada paso con el puesto que lo hace —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -493,5 +495,54 @@ do $$ begin
                                   and cuerpo like '%Se compra por mayor: 40.%' and ruta = '/almacen/reposicion'),
                        'Logística recibe el aviso con la compra por mayor y la lista de reposición');
 end $$;
+
+
+-- El supervisor que pide por unidad sustenta los suyos, no los de otro ---------------------------
+do $$
+declare v text; v_id uuid;
+begin
+  -- Una sola supervisión activa por área: la que hubiera se aparta mientras dura la prueba.
+  set local session_replication_role = replica;
+  update public.usuarios u set activo = false
+   where u.activo and u.rol_id = (select id from public.roles where codigo = 'SUPERVISOR')
+     and u.area_id in (select id from public.areas where codigo in ('MTZ', 'ACB'));
+  set local session_replication_role = origin;
+  foreach v in array array['MTZ', 'ACB'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, 'sup.' || lower(v) || '.457@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, 'SUPERVISOR ' || v, 'Check 457', 'sup.' || lower(v) || '.457@prueba.local', r.id,
+           (select id from public.areas where codigo = v)
+      from public.roles r where r.codigo = 'SUPERVISOR';
+    perform set_config('prueba.sup_' || lower(v), v_id::text, true);
+  end loop;
+  perform set_config('prueba.rqsup', gen_random_uuid()::text, true);
+end $$;
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+do $$ begin
+  -- 2 de antes + 6 + 5 = 13 de 10: dos planchas más se pasan enteras.
+  perform public.emitir_requerimiento(pg_temp.id('rqsup'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U1',
+    'Planchas para el refuerzo del piso, pedidas por el supervisor', null, jsonb_build_array(pg_temp.linea('pla', 2)));
+  perform test.afirmar(pg_temp.estado('rqsup', 1) = 'SIN_SUSTENTO', 'El RQ del supervisor también se mide contra el metrado');
+end $$;
+reset role;
+select pg_temp.como('sup_acb');
+set local role authenticated;
+do $$ begin
+  begin
+    perform public.sustentar_insumos(pg_temp.id('rqsup'), '[{"item": 1, "sustento": "Acabados no sustenta lo que pidió Maestranza"}]');
+    raise exception 'FALLA: el supervisor de otra área sustentó el RQ de Maestranza';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select pg_temp.como('sup_mtz');
+set local role authenticated;
+do $$ begin
+  perform public.sustentar_insumos(pg_temp.id('rqsup'), '[{"item": 1, "sustento": "El refuerzo del piso lleva dos planchas más que el plano"}]');
+  perform test.afirmar(pg_temp.estado('rqsup', 1) = 'POR_AUTORIZAR', 'El supervisor sustentó el suyo y espera a Diseño');
+end $$;
+reset role;
 
 rollback;
