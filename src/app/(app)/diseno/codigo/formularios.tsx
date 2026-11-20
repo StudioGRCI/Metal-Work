@@ -11,7 +11,7 @@ import { ElegirArchivo, ElegirArchivos } from '@/components/ui/elegir-archivo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
-import { yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
+import { pudoHaberEntrado, yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
 import {
   ACEPTA_DXF,
@@ -1030,11 +1030,14 @@ export function CargarDxf({ codigo }: { codigo: string }) {
           delArchivo.set('nombre_archivo', archivo.name.trim().slice(0, 200))
           // La pantalla se repinta una vez, con el último: no una por archivo.
           if (i === archivos.length - 1) delArchivo.set('ultimo', '1')
+          // Con su tipo puesto: el navegador manda el que trae el archivo, y para
+          // el .dxf cada uno pone otro, o ninguno (Windows).
+          const conTipo = new File([archivo], archivo.name, { type: TIPO_DXF[ext], lastModified: archivo.lastModified })
           const subir = () =>
             subirArchivoPrivado({
               bucket: BUCKET_DXF,
               ruta: rutaDxf(id, ext),
-              archivo,
+              archivo: conTipo,
               contentType: TIPO_DXF[ext],
               registrar: () => registrarDxf(null, delArchivo),
             })
@@ -1046,7 +1049,12 @@ export function CargarDxf({ codigo }: { codigo: string }) {
             // No se promete que reenviar todo no repite: tras salir o recargar,
             // el envío es otro y los que ya quedaron saldrían dos veces.
             const faltan = archivos.slice(i).map((a) => `«${a.name}»`).join(', ')
-            const lo = `Quedaron ${quedaron.length} de ${archivos.length} (${quedaron.join(', ')}). «${archivo.name}» no subió: ${r.error} Envía solo los que faltan: ${faltan}.`
+            const yaQuedo = `Quedaron ${quedaron.length} de ${archivos.length} (${quedaron.join(', ')}).`
+            // Sin respuesta no se sabe si entró: se dice así, con el mensaje que la
+            // pantalla reconoce (`pudoHaberEntrado`), para que se ponga al día.
+            const lo = pudoHaberEntrado(r.error)
+              ? `No llegó la respuesta de «${archivo.name}»: no se sabe si quedó. ${yaQuedo} Vuelve a enviar ahora los que faltan (${faltan}), sin recargar: así no se repite ninguno.`
+              : `${yaQuedo} «${archivo.name}» no subió: ${r.error} Envía solo los que faltan: ${faltan}.`
             setAMedias(true)
             return { ok: false, error: lo, arriba: lo }
           }

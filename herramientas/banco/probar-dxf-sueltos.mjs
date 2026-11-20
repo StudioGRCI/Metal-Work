@@ -127,14 +127,18 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   await form.getByRole('button', { name: 'Cargar DXF' }).click()
   const aviso1 = await esperarAviso(pagina, /archivos cargados|no subió|No se/)
   comprobar(/3 archivos cargados/.test(aviso1), `Diseño ve que quedaron los tres: «${aviso1}»`)
-  await pagina.waitForTimeout(500)
-  comprobar((await pagina.evaluate(() => document.activeElement?.id)) === 'dxf-descripcion', 'tras cargar, el cursor vuelve a «Qué traen»')
+  const cursor = await pagina.waitForFunction(() => document.activeElement?.id === 'dxf-descripcion', null, { timeout: 5000 }).then(() => true).catch(() => false)
+  comprobar(cursor, 'tras cargar, el cursor vuelve a «Qué traen»')
   await pagina.waitForTimeout(800)
   const filas = (await base.query(`select nombre_archivo, ruta, envio, tamano_bytes from codigo_dxf where descripcion = $1 order by nombre_archivo`, [`Cartelas y piso ${sello}`])).rows
   comprobar(
     filas.length === 3 && new Set(filas.map((f) => f.envio)).size === 1 && filas.every((f) => /^[0-9a-f-]{36}\.dxf$/.test(f.ruta) && Number(f.tamano_bytes) > 0),
     `quedan tres .dxf de un mismo envío: ${filas.map((f) => `${f.nombre_archivo}→${f.ruta.slice(-8)}`).join(', ')}`,
   )
+  // El tipo con que llegan al almacenamiento: el que acepta el bucket, aunque
+  // el navegador no le ponga ninguno al .DXF (en Windows pasa).
+  const tipos = (await base.query(`select o.metadata->>'mimetype' t from storage.objects o join codigo_dxf d on d.ruta = o.name where d.descripcion = $1`, [`Cartelas y piso ${sello}`])).rows
+  comprobar(tipos.length === 3 && tipos.every((t) => t.t === 'application/dxf'), `suben como application/dxf: ${tipos.map((t) => t.t).join(', ')}`)
   const mtz = await avisos('sup.mtz')
   const prd = await avisos('sup.prd')
   comprobar(
@@ -184,6 +188,32 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   )
   await ir(pagina, enVista)
 
+  // Se pierde la respuesta del segundo, también la del reintento que hace solo:
+  // no se sabe si quedó, y reenviar sin
+  // recargar no repite ninguno.
+  let registros = 0
+  await pagina.route(`${BASE}/diseno/codigo**`, async (ruta) => {
+    const r = ruta.request()
+    if (r.method() === 'POST' && r.headers()['next-action'] && /nombre_archivo/.test(r.postDataBuffer()?.toString('latin1') ?? '') && [2, 3].includes(++registros)) {
+      await ruta.fetch()
+      return ruta.abort()
+    }
+    return ruta.continue()
+  })
+  await form.locator('#dxf-descripcion').fill(`Sin respuesta ${sello}`)
+  await form.locator('#dxf-archivos').setInputFiles(DXFS)
+  await form.getByRole('button', { name: 'Cargar DXF' }).click()
+  const perdida = await esperarAviso(pagina, /No llegó|Quedaron|no subió|No se/)
+  comprobar(/no se sabe si quedó/.test(perdida) && !/no subió/.test(perdida), `sin respuesta no dice «no subió»: «${perdida.slice(0, 260)}»`)
+  await pagina.unroute(`${BASE}/diseno/codigo**`)
+  await form.locator('#dxf-archivos').setInputFiles(DXFS.slice(1))
+  await form.getByRole('button', { name: 'Cargar DXF' }).click()
+  comprobar(/2 archivos cargados/.test(await esperarAviso(pagina, /2 archivos cargados|Quedaron|No se|No llegó/)), 'reenviados los que faltan, entran')
+  await pagina.waitForTimeout(800)
+  const sinResp = await uno(`select count(*) n, count(distinct nombre_archivo) d from codigo_dxf where descripcion = $1`, [`Sin respuesta ${sello}`])
+  comprobar(Number(sinResp.n) === 3 && Number(sinResp.d) === 3, `quedan tres, ninguno repetido (${sinResp.n} filas)`)
+  await ir(pagina, enVista)
+
   // Un envío al código equivocado se quita entero.
   await form.locator('#dxf-descripcion').fill(`Por error ${sello}`)
   await form.locator('#dxf-archivos').setInputFiles(DXFS.slice(0, 2))
@@ -197,8 +227,10 @@ const enVista = `/diseno/codigo?${new URLSearchParams({ codigo: CODIGO, vista: '
   comprobar(Number(quitados.q) === 2 && Number(quitados.n) === 2, `«Quitar los 2» los quita de una vez y quedan en el historial (${quitados.q} de ${quitados.n})`)
   await ir(pagina, enVista)
   comprobar(!limpio(await pagina.locator('main').innerText()).includes(`Por error ${sello}`), 'y ya no salen en la lista')
-  // El corte a propósito de la subida deja su «Failed to load resource» en la consola: ese no cuenta.
-  const otros = errores.filter((e) => !/Failed to load resource: net::ERR_FAILED/.test(e))
+  // Los cortes a propósito dejan su «Failed to load resource» en la consola, y
+  // el reenvío del archivo que sí había subido, el 400 de «ya existe» del
+  // almacenamiento (que `subirArchivoPrivado` resuelve): esos no cuentan.
+  const otros = errores.filter((e) => !/Failed to load resource: (net::ERR_FAILED|the server responded with a status of 400)/.test(e))
   comprobar(otros.length === 0, `sin errores en la consola de Diseño ${otros.join(' | ')}`)
   await contexto.close()
 }

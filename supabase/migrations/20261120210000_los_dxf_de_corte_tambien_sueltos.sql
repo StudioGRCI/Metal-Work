@@ -39,15 +39,19 @@ alter table public.codigo_dxf add constraint ck_codigo_dxf check (
 comment on table public.codigo_dxf is
   'Los DXF que Diseño genera para el corte de cada código interno: el .dxf suelto o comprimido (.zip, .rar, .7z). Los sube Diseño; los ven Diseño y los supervisores de Maestranza y de Producción. Se quitan, no se borran.';
 
--- 50 MB por archivo. El .dxf sube con el tipo que le pone la pantalla (`application/dxf`).
+-- 50 MB por archivo. AutoCAD no declara un tipo propio y cada navegador manda
+-- uno distinto para el .dxf (o ninguno, en Windows: `application/octet-stream`),
+-- como ya se vio con los planos en la 20260101000078. La pantalla lo sube con
+-- `application/dxf`, y el bucket acepta también el genérico: lo que entra lo
+-- decide el nombre, que la política de subir exige `{id}.{dxf|zip|rar|7z}`.
 update storage.buckets
-   set allowed_mime_types = array['application/dxf', 'image/vnd.dxf', 'application/zip', 'application/x-zip-compressed',
+   set allowed_mime_types = array['application/dxf', 'image/vnd.dxf', 'image/x-dxf', 'application/octet-stream',
+                                  'application/zip', 'application/x-zip-compressed',
                                   'application/x-rar-compressed', 'application/vnd.rar', 'application/x-7z-compressed']
  where id = 'dxf-codigo';
 
--- La ruta es {id}.{dxf|zip|rar|7z}: la política de subir se rehace con el .dxf.
-drop policy if exists dxf_codigo_subir on storage.objects;
-create policy dxf_codigo_subir on storage.objects for insert to authenticated with check (
+-- La ruta es {id}.{dxf|zip|rar|7z}: la política de subir (de la 20261106100000) suma el .dxf.
+alter policy dxf_codigo_subir on storage.objects with check (
   bucket_id = 'dxf-codigo' and owner_id = (select auth.uid())::text
   and (select public.tiene_permiso('diseno.codigos'))
   and name ~ '^[0-9a-f-]{36}\.(dxf|zip|rar|7z)$');
@@ -81,6 +85,11 @@ begin
     raise exception 'Sube el .dxf, o los DXF comprimidos en .zip, .rar o .7z.' using errcode = 'check_violation';
   end if;
   v_ruta := p_id::text || '.' || v_ext;
+  -- Los archivos del mismo envío se registran uno tras otro (el aviso se arma
+  -- con todos). El bloqueo va antes de mirar nada: dos llamadas a la vez con el
+  -- mismo archivo, o con otra descripción, esperan una a la otra y la segunda
+  -- ve lo que hizo la primera.
+  perform pg_advisory_xact_lock(hashtext('codigo_dxf:' || p_envio::text));
 
   select * into v_hay from public.codigo_dxf where id = p_id;
   if found then
@@ -102,10 +111,6 @@ begin
   if char_length(v_archivo) not between 1 and 200 then
     raise exception 'Vuelve a elegir el archivo.' using errcode = 'check_violation';
   end if;
-  -- Los archivos del mismo envío se registran uno tras otro (el aviso se arma
-  -- con todos): el bloqueo va antes de mirar el envío, para que dos llamadas a
-  -- la vez con otra descripción no pasen las dos.
-  perform pg_advisory_xact_lock(hashtext('codigo_dxf:' || p_envio::text));
   -- Un envío es de una persona, un código y una descripción: no se le suman archivos de otro.
   if exists (select 1 from public.codigo_dxf d
               where d.envio = p_envio
