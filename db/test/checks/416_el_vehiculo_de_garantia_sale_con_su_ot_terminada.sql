@@ -107,12 +107,12 @@ $$;
 -- ===================================================== 1. El ingreso por garantía
 select test.como_usuario(:'req_id');
 set local role authenticated;
--- La ventana del ingreso ofrece por garantía solo el código con su OT de
--- garantía abierta, y muestra esa OT.
+-- Desde 20261120500000 la unidad con su OT de garantía abierta entra por esa
+-- OT: la ventana ya no la ofrece por su código (la terminada de K no cuenta).
 select test.afirmar((select string_agg(codigo_interno || '=' || coalesce(garantia_numero, '-'), ' ' order by codigo_interno)
                        from public.vehiculos_codigos_para_ingreso() where codigo_interno like 'CHK416%')
-                    = 'CHK416_G_26/50=9416-2026 CHK416_H_26/51=9417-2026 CHK416_K_26/52=- CHK416_M_26/53=9419-2026',
-  'la ventana sabe qué código tiene su OT de garantía abierta (la terminada de K no cuenta)');
+                    = 'CHK416_K_26/52=-',
+  'la ventana no ofrece por su código la unidad con su OT de garantía abierta (la terminada de K no cuenta)');
 select test.debe_fallar(pg_temp.ingreso_sql('h', 'CHK416_G_26/50', 'GARANTIA'),
   'por garantía ya no entra con el código de la unidad, sino con su OT', 'Elige la OT de garantía');
 select set_config('prueba.garantia_k', :'garantia_k', true);

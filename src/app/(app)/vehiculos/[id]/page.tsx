@@ -14,6 +14,7 @@ import {
   type FotoVehiculo,
   type RevisionDeSalida,
 } from '@/lib/datos/vehiculos'
+import { esCodigoDeOt } from '@/lib/dominio/codigos-internos'
 import { definirRevisionSalida } from '@/lib/dominio/ficha-vehiculo'
 import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora, porcentaje } from '@/lib/format'
@@ -68,7 +69,8 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               nombre={nombre}
               cuentaId={perfil.id}
               bloqueoSalida={estado?.falta_para_salir ?? null}
-              alArenado={Boolean(estado?.exige)}
+              // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
+              alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
             />
           )
         }
@@ -88,7 +90,10 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
               )}
             </Dato>
             {r.placa && r.chasis && <Dato titulo="Chasis">{r.chasis}</Dato>}
-            {r.codigo_interno && (r.placa || r.chasis) && <Dato titulo="Código interno">{r.codigo_interno}</Dato>}
+            {/* El de una OT no es un código interno: lo dice el dato de su OT, debajo. */}
+            {r.codigo_interno && (r.placa || r.chasis) && !esCodigoDeOt(r.codigo_interno) && (
+              <Dato titulo="Código interno">{r.codigo_interno}</Dato>
+            )}
             {/* Garantía y mantenimiento van por su OT: la salida espera que Administración dé por terminado el trabajo. */}
             {estado?.exige && estado.garantia_ot && (
               <Dato titulo={r.motivo === 'MANTENIMIENTO' ? 'OT de mantenimiento' : 'OT de garantía'}>

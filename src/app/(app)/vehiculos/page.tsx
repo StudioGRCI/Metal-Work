@@ -167,7 +167,8 @@ function FilaVehiculo({
             nombre={nombre}
             cuentaId={cuentaId}
             bloqueoSalida={estado?.falta_para_salir ?? null}
-            alArenado={Boolean(estado?.exige)}
+            // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
+            alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
           />
         )}
       </TD>

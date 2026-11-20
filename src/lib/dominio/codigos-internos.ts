@@ -13,6 +13,17 @@ export function normalizarCodigo(codigo: string): string {
 }
 
 /**
+ * Si lo escrito tiene la forma del número de una OT («OT 2921-2026», también a
+ * medias o con otros separadores): el mantenimiento y la garantía se costean
+ * por el número de su OT, y ningún código de unidad empieza así. La base mira
+ * lo mismo (`es_codigo_de_ot`, migración 20261120500000) y no acepta uno que no
+ * sea de una OT que existe.
+ */
+export function esCodigoDeOt(codigo: string): boolean {
+  return /^OT[^A-Z0-9]*[0-9]/.test(codigo.trim().toUpperCase())
+}
+
+/**
  * La placa solo por sus letras y números, como la compara la base al vincular
  * la salida a una unidad (registrar_salida_material): «W22MQ0» y «W22 MQ0» son
  * la W22-MQ0.

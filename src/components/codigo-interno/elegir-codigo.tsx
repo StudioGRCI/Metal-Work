@@ -7,6 +7,7 @@ import { Entrada } from '@/components/ui/campos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import {
   CODIGOS_FIJOS,
+  esCodigoDeOt,
   llaveParecido,
   normalizarCodigo,
   parecidos,
@@ -27,6 +28,19 @@ const TOPE = 50
  * mismo (migración 20261020196000).
  */
 const llave = (codigo: string) => codigo.toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+/**
+ * Lo escrito con forma de OT que no está en la lista: un número mal puesto, o
+ * una OT que todavía no se registra. No se ofrece como código nuevo: el costo
+ * iría a un código suelto que se lee como si fuera la OT.
+ */
+const OT_QUE_NO_ESTA =
+  'No hay OT abierta de mantenimiento ni de garantía con ese número: revísalo o pídele a Administración que la registre.'
+
+/** De dónde es un código, para decirlo junto a su casi igual. */
+function origenDe(o: { codigo: string; registrada: boolean }) {
+  return esCodigoDeOt(o.codigo) ? 'de la OT' : o.registrada ? 'del padrón de unidades' : null
+}
 
 /** PLANTA y OFICINA dicen qué son también en el formulario que no los pone arriba. */
 const DETALLE_FIJO = new Map(CODIGOS_FIJOS.map((f) => [f.codigo, f.detalle]))
@@ -159,8 +173,8 @@ export function EntradaCodigoInterno({
   // kardex a 1440 × 900, «Nombre de quien recibe», 2026-10-22).
   const escrito = normalizarCodigo(valor)
   // Uno que este formulario no acepta: vale más que «aceptado», que puede venir de la carga anterior.
-  const rechazado = motivoDe(escrito)
-  const grupoReconocido = rechazado ? undefined : reconocidos?.find((g) => g.codigos.some((v) => normalizarCodigo(v) === escrito))
+  const vetadoAqui = motivoDe(escrito)
+  const grupoReconocido = vetadoAqui ? undefined : reconocidos?.find((g) => g.codigos.some((v) => normalizarCodigo(v) === escrito))
   const reconocido = grupoReconocido?.texto ?? null
   const exacto = abiertos.find((o) => o.codigo === escrito)
   // Lo reconocido filtra como una búsqueda: la placa de un vehículo con código
@@ -168,6 +182,12 @@ export function EntradaCodigoInterno({
   // código al que va la salida.
   const palabras = exacto && !reconocido && !escribiendo ? [] : palabrasDeBusqueda(valor)
   const coincidencias = abiertos.filter((o) => coincide(palabras, [o.codigo, o.detalle]))
+  // Con forma de OT y fuera de la lista: se elige la OT de la lista, nunca se
+  // crea. Si a medias («OT 94») coincide con alguna, se ofrece; si con ninguna,
+  // se dice que no hay OT con ese número.
+  const formaDeOt = esCodigoDeOt(escrito)
+  const otSuelta = !vetadoAqui && codigos !== null && formaDeOt && escrito !== aceptado && !codigos.some((c) => c.codigo === escrito)
+  const rechazado = vetadoAqui ?? (otSuelta && coincidencias.length === 0 ? OT_QUE_NO_ESTA : null)
   // El elegido va arriba: en la lista entera podía quedar fuera de los que se
   // pintan. Lo reconocido no: la placa de un vehículo con código puede estar en
   // la lista, y la salida va al código del vehículo, no a ella.
@@ -195,7 +215,7 @@ export function EntradaCodigoInterno({
   const sinElegir = !rechazado && !reconocido && codigos !== null && escrito.length > 0 && !exacto && !cerrado && escrito !== aceptado
   // Al final de la lista, la salida de la unidad nueva: sin ella, con la lista
   // abierta y nada que coincida, no había cómo seguir sin cerrarla primero.
-  const conNuevo = sinElegir && escrito.length >= 2
+  const conNuevo = sinElegir && escrito.length >= 2 && !formaDeOt
   const idNuevo = `${idLista}-nuevo`
   const enNuevo = conNuevo && resaltado === visibles.length
   const idResaltado = lista ? (visibles[resaltado] ? `${idLista}-${resaltado}` : enNuevo ? idNuevo : undefined) : undefined
@@ -563,7 +583,7 @@ function EstadoDelCodigo({
     const ofrecidas = parecido ? [parecido] : coincidencias.length <= 3 ? coincidencias : []
     // Como en la lista: un código tiene al menos dos caracteres, y el que se pone
     // por botón no pasa por el `minLength` del navegador.
-    const nuevo = escrito.length >= 2 && (
+    const nuevo = escrito.length >= 2 && !esCodigoDeOt(escrito) && (
       <button type="button" onClick={alUsarNuevo} className={SALIDA}>
         {/* Es la salida de último recurso: no pesa lo mismo que los códigos de la lista. */}
         <span className="text-texto-suave underline underline-offset-2">
@@ -588,7 +608,7 @@ function EstadoDelCodigo({
           {gemelas.length > 0 && (
             <span className="block text-aviso">
               Ojo: hay {gemelas.length === 1 ? 'otro casi igual' : 'otros casi iguales'}. Revisa que sea este
-              {abiertoIgual.registrada ? ', que es el del padrón' : ''}.
+              {origenDe(abiertoIgual) ? `, que es el ${origenDe(abiertoIgual) === 'de la OT' ? 'de la OT' : 'del padrón'}` : ''}.
             </span>
           )}
         </>
@@ -600,7 +620,7 @@ function EstadoDelCodigo({
               Cambiar a <span className="font-mono break-all">{o.codigo}</span>
             </span>
             {(o.registrada || abiertoIgual.registrada) && (
-              <span className="font-normal text-texto-suave">{o.registrada ? '(del padrón de unidades)' : '(no está en el padrón)'}</span>
+              <span className="font-normal text-texto-suave">({origenDe(o) ?? 'no está en el padrón'})</span>
             )}
           </button>
         ))
@@ -678,8 +698,9 @@ function Gemelas({ opcion, gemelas }: { opcion: Opcion; gemelas: Opcion[] }) {
     <span className="mt-0.5 flex items-start gap-1 text-xs text-texto">
       <TriangleAlert aria-hidden className="mt-px size-3 shrink-0 text-aviso" />
       <span>
-        {opcion.registrada ? 'Del padrón de unidades. ' : ''}
-        Casi igual a {gemelas.map((g) => (g.registrada ? `${g.codigo} (del padrón)` : g.codigo)).join(', ')}
+        {esCodigoDeOt(opcion.codigo) ? 'De la OT. ' : opcion.registrada ? 'Del padrón de unidades. ' : ''}
+        Casi igual a{' '}
+        {gemelas.map((g) => (esCodigoDeOt(g.codigo) ? `${g.codigo} (de la OT)` : g.registrada ? `${g.codigo} (del padrón)` : g.codigo)).join(', ')}
       </span>
     </span>
   )

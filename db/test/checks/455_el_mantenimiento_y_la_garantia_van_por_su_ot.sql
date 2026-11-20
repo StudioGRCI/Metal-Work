@@ -19,6 +19,7 @@ select test.crear_usuario('Reni', 'Requerimientos', 'req455@demo.pe', 'REQUERIMI
 select test.crear_usuario('Alma', 'Administración', 'adm455@demo.pe', 'ADMINISTRACION', :'sede_id') as adm_id \gset
 select test.crear_usuario('Sam', 'Supervisión', 'sup455@demo.pe', 'SUPERVISOR', :'sede_id') as sup_id \gset
 select test.crear_usuario('Vico', 'Ventas', 'ventas455@demo.pe', 'VENDEDOR', :'sede_id') as ventas_id \gset
+select test.crear_usuario('Teo', 'Tesorería', 'tes455@demo.pe', 'TESORERIA', :'sede_id') as tes_id \gset
 
 -- Armazón: un cliente, una unidad con placa y su OT de mantenimiento; una OT de
 -- mantenimiento sin unidad; una de garantía; una de mantenimiento anulada; y
@@ -49,7 +50,7 @@ select set_config('prueba.req', :'req_id', true);
 do $$
 declare v text;
 begin
-  foreach v in array array['u', 'u2', 's', 's2', 'g', 'x', 'c', 'rq'] loop
+  foreach v in array array['u', 'u2', 's', 's2', 'g', 'g2', 'x', 'c', 'rq', 'rev', 'esc'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -86,9 +87,10 @@ $$;
 -- ===================================================== 1. El código de la OT
 select test.afirmar(public.codigo_de_la_ot(' 9455-2026 ') = 'OT 9455-2026' and public.codigo_de_la_ot('') is null,
   'el código de la OT es «OT » y su número');
-select test.afirmar(public.es_codigo_de_ot('ot  9455-2026') and not public.es_codigo_de_ot('CHK455_F_26/60')
+select test.afirmar(public.es_codigo_de_ot('ot  9455-2026') and public.es_codigo_de_ot('OT9455') and public.es_codigo_de_ot('ot-94')
+                    and not public.es_codigo_de_ot('CHK455_F_26/60') and not public.es_codigo_de_ot('OTROS 1')
                     and not public.es_codigo_de_ot('PLANTA') and not public.es_codigo_de_ot(null),
-  'y se reconoce aunque se escriba en minúsculas o con espacios de más');
+  'la forma de una OT se reconoce en minúsculas, a medias o con otros separadores');
 
 -- ===================================================== 2. La lista de los formularios
 select test.como_usuario(:'req_id');
@@ -114,6 +116,32 @@ select public.emitir_requerimiento(pg_temp.id('rq'), (select id from public.area
 reset role;
 select test.afirmar((select normalizar_codigo_interno(codigo_interno) = 'OT 9455-2026' from public.requerimientos where id = pg_temp.id('rq')),
   'el RQ queda con el código de la OT de mantenimiento');
+
+-- Un código con forma de OT que no es de ninguna: el costo iría a un código
+-- suelto que se lee como si fuera la OT.
+create or replace function pg_temp.rq_sql(p_codigo text) returns text language sql as $$
+  select format($q$select public.emitir_requerimiento(gen_random_uuid(), (select id from public.areas where codigo = 'MTZ'), %L,
+    'Cambio de mangueras del mantenimiento', null,
+    jsonb_build_array(jsonb_build_object('descripcion', 'Manguera hidráulica 1/2 (455)', 'cantidad', 1,
+      'unidad_medida_id', (select id from public.unidades_medida where codigo = 'UND'),
+      'categoria_id', (select id from public.categorias_material where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1))))$q$,
+    p_codigo);
+$$;
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select test.debe_fallar(pg_temp.rq_sql('OT 9999-2026'), 'el RQ no se emite con el número de una OT que no existe',
+  'No hay OT de mantenimiento ni de garantía con el número OT 9999-2026');
+select test.debe_fallar(pg_temp.rq_sql('ot9455-2026'), 'ni con el de una que existe, mal escrito',
+  'No hay OT de mantenimiento ni de garantía con el número OT9455-2026');
+select test.debe_fallar(pg_temp.rq_sql('OT 8455-2026'), 'ni con el de una OT de fabricación, que va por el código de su unidad',
+  'No hay OT de mantenimiento ni de garantía');
+reset role;
+select test.afirmar((select count(*) = 1 from public.requerimientos where normalizar_codigo_interno(codigo_interno) like 'OT%'),
+  'y no queda ningún RQ con esos códigos');
+select test.como_usuario(:'admin_id');
+-- Ninguna unidad se llama como una OT.
+select test.debe_fallar(format($q$insert into public.unidades (cliente_id, codigo_interno, tipo_vehiculo) values (%L, 'OT 9455-2026', 'CAMION')$q$, :'cliente_id'),
+  'ninguna unidad se llama como una OT', 'no es el código de una unidad');
 
 -- Quien reporta el día también la ve, para cargarle las horas.
 select test.como_usuario(:'sup_id');
@@ -193,6 +221,24 @@ select test.afirmar((select codigo_interno = 'OT 9457-2026' and orden_id = :'gar
                        from public.registro_vehiculos where id = pg_temp.id('g')),
   'la garantía entra con el código de su OT, no con el de la unidad');
 
+-- Sale al arenado y vuelve por su OT: por el código de la unidad quedaba atada
+-- a su OT de fabricación y salía sin que Administración terminara la garantía.
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select public.registrar_salida_al_arenado(pg_temp.id('g'), null, 'Al arenado', pg_temp.foto('g', 'salida'));
+select test.afirmar(not exists (select 1 from public.vehiculos_codigos_para_ingreso() where codigo_interno = 'CHK455_F_26/60'),
+  'con la garantía abierta, el código de la unidad no se ofrece para entrar');
+select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, null, null, 'CHK455_F_26/60', '', '', 'ARENADO', null, null, pg_temp.foto('g2', 'ingreso'))$q$,
+  pg_temp.txt('g2')), 'ni vuelve del arenado por el código', 'tiene abierta la OT 9457-2026 de garantía: entra con el motivo Garantía y esa OT');
+select test.debe_fallar(format($q$select public.registrar_ingreso_vehiculo(%L, null, null, 'chk455_f_26/60', '', '', 'FABRICACION', null, null, pg_temp.foto('g2', 'ingreso'))$q$,
+  pg_temp.txt('g2')), 'ni entra por fabricación', 'tiene abierta la OT 9457-2026 de garantía');
+select public.registrar_ingreso_vehiculo(pg_temp.id('g2'), null, null, null, '', '', 'GARANTIA', null, null,
+  pg_temp.foto('g2', 'ingreso'), pg_temp.id('garantia'));
+select test.afirmar(pg_temp.estado('g2') ->> 'garantia_ot' = '9457-2026'
+                    and pg_temp.estado('g2') ->> 'falta_para_pedir' like 'Administración todavía no da por terminada la garantía de la OT 9457-2026%',
+  'vuelve eligiendo su OT de garantía, y la salida sigue esperando a Administración');
+reset role;
+
 -- ===================================================== 4. La salida espera a Administración
 select test.como_usuario(:'req_id');
 set local role authenticated;
@@ -233,11 +279,55 @@ select test.afirmar(exists (select 1 from public.codigos_internos_para_elegir() 
   'aunque su código sigue en la lista, para lo que falte costear');
 reset role;
 
+-- Tesorería da el visto y el vehículo sale, cada paso con su puesto.
+select (select jsonb_object_agg(codigo, jsonb_build_object('ingreso', 'CONFORME', 'salida', 'CONFORME')) from public.control_vehicular_items) as items \gset
+select set_config('prueba.items', :'items', true);
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select public.guardar_ficha_vehiculo(pg_temp.id('u'), 'CERRAR_INGRESO',
+  jsonb_build_object('conductor_ingreso', 'Conductor 455', 'fecha_ingreso', current_date, 'items', current_setting('prueba.items')::jsonb));
+select public.guardar_ficha_vehiculo(pg_temp.id('u'), 'CERRAR_SALIDA',
+  jsonb_build_object('conductor_salida', 'Conductor 455', 'fecha_salida', current_date, 'items', current_setting('prueba.items')::jsonb));
+reset role;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('fichas-vehiculos', pg_temp.txt('u') || '/' || pg_temp.txt('esc') || '.pdf', :'req_id', '{"mimetype": "application/pdf", "size": 2000}');
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select public.adjuntar_ficha_vehiculo_firmada(pg_temp.id('u'), pg_temp.txt('u') || '/' || pg_temp.txt('esc') || '.pdf', 'ficha.pdf');
+select public.solicitar_revision_salida(pg_temp.id('rev'), pg_temp.id('u'), 'Revisar el cobro del mantenimiento');
+reset role;
+select test.como_usuario(:'tes_id');
+set local role authenticated;
+select public.responder_revision_salida(pg_temp.id('rev'), 'ATENDIDA', 'Sin deuda pendiente');
+reset role;
+select test.como_usuario(:'req_id');
+set local role authenticated;
+select test.afirmar(pg_temp.estado('u') ->> 'falta_para_salir' is null, 'con el visto de Tesorería ya no falta nada');
+select public.registrar_salida_vehiculo(pg_temp.id('u'), null, 'Sale del mantenimiento', pg_temp.foto('u', 'salida'));
+reset role;
+select test.afirmar((select salida_en is not null and salida_por = :'req_id'::uuid from public.registro_vehiculos where id = pg_temp.id('u')),
+  'y Requerimientos marca su salida');
+
 -- La OT de garantía sigue pidiendo su unidad, pero ya no su código interno.
 select test.como_usuario(:'admin_id');
 insert into public.unidades (cliente_id, tipo_vehiculo, placa) values (:'cliente_id', 'CAMION', 'QAC-455') returning id as unidad_sin_codigo \gset
 select test.afirmar(pg_temp.orden('9459-2026', :'unidad_sin_codigo', 'GARANTIA') is not null,
   'la OT de garantía de una unidad sin código se registra');
+
+-- La lista del reporte diario suelta la OT terminada hace más de un mes que
+-- nadie usó (se corta en 500 por orden alfabético); la terminada hace poco
+-- sigue en ella.
+select pg_temp.orden('9460-2026', null, 'MANTENIMIENTO') as vieja \gset
+select pg_temp.orden('9461-2026', null, 'MANTENIMIENTO') as reciente \gset
+insert into public.ot_garantia_terminada (orden_id, terminada_en, terminada_por, nota)
+values (:'vieja', now() - interval '40 days', :'adm_id', 'Prueba 455'),
+       (:'reciente', now() - interval '10 days', :'adm_id', 'Prueba 455');
+select test.como_usuario(:'sup_id');
+set local role authenticated;
+select test.afirmar(not exists (select 1 from public.rrhh_codigos_internos() where codigo = 'OT 9460-2026')
+                    and exists (select 1 from public.rrhh_codigos_internos() where codigo = 'OT 9461-2026'),
+  'el reporte diario ya no ofrece el mantenimiento terminado hace 40 días, y sí el de hace 10');
+reset role;
 
 -- Las funciones nuevas no las llama nadie sin sesión.
 reset role;

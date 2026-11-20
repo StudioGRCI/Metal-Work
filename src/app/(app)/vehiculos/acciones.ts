@@ -86,7 +86,7 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
   if (d.ingreso_en && !cuando) return { ok: false, error: 'La fecha y hora de ingreso no es válida.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('registrar_ingreso_vehiculo', {
+  const datos = {
     p_id: d.operacion_id,
     p_placa: d.placa || null,
     p_chasis: d.chasis || null,
@@ -98,8 +98,15 @@ export async function registrarIngresoVehiculo(_previo: unknown, formulario: For
     p_ingreso_en: cuando,
     p_observacion: d.observacion || null,
     p_fotos: d.fotos,
-    p_orden: porOt ? d.orden_id : null,
-  })
+  }
+  // La OT va solo con mantenimiento o garantía. Lo demás sale por la versión de
+  // diez parámetros, que existe con o sin la migración 20261120500000: si la
+  // pantalla se despliega antes que la migración, la fabricación, el arenado y
+  // la cochera siguen entrando.
+  // Los tipos generados conocen solo la de once (como `guardar_caja`): la de diez va con su molde.
+  const { data, error } = porOt
+    ? await supabase.rpc('registrar_ingreso_vehiculo', { ...datos, p_orden: d.orden_id })
+    : await supabase.rpc('registrar_ingreso_vehiculo', datos as typeof datos & { p_orden: null })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.operacion_id) return { ok: false, error: 'El ingreso no quedó registrado. Recarga la pantalla.' }
 
@@ -146,7 +153,17 @@ export async function registrarSalidaVehiculo(_previo: unknown, formulario: Form
   if (data !== analisis.data.id) return { ok: false, error: 'La salida no quedó registrada. Recarga la pantalla.' }
 
   revalidatePath('/vehiculos', 'layout')
-  return { ok: true, mensaje: analisis.data.alArenado ? 'Salida al arenado registrada: vuelve con el motivo Arenado.' : 'Salida registrada.' }
+  if (!analisis.data.alArenado) return { ok: true, mensaje: 'Salida registrada.' }
+  // El de mantenimiento o garantía vuelve por su OT, no con el motivo Arenado:
+  // la base no lo deja volver por el código mientras su OT esté abierta.
+  const { data: salio } = await supabase.from('registro_vehiculos').select('motivo, codigo_interno').eq('id', analisis.data.id).maybeSingle()
+  return {
+    ok: true,
+    mensaje:
+      salio && motivoPorOt(salio.motivo) && salio.codigo_interno
+        ? `Salida al arenado registrada: vuelve con el motivo ${salio.motivo === 'MANTENIMIENTO' ? 'Mantenimiento' : 'Garantía'} y su ${salio.codigo_interno}.`
+        : 'Salida al arenado registrada: vuelve con el motivo Arenado.',
+  }
 }
 
 /** Un ingreso mal anotado se anula con motivo; no se borra. */

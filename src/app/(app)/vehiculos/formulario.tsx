@@ -245,7 +245,8 @@ function FormularioIngreso({
                   opciones={otsLibres.map((o) => ({
                     valor: o.orden_id,
                     etiqueta: `OT ${o.orden_numero}`,
-                    detalle: [o.cliente, o.placa, o.unidad].filter(Boolean).join(' · '),
+                    // La placa y el vehículo primero: en el teléfono el detalle se corta al final.
+                    detalle: [o.placa, o.unidad, o.cliente].filter(Boolean).join(' · '),
                   }))}
                 />
               )}

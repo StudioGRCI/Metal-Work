@@ -23,13 +23,15 @@ export type RegistroVehiculo = {
   sale_al_arenado: boolean
   anulado_en: string | null
   motivo_anulacion: string | null
+  /** La unidad del padrón; null si entró con la placa a mano (cochera, otro, o la OT sin unidad). */
+  unidad_id: string | null
   /** Cuántas fotos se tomaron al entrar y al salir (las de antes del 2026-10-15 entraron sin fotos). */
   fotos_ingreso: number
   fotos_salida: number
 }
 
 const COLUMNAS =
-  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion'
+  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion, unidad_id'
 
 type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida'> & { fotos: { momento: string }[] | null }
 
@@ -117,6 +119,10 @@ export type OtParaIngreso = {
 export async function otsParaIngreso(): Promise<OtParaIngreso[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('vehiculos_ots_para_ingreso')
+  // Sin la migración 20261120500000 la función no existe: la ventana sale sin
+  // OT que elegir, y la base rechaza el mantenimiento y la garantía con su
+  // motivo, en vez de caerse la pantalla entera.
+  if (error?.code === 'PGRST202' || error?.code === '42883') return []
   if (error) throw new Error(`No se pudo leer las OT de mantenimiento y garantía: ${error.message}`)
   return (data ?? []).flatMap((f) =>
     f.orden_id && f.orden_numero && f.tipo

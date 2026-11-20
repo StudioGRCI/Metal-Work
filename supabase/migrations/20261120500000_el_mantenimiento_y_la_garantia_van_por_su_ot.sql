@@ -40,7 +40,10 @@
 --     que ahora acepta las dos) y con el visto de Tesorería. Lo dijo el hilo a
 --     DKS el 2026-11-20 al resumirle cómo se aplicaba;
 --   * la OT de garantía ya no exige que su unidad tenga código interno: la
---     exigía solo para que el vehículo pudiera entrar por el código.
+--     exigía solo para que el vehículo pudiera entrar por el código;
+--   * un código escrito con la forma de una OT («OT 9999-2026») tiene que ser
+--     el de una OT de mantenimiento o de garantía que existe: si no, el costo
+--     iba a un código suelto que se lee como si fuera la OT.
 --
 -- La versión de diez parámetros de `registrar_ingreso_vehiculo` queda como
 -- envoltorio de la nueva, sin OT: la pantalla de antes del despliegue sigue
@@ -55,17 +58,19 @@
 -- Antes de reemplazarlas se mira que cada función sea la que el repositorio
 -- conoce (su texto antes o después de este cambio, sin los `\r` de un pegado
 -- desde Windows). Si alguna se cambió a mano en la base, la migración se
--- detiene en vez de pisar ese cambio sin que nadie lo vea.
+-- detiene en vez de pisar ese cambio sin que nadie lo vea. La lista de códigos
+-- vale también como la deja «RQ por unidad» (20261120300000, que le suma
+-- `requerimientos.area`): se aplicaron en paralelo, y esta ya la incluye.
 do $$
 declare
   conocidas constant jsonb := '{
-    "codigos_internos_para_elegir()": ["ecd61d39ccf3f33ca0f7655cc821fd40", "9d567035e55b481c6f3663332c4d5793"],
+    "codigos_internos_para_elegir()": ["ecd61d39ccf3f33ca0f7655cc821fd40", "18ad558f14cc210e38b0ca165edf189f", "2579a4b914aabe315397f954c00c7ac1"],
     "dar_por_terminada_la_garantia(uuid,text)": ["c3ec30bfc7a28c7ec477f39e468fa6fc", "d7cfe455f4cc33df4170d1e31f90a22f"],
     "fn_ot_garantia_con_su_unidad()": ["ea1c79c804600764ac1663ea511691c2", "dff562441149daef324ab2a5ffcb8735"],
     "registrar_ingreso_vehiculo(uuid,text,text,text,text,text,text,timestamp with time zone,text,jsonb)": ["d104813a177931d5c5212f2e8efff2be", "a64a7a922a74f5838b3060e4ff01a857"],
-    "rrhh_codigos_internos()": ["79f36ca09fa18fc77b81464adb07e3b2", "e61a66f599695cfb2556102f1e622181"],
+    "rrhh_codigos_internos()": ["79f36ca09fa18fc77b81464adb07e3b2", "7649ddc609fc8e444cbd2faef7cc3cbc"],
     "vehiculo_lo_que_falta_para_salir(uuid,boolean)": ["df7c8cb7e291177910174f2660611bff", "c4cc620bdcd635248d22fcae493b48f7"],
-    "vehiculos_codigos_para_ingreso()": ["4bf333007107ea838d7dcd8ab85e3335", "c20ade4e5ad42938ca51d80e83b05a67"],
+    "vehiculos_codigos_para_ingreso()": ["4bf333007107ea838d7dcd8ab85e3335", "947e2abec3f73a93ada1b83a895a9e85"],
     "vehiculos_estado_de_salida(uuid[])": ["0f57ffcff788a8cb6140ef2dafebcad1", "df877340c1a7bd33820e6f1368425a30"]
   }';
   firma text;
@@ -96,16 +101,68 @@ comment on function public.codigo_de_la_ot(text) is
 revoke all on function public.codigo_de_la_ot(text) from public, anon;
 grant execute on function public.codigo_de_la_ot(text) to authenticated;
 
--- Si un código escrito es el de una OT (con mayúsculas o espacios de más). No
--- llama a `normalizar_codigo_interno`, que `authenticated` no ejecuta.
+-- Si lo escrito tiene la forma del número de una OT: «OT 2921-2026», y también
+-- a medias o mal escrito («ot2921», «OT-2921-2026»). Ningún código de unidad
+-- empieza así (en producción no había ninguno el 2026-11-20).
 create or replace function public.es_codigo_de_ot(p_codigo text)
 returns boolean language sql immutable set search_path to 'public' as $$
-  select coalesce(upper(regexp_replace(btrim(coalesce(p_codigo, '')), '\s+', ' ', 'g')) ~ '^OT [0-9]+-[0-9]{4}$', false);
+  select coalesce(upper(btrim(coalesce(p_codigo, ''))) ~ '^OT[^A-Z0-9]*[0-9]', false);
 $$;
 comment on function public.es_codigo_de_ot(text) is
-  'Si el código es el de una OT de mantenimiento o de garantía («OT 2921-2026»), no el de una unidad. Migración 20261120500000.';
+  'Si lo escrito tiene la forma del número de una OT («OT 2921-2026», también a medias o con otros separadores): no es el código de una unidad. Migración 20261120500000.';
 revoke all on function public.es_codigo_de_ot(text) from public, anon;
 grant execute on function public.es_codigo_de_ot(text) to authenticated;
+
+-- Escrito a mano, «OT 9999-2026» (un número mal puesto, o una OT que todavía
+-- no se carga) quedaba como un código suelto que se lee como si fuera la OT:
+-- el costo iba a parar ahí y no a la OT. Un código con forma de OT tiene que
+-- ser el de una OT de mantenimiento o de garantía que exista, y ninguna unidad
+-- se llama así (el costeo juntaría lo de las dos). La OT anulada sigue valiendo
+-- aquí, para devolver o corregir lo que ya se cargó a ella; los formularios ya
+-- no la ofrecen. Solo se juzga el código nuevo o el que cambió: lo de antes
+-- se puede anular o corregir.
+create or replace function public.fn_el_codigo_de_ot_es_de_su_ot()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_codigo text := public.normalizar_codigo_interno(to_jsonb(new) ->> 'codigo_interno');
+begin
+  if v_codigo is null or not public.es_codigo_de_ot(v_codigo) then
+    return new;
+  end if;
+  if tg_op = 'UPDATE'
+     and v_codigo is not distinct from public.normalizar_codigo_interno(to_jsonb(old) ->> 'codigo_interno') then
+    return new;
+  end if;
+  if tg_table_name = 'unidades' then
+    raise exception '% no es el código de una unidad: tiene la forma del número de una OT. Escribe el código interno de la unidad.',
+      v_codigo using errcode = 'check_violation';
+  end if;
+  if not exists (select 1 from public.ordenes_trabajo o
+                  where o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA')
+                    and public.codigo_de_la_ot(o.numero) = v_codigo) then
+    raise exception 'No hay OT de mantenimiento ni de garantía con el número %: elígela de la lista («OT 2921-2026») o pídele a Administración que la registre.',
+      v_codigo using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+comment on function public.fn_el_codigo_de_ot_es_de_su_ot() is
+  'Un código con forma de OT («OT 2921-2026») es el de una OT de mantenimiento o de garantía que existe, y ninguna unidad se llama así. Migración 20261120500000.';
+revoke all on function public.fn_el_codigo_de_ot_es_de_su_ot() from public, anon, authenticated;
+
+-- Las tablas donde la gente escribe o elige el código: las mismas que suma la
+-- lista de los formularios, más la unidad y las observaciones del personal.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['requerimientos', 'ordenes_compra_materiales', 'ordenes_servicio', 'reportes_diarios',
+                           'tareos', 'subcontratos', 'movimientos_materiales', 'movimientos_caja',
+                           'observaciones_personal', 'unidades'] loop
+    execute format('create or replace trigger trg_%s_codigo_de_ot before insert or update of codigo_interno on public.%I
+                      for each row execute function public.fn_el_codigo_de_ot_es_de_su_ot()', t, t);
+  end loop;
+end $$;
 
 -- ---------------------------- 2. el trabajo de la OT, dado por terminado
 comment on table public.ot_garantia_terminada is
@@ -276,9 +333,10 @@ comment on function public.vehiculos_estado_de_salida(uuid[]) is
 
 -- ------------------------------------ 4. lo que ofrece la ventana del ingreso
 -- Los códigos para fabricación y arenado: su OT vigente es la de la unidad que
--- no es de mantenimiento ni de garantía, que entran por su número. Mismas
--- columnas que en 20261021120000 (la pantalla de antes del despliegue lee
--- `garantia_numero`).
+-- no es de mantenimiento ni de garantía, que entran por su número; la unidad
+-- con una de esas abierta no está, porque entra por ella. Mismas columnas que
+-- en 20261021120000: la pantalla de antes del despliegue lee `garantia_numero`,
+-- que ahora sale siempre vacía.
 create or replace function public.vehiculos_codigos_para_ingreso()
 returns table (codigo_interno text, unidad_id uuid, orden_id uuid, orden_numero text, cliente text,
                unidad text, placa text, chasis text, en_planta boolean, garantia_numero text)
@@ -293,7 +351,7 @@ begin
          u.placa::text, nullif(btrim(coalesce(u.numero_chasis, '')), ''),
          exists (select 1 from public.registro_vehiculos v
                   where v.unidad_id = u.id and v.salida_en is null and v.anulado_en is null),
-         (select g.numero::text from public.ordenes_trabajo g where g.id = public.vehiculo_ot_de_garantia_abierta(u.id))
+         null::text
     from public.unidades u
     join lateral (select x.id, x.numero from public.ordenes_trabajo x
                    where x.unidad_id = u.id and x.estado <> 'ANULADA'
@@ -301,11 +359,15 @@ begin
                    order by x.creado_en desc limit 1) o on true
     left join public.clientes cl on cl.id = u.cliente_id
    where u.activo and public.normalizar_codigo_interno(u.codigo_interno) is not null
+     -- La unidad con una OT de mantenimiento o de garantía abierta entra por esa OT.
+     and not exists (select 1 from public.ordenes_trabajo g
+                      where g.unidad_id = u.id and g.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and g.estado <> 'ANULADA'
+                        and not public.orden_garantia_terminada(g.id))
    order by 1;
 end;
 $$;
 comment on function public.vehiculos_codigos_para_ingreso() is
-  'Los códigos internos con los que entra un vehículo por fabricación o retorno del arenado: su unidad tiene una OT vigente que no es de mantenimiento ni de garantía. Exige vehiculos.registrar.';
+  'Los códigos internos con los que entra un vehículo por fabricación o retorno del arenado: su unidad tiene una OT vigente que no es de mantenimiento ni de garantía, y ninguna de esas abierta (entra por ella). Exige vehiculos.registrar.';
 
 -- Las OT con las que entra un vehículo por mantenimiento o por garantía: las
 -- de ese tipo que no están anuladas ni con su trabajo terminado. Si la OT
@@ -410,6 +472,9 @@ begin
       raise exception 'El trabajo de la OT % ya está terminado: con ella no vuelve a entrar el vehículo.', v_ot.numero
         using errcode = 'check_violation';
     end if;
+    -- Dos pestañas con la misma OT (sin unidad, cada una con su placa) entraban
+    -- las dos: el candado de arriba es por el envío, no por la OT.
+    perform pg_advisory_xact_lock(hashtextextended('ingreso-de-la-ot:' || v_ot.id::text, 0));
     if exists (select 1 from public.registro_vehiculos
                 where orden_id = v_ot.id and salida_en is null and anulado_en is null) then
       raise exception 'El vehículo de la OT % ya está en la planta: marca primero su salida.', v_ot.numero
@@ -450,6 +515,22 @@ begin
     if not found then
       raise exception 'El código interno % no es de ninguna unidad: el código nace cuando se aprueba la cotización y Administración carga su OT.',
         v_codigo using errcode = 'check_violation';
+    end if;
+    -- La unidad con una OT de mantenimiento o de garantía abierta entra por esa
+    -- OT, también al volver del arenado: por el código quedaba atada a su OT de
+    -- fabricación y salía sin que Administración diera por terminado el trabajo
+    -- (lo vio el auditor de funcionamiento). Como en 20261021120000 con la
+    -- garantía: mientras esté abierta, manda ella.
+    select o.* into v_ot from public.ordenes_trabajo o
+     where o.unidad_id = v_unidad.id and o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and o.estado <> 'ANULADA'
+       and not public.orden_garantia_terminada(o.id)
+     order by o.creado_en desc limit 1;
+    if found then
+      raise exception 'El vehículo del código % tiene abierta la OT % de %: entra con el motivo % y esa OT, también al volver del arenado.',
+        v_codigo, v_ot.numero,
+        case v_ot.tipo_trabajo when 'MANTENIMIENTO' then 'mantenimiento' else 'garantía' end,
+        case v_ot.tipo_trabajo when 'MANTENIMIENTO' then 'Mantenimiento' else 'Garantía' end
+        using errcode = 'check_violation';
     end if;
     select o.id into v_orden from public.ordenes_trabajo o
      where o.unidad_id = v_unidad.id and o.estado <> 'ANULADA'
@@ -594,7 +675,7 @@ language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
   if not (public.es_admin() or public.tiene_permiso('requerimientos.emitir')
-          or public.tiene_permiso('requerimientos.administracion') or public.tiene_permiso('tesoreria.caja')
+          or public.tiene_permiso('requerimientos.administracion') or public.tiene_permiso('requerimientos.area') or public.tiene_permiso('tesoreria.caja')
           or public.tiene_permiso('rrhh.personal') or public.tiene_permiso('reporte_diario.registrar')
           or public.tiene_permiso('compras.crear') or public.tiene_permiso('subcontratos.gestionar')
           or public.tiene_permiso('almacen.despachar')) then
@@ -664,7 +745,10 @@ comment on function public.codigos_internos_para_elegir() is
 
 -- Los códigos del reporte diario y del costeo de horas de RR. HH.: los mismos
 -- de 20261014180000, más las OT de mantenimiento y de garantía que no están
--- anuladas, para cargarles las horas de quien trabajó en ellas.
+-- anuladas, para cargarles las horas de quien trabajó en ellas. La terminada
+-- sale de la lista al mes de terminarse: la lista se corta en 500 por orden
+-- alfabético, y las OT de siempre empujarían fuera a los códigos que van
+-- después de «OT …». La que ya tiene horas sigue en ella por su reporte.
 create or replace function public.rrhh_codigos_internos()
 returns table (codigo text) language plpgsql stable security definer set search_path to 'public' as $$
 begin
@@ -681,7 +765,11 @@ begin
       union select t.codigo_interno from public.tareos t where t.anulado_en is null
       union select d.codigo_interno from public.reportes_diarios d where d.anulado_en is null
       union select public.codigo_de_la_ot(o.numero) from public.ordenes_trabajo o
+              left join public.ot_garantia_terminada g on g.orden_id = o.id
              where o.tipo_trabajo in ('MANTENIMIENTO', 'GARANTIA') and o.estado <> 'ANULADA'
+               and coalesce(g.terminada_en,
+                            case when o.estado in ('TERMINADA', 'ENTREGADA', 'FACTURADA') then o.actualizado_en end,
+                            now()) > now() - interval '30 days'
     ) x
     where char_length(c) between 2 and 60
     order by c

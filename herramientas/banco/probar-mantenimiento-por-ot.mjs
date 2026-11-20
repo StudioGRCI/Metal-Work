@@ -91,7 +91,7 @@ const [{ niples }] = await consulta(
 )
 const [{ electricos }] = await consulta(
   `select count(*)::int as electricos from public.materiales m join public.categorias_material c on c.id = m.categoria_id
-    where m.activo and c.activo and c.nombre = 'SISTEMA ELECTRICO'`,
+    where m.activo and c.activo and upper(public.unaccent(c.nombre)) = 'SISTEMA ELECTRICO'`,
 )
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -256,6 +256,12 @@ let registroId = null
   const v = pagina.locator('[role="dialog"]')
   await v.locator('#rq-area').selectOption({ index: 1 })
   const codigo = v.locator('#rq-codigo')
+  // Una OT que no existe no se ofrece como código nuevo: el costo iría a un código suelto.
+  await codigo.fill('OT 9999-2026')
+  await v.getByRole('listbox').waitFor({ timeout: 10000 }).catch(() => {})
+  const lista = limpio(await v.getByRole('listbox').innerText().catch(() => ''))
+  comprobar(lista.includes('No hay OT abierta de mantenimiento ni de garantía con ese número') && !lista.includes('como código nuevo'),
+    `«OT 9999-2026» dice que no hay esa OT y no se ofrece como código nuevo («${lista.slice(0, 120)}»)`)
   await codigo.fill(`ot ${NUMERO.split('-')[0]}`)
   const opcion = v.getByRole('listbox').getByRole('option', { name: new RegExp(NUMERO) })
   await opcion.first().waitFor({ timeout: 10000 }).catch(() => {})
@@ -284,11 +290,15 @@ let registroId = null
   const tras = limpio(await insumo.innerText())
   comprobar(tras.includes('Elige del grupo') && !tras.includes(elegido.split(' ')[0] + ' ' + (elegido.split(' ')[1] ?? '')),
     `al cambiar de grupo, el niple elegido se suelta («${tras}»)`)
+  const soltado = limpio(await v.locator('[role="status"]').filter({ hasText: 'no es de este grupo' }).first().innerText().catch(() => ''))
+  comprobar(soltado.includes('elige el insumo otra vez'), `y lo dice debajo del insumo («${soltado}»)`)
   await insumo.click()
   await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
   const electricas = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
-  comprobar(electricas.length === electricos && electricas.every((o) => o.includes('SISTEMA ELECTRICO')),
-    `con SISTEMA ELECTRICO salen sus ${electricos} insumos (${electricas.length})`)
+  // «SISTEMA ELECTRICO» y «Sistema eléctrico» son un solo grupo: salen los de las dos.
+  const sinTildes = (t) => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase()
+  comprobar(electricas.length === electricos && electricas.every((o) => sinTildes(o).includes('SISTEMA ELECTRICO')),
+    `con SISTEMA ELECTRICO salen sus ${electricos} insumos, también los de «Sistema eléctrico» (${electricas.length})`)
   await v.getByRole('listbox').getByRole('option').first().click()
   await v.locator('[id^="rq-cant-"]').first().fill('2')
   await v.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()

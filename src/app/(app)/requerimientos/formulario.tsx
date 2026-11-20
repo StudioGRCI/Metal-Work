@@ -131,6 +131,8 @@ type Insumo = {
   clave: string
   /** El grupo con que se busca en el catálogo (Sistema eléctrico, Niplería…); vacío, todos. No viaja a la base. */
   grupo: string
+  /** El insumo que se soltó al cambiar de grupo, para decirlo; vacío si no se soltó ninguno. No viaja a la base. */
+  soltado: string
   material_id: string
   nuevo: boolean
   descripcion: string
@@ -140,7 +142,7 @@ type Insumo = {
 }
 
 function insumoVacio(): Insumo {
-  return { clave: crypto.randomUUID(), grupo: '', material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
+  return { clave: crypto.randomUUID(), grupo: '', soltado: '', material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
 }
 
 function FormularioRequerimiento({
@@ -352,8 +354,8 @@ function FormularioRequerimiento({
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-texto">Insumos</legend>
         <p className="text-xs text-texto-suave">
-          Elige cada insumo del catálogo de Almacén, con el nombre que usa Almacén. Para los accesorios, elige primero su grupo (Sistema eléctrico,
-          Niplería, Sistema neumático…) y salen todos sus insumos. Si no está, pídelo como material nuevo: Almacén lo da de alta al revisarlo.
+          Elige cada insumo del catálogo de Almacén; un accesorio, por su grupo (Sistema eléctrico, Niplería…). Si no está, pídelo como material
+          nuevo: Almacén lo da de alta al revisarlo.
         </p>
         {insumos.map((x, i) => {
           const material = porId.get(x.material_id)
@@ -361,23 +363,19 @@ function FormularioRequerimiento({
           const eligeUnidad = x.nuevo || Boolean(material?.unidad_pendiente)
           return (
             <div key={x.clave} className="space-y-2 rounded-lg border border-borde p-3">
-              <div
-                className={
-                  x.nuevo || grupos.length === 0
-                    ? 'grid gap-2 sm:grid-cols-[minmax(0,2fr)_7rem_7rem_auto] sm:items-end'
-                    : 'grid gap-2 sm:grid-cols-[minmax(0,2fr)_7rem_7rem_auto] sm:items-end lg:grid-cols-[12rem_minmax(0,2fr)_7rem_7rem_auto]'
-                }
-              >
+              {/* El grupo va en su propio renglón: en una columna angosta se cortaba su nombre y cuántos tiene. */}
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_7rem_7rem_auto] sm:items-end">
                 {!x.nuevo && grupos.length > 0 && (
-                  <Campo etiqueta="Grupo" htmlFor={`rq-grupo-${x.clave}`} className="sm:col-span-4 lg:col-span-1">
+                  <Campo etiqueta={`Grupo del insumo ${i + 1}`} htmlFor={`rq-grupo-${x.clave}`} className="sm:col-span-4 sm:max-w-md">
                     <Seleccion
                       id={`rq-grupo-${x.clave}`}
                       value={x.grupo}
                       onChange={(e) => {
                         const grupo = e.target.value
                         // El insumo elegido que no es del grupo nuevo se suelta: el buscador ya no lo ofrece.
-                        const sigue = !x.material_id || delGrupo(porId.get(x.material_id) ?? { codigo: '', descripcion: '', categoria: '' }, grupo)
-                        cambiar(x.clave, sigue ? { grupo } : { grupo, material_id: '', unidad_medida_id: '' })
+                        const elegido = porId.get(x.material_id)
+                        const sigue = !x.material_id || !elegido || delGrupo(elegido, grupo)
+                        cambiar(x.clave, sigue ? { grupo, soltado: '' } : { grupo, material_id: '', unidad_medida_id: '', soltado: elegido.descripcion })
                       }}
                     >
                       <option value="">Todos los grupos</option>
@@ -408,7 +406,7 @@ function FormularioRequerimiento({
                       id={`rq-mat-${x.clave}`}
                       requerido
                       valor={x.material_id}
-                      onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '' })}
+                      onChange={(v) => cambiar(x.clave, { material_id: v, unidad_medida_id: porId.get(v)?.unidad_id ?? '', soltado: '' })}
                       marcador={x.grupo ? 'Elige del grupo…' : 'Elige del catálogo de Almacén…'}
                       marcadorBusqueda="Nombre o código del material…"
                       opciones={opciones.filter((o) => {
@@ -465,6 +463,10 @@ function FormularioRequerimiento({
                   <Trash2 aria-hidden className="size-4" />
                 </Boton>
               </div>
+              {/* Siempre puesto, vacío si no hay nada que decir: el que nace con su texto no se anuncia. */}
+              <p role="status" className={x.soltado && !x.nuevo && !x.material_id ? 'text-xs text-aviso' : 'sr-only'}>
+                {x.soltado && !x.nuevo && !x.material_id ? `«${x.soltado}» no es de este grupo: elige el insumo otra vez.` : ''}
+              </p>
               {x.nuevo ? (
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_auto] sm:items-end">
                   <Campo etiqueta="Categoría" htmlFor={`rq-cat-${x.clave}`} requerido>
