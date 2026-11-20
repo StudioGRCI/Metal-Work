@@ -60,7 +60,8 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   ])
   const areaFija = catalogos.areas.find((a) => a.id === area && a.requerimiento === 'OPERACION')
   const unidadDe = new Map((catalogos.codigos ?? []).map((c) => [c.codigo, c.unidad]))
-  // Gerencia cerró el costeo al entregarla: ya no se le pide nada.
+  // Gerencia cerró el costeo al entregarla: la pantalla ya no la ofrece para
+  // pedir (la base no lo impide: «Nuevo RQ con otro código» sí la acepta).
   const cerrados = new Set((catalogos.codigos ?? []).filter((c) => c.cerrado).map((c) => c.codigo))
 
   // Lo de cada código, juntado de una pasada.

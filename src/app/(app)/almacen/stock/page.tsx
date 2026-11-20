@@ -38,7 +38,7 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
   const pedido = typeof params.almacen === 'string' ? params.almacen.toUpperCase() : ''
   const almacen: Almacen | typeof POR_CLASIFICAR | null = esAlmacen(pedido) || pedido === POR_CLASIFICAR ? pedido : null
   const abreKardex = puede(perfil, 'almacen.ver')
-  const pide = puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion'])
+  const pide = puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area'])
 
   const todos = await stockEnAlmacen()
   // Lo que busca: el nombre, el código del material, la familia, el código

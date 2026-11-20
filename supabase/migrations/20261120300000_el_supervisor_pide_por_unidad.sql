@@ -103,6 +103,11 @@ begin
       ('public.anular_requerimiento(uuid, text)',
        $v$perform public.rq_exigir(v_rq.tipo, 'ANULAR');$v$,
        $v$perform public.rq_exigir_del_area(v_rq.tipo, 'ANULAR', v_rq.area_id, v_rq.creado_por);$v$),
+      -- Quien registra el RQ lo puede leer: hoy el supervisor ya tiene
+      -- `requerimientos.ver`, pero el permiso del área no depende de eso.
+      ('public.puede_ver_requerimientos()',
+       $v$or public.tiene_permiso('requerimientos.ver')$v$,
+       $v$or public.tiene_permiso('requerimientos.ver') or public.tiene_permiso('requerimientos.area')$v$),
       -- La puerta de entrada de anular, antes de leer el RQ.
       ('public.anular_requerimiento(uuid, text)',
        $v$if not (public.es_admin() or public.tiene_permiso('requerimientos.emitir') or public.tiene_permiso('requerimientos.administracion')) then$v$,
@@ -125,9 +130,9 @@ end $$;
 -- Corregir un RQ pide su justificante, que el navegador sube primero al bucket
 -- `justificantes-correccion`. La política de subida aceptaba solo a quien
 -- registraba RQ hasta hoy: sin `requerimientos.area`, el supervisor tendría el
--- botón «Corregir» en sus RQ y la subida le diría que no.
-drop policy if exists justificantes_subir on storage.objects;
-create policy justificantes_subir on storage.objects for insert to authenticated with check (
+-- botón «Corregir» en sus RQ y la subida le diría que no. Se cambia con
+-- `alter policy`, no con drop y create: un DROP cuelga el conector de Supabase.
+alter policy justificantes_subir on storage.objects with check (
   bucket_id = 'justificantes-correccion' and owner_id = (select auth.uid())::text
   and ((select public.es_admin()) or (select public.tiene_permiso('requerimientos.emitir'))
        or (select public.tiene_permiso('requerimientos.administracion')) or (select public.tiene_permiso('requerimientos.area'))
