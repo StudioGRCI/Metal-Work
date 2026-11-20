@@ -62,16 +62,17 @@ function lineasDelFormulario(formulario: FormData): unknown {
 }
 
 /**
- * El permiso de cada requerimiento, el mismo que exige `rq_exigir` en la base
- * para registrarlo y anularlo: el de operación es del área de Requerimientos;
- * el de Administración, de la administradora.
+ * El permiso de cada requerimiento, el mismo que exige `rq_exigir_del_area`
+ * en la base para registrarlo y anularlo: el de operación, `requerimientos.emitir`
+ * para cualquier área o `requerimientos.area` para la propia; el de
+ * Administración, `requerimientos.administracion`.
  */
 const PERMISO_DEL_TIPO = {
   // El supervisor (`requerimientos.area`) registra el de su propia área: la base
   // (`rq_exigir_del_area`) le niega el área que no es la suya.
   OPERACION: {
     permiso: ['requerimientos.emitir', 'requerimientos.area'],
-    quien: 'El requerimiento de operación lo llevan el área de Requerimientos y el supervisor de cada área.',
+    quien: 'No tienes permiso para registrar requerimientos de operación.',
   },
   ADMINISTRACION: { permiso: ['requerimientos.administracion'], quien: 'El requerimiento de Administración lo lleva la administradora.' },
 } as const satisfies Record<string, { permiso: readonly string[]; quien: string }>
@@ -143,8 +144,9 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
 }
 
 /**
- * Anular mientras nadie lo compra. Lo anula quien lleva su tipo: la base
- * (`anular_requerimiento`) mira el tipo del RQ y exige el permiso de ese tipo.
+ * Anular mientras nadie lo compra. Lo anula quien lleva su tipo, o el
+ * supervisor el que registró él: la base (`anular_requerimiento` →
+ * `rq_exigir_del_area`) mira el tipo, el área y quién lo registró.
  */
 export async function anularRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -200,8 +202,9 @@ const CAMBIOS_RQ = z.object({
 /**
  * Corregir un requerimiento registrado: el código, la justificación, la fecha y
  * la cantidad o el material de cada insumo, siempre con su motivo y su
- * justificante. Lo corrige quien lleva su tipo, igual que en la base
- * (`corregir_requerimiento` → `rq_exigir`). El aviso le llega a Almacén si el
+ * justificante. Lo corrige quien lleva su tipo, o el supervisor el que
+ * registró él, igual que en la base (`corregir_requerimiento` →
+ * `rq_exigir_del_area`). El aviso le llega a Almacén si el
  * RQ sigue por revisar y, si no, a quien hace su compra: el mensaje lo dice
  * igual que la base (`corregir_requerimiento` → `fn_rq_avisar`).
  */

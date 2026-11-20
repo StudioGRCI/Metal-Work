@@ -66,7 +66,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const mostrados = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
   const correcciones = await correccionesDe('REQUERIMIENTO', mostrados.map((r) => r.id))
   // El supervisor pide para su área y nada más: el formulario no le ofrece otra.
-  const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id) : undefined
+  const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id && a.requerimiento === 'OPERACION') : undefined
   // Lo corrige y lo anula quien lleva su tipo; el supervisor, solo los que registró él.
   const loLleva = (r: (typeof requerimientos)[number]) =>
     pideSuArea ? r.tipo === 'OPERACION' && r.creado_por === perfil.id : tipos.includes(r.tipo as TipoRequerimiento)
@@ -79,7 +79,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   filtros.set('ver', 'recoger')
   const conRecoger = `/requerimientos?${filtros}`
   const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
-  const vacio = listaVacia({ soloRecoger, codigo, deSuArea: Boolean(deSuArea), emite, sinRecoger, verTodos })
+  const vacio = listaVacia({ soloRecoger, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
 
   return (
     <>
@@ -95,7 +95,11 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               : 'Los requerimientos de operación y de Administración. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde), cuánto falta que llegue y en qué va, y cuánto ya se entregó. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
         }
         migas={[{ titulo: 'Requerimientos' }]}
-        acciones={catalogos && <NuevoRequerimiento {...catalogos} tipos={tipos} areaFija={areaFija} />}
+        acciones={
+          // Sin un área que pida por el RQ de operación, el supervisor no tiene
+          // para quién pedir: la base le rechazaría cualquier otra.
+          catalogos && !(pideSuArea && !areaFija) && <NuevoRequerimiento {...catalogos} tipos={tipos} areaFija={areaFija} />
+        }
       />
 
       <Vistas
@@ -190,6 +194,7 @@ function listaVacia({
   codigo,
   deSuArea,
   emite,
+  pideSuArea,
   sinRecoger,
   verTodos,
 }: {
@@ -197,6 +202,8 @@ function listaVacia({
   codigo: string | undefined
   deSuArea: boolean
   emite: boolean
+  /** El supervisor que pide para su área: lo invita a pedir por unidad. */
+  pideSuArea: boolean
   sinRecoger: string
   /** La lista sin el código: la del área, o la de todas si se miraban todas. */
   verTodos: string
@@ -218,6 +225,13 @@ function listaVacia({
       titulo: `Ningún requerimiento con el código ${codigo}`,
       descripcion: 'Revisa el código o mira todos los requerimientos.',
       accion: enlace(verTodos, 'Ver todos'),
+    }
+  }
+  if (deSuArea && pideSuArea) {
+    return {
+      titulo: 'Tu área todavía no tiene requerimientos',
+      descripcion: 'Pide el material de cada unidad desde «Por unidad», con el código ya puesto. Los de las demás áreas están en «Todas las áreas».',
+      accion: enlace('/requerimientos/unidades', 'Pedir por unidad'),
     }
   }
   if (deSuArea) {

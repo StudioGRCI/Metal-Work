@@ -14,7 +14,7 @@ import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/reque
 import { fecha, porcentaje } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
-import { BotonPedirParaUnidad, PedirPorUnidad } from './pedir'
+import { AvisoDeLaUnidad, BotonPedirParaUnidad, PedirPorUnidad } from './pedir'
 
 export const metadata = { title: 'RQ por unidad' }
 
@@ -53,13 +53,15 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   const area = perfil.area_id
 
   const [planos, etapas, requerimientos, catalogos] = await Promise.all([
-    area ? planosDeCodigo(null) : Promise.resolve([]),
+    area ? planosDeCodigo(null, { conPeso: false }) : Promise.resolve([]),
     area ? etapasDeCodigo(null) : Promise.resolve([]),
     area ? cargarRequerimientos({ area, tipo: 'OPERACION' }) : Promise.resolve([]),
     catalogosDelRequerimiento(),
   ])
   const areaFija = catalogos.areas.find((a) => a.id === area && a.requerimiento === 'OPERACION')
   const unidadDe = new Map((catalogos.codigos ?? []).map((c) => [c.codigo, c.unidad]))
+  // Gerencia cerró el costeo al entregarla: ya no se le pide nada.
+  const cerrados = new Set((catalogos.codigos ?? []).filter((c) => c.cerrado).map((c) => c.codigo))
 
   // Lo de cada código, juntado de una pasada.
   const porCodigo = new Map<string, DeLaUnidad>()
@@ -84,11 +86,20 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   const buscado = (codigo: string) =>
     !q || coincide(palabras, [codigo, unidadDe.get(codigo) ?? '']) || (llave !== '' && llaveParecido(codigo).includes(llave))
 
-  const enElArea = [...porCodigo.entries()].filter(([, u]) => sigueEnElArea(u))
+  // Una unidad entregada sale aunque Diseño no haya cerrado sus etapas; si le
+  // queda un RQ en camino, se ve para seguirlo, sin «Nuevo RQ».
+  const enElArea = [...porCodigo.entries()].filter(([codigo, u]) => (cerrados.has(codigo) ? u.rqs.some(abierto) : sigueEnElArea(u)))
   const unidades = enElArea
     .filter(([codigo]) => buscado(codigo))
     .sort(([a, ua], [b, ub]) => Number(enMarcha(ub)) - Number(enMarcha(ua)) || (a < b ? -1 : a > b ? 1 : 0))
   const conRqAbierto = enElArea.filter(([, u]) => u.rqs.some(abierto)).length
+  // Las demás unidades del padrón que siguen en el taller (sin costeo cerrado):
+  // mientras Diseño no carga etapas ni planos del área, son la única vista
+  // previa que tiene el supervisor, y desde ellas también pide.
+  const deLaLista = new Set(enElArea.map(([codigo]) => codigo))
+  const otras = (catalogos.codigos ?? [])
+    .filter((c) => c.registrada && !c.cerrado && c.codigo !== CODIGO_FIJO_PLANTA.codigo && !deLaLista.has(c.codigo))
+    .filter((c) => buscado(c.codigo))
 
   const vistas = [
     { clave: 'unidades', titulo: 'Por unidad', href: '/requerimientos/unidades', activa: true, cuenta: enElArea.length },
@@ -118,9 +129,10 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         descripcion={`${areaFija.nombre} · ${enElArea.length} ${enElArea.length === 1 ? 'unidad' : 'unidades'}${
           conRqAbierto > 0 ? `, ${conRqAbierto} con requerimientos en camino` : ''
         }`}
-        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. Una unidad sale de aquí cuando tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Lo que no es de una unidad, pídelo en PLANTA, al final."
+        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. Una unidad sale de aquí cuando tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por unidad' }]}
         acciones={<BotonPedirParaUnidad codigo={null}>Nuevo RQ con otro código</BotonPedirParaUnidad>}
+        estado={<AvisoDeLaUnidad codigo={null} />}
       />
 
       <div className="mb-4 space-y-3">
@@ -132,11 +144,20 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         <Tarjeta className="mb-3">
           <SinDatos
             enTabla={false}
-            titulo={q ? 'Ninguna unidad con esta búsqueda' : 'Todavía no hay unidades en tu área'}
+            titulo={q ? 'Ninguna unidad de tu área con esta búsqueda' : 'Ninguna unidad tiene todavía trabajo cargado para tu área'}
             descripcion={
-              q
-                ? 'Borra la búsqueda con «Limpiar», o pide con «Nuevo RQ con otro código» si la unidad todavía no llega a tu área.'
-                : 'Aparecen cuando Diseño carga una etapa o un plano de tu área. Si necesitas material para una unidad que no está, pídelo con «Nuevo RQ con otro código».'
+              otras.length > 0
+                ? 'Aparecen aquí cuando Diseño carga una etapa o un plano de tu área. Mientras tanto, pide desde las demás unidades del taller.'
+                : q
+                  ? 'Borra la búsqueda con «Limpiar», o pide con «Nuevo RQ con otro código» si la unidad todavía no llega al taller.'
+                  : 'Aparecen aquí cuando Diseño carga una etapa o un plano de tu área. Si necesitas material para una unidad, pídelo con «Nuevo RQ con otro código».'
+            }
+            accion={
+              otras.length > 0 ? (
+                <a href="#otras-unidades" className="text-sm font-medium text-acento hover:underline">
+                  Ver las demás unidades del taller
+                </a>
+              ) : undefined
             }
           />
         </Tarjeta>
@@ -144,10 +165,31 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         <ul className="mb-3 grid gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
           {unidades.map(([codigo, u]) => (
             <li key={codigo}>
-              <TarjetaDeUnidad codigo={codigo} unidad={unidadDe.get(codigo) ?? null} delArea={u} />
+              <TarjetaDeUnidad codigo={codigo} unidad={unidadDe.get(codigo) ?? null} entregada={cerrados.has(codigo)} delArea={u} />
             </li>
           ))}
         </ul>
+      )}
+
+      {otras.length > 0 && (
+        <Tarjeta className="mb-3" id="otras-unidades">
+          <TarjetaCabecera
+            titulo={`Las demás unidades del taller (${otras.length})`}
+            descripcion="Del padrón de unidades, sin trabajo cargado para tu área todavía. Si ya trabajas en una, pide su material desde aquí."
+          />
+          <ul className="divide-y divide-borde" aria-label="Las demás unidades del taller">
+            {otras.map((c) => (
+              <li key={c.codigo} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+                <span className="min-w-0 flex-1 basis-48">
+                  <span className="block font-mono text-sm font-medium text-texto">{c.codigo}</span>
+                  {c.unidad && <span className="block truncate text-xs text-texto-suave">{c.unidad}</span>}
+                  <AvisoDeLaUnidad codigo={c.codigo} className="mt-1" />
+                </span>
+                <BotonPedirParaUnidad codigo={c.codigo} />
+              </li>
+            ))}
+          </ul>
+        </Tarjeta>
       )}
 
       {!q && (
@@ -157,7 +199,8 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
             descripcion="Lo que tu área usa sin ser de una unidad: consumibles, herramientas."
             acciones={<BotonPedirParaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />}
           />
-          <TarjetaCuerpo>
+          <TarjetaCuerpo className="space-y-3">
+            <AvisoDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />
             <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} />
           </TarjetaCuerpo>
         </Tarjeta>
@@ -166,15 +209,29 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   )
 }
 
-function TarjetaDeUnidad({ codigo, unidad, delArea }: { codigo: string; unidad: string | null; delArea: DeLaUnidad }) {
+function TarjetaDeUnidad({
+  codigo,
+  unidad,
+  entregada,
+  delArea,
+}: {
+  codigo: string
+  unidad: string | null
+  entregada: boolean
+  delArea: DeLaUnidad
+}) {
   return (
     <Tarjeta className="h-full">
       <TarjetaCabecera
         titulo={<span className="font-mono">{codigo}</span>}
         descripcion={unidad ?? undefined}
-        acciones={<BotonPedirParaUnidad codigo={codigo} />}
+        acciones={entregada ? <Insignia tono="neutro">Entregada</Insignia> : <BotonPedirParaUnidad codigo={codigo} />}
       />
       <TarjetaCuerpo className="space-y-3">
+        <AvisoDeLaUnidad codigo={codigo} />
+        {entregada && (
+          <p className="text-sm text-texto-suave">Gerencia ya cerró su costeo al entregarla: aquí solo sigues lo que quedó en camino.</p>
+        )}
         {(delArea.etapas.length > 0 || delArea.porRecibir > 0) && (
           <div>
             <h3 className="text-xs font-medium text-texto-suave">En tu área</h3>

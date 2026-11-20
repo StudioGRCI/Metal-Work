@@ -52,13 +52,14 @@ create or replace function pg_temp.lineas() returns jsonb language sql as $$
 $$;
 
 -- ======================================================= 1. EL REQUERIMIENTO
--- Un supervisor de taller no registra RQ (los pide; lo anota Requerimientos).
+-- Un supervisor de taller registra solo los de su área (migración
+-- 20261120300000, check 456): el de Producción no pide para Maestranza.
 select pg_temp.como('supervisor');
 set local role authenticated;
 select test.debe_fallar(
   format($q$select public.emitir_requerimiento('%s', '%s', 'PLA_SR_O4_1_26/28', 'Para armar la plataforma de la unidad 28', null, pg_temp.lineas())$q$,
          current_setting('prueba.rq'), current_setting('prueba.area_mtz')),
-  'un supervisor no registra requerimientos', 'permiso');
+  'un supervisor no registra requerimientos de otra área', 'otra área');
 reset role;
 
 select pg_temp.como('requerimientos');

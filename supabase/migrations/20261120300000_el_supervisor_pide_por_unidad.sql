@@ -36,11 +36,12 @@ select r.id, 'requerimientos.area'
 on conflict do nothing;
 
 -- ===================================================== 2. La regla del área
+-- No es security definer: no escribe, y solo la llaman las tres funciones que
+-- ya lo son. Nadie más la ejecuta (revoke abajo).
 create or replace function public.rq_exigir_del_area(p_tipo text, p_paso text, p_area_id uuid, p_creado_por uuid)
 returns void
 language plpgsql
 stable
-security definer
 set search_path to 'public'
 as $$
 declare
@@ -64,16 +65,17 @@ begin
     left join public.areas a on a.id = u.area_id
    where u.id = public.usuario_actual() and u.activo;
   if v_mia is null then
-    raise exception 'Tu cuenta no tiene área: pide a Administración que te la asigne para registrar requerimientos.'
+    raise exception 'Tu cuenta no tiene área: sin ella no puedes registrar requerimientos.'
       using errcode = 'insufficient_privilege';
   end if;
   if p_area_id is distinct from v_mia then
-    raise exception 'Registras requerimientos solo para tu área, %. Lo de otra área lo pide su supervisor o el área de Requerimientos.', v_nombre
+    raise exception 'No tienes permiso para % requerimientos de otra área: solo los de %.',
+      case p_paso when 'ANULAR' then 'anular' when 'CORREGIR' then 'corregir' else 'registrar' end, v_nombre
       using errcode = 'insufficient_privilege';
   end if;
   if p_paso in ('CORREGIR', 'ANULAR') and p_creado_por is distinct from public.usuario_actual() then
-    raise exception 'Este requerimiento lo registró otra persona: solo ella o el área de Requerimientos pueden %.',
-      case p_paso when 'ANULAR' then 'anularlo' else 'corregirlo' end
+    raise exception 'No tienes permiso para % un requerimiento que registró otra persona.',
+      case p_paso when 'ANULAR' then 'anular' else 'corregir' end
       using errcode = 'insufficient_privilege';
   end if;
 end;
@@ -130,3 +132,24 @@ create policy justificantes_subir on storage.objects for insert to authenticated
   and ((select public.es_admin()) or (select public.tiene_permiso('requerimientos.emitir'))
        or (select public.tiene_permiso('requerimientos.administracion')) or (select public.tiene_permiso('requerimientos.area'))
        or (select public.tiene_permiso('compras.crear')) or (select public.tiene_permiso('adquisiciones.registrar'))));
+
+-- ================================== 5. Un solo aviso al supervisor que lo pidió
+-- Cuando el supervisor registra el RQ, es a la vez quien lo pidió (EMISOR) y el
+-- del área (AREA): «Listo en almacén», «Ya no está listo» y «Por comprar otra
+-- vez» le llegaban dos veces. Todo aviso al AREA va con uno al EMISOR, así que
+-- el del área se salta a quien registró el RQ.
+do $$
+declare
+  v_def   text;
+  v_viejo text := $v$when 'AREA'      then u.area_id = p_rq.area_id and exists$v$;
+  v_nuevo text := $v$when 'AREA'      then u.area_id = p_rq.area_id and u.id is distinct from p_rq.creado_por and exists$v$;
+begin
+  v_def := replace(pg_get_functiondef('public.fn_rq_avisar(public.requerimientos, text, text, text)'::regprocedure), E'\r', '');
+  if position(v_nuevo in v_def) > 0 then
+    return;
+  end if;
+  if position(v_viejo in v_def) = 0 then
+    raise exception 'public.fn_rq_avisar cambió: no tiene «%» como la conoce el repositorio. Revisarla a mano antes de seguir.', v_viejo;
+  end if;
+  execute replace(v_def, v_viejo, v_nuevo);
+end $$;

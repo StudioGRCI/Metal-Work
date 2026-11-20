@@ -62,6 +62,15 @@ await consulta(`
                  ('BCO-ACB-03', 1, 'Pintura y acabado', 'ACB', null, '2026-11-01', '2026-11-05'),
                  ('BCO-MTZ-01', 1, 'Armado de estructura', 'MTZ', null, '2026-11-18', null)) as x(codigo, orden, nombre, area, plan, ini, fin)
    where not exists (select 1 from public.codigo_etapas e where e.codigo_interno = x.codigo and e.orden = x.orden and e.quitada_en is null)`)
+// Dos unidades del padrón sin trabajo de Diseño: una en el taller y otra con el
+// costeo cerrado (entregada), que no se ofrece.
+await consulta(`insert into public.unidades (codigo_interno, placa, marca, modelo)
+  select x.codigo, x.placa, x.marca, x.modelo from (values ('BCO-PAD-01', 'BCO-101', 'Volvo', 'FMX'), ('BCO-PAD-02', 'BCO-102', 'Scania', 'G460'))
+    as x(codigo, placa, marca, modelo)
+   where not exists (select 1 from public.unidades u where u.codigo_interno = x.codigo)`)
+await consulta(`insert into public.codigo_interno_cierres (codigo, costo_pen, por_fuente, cerrado_por)
+  select 'BCO-PAD-02', 0, '{}', (select id from public.usuarios order by creado_en limit 1)
+   where not exists (select 1 from public.codigo_interno_cierres where codigo = 'BCO-PAD-02' and reabierto_en is null)`)
 const [material] = await consulta(`select descripcion from public.materiales where activo and not unidad_pendiente order by descripcion limit 1`)
 const usuarios = Object.fromEntries((await consulta(`select correo, id from usuarios where correo = any($1)`, [Object.values(CUENTAS)])).map((f) => [f.correo, f.id]))
 for (const [p, c] of Object.entries(CUENTAS)) if (!usuarios[c]) throw new Error(`Falta la cuenta de ${p} (${c}) en la base del banco.`)
@@ -151,19 +160,37 @@ writeFileSync(justificante, pdfConTexto(['Pedido de Acabados', 'Bastan tres']))
   comprobar((await t1.innerText()).includes('Pintura y acabado') && (await t1.innerText()).includes('En marcha'), 'la tarjeta dice su etapa de Acabados y que va en marcha')
   comprobar(!(await t1.innerText()).includes('Armado de estructura'), 'no pinta la etapa de Maestranza')
   comprobar((await pagina.locator('h2', { hasText: /^PLANTA$/ }).count()) === 1, 'PLANTA va al final')
+  const otras = await pagina.locator('ul[aria-label="Las demás unidades del taller"] li').count()
+  const delPadron = Number((await consulta(`select count(distinct normalizar_codigo_interno(codigo_interno)) n from unidades where activo and codigo_interno is not null
+      and normalizar_codigo_interno(codigo_interno) not in ('BCO-ACB-01', 'BCO-ACB-02')
+      and not exists (select 1 from codigo_interno_cierres k where k.codigo = normalizar_codigo_interno(codigo_interno) and k.reabierto_en is null)`))[0].n)
+  comprobar(otras === delPadron && otras > 0, `las demás unidades del taller, para pedir aunque Diseño no cargue nada (${otras} de ${delPadron} en el padrón)`)
+  const lista = pagina.locator('ul[aria-label="Las demás unidades del taller"]')
+  comprobar((await lista.getByText('BCO-PAD-01').count()) === 1 && (await lista.getByText('BCO-PAD-02').count()) === 0,
+    'ofrece la unidad del padrón que sigue en el taller y no la entregada (costeo cerrado)')
+  await lista.getByRole('button', { name: 'Nuevo RQ para BCO-PAD-01' }).click()
+  const deLaLista = await pagina.locator('[role="dialog"] #rq-para').innerText()
+  comprobar(deLaLista.includes('BCO-PAD-01') && deLaLista.includes('Volvo'), `desde la lista se pide con el código puesto («${deLaLista.replace(/\s+/g, ' ')}»)`)
+  await pagina.keyboard.press('Escape')
+  await pagina.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 10000 })
   await pagina.screenshot({ path: join(carpeta, '1-unidades-acabados.png'), fullPage: true })
 
   const antes = Number((await consulta(`select count(*) n from requerimientos where codigo_interno = 'BCO-ACB-01'`))[0].n)
-  await t1.getByRole('button', { name: 'Nuevo requerimiento para BCO-ACB-01' }).click()
+  await t1.getByRole('button', { name: 'Nuevo RQ para BCO-ACB-01' }).click()
   const ventana = pagina.locator('[role="dialog"]')
-  comprobar((await ventana.locator('#rq-area').innerText()).trim() === 'Acabados' && (await ventana.locator('select#rq-area').count()) === 0,
-    'el área va puesta (Acabados) y no se elige')
-  comprobar((await ventana.locator('#rq-codigo').innerText()).includes('BCO-ACB-01') && (await ventana.locator('input#rq-codigo').count()) === 0,
-    'el código va puesto (BCO-ACB-01) y no se escribe')
+  await ventana.locator('#rq-para').waitFor({ timeout: 10000 })
+  const para = await ventana.locator('#rq-para').innerText()
+  comprobar(para.includes('Acabados') && para.includes('BCO-ACB-01') && (await ventana.locator('select#rq-area').count()) === 0
+    && (await ventana.locator('input#rq-codigo').count()) === 0,
+    `el área y el código van puestos en una línea y no se eligen («${para.replace(/\s+/g, ' ')}»)`)
+  const enfocado = await pagina.evaluate(() => document.activeElement?.id)
+  comprobar(enfocado === 'rq-justificacion', `el cursor empieza en la justificación (${enfocado})`)
   await pagina.screenshot({ path: join(carpeta, '2-ventana-de-la-unidad.png') })
   const aviso = await registrar(pagina, `Pintura para el acabado de la unidad ${sello}`, 2)
   const numero = (aviso.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   comprobar(Boolean(numero), `registrado: «${aviso}»`)
+  comprobar((await tarjeta(pagina, 'BCO-ACB-01').locator('p[role="status"]').innerText()).includes(numero),
+    'el verde sale en la tarjeta de la unidad, no arriba de la lista')
   const filas = await consulta(
     `select r.numero, a.codigo area, r.codigo_interno, r.estado, r.creado_por from requerimientos r join areas a on a.id = r.area_id
       where r.codigo_interno = 'BCO-ACB-01' order by r.creado_en desc`)
@@ -193,7 +220,7 @@ writeFileSync(justificante, pdfConTexto(['Pedido de Acabados', 'Bastan tres']))
   await pagina.goto(`${BASE}/requerimientos/unidades`, { waitUntil: 'networkidle' })
 
   // ---------------------------------------------- 2. PLANTA, y lo anula porque es suyo
-  await pagina.getByRole('button', { name: 'Nuevo requerimiento para PLANTA' }).click()
+  await pagina.getByRole('button', { name: 'Nuevo RQ para PLANTA' }).click()
   const avisoPlanta = await registrar(pagina, `Lijas para retoques del área ${sello}`, 5)
   const numeroPlanta = (avisoPlanta.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
   comprobar(Boolean(numeroPlanta), `PLANTA registrado: ${numeroPlanta}`)

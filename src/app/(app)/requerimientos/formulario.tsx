@@ -202,6 +202,28 @@ function FormularioRequerimiento({
     Number(x.cantidad) > 0 && (x.nuevo ? x.descripcion.trim().length >= 3 && x.unidad_medida_id && x.categoria_id : x.material_id),
   )
 
+  const unidadFija = codigoFijo ? codigos?.find((c) => c.codigo === codigoFijo)?.unidad : null
+  // Con el área y el código puestos, lo primero que se escribe es la justificación.
+  const todoFijo = Boolean(areaFija && codigoFijo && tipos.length === 1)
+  const fechaRequerida = (
+    <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">
+      <Entrada id="rq-fecha" name="fecha_requerida" type="date" min={hoyLima()} />
+    </Campo>
+  )
+  const justificacion = (
+    <Campo etiqueta="Justificación" htmlFor="rq-justificacion" requerido>
+      <AreaTexto
+        id="rq-justificacion"
+        name="justificacion"
+        required
+        minLength={10}
+        maxLength={1000}
+        rows={2}
+        placeholder="Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó."
+      />
+    </Campo>
+  )
+
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="operacion_id" value={id} />
@@ -238,13 +260,29 @@ function FormularioRequerimiento({
             </Seleccion>
           </Campo>
         )}
-        {areaFija ? (
-          <Campo etiqueta="Área que lo necesita" htmlFor="rq-area" ayuda="Pides para tu área.">
+        {areaFija && codigoFijo ? (
+          // Pedido desde la tarjeta de la unidad: área y código en una línea, y
+          // el cursor empieza en la justificación, que es lo primero que se escribe.
+          <div className="sm:col-span-2">
             <input type="hidden" name="area_id" value={areaFija.id} />
+            <input type="hidden" name="codigo_interno" value={codigoFijo} />
+            <p id="rq-para" className="flex flex-wrap items-baseline gap-x-2 text-sm text-texto">
+              <span className="text-xs font-medium text-texto-suave">Para</span>
+              <span className="font-medium">{areaFija.nombre}</span>
+              <span aria-hidden className="text-texto-tenue">·</span>
+              <span className="font-mono font-medium">{codigoFijo}</span>
+              {unidadFija && <span className="text-texto-suave">{unidadFija}</span>}
+            </p>
+          </div>
+        ) : areaFija ? (
+          <div className="space-y-1.5">
+            <input type="hidden" name="area_id" value={areaFija.id} />
+            <p className="text-xs font-medium text-texto-suave">Área que lo necesita</p>
             <p id="rq-area" className="flex min-h-10 items-center text-sm font-medium text-texto">
               {areaFija.nombre}
             </p>
-          </Campo>
+            <p className="text-xs text-texto-tenue">Pides para tu área.</p>
+          </div>
         ) : (
           <Campo etiqueta="Área que lo necesita" htmlFor="rq-area" requerido>
             <Seleccion id="rq-area" name="area_id" required value={areaId} onChange={(e) => setAreaId(e.target.value)}>
@@ -273,16 +311,15 @@ function FormularioRequerimiento({
             </Seleccion>
           </Campo>
         )}
-        {codigoFijo ? (
-          <Campo etiqueta="Código interno" htmlFor="rq-codigo" ayuda="La unidad desde la que lo pides.">
+        {areaFija && codigoFijo ? null : codigoFijo ? (
+          <div className="space-y-1.5">
             <input type="hidden" name="codigo_interno" value={codigoFijo} />
+            <p className="text-xs font-medium text-texto-suave">Código interno</p>
             <p id="rq-codigo" className="flex min-h-10 flex-wrap items-center gap-x-2 text-sm text-texto">
               <span className="font-mono font-medium">{codigoFijo}</span>
-              {codigos?.find((c) => c.codigo === codigoFijo)?.unidad && (
-                <span className="text-texto-suave">{codigos.find((c) => c.codigo === codigoFijo)?.unidad}</span>
-              )}
+              {unidadFija && <span className="text-texto-suave">{unidadFija}</span>}
             </p>
-          </Campo>
+          </div>
         ) : tipo === 'ADMINISTRACION' && aTodos ? (
           <input type="hidden" name="codigo_interno" value={CODIGO_TODOS_LOS_ACTIVOS} />
         ) : (
@@ -307,21 +344,10 @@ function FormularioRequerimiento({
             />
           </Campo>
         )}
-        <Campo etiqueta="Se necesita para el" htmlFor="rq-fecha" ayuda="Opcional: el día en que el área lo necesita.">
-          <Entrada id="rq-fecha" name="fecha_requerida" type="date" min={hoyLima()} />
-        </Campo>
+        {!todoFijo && fechaRequerida}
       </div>
-      <Campo etiqueta="Justificación" htmlFor="rq-justificacion" requerido>
-        <AreaTexto
-          id="rq-justificacion"
-          name="justificacion"
-          required
-          minLength={10}
-          maxLength={1000}
-          rows={2}
-          placeholder="Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó."
-        />
-      </Campo>
+      {justificacion}
+      {todoFijo && <div className="grid gap-4 sm:grid-cols-2">{fechaRequerida}</div>}
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-texto">Insumos</legend>

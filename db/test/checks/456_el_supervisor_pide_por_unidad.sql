@@ -8,6 +8,9 @@
 --      área, ni los del supervisor de otra área.
 --   4. Requerimientos sigue registrando para cualquier área de operación.
 --   5. Un puesto sin el permiso (Ventas) no registra.
+--   6. Almacén lo atiende como a cualquiera, y al supervisor le llega un
+--      solo aviso de «Listo en almacén» (es quien lo pidió y el del área).
+--   7. El supervisor no toca un RQ de Administración, y sin área no registra.
 --
 -- Cada paso con el puesto que lo hace —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -30,7 +33,8 @@ begin
    where u.activo and u.rol_id = (select id from public.roles where codigo = 'SUPERVISOR')
      and u.area_id in (select id from public.areas where codigo in ('ACB', 'MTZ'));
   set local session_replication_role = origin;
-  foreach v in array array['SUPERVISOR:ACB:acb', 'SUPERVISOR:MTZ:mtz', 'REQUERIMIENTOS:REQ:req', 'VENDEDOR:VEN:ven'] loop
+  foreach v in array array['SUPERVISOR:ACB:acb', 'SUPERVISOR:MTZ:mtz', 'REQUERIMIENTOS:REQ:req', 'VENDEDOR:VEN:ven',
+                           'ALMACENERO:ALM:alm', 'ADMINISTRACION:ADM:adm', 'SUPERVISOR:-:sin'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.456@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -42,7 +46,7 @@ begin
   perform set_config('prueba.area_acb', (select id::text from public.areas where codigo = 'ACB'), true);
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.area_rrh', (select id::text from public.areas where codigo = 'RRH'), true);
-  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rq6', 'rq7', 'c1', 'c2', 'c3'] loop
+  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rq6', 'rq7', 'rq8', 'rq9', 'c1', 'c2', 'c3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id) values
@@ -85,7 +89,7 @@ select test.afirmar((select numero like 'RQ-%' or numero ~ '^[0-9]' from public.
 -- ======================================== 2. Solo su área y solo de operación
 select test.debe_fallar(format($q$select public.emitir_requerimiento(%L, 'OPERACION', %L, 'CHK456-U1', 'Pintura para Maestranza desde Acabados', null, %L)$q$,
                                pg_temp.id('rq3'), pg_temp.id('area_mtz'), pg_temp.lineas(2)),
-                        '2. el supervisor de Acabados no registra un RQ para Maestranza', 'solo para tu área');
+                        '2. el supervisor de Acabados no registra un RQ para Maestranza', 'de otra área');
 select test.debe_fallar(format($q$select public.emitir_requerimiento(%L, 'ADMINISTRACION', %L, 'OFICINA', 'Pintura para la oficina desde Acabados', null, %L)$q$,
                                pg_temp.id('rq3'), pg_temp.id('area_rrh'), pg_temp.lineas(2)),
                         '2. el supervisor no registra un RQ de Administración', 'requerimiento de Administración');
@@ -120,11 +124,11 @@ select public.corregir_requerimiento(pg_temp.id('c1'), pg_temp.id('rq1'), 'Basta
   pg_temp.id('rq1')::text || '/' || pg_temp.id('c1')::text || '.pdf', 'chk456.pdf', '{"justificacion": "Pintura para el acabado: tres galones bastan"}');
 select test.debe_fallar(format($q$select public.corregir_requerimiento(%L, %L, 'Corrijo el de Requerimientos', %L, 'chk456b.pdf', '{"justificacion": "Otra justificación del supervisor"}')$q$,
                                pg_temp.id('c2'), pg_temp.id('rq4'), pg_temp.id('rq4')::text || '/' || pg_temp.id('c2')::text || '.pdf'),
-                        '3. no corrige el RQ que Requerimientos registró para su área', 'lo registró otra persona');
+                        '3. no corrige el RQ que Requerimientos registró para su área', 'que registró otra persona');
 select test.debe_fallar(format($q$select public.anular_requerimiento(%L, 'Ya no hace falta esta pintura')$q$, pg_temp.id('rq4')),
-                        '3. no anula el RQ que Requerimientos registró para su área', 'lo registró otra persona');
+                        '3. no anula el RQ que Requerimientos registró para su área', 'que registró otra persona');
 select test.debe_fallar(format($q$select public.anular_requerimiento(%L, 'Ya no hace falta esta pintura')$q$, pg_temp.id('rq6')),
-                        '3. no anula el RQ del supervisor de Maestranza', 'solo para tu área');
+                        '3. no anula el RQ del supervisor de Maestranza', 'de otra área');
 select public.anular_requerimiento(pg_temp.id('rq2'), 'Se usó lo que sobró de otra unidad');
 reset role;
 select test.afirmar((select justificacion = 'Pintura para el acabado: tres galones bastan' from public.requerimientos where id = pg_temp.id('rq1')),
@@ -154,6 +158,38 @@ select test.debe_fallar(format($q$select public.emitir_requerimiento(%L, 'OPERAC
 select test.debe_fallar($q$select public.rq_exigir_del_area('OPERACION', 'REGISTRAR', null, null)$q$,
                         '5. la regla del área no se llama desde la API', 'permission denied');
 reset role;
+
+-- ======================================== 6. Almacén lo atiende, un solo aviso
+select pg_temp.como('alm');
+set local role authenticated;
+select public.rq_marcar_listo_en_almacen(pg_temp.id('rq1'), null);
+reset role;
+select test.afirmar((select estado = 'LISTO_EN_ALMACEN' from public.requerimientos where id = pg_temp.id('rq1')),
+                    '6. Almacén deja listo el RQ del supervisor como cualquier otro');
+select test.afirmar((select count(*) = 1 from public.notificaciones
+                      where usuario_id = pg_temp.id('acb') and origen_id = pg_temp.id('rq1') and titulo like 'Listo en almacén:%'),
+                    '6. al supervisor que lo pidió le llega un solo «Listo en almacén», no dos');
+
+-- ======================================== 7. Ni el RQ de Administración, ni sin área
+select pg_temp.como('adm');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rq8'), 'ADMINISTRACION', (select id from public.areas where codigo = 'ADM'), 'OFICINA',
+  'Útiles para la oficina de Administración', null, pg_temp.lineas(1));
+reset role;
+select pg_temp.como('acb');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.anular_requerimiento(%L, 'Ya no hace falta en la oficina')$q$, pg_temp.id('rq8')),
+                        '7. el supervisor no anula un RQ de Administración', 'requerimiento de Administración');
+reset role;
+select pg_temp.como('sin');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.emitir_requerimiento(%L, 'OPERACION', %L, 'CHK456-U1', 'Pintura sin área en la cuenta', null, %L)$q$,
+                               pg_temp.id('rq9'), pg_temp.id('area_acb'), pg_temp.lineas(1)),
+                        '7. el supervisor sin área en su cuenta no registra', 'no tiene área');
+reset role;
+select test.afirmar((select estado <> 'ANULADO' from public.requerimientos where id = pg_temp.id('rq8'))
+                    and not exists (select 1 from public.requerimientos where id = pg_temp.id('rq9')),
+                    '7. el RQ de Administración quedó como estaba y el sin área no dejó RQ');
 
 do $$ begin raise notice 'check 456 (el supervisor pide por unidad): todo en verde'; end $$;
 rollback;
