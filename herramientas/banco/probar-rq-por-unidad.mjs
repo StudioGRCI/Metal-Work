@@ -173,6 +173,20 @@ writeFileSync(justificante, pdfConTexto(['Pedido de Acabados', 'Bastan tres']))
   comprobar(deLaLista.includes('BCO-PAD-01') && deLaLista.includes('Volvo'), `desde la lista se pide con el código puesto («${deLaLista.replace(/\s+/g, ' ')}»)`)
   await pagina.keyboard.press('Escape')
   await pagina.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 10000 })
+  // Pedido de verdad desde la lista: la unidad sube a las tarjetas y el cursor
+  // va a su «Nuevo RQ» nuevo, no se pierde con la fila que se fue.
+  await lista.getByRole('button', { name: 'Nuevo RQ para BCO-PAD-01' }).click()
+  const avisoPad = await registrar(pagina, `Masilla para la unidad del padrón ${sello}`, 1)
+  const numeroPad = (avisoPad.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
+  await tarjeta(pagina, 'BCO-PAD-01').waitFor({ timeout: 15000 }).catch(() => {})
+  const foco = await pagina.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName)
+  comprobar(foco === 'Nuevo RQ para BCO-PAD-01' && (await tarjeta(pagina, 'BCO-PAD-01').count()) === 1,
+    `${numeroPad} desde la lista: la unidad sube a las tarjetas y el cursor va a su botón (${foco})`)
+  // Se anula con la cuenta del supervisor para dejar el banco como estaba.
+  await consulta(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claims', json_build_object('sub', $1, 'role', 'authenticated')::text, false)`, [usuarios[CUENTAS.acb]])
+  await consulta(`select public.anular_requerimiento((select id from public.requerimientos where numero = $1), 'Prueba del banco: se deja como estaba.')`, [numeroPad])
+  await consulta(`select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)`)
+  await pagina.reload({ waitUntil: 'networkidle' })
   await pagina.screenshot({ path: join(carpeta, '1-unidades-acabados.png'), fullPage: true })
 
   const antes = Number((await consulta(`select count(*) n from requerimientos where codigo_interno = 'BCO-ACB-01'`))[0].n)

@@ -46,14 +46,29 @@ export function AvisoDeLaUnidad({ codigo, className }: { codigo: string | null; 
   )
 }
 
-/** «Nuevo RQ» de una unidad; sin código, el de lo que no es de una unidad (PLANTA o la que se escriba). */
-export function BotonPedirParaUnidad({ codigo, children }: { codigo: string | null; children?: ReactNode }) {
+/**
+ * «Nuevo RQ» de una unidad; sin código, el de lo que no es de una unidad (PLANTA
+ * o la que se escriba). Lleva la marca de su código para que el cursor vuelva a
+ * él al cerrar la ventana: la unidad pedida desde «Las demás unidades del
+ * taller» sale de esa lista y sube a las tarjetas, y el botón que la abrió ya no
+ * está. La fila y la tarjeta del mismo código nunca están a la vez.
+ */
+export function BotonPedirParaUnidad({
+  codigo,
+  children,
+  variante,
+}: {
+  codigo: string | null
+  children?: ReactNode
+  variante?: 'primario' | 'contorno'
+}) {
   const ventana = useContext(VentanaCompartida)
   return (
     <Boton
       type="button"
       tamano="sm"
-      variante={codigo ? 'primario' : 'contorno'}
+      variante={variante ?? (codigo ? 'primario' : 'contorno')}
+      data-cursor-vuelve={codigo ? `rq-${codigo}` : undefined}
       disabled={!ventana}
       onClick={() => ventana?.abrir(codigo)}
       aria-label={codigo && !children ? `Nuevo RQ para ${codigo}` : undefined}

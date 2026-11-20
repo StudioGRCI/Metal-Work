@@ -21,6 +21,9 @@ export const metadata = { title: 'RQ por unidad' }
 /** Lo de una unidad en el área: sus etapas, los planos que faltan recibir y sus RQ. */
 type DeLaUnidad = { etapas: EtapaDeCodigo[]; porRecibir: number; rqs: RequerimientoListado[] }
 
+/** Cuántos RQ en camino se pintan en la tarjeta: en el teléfono, siete ocupaban media pantalla. */
+const MAS_EN_LA_TARJETA = 3
+
 const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(r.estado)
 /** Al área todavía le falta algo con la unidad: una etapa sin terminar, un plano por recibir o un RQ que no llega. */
 const sigueEnElArea = (u: DeLaUnidad) => u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real) || u.rqs.some(abierto)
@@ -147,7 +150,9 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
             enTabla={false}
             titulo={q ? 'Ninguna unidad de tu área con esta búsqueda' : 'Ninguna unidad tiene todavía trabajo cargado para tu área'}
             descripcion={
-              otras.length > 0
+              q && otras.length > 0
+                ? 'Está entre las demás unidades del taller: pide desde ahí.'
+                : otras.length > 0
                 ? 'Aparecen aquí cuando Diseño carga una etapa o un plano de tu área. Mientras tanto, pide desde las demás unidades del taller.'
                 : q
                   ? 'Borra la búsqueda con «Limpiar», o pide con «Nuevo RQ con otro código» si la unidad todavía no llega al taller.'
@@ -155,7 +160,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
             }
             accion={
               otras.length > 0 ? (
-                <a href="#otras-unidades" className="text-sm font-medium text-acento hover:underline">
+                <a href="#otras-unidades" className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
                   Ver las demás unidades del taller
                 </a>
               ) : undefined
@@ -163,7 +168,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           />
         </Tarjeta>
       ) : (
-        <ul className="mb-3 grid gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
+        <ul className="mb-3 grid items-start gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
           {unidades.map(([codigo, u]) => (
             <li key={codigo}>
               <TarjetaDeUnidad codigo={codigo} unidad={unidadDe.get(codigo) ?? null} entregada={cerrados.has(codigo)} delArea={u} />
@@ -186,7 +191,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
                   {c.unidad && <span className="block truncate text-xs text-texto-suave">{c.unidad}</span>}
                   <AvisoDeLaUnidad codigo={c.codigo} className="mt-1" />
                 </span>
-                <BotonPedirParaUnidad codigo={c.codigo} />
+                <BotonPedirParaUnidad codigo={c.codigo} variante="contorno" />
               </li>
             ))}
           </ul>
@@ -222,7 +227,7 @@ function TarjetaDeUnidad({
   delArea: DeLaUnidad
 }) {
   return (
-    <Tarjeta className="h-full">
+    <Tarjeta>
       <TarjetaCabecera
         titulo={<span className="font-mono">{codigo}</span>}
         descripcion={unidad ?? undefined}
@@ -248,7 +253,10 @@ function TarjetaDeUnidad({
               })}
               {delArea.porRecibir > 0 && (
                 <li>
-                  <Link href={`/planos?ver=por-recibir&q=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+                  <Link
+                    href={`/planos?ver=por-recibir&q=${encodeURIComponent(codigo)}`}
+                    className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
+                  >
                     {delArea.porRecibir === 1 ? '1 plano por recibir' : `${delArea.porRecibir} planos por recibir`}
                   </Link>
                 </li>
@@ -264,7 +272,10 @@ function TarjetaDeUnidad({
 
 /** Los RQ que van en camino, uno por renglón, y cuántos ya se entregaron. */
 function RequerimientosDeLaUnidad({ codigo, rqs }: { codigo: string; rqs: RequerimientoListado[] }) {
-  const enCamino = rqs.filter(abierto)
+  // Los tres más recientes en camino; el resto, en «Ver sus N».
+  const enCaminoTodos = rqs.filter(abierto)
+  const enCamino = enCaminoTodos.slice(0, MAS_EN_LA_TARJETA)
+  const sinVer = enCaminoTodos.length - enCamino.length
   const entregados = rqs.filter((r) => r.estado === 'ENTREGADO').length
   const anulados = rqs.filter((r) => r.estado === 'ANULADO').length
   const yaCerrados = [
@@ -284,7 +295,10 @@ function RequerimientosDeLaUnidad({ codigo, rqs }: { codigo: string; rqs: Requer
                 const estado = estadoDelRequerimiento(r)
                 return (
                   <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Link href={`/requerimientos?rq=${r.id}`} className="font-mono font-medium text-acento hover:underline">
+                    <Link
+                      href={`/requerimientos?rq=${r.id}`}
+                      className="inline-flex min-h-11 items-center font-mono font-medium text-acento hover:underline sm:min-h-0"
+                    >
                       {r.numero}
                     </Link>
                     {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
@@ -298,8 +312,12 @@ function RequerimientosDeLaUnidad({ codigo, rqs }: { codigo: string; rqs: Requer
             </ul>
           )}
           <p className="mt-1 text-xs text-texto-suave">
-            {yaCerrados.length > 0 && `${yaCerrados.join(', ')} · `}
-            <Link href={`/requerimientos?codigo=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+            {[sinVer > 0 ? (sinVer === 1 ? '1 más en camino' : `${sinVer} más en camino`) : null, ...yaCerrados].filter(Boolean).join(', ')}
+            {(sinVer > 0 || yaCerrados.length > 0) && ' · '}
+            <Link
+              href={`/requerimientos?codigo=${encodeURIComponent(codigo)}`}
+              className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
+            >
               {rqs.length === 1 ? 'Ver su requerimiento' : `Ver sus ${rqs.length} requerimientos`}
             </Link>
           </p>
