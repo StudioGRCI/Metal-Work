@@ -1175,7 +1175,8 @@ async function terminarVentana(pagina) {
     comprobar(!alerta && mov?.cantidad === 4 && mov.codigo === unidadP.codigo && mov.unidad === unidadP.codigo && mov.de_la_unidad === 2
       && sP?.existencia === 1 && sP?.separado === 1 && sP?.libre === 0,
       `lo que pasa de lo separado por el RQ se le descuenta a la unidad: ${JSON.stringify([mov, sP])} ${alerta}`)
-    // Sin RQ, con la placa: sale lo que le queda a la unidad, y el mensaje dice su código.
+    // Sin RQ, con la placa: la ventana dice lo que le queda a la unidad, pero un
+    // accesorio ya no sale sin el RQ que lo pide (migración 20261120410000).
     await abrirVentana()
     await ventana.locator('#sal-material').click()
     await ventana.getByRole('searchbox', { name: 'Código o descripción' }).fill(faroP.codigo)
@@ -1190,10 +1191,10 @@ async function terminarVentana(pagina) {
     await ventana.locator('#sal-foto').setInputFiles(foto)
     await ventana.getByRole('button', { name: 'Confirmar salida' }).click()
     const alertaSinRq = await terminarVentana(pagina)
-    const dice = await texto(pagina.locator('[role="status"]', { hasText: 'Salida registrada' })).catch(() => '')
     const sP2 = await stock()
-    comprobar(!alertaSinRq && dice === `Salida registrada en el kardex para ${unidadP.codigo}.` && sP2?.existencia === 0 && sP2?.libre === 0,
-      `con la placa, el mensaje dice el código de la unidad y no la placa: «${dice}» ${JSON.stringify(sP2)} ${alertaSinRq}`)
+    comprobar(alertaSinRq.includes('Un accesorio sale solo con el requerimiento que lo pide') && sP2?.existencia === 1,
+      `sin RQ, el faro no sale aunque sea de la unidad: la base pide el RQ: «${alertaSinRq}» ${JSON.stringify(sP2)}`)
+    if (await ventana.isVisible().catch(() => false)) await pagina.keyboard.press('Escape')
     // Los 3 que hay entraron para la unidad, y un RQ de PLANTA separó 2 igual: lo
     // del RQ no está aparte de lo de la unidad, y la base se lo descuenta a ella.
     // La ayuda lo dice así, y no «2 de este RQ». Almacén escribe la cantidad
@@ -1405,9 +1406,17 @@ async function terminarVentana(pagina) {
       const diceQ = await texto(pagina.locator('[role="status"]', { hasText: 'Salida registrada' })).catch(() => '')
       const [movQ] = await consulta(`select codigo_interno as codigo, unidad_id from public.movimientos_materiales
         where material_id = $1 and tipo = 'SALIDA'`, [m.id])
-      comprobar(ofrecido > 0 && motivoQ === 0 && !alertaQ && diceQ === `Salida registrada en el kardex para ${codPlaca}.`
-        && movQ?.codigo === codPlaca && movQ.unidad_id === sinCodigo.id,
-        `${m === faroQ ? 'el accesorio' : 'el consumible'} sale al código de la lista escrito como la placa de un vehículo sin código: ${ofrecido} ${motivoQ} «${diceQ}» ${JSON.stringify(movQ)} ${alertaQ}`)
+      // El accesorio ya no sale sin el RQ que lo pide (20261120410000): la lista
+      // resuelve igual el código, y la base lo frena al confirmar.
+      if (m === faroQ) {
+        comprobar(ofrecido > 0 && motivoQ === 0 && alertaQ.includes('Un accesorio sale solo con el requerimiento que lo pide') && !movQ,
+          `el accesorio, con el código de la lista escrito como la placa, no sale sin su RQ: ${ofrecido} ${motivoQ} ${JSON.stringify(movQ)} «${alertaQ}»`)
+        if (await ventana.isVisible().catch(() => false)) await pagina.keyboard.press('Escape')
+      } else {
+        comprobar(ofrecido > 0 && motivoQ === 0 && !alertaQ && diceQ === `Salida registrada en el kardex para ${codPlaca}.`
+          && movQ?.codigo === codPlaca && movQ.unidad_id === sinCodigo.id,
+          `el consumible sale al código de la lista escrito como la placa de un vehículo sin código: ${ofrecido} ${motivoQ} «${diceQ}» ${JSON.stringify(movQ)} ${alertaQ}`)
+      }
     }
 
     // El código que Requerimientos le puso al vehículo sin código, escrito de
@@ -1474,8 +1483,9 @@ async function terminarVentana(pagina) {
     const alertaR = sePuedeR ? await terminarVentana(pagina) : 'no deja confirmar'
     const [movR] = await consulta(`select codigo_interno as codigo, unidad_id from public.movimientos_materiales
       where material_id = $1 and tipo = 'SALIDA'`, [faroR.id])
-    comprobar(!alertaR && movR?.codigo === codPlaca && movR.unidad_id === sinCodigo.id,
-      `al tocar «Cambiar a ${codPlaca}», el accesorio sale a ese código y queda en el vehículo: ${JSON.stringify(movR)} ${alertaR}`)
+    comprobar(alertaR.includes('Un accesorio sale solo con el requerimiento que lo pide') && !movR,
+      `al tocar «Cambiar a ${codPlaca}», el campo queda con ese código, y el accesorio no sale sin su RQ: ${JSON.stringify(movR)} «${alertaR}»`)
+    if (await ventana.isVisible().catch(() => false)) await pagina.keyboard.press('Escape')
     // Un consumible sí sale al vehículo por su placa; el campo dice que en la
     // lista está su código, por si el gasto es de él.
     const discoR = await sembrar('DISCOR', 2, [])
@@ -1806,26 +1816,16 @@ async function terminarVentana(pagina) {
     comprobar(aClavo === `Se separó 3 UND más de lo que hay. Para ${nZ} puedes sacar 2 UND sin tocar lo que es de otros.`
       && ayudaClavo === 'Hay 2: 0 libres y 2 de este RQ · el RQ pide 5 más',
       `lo separado de más por el mismo RQ se dice aunque nada sea de otro: «${aClavo}» «${ayudaClavo}»`)
+    // Con el ítem del clavo elegido, sale el clavo (o lo comprado para él): la
+    // grapa del otro ítem ya no se ofrece (20261120410000). Que la base también
+    // la frena lo prueba el check 457.
     await ventana.locator('#sal-material').click()
     await ventana.getByRole('searchbox', { name: 'Código o descripción' }).fill(grapa.codigo)
-    await ventana.locator('[role="option"]', { hasText: grapa.descripcion }).click()
-    await pagina.waitForTimeout(200)
-    const aGrapa = (await aviso.count()) ? await texto(aviso) : ''
-    const propuestaGrapa = await ventana.locator('#sal-cantidad').inputValue()
-    comprobar(aGrapa === `Para ${nZ} puedes sacar 2 UND sin tocar lo que es de otros. Ya tiene dueño: 4 de ${codZ} (${nZ}, otro ítem).`
-      && propuestaGrapa === '2',
-      `lo que separó el otro ítem del mismo RQ no es de este, y propone lo que no es de otros: «${aGrapa}» «${propuestaGrapa}»`)
-    // Salen 2 grapas con el ítem 1: el ítem 2 conserva sus 4 en la base.
-    await ventana.locator('#sal-cantidad').fill('2')
-    await ventana.locator('#sal-recibe').fill('Soldador de turno')
-    await ventana.locator('#sal-foto').setInputFiles(foto)
-    await ventana.getByRole('button', { name: 'Confirmar salida' }).click()
-    const alerta = await terminarVentana(pagina)
+    await pagina.waitForTimeout(400)
+    const ofreceGrapa = await ventana.locator('[role="option"]', { hasText: grapa.descripcion }).count()
     const sG = await stockDe(grapa.id)
-    const [mov] = await consulta(`select count(*)::int as n, max(cantidad)::float8 as cantidad from public.movimientos_materiales
-      where requerimiento_linea_id = $1 and material_id = $2 and tipo = 'SALIDA'`, [await insumo(rqZ), grapa.id])
-    comprobar(!alerta && mov.n === 1 && mov.cantidad === 2 && sG?.existencia === 4 && sG?.separado === 4 && sG?.libre === 0,
-      `la salida del ítem 1 con grapas no le quita al ítem 2 lo que separó: ${JSON.stringify([mov, sG])} ${alerta}`)
+    comprobar(ofreceGrapa === 0 && sG?.existencia === 6,
+      `con el ítem del clavo, la grapa del otro ítem no se ofrece: ${ofreceGrapa} ${JSON.stringify(sG)}`)
     comprobar(errores.length === 0, `sin errores de consola en la salida de dos ítems ${errores.join(' | ')}`)
     await contexto.close()
   }
