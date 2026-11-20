@@ -807,7 +807,7 @@ function SeccionDelCodigo({
         etiqueta="Código interno"
         htmlFor={idCodigo}
         requerido
-        ayuda={numero === 1 ? 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28; PLANTA si no es para una unidad.' : undefined}
+        ayuda={numero === 1 ? 'El de la unidad, por ejemplo PLA_SR_O4_1_26/28; para mantenimiento o garantía, el N.º de su OT (OT 2921-2026); PLANTA si no es para una unidad.' : undefined}
       >
         <BuscadorCodigo
           id={idCodigo}

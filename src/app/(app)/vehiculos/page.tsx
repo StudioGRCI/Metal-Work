@@ -6,7 +6,14 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { cargarVehiculos, codigosParaIngreso, estadosDeSalida, type EstadoDeSalida, type RegistroVehiculo } from '@/lib/datos/vehiculos'
+import {
+  cargarVehiculos,
+  codigosParaIngreso,
+  estadosDeSalida,
+  otsParaIngreso,
+  type EstadoDeSalida,
+  type RegistroVehiculo,
+} from '@/lib/datos/vehiculos'
 import { MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
 import { fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -26,21 +33,22 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   const registra = puede(perfil, 'vehiculos.registrar')
   const params = await searchParams
   const vista = params.vista === 'historial' ? 'historial' : 'en_planta'
-  // Los códigos con OT que puede elegir quien registra el ingreso no dependen de
-  // la lista: se piden a la vez.
+  // Los códigos y las OT que puede elegir quien registra el ingreso no dependen
+  // de la lista: se piden a la vez.
   const pidiendoCodigos = registra ? codigosParaIngreso() : Promise.resolve([])
+  const pidiendoOts = registra ? otsParaIngreso() : Promise.resolve([])
   const registros = await cargarVehiculos(vista)
   // Lo que le falta a cada vehículo de trabajo para salir.
   const enPlanta = registros.filter((r) => !r.salida_en && !r.anulado_en).map((r) => r.id)
-  const [estados, codigos] = await Promise.all([estadosDeSalida(enPlanta), pidiendoCodigos])
+  const [estados, codigos, ots] = await Promise.all([estadosDeSalida(enPlanta), pidiendoCodigos, pidiendoOts])
 
   return (
     <>
       <EncabezadoPagina
         titulo="Ingreso y salida de vehículos"
-        ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. Reemplaza el seguimiento de portería en Excel."
+        ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. La fabricación entra con su código interno; el mantenimiento y la garantía, con el N.º de su OT. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
-        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} />}
+        acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} ots={ots} />}
       />
 
       <Vistas
@@ -179,12 +187,15 @@ function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado
   return (
     <div className="flex flex-wrap items-center gap-1">
       <Insignia tono="aviso">En planta</Insignia>
+      {/* Garantía y mantenimiento esperan que Administración dé por terminado el trabajo de su OT. */}
       {estado?.exige && estado.garantia_ot && (
         <span className="tabular text-xs text-texto-suave" data-garantia-salida={estado.garantia_estado ?? ''}>
-          Garantía {estado.garantia_ot} ·{' '}
+          {r.motivo === 'MANTENIMIENTO' ? 'Mantenimiento' : 'Garantía'} OT {estado.garantia_ot} ·{' '}
           {estado.garantia_estado === 'TERMINADA'
-            ? estado.falta_para_salir ? 'terminada, falta Tesorería' : 'terminada'
-            : estado.garantia_estado === 'ANULADA' ? 'OT anulada' : 'por terminar'}
+            ? `${r.motivo === 'MANTENIMIENTO' ? 'terminado' : 'terminada'}${estado.falta_para_salir ? ', falta Tesorería' : ''}`
+            : estado.garantia_estado === 'ANULADA'
+              ? 'OT anulada'
+              : 'por terminar'}
         </span>
       )}
       {estado?.exige && !estado.garantia_ot && (

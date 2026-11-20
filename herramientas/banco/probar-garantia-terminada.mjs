@@ -5,8 +5,9 @@
  * con el visto de Tesorería el vehículo sale».
  *
  *   1. Requerimientos, en el celular: con el motivo «Garantía» la ventana del
- *      ingreso ofrece solo el código con su OT de garantía abierta, y muestra
- *      esa OT. El ingreso queda atado a ella; la salida queda apagada y dice que
+ *      ingreso pide el N.º de la OT de garantía, no el código de la unidad
+ *      (migración 20261120500000), y muestra su unidad. El ingreso queda atado
+ *      a ella con el código «OT 9443-AAAA»; la salida queda apagada y dice que
  *      espera a Administración, sin hablar del avance del código.
  *   2. Gerencia abre la OT de garantía: dice que está por terminar, sin botón.
  *   3. Administración la da por terminada desde la OT, con una nota: la OT no
@@ -81,9 +82,10 @@ await consulta(`delete from public.ot_garantia_terminada where orden_id = $1`, [
 // Si una vuelta anterior lo dejó en la planta, se anula ese ingreso (no se borra).
 await consulta(
   `update public.registro_vehiculos set anulado_en = now(), anulado_por = ingreso_por, motivo_anulacion = 'Vuelta anterior del banco'
-    where codigo_interno = $1 and salida_en is null and anulado_en is null`,
-  [CODIGO],
+    where (codigo_interno = $1 or orden_id = $2 or unidad_id = $3) and salida_en is null and anulado_en is null`,
+  [CODIGO, orden.id, unidad.id],
 )
+const CODIGO_OT = `OT ${NUMERO}`
 const [req] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.requerimientos])
 const [adm] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.administracion])
 
@@ -138,27 +140,22 @@ let registroId = null
   await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
   await pagina.getByRole('button', { name: 'Registrar ingreso' }).click()
   const v = pagina.locator('[role="dialog"]')
-  await v.locator('#veh-motivo').selectOption('FABRICACION')
-  await v.locator('#veh-codigo').click()
-  await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
-  // Las opciones de la lista de códigos, no las del motivo (que también son `option`).
-  const deFabricacion = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
-  await pagina.keyboard.press('Escape')
   await v.locator('#veh-motivo').selectOption('GARANTIA')
-  const sinLista = limpio(await v.locator('#veh-codigo').innerText())
+  comprobar((await v.locator('#veh-codigo').count()) === 0, 'por garantía ya no se pide el código interno')
+  const sinLista = limpio(await v.locator('#veh-orden').innerText())
   let porGarantia = []
-  if (!sinLista.includes('No hay códigos')) {
-    await v.locator('#veh-codigo').click()
+  if (!sinLista.includes('No hay OT')) {
+    await v.locator('#veh-orden').click()
     await v.getByRole('listbox').getByRole('option').first().waitFor({ timeout: 10000 }).catch(() => {})
+    // Las opciones de la lista de OT, no las del motivo (que también son `option`).
     porGarantia = (await v.getByRole('listbox').getByRole('option').allInnerTexts()).map(limpio)
   }
-  const nuestro = porGarantia.find((o) => o.includes(CODIGO))
-  comprobar(Boolean(nuestro) && nuestro.includes(NUMERO), `por garantía se ofrece el código con su OT de garantía («${nuestro}»)`)
-  comprobar(porGarantia.length < deFabricacion.length,
-    `y solo los que tienen OT de garantía abierta (${porGarantia.length} de los ${deFabricacion.length} de fabricación)`)
-  await v.getByRole('option', { name: new RegExp(CODIGO.replace(/[/]/g, '\\/')) }).click()
-  const resumen = limpio(await v.locator(`[data-codigo-elegido="${CODIGO}"]`).innerText())
-  comprobar(resumen.includes(NUMERO), `el elegido muestra la OT de garantía: «${resumen}»`)
+  const nuestro = porGarantia.find((o) => o.includes(NUMERO))
+  comprobar(Boolean(nuestro) && nuestro.includes('F3P-772'), `por garantía se ofrece su OT por el número, con la placa («${nuestro}»)`)
+  await v.getByRole('option', { name: new RegExp(NUMERO) }).click()
+  const resumen = limpio(await v.locator(`[data-ot-elegida="${NUMERO}"]`).innerText())
+  comprobar(resumen.includes(CODIGO_OT) && resumen.includes(unidad.razon_social), `el elegido dice cómo se costea y de quién es: «${resumen}»`)
+  comprobar((await v.locator('#veh-placa').inputValue()).includes('F3P'), 'y trae la placa de su unidad')
   await v.locator('#veh-obs').fill('Vuelve por la compuerta')
   await v.locator('input[type="file"]:not([capture])').setInputFiles(join(fotos, 'entra.jpg'))
   await pagina.waitForFunction(() => !document.body.innerText.includes('subiendo…'), null, { timeout: 60000 })
@@ -167,14 +164,14 @@ let registroId = null
   await pagina.locator('[role="status"]').filter({ hasText: /\S/ }).first().waitFor({ timeout: 20000 })
 
   const [reg] = await consulta(
-    `select id, orden_id from public.registro_vehiculos where codigo_interno = $1 and salida_en is null and anulado_en is null`,
-    [CODIGO],
+    `select id, codigo_interno from public.registro_vehiculos where orden_id = $1 and salida_en is null and anulado_en is null`,
+    [orden.id],
   )
   registroId = reg?.id ?? null
-  comprobar(reg?.orden_id === orden.id, 'en la base: el ingreso queda atado a la OT de garantía')
+  comprobar(reg?.codigo_interno === CODIGO_OT, `en la base: el ingreso queda atado a la OT de garantía, con el código ${reg?.codigo_interno}`)
 
   await pagina.reload({ waitUntil: 'networkidle' })
-  const fila = pagina.locator('tbody tr', { hasText: CODIGO })
+  const fila = pagina.locator('tbody tr', { hasText: CODIGO_OT })
   await fila.first().waitFor({ timeout: 15000 }).catch(() => {})
   comprobar(await fila.getByRole('button', { name: 'Marcar salida' }).isDisabled(), 'en la lista, «Marcar salida» queda apagado')
   const porque = limpio(await fila.locator('[data-bloqueo-salida]').innerText().catch(() => ''))
@@ -245,7 +242,7 @@ let registroId = null
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.requerimientos, CELULAR)
   await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
-  const fila = pagina.locator('tbody tr', { hasText: CODIGO })
+  const fila = pagina.locator('tbody tr', { hasText: CODIGO_OT })
   await fila.first().waitFor({ timeout: 15000 }).catch(() => {})
   const situacion = limpio(await fila.locator('[data-garantia-salida]:visible').first().innerText().catch(() => ''))
   comprobar(situacion.includes('terminada, falta Tesorería'), `la fila dice «${situacion}»`)

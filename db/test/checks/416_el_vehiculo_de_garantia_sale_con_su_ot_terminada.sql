@@ -1,6 +1,7 @@
 -- El vehículo de garantía entra con su OT de garantía y sale cuando
 -- Administración da por terminada la garantía, con el visto de Tesorería
--- (migración 20261021120000). El avance del código no decide nada: aquí va en
+-- (migración 20261021120000). Desde la 20261120500000 entra eligiendo esa OT
+-- por su número, no por el código de la unidad (el resto, en el check 455). El avance del código no decide nada: aquí va en
 -- 0 % y aun así sale. Cada paso con su puesto —Requerimientos registra,
 -- Administración termina la garantía, Tesorería revisa— y `set local role
 -- authenticated`. El armazón lo pone el administrador. Termina en rollback.
@@ -90,6 +91,11 @@ create or replace function pg_temp.ingreso_sql(p_registro text, p_codigo text, p
   select format($q$select public.registrar_ingreso_vehiculo(%L, null, null, %L, '', '', %L, null, null, pg_temp.foto(%L, 'ingreso'))$q$,
                 current_setting('prueba.' || p_registro), p_codigo, p_motivo, p_registro);
 $$;
+-- Por mantenimiento o garantía se entra eligiendo la OT (migración 20261120500000).
+create or replace function pg_temp.ingreso_ot_sql(p_registro text, p_orden text, p_motivo text) returns text language sql as $$
+  select format($q$select public.registrar_ingreso_vehiculo(%L, null, null, null, '', '', %L, null, null, pg_temp.foto(%L, 'ingreso'), %L)$q$,
+                current_setting('prueba.' || p_registro), p_motivo, p_registro, current_setting('prueba.' || p_orden));
+$$;
 create or replace function pg_temp.salida_sql(p_registro text) returns text language sql as $$
   select format($q$select public.registrar_salida_vehiculo(%L, null, 'Sale', pg_temp.foto(%L, 'salida'))$q$,
                 current_setting('prueba.' || p_registro), p_registro);
@@ -107,12 +113,13 @@ select test.afirmar((select string_agg(codigo_interno || '=' || coalesce(garanti
                        from public.vehiculos_codigos_para_ingreso() where codigo_interno like 'CHK416%')
                     = 'CHK416_G_26/50=9416-2026 CHK416_H_26/51=9417-2026 CHK416_K_26/52=- CHK416_M_26/53=9419-2026',
   'la ventana sabe qué código tiene su OT de garantía abierta (la terminada de K no cuenta)');
-select test.debe_fallar(pg_temp.ingreso_sql('h', 'CHK416_G_26/99', 'GARANTIA'),
-  'con un código que no existe no entra', 'no es de ninguna unidad');
-select test.debe_fallar(pg_temp.ingreso_sql('k', 'CHK416_K_26/52', 'GARANTIA'),
-  'ni con la OT de garantía ya terminada', 'no tiene una OT de garantía abierta');
-select public.registrar_ingreso_vehiculo(pg_temp.id('g'), null, null, 'chk416_g_26/50', '', '', 'GARANTIA', null,
-  'Vuelve por la compuerta', pg_temp.foto('g', 'ingreso'));
+select test.debe_fallar(pg_temp.ingreso_sql('h', 'CHK416_G_26/50', 'GARANTIA'),
+  'por garantía ya no entra con el código de la unidad, sino con su OT', 'Elige la OT de garantía');
+select set_config('prueba.garantia_k', :'garantia_k', true);
+select test.debe_fallar(pg_temp.ingreso_ot_sql('k', 'garantia_k', 'GARANTIA'),
+  'ni con la OT de garantía ya terminada', 'ya está terminado');
+select public.registrar_ingreso_vehiculo(pg_temp.id('g'), null, null, null, '', '', 'GARANTIA', null,
+  'Vuelve por la compuerta', pg_temp.foto('g', 'ingreso'), pg_temp.id('garantia_g'));
 reset role;
 select test.afirmar((select orden_id = :'garantia_g'::uuid and empresa = 'QA CLIENTE 416'
                        from public.registro_vehiculos where id = pg_temp.id('g')),
@@ -196,19 +203,20 @@ reset role;
 select test.afirmar((select salida_en is not null from public.registro_vehiculos where id = pg_temp.id('g')),
   'con la garantía terminada y Tesorería, el vehículo sale');
 
--- ===================================================== 4. Por otro motivo, la misma regla
--- El código con una OT de garantía abierta que entra por mantenimiento queda
--- atado a ella (es su OT más reciente) y espera lo mismo.
+-- ===================================================== 4. Otras OT de garantía
+-- La unidad que tiene su OT de fabricación y la de garantía entra por la de
+-- garantía y espera lo mismo.
+select set_config('prueba.garantia_m', :'garantia_m', true);
 select test.como_usuario(:'req_id');
 set local role authenticated;
-select public.registrar_ingreso_vehiculo(pg_temp.id('m'), null, null, 'CHK416_M_26/53', '', '', 'MANTENIMIENTO', null, null,
-  pg_temp.foto('m', 'ingreso'));
+select public.registrar_ingreso_vehiculo(pg_temp.id('m'), null, null, null, '', '', 'GARANTIA', null, null,
+  pg_temp.foto('m', 'ingreso'), pg_temp.id('garantia_m'));
 select test.afirmar(pg_temp.estado('m') ->> 'garantia_ot' = '9419-2026'
                     and pg_temp.estado('m') ->> 'falta_para_salir' like '%garantía de la OT 9419-2026%',
-  'entrando por mantenimiento, su salida también espera la OT de garantía');
+  'su salida espera la OT de garantía');
 -- La de garantía en borrador: entra por garantía y dice que espera a Gerencia.
-select public.registrar_ingreso_vehiculo(pg_temp.id('h'), null, null, 'CHK416_H_26/51', '', '', 'GARANTIA', null, null,
-  pg_temp.foto('h', 'ingreso'));
+select public.registrar_ingreso_vehiculo(pg_temp.id('h'), null, null, null, '', '', 'GARANTIA', null, null,
+  pg_temp.foto('h', 'ingreso'), pg_temp.id('garantia_h'));
 select test.afirmar(pg_temp.estado('h') ->> 'falta_para_salir' like 'La OT de garantía 9417-2026 espera la aprobación de Gerencia%',
   'la garantía en borrador espera la aprobación de Gerencia');
 reset role;
@@ -230,10 +238,11 @@ reset role;
 select pg_temp.unidad('CHK416_N_26/55') as unidad_n \gset
 select pg_temp.orden('9422-2026', :'unidad_n', 'GARANTIA') as garantia_n \gset
 select set_config('prueba.n', gen_random_uuid()::text, true);
+select set_config('prueba.garantia_n', :'garantia_n', true);
 select test.como_usuario(:'req_id');
 set local role authenticated;
-select public.registrar_ingreso_vehiculo(pg_temp.id('n'), null, null, 'CHK416_N_26/55', '', '', 'GARANTIA', null, null,
-  pg_temp.foto('n', 'ingreso'));
+select public.registrar_ingreso_vehiculo(pg_temp.id('n'), null, null, null, '', '', 'GARANTIA', null, null,
+  pg_temp.foto('n', 'ingreso'), pg_temp.id('garantia_n'));
 reset role;
 select test.como_usuario(:'admin_id');
 update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se registró en otra OT (prueba 416)' where id = :'garantia_n';
@@ -257,22 +266,30 @@ select public.registrar_ingreso_vehiculo(pg_temp.id('c'), null, null, 'CHK416_C_
   pg_temp.foto('c', 'ingreso'));
 select test.afirmar((select motivo = 'COCHERA' and unidad_id = :'unidad_c'::uuid from public.registro_vehiculos where id = pg_temp.id('c')),
   'con su garantía terminada, la unidad entra a la cochera, anotada con su unidad');
+reset role;
+-- Le abren una OT de mantenimiento mientras está en la cochera.
+select test.como_usuario(:'admin_id');
+select pg_temp.orden('9426-2026', :'unidad_c', 'MANTENIMIENTO') as mantenimiento_c \gset
+select set_config('prueba.mantenimiento_c', :'mantenimiento_c', true);
+select test.como_usuario(:'req_id');
+set local role authenticated;
 select set_config('prueba.c2', gen_random_uuid()::text, true);
-select test.debe_fallar(pg_temp.ingreso_sql('c2', 'CHK416_C_26/56', 'MANTENIMIENTO'),
+select test.debe_fallar(pg_temp.ingreso_ot_sql('c2', 'mantenimiento_c', 'MANTENIMIENTO'),
   'y mientras está en la cochera no entra otra vez por trabajo', 'ya está en la planta');
 reset role;
 
--- La OT de garantía va con su unidad, y la unidad con su código.
+-- La OT de garantía va con su unidad. Desde la 20261120500000 la unidad ya no
+-- necesita código interno: el vehículo entra por el número de la OT.
 select test.como_usuario(:'admin_id');
 select test.debe_fallar($q$insert into public.ordenes_trabajo (numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion)
   values ('9424-2026', current_setting('prueba.cliente')::uuid, current_setting('prueba.sede')::uuid, 'GARANTIA', 'NORMAL', 'Sin unidad')$q$,
   'la OT de garantía sin unidad no se registra', 'elige su unidad');
 insert into public.unidades (cliente_id, tipo_vehiculo) values (:'cliente_id', 'CAMION') returning id as unidad_sin_codigo \gset
 select set_config('prueba.sin_codigo', :'unidad_sin_codigo', true);
-select test.debe_fallar($q$insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, tipo_trabajo, prioridad, descripcion)
-  values ('9425-2026', current_setting('prueba.cliente')::uuid, current_setting('prueba.sin_codigo')::uuid,
-          current_setting('prueba.sede')::uuid, 'GARANTIA', 'NORMAL', 'Sin código')$q$,
-  'ni con una unidad sin código interno', 'no tiene código interno');
+insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, tipo_trabajo, prioridad, descripcion)
+values ('9425-2026', :'cliente_id', :'unidad_sin_codigo', :'sede_id', 'GARANTIA', 'NORMAL', 'Sin código');
+select test.afirmar(exists (select 1 from public.ordenes_trabajo where numero = '9425-2026'),
+  'con una unidad sin código interno sí se registra');
 
 -- La función interna no la llama nadie desde la API.
 select test.como_usuario(:'req_id');
