@@ -65,7 +65,8 @@ begin
     left join public.areas a on a.id = u.area_id
    where u.id = public.usuario_actual() and u.activo;
   if v_mia is null then
-    raise exception 'Tu cuenta no tiene área: sin ella no puedes registrar requerimientos.'
+    raise exception 'Tu cuenta no tiene área: sin ella no puedes % requerimientos.',
+      case p_paso when 'ANULAR' then 'anular' when 'CORREGIR' then 'corregir' else 'registrar' end
       using errcode = 'insufficient_privilege';
   end if;
   if p_area_id is distinct from v_mia then
@@ -108,6 +109,11 @@ begin
       ('public.puede_ver_requerimientos()',
        $v$or public.tiene_permiso('requerimientos.ver')$v$,
        $v$or public.tiene_permiso('requerimientos.ver') or public.tiene_permiso('requerimientos.area')$v$),
+      -- La lista de códigos del formulario: el supervisor ya entraba por
+      -- `reporte_diario.registrar`, pero quien registra RQ la necesita por sí.
+      ('public.codigos_internos_para_elegir()',
+       $v$or public.tiene_permiso('requerimientos.administracion') or public.tiene_permiso('tesoreria.caja')$v$,
+       $v$or public.tiene_permiso('requerimientos.administracion') or public.tiene_permiso('requerimientos.area') or public.tiene_permiso('tesoreria.caja')$v$),
       -- La puerta de entrada de anular, antes de leer el RQ.
       ('public.anular_requerimiento(uuid, text)',
        $v$if not (public.es_admin() or public.tiene_permiso('requerimientos.emitir') or public.tiene_permiso('requerimientos.administracion')) then$v$,
@@ -140,16 +146,31 @@ alter policy justificantes_subir on storage.objects with check (
 
 -- ================================== 5. Un solo aviso al supervisor que lo pidió
 -- Cuando el supervisor registra el RQ, es a la vez quien lo pidió (EMISOR) y el
--- del área (AREA): «Listo en almacén», «Ya no está listo» y «Por comprar otra
--- vez» le llegaban dos veces. Todo aviso al AREA va con uno al EMISOR, así que
--- el del área se salta a quien registró el RQ.
+-- del área (AREA): «Listo en almacén» y «Ya no está listo» le llegaban dos
+-- veces, uno por cada lado. No se le quita el del área —«Ya no está listo» de
+-- la recompra solo va al área, y el del área dice el código interno—: el aviso
+-- no se repite a quien ya recibió en esta misma operación uno con el mismo
+-- título del mismo RQ. En cada par el del área va primero.
 do $$
 declare
-  v_def   text;
-  v_viejo text := $v$when 'AREA'      then u.area_id = p_rq.area_id and exists$v$;
-  v_nuevo text := $v$when 'AREA'      then u.area_id = p_rq.area_id and u.id is distinct from p_rq.creado_por and exists$v$;
+  v_def    text;
+  v_firma  regprocedure := 'public.fn_rq_avisar(public.requerimientos, text, text, text)'::regprocedure;
+  -- La primera versión de este cambio (solo en bases de prueba) saltaba al
+  -- emisor en la rama del área: se vuelve a la original.
+  v_previo text := $v$when 'AREA'      then u.area_id = p_rq.area_id and u.id is distinct from p_rq.creado_por and exists$v$;
+  v_area   text := $v$when 'AREA'      then u.area_id = p_rq.area_id and exists$v$;
+  v_viejo  text := $v$and u.id is distinct from public.usuario_actual()
+     and case p_a$v$;
+  v_nuevo  text := $v$and u.id is distinct from public.usuario_actual()
+     and not exists (select 1 from public.notificaciones n
+                      where n.usuario_id = u.id and n.origen_id = p_rq.id and n.titulo = p_titulo and n.creado_en = now())
+     and case p_a$v$;
 begin
-  v_def := replace(pg_get_functiondef('public.fn_rq_avisar(public.requerimientos, text, text, text)'::regprocedure), E'\r', '');
+  v_def := replace(pg_get_functiondef(v_firma), E'\r', '');
+  if position(v_previo in v_def) > 0 then
+    v_def := replace(v_def, v_previo, v_area);
+    execute v_def;
+  end if;
   if position(v_nuevo in v_def) > 0 then
     return;
   end if;

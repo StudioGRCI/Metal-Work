@@ -55,12 +55,19 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const area = perfil.area_id
 
-  const [planos, etapas, requerimientos, catalogos] = await Promise.all([
+  // Los RQ en camino se leen aparte: la lista de recientes llega hasta 300, y
+  // un RQ abierto más viejo que eso sacaría a su unidad de la pantalla.
+  const [planos, etapas, recientes, enCamino, catalogos] = await Promise.all([
     area ? planosDeCodigo(null, { conPeso: false }) : Promise.resolve([]),
     area ? etapasDeCodigo(null) : Promise.resolve([]),
     area ? cargarRequerimientos({ area, tipo: 'OPERACION' }) : Promise.resolve([]),
+    area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true }) : Promise.resolve([]),
     catalogosDelRequerimiento(),
   ])
+  const requerimientos = [...new Map([...recientes, ...enCamino].map((r) => [r.id, r])).values()]
+  // Sin la lista de códigos no se sabe qué unidad está entregada ni cuáles
+  // tiene el padrón: se dice, no se pinta vacío.
+  const sinPadron = catalogos.codigos === null
   const areaFija = catalogos.areas.find((a) => a.id === area && a.requerimiento === 'OPERACION')
   const unidadDe = new Map((catalogos.codigos ?? []).map((c) => [c.codigo, c.unidad]))
   // Gerencia cerró el costeo al entregarla: la pantalla ya no la ofrece para
@@ -175,6 +182,16 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
             </li>
           ))}
         </ul>
+      )}
+
+      {sinPadron && (
+        <Tarjeta className="mb-3">
+          <SinDatos
+            enTabla={false}
+            titulo="No se pudo leer el padrón de unidades"
+            descripcion="Faltan las demás unidades del taller y no se sabe cuáles ya se entregaron. Recarga la pantalla; si sigue, pide con «Nuevo RQ con otro código»."
+          />
+        </Tarjeta>
       )}
 
       {otras.length > 0 && (

@@ -74,7 +74,7 @@ const PERMISO_DEL_TIPO = {
     permiso: ['requerimientos.emitir', 'requerimientos.area'],
     quien: 'No tienes permiso para registrar requerimientos de operación.',
   },
-  ADMINISTRACION: { permiso: ['requerimientos.administracion'], quien: 'El requerimiento de Administración lo lleva la administradora.' },
+  ADMINISTRACION: { permiso: ['requerimientos.administracion'], quien: 'No tienes permiso para registrar requerimientos de Administración.' },
 } as const satisfies Record<string, { permiso: readonly string[]; quien: string }>
 
 /**

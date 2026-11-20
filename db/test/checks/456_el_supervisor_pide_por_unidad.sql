@@ -169,6 +169,17 @@ select test.afirmar((select estado = 'LISTO_EN_ALMACEN' from public.requerimient
 select test.afirmar((select count(*) = 1 from public.notificaciones
                       where usuario_id = pg_temp.id('acb') and origen_id = pg_temp.id('rq1') and titulo like 'Listo en almacén:%'),
                     '6. al supervisor que lo pidió le llega un solo «Listo en almacén», no dos');
+select test.afirmar((select cuerpo like '%CHK456-U1%' from public.notificaciones
+                      where usuario_id = pg_temp.id('acb') and origen_id = pg_temp.id('rq1') and titulo like 'Listo en almacén:%'),
+                    '6. el que le queda es el del área, que dice el código interno de la unidad');
+-- Un aviso que va solo al área (la recompra de lo devuelto: «Ya no está listo»)
+-- le sigue llegando al supervisor aunque él registró el RQ.
+select pg_temp.como('alm');
+select public.fn_rq_avisar(r, 'Ya no está listo: ' || r.numero, 'El proveedor no repone lo devuelto: Logística lo compra otra vez.', 'AREA')
+  from public.requerimientos r where r.id = pg_temp.id('rq1');
+select test.afirmar((select count(*) = 1 from public.notificaciones
+                      where usuario_id = pg_temp.id('acb') and origen_id = pg_temp.id('rq1') and titulo like 'Ya no está listo:%'),
+                    '6. el aviso que va solo al área le llega al supervisor que lo registró');
 
 -- ======================================== 7. Ni el RQ de Administración, ni sin área
 select pg_temp.como('adm');

@@ -191,7 +191,7 @@ export const NAVEGACION = [
         titulo: 'Requerimientos',
         ruta: '/requerimientos',
         icono: ClipboardList,
-        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.ver'],
+        permiso: ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area', 'requerimientos.ver'],
         descripcion: 'Lo que cada área necesita, con su número RQ, y por dónde va',
         disponible: true,
       },
