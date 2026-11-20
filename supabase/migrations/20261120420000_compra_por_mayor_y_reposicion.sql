@@ -35,7 +35,7 @@
 -- el conductor dejó y Almacén aún no verificó.
 --
 -- Idempotente. Sin `drop`. `fn_avisar_stock_minimo` se reemplaza entera solo si
--- está como la dejó el repositorio (20261012102000) o como la deja esta.
+-- está como la dejó el repositorio (20261026160000) o como la deja esta.
 -- =============================================================================
 
 -- 1. La compra por mayor ---------------------------------------------------------
@@ -212,7 +212,7 @@ declare v_md5 text;
 begin
   select md5(replace(p.prosrc, E'\r', '')) into v_md5 from pg_proc p
    where p.oid = 'public.fn_avisar_stock_minimo()'::regprocedure;
-  if v_md5 not in ('c85153cc335ef0eb4eff22713449fdfc', '32c53d26840cd8d74ed14147746732a7') then
+  if v_md5 not in ('c85153cc335ef0eb4eff22713449fdfc', '644f552c8469e7c50cbd7761e4c43972') then
     raise exception 'fn_avisar_stock_minimo no está como la conoce el repositorio (md5 %): revísala antes de aplicar esta migración.', v_md5;
   end if;
 end $$;
@@ -271,7 +271,7 @@ begin
          case when r.codigo = 'ADMIN' or exists (
                      select 1 from public.roles_permisos rp
                       where rp.rol_id = r.id and rp.permiso_codigo in ('almacen.ver', 'almacen.stock'))
-              then '/almacen/reposicion'
+              then '/almacen/reposicion?vista=todos&q=' || v_mat.codigo
               else '/compras' end,
          'materiales', v_material
     from public.usuarios u

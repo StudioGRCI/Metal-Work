@@ -174,6 +174,13 @@ alter table public.requerimiento_lineas add column if not exists cantidad_desde 
 comment on column public.requerimiento_lineas.cantidad_desde is
   'Desde cuándo el insumo pide su cantidad: la pone un disparador cuando la cantidad sube o el material cambia (migración 20261120400000). Vacío: desde que se registró el RQ. Ordena el reparto del metrado de Diseño.';
 
+-- Lo mismo con el código del RQ: el que se corrige hacia un código pasa al final
+-- de ese código, como si se pidiera recién. Lo pone el disparador de la revisión
+-- (abajo), que ya corre en cada cambio del RQ.
+alter table public.requerimientos add column if not exists codigo_desde timestamptz;
+comment on column public.requerimientos.codigo_desde is
+  'Desde cuándo el RQ es del código que tiene: la pone un disparador cuando el código cambia (migración 20261120400000). Vacío: desde que se registró. Ordena el reparto del metrado de Diseño.';
+
 create or replace function public.fn_rq_linea_cantidad_desde()
 returns trigger language plpgsql set search_path to 'public' as $$
 begin
@@ -225,8 +232,11 @@ grant execute on function public.codigo_sin_metrado(text) to authenticated;
 -- pasa entero.
 --
 -- Estados: NO_APLICA (no se mide), EN_METRADO, SIN_SUSTENTO, POR_AUTORIZAR,
--- AUTORIZADO, RECHAZADO. El insumo está en regla en NO_APLICA, EN_METRADO y
--- AUTORIZADO. El visto vale para el material y la cantidad que tenía al
+-- AUTORIZADO, RECHAZADO y REVISADO (Almacén ya lo revisó en regla y el metrado
+-- cambió después). El insumo está en regla en NO_APLICA, EN_METRADO, AUTORIZADO
+-- y REVISADO. El orden del reparto es desde cuándo pide el insumo lo que pide:
+-- su cantidad (`cantidad_desde`) o el código de su RQ (`codigo_desde`), lo que
+-- sea más reciente. El visto vale para el material y la cantidad que tenía al
 -- sustentarlo: corregido hacia arriba o con otro material, se sustenta de nuevo.
 -- El que se pidió sin material sigue autorizado cuando Almacén le pone el suyo.
 create or replace function public.metrado_por_linea(p_requerimientos uuid[])
@@ -237,7 +247,9 @@ language sql stable security definer set search_path to 'public' as $$
     select l.id, l.requerimiento_id, l.item, l.cantidad, l.material_id, l.recompra_de,
            r.numero, r.estado as rq_estado, r.con_metrado,
            public.normalizar_codigo_interno(r.codigo_interno) as codigo,
-           coalesce(cm.almacen, cl.almacen) as almacen
+           coalesce(cm.almacen, cl.almacen) as almacen,
+           greatest(coalesce(l.cantidad_desde, r.creado_en), coalesce(r.codigo_desde, r.creado_en)) as desde,
+           r.revision_stock_en as revisado
       from public.requerimiento_lineas l
       join public.requerimientos r on r.id = l.requerimiento_id
       left join public.materiales m on m.id = l.material_id
@@ -245,7 +257,7 @@ language sql stable security definer set search_path to 'public' as $$
       left join public.categorias_material cl on cl.id = l.categoria_id
      where l.requerimiento_id = any(p_requerimientos)
   ), rq_del_codigo as (
-    select ro.id, ro.numero, ro.creado_en, public.normalizar_codigo_interno(ro.codigo_interno) as codigo
+    select ro.id, ro.numero, ro.creado_en, ro.codigo_desde, public.normalizar_codigo_interno(ro.codigo_interno) as codigo
       from public.requerimientos ro
      where ro.estado <> 'ANULADO'
        and public.normalizar_codigo_interno(ro.codigo_interno) in (select distinct l.codigo from l where l.codigo is not null)
@@ -253,11 +265,13 @@ language sql stable security definer set search_path to 'public' as $$
     select o.id,
            coalesce(sum(o.cantidad) over (
              partition by ro.codigo, o.material_id
-             order by coalesce(o.cantidad_desde, ro.creado_en), ro.numero, o.item
+             order by greatest(coalesce(o.cantidad_desde, ro.creado_en), coalesce(ro.codigo_desde, ro.creado_en)), ro.numero, o.item
              rows between unbounded preceding and 1 preceding), 0) as pedido_antes
       from public.requerimiento_lineas o
       join rq_del_codigo ro on ro.id = o.requerimiento_id
-     where o.material_id is not null and o.recompra_de is null
+     -- La recompra es lo que el proveedor no repuso de un insumo ya pedido: no se
+     -- mide, pero cuenta como pedido (el insumo original bajó en esa cantidad).
+     where o.material_id is not null
   ), medido as (
     select l.*,
            (select sum(c.cantidad) from public.codigo_materiales c
@@ -271,6 +285,9 @@ language sql stable security definer set search_path to 'public' as $$
              and not public.codigo_sin_metrado(m.codigo)
              -- Sin ningún material en el metrado del código, no hay contra qué medir.
              and exists (select 1 from public.codigo_materiales c where c.codigo_interno = m.codigo and c.quitado_en is null)
+             -- Lo pedido antes de que Diseño cargara el primer material del código
+             -- no se mide (como los RQ de antes de esta regla): se pidió sin metrado.
+             and m.desde >= (select min(c.creado_en) from public.codigo_materiales c where c.codigo_interno = m.codigo)
              and (m.almacen in ('MATERIA_PRIMA', 'ACCESORIOS') or m.metrado is not null) as aplica
       from medido m
   ), con_exceso as (
@@ -279,26 +296,39 @@ language sql stable security definer set search_path to 'public' as $$
                 when c.metrado is null or c.material_id is null then c.cantidad
                 else least(c.cantidad, greatest(c.pedido_antes + c.cantidad - c.metrado, 0)) end as exceso
       from con_regla c
+  ), con_estado as (
+    select e.id, e.requerimiento_id, e.item, e.aplica, e.metrado, e.pedido_antes, e.exceso, s.id as sustento_id,
+           e.desde, e.revisado,
+           case when not e.aplica then 'NO_APLICA'
+                when e.exceso <= 0 then 'EN_METRADO'
+                when s.id is null then 'SIN_SUSTENTO'
+                -- El insumo pedido sin material (uno nuevo) lo asocia Almacén al
+                -- revisar: el visto que se dio por su descripción sigue valiendo.
+                when s.material_id is not null and s.material_id is distinct from e.material_id then 'SIN_SUSTENTO'
+                when s.decision = 'AUTORIZADO' and s.cantidad >= e.cantidad then 'AUTORIZADO'
+                when s.decision = 'AUTORIZADO' then 'SIN_SUSTENTO'
+                when s.cantidad <> e.cantidad then 'SIN_SUSTENTO'
+                when s.decision = 'RECHAZADO' then 'RECHAZADO'
+                else 'POR_AUTORIZAR' end as estado
+      from con_exceso e
+      left join lateral (
+        select x.id, x.material_id, x.cantidad, x.decision
+          from public.requerimiento_sustentos x
+         where x.requerimiento_linea_id = e.id
+         order by x.sustentado_en desc, x.creado_en desc
+         limit 1) s on true
   )
-  select e.id, e.requerimiento_id, e.item, e.aplica, e.metrado, e.pedido_antes, e.exceso, s.id,
-         case when not e.aplica then 'NO_APLICA'
-              when e.exceso <= 0 then 'EN_METRADO'
-              when s.id is null then 'SIN_SUSTENTO'
-              -- El insumo pedido sin material (uno nuevo) lo asocia Almacén al
-              -- revisar: el visto que se dio por su descripción sigue valiendo.
-              when s.material_id is not null and s.material_id is distinct from e.material_id then 'SIN_SUSTENTO'
-              when s.decision = 'AUTORIZADO' and s.cantidad >= e.cantidad then 'AUTORIZADO'
-              when s.decision = 'AUTORIZADO' then 'SIN_SUSTENTO'
-              when s.cantidad <> e.cantidad then 'SIN_SUSTENTO'
-              when s.decision = 'RECHAZADO' then 'RECHAZADO'
-              else 'POR_AUTORIZAR' end
-    from con_exceso e
-    left join lateral (
-      select x.id, x.material_id, x.cantidad, x.decision
-        from public.requerimiento_sustentos x
-       where x.requerimiento_linea_id = e.id
-       order by x.sustentado_en desc, x.creado_en desc
-       limit 1) s on true;
+  -- Almacén lo revisó en regla (la revisión no pasa con un insumo frenado) y no
+  -- cambió después: ni su cantidad hacia arriba, ni su material, ni el código del
+  -- RQ. Lo que Diseño cambie luego en el metrado no lo vuelve a frenar en la OC
+  -- ni en la salida: se congela en la revisión (REVISADO, en regla). La hora es
+  -- la del RQ, no la de cada insumo: `rq_revisar_stock` anota primero los
+  -- insumos y después el estado del RQ, y con la del insumo la puerta de la
+  -- revisión (`fn_rq_metrado_al_revisar`) ya lo veía revisado y lo dejaba pasar.
+  select c.id, c.requerimiento_id, c.item, c.aplica, c.metrado, c.pedido_antes, c.exceso, c.sustento_id,
+         case when c.estado in ('SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO') and c.revisado is not null and c.desde <= c.revisado
+              then 'REVISADO' else c.estado end
+    from con_estado c;
 $$;
 revoke all on function public.metrado_por_linea(uuid[]) from public, anon, authenticated;
 
@@ -382,6 +412,11 @@ begin
     raise exception 'El requerimiento no existe.';
   end if;
   perform public.rq_exigir_del_area(v_rq.tipo, 'CORREGIR', v_rq.area_id, v_rq.creado_por);
+  -- El colaborador de Diseño pide con `requerimientos.emitir`, pero corrige, anula
+  -- y sustenta solo los RQ que registró él (migración 20261106100000).
+  if public.mi_rol() = 'DISENO_COLABORADOR' and v_rq.creado_por is distinct from public.usuario_actual() then
+    raise exception 'Ese requerimiento lo registró otra persona: tú sustentas solo los tuyos.' using errcode = 'insufficient_privilege';
+  end if;
   if v_rq.estado in ('ANULADO', 'ENTREGADO') then
     raise exception 'El requerimiento % ya está %: no se sustenta.', v_rq.numero,
       case v_rq.estado when 'ANULADO' then 'anulado' else 'entregado' end using errcode = 'check_violation';
@@ -404,7 +439,7 @@ begin
       raise exception 'El requerimiento % no tiene el insumo %.', v_rq.numero, v_x.item using errcode = 'check_violation';
     end if;
     select * into v_m from public.metrado_por_linea(array[p_requerimiento]) m where m.linea_id = v_linea.id;
-    if v_m.estado in ('NO_APLICA', 'EN_METRADO') then
+    if v_m.estado in ('NO_APLICA', 'EN_METRADO', 'REVISADO') then
       raise exception 'El insumo % entra en el metrado de Diseño: no necesita sustento. Recarga la pantalla.', v_x.item
         using errcode = 'check_violation';
     end if;
@@ -548,6 +583,12 @@ declare v_items text;
 begin
   if new.con_metrado is distinct from old.con_metrado then
     raise exception 'Si el requerimiento % va con el metrado de Diseño no cambia.', old.numero using errcode = 'check_violation';
+  end if;
+  -- El RQ que pasa a otro código va al final de ese código (`metrado_por_linea`).
+  if public.normalizar_codigo_interno(new.codigo_interno) is distinct from public.normalizar_codigo_interno(old.codigo_interno) then
+    new.codigo_desde := clock_timestamp();
+  else
+    new.codigo_desde := old.codigo_desde;
   end if;
   if old.estado = 'POR_ATENDER' and new.estado in ('SIN_STOCK', 'LISTO_EN_ALMACEN') then
     v_items := public.insumos_fuera_de_metrado(new.id);

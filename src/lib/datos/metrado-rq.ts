@@ -30,7 +30,7 @@ export type MetradoDelInsumo = {
   decidido_en: string | null
 }
 
-const ESTADOS: readonly EstadoMetrado[] = ['NO_APLICA', 'EN_METRADO', 'SIN_SUSTENTO', 'POR_AUTORIZAR', 'AUTORIZADO', 'RECHAZADO']
+const ESTADOS: readonly EstadoMetrado[] = ['NO_APLICA', 'EN_METRADO', 'SIN_SUSTENTO', 'POR_AUTORIZAR', 'AUTORIZADO', 'RECHAZADO', 'REVISADO']
 
 /**
  * El metrado de cada insumo de los RQ, por el id del insumo. Lo leen quien ve

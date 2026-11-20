@@ -35,9 +35,13 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
   // más antiguos: el globo los cuenta todos, y la bandeja no puede dejar uno fuera.
   const [recientes, esperan] = await Promise.all([cargarRequerimientos({ soloAbiertos: true }), requerimientosPorAutorizar()])
   const faltan = esperan.filter((id) => !recientes.some((r) => r.id === id))
-  const abiertos = faltan.length > 0 ? [...recientes, ...(await cargarRequerimientos({ ids: faltan }))] : recientes
+  // Los ids ya se saben: el metrado se lee a la vez que los que faltan.
+  const [extra, metrado] = await Promise.all([
+    faltan.length > 0 ? cargarRequerimientos({ ids: faltan }) : Promise.resolve([]),
+    metradoDeRequerimientos([...recientes.map((r) => r.id), ...faltan]),
+  ])
+  const abiertos = [...recientes, ...extra]
   abiertos.sort((a, b) => b.creado_en.localeCompare(a.creado_en))
-  const metrado = await metradoDeRequerimientos(abiertos.map((r) => r.id))
   const de = (r: RequerimientoListado, estados: MetradoDelInsumo['estado'][]) =>
     r.lineas.filter((l) => estados.includes(metrado.get(l.id)?.estado ?? 'NO_APLICA'))
   // El más antiguo primero: es el que lleva más tiempo frenando a Almacén.

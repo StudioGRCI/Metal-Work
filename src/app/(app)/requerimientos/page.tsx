@@ -82,7 +82,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     pideSuArea ? r.tipo === 'OPERACION' && r.creado_por === perfil.id : tipos.includes(r.tipo as TipoRequerimiento)
   // `?ver=sustentar` deja solo los que esperan el sustento de quien mira: es el
   // enlace del pendiente «se pasa del metrado y espera tu sustento».
-  const porSustentar = metrado ? requerimientos.filter((r) => loLleva(r) && esperaSuSustento(r, metrado)) : []
+  // El colaborador de Diseño corrige, sustenta y anula solo los que registró él (migración 20261106100000).
+  const esSuyo = (r: (typeof requerimientos)[number]) => loLleva(r) && (perfil.rol.codigo !== 'DISENO_COLABORADOR' || r.creado_por === perfil.id)
+  const porSustentar = metrado ? requerimientos.filter((r) => esSuyo(r) && esperaSuSustento(r, metrado)) : []
   const soloSustentar = !soloUno && !soloRecoger && params.ver === 'sustentar'
   const mostrados = soloSustentar ? porSustentar : recogen
   // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
@@ -218,7 +220,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               insumosAbiertos={Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO')}
               enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
               // El colaborador de Diseño solo pide: corrige y anula los suyos (migración 20261106100000).
-              anula={loLleva(r) && (perfil.rol.codigo !== 'DISENO_COLABORADOR' || r.creado_por === perfil.id)}
+              anula={esSuyo(r)}
               materiales={catalogos?.materiales ?? []}
               codigos={catalogos?.codigos ?? null}
               correcciones={correcciones.get(r.id)}

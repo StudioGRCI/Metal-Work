@@ -29,7 +29,8 @@ select '20100000457', 'PRUEBAS 457 S.A.C.' where not exists (select 1 from publi
 do $$
 declare v text; v_id uuid; v_und uuid := (select id from public.unidades_medida where codigo = 'UND');
 begin
-  foreach v in array array['REQUERIMIENTOS:REQ', 'ALMACENERO:ALM', 'COMPRADOR:LOG', 'DISENO:DIS', 'GERENTE:GGE', 'VENDEDOR:GCO'] loop
+  foreach v in array array['REQUERIMIENTOS:REQ', 'ALMACENERO:ALM', 'COMPRADOR:LOG', 'DISENO:DIS', 'GERENTE:GGE', 'VENDEDOR:GCO',
+                           'DISENO_COLABORADOR:DIS'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.457@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -40,7 +41,7 @@ begin
   end loop;
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.und', v_und::text, true);
-  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rq7a', 'rq7b', 'corr7', 'rqp', 'rqot', 'rqp8', 'oc1', 'oc2', 'oc8a', 'oc8b', 's1', 's2', 's3', 's4', 's5', 's7', 's8'] loop
+  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rq7a', 'rq7b', 'corr7', 'rqp', 'rqot', 'rqp8', 'oc1', 'oc2', 'oc8a', 'oc8b', 's1', 's2', 's3', 's4', 's5', 's7', 's8', 'rq9a', 'rq9b', 'rq9c', 'rq9d', 'rq9f'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 
@@ -82,6 +83,17 @@ begin
   perform set_config('prueba.rq_antes', v, true);
   insert into public.requerimiento_lineas (requerimiento_id, item, descripcion, cantidad, unidad_medida_id, categoria_id, material_id)
   select v::uuid, 1, m.descripcion, 2, m.unidad_medida_id, m.categoria_id, m.id from public.materiales m where m.codigo = 'CHK457-PLA';
+
+  -- Una OT de garantía registrada (su RQ va por «OT 9457-2026», migración
+  -- 20261120500000). El armazón entra sin disparadores: lo que se prueba es el
+  -- metrado, no la OT.
+  set local session_replication_role = replica;
+  insert into public.clientes (id, tipo_documento, numero_documento, razon_social)
+  values (gen_random_uuid(), 'RUC', '20990000457', 'QA metrado 457') returning id::text into v;
+  insert into public.ordenes_trabajo (numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado)
+  select '9457-2026', v::uuid, s.id, 'GARANTIA', 'NORMAL', 'Garantía QA del metrado', 'APROBADA'
+    from public.sedes s order by s.codigo limit 1;
+  set local session_replication_role = origin;
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -132,7 +144,7 @@ begin
   -- PLANTA y la OT de garantía no se miden.
   perform public.emitir_requerimiento(pg_temp.id('rqp'), 'OPERACION', pg_temp.id('area_mtz'), 'PLANTA',
     'Planchas para una mesa de trabajo', null, jsonb_build_array(pg_temp.linea('pla', 4)));
-  perform public.emitir_requerimiento(pg_temp.id('rqot'), 'OPERACION', pg_temp.id('area_mtz'), 'OT 2939-2026',
+  perform public.emitir_requerimiento(pg_temp.id('rqot'), 'OPERACION', pg_temp.id('area_mtz'), 'OT 9457-2026',
     'Faro para la garantía de la unidad', null, jsonb_build_array(pg_temp.linea('far', 1)));
 
   perform test.afirmar(pg_temp.estado('rq1', 1) = 'EN_METRADO', 'RQ1: 2 de antes + 6 entra en las 10 del metrado');
@@ -359,27 +371,26 @@ do $$ begin
   perform public.rq_revisar_stock(pg_temp.id('rq4'), '[{"item": 1, "en_stock": 0}]', null);
 end $$;
 reset role;
--- Diseño baja el metrado del faro a 3: el RQ4 queda pasado.
+-- Diseño baja el metrado del faro a 3 después de la revisión: lo que Almacén ya
+-- revisó en regla no se vuelve a frenar (se congela en la revisión).
 select pg_temp.como('diseno');
 set local role authenticated;
 do $$ begin
   perform public.guardar_material_codigo((select id from public.codigo_materiales where codigo_interno = 'CHK_457_U1'
                                             and material_id = pg_temp.id('far') and quitado_en is null),
                                          null, pg_temp.id('far'), 3, null, 'Se corrigió el plano eléctrico');
-  perform test.afirmar(pg_temp.estado('rq4', 1) = 'SIN_SUSTENTO', 'Con el metrado más bajo, el RQ4 se pasa');
+  perform test.afirmar(pg_temp.estado('rq4', 1) = 'REVISADO',
+    'Con el metrado más bajo después de la revisión, el RQ4 queda revisado y no se frena: ' || coalesce(pg_temp.estado('rq4', 1), '?'));
 end $$;
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
 do $$ begin
-  begin
-    perform public.emitir_compra_del_requerimiento(pg_temp.id('oc1'), pg_temp.id('rq4'), null, pg_temp.id('proveedor'), null,
-      jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('far'), 'cantidad', 1, 'precio', 80)),
-      null, 'CONTADO', 0, 'PEN', true);
-    raise exception 'FALLA: Logística compró un insumo que se pasa del metrado';
-  exception when check_violation then
-    perform test.afirmar(sqlerrm like '%no va en la orden de compra%', 'Logística no compra lo que se pasa sin visto');
-  end;
+  perform public.emitir_compra_del_requerimiento(pg_temp.id('oc1'), pg_temp.id('rq4'), null, pg_temp.id('proveedor'), null,
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('far'), 'cantidad', 1, 'precio', 80)),
+    null, 'CONTADO', 0, 'PEN', true);
+  perform test.afirmar((select orden_compra_id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq4')) = pg_temp.id('oc1'),
+    'Logística compra lo que Almacén revisó en regla aunque Diseño bajara el metrado después');
 end $$;
 reset role;
 
@@ -670,7 +681,7 @@ do $$ begin
           (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq1') and item = 1));
   perform test.afirmar(exists (select 1 from public.notificaciones
                                 where usuario_id = pg_temp.id('comprador') and titulo = 'Stock bajo: CHK457-PLA'
-                                  and cuerpo like '%Se compra por mayor: 40.%' and ruta = '/almacen/reposicion'),
+                                  and cuerpo like '%Se compra por mayor: 40.%' and ruta like '/almacen/reposicion?vista=todos&q=%'),
                        'Logística recibe el aviso con la compra por mayor y la lista de reposición');
 end $$;
 
@@ -720,6 +731,126 @@ set local role authenticated;
 do $$ begin
   perform public.sustentar_insumos(pg_temp.id('rqsup'), '[{"item": 1, "sustento": "El refuerzo del piso lleva dos planchas más que el plano"}]');
   perform test.afirmar(pg_temp.estado('rqsup', 1) = 'POR_AUTORIZAR', 'El supervisor sustentó el suyo y espera a Diseño');
+end $$;
+reset role;
+
+-- La recompra cuenta como ya pedido -------------------------------------------------------------
+-- Metrado de 10 planchas de 6 mm en CHK_457_U9. El RQ9A pide 10; el proveedor no
+-- repone 3 (20261022185000): su insumo baja a 7 y nace la recompra de 3. El RQ9B
+-- que pide 3 más se pasa entero: la unidad ya pidió las 10.
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'CHK_457_U9', pg_temp.id('pl6'), 10, null, 'Metrado del techo');
+  perform public.guardar_material_codigo(null, 'CHK_457_U9', pg_temp.id('pla'), 10, null, 'Metrado del piso');
+end $$;
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rq9a'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U9',
+    'Planchas del techo de la unidad', null, jsonb_build_array(pg_temp.linea('pl6', 10)));
+  perform test.afirmar(pg_temp.estado('rq9a', 1) = 'EN_METRADO', 'RQ9A: 10 de 10');
+end $$;
+reset role;
+do $$
+declare v_linea uuid := (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq9a') and item = 1);
+begin
+  -- Como lo hace la devolución sin reposición: baja el insumo y crea la recompra.
+  perform set_config('metalwork.corrigiendo', 'requerimiento', true);
+  update public.requerimiento_lineas set cantidad = 7 where id = v_linea;
+  perform set_config('metalwork.corrigiendo', '', true);
+  set local session_replication_role = replica;
+  insert into public.requerimiento_lineas
+    (requerimiento_id, item, descripcion, cantidad, unidad_medida_id, categoria_id, material_id, material_nuevo,
+     cantidad_en_stock, stock_revisado_en, stock_revisado_por, recompra_de, recompra_por)
+  select l.requerimiento_id, 2, l.descripcion, 3, l.unidad_medida_id, l.categoria_id, l.material_id, false, 0, now(),
+         pg_temp.id('almacenero'), l.id, gen_random_uuid()
+    from public.requerimiento_lineas l where l.id = v_linea;
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(pg_temp.estado('rq9a', 2) = 'NO_APLICA', 'La recompra no se mide');
+  perform public.emitir_requerimiento(pg_temp.id('rq9b'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U9',
+    'Tres planchas más para el techo', null, jsonb_build_array(pg_temp.linea('pl6', 3)));
+  perform test.afirmar(pg_temp.estado('rq9b', 1) = 'SIN_SUSTENTO'
+                       and (select pedido_antes from public.metrado_de_requerimientos(array[pg_temp.id('rq9b')]) where item = 1) = 10,
+    'Con la recompra contada, el RQ9B ve 10 pedidas antes y se pasa');
+end $$;
+reset role;
+
+-- El colaborador de Diseño sustenta solo los suyos -------------------------------------------------
+select pg_temp.como('diseno_colaborador');
+set local role authenticated;
+do $$ begin
+  begin
+    perform public.sustentar_insumos(pg_temp.id('rq9b'), '[{"item": 1, "sustento": "El colaborador no sustenta lo que pidió otro"}]');
+    raise exception 'FALLA: el colaborador de Diseño sustentó un RQ que registró Requerimientos';
+  exception when insufficient_privilege then
+    perform test.afirmar(sqlerrm like '%lo registró otra persona%', 'El colaborador de Diseño no sustenta el RQ de otro');
+  end;
+end $$;
+reset role;
+
+-- El RQ que cambia de código va al final de ese código ---------------------------------------------
+-- El RQ9C pide 10 planchas para CHK_457_U6, sin metrado. Después el RQ9D pide 10
+-- para CHK_457_U9 (metrado 10): en regla. Si el RQ9C se corrige a CHK_457_U9,
+-- es él el que se pasa, no el RQ9D, aunque se registró antes.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rq9c'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U6',
+    'Planchas del piso de otra unidad', null, jsonb_build_array(pg_temp.linea('pla', 10)));
+  perform public.emitir_requerimiento(pg_temp.id('rq9d'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U9',
+    'Planchas del piso de la unidad', null, jsonb_build_array(pg_temp.linea('pla', 10)));
+  perform test.afirmar(pg_temp.estado('rq9c', 1) = 'NO_APLICA' and pg_temp.estado('rq9d', 1) = 'EN_METRADO',
+    'RQ9C sin metrado; RQ9D 10 de 10');
+end $$;
+reset role;
+do $$ begin
+  perform set_config('metalwork.corrigiendo', 'requerimiento', true);
+  update public.requerimientos set codigo_interno = 'CHK_457_U9' where id = pg_temp.id('rq9c');
+  perform set_config('metalwork.corrigiendo', '', true);
+end $$;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(pg_temp.estado('rq9d', 1) = 'EN_METRADO' and pg_temp.estado('rq9c', 1) = 'SIN_SUSTENTO',
+    'Corregido hacia CHK_457_U9, el RQ9C va al final y se pasa; el RQ9D sigue en regla: '
+    || coalesce(pg_temp.estado('rq9c', 1), '?') || ' / ' || coalesce(pg_temp.estado('rq9d', 1), '?'));
+end $$;
+reset role;
+
+-- Lo pedido antes del primer metrado del código no se mide -----------------------------------------
+-- El RQ9E se registró hace una hora para CHK_457_U7, que no tenía metrado; Diseño
+-- carga ahora su primer material. El RQ9E no se mide; el RQ9F, pedido después, sí.
+do $$
+declare v uuid := gen_random_uuid();
+begin
+  insert into public.requerimientos (id, numero, area_id, codigo_interno, justificacion, creado_por, con_metrado, creado_en)
+  values (v, 'RQ-CHK457-9E', current_setting('prueba.area_mtz')::uuid, 'CHK_457_U7',
+          'Faros pedidos antes de que Diseño cargara el metrado', current_setting('prueba.requerimientos')::uuid, true, now() - interval '1 hour');
+  insert into public.requerimiento_lineas (requerimiento_id, item, descripcion, cantidad, unidad_medida_id, categoria_id, material_id)
+  select v, 1, m.descripcion, 4, m.unidad_medida_id, m.categoria_id, m.id from public.materiales m where m.codigo = 'CHK457-FAR';
+  perform set_config('prueba.rq9e', v::text, true);
+end $$;
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'CHK_457_U7', pg_temp.id('far'), 2, null, 'Faros del plano eléctrico');
+end $$;
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rq9f'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U7',
+    'Un faro más para la unidad', null, jsonb_build_array(pg_temp.linea('far', 1)));
+  perform test.afirmar(pg_temp.estado('rq9e', 1) = 'NO_APLICA', 'El RQ pedido antes del primer metrado no se mide');
+  perform test.afirmar(pg_temp.estado('rq9f', 1) = 'SIN_SUSTENTO'
+                       and (select pedido_antes from public.metrado_de_requerimientos(array[pg_temp.id('rq9f')]) where item = 1) = 4,
+    'Pero cuenta como pedido: el RQ9F ve 4 antes y se pasa del metrado de 2');
 end $$;
 reset role;
 

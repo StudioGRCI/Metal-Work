@@ -284,9 +284,10 @@ select test.afirmar(
   (select count(*) from public.notificaciones where origen_id = current_setting('prueba.material_min')::uuid
       and usuario_id = current_setting('prueba.almacenero')::uuid) = 1
   and (select count(*) from public.notificaciones where origen_id = current_setting('prueba.material_min')::uuid
-      and usuario_id = current_setting('prueba.comprador')::uuid and ruta = '/almacen/reposicion') = 1
+      and usuario_id = current_setting('prueba.comprador')::uuid and ruta like '/almacen/reposicion?vista=todos&q=%') = 1
   and (select ruta from public.notificaciones where origen_id = current_setting('prueba.material_min')::uuid
-      and usuario_id = current_setting('prueba.almacenero')::uuid) = '/almacen/reposicion',
+      and usuario_id = current_setting('prueba.almacenero')::uuid)
+      = '/almacen/reposicion?vista=todos&q=' || (select codigo from public.materiales where id = current_setting('prueba.material_min')::uuid),
   'al bajar de 10 a 7 con mínimo 8 avisa a Almacén y a Logística, una vez a cada uno, con la lista de reposición (20261120420000)');
 
 select pg_temp.como('almacenero');

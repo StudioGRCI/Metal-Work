@@ -193,12 +193,13 @@ end;
 $$;
 
 -- Desde la migración 20261120400000, el insumo de materia prima o accesorio de
--- un RQ de unidad que se pasa del metrado de Diseño (o que el código no tiene
--- metrado) espera el sustento y el visto de Diseño antes de que Almacén lo
--- revise, Logística lo compre o salga del almacén. Los checks de antes prueban
--- otra cosa con RQ de unidades sin metrado: este ayudante da el visto a lo que
--- se pase en los RQ que hay en ese momento, como lo daría Diseño, y devuelve
--- cuántos insumos autorizó. Se llama después de registrar (o corregir) los RQ y
+-- un RQ de unidad que se pasa del metrado de Diseño (o que no está en él)
+-- espera el sustento y el visto de Diseño antes de que Almacén lo revise,
+-- Logística lo compre o salga del almacén. Un código sin ningún metrado no se
+-- mide, así que en los checks de antes casi siempre devuelve 0; queda para el
+-- que use un código con metrado: este ayudante da el visto a lo que se pase en
+-- los RQ que hay en ese momento, como lo daría Diseño, y devuelve cuántos
+-- insumos autorizó. Se llama después de registrar (o corregir) los RQ y
 -- antes de la revisión de Almacén. Lo que el check 457 prueba es la regla.
 create or replace function test.metrado_autorizado()
 returns integer language plpgsql security definer set search_path to 'public' as $$

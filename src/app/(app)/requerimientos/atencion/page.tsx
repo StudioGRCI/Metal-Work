@@ -415,8 +415,8 @@ function Fila({
                 {freno.freno === 'DISENO' ? 'Espera el visto de Diseño.' : 'Espera el sustento de quien pidió.'}
               </span>{' '}
               {freno.items.length === 1 ? `El insumo ${freno.items[0]} se pasa` : `Los insumos ${listaDeItems(freno.items)} se pasan`} del
-              metrado de Diseño. {queFaltaDelFreno(freno)}. Lo revisas cuando Diseño {freno.items.length === 1 ? 'lo' : 'los'} autorice o amplíe el
-              metrado; te llega el aviso.
+              metrado de Diseño. {queFaltaDelFreno(freno)}. Cuando Diseño {freno.items.length === 1 ? 'lo' : 'los'} autorice te llega el aviso; si
+              en cambio amplía el metrado, queda para revisar aquí.
             </p>
           )}
           {recibe && rq.estado === 'POR_ATENDER' && !freno && (

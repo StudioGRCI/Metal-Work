@@ -786,8 +786,11 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     ADMINISTRACION: puede(perfil, 'requerimientos.administracion'),
   }
   const sustentaLosSuyos = puede(perfil, 'requerimientos.area')
+  // El colaborador de Diseño pide con `requerimientos.emitir`, pero sustenta solo los suyos (20261106100000).
+  const soloLosSuyos = perfil.rol.codigo === 'DISENO_COLABORADOR'
   const leTocaSustentar = (r: { tipo: string | null; creado_por: string | null }) =>
-    sustentaDe[tipoDeRequerimiento(r)] || (sustentaLosSuyos && tipoDeRequerimiento(r) === 'OPERACION' && r.creado_por === perfil.id)
+    (sustentaDe[tipoDeRequerimiento(r)] && (!soloLosSuyos || r.creado_por === perfil.id)) ||
+    (sustentaLosSuyos && tipoDeRequerimiento(r) === 'OPERACION' && r.creado_por === perfil.id)
   if (perfil.rol.codigo !== 'ADMIN' && (sustentaDe.OPERACION || sustentaDe.ADMINISTRACION || sustentaLosSuyos)) tareas.push({
     clave: 'rq_por_sustentar', ruta: '/requerimientos?ver=sustentar', tono: 'peligro',
     texto: n => plural(n, 'requerimiento se pasa del metrado y espera tu sustento', 'requerimientos se pasan del metrado y esperan tu sustento'),

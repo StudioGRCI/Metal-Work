@@ -9581,6 +9581,7 @@ export type Database = {
           faltante_al_entregar: string | null
           motivo_del_faltante: string | null
           con_metrado: boolean
+          codigo_desde: string | null
         }
         Insert: {
           id?: string
@@ -9611,6 +9612,7 @@ export type Database = {
           faltante_al_entregar?: string | null
           motivo_del_faltante?: string | null
           con_metrado?: boolean
+          codigo_desde?: string | null
         }
         Update: {
           id?: string
@@ -9641,6 +9643,7 @@ export type Database = {
           faltante_al_entregar?: string | null
           motivo_del_faltante?: string | null
           con_metrado?: boolean
+          codigo_desde?: string | null
         }
         Relationships: [
           {
@@ -15105,6 +15108,12 @@ export type Database = {
           emitida_por: string | null
           atrasada: boolean | null
         }[]
+      }
+      ot_con_su_vehiculo_en_el_arenado: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: boolean
       }
       ot_recalcular_avance: {
         Args: {
