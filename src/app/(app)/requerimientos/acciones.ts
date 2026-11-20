@@ -135,7 +135,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'El requerimiento no quedó registrado. Recarga la pantalla.' }
 
-  const [{ data: emitido }, { data: metrado }] = await Promise.all([
+  const [{ data: emitido }, { data: metrado, error: sinMetrado }] = await Promise.all([
     supabase.from('requerimientos').select('numero').eq('id', cabecera.data.operacion_id).maybeSingle(),
     // Lo que se pasa del metrado de Diseño espera su sustento antes de que Almacén lo revise.
     supabase.rpc('metrado_de_requerimientos', { p_requerimientos: [cabecera.data.operacion_id] }),
@@ -146,6 +146,13 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   revalidatePath('/requerimientos/unidades')
   revalidatePath('/requerimientos/atencion')
   const numero = emitido?.numero ?? ''
+  // Ya quedó registrado: sin el metrado no se sabe si Almacén lo revisa ya o espera el sustento.
+  if (sinMetrado) {
+    return {
+      ok: true,
+      mensaje: `Requerimiento ${numero} registrado. Mira su tarjeta: si algún insumo se pasa del metrado de Diseño, ahí te pide el sustento.`,
+    }
+  }
   if (sePasan.length > 0) {
     const cuales = sePasan.length === 1 ? `El insumo ${sePasan[0]} se pasa` : `Los insumos ${sePasan.slice(0, -1).join(', ')} y ${sePasan.at(-1)} se pasan`
     return {

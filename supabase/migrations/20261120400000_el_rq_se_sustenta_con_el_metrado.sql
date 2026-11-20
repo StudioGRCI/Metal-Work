@@ -31,9 +31,12 @@
 -- no están en el metrado se controlan con el stock mínimo, no con esto.
 -- No se mide: PLANTA, OFICINA y TODOS LOS ACTIVOS, que no son una unidad; las
 -- OT de garantía y de mantenimiento («OT 2939-2026»), que no tienen metrado; la
--- recompra de lo que el proveedor no repuso, que ya se pidió una vez; y los RQ
+-- recompra de lo que el proveedor no repuso, que ya se pidió una vez; los RQ
 -- registrados antes de esta migración (`con_metrado` falso), para no frenar lo
--- que ya está en curso.
+-- que ya está en curso; y los códigos en los que Diseño todavía no cargó ningún
+-- metrado, que no tienen contra qué medirse: en producción ninguno lo tiene
+-- todavía, y frenarlos a todos pararía el taller mientras Diseño lo carga. El
+-- código se mide desde que tiene su primer material en el metrado.
 --
 -- Quién autoriza es un permiso (`requerimientos.autorizar_metrado`), no un
 -- puesto escrito en el código: hoy lo tiene Diseño; si Gerencia decide que el
@@ -51,6 +54,14 @@ on conflict (codigo) do update set descripcion = excluded.descripcion;
 
 insert into public.roles_permisos (rol_id, permiso_codigo)
 select r.id, 'requerimientos.autorizar_metrado'
+  from public.roles r
+ where r.codigo in ('DISENO', 'DISENO_LIDER')
+on conflict do nothing;
+-- Su bandeja lee los RQ con la política de siempre (`puede_ver_requerimientos`):
+-- sin `requerimientos.ver`, el globo diría que hay qué autorizar y la bandeja
+-- saldría vacía.
+insert into public.roles_permisos (rol_id, permiso_codigo)
+select r.id, 'requerimientos.ver'
   from public.roles r
  where r.codigo in ('DISENO', 'DISENO_LIDER')
 on conflict do nothing;
@@ -153,6 +164,38 @@ end $$;
 revoke all on public.requerimiento_sustentos from public, anon, authenticated;
 grant select on public.requerimiento_sustentos to authenticated;
 
+-- 3b. Desde cuándo pide el insumo lo que pide ---------------------------------------
+-- El metrado se reparte por orden de llegada: lo que cabe es de los que pidieron
+-- primero. Si un RQ anterior se corrige hacia arriba, lo que agrega llega ahora y
+-- no puede empujar fuera del metrado a otro que ya estaba en regla (y quizá ya
+-- separado en el almacén): el corregido pasa al final y carga con el exceso. Lo
+-- mismo si cambia de material. Vacío: desde que se registró el RQ.
+alter table public.requerimiento_lineas add column if not exists cantidad_desde timestamptz;
+comment on column public.requerimiento_lineas.cantidad_desde is
+  'Desde cuándo el insumo pide su cantidad: la pone un disparador cuando la cantidad sube o el material cambia (migración 20261120400000). Vacío: desde que se registró el RQ. Ordena el reparto del metrado de Diseño.';
+
+create or replace function public.fn_rq_linea_cantidad_desde()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  if new.cantidad > old.cantidad
+     or (old.material_id is not null and new.material_id is distinct from old.material_id) then
+    new.cantidad_desde := clock_timestamp();
+  else
+    new.cantidad_desde := old.cantidad_desde;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_rq_linea_cantidad_desde() from public, anon, authenticated;
+
+do $$ begin
+  if not exists (select 1 from pg_trigger where tgname = 'trg_rq_linea_cantidad_desde'
+                   and tgrelid = 'public.requerimiento_lineas'::regclass) then
+    create trigger trg_rq_linea_cantidad_desde before update on public.requerimiento_lineas
+      for each row execute function public.fn_rq_linea_cantidad_desde();
+  end if;
+end $$;
+
 -- 4. Qué código no lleva metrado ------------------------------------------------------
 -- PLANTA, OFICINA y TODOS LOS ACTIVOS se comparan solo por sus letras, como en la
 -- salida del almacén (un espacio duro pegado desde Excel no los vuelve otro
@@ -173,8 +216,10 @@ grant execute on function public.codigo_sin_metrado(text) to authenticated;
 -- quien la hace. Almacén y Logística no leen el metrado de Diseño por su RLS.
 --
 -- Lo ya pedido antes de un insumo son los insumos del mismo material y del mismo
--- código en RQ no anulados registrados antes que él (por fecha; a la misma hora,
--- por número y por ítem), sin las recompras. Se pasa por lo que lo pedido antes
+-- código en RQ no anulados que lo pidieron antes que él (desde `cantidad_desde`,
+-- o desde que se registró su RQ; a la misma hora, por número y por ítem), sin
+-- las recompras. Se suma con una ventana sobre los RQ de esos códigos, no con una
+-- consulta por insumo: la bandeja de cada puesto lo pide en cada pantalla. Se pasa por lo que lo pedido antes
 -- más lo suyo supere el metrado, nunca por más de lo suyo. El insumo que no está
 -- en el metrado (o que es un material nuevo, que el metrado no puede tener) se
 -- pasa entero.
@@ -190,7 +235,7 @@ returns table (linea_id uuid, requerimiento_id uuid, item smallint, aplica boole
 language sql stable security definer set search_path to 'public' as $$
   with l as (
     select l.id, l.requerimiento_id, l.item, l.cantidad, l.material_id, l.recompra_de,
-           r.creado_en as rq_en, r.numero, r.estado as rq_estado, r.con_metrado,
+           r.numero, r.estado as rq_estado, r.con_metrado,
            public.normalizar_codigo_interno(r.codigo_interno) as codigo,
            coalesce(cm.almacen, cl.almacen) as almacen
       from public.requerimiento_lineas l
@@ -199,22 +244,33 @@ language sql stable security definer set search_path to 'public' as $$
       left join public.categorias_material cm on cm.id = m.categoria_id
       left join public.categorias_material cl on cl.id = l.categoria_id
      where l.requerimiento_id = any(p_requerimientos)
+  ), rq_del_codigo as (
+    select ro.id, ro.numero, ro.creado_en, public.normalizar_codigo_interno(ro.codigo_interno) as codigo
+      from public.requerimientos ro
+     where ro.estado <> 'ANULADO'
+       and public.normalizar_codigo_interno(ro.codigo_interno) in (select distinct l.codigo from l where l.codigo is not null)
+  ), antes as (
+    select o.id,
+           coalesce(sum(o.cantidad) over (
+             partition by ro.codigo, o.material_id
+             order by coalesce(o.cantidad_desde, ro.creado_en), ro.numero, o.item
+             rows between unbounded preceding and 1 preceding), 0) as pedido_antes
+      from public.requerimiento_lineas o
+      join rq_del_codigo ro on ro.id = o.requerimiento_id
+     where o.material_id is not null and o.recompra_de is null
   ), medido as (
     select l.*,
            (select sum(c.cantidad) from public.codigo_materiales c
              where c.codigo_interno = l.codigo and c.material_id = l.material_id and c.quitado_en is null) as metrado,
-           coalesce((select sum(o.cantidad)
-                       from public.requerimiento_lineas o
-                       join public.requerimientos ro on ro.id = o.requerimiento_id
-                      where o.material_id = l.material_id and o.recompra_de is null and o.id <> l.id
-                        and ro.estado <> 'ANULADO'
-                        and public.normalizar_codigo_interno(ro.codigo_interno) = l.codigo
-                        and (ro.creado_en, ro.numero, o.item) < (l.rq_en, l.numero, l.item)), 0) as pedido_antes
+           coalesce(a.pedido_antes, 0) as pedido_antes
       from l
+      left join antes a on a.id = l.id
   ), con_regla as (
     select m.*,
            m.con_metrado and m.rq_estado <> 'ANULADO' and m.recompra_de is null
              and not public.codigo_sin_metrado(m.codigo)
+             -- Sin ningún material en el metrado del código, no hay contra qué medir.
+             and exists (select 1 from public.codigo_materiales c where c.codigo_interno = m.codigo and c.quitado_en is null)
              and (m.almacen in ('MATERIA_PRIMA', 'ACCESORIOS') or m.metrado is not null) as aplica
       from medido m
   ), con_exceso as (
@@ -433,7 +489,7 @@ begin
         case v_m.estado when 'EN_METRADO' then ': ya entra en el metrado'
                         when 'AUTORIZADO' then ': ya está autorizado'
                         when 'RECHAZADO' then ': ya dijiste que no'
-                        when 'SIN_SUSTENTO' then ': cambió y quien pidió tiene que sustentarlo de nuevo'
+                        when 'SIN_SUSTENTO' then ': cambió y espera el sustento de quien pidió'
                         else '' end
         using errcode = 'check_violation';
     end if;
@@ -470,10 +526,13 @@ revoke all on function public.autorizar_insumos(uuid, smallint[], boolean, text)
 grant execute on function public.autorizar_insumos(uuid, smallint[], boolean, text) to authenticated;
 
 -- 8. Las puertas --------------------------------------------------------------------
--- Los insumos de un RQ que se pasan sin autorizar, como «2 y 5».
+-- Los insumos de un RQ que se pasan sin autorizar, dichos en una frase: «el
+-- insumo 2 se pasa», «los insumos 2 y 5 se pasan», «los insumos 1, 2 y 5 se pasan».
 create or replace function public.insumos_fuera_de_metrado(p_requerimiento uuid)
 returns text language sql stable security definer set search_path to 'public' as $$
-  select string_agg(m.item::text, ', ' order by m.item)
+  select case when count(*) = 0 then null
+              when count(*) = 1 then 'el insumo ' || min(m.item) || ' se pasa'
+              else 'los insumos ' || regexp_replace(string_agg(m.item::text, ', ' order by m.item), ', ([0-9]+)$', ' y \1') || ' se pasan' end
     from public.metrado_por_linea(array[p_requerimiento]) m
    where m.estado in ('SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO');
 $$;
@@ -493,7 +552,7 @@ begin
   if old.estado = 'POR_ATENDER' and new.estado in ('SIN_STOCK', 'LISTO_EN_ALMACEN') then
     v_items := public.insumos_fuera_de_metrado(new.id);
     if v_items is not null then
-      raise exception 'El requerimiento % pide más de lo que dice el metrado de Diseño (insumo %) y Diseño todavía no lo autoriza: lo revisas cuando lo autorice.',
+      raise exception 'En el requerimiento %, % del metrado y espera el visto de Diseño: lo revisas cuando Diseño lo autorice o amplíe el metrado.',
         old.numero, v_items using errcode = 'check_violation';
     end if;
   end if;
@@ -511,12 +570,13 @@ do $$ begin
 end $$;
 
 -- Logística no pone en una OC el insumo que se pasa sin autorizar (corregido
--- hacia arriba después de la revisión, por ejemplo).
+-- hacia arriba después de la revisión, por ejemplo). Vale también cuando la línea
+-- pasa de una OC anulada o rechazada a otra: la de antes queda en la línea.
 create or replace function public.fn_rq_linea_metrado_al_comprar()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare v_estado text; v_numero text;
 begin
-  if old.orden_compra_id is null and new.orden_compra_id is not null then
+  if new.orden_compra_id is not null and new.orden_compra_id is distinct from old.orden_compra_id then
     select m.estado into v_estado from public.metrado_por_linea(array[new.requerimiento_id]) m where m.linea_id = new.id;
     if v_estado in ('SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO') then
       select numero into v_numero from public.requerimientos where id = new.requerimiento_id;

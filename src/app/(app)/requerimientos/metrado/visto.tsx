@@ -7,11 +7,13 @@ import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
+import { listaDeItems } from '@/lib/dominio/metrado-rq'
 import { useEnvio } from '@/lib/envio'
 
 import { useAvisar } from '../atencion/avisos'
 import { autorizarInsumos } from './acciones'
 
+/** «1», «1 y 2», «1, 2 y 3». */
 export type InsumoPorAutorizar = {
   item: number
   /** «40 KG Plancha LAC 3 mm». */
@@ -57,19 +59,22 @@ export function VistoDelRequerimiento({ id, numero, insumos }: { id: string; num
     <>
       <ul className="divide-y divide-borde border-t border-borde">
         {insumos.map((i) => (
-          <li key={i.item} className="flex gap-3 px-4 py-3" data-por-autorizar={i.item}>
+          <li key={i.item} className="flex gap-1 px-2 py-1 sm:px-4 sm:py-3" data-por-autorizar={i.item}>
+            {/* En el teléfono la casilla se toca con el dedo: la zona mide 44 px. */}
             {varios && (
-              <input
-                type="checkbox"
-                id={`visto-${id}-${i.item}`}
-                className="mt-1 size-4 shrink-0 accent-[var(--acento)]"
-                checked={!desmarcados.has(i.item)}
-                disabled={ocupado}
-                onChange={(e) => marcar(i.item, e.target.checked)}
-                aria-describedby={`visto-${id}-${i.item}-cuenta`}
-              />
+              <label htmlFor={`visto-${id}-${i.item}`} className="flex size-11 shrink-0 cursor-pointer items-start justify-center pt-3 sm:size-auto sm:pt-1 sm:pr-2">
+                <input
+                  type="checkbox"
+                  id={`visto-${id}-${i.item}`}
+                  className="size-4 accent-[var(--acento)]"
+                  checked={!desmarcados.has(i.item)}
+                  disabled={ocupado}
+                  onChange={(e) => marcar(i.item, e.target.checked)}
+                  aria-describedby={`visto-${id}-${i.item}-cuenta`}
+                />
+              </label>
             )}
-            <div className="min-w-0 flex-1 space-y-0.5 text-sm">
+            <div className={`min-w-0 flex-1 space-y-0.5 py-2 text-sm sm:py-0 ${varios ? '' : 'px-2 sm:px-0'}`}>
               <label htmlFor={varios ? `visto-${id}-${i.item}` : undefined} className="block break-words text-texto">
                 <span className="tabular font-semibold">Ítem {i.item} ·</span> {i.pedido}
               </label>
@@ -77,9 +82,9 @@ export function VistoDelRequerimiento({ id, numero, insumos }: { id: string; num
                 {i.cuenta}
               </p>
               {i.sustento && (
-                <p className="text-xs break-words text-texto">
+                <p className="text-sm break-words text-texto">
                   <span className="font-medium">Sustento:</span> {i.sustento}
-                  {i.firma && <span className="text-texto-tenue"> · {i.firma}</span>}
+                  {i.firma && <span className="text-xs text-texto-tenue"> · {i.firma}</span>}
                 </p>
               )}
             </div>
@@ -117,7 +122,7 @@ export function VistoDelRequerimiento({ id, numero, insumos }: { id: string; num
         abierta={rechazo}
         alCerrar={() => setRechazo(false)}
         titulo={`No autorizar · ${numero}`}
-        descripcion={`${elegidos.length === 1 ? `El ítem ${elegidos[0]?.item}` : `Los ítems ${elegidos.map((i) => i.item).join(', ')}`} no se compran ni salen del almacén. A quien pidió le llega tu nota para que corrija la cantidad o vuelva a sustentar.`}
+        descripcion={`${elegidos.length === 1 ? `El ítem ${elegidos[0]?.item} no se compra ni sale` : `Los ítems ${listaDeItems(elegidos.map((i) => i.item))} no se compran ni salen`} del almacén. A quien pidió le llega tu nota para que corrija la cantidad o vuelva a sustentar.`}
         ancho="md"
       >
         <form onSubmit={noAutorizar.alEnviar} className="space-y-4">

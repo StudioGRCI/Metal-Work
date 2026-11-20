@@ -9,7 +9,7 @@ import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
-import { cuentaDelMetrado, ESTADO_METRADO, frenaElRq, pideSustento } from '@/lib/dominio/metrado-rq'
+import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, pideSustento } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
   estadoDelRequerimiento,
@@ -107,25 +107,32 @@ export function tieneParaRecoger(rq: RequerimientoListado): boolean {
 export function ResumenDeRequerimientos({
   requerimientos,
   enlaceRecoger,
+  metrado,
 }: {
   requerimientos: RequerimientoListado[]
   /** La lista con solo los RQ que tienen algo para recoger; `null` si ya es esa lista. */
   enlaceRecoger: string | null
+  /** El metrado de cada insumo: lo frenado no lo revisa Almacén todavía. `null` si no se pudo leer. */
+  metrado: Map<string, MetradoDelInsumo> | null
 }) {
   let recoger = 0
   let porLlegar = 0
   let noComprados = 0
   let revisar = 0
+  let frenados = 0
   // Lo que Gerencia pidió distinguir de un vistazo (PR #76): los dos momentos del recojo del proveedor.
   let esperanRecojo = 0
   let enRecojo = 0
   const compran = new Set<string>()
   for (const rq of requerimientos) {
+    // Lo que se pasa del metrado sin el visto de Diseño todavía no le toca a Almacén.
+    const frenado = metrado !== null && frenoDelRq(rq, metrado) !== null
     for (const l of rq.lineas) {
       const p = partesDelInsumo(l, rq.estado)
       if (!p) continue
       if (p.recoger > 0) recoger++
-      if (p.revisar > 0) revisar++
+      if (p.revisar > 0 && frenado) frenados++
+      else if (p.revisar > 0) revisar++
       // Lo que la OC no compró ya no lo trae nadie: se cuenta aparte, no como de Logística.
       if (p.porLlegar > 0 && laCompraQuedoCorta(l, p)) noComprados++
       else if (p.porLlegar > 0) {
@@ -180,7 +187,21 @@ export function ResumenDeRequerimientos({
           </>
         }
       />
-      <Indicador titulo="Almacén revisa" valor={revisar} icono={ClipboardList} pie={revisar === 1 ? 'insumo sin revisar el stock' : 'insumos sin revisar el stock'} />
+      <Indicador
+        titulo="Almacén revisa"
+        valor={revisar}
+        icono={ClipboardList}
+        pie={
+          <>
+            {revisar === 1 ? 'insumo sin revisar el stock' : 'insumos sin revisar el stock'}
+            {frenados > 0 && (
+              <span className="block text-aviso" data-esperan-metrado>
+                y {frenados} de {frenados === 1 ? 'un RQ que espera' : 'RQ que esperan'} el sustento o a Diseño
+              </span>
+            )}
+          </>
+        }
+      />
       <Indicador
         titulo="Requerimientos en camino"
         valor={enCamino}
@@ -222,7 +243,16 @@ export function TarjetaRequerimiento({
   metrado: Map<string, MetradoDelInsumo> | null
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
-  const estado = llegoTodo(rq) ? YA_LLEGO_TODO : soloFaltaLoNoComprado(rq) ? FALTA_LO_NO_COMPRADO : estadoDelRequerimiento(rq)
+  // Por atender y frenado por el metrado: la insignia y el primer paso dicen quién lo tiene, no «Almacén revisa».
+  const freno = metrado ? frenoDelRq(rq, metrado) : null
+  const enEspera = freno ? FRENO_DEL_RQ[freno.freno] : null
+  const estado = enEspera
+    ? { ...enEspera, descripcion: enEspera.etapa }
+    : llegoTodo(rq)
+      ? YA_LLEGO_TODO
+      : soloFaltaLoNoComprado(rq)
+        ? FALTA_LO_NO_COMPRADO
+        : estadoDelRequerimiento(rq)
   const plazo = abierto(rq.estado) ? diasHasta(rq.fecha_requerida) : null
   const corrige = anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO'
   const anulable = anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK')
@@ -272,7 +302,7 @@ export function TarjetaRequerimiento({
       {rq.estado === 'ANULADO' ? (
         rq.motivo_anulacion && <p className="px-4 pb-3 text-sm text-peligro">Anulado: {rq.motivo_anulacion}</p>
       ) : (
-        <PasosDelRequerimiento rq={rq} />
+        <PasosDelRequerimiento rq={rq} enEspera={enEspera?.etiqueta} />
       )}
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
@@ -321,7 +351,7 @@ const TITULO_PASO: Record<PasoDelRq, string> = {
  * área lo recoge y queda entregado. El de ahora va marcado; la compra dice «no
  * hizo falta» cuando Almacén tenía todo.
  */
-function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
+function PasosDelRequerimiento({ rq, enEspera }: { rq: RequerimientoListado; enEspera?: string }) {
   const actual = pasoDelRequerimiento(rq.estado, partesParaElPaso(rq))
   if (!actual) return null
   const indice = PASOS_DEL_RQ.indexOf(actual)
@@ -337,6 +367,8 @@ function PasosDelRequerimiento({ rq }: { rq: RequerimientoListado }) {
         <span className="sm:hidden">Compra</span>
         <span className="hidden sm:inline">{quienCompra(rq)} compra</span>
       </>
+    ) : p === 'REVISION' && enEspera ? (
+      enEspera
     ) : (
       TITULO_PASO[p]
     )

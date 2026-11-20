@@ -737,7 +737,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // ve solo Diseño, y el informe de su equipo; luego los catálogos que
   // mantiene. La evaluación es de cada cierto tiempo: al final de su grupo.
   // Desde el 2026-11-20, arriba lo que frena a Almacén: el visto a lo que un
-  // RQ pide de más sobre el metrado.
+  // RQ pide de más sobre el metrado. En el teléfono le cede su pestaña las
+  // etapas, que se cargan en el escritorio; la OT se queda.
   DISENO: {
     grupos: [
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
@@ -746,7 +747,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
-    telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/etapas', '/diseno/materiales'],
+    telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/materiales', '/ordenes'],
   },
   // Desde el 2026-11-06 (observaciones de Diseño): anota sus actividades del
   // día, revisa la OT y pide el material por requerimiento, mirando antes el

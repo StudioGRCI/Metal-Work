@@ -15,11 +15,12 @@ export type LineaParaAprobar = {
   cantidad: number
   precio_unitario: number | null
   /**
-   * Cuánto hay del material en el almacén y cuánto ya viene en otras OC abiertas
-   * (`stock_al_aprobar_compras`, migración 20261120420000): para no aprobar dos
-   * veces la misma compra. Vacío en la OS, o si no se pudo leer.
+   * Cuánto hay del material en el almacén, cuánto ya viene en otras OC aprobadas
+   * y cuánto piden otras que esperan la aprobación (`stock_al_aprobar_compras`,
+   * migración 20261120420000): para no aprobar dos veces la misma compra, ni
+   * rechazar una creyendo que la otra ya viene. Vacío en la OS, o si no se pudo leer.
    */
-  stock?: { existencia: number; en_camino: number; en_camino_ocs: string | null } | null
+  stock?: { existencia: number; en_camino: number; en_camino_ocs: string | null; por_aprobar: number; por_aprobar_ocs: string | null } | null
 }
 
 /** Una orden de compra (OC) o de servicio (OS) en la bandeja de Gerencia. */
@@ -177,11 +178,19 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   const stockDe = new Map(
     (stock.error ? [] : (stock.data ?? [])).map((f) => [
       `${f.orden_compra_id}:${f.codigo}`,
-      { existencia: Number(f.existencia ?? 0), en_camino: Number(f.en_camino ?? 0), en_camino_ocs: f.en_camino_ocs },
+      {
+        existencia: Number(f.existencia ?? 0),
+        en_camino: Number(f.en_camino ?? 0),
+        en_camino_ocs: f.en_camino_ocs,
+        por_aprobar: Number(f.por_aprobar ?? 0),
+        por_aprobar_ocs: f.por_aprobar_ocs,
+      },
     ]),
   )
 
   return {
+    /** No se pudo leer cuánto hay y cuánto viene: la pantalla lo dice en vez de callarlo. */
+    stockSinLeer: Boolean(stock.error) && idsOc.length > 0,
     regla: regla.data
       ? ({
           activa: regla.data.activa,

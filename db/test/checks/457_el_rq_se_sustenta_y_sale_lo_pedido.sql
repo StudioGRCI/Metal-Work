@@ -40,7 +40,7 @@ begin
   end loop;
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.und', v_und::text, true);
-  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rqp', 'rqot', 'oc1', 'oc2', 's1', 's2', 's3', 's4', 's5'] loop
+  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rq7a', 'rq7b', 'corr7', 'rqp', 'rqot', 'rqp8', 'oc1', 'oc2', 'oc8a', 'oc8b', 's1', 's2', 's3', 's4', 's5', 's7', 's8'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 
@@ -63,12 +63,12 @@ begin
     from (values ('pla', 20), ('pl6', 20), ('far', 5), ('dis', 12)) x(m, c);
 
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  values ('20100045711', 'Proveedor de prueba 457', 'Av. Argentina 457, Lima', '999 457 457')
+  values ('20990004570', 'Proveedor de prueba 457', 'Av. Argentina 457, Lima', '999 457 457')
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
 
   -- Las fotos de las salidas, ya subidas por Almacén.
-  foreach v in array array['s1', 's2', 's3', 's4', 's5'] loop
+  foreach v in array array['s1', 's2', 's3', 's4', 's5', 's7', 's8'] loop
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('evidencias-almacen', current_setting('prueba.almacenero') || '/' || current_setting('prueba.' || v) || '.jpg',
             current_setting('prueba.almacenero'), '{"mimetype":"image/jpeg","size":100}'::jsonb);
@@ -147,6 +147,11 @@ begin
   perform test.afirmar(pg_temp.estado('rqp', 1) = 'NO_APLICA', 'PLANTA no se mide');
   perform test.afirmar(pg_temp.estado('rqot', 1) = 'NO_APLICA', 'La OT de garantía no se mide');
   perform test.afirmar(pg_temp.estado('rq_antes', 1) = 'NO_APLICA', 'El RQ de antes de la regla no se mide');
+  -- Un código en el que Diseño todavía no cargó nada no tiene contra qué medirse.
+  perform set_config('prueba.rqsm', gen_random_uuid()::text, true);
+  perform public.emitir_requerimiento(pg_temp.id('rqsm'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U9',
+    'Faros para una unidad sin metrado todavía', null, jsonb_build_array(pg_temp.linea('far', 2)));
+  perform test.afirmar(pg_temp.estado('rqsm', 1) = 'NO_APLICA', 'Un código sin metrado cargado no se mide');
 
   -- El sustento: corto no entra; el de un insumo que entra en el metrado, tampoco.
   begin
@@ -181,7 +186,7 @@ do $$ begin
     perform public.rq_revisar_stock(pg_temp.id('rq2'), '[{"item": 1, "en_stock": 5}, {"item": 2, "en_stock": 2}]', null);
     raise exception 'FALLA: Almacén revisó un RQ que se pasa del metrado sin visto';
   exception when check_violation then
-    perform test.afirmar(sqlerrm like '%metrado de Diseño (insumo 1, 2)%', 'Almacén no revisa el RQ2 y el mensaje dice qué insumos');
+    perform test.afirmar(sqlerrm like '%los insumos 1 y 2 se pasan del metrado%', 'Almacén no revisa el RQ2 y el mensaje dice qué insumos');
   end;
   begin
     perform public.rq_marcar_sin_stock(pg_temp.id('rq2'), null);
@@ -408,6 +413,141 @@ do $$ begin
 end $$;
 reset role;
 
+-- Corregir hacia arriba un RQ anterior no empuja fuera del metrado a uno que ya
+-- estaba en regla y listo: el corregido carga con el exceso ------------------------
+-- (U7, metrado de 10: RQ7A pide 6 y RQ7B pide 4; Almacén deja listo el RQ7B; el RQ7A
+-- sube a 9 y se pasa en 3; el RQ7B sigue en regla y sale.)
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'CHK_457_U7', pg_temp.id('pl6'), 10, null, 'Metrado del techo');
+end $$;
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rq7a'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U7',
+    'Planchas del techo, primera parte', null, jsonb_build_array(pg_temp.linea('pl6', 6)));
+  perform public.emitir_requerimiento(pg_temp.id('rq7b'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U7',
+    'Planchas del techo, segunda parte', null, jsonb_build_array(pg_temp.linea('pl6', 4)));
+  perform test.afirmar(pg_temp.estado('rq7a', 1) = 'EN_METRADO' and pg_temp.estado('rq7b', 1) = 'EN_METRADO',
+                       '6 y 4 de 10: los dos entran en el metrado');
+end $$;
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$ begin
+  perform public.rq_revisar_stock(pg_temp.id('rq7b'), '[{"item": 1, "en_stock": 4}]', null);
+  perform test.afirmar((select estado from public.requerimientos where id = pg_temp.id('rq7b')) = 'LISTO_EN_ALMACEN',
+                       'Almacén deja listo el RQ7B');
+end $$;
+reset role;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('justificantes-correccion', current_setting('prueba.rq7a') || '/' || current_setting('prueba.corr7') || '.pdf',
+        current_setting('prueba.requerimientos'), '{"mimetype":"application/pdf","size":1000}'::jsonb);
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.corregir_requerimiento(pg_temp.id('corr7'), pg_temp.id('rq7a'), 'Tres planchas más por el cambio del plano del techo',
+    pg_temp.id('rq7a') || '/' || pg_temp.id('corr7') || '.pdf', 'justificante.pdf', '{"lineas":[{"item":1,"cantidad":9}]}'::jsonb);
+  perform test.afirmar(pg_temp.estado('rq7b', 1) = 'EN_METRADO',
+                       'el RQ7B, ya listo, sigue en regla aunque el RQ7A se corrigió hacia arriba');
+  perform test.afirmar(pg_temp.estado('rq7a', 1) = 'SIN_SUSTENTO'
+                       and (select exceso from public.metrado_de_requerimientos(array[pg_temp.id('rq7a')]) where item = 1) = 3,
+                       'el RQ7A corregido carga con el exceso de 3 y espera su sustento');
+end $$;
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$ begin
+  perform public.registrar_salida_material(pg_temp.id('s7'), pg_temp.id('pl6'), 4, null, null, 'Entrega del RQ7B',
+    'Operario de prueba', pg_temp.id('almacenero') || '/' || pg_temp.id('s7') || '.jpg',
+    (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq7b') and item = 1));
+  perform test.afirmar((select count(*) from public.movimientos_materiales where id = pg_temp.id('s7')) = 1,
+                       'el RQ7B sale del almacén');
+end $$;
+reset role;
+
+-- La OC anulada no abre la puerta: el insumo corregido hacia arriba no va en otra
+-- OC sin el visto de Diseño -----------------------------------------------------------
+-- (U8, metrado de 10: el RQ pide 10, Logística lo compra, Gerencia anula la OC,
+-- Requerimientos lo sube a 14; la segunda OC se frena.)
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'CHK_457_U8', pg_temp.id('pl6'), 10, null, 'Metrado del piso');
+end $$;
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rqp8'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_457_U8',
+    'Planchas del piso', null, jsonb_build_array(pg_temp.linea('pl6', 10)));
+end $$;
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$ begin
+  perform public.rq_revisar_stock(pg_temp.id('rqp8'), '[{"item": 1, "en_stock": 0}]', null);
+end $$;
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_compra_de_requerimientos(pg_temp.id('oc8a'),
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pl6'), 'cantidad', 10, 'precio', 50,
+      'insumos', jsonb_build_array((select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rqp8') and item = 1)))),
+    pg_temp.id('proveedor'), 'COT-457-8A', current_date + 5, 'CONTADO', 0, 'PEN', false);
+end $$;
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+do $$ begin
+  perform public.anular_orden_compra(pg_temp.id('oc8a'), 'El proveedor no tiene la plancha, se compra a otro');
+end $$;
+reset role;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('justificantes-correccion', current_setting('prueba.rqp8') || '/' || current_setting('prueba.oc8b') || '.pdf',
+        current_setting('prueba.requerimientos'), '{"mimetype":"application/pdf","size":1000}'::jsonb);
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.corregir_requerimiento(pg_temp.id('oc8b'), pg_temp.id('rqp8'), 'Cuatro planchas más por el cambio del plano del piso',
+    pg_temp.id('rqp8') || '/' || pg_temp.id('oc8b') || '.pdf', 'justificante.pdf', '{"lineas":[{"item":1,"cantidad":14}]}'::jsonb);
+  perform test.afirmar(pg_temp.estado('rqp8', 1) = 'SIN_SUSTENTO', 'subido a 14, se pasa del metrado y espera su sustento');
+end $$;
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$ begin
+  begin
+    perform public.emitir_compra_de_requerimientos(gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pl6'), 'cantidad', 14, 'precio', 50,
+        'insumos', jsonb_build_array((select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rqp8') and item = 1)))),
+      pg_temp.id('proveedor'), 'COT-457-8B', current_date + 5, 'CONTADO', 0, 'PEN', false);
+    raise exception 'FALLO: Logística compró sin el visto de Diseño un insumo cuya primera OC se anuló';
+  exception when check_violation then
+    perform test.afirmar(sqlerrm like '%no va en la orden de compra%', 'la segunda OC se frena y dice por qué: ' || sqlerrm);
+  end;
+end $$;
+reset role;
+
+-- Un RQ de PLANTA no lleva materia prima a una unidad con metrado ------------------------------
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$ begin
+  perform public.rq_revisar_stock(pg_temp.id('rqp'), '[{"item": 1, "en_stock": 4}]', null);
+  begin
+    perform public.registrar_salida_material(pg_temp.id('s8'), pg_temp.id('pla'), 1, null, 'CHK_457_U1', 'Planchas de planta para la unidad',
+      'Operario de prueba', pg_temp.id('almacenero') || '/' || pg_temp.id('s8') || '.jpg',
+      (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rqp') and item = 1));
+    raise exception 'FALLO: un RQ de PLANTA sacó materia prima hacia una unidad con metrado';
+  exception when check_violation then
+    perform test.afirmar(sqlerrm like '%no sale hacia CHK_457_U1, que tiene su metrado%', 'el RQ de PLANTA no lleva plancha a la unidad: ' || sqlerrm);
+  end;
+end $$;
+reset role;
+
 -- con_metrado no cambia -------------------------------------------------------------------------
 do $$ begin
   begin
@@ -454,25 +594,63 @@ begin
   perform test.afirmar(r.existencia = 11 and r.stock_minimo = 20 and r.compra_por_mayor = 50 and r.en_camino = 0
                        and r.salio_90_dias = 1 and r.comprar = 50,
                        format('Logística ve el disco: quedan %s, mínimo %s, salió %s, comprar %s', r.existencia, r.stock_minimo, r.salio_90_dias, r.comprar));
-  -- Una OC directa de 30 discos: ya vienen en camino.
+  -- Una OC directa de 30 discos: espera a Gerencia, y ya cuenta para no comprarla otra vez.
   perform public.emitir_compra_directa(pg_temp.id('oc2'), pg_temp.id('proveedor'), null, 'Reposición de discos de corte',
     jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('dis'), 'cantidad', 30, 'precio', 3.5)),
     null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+end $$;
+reset role;
+-- La aprobación que pide cada OC se decide en un disparador diferido: se dispara aquí.
+set constraints all immediate;
+set constraints all deferred;
+select test.afirmar((select aprobacion from public.ordenes_compra_materiales where id = pg_temp.id('oc2')) = 'POR_APROBAR',
+                    'La OC directa de discos espera a Gerencia');
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare r record;
+begin
   select * into r from public.reposicion_de_stock() where material_id = pg_temp.id('dis');
-  perform test.afirmar(r.en_camino = 30 and r.comprar = 0 and r.en_camino_ocs is not null,
-                       'Con 30 en camino ya no pide comprar, y dice en qué OC vienen');
+  perform test.afirmar(r.en_camino = 0 and r.por_aprobar = 30 and r.comprar = 0 and r.por_aprobar_ocs is not null,
+                       'Con 30 esperando a Gerencia ya no pide comprar, y lo dice aparte de lo que ya viene');
 end $$;
 reset role;
 
--- Gerencia ve lo que hay y lo que viene al aprobar --------------------------------------------------
+-- Gerencia ve lo que hay, lo que ya viene y lo que espera su aprobación -------------------------------
 select pg_temp.como('gerente');
 set local role authenticated;
 do $$
 declare r record;
 begin
   select * into r from public.stock_al_aprobar_compras(array[pg_temp.id('oc2')]) where material_id = pg_temp.id('dis');
-  perform test.afirmar(r.existencia = 11 and r.en_camino = 0,
+  perform test.afirmar(r.existencia = 11 and r.en_camino = 0 and r.por_aprobar = 0,
                        'Al aprobar la OC de discos: hay 11 y no viene nada en otras OC (la propia no cuenta)');
+end $$;
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$ begin
+  perform set_config('prueba.oc3', gen_random_uuid()::text, true);
+  perform public.emitir_compra_directa(pg_temp.id('oc3'), pg_temp.id('proveedor'), null, 'Otra caja de discos de corte',
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('dis'), 'cantidad', 20, 'precio', 3.5)),
+    null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+end $$;
+reset role;
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.como('gerente');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  -- Si se leyeran juntas, cada OC diría que la otra «ya viene» y Gerencia podría rechazar las dos.
+  select * into r from public.stock_al_aprobar_compras(array[pg_temp.id('oc3')]) where material_id = pg_temp.id('dis');
+  perform test.afirmar(r.en_camino = 0 and r.en_camino_ocs is null and r.por_aprobar = 30 and r.por_aprobar_ocs is not null,
+                       'La otra OC de 30 se dice «por aprobar», no «ya viene»');
+  perform public.aprobar_compra(pg_temp.id('oc2'));
+  select * into r from public.stock_al_aprobar_compras(array[pg_temp.id('oc3')]) where material_id = pg_temp.id('dis');
+  perform test.afirmar(r.en_camino = 30 and r.en_camino_ocs is not null and r.por_aprobar = 0,
+                       'Aprobada, la de 30 ya viene');
 end $$;
 reset role;
 

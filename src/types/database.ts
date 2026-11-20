@@ -9268,6 +9268,7 @@ export type Database = {
           sin_salida_al_entregar: number | null
           recompra_de: string | null
           recompra_por: string | null
+          cantidad_desde: string | null
         }
         Insert: {
           id?: string
@@ -9291,6 +9292,7 @@ export type Database = {
           sin_salida_al_entregar?: number | null
           recompra_de?: string | null
           recompra_por?: string | null
+          cantidad_desde?: string | null
         }
         Update: {
           id?: string
@@ -9314,6 +9316,7 @@ export type Database = {
           sin_salida_al_entregar?: number | null
           recompra_de?: string | null
           recompra_por?: string | null
+          cantidad_desde?: string | null
         }
         Relationships: [
           {
@@ -14084,6 +14087,8 @@ export type Database = {
           material_id: string | null
           en_camino: number | null
           ocs: string | null
+          por_aprobar: number | null
+          ocs_por_aprobar: string | null
         }[]
       }
       en_mano_de_la_linea_de_compra: {
@@ -16259,6 +16264,8 @@ export type Database = {
           libre: number | null
           en_camino: number | null
           en_camino_ocs: string | null
+          por_aprobar: number | null
+          por_aprobar_ocs: string | null
           stock_minimo: number | null
           compra_por_mayor: number | null
           salio_90_dias: number | null
@@ -17022,6 +17029,8 @@ export type Database = {
           existencia: number | null
           en_camino: number | null
           en_camino_ocs: string | null
+          por_aprobar: number | null
+          por_aprobar_ocs: string | null
         }[]
       }
       stock_en_almacen: {

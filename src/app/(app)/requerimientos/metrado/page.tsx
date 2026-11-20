@@ -4,7 +4,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
+import { metradoDeRequerimientos, requerimientosPorAutorizar, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { enlaceDisenoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cuentaDelMetrado, ESTADO_METRADO } from '@/lib/dominio/metrado-rq'
@@ -25,7 +25,12 @@ export const metadata = { title: 'Insumos por autorizar' }
 export default async function PaginaPorAutorizar() {
   const perfil = await exigirPermiso('requerimientos.autorizar_metrado')
   const cargaMetrado = puede(perfil, 'diseno.codigos')
-  const abiertos = await cargarRequerimientos({ soloAbiertos: true })
+  // Los 300 abiertos más recientes, y además los que esperan el visto aunque sean
+  // más antiguos: el globo los cuenta todos, y la bandeja no puede dejar uno fuera.
+  const [recientes, esperan] = await Promise.all([cargarRequerimientos({ soloAbiertos: true }), requerimientosPorAutorizar()])
+  const faltan = esperan.filter((id) => !recientes.some((r) => r.id === id))
+  const abiertos = faltan.length > 0 ? [...recientes, ...(await cargarRequerimientos({ ids: faltan }))] : recientes
+  abiertos.sort((a, b) => b.creado_en.localeCompare(a.creado_en))
   const metrado = await metradoDeRequerimientos(abiertos.map((r) => r.id))
   const de = (r: RequerimientoListado, estados: MetradoDelInsumo['estado'][]) =>
     r.lineas.filter((l) => estados.includes(metrado.get(l.id)?.estado ?? 'NO_APLICA'))
@@ -59,6 +64,7 @@ export default async function PaginaPorAutorizar() {
             porAutorizar.map((r) => (
               <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
                 <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} />
+                <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} />
                 <VistoDelRequerimiento
                   id={r.id}
                   numero={r.numero}
@@ -117,6 +123,21 @@ export default async function PaginaPorAutorizar() {
         </section>
       )}
     </>
+  )
+}
+
+/**
+ * Los otros insumos del mismo RQ que todavía esperan el sustento de quien pidió:
+ * aunque autorices los de abajo, Almacén no lo revisa hasta que esos se resuelvan.
+ */
+function OtrosQueFrenan({ rq, items }: { rq: RequerimientoListado; items: number[] }) {
+  if (items.length === 0) return null
+  const cuales = items.length === 1 ? `El ítem ${items[0]}` : `Los ítems ${items.slice(0, -1).join(', ')} y ${items.at(-1)}`
+  return (
+    <p className="border-t border-borde bg-aviso-suave px-4 py-2 text-sm text-texto" data-otros-frenan={rq.numero}>
+      {cuales} de {rq.numero} {items.length === 1 ? 'espera' : 'esperan'} todavía el sustento de quien pidió: aunque autorices lo de abajo,
+      Almacén lo revisa cuando {items.length === 1 ? 'ese se resuelva' : 'esos se resuelvan'}.
+    </p>
   )
 }
 

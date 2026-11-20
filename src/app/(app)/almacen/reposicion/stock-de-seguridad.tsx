@@ -54,7 +54,8 @@ export function StockDeSeguridad({
           setListo(null)
           setAbierta(true)
         }}
-        aria-label={`Mínimo y compra por mayor de ${descripcion}`}
+        // El nombre empieza por lo que se ve: quien lo llama por voz dice «Cambiar».
+        aria-label={`${minimo === null ? 'Fijar mínimo' : 'Cambiar el mínimo'} de ${descripcion}`}
       >
         <SlidersHorizontal aria-hidden className="size-4" />
         {minimo === null ? 'Fijar mínimo' : 'Cambiar'}
