@@ -29,7 +29,8 @@ function tipoDe(accept: string, conCamara: boolean): Tipo {
   const foto = t.some((x) => x.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(x))
   if (excel) return { que: 'Elegir el Excel', formato: 'Solo Excel (.xlsx)', noEs: 'No es un Excel (.xlsx)', Icono: FileSpreadsheet }
   if (xml) return { que: 'Elegir el XML', formato: 'XML o ZIP de SUNAT', noEs: 'No es un XML ni un ZIP', Icono: FileCode }
-  // Los DXF de Diseño, comprimidos.
+  // Los DXF de Diseño para el corte: el .dxf suelto o comprimido.
+  if (t.includes('.dxf')) return { que: 'Elegir los DXF', formato: 'DXF, o comprimidos en ZIP, RAR o 7Z', noEs: 'No es un .dxf ni un .zip, .rar o .7z', Icono: FileArchive }
   if (t.includes('.7z')) return { que: 'Elegir el comprimido', formato: 'ZIP, RAR o 7Z', noEs: 'No es un .zip, .rar ni .7z', Icono: FileArchive }
   if (pdf && word) return { que: 'Elegir el PDF o el Word', formato: 'PDF o Word', noEs: 'No es un PDF ni un Word', Icono: FileText }
   if (pdf && foto) {
@@ -86,6 +87,15 @@ const FIRMAS: Record<string, { que: string; es: (b: Uint8Array) => boolean }> = 
   '.zip': { que: 'un .zip', es: (b) => b[0] === 0x50 && b[1] === 0x4b },
   '.rar': { que: 'un .rar', es: (b) => b[0] === 0x52 && b[1] === 0x61 && b[2] === 0x72 && b[3] === 0x21 },
   '.7z': { que: 'un .7z', es: (b) => b[0] === 0x37 && b[1] === 0x7a && b[2] === 0xbc && b[3] === 0xaf && b[4] === 0x27 && b[5] === 0x1c },
+  // El DXF de texto empieza con un código de grupo en su línea («  0», «999»),
+  // a veces tras la marca UTF-8; el binario, con «AutoCAD Binary DXF».
+  '.dxf': {
+    que: 'un .dxf',
+    es: (b) => {
+      const inicio = new TextDecoder('latin1').decode(b).replace(/^\xef\xbb\xbf/, '')
+      return inicio.startsWith('AutoCAD Binary DXF') || /^\s*\d{1,4}[ \t]*\r?\n/.test(inicio)
+    },
+  },
 }
 
 /**
@@ -100,7 +110,7 @@ export async function revisarArchivo(archivo: File, accept: string, hastaMb?: nu
   const firma = FIRMAS[extension] ?? (archivo.type === 'application/pdf' ? FIRMAS['.pdf'] : undefined)
   if (!firma) return null
   try {
-    const bytes = new Uint8Array(await archivo.slice(0, 8).arrayBuffer())
+    const bytes = new Uint8Array(await archivo.slice(0, 32).arrayBuffer())
     return firma.es(bytes) ? null : `Está dañado o no es ${firma.que} de verdad: toca para elegir otro`
   } catch {
     // Se movió o se cambió en la computadora después de elegirlo.
@@ -439,6 +449,174 @@ export const ElegirArchivo = React.forwardRef<HTMLInputElement, ElegirArchivoPro
         >
           Quitar
         </Boton>
+      )}
+    </div>
+  )
+})
+
+export type ElegirArchivosProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'multiple' | 'onChange'> & {
+  /** El tope de cada archivo, el mismo que valida el servidor. */
+  hastaMb?: number
+  /** Cuántos se eligen de una vez. */
+  hasta?: number
+  /** Los archivos que quedaron elegidos, cada vez que cambian. */
+  alElegir?: (archivos: File[]) => void
+}
+
+/**
+ * Lo mismo que `ElegirArchivo`, para varios archivos de una vez: los DXF de un
+ * juego de piezas para el corte (DKS, 2026-11-20). Dice cuántos son y cuánto
+ * pesan, y debajo cada nombre; el que no sirve —no es del tipo, está vacío,
+ * pasa del tope, no lo es por dentro— sale en rojo con el motivo y traba el
+ * envío, como en el de un archivo.
+ */
+export const ElegirArchivos = React.forwardRef<HTMLInputElement, ElegirArchivosProps>(function ElegirArchivos(
+  { hastaMb, hasta, alElegir, accept = '', className, disabled, required, onInvalid, 'aria-describedby': descrito, ...props },
+  ref,
+) {
+  const [archivos, setArchivos] = React.useState<File[]>([])
+  // Lo que se vio por dentro de cada uno, por si llega tarde: se guarda con su archivo.
+  const [porDentro, setPorDentro] = React.useState<Map<File, string | null>>(new Map())
+  const [falta, setFalta] = React.useState(false)
+  const propio = React.useRef<HTMLInputElement | null>(null)
+  const idEstado = React.useId()
+  const tipo = tipoDe(accept, false)
+
+  const elegir = React.useCallback(
+    (lista: File[]) => {
+      setArchivos(lista)
+      setPorDentro(new Map())
+      alElegir?.(lista)
+      for (const a of lista) {
+        void revisarArchivo(a, accept, hastaMb).then((aviso) =>
+          setPorDentro((antes) => (propio.current && Array.from(propio.current.files ?? []).includes(a) ? new Map(antes).set(a, aviso) : antes)),
+        )
+      }
+    },
+    [accept, hastaMb, alElegir],
+  )
+
+  const conectar = React.useCallback(
+    (input: HTMLInputElement | null) => {
+      propio.current = input
+      if (typeof ref === 'function') ref(input)
+      else if (ref) ref.current = input
+      if (!input) return
+      const form = input.form
+      const alVaciar = () => {
+        input.setCustomValidity('')
+        setArchivos([])
+        setPorDentro(new Map())
+        setFalta(false)
+      }
+      form?.addEventListener('reset', alVaciar)
+      return () => {
+        form?.removeEventListener('reset', alVaciar)
+        propio.current = null
+        if (typeof ref === 'function') ref(null)
+        else if (ref) ref.current = null
+      }
+    },
+    [ref],
+  )
+
+  const avisoDe = (a: File) => avisoDeArchivo(a, accept, hastaMb) ?? porDentro.get(a) ?? null
+  const malos = archivos.filter((a) => avisoDe(a))
+  const demasiados = hasta !== undefined && archivos.length > hasta
+  const avisoGeneral = demasiados
+    ? `Son ${archivos.length} y el tope es ${hasta} de una vez: toca para elegir menos`
+    : malos.length > 0
+      ? `${malos.length === 1 ? 'Uno no sirve' : `${malos.length} no sirven`}: toca para elegir otra vez`
+      : falta && required && archivos.length === 0
+        ? `Faltan ${tipo.que.replace(/^Elegir\s+/, '')}.`
+        : null
+
+  // El globo del navegador dice lo mismo que la caja y traba el envío.
+  React.useEffect(() => {
+    const input = propio.current
+    if (!input) return
+    input.setCustomValidity(archivos.length > 0 && avisoGeneral ? paraElGlobo(avisoGeneral).replace(/: toca para elegir (otra vez|menos)$/, '.') : '')
+  }, [archivos.length, avisoGeneral])
+
+  const total = archivos.reduce((suma, a) => suma + a.size, 0)
+  const limite = hastaMb ? `hasta ${hastaMb} MB cada uno` : ''
+  const pie =
+    avisoGeneral ??
+    (archivos.length > 0
+      ? `${tamanoArchivo(total)} · toca para cambiarlos`
+      : [tipo.formato, limite, hasta ? `hasta ${hasta} de una vez` : ''].filter(Boolean).join(', '))
+  const mal = Boolean(avisoGeneral)
+
+  return (
+    <div className={cn('grid gap-2', className)}>
+      <div
+        className={cn(
+          'group/archivo relative flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] border px-3 py-2',
+          archivos.length > 0
+            ? mal
+              ? 'border-solid border-peligro bg-peligro-suave/40'
+              : 'border-solid border-exito'
+            : mal
+              ? 'border-dashed border-peligro'
+              : 'border-dashed border-borde-fuerte',
+          'has-[input:focus-visible]:border-acento has-[input:focus-visible]:outline-3 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-anillo-foco',
+          disabled ? 'opacity-60' : !mal && 'hover:bg-superficie-2',
+        )}
+      >
+        <tipo.Icono
+          aria-hidden
+          className={cn('size-5 shrink-0', mal ? 'text-peligro' : archivos.length > 0 ? 'text-exito' : 'text-texto-tenue')}
+        />
+        <span id={idEstado} className="min-w-0 flex-1">
+          <span className={cn('block text-sm font-medium wrap-anywhere', archivos.length > 0 ? 'text-texto' : 'text-acento')}>
+            {archivos.length === 0 ? tipo.que : archivos.length === 1 ? archivos[0].name : `${archivos.length} archivos elegidos`}
+          </span>
+          {pie && (
+            <span aria-live="polite" className={cn('block text-xs', mal ? 'text-peligro' : 'text-texto-tenue')}>
+              <ConPuntero texto={pie} />
+            </span>
+          )}
+        </span>
+        <input
+          ref={conectar}
+          type="file"
+          multiple
+          accept={accept || undefined}
+          disabled={disabled}
+          required={required}
+          aria-describedby={descrito ? `${descrito} ${idEstado}` : idEstado}
+          aria-invalid={mal || undefined}
+          className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed file:cursor-pointer"
+          onInvalid={(e) => {
+            if (e.currentTarget.validity.valueMissing) e.currentTarget.setCustomValidity(`Faltan ${tipo.que.replace(/^Elegir\s+/, '')}.`)
+            if (archivos.length === 0) setFalta(true)
+            onInvalid?.(e)
+          }}
+          onChange={(e) => {
+            e.currentTarget.setCustomValidity('')
+            setFalta(false)
+            elegir(Array.from(e.currentTarget.files ?? []))
+          }}
+          {...props}
+        />
+      </div>
+      {archivos.length > 1 && (
+        <ul className="grid gap-1 text-xs" aria-label="Archivos elegidos">
+          {archivos.map((a, i) => {
+            const aviso = avisoDe(a)
+            return (
+              <li key={`${i}-${a.name}`} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-medium wrap-anywhere text-texto">{a.name}</span>
+                <span className={aviso ? 'text-peligro' : 'text-texto-tenue'}>
+                  {aviso ? aviso.replace(/: toca para elegir otro$/, '') : tamanoArchivo(a.size)}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {archivos.length === 1 && avisoDe(archivos[0]) && (
+        <p className="text-xs text-peligro">{avisoDe(archivos[0])!.replace(/: toca para elegir otro$/, '')}</p>
       )}
     </div>
   )

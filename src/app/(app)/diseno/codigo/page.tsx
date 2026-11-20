@@ -364,7 +364,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
   )
 }
 
-/** Los DXF comprimidos del código: Diseño los sube; Maestranza y Producción los descargan. */
+/** Los DXF del código para el corte: Diseño los sube; Maestranza y Producción los descargan. */
 async function VistaDxf({ codigo }: { codigo: string }) {
   const archivos = await dxfDeCodigo(codigo)
   return (
@@ -372,7 +372,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Cargar DXF"
-          ayuda={`Los DXF que generaste, en un .zip, .rar o .7z de hasta 50 MB. Solo los ven Diseño, Maestranza y Producción; a sus supervisores les llega el aviso.`}
+          ayuda={`Los .dxf para el corte en plasma: elige varios a la vez, o un .zip, .rar o .7z, de hasta 50 MB cada uno. Solo los ven Diseño, Maestranza y Producción; a sus supervisores les llega un aviso por envío.`}
         />
         <TarjetaCuerpo>
           <CargarDxf codigo={codigo} />

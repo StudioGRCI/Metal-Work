@@ -148,7 +148,7 @@ export const NAVEGACION = [
         descripcion: 'Las etapas de cada unidad con su fecha comprometida y cómo van',
         disponible: true,
       },
-      // Los DXF comprimidos que Diseño genera para el corte: un acceso aparte,
+      // Los DXF que Diseño genera para el corte en plasma: un acceso aparte,
       // solo de Diseño, Maestranza y Producción (observaciones de Diseño,
       // 2026-11-06). Los supervisores los bajan desde «Planos y etapas».
       {
@@ -156,7 +156,7 @@ export const NAVEGACION = [
         ruta: '/diseno/dxf',
         icono: FileArchive,
         permiso: 'diseno.codigos',
-        descripcion: 'Los DXF de cada unidad, comprimidos, para Maestranza y Producción',
+        descripcion: 'Los DXF de cada unidad para el corte, para Maestranza y Producción',
         disponible: true,
       },
       // El catálogo chico del que Diseño elige al desglosar los materiales de
@@ -387,7 +387,7 @@ export const NAVEGACION = [
         ruta: '/planos',
         icono: DraftingCompass,
         permiso: 'codigos_internos.area',
-        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, y las etapas de tu área',
+        descripcion: 'Los planos que Diseño cargó para tu área, para marcarlos recibidos, las etapas de tu área y los DXF para el corte',
         disponible: true,
       },
       // Maestranza pidió el 2026-10-15 ver lo que Almacén tiene antes de

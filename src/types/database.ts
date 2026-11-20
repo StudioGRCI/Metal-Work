@@ -859,6 +859,7 @@ export type Database = {
           descripcion: string
           nombre_archivo: string
           ruta: string
+          envio: string
           tamano_bytes: number
           subido_por: string
           subido_en: string
@@ -872,6 +873,7 @@ export type Database = {
           descripcion: string
           nombre_archivo: string
           ruta: string
+          envio: string
           tamano_bytes: number
           subido_por?: string
           subido_en?: string
@@ -885,6 +887,7 @@ export type Database = {
           descripcion?: string
           nombre_archivo?: string
           ruta?: string
+          envio?: string
           tamano_bytes?: number
           subido_por?: string
           subido_en?: string
@@ -13802,6 +13805,12 @@ export type Database = {
           lineas: Json | null
         }[]
       }
+      dxf_esta_registrado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       editar_carroceria_ventas: {
         Args: {
           p_id: string | null
@@ -15539,6 +15548,7 @@ export type Database = {
           p_codigo: string | null
           p_descripcion: string | null
           p_nombre_archivo: string | null
+          p_envio: string | null
         }
         Returns: string
       }

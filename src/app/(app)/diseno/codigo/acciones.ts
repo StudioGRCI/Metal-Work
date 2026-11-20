@@ -482,21 +482,25 @@ export async function guardarEtapaDeArea(_previo: unknown, formulario: FormData)
 
 const DXF = z.object({
   id: z.guid(),
+  envio: z.guid(),
   codigo: texto(60).min(2),
   descripcion: texto(200).min(3),
   nombre_archivo: texto(200).min(1),
 })
 
 /**
- * Registrar un comprimido de DXF ya subido a `dxf-codigo/{id}.{ext}`. La base
- * mira que el archivo esté, sea de quien lo registra y no pase de 50 MB, y le
- * avisa al supervisor de Maestranza.
+ * Registrar un DXF ya subido a `dxf-codigo/{id}.{ext}`: el .dxf suelto o el
+ * comprimido. La pantalla llama una vez por archivo, con el mismo `envio` para
+ * los que se eligieron juntos. La base mira que el archivo esté, sea de quien
+ * lo registra y no pase de 50 MB, y les manda a los supervisores de Maestranza
+ * y Producción un solo aviso por envío.
  */
 export async function registrarDxf(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: 'Los DXF los sube el encargado de Diseño.' }
   const datos = DXF.safeParse({
     id: formulario.get('id'),
+    envio: formulario.get('envio'),
     codigo: formulario.get('codigo'),
     descripcion: formulario.get('descripcion'),
     nombre_archivo: formulario.get('nombre_archivo'),
@@ -509,25 +513,26 @@ export async function registrarDxf(_previo: unknown, formulario: FormData): Prom
         campo === 'descripcion'
           ? 'Escribe qué traen los DXF, por ejemplo «Corte de planchas del cajón».'
           : campo === 'nombre_archivo'
-            ? 'Elige el archivo comprimido (.zip, .rar o .7z).'
+            ? 'Elige los .dxf, o el comprimido (.zip, .rar o .7z).'
             : NO_SE_RECONOCE,
     }
   }
   const ext = extensionDxf(datos.data.nombre_archivo)
-  if (!ext) return { ok: false, error: 'Los DXF se suben comprimidos: .zip, .rar o .7z.' }
+  if (!ext) return { ok: false, error: 'Sube el .dxf, o los DXF comprimidos en .zip, .rar o .7z.' }
   const supabase = await createClient()
   const { error } = await supabase.rpc('registrar_dxf_codigo', {
     p_id: datos.data.id,
     p_codigo: datos.data.codigo,
     p_descripcion: datos.data.descripcion,
     p_nombre_archivo: datos.data.nombre_archivo,
+    p_envio: datos.data.envio,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
-  return { ok: true, mensaje: 'DXF cargados. A los supervisores de Maestranza y Producción les llegó el aviso.' }
+  return { ok: true, mensaje: 'DXF cargado. A los supervisores de Maestranza y Producción les llegó el aviso.' }
 }
 
-/** Quitar un comprimido que se subió por error o que ya no va. Queda en el historial. */
+/** Quitar un DXF que se subió por error o que ya no va. Queda en el historial. */
 export async function quitarDxf(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'diseno.codigos')) return { ok: false, error: 'Los DXF los quita el encargado de Diseño.' }
@@ -537,5 +542,5 @@ export async function quitarDxf(_previo: unknown, formulario: FormData): Promise
   const { error } = await supabase.rpc('quitar_dxf_codigo', { p_id: id.data })
   if (error) return { ok: false, error: mensajeDeError(error) }
   repintar()
-  return { ok: true, mensaje: 'Archivo quitado. Maestranza ya no lo ve.' }
+  return { ok: true, mensaje: 'Archivo quitado. Maestranza y Producción ya no lo ven.' }
 }

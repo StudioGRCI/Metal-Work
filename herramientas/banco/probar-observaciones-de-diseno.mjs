@@ -205,10 +205,10 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
   comprobar(dxfAntes >= 2, 'el código trae sus comprimidos de DXF')
   const descripcion = `Refuerzos de la compuerta ${sello}`
   await pagina.locator('#dxf-descripcion').fill(descripcion)
-  await pagina.locator('#dxf-archivo').setInputFiles(ZIP)
+  await pagina.locator('#dxf-archivos').setInputFiles(ZIP)
   await pagina.getByRole('button', { name: 'Cargar DXF', exact: true }).click()
   const avisoDxf = await estado(pagina)
-  comprobar(avisoDxf.includes('DXF cargados'), `aviso: «${avisoDxf}»`)
+  comprobar(avisoDxf.includes('DXF cargado'), `aviso: «${avisoDxf}»`)
   const dxf = await uno(`select ruta, tamano_bytes from codigo_dxf where descripcion = $1`, [descripcion])
   comprobar(dxf && /^[0-9a-f-]{36}\.zip$/.test(dxf.ruta), `el comprimido queda registrado (${dxf?.ruta})`)
   const avisoMtz = await uno(`select count(*) n from notificaciones n join usuarios u on u.id = n.usuario_id

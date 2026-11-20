@@ -528,20 +528,22 @@ export async function otPorCodigo(): Promise<Map<string, OtDeCodigo>> {
   return porCodigo
 }
 
-/** Un comprimido de DXF de un código, con su enlace de descarga. */
+/** Un DXF de un código (el .dxf o el comprimido), con su enlace de descarga. */
 export type DxfDeCodigo = {
   id: string
   codigo: string
   descripcion: string
   nombre_archivo: string
   ruta: string
+  /** Los que Diseño subió juntos, con una misma descripción. */
+  envio: string
   tamano_bytes: number
   subido_en: string
   url: string | null
 }
 
 /**
- * Los DXF comprimidos de un código, o de todos los que la persona ve. Los ven
+ * Los DXF de un código, o de todos los que la persona ve. Los ven
  * Diseño y los supervisores de Maestranza y Producción (`puede_ver_dxf`); el enlace descarga el
  * archivo con el nombre que tenía.
  */
@@ -550,7 +552,7 @@ export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: {
   const { data, error } = await todasLasFilas(() => {
     const q = supabase
       .from('codigo_dxf')
-      .select('id, codigo_interno, descripcion, nombre_archivo, ruta, tamano_bytes, subido_en')
+      .select('id, codigo_interno, descripcion, nombre_archivo, ruta, envio, tamano_bytes, subido_en')
       .is('quitado_en', null)
     return codigo ? q.eq('codigo_interno', normalizarCodigo(codigo)) : q
   }, ['codigo_interno', 'subido_en.desc', 'id'])
@@ -561,6 +563,7 @@ export async function dxfDeCodigo(codigo: string | null, { conEnlace = true }: {
     descripcion: f.descripcion,
     nombre_archivo: f.nombre_archivo,
     ruta: f.ruta,
+    envio: f.envio,
     tamano_bytes: Number(f.tamano_bytes),
     subido_en: f.subido_en,
     url: null,

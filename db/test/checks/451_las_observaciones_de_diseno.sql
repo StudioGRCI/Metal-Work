@@ -1,6 +1,7 @@
 -- Las observaciones de Diseño (migración 20261106100000): el colaborador pide
--- material por requerimiento y ya no sube planos; los DXF comprimidos son solo
--- de Diseño y Maestranza; Diseño arma el par Habilitado (Maestranza) y
+-- material por requerimiento y ya no sube planos; los DXF (sueltos o
+-- comprimidos, varios en un envío y un solo aviso) son solo de Diseño,
+-- Maestranza y Producción; Diseño arma el par Habilitado (Maestranza) y
 -- Ensamblaje (Producción); cada área agrega sus subetapas o sus etapas, y el
 -- avance cuenta las etapas de arriba con el promedio de sus subetapas. Cada
 -- paso con el rol que lo da —nunca ADMIN— y `set local role authenticated`.
@@ -35,7 +36,7 @@ begin
   foreach v in array array['MTZ', 'PRD', 'ACB', 'DIS'] loop
     perform set_config('prueba.' || lower(v), (select id::text from public.areas where codigo = v), true);
   end loop;
-  foreach v in array array['dxf1', 'dxf2', 'dxf3'] loop
+  foreach v in array array['dxf1', 'dxf2', 'dxf3', 'dxf4', 'dxf5', 'env1', 'env2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   perform set_config('prueba.codigo', 'CHK451_SR_O4_1_26/51', true);
@@ -54,11 +55,15 @@ $$;
 create or replace function pg_temp.subir_dxf(p_clave text, p_ext text, p_dueno text) returns void language sql as $$
   insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
   values ('dxf-codigo', current_setting('prueba.' || p_clave) || '.' || p_ext, pg_temp.id(p_dueno), current_setting('prueba.' || p_dueno),
-          jsonb_build_object('mimetype', 'application/zip', 'size', 512000));
+          jsonb_build_object('mimetype', case p_ext when 'dxf' then 'application/dxf' else 'application/zip' end, 'size', 512000));
 $$;
 create or replace function pg_temp.avisos(p_clave text, p_titulo text) returns integer language sql as $$
   select count(*)::integer from public.notificaciones
    where usuario_id = pg_temp.id(p_clave) and titulo like p_titulo || '%' and creado_en >= now();
+$$;
+create or replace function pg_temp.cuerpo_aviso(p_clave text) returns text language sql as $$
+  select string_agg(cuerpo, ' | ') from public.notificaciones
+   where usuario_id = pg_temp.id(p_clave) and titulo like 'DXF nuevos%' and creado_en >= now();
 $$;
 create or replace function pg_temp.etapa(p_nombre text) returns uuid language sql as $$
   select id from public.codigo_etapas where codigo_interno = current_setting('prueba.codigo') and nombre = p_nombre and quitada_en is null;
@@ -118,17 +123,19 @@ select set_config('request.jwt.claim.sub', '', true), set_config('request.jwt.cl
 select pg_temp.como('diseno_dis');
 set local role authenticated;
 select pg_temp.subir_dxf('dxf1', 'zip', 'diseno_dis');
-select public.registrar_dxf_codigo(pg_temp.id('dxf1'), lower(current_setting('prueba.codigo')), ' Corte  de planchas del chasis ', 'chasis-dxf.zip');
+select public.registrar_dxf_codigo(pg_temp.id('dxf1'), lower(current_setting('prueba.codigo')), ' Corte  de planchas del chasis ', 'chasis-dxf.zip', pg_temp.id('env1'));
 -- El mismo pedido otra vez contesta con el mismo id y no duplica ni vuelve a avisar.
-select test.afirmar(public.registrar_dxf_codigo(pg_temp.id('dxf1'), current_setting('prueba.codigo'), 'Corte de planchas del chasis', 'chasis-dxf.zip')
+select test.afirmar(public.registrar_dxf_codigo(pg_temp.id('dxf1'), current_setting('prueba.codigo'), 'Corte de planchas del chasis', 'chasis-dxf.zip', pg_temp.id('env1'))
   = pg_temp.id('dxf1'), 'el reintento contesta con el mismo id');
-select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf2'), current_setting('prueba.codigo'), 'Sin archivo', 'x.zip')$q$,
+select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf2'), current_setting('prueba.codigo'), 'Sin archivo', 'x.zip', pg_temp.id('env2'))$q$,
   'sin el archivo subido no se registra', 'no terminó de subir');
-select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf2'), current_setting('prueba.codigo'), 'Un DXF suelto', 'x.dxf')$q$,
-  'el DXF va comprimido', '.zip, .rar o .7z');
+select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf2'), current_setting('prueba.codigo'), 'Un plano', 'x.pdf', pg_temp.id('env2'))$q$,
+  'un PDF no es un DXF', 'Sube el .dxf');
+select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf2'), current_setting('prueba.codigo'), 'Sin envío', 'x.dxf', null)$q$,
+  'sin envío no se registra', 'Vuelve a elegir el archivo');
 select test.debe_fallar($q$select pg_temp.subir_dxf('dxf2', 'pdf', 'diseno_dis')$q$,
-  'el bucket solo recibe el comprimido', 'row-level security');
-select test.debe_fallar($q$select public.registrar_dxf_codigo(gen_random_uuid(), 'PLANTA', 'Algo', 'x.zip')$q$,
+  'el bucket solo recibe el .dxf o el comprimido', 'row-level security');
+select test.debe_fallar($q$select public.registrar_dxf_codigo(gen_random_uuid(), 'PLANTA', 'Algo', 'x.zip', gen_random_uuid())$q$,
   'PLANTA no es una unidad', 'PLANTA no es una unidad');
 reset role;
 select test.afirmar(
@@ -137,10 +144,38 @@ select test.afirmar(
   and pg_temp.avisos('supervisor_mtz', 'DXF nuevos') = 1
   and pg_temp.avisos('supervisor_prd', 'DXF nuevos') = 1 and pg_temp.avisos('diseno_dis', 'DXF nuevos') = 0,
   'queda una vez, con el código escrito siempre igual, y les avisa a Maestranza y a Producción');
+select test.afirmar(pg_temp.cuerpo_aviso('supervisor_mtz') = 'Corte de planchas del chasis (chasis-dxf.zip).',
+  'el aviso de un archivo dice qué trae y su nombre: ' || coalesce(pg_temp.cuerpo_aviso('supervisor_mtz'), '(nada)'));
+
+-- Los .dxf sueltos, tres en un envío: tres filas y un solo aviso que los cuenta.
+select pg_temp.como('diseno_dis');
+set local role authenticated;
+select pg_temp.subir_dxf('dxf3', 'dxf', 'diseno_dis');
+select pg_temp.subir_dxf('dxf4', 'dxf', 'diseno_dis');
+select pg_temp.subir_dxf('dxf5', 'dxf', 'diseno_dis');
+select public.registrar_dxf_codigo(pg_temp.id('dxf3'), current_setting('prueba.codigo'), 'Cartelas y refuerzos', 'cartela-a.DXF', pg_temp.id('env2'));
+select public.registrar_dxf_codigo(pg_temp.id('dxf4'), current_setting('prueba.codigo'), 'Cartelas y refuerzos', 'cartela-b.dxf', pg_temp.id('env2'));
+reset role;
+-- Maestranza lee el aviso entre el segundo y el tercero: con el tercero vuelve sin leer.
+update public.notificaciones set leida_en = now() where usuario_id = pg_temp.id('supervisor_mtz') and titulo like 'DXF nuevos%';
+select pg_temp.como('diseno_dis');
+set local role authenticated;
+-- Otro archivo no se suma a un envío con otra descripción.
+select test.debe_fallar($q$select public.registrar_dxf_codigo(pg_temp.id('dxf5'), current_setting('prueba.codigo'), 'Otra cosa', 'cartela-c.dxf', pg_temp.id('env2'))$q$,
+  'un envío es de una sola descripción', 'Ese envío ya quedó con otros datos');
+select public.registrar_dxf_codigo(pg_temp.id('dxf5'), current_setting('prueba.codigo'), 'Cartelas y refuerzos', 'cartela-c.dxf', pg_temp.id('env2'));
+reset role;
+select test.afirmar(
+  (select count(*) from public.codigo_dxf where envio = pg_temp.id('env2') and ruta ~ '\.dxf$') = 3
+  and pg_temp.avisos('supervisor_mtz', 'DXF nuevos') = 2 and pg_temp.avisos('supervisor_prd', 'DXF nuevos') = 2
+  and pg_temp.cuerpo_aviso('supervisor_prd') like '%Cartelas y refuerzos (3 archivos: cartela-a.DXF, cartela-b.dxf, cartela-c.dxf).%'
+  and (select count(*) from public.notificaciones where usuario_id = pg_temp.id('supervisor_mtz') and leida_en is null
+          and cuerpo like 'Cartelas y refuerzos (3 archivos%') = 1,
+  'tres .dxf sueltos en un envío: tres archivos y un solo aviso que los cuenta: ' || coalesce(pg_temp.cuerpo_aviso('supervisor_prd'), '(nada)'));
 
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
-select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 1
+select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 4
   and (select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 1,
   'el supervisor de Maestranza ve el DXF y su archivo');
 select test.debe_fallar($q$select public.quitar_dxf_codigo(pg_temp.id('dxf1'))$q$, 'pero no lo quita', 'diseno.codigos');
@@ -148,7 +183,7 @@ select test.debe_fallar($q$select pg_temp.subir_dxf('dxf2', 'zip', 'supervisor_m
 reset role;
 select pg_temp.como('supervisor_prd');
 set local role authenticated;
-select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 1
+select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 4
   and (select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 1,
   'el supervisor de Producción también ve el DXF y su archivo');
 select test.debe_fallar($q$select public.quitar_dxf_codigo(pg_temp.id('dxf1'))$q$, 'pero no lo quita', 'diseno.codigos');

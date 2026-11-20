@@ -7,15 +7,17 @@ import { useRef, useState, type RefObject } from 'react'
 import { quitarAdjunto } from '@/app/(app)/ordenes/[id]/acciones-adjuntos'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
-import { ElegirArchivo } from '@/components/ui/elegir-archivo'
+import { ElegirArchivo, ElegirArchivos } from '@/components/ui/elegir-archivo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable, type OpcionBuscable } from '@/components/ui/seleccion-buscable'
 import { ConfirmarAccion, Ventana } from '@/components/ui/ventana'
 import { yaEntroLaPrimeraVez, yaEntroSinVentana } from '@/lib/acciones'
 import { MAXIMO_ADJUNTO_MB, subirAdjunto } from '@/lib/adjuntos'
 import {
+  ACEPTA_DXF,
   BUCKET_DXF,
   BUCKET_PLANOS_CODIGO,
+  MAXIMO_ARCHIVOS_DXF,
   MAXIMO_MB_DXF,
   MAXIMO_MB_PLANO,
   TIPO_DXF,
@@ -970,55 +972,113 @@ export function VentanaEtapaDeArea({ padre, etapa, codigo }: { padre?: { id: str
 
 // ------------------------------------------------------------------ DXF
 
+/** El mismo archivo elegido otra vez: su nombre, su peso y cuándo se guardó. */
+const huellaDxf = (a: File) => `${a.name}|${a.size}|${a.lastModified}`
+
 /**
- * Subir un comprimido de DXF (.zip, .rar o .7z, hasta 50 MB). El archivo sube
+ * Subir los DXF de un código para el corte: uno o varios .dxf sueltos, o el
+ * comprimido (.zip, .rar o .7z), hasta 50 MB cada uno. Cada archivo sube
  * primero a `dxf-codigo/{id}.{ext}` y después se registra; si el registro
- * falla, el archivo suelto se retira (ver `subirArchivoPrivado`).
+ * falla, ese archivo suelto se retira (ver `subirArchivoPrivado`). Los que se
+ * eligen juntos van con el mismo envío y a Maestranza y Producción les llega
+ * un solo aviso. Si uno falla a medio camino, volver a enviar no duplica los
+ * que ya quedaron: cada archivo conserva su id hasta que el envío termina.
  */
 export function CargarDxf({ codigo }: { codigo: string }) {
-  const [id, setId] = useState(() => crypto.randomUUID())
+  const [envio, setEnvio] = useState(() => crypto.randomUUID())
+  const ids = useRef(new Map<string, string>())
   const [mensaje, setMensaje] = useState<string | null>(null)
+  const [estado, setEstado] = useState<string | null>(null)
+  const nuevoEnvio = () => {
+    ids.current = new Map()
+    setEnvio(crypto.randomUUID())
+  }
   const { alEnviar, enviando, error } = useEnvio(
     async (_previo, datos) => {
       setMensaje(null)
-      const archivo = datos.get('archivo')
-      const ext = archivo instanceof File ? extensionDxf(archivo.name) : null
-      if (!(archivo instanceof File) || !ext || archivo.size < 1 || archivo.size > MAXIMO_MB_DXF * 1024 * 1024) {
-        return { ok: false, error: `Elige el comprimido de los DXF: .zip, .rar o .7z, de hasta ${MAXIMO_MB_DXF} MB.` }
+      const archivos = datos.getAll('archivos').filter((a): a is File => a instanceof File && a.name !== '')
+      if (archivos.length === 0) return { ok: false, error: 'Elige los .dxf, o el comprimido (.zip, .rar o .7z).' }
+      if (archivos.length > MAXIMO_ARCHIVOS_DXF) {
+        return { ok: false, error: `Son ${archivos.length} archivos y el tope es ${MAXIMO_ARCHIVOS_DXF} de una vez: súbelos en dos envíos.` }
       }
-      datos.delete('archivo')
-      datos.set('nombre_archivo', archivo.name.trim().slice(0, 200))
-      return subirArchivoPrivado({
-        bucket: BUCKET_DXF,
-        ruta: rutaDxf(id, ext),
-        archivo,
-        contentType: TIPO_DXF[ext],
-        registrar: () => registrarDxf(null, datos),
-      })
+      for (const a of archivos) {
+        if (!extensionDxf(a.name) || a.size < 1 || a.size > MAXIMO_MB_DXF * 1024 * 1024) {
+          return { ok: false, error: `«${a.name}» no sirve: van .dxf, o comprimidos en .zip, .rar o .7z, de hasta ${MAXIMO_MB_DXF} MB cada uno.` }
+        }
+      }
+      datos.delete('archivos')
+      let quedaron = 0
+      try {
+        for (const archivo of archivos) {
+          const ext = extensionDxf(archivo.name)!
+          const huella = huellaDxf(archivo)
+          const id = ids.current.get(huella) ?? crypto.randomUUID()
+          ids.current.set(huella, id)
+          if (archivos.length > 1) setEstado(`Subiendo ${quedaron + 1} de ${archivos.length}: ${archivo.name}`)
+          const delArchivo = new FormData()
+          for (const [k, v] of datos) delArchivo.set(k, v)
+          delArchivo.set('id', id)
+          delArchivo.set('envio', envio)
+          delArchivo.set('nombre_archivo', archivo.name.trim().slice(0, 200))
+          const r = await subirArchivoPrivado({
+            bucket: BUCKET_DXF,
+            ruta: rutaDxf(id, ext),
+            archivo,
+            contentType: TIPO_DXF[ext],
+            registrar: () => registrarDxf(null, delArchivo),
+          })
+          if (!r.ok && !yaEntroLaPrimeraVez(r.error)) {
+            const antes = quedaron === 0 ? '' : `Quedaron ${quedaron} de ${archivos.length}. `
+            return { ok: false, error: `${antes}«${archivo.name}» no subió: ${r.error} Vuelve a enviar: los que ya quedaron no se repiten.` }
+          }
+          quedaron++
+        }
+      } finally {
+        setEstado(null)
+      }
+      return {
+        ok: true,
+        mensaje:
+          archivos.length === 1
+            ? 'DXF cargado. A los supervisores de Maestranza y Producción les llegó el aviso.'
+            : `${archivos.length} archivos cargados. A los supervisores de Maestranza y Producción les llegó un aviso con todos.`,
+      }
     },
     (r) => {
       setMensaje(r.mensaje ?? 'DXF cargados.')
-      setId(crypto.randomUUID())
+      nuevoEnvio()
     },
-    { alYaEntrar: () => setId(crypto.randomUUID()), siSeVa: { que: 'los DXF', enlace: 'Volver a los DXF' } },
+    { alYaEntrar: nuevoEnvio, siSeVa: { que: 'los DXF', enlace: 'Volver a los DXF' } },
   )
   const aviso = useRef<HTMLParagraphElement>(null)
   useCursorAlRechazo(enviando, error, () => aviso.current)
   return (
-    <form key={id} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
-      <input type="hidden" name="id" value={id} />
+    <form key={envio} onSubmit={alEnviar} className="grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="codigo" value={codigo} />
       <Campo etiqueta="Qué traen" htmlFor="dxf-descripcion" requerido>
         <Entrada id="dxf-descripcion" name="descripcion" maxLength={200} autoComplete="off" placeholder="Corte de planchas del cajón" required disabled={enviando} />
       </Campo>
-      <Campo etiqueta="Comprimido" htmlFor="dxf-archivo" requerido>
-        <ElegirArchivo id="dxf-archivo" name="archivo" accept=".zip,.rar,.7z" hastaMb={MAXIMO_MB_DXF} required disabled={enviando} />
+      <Campo etiqueta="Archivos DXF" htmlFor="dxf-archivos" requerido>
+        <ElegirArchivos
+          id="dxf-archivos"
+          name="archivos"
+          accept={ACEPTA_DXF}
+          hastaMb={MAXIMO_MB_DXF}
+          hasta={MAXIMO_ARCHIVOS_DXF}
+          required
+          disabled={enviando}
+        />
       </Campo>
-      <div className="sm:col-span-2">
+      <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <Boton type="submit" cargando={enviando}>
           <FileArchive aria-hidden className="size-4" />
           Cargar DXF
         </Boton>
+        {estado && (
+          <span aria-live="polite" className="text-sm text-texto-suave wrap-anywhere">
+            {estado}
+          </span>
+        )}
       </div>
       <div className="sm:col-span-2">
         <Alerta error={error} mensaje={mensaje} aviso={aviso} />
@@ -1038,8 +1098,8 @@ export function QuitarDxf({ id, nombre }: { id: string; nombre: string }) {
       <ConfirmarAccion
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo="Quitar el comprimido"
-        detalle={`«${nombre}» deja de verse en Maestranza. Queda en el historial.`}
+        titulo="Quitar el DXF"
+        detalle={`«${nombre}» deja de verse en Maestranza y Producción. Queda en el historial.`}
         trabajando={enviando}
         error={error}
         alConfirmar={() => {
