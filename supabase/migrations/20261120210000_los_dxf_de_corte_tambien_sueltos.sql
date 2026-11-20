@@ -165,6 +165,37 @@ comment on function public.registrar_dxf_codigo(uuid, text, text, text, uuid) is
 revoke all on function public.registrar_dxf_codigo(uuid, text, text, text, uuid) from public, anon;
 grant execute on function public.registrar_dxf_codigo(uuid, text, text, text, uuid) to authenticated;
 
+-- El aviso «DXF nuevos» de un envío al que ya no le queda ningún archivo se da
+-- por leído: llevaba a un código donde ya no hay nada que bajar.
+create or replace function public.cerrar_aviso_dxf_sin_archivos(p_envio uuid)
+returns void language sql security definer set search_path to 'public' as $$
+  update public.notificaciones n set leida_en = coalesce(n.leida_en, now())
+   where n.origen_tabla = 'codigo_dxf'
+     and n.origen_id in (select d.id from public.codigo_dxf d where d.envio = p_envio)
+     and not exists (select 1 from public.codigo_dxf d where d.envio = p_envio and d.quitado_en is null);
+$$;
+revoke all on function public.cerrar_aviso_dxf_sin_archivos(uuid) from public, anon, authenticated;
+
+-- Quitar uno: si era el último de su envío, el aviso también se cierra.
+create or replace function public.quitar_dxf_codigo(p_id uuid)
+returns uuid language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_envio uuid;
+begin
+  perform public.exigir_permiso('diseno.codigos');
+  select envio into v_envio from public.codigo_dxf where id = p_id;
+  if not found then
+    raise exception 'Ese archivo ya no está. Vuelve a cargar la pantalla.' using errcode = 'check_violation';
+  end if;
+  update public.codigo_dxf set quitado_en = now(), quitado_por = public.usuario_actual()
+   where id = p_id and quitado_en is null;
+  perform public.cerrar_aviso_dxf_sin_archivos(v_envio);
+  return p_id;
+end;
+$$;
+revoke all on function public.quitar_dxf_codigo(uuid) from public, anon;
+grant execute on function public.quitar_dxf_codigo(uuid) to authenticated;
+
 -- Un envío entero que se subió al código equivocado: se quitan todos sus
 -- archivos de una vez, no uno por uno. Quedan en el historial.
 create or replace function public.quitar_dxf_envio(p_envio uuid)
@@ -179,6 +210,7 @@ begin
   update public.codigo_dxf set quitado_en = now(), quitado_por = public.usuario_actual()
    where envio = p_envio and quitado_en is null;
   get diagnostics v_n = row_count;
+  perform public.cerrar_aviso_dxf_sin_archivos(p_envio);
   return v_n;
 end;
 $$;

@@ -214,6 +214,11 @@ select test.afirmar((select quitado_por from public.codigo_dxf where id = pg_tem
   'quitado, queda con quién lo quitó');
 select test.afirmar((select count(*) from public.codigo_dxf where envio = pg_temp.id('env2') and quitado_por = pg_temp.id('diseno_dis')) = 3,
   'el envío quitado queda entero en el historial, con quién lo quitó');
+select test.afirmar((select count(*) from public.notificaciones where usuario_id = pg_temp.id('supervisor_mtz') and leida_en is null
+                        and origen_tabla = 'codigo_dxf' and origen_id in (select id from public.codigo_dxf where envio = pg_temp.id('env2'))) = 0
+  and (select count(*) from public.notificaciones where usuario_id = pg_temp.id('supervisor_mtz') and leida_en is null
+          and origen_tabla = 'codigo_dxf' and origen_id = pg_temp.id('dxf1')) = 0,
+  'quitado todo su envío, el aviso de Maestranza se cierra: ya no hay nada que bajar');
 select pg_temp.como('supervisor_mtz');
 set local role authenticated;
 select test.afirmar((select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 0,
