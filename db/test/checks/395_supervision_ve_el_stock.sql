@@ -54,6 +54,8 @@ values
   (gen_random_uuid(), 'INGRESO', current_setting('prueba.accesorio')::uuid, 5, 'INGRESO_GENERAL', 'GR 395-2', current_setting('prueba.almacenero')::uuid, 'chk395-a'),
   (gen_random_uuid(), 'INGRESO', current_setting('prueba.accesorio')::uuid, 2, 'INGRESO_GENERAL', 'GR 395-3', current_setting('prueba.almacenero')::uuid, 'CHK395-B'),
   (gen_random_uuid(), 'INGRESO', current_setting('prueba.accesorio')::uuid, 4, 'INGRESO_GENERAL', 'GR 395-4', current_setting('prueba.almacenero')::uuid, null);
+-- Kardex armado como dueño, como el de antes de la regla de la salida (20261120410000): aquí se prueba otra cosa; la regla, en el check 457.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
                                            codigo_unidad, registrado_por, codigo_interno)
 values
@@ -61,6 +63,7 @@ values
    'CHK395-A', current_setting('prueba.almacenero')::uuid, 'CHK395-A'),
   (gen_random_uuid(), 'SALIDA', current_setting('prueba.accesorio')::uuid, 1, 'SALIDA_GENERAL', 'Instalación', 'Electricista ACB',
    'CHK395-A', current_setting('prueba.almacenero')::uuid, 'CHK395-A');
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
 begin

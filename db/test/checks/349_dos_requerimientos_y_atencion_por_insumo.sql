@@ -152,6 +152,7 @@ select test.debe_fallar(format($q$select public.rq_revisar_stock('%s', '[{"item"
   current_setting('prueba.rqo')), 'ni menos de cero', 'de 0 a la cantidad');
 select test.debe_fallar(format($q$select public.rq_revisar_stock('%s', '[{"item": 1, "en_stock": 5}, {"item": 1, "en_stock": 5}, {"item": 3, "en_stock": 0}]', null)$q$,
   current_setting('prueba.rqo')), 'ni un insumo dos veces', 'una vez');
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rqo')::uuid,
   '[{"item": 1, "en_stock": 5}, {"item": 2, "en_stock": 1.5}, {"item": 3, "en_stock": 0}]', 'Del electrodo no hay');
 select public.rq_revisar_stock(current_setting('prueba.rqo')::uuid,

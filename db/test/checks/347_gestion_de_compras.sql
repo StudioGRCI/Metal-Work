@@ -81,6 +81,7 @@ select public.emitir_requerimiento(current_setting('prueba.rq')::uuid, current_s
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(current_setting('prueba.rq')::uuid, 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');

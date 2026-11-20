@@ -226,6 +226,7 @@ select public.emitir_requerimiento(pg_temp.id('rq'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq'), 'No hay nada de esto');
 reset role;
 -- La 2 va con factura; las demás, con boleta.
@@ -2071,6 +2072,7 @@ select public.emitir_requerimiento(pg_temp.id('rq7'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq7'), 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');
@@ -2351,6 +2353,7 @@ select public.emitir_requerimiento(pg_temp.id('rq8'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq8'), 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');
@@ -2473,6 +2476,7 @@ select public.emitir_requerimiento(pg_temp.id('rq9'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq9'), 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');
@@ -2624,6 +2628,7 @@ select public.emitir_requerimiento(pg_temp.id('rq11'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq11'), 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');

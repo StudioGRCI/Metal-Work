@@ -66,6 +66,8 @@ begin
           current_setting('prueba.almacenero'), '{"mimetype":"application/pdf","size":2000}'::jsonb);
 end $$;
 
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
+
 -- Almacén: los ingresos, y el accesorio que entró para UNI-A ---------------------
 select pg_temp.como('almacenero');
 set local role authenticated;
@@ -108,11 +110,19 @@ begin
     if sqlerrm like 'FALLA:%' then raise; end if;
     if sqlerrm not like 'De este accesorio hay 5 libre para la unidad UNI-B%' then raise; end if;
   end;
-  v_id := public.registrar_salida_material(current_setting('prueba.s_acc')::uuid, current_setting('prueba.mat_accesorios')::uuid, 1,
-    null, 'UNI-B', 'Accesorio de prueba', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_acc') || '.jpg', null);
-  -- Y para UNI-A salen los suyos más los libres: 5 marcados + 4 libres.
+  -- Sin RQ, un accesorio ya no sale aunque haya libres (20261120410000): el área
+  -- lo pide por requerimiento. Antes salía 1 para UNI-B con quien recibe y la foto.
+  begin
+    perform public.registrar_salida_material(current_setting('prueba.s_acc')::uuid, current_setting('prueba.mat_accesorios')::uuid, 1,
+      null, 'UNI-B', 'Accesorio de prueba', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_acc') || '.jpg', null);
+    raise exception 'FALLA: un accesorio salió sin requerimiento';
+  exception when others then
+    if sqlerrm like 'FALLA:%' then raise; end if;
+    if sqlerrm not like 'Un accesorio sale solo con el requerimiento que lo pide%' then raise; end if;
+  end;
+  -- Y para UNI-A salen los suyos más los libres: 5 marcados + 5 libres.
   select greatest(disponible, 0) into v_num from public.v_existencias_materiales where material_id = current_setting('prueba.mat_accesorios')::uuid;
-  if v_num <> 9 then raise exception 'FALLA: quedan % accesorios y debían quedar 9', v_num; end if;
+  if v_num <> 10 then raise exception 'FALLA: quedan % accesorios y debían quedar 10', v_num; end if;
 
   -- Por requerimiento: la línea 1 pone el código UNI-B y descuenta lo pedido.
   v_id := public.registrar_salida_material(current_setting('prueba.s_rq1')::uuid, current_setting('prueba.mat_accesorios')::uuid, 4,

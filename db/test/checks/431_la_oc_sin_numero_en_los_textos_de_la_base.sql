@@ -132,6 +132,7 @@ select public.emitir_requerimiento(pg_temp.id('rq'), pg_temp.id('area_mtz'),
 reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_marcar_sin_stock(pg_temp.id('rq'), 'No hay nada de esto');
 reset role;
 select pg_temp.como('comprador');

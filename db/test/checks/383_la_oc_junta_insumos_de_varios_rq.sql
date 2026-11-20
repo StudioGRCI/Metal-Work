@@ -115,6 +115,7 @@ reset role;
 -- ============================================ 2. Almacén revisa: del RQ 1 tiene todos los discos y una plancha
 select pg_temp.como('almacenero');
 set local role authenticated;
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq1')::uuid, '[{"item": 1, "en_stock": 1}, {"item": 2, "en_stock": 4}]', null);
 select public.rq_revisar_stock(current_setting('prueba.rq2')::uuid, '[{"item": 1, "en_stock": 0}, {"item": 2, "en_stock": 0}]', null);
 select public.rq_revisar_stock(current_setting('prueba.rq4')::uuid, '[{"item": 1, "en_stock": 0}]', null);

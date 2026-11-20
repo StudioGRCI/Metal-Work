@@ -159,6 +159,7 @@ select test.afirmar((select existencia = 9 and separado = 3 and libre = 6
 select public.rq_revisar_stock(current_setting('prueba.rq1')::uuid, '[{"item": 1, "en_stock": 8}, {"item": 2, "en_stock": 5}]', null);
 -- RQ2: de los 10 discos tiene 4.
 select public.rq_revisar_stock(current_setting('prueba.rq2')::uuid, '[{"item": 1, "en_stock": 4}]', null);
+select test.metrado_autorizado();  -- Diseño da su visto a lo que se pasa del metrado (20261120400000)
 select public.rq_revisar_stock(current_setting('prueba.rq3')::uuid, '[{"item": 1, "en_stock": 0}]', null);
 select public.rq_revisar_stock(current_setting('prueba.rq4')::uuid, '[{"item": 1, "en_stock": 0}]', null);
 select public.rq_revisar_stock(current_setting('prueba.rq5')::uuid, '[{"item": 1, "en_stock": 2}]', null);
@@ -354,9 +355,19 @@ select test.afirmar((select existencia = 2 and separado = 0 and libre = 2 from p
 select test.afirmar((select existencia = 15 and separado = 9 and libre = 6 from pg_temp.stock('dis')),
   'Los 2 discos pedidos salieron de lo libre: lo separado para los demás no cambia');
 -- RQ1 tenía 8 discos listos y ya se le entregaron 3; ahora recibe 2 de otra marca en su lugar.
+-- Desde la regla de la salida (20261120410000) eso ya no pasa sin que quien pidió
+-- corrija el RQ; lo que se prueba es la cuenta de las entregas de antes.
+reset role;
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
+select pg_temp.como('almacenero');
+set local role authenticated;
 select public.registrar_salida_material(current_setting('prueba.salida5')::uuid, current_setting('prueba.ds2')::uuid, 2,
   null, null, 'Entrega del RQ1 con otra marca', 'Soldador MTZ',
   auth.uid()::text || '/' || current_setting('prueba.salida5') || '.jpg', pg_temp.insumo('rq1', 1));
+reset role;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
+select pg_temp.como('almacenero');
+set local role authenticated;
 select test.afirmar((select existencia = 15 and separado = 7 and libre = 8 from pg_temp.stock('dis')),
   'Lo que salió de otra marca también entrega el RQ1: de sus 5 discos por entregar quedan 3 separados');
 select test.afirmar((select (por_codigo -> 0 ->> 'cantidad')::numeric = 3 from pg_temp.stock('dis')),
@@ -399,11 +410,18 @@ select public.emitir_compra_de_requerimientos(current_setting('prueba.oc3')::uui
          current_setting('prueba.ds2'), pg_temp.insumo('rq9', 1))::jsonb,
   current_setting('prueba.prov')::uuid, 'Cotización 414-3', null, 'CONTADO', 0, 'PEN', true);
 reset role;
+-- Otro material que el pedido y que el comprado: desde la regla de la salida
+-- (20261120410000) ya no sale sin corregir el RQ; se prueba la cuenta de antes.
+alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('almacenero');
 set local role authenticated;
 select public.registrar_salida_material(current_setting('prueba.salida7')::uuid, current_setting('prueba.dis')::uuid, 2,
   null, null, 'Entrega adelantada del RQ9', 'Soldador PRD',
   auth.uid()::text || '/' || current_setting('prueba.salida7') || '.jpg', pg_temp.insumo('rq9', 1));
+reset role;
+alter table public.movimientos_materiales enable trigger trg_salida_es_lo_que_pidio_el_rq;
+select pg_temp.como('almacenero');
+set local role authenticated;
 select test.afirmar((select existencia = 4 and separado = 2 and libre = 2 from pg_temp.stock('gua')),
   'Al RQ9 le faltan 2: los 2 guantes que Almacén le separó siguen siendo suyos');
 select test.afirmar((select existencia = 13 and separado = 7 and libre = 6 from pg_temp.stock('dis')),
