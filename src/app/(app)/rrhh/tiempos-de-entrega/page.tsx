@@ -1,0 +1,212 @@
+import Link from 'next/link'
+
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
+import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
+import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { codigosConTiempos, type CodigoConTiempos } from '@/lib/datos/tiempos-entrega'
+import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
+import { llaveParecido } from '@/lib/dominio/codigos-internos'
+import { FILTROS_DE_TIEMPOS, RUTA_TIEMPOS, SEMAFORO_DE_CODIGO, enlaceDeTiempos, plazoEnPalabras } from '@/lib/dominio/tiempos-entrega'
+import { fecha, hoyLima } from '@/lib/format'
+import { exigirPermiso } from '@/lib/sesion'
+
+export const metadata = { title: 'Tiempos de entrega' }
+
+const AYUDA =
+  'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan.'
+
+/**
+ * El tablero de tiempos de entrega que lleva Recursos Humanos (DKS,
+ * 2026-11-25): un renglón por código sin entregar, lo vencido primero. Solo
+ * lectura; el semáforo lo decide la base con días hábiles.
+ */
+export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps<'/rrhh/tiempos-de-entrega'>) {
+  await exigirPermiso('rrhh.tiempos_entrega')
+  const params = await searchParams
+  const q = typeof params.q === 'string' ? params.q.trim() : ''
+  const filtro = FILTROS_DE_TIEMPOS.find((f) => f.valor === params.ver) ?? null
+  const areaPedida = typeof params.area === 'string' ? params.area : ''
+
+  const todos = await codigosConTiempos()
+  const hoy = hoyLima()
+
+  const llave = llaveParecido(q)
+  const palabras = palabrasDeBusqueda(q)
+  const buscados = q
+    ? todos.filter(
+        (c) =>
+          c.codigo.includes(q.toUpperCase()) ||
+          (llave && llaveParecido(c.codigo).includes(llave)) ||
+          coincide(palabras, [c.codigo, c.unidad, c.ot_numero, c.cliente]),
+      )
+    : todos
+  // Las áreas que tienen algo en curso: solo esas se ofrecen como filtro.
+  const areas = [...new Set(buscados.map((c) => c.area_en_curso).filter((a): a is string => Boolean(a)))].sort((a, b) => a.localeCompare(b))
+  const area = areas.includes(areaPedida) ? areaPedida : ''
+  const delArea = area ? buscados.filter((c) => c.area_en_curso === area) : buscados
+  const codigos = filtro ? delArea.filter((c) => c.semaforo === filtro.semaforo) : delArea
+  const cuantos = (semaforo: string) => delArea.filter((c) => c.semaforo === semaforo).length
+  const sinEtapas = todos.filter((c) => c.etapas === 0).length
+  // Los indicadores filtran sin soltar la búsqueda ni el área puestas.
+  const ver = (valor: string) => {
+    const query = new URLSearchParams({ ...(q ? { q } : {}), ...(area ? { area } : {}), ver: valor })
+    return `${RUTA_TIEMPOS}?${query}`
+  }
+
+  return (
+    <>
+      <EncabezadoPagina
+        titulo="Tiempos de entrega"
+        descripcion={
+          todos.length > 0
+            ? `${todos.length} ${todos.length === 1 ? 'código sin entregar' : 'códigos sin entregar'}${sinEtapas > 0 ? ` · ${sinEtapas} sin etapas cargadas` : ''}`
+            : undefined
+        }
+        ayuda={AYUDA}
+        migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tiempos de entrega' }]}
+      />
+
+      {todos.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Indicador
+            titulo="Vencidos"
+            valor={String(cuantos('ROJO'))}
+            tono={cuantos('ROJO') > 0 ? 'peligro' : 'neutro'}
+            pie="Una etapa o la entrega ya pasó"
+            href={ver('vencidos')}
+          />
+          <Indicador
+            titulo="Por vencer"
+            valor={String(cuantos('AMBAR'))}
+            tono={cuantos('AMBAR') > 0 ? 'aviso' : 'neutro'}
+            pie="Hoy o en 3 días hábiles"
+            href={ver('por-vencer')}
+          />
+          <Indicador titulo="A tiempo" valor={String(cuantos('VERDE'))} tono="exito" pie="Más de 3 días hábiles" href={ver('a-tiempo')} />
+          <Indicador titulo="Sin fechas" valor={String(cuantos('SIN_FECHA'))} pie="Falta que las carguen" href={ver('sin-fechas')} />
+        </div>
+      )}
+
+      <div className="mb-3 space-y-3">
+        <BuscadorSimple ruta={RUTA_TIEMPOS} etiqueta="Buscar código interno" marcador="Código, OT, cliente o placa" />
+        <PastillaFiltro
+          ruta={RUTA_TIEMPOS}
+          clave="ver"
+          params={params}
+          activo={filtro?.valor ?? null}
+          etiqueta="Qué códigos mostrar según su semáforo"
+          opciones={[
+            { valor: null, etiqueta: `Todos (${delArea.length})` },
+            ...FILTROS_DE_TIEMPOS.map((f) => ({ valor: f.valor, etiqueta: `${f.etiqueta} (${cuantos(f.semaforo)})` })),
+          ]}
+        />
+        {areas.length > 1 && (
+          <PastillaFiltro
+            ruta={RUTA_TIEMPOS}
+            clave="area"
+            params={params}
+            activo={area || null}
+            etiqueta="Área de la etapa en curso"
+            opciones={[{ valor: null, etiqueta: 'Todas las áreas' }, ...areas.map((a) => ({ valor: a, etiqueta: a }))]}
+          />
+        )}
+      </div>
+
+      {codigos.length === 0 ? (
+        <Tarjeta>
+          <TarjetaCuerpo>
+            <p className="text-sm font-medium text-texto">
+              {todos.length === 0 ? 'No hay códigos por entregar' : 'Ningún código con esta búsqueda o filtro'}
+            </p>
+            <p className="text-sm text-texto-suave">
+              {todos.length === 0
+                ? 'Aparecen aquí cuando Administración carga la OT de una unidad con su código interno, o cuando Diseño arma sus etapas en «Control de etapas».'
+                : 'Borra la búsqueda o quita el filtro con «Todos».'}
+            </p>
+          </TarjetaCuerpo>
+        </Tarjeta>
+      ) : (
+        <ul className="space-y-2" aria-label="Códigos internos sin entregar">
+          {codigos.map((c) => (
+            <li key={c.codigo}>
+              <Link
+                href={enlaceDeTiempos(c.codigo)}
+                className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-3 hover:border-acento"
+                data-codigo={c.codigo}
+                data-semaforo={c.semaforo}
+              >
+                <Fila c={c} hoy={hoy} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+/** Lo que dice el semáforo del código en una línea: lo que venció o lo que viene. */
+function motivo(c: CodigoConTiempos, hoy: string): string {
+  const partes: string[] = []
+  if (c.etapas_vencidas > 0) partes.push(`${c.etapas_vencidas} ${c.etapas_vencidas === 1 ? 'etapa vencida' : 'etapas vencidas'}`)
+  if (c.etapas_por_vencer > 0) partes.push(`${c.etapas_por_vencer} por vencer`)
+  if (partes.length === 0 && c.proxima_fecha) partes.push(`Próxima fecha: ${fecha(c.proxima_fecha)}`)
+  if (partes.length === 0 && c.fecha_entrega) {
+    partes.push(
+      plazoEnPalabras(c.semaforo_entrega, c.dias_habiles_entrega, { fechaPlan: c.fecha_entrega, hoy, femenino: false }).replace(/^Vencido/, 'Entrega vencida'),
+    )
+  }
+  return partes.join(' · ')
+}
+
+function Fila({ c, hoy }: { c: CodigoConTiempos; hoy: string }) {
+  const semaforo = SEMAFORO_DE_CODIGO[c.semaforo]
+  const detalle = motivo(c, hoy)
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <p className="font-mono text-sm font-semibold break-all text-texto">{c.codigo}</p>
+        <p className="text-xs text-texto-suave">
+          {[c.ot_numero ? `OT ${c.ot_numero}` : 'Sin OT abierta', c.cliente, c.unidad].filter(Boolean).join(' · ')}
+        </p>
+        <p className="text-xs text-texto">
+          {c.etapas === 0 ? (
+            <span className="text-texto-suave">Sin etapas cargadas</span>
+          ) : (
+            <>
+              <span className="tabular">
+                {c.etapas_terminadas} de {c.etapas}
+              </span>{' '}
+              {c.etapas === 1 ? 'etapa terminada' : 'etapas terminadas'}
+              {c.etapa_en_curso && (
+                <span className="text-texto-suave">
+                  {' '}
+                  · Ahora: {c.etapa_en_curso}
+                  {c.area_en_curso && ` (${c.area_en_curso})`}
+                </span>
+              )}
+            </>
+          )}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col gap-1 text-xs sm:items-end sm:text-right">
+        <span className="flex flex-wrap items-center gap-2">
+          <Insignia tono={semaforo.tono}>{semaforo.etiqueta}</Insignia>
+          {detalle && <span className="text-texto">{detalle}</span>}
+        </span>
+        <span className="text-texto-suave">
+          {c.fecha_entrega ? (
+            <>
+              Entrega al cliente: <span className="tabular text-texto">{fecha(c.fecha_entrega)}</span>
+            </>
+          ) : (
+            'Sin fecha de entrega al cliente'
+          )}
+        </span>
+      </div>
+    </div>
+  )
+}

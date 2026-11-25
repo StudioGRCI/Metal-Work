@@ -35,6 +35,7 @@ import {
   Route,
   Settings,
   Tag,
+  Timer,
   Truck,
   UserCog,
   Users,
@@ -535,6 +536,7 @@ export const NAVEGACION = [
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
       { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona: se justifican con sus horas extras, o se descuentan o reportan', disponible: true },
+      { titulo: 'Tiempos de entrega', ruta: '/rrhh/tiempos-de-entrega', icono: Timer, permiso: 'rrhh.tiempos_entrega', descripcion: 'Cada código interno sin entregar, con sus etapas, sus fechas y su semáforo', disponible: true },
       { titulo: 'Horas extras', ruta: '/rrhh/horas-extras', icono: ClockAlert, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Lo que pasa de 8 horas al día: pagarlo o reservarlo', disponible: true },
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Las horas validadas que se pagan, enviadas a Tesorería', disponible: true },
       { titulo: 'Costeo por código', ruta: '/rrhh/costeo', icono: Calculator, permiso: 'rrhh.personal', descripcion: 'Horas de cada persona por código interno y lo que cuestan', disponible: true },
@@ -675,7 +677,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     principal: ['/codigos-internos'],
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
-      { titulo: 'Consultas', rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
+      { titulo: 'Consultas', rutas: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },
@@ -793,6 +795,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   RECURSOS_HUMANOS: {
     grupos: [
       { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
+      // Los tiempos de entrega por código, que RR. HH. lleva con el personal (DKS, 2026-11-25).
+      { titulo: 'Entregas', rutas: ['/rrhh/tiempos-de-entrega'] },
       {
         titulo: 'Control del personal',
         rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
@@ -975,6 +979,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/seguimiento?vista=materiales', corto: 'Materiales' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
+  { ruta: '/rrhh/tiempos-de-entrega', corto: 'Entregas' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
   { ruta: '/subcontratos', corto: 'Subcontratos' },
