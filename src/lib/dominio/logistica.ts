@@ -109,27 +109,98 @@ export function normalizarNumeroGuia(texto: string) {
   return texto.trim().replace(/\s+/g, '').toUpperCase()
 }
 
+/** Un número del padrón que el teléfono puede marcar: lo que se lee y lo que marca. */
+export type TelefonoParaLlamar = { texto: string; numero: string }
+
+const soloCifras = (t: string) => t.replace(/\D/g, '')
+
+/**
+ * Lo que marca el teléfono para un trozo del padrón, o nada si no es un número
+ * al que se pueda llamar. Fijo o celular del Perú: de 6 a 9 cifras, con el 01
+ * o el código de la ciudad delante; con el 51 del país, se marca con «+». Once
+ * cifras que no empiezan en 51 son un RUC, no un teléfono.
+ */
+function loQueMarca(trozo: string): string | null {
+  const cifras = soloCifras(trozo)
+  if (trozo.trim().startsWith('+')) {
+    if (!cifras.startsWith('51')) return cifras.length >= 8 && cifras.length <= 12 ? `+${cifras}` : null
+    // Con el 51 del país, el 0 del código de la ciudad no se marca: +51 (01) 445-5667 es +51 1 445 5667.
+    const resto = cifras.slice(2).replace(/^0/, '')
+    return resto.length === 8 || resto.length === 9 ? `+51${resto}` : null
+  }
+  if (cifras.length >= 6 && cifras.length <= 9) return cifras
+  if ((cifras.length === 10 || cifras.length === 11) && cifras.startsWith('51')) return `+${cifras}`
+  return null
+}
+
 /**
  * Los números a los que el conductor puede llamar, sacados del teléfono del
- * padrón, que es texto libre: «940 843 031 - 980 926 670», «(01) 445-5667 / 999
- * 111 222». Cada uno con lo que se lee y lo que marca el teléfono. Juntar todos
- * los dígitos en un solo `tel:` marcaba un número que no existe.
+ * padrón, que es texto libre: «999 000 111 - 988 000 222», «(01) 445-5667 anexo
+ * 205», «Cel. 999000111 RPM #948123». Cada uno con lo que se lee y lo que marca
+ * el teléfono. Juntar todos los dígitos en un solo `tel:` marcaba un número que
+ * no existe, y un anexo pegado al número, otro que tampoco.
+ *
+ * Ante la duda no hay botón: lo que no se reconoce queda escrito en la tarjeta
+ * (`telefonoDiceMas`) y el conductor lo marca a mano.
  */
-export function telefonosParaLlamar(texto: string | null | undefined): { texto: string; numero: string }[] {
+export function telefonosParaLlamar(texto: string | null | undefined): TelefonoParaLlamar[] {
   if (!texto) return []
   const vistos = new Set<string>()
-  const numeros: { texto: string; numero: string }[] = []
-  // Separan dos números: la barra, la coma, el punto y coma, la «y», y el guion o la raya con espacios a los lados.
-  for (const parte of texto.split(/\s*[/,;|]\s*|\s+[-–—]\s+|\s+y\s+/i)) {
-    const limpio = parte.trim().replace(/^[^\d+(]+|[^\d)]+$/g, '')
-    const digitos = limpio.replace(/\D/g, '')
-    if (digitos.length < 6 || digitos.length > 15) continue
-    const numero = (limpio.startsWith('+') ? '+' : '') + digitos
-    if (vistos.has(numero)) continue
-    vistos.add(numero)
-    numeros.push({ texto: limpio, numero })
+  const numeros: TelefonoParaLlamar[] = []
+  const sumar = (trozo: string) => {
+    const numero = loQueMarca(trozo)
+    if (!numero) return false
+    // El mismo número escrito con y sin el 51 o el 0 del código es uno solo.
+    const llave = numero.replace(/^\+51/, '').replace(/^0/, '')
+    if (!vistos.has(llave)) {
+      vistos.add(llave)
+      numeros.push({ texto: trozo.trim().replace(/[\s.\-–—(]+$/, ''), numero })
+    }
+    return true
   }
-  return numeros.slice(0, 3)
+  // Lo que sigue a «anexo», «ext.», «int.» u «opción» no es parte del número: se corta ahí, con sus cifras.
+  for (const parte of texto.split(/\b(?:anexos?|anx|extensi[oó]n|ext|interno|int|opci[oó]n|opc)\b\.?\s*:?\s*\d*/i)) {
+    // Cada tirada de cifras con sus espacios, guiones, puntos y paréntesis.
+    for (const hallado of parte.matchAll(/\+?\(?\d[\d\s().\-–—]*\d/g)) {
+      const candidato = hallado[0]
+      const antes = parte.slice(0, hallado.index)
+      // «RPM #948123» y «*123456» son claves de la red de antes, no números: no se marcan desde cualquier teléfono.
+      if (/[#*]\s*$/.test(antes)) continue
+      if (/\b(?:rpm|rpc)\b\W*$/i.test(antes) && soloCifras(candidato).length !== 9) continue
+      const porGuion = candidato.split(/\s*[-–—]\s*/).filter(Boolean)
+      // «4455667-123» y «999000111-12»: un número entero y, tras el guion, su anexo.
+      if (!candidato.startsWith('+') && porGuion.length === 2 && [7, 9].includes(soloCifras(porGuion[0]).length) && soloCifras(porGuion[1]).length <= 4) {
+        sumar(porGuion[0])
+        continue
+      }
+      if (sumar(candidato)) continue
+      // Dos números unidos por un guion o seguidos sin separador: cada trozo, si sirve solo.
+      const sueltos = porGuion.length > 1 && porGuion.every(loQueMarca) ? porGuion : candidato.split(/\s+/).filter(Boolean)
+      if (sueltos.length > 1 && sueltos.every(loQueMarca)) {
+        sueltos.forEach(sumar)
+        continue
+      }
+      // Dos celulares escritos de corrido, «999 000 111 988 000 222»: nueve cifras cada uno, los dos con su 9.
+      const cifras = soloCifras(candidato)
+      if (cifras.length === 18 && !candidato.includes('+') && cifras[0] === '9' && cifras[9] === '9') {
+        for (const celular of [cifras.slice(0, 9), cifras.slice(9)]) sumar(celular.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3'))
+      }
+    }
+  }
+  return numeros
+}
+
+/**
+ * Si el teléfono del padrón dice algo que los botones de llamar no dicen: un
+ * anexo, un nombre, un horario, una clave RPM o un número que no se reconoció.
+ * Entonces la tarjeta lo muestra entero además de los botones. «Cel.» y «Tel.»
+ * delante de un número no cuentan.
+ */
+export function telefonoDiceMas(texto: string | null | undefined, numeros: TelefonoParaLlamar[]) {
+  if (!texto) return false
+  const sinRotulos = texto.replace(/(?:cel(?:ular)?|tel[eé]fonos?|telf?|fijo|m[oó]vil)\.?\s*:?(?![\p{L}])/giu, '')
+  if (/[\p{L}#*]/u.test(sinRotulos)) return true
+  return soloCifras(texto).length !== numeros.reduce((suma, t) => suma + soloCifras(t.texto).length, 0)
 }
 
 /** La dirección del proveedor en el mapa del teléfono: abre la aplicación de mapas si la hay, o el navegador. */

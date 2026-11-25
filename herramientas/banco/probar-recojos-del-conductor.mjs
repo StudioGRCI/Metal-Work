@@ -4,7 +4,7 @@
  *
  *   1. El conductor ve cada parada con «Abrir en el mapa» (la dirección de
  *      recojo del proveedor) y un «Llamar» por cada número del padrón, que es
- *      texto libre: «940 843 031 - 980 926 670» son dos botones, no un número
+ *      texto libre: «999 000 111 - 988 000 222» son dos botones, no un número
  *      de 18 dígitos. Todos miden 44 px o más, en teléfono y en monitor.
  *   2. Sin nada recogido, «Recogido y dejado hoy» dice que todavía no hay.
  *   3. Recoge una y la deja en almacén, y recoge otra: la sección de hoy las
@@ -81,7 +81,7 @@ const DIRECCION = `Av. Argentina 3458, Callao ${SUFIJO}`
 // La dirección fiscal no es adonde va el conductor: va a la de recojo.
 const [{ id: conDosNumeros }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, direccion_recojo, telefono, contacto)
-   values ($1, $2, 'Jr. Fiscal 100, Lima', $3, '940 843 031 - 980 926 670', 'Rosa Quispe') returning id`,
+   values ($1, $2, 'Jr. Fiscal 100, Lima', $3, '999 000 111 - 988 000 222', 'Rosa Quispe') returning id`,
   [await rucLibre(), `ACEROS DE RUTA ${SUFIJO}`, DIRECCION],
 )
 const [{ id: sinTelefono }] = await consulta(
@@ -187,7 +187,7 @@ try {
     const llamar = a.getByRole('link', { name: /Llamar a Rosa Quispe/ })
     const hrefs = await llamar.evaluateAll((l) => l.map((x) => x.getAttribute('href')))
     comprobar(hrefs.length === 2 && hrefs[0] === 'tel:940843031' && hrefs[1] === 'tel:980926670', `${donde}: dos números, dos «Llamar»: ${hrefs.join(' y ')}`)
-    comprobar((await texto(llamar.first())) === 'Llamar 940 843 031', `${donde}: el botón dice a qué número llama: «${await texto(llamar.first())}»`)
+    comprobar((await texto(llamar.first())) === 'Llamar 999 000 111', `${donde}: el botón dice a qué número llama: «${await texto(llamar.first())}»`)
 
     // 44 px o más, también con ratón: en el monitor los botones normales bajan a 36.
     const altos = await a.locator('a[href^="tel:"], a[href*="google.com/maps"], button').evaluateAll((l) => l.map((x) => Math.round(x.getBoundingClientRect().height)))
@@ -259,7 +259,7 @@ try {
     const dejada = tarjeta(pagina, ocA)
     await dejada.getByText('En almacén').first().waitFor({ timeout: 15000 })
     comprobar((await dejada.locator('a[href^="tel:"], a[href*="google.com/maps"]').count()) === 0, `${donde}: ya dejada, ${ocA} no ofrece llamar ni abrir el mapa`)
-    comprobar((await texto(dejada)).includes(DIRECCION) && (await texto(dejada)).includes('940 843 031 - 980 926 670'), `${donde}: y conserva la dirección y el teléfono como datos`)
+    comprobar((await texto(dejada)).includes(DIRECCION) && (await texto(dejada)).includes('999 000 111 - 988 000 222'), `${donde}: y conserva la dirección y el teléfono como datos`)
     await sinDesborde(pagina, donde)
     await pagina.screenshot({ path: `${CAPTURAS}/recojos-conductor-390-2-lo-de-hoy.png`, fullPage: true })
     comprobar(errores.length === 0, `${donde}: sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)

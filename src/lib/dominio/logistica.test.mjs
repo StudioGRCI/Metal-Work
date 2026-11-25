@@ -1,14 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { enlaceAlMapa, pasosDelDia, telefonosParaLlamar } from './logistica.ts'
+import { enlaceAlMapa, pasosDelDia, telefonoDiceMas, telefonosParaLlamar } from './logistica.ts'
 
 // El teléfono del padrón es texto libre. Antes se juntaban todos sus dígitos en
 // un solo tel:, y con dos números el conductor marcaba uno que no existe.
 test('el teléfono del proveedor se parte en los números que se pueden marcar', () => {
   assert.deepEqual(telefonosParaLlamar('999 111 222'), [{ texto: '999 111 222', numero: '999111222' }])
-  assert.deepEqual(telefonosParaLlamar('940 843 031 - 980 926 670'), [
-    { texto: '940 843 031', numero: '940843031' },
-    { texto: '980 926 670', numero: '980926670' },
+  assert.deepEqual(telefonosParaLlamar('999 000 111 - 988 000 222'), [
+    { texto: '999 000 111', numero: '999000111' },
+    { texto: '988 000 222', numero: '988000222' },
   ])
   assert.deepEqual(telefonosParaLlamar('(01) 445-5667 / Cel. 999111222'), [
     { texto: '(01) 445-5667', numero: '014455667' },
@@ -20,7 +20,40 @@ test('el teléfono del proveedor se parte en los números que se pueden marcar',
   assert.deepEqual(telefonosParaLlamar('preguntar por Juan'), [])
   assert.deepEqual(telefonosParaLlamar('anexo 12'), [])
   assert.deepEqual(telefonosParaLlamar(null), [])
-  assert.equal(telefonosParaLlamar('1111111, 2222222, 3333333, 4444444').length, 3)
+  // Ninguno se queda sin botón por ser el cuarto.
+  assert.equal(telefonosParaLlamar('1111111, 2222222, 3333333, 4444444').length, 4)
+})
+
+// Un botón que marca otro número es peor que no tener botón: lo dudoso no se marca.
+test('el anexo, la clave RPM y el RUC no se marcan como si fueran el teléfono', () => {
+  const marca = (t) => telefonosParaLlamar(t).map((n) => n.numero)
+  assert.deepEqual(marca('(01) 445-5667 anexo 205'), ['014455667'])
+  assert.deepEqual(marca('01 445 5667 ext 3 / 999 111 222'), ['014455667', '999111222'])
+  assert.deepEqual(marca('4455667-123'), ['4455667'])
+  assert.deepEqual(marca('999111222 opción 2'), ['999111222'])
+  assert.deepEqual(marca('Cel. 999111222 RPM #948123'), ['999111222'])
+  assert.deepEqual(marca('RPM 948123'), [])
+  assert.deepEqual(marca('*123456'), [])
+  assert.deepEqual(marca('20123456789'), [])
+  assert.deepEqual(marca('999111222 de 8 a 1pm'), ['999111222'])
+  // Con el 51 del país se marca con «+», y sin el 0 del código de la ciudad.
+  assert.deepEqual(marca('(511) 445-5667'), ['+5114455667'])
+  assert.deepEqual(marca('51 999 111 222'), ['+51999111222'])
+  assert.deepEqual(marca('+51 (01) 445-5667'), ['+5114455667'])
+  // Dos números pegados son dos.
+  assert.deepEqual(marca('4455667-4455668'), ['4455667', '4455668'])
+  assert.deepEqual(marca('999 111 222 988 777 666'), ['999111222', '988777666'])
+})
+
+test('la tarjeta muestra el teléfono del padrón entero cuando dice más que los botones', () => {
+  const diceMas = (t) => telefonoDiceMas(t, telefonosParaLlamar(t))
+  assert.equal(diceMas('999 111 222'), false)
+  assert.equal(diceMas('Cel. 999111222 / Fijo 4455667'), false)
+  assert.equal(diceMas('(01) 445-5667 anexo 205'), true)
+  assert.equal(diceMas('999111222 (Rosa, de 8 a 1)'), true)
+  assert.equal(diceMas('RPM #948123'), true)
+  assert.equal(diceMas('20123456789'), true)
+  assert.equal(diceMas(null), false)
 })
 
 test('la dirección va al mapa con sus tildes y sus comas', () => {
