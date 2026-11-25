@@ -9,6 +9,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
 import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, telefonoDiceMas, telefonosParaLlamar } from '@/lib/dominio/logistica'
+import { CODIGO_SIN_AVANCE } from '@/lib/dominio/codigos-internos'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { cantidad, diaLima, fecha, fechaHora, hora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -36,7 +37,7 @@ export default async function PaginaRecojos() {
   const dejadas = recojos.filter((r) => r.recojo === 'DEJADO')
   // Lo recogido y lo dejado hoy, con su hora: sale de las horas que ya guarda cada compra.
   const deHoy = pasosDelDia(recojos, hoyLima(), diaLima)
-  const codigoDe = new Map(recojos.map((r) => [r.id, r.codigo_interno]))
+  const paraQuien = new Map(recojos.map((r) => [r.id, paraQuienEs(r)]))
 
   return (
     <>
@@ -93,7 +94,7 @@ export default async function PaginaRecojos() {
               <ol className="divide-y divide-borde">
                 {deHoy.map((p) => {
                   const paso = RECOJO_COMPRA[p.paso]
-                  const codigo = codigoDe.get(p.compra)
+                  const para = paraQuien.get(p.compra)
                   return (
                     <li key={`${p.compra}-${p.paso}`} className="flex items-start gap-3 px-4 py-3 text-sm">
                       <span className="tabular w-12 shrink-0 font-semibold text-texto">{hora(p.en)}</span>
@@ -102,7 +103,7 @@ export default async function PaginaRecojos() {
                           <span className="font-medium text-texto">{p.nombre}</span>
                           {paso && <Insignia tono={paso.tono}>{paso.etiqueta}</Insignia>}
                         </span>
-                        <span className="block text-xs text-texto-suave">{[p.proveedor, codigo ? `Para ${codigo}` : null].filter(Boolean).join(' · ')}</span>
+                        <span className="block text-xs text-texto-suave">{[p.proveedor, ...(para ?? [])].join(' · ')}</span>
                       </span>
                     </li>
                   )
@@ -123,6 +124,19 @@ export default async function PaginaRecojos() {
       </div>
     </>
   )
+}
+
+/**
+ * Para qué unidad es, o «Para el almacén» si es una compra directa. La directa
+ * para PLANTA decía las dos cosas («Para PLANTA · Para el almacén»), y PLANTA no
+ * es una unidad.
+ */
+function paraQuienEs(r: Pick<CompraParaRecojo, 'codigo_interno' | 'origen'>): string[] {
+  const directa = r.origen === 'DIRECTA'
+  return [
+    ...(r.codigo_interno && !(directa && r.codigo_interno === CODIGO_SIN_AVANCE) ? [`Para ${r.codigo_interno}`] : []),
+    ...(directa ? ['Para el almacén'] : []),
+  ]
 }
 
 /**
@@ -148,8 +162,8 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         titulo={`${r.recojo === 'POR_RECOGER' && r.lugar ? `${r.lugar}.º · ` : ''}${r.numero ?? 'OC sin número'} · ${r.proveedor}`}
         descripcion={[
           r.numero === null ? `Ref. del proveedor: ${r.referencia}` : r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
-          r.codigo_interno ? `Para ${r.codigo_interno}` : null,
-          r.origen === 'DIRECTA' ? 'Para el almacén' : r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
+          ...paraQuienEs(r),
+          r.origen !== 'DIRECTA' && r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
           r.fecha_estimada ? `Lista desde ${fecha(r.fecha_estimada)}` : null,
         ]
           .filter(Boolean)
@@ -181,7 +195,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
                     {telefonos.map((t, i) => (
                       <Fragment key={t.numero}>
                         {i > 0 && ' / '}
-                        <a className="text-acento hover:underline" href={`tel:${t.numero}`}>
+                        <a className="whitespace-nowrap text-acento hover:underline" href={`tel:${t.numero}`}>
                           {t.texto}
                         </a>
                       </Fragment>

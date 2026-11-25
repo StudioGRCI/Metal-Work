@@ -115,21 +115,33 @@ export type TelefonoParaLlamar = { texto: string; numero: string }
 const soloCifras = (t: string) => t.replace(/\D/g, '')
 
 /**
- * Lo que marca el teléfono para un trozo del padrón, o nada si no es un número
- * al que se pueda llamar. Fijo o celular del Perú: de 6 a 9 cifras, con el 01
- * o el código de la ciudad delante; con el 51 del país, se marca con «+». Once
- * cifras que no empiezan en 51 son un RUC, no un teléfono.
+ * Lo que marca un celular en el Perú para un trozo del padrón, o nada si no se
+ * sabe a qué número llama:
+ * - Celular: 9 cifras que empiezan en 9.
+ * - Fijo con su código: el 0 y el código de la ciudad, 9 cifras en total
+ *   («(01) 445-5667», «(044) 23-4567»).
+ * - Fijo de Lima escrito sin el 01: 7 cifras. Desde un celular no entra sin el
+ *   código de la ciudad, así que se le pone; se sigue leyendo como está escrito.
+ * - Con el 51 del país, «+51» y el número sin su 0.
+ * Seis u ocho cifras sueltas no dicen de qué ciudad son, o son un DNI; once que
+ * no empiezan en 51, un RUC: sin botón, y el texto del padrón queda a la vista
+ * (`telefonoDiceMas`).
  */
 function loQueMarca(trozo: string): string | null {
   const cifras = soloCifras(trozo)
-  if (trozo.trim().startsWith('+')) {
-    if (!cifras.startsWith('51')) return cifras.length >= 8 && cifras.length <= 12 ? `+${cifras}` : null
-    // Con el 51 del país, el 0 del código de la ciudad no se marca: +51 (01) 445-5667 es +51 1 445 5667.
-    const resto = cifras.slice(2).replace(/^0/, '')
-    return resto.length === 8 || resto.length === 9 ? `+51${resto}` : null
+  const conElPais = (resto: string) => {
+    const numero = resto.replace(/^0/, '')
+    if (numero.length === 9 && numero.startsWith('9')) return `+51${numero}`
+    if (numero.length === 8 && !numero.startsWith('9')) return `+51${numero}`
+    return null
   }
-  if (cifras.length >= 6 && cifras.length <= 9) return cifras
-  if ((cifras.length === 10 || cifras.length === 11) && cifras.startsWith('51')) return `+${cifras}`
+  if (trozo.trim().startsWith('+')) {
+    if (cifras.startsWith('51')) return conElPais(cifras.slice(2))
+    return cifras.length >= 8 && cifras.length <= 12 ? `+${cifras}` : null
+  }
+  if ((cifras.length === 10 || cifras.length === 11) && cifras.startsWith('51')) return conElPais(cifras.slice(2))
+  if (cifras.length === 9 && (cifras.startsWith('9') || cifras.startsWith('0'))) return cifras
+  if (cifras.length === 7 && !cifras.startsWith('0')) return `01${cifras}`
   return null
 }
 
@@ -158,18 +170,22 @@ export function telefonosParaLlamar(texto: string | null | undefined): TelefonoP
     }
     return true
   }
-  // Lo que sigue a «anexo», «ext.», «int.» u «opción» no es parte del número: se corta ahí, con sus cifras.
-  for (const parte of texto.split(/\b(?:anexos?|anx|extensi[oó]n|ext|interno|int|opci[oó]n|opc)\b\.?\s*:?\s*\d*/i)) {
+  // Lo que sigue a «anexo», «ext.», «int.» u «opción» no es parte del número, y el fax no se llama: se corta ahí, con sus cifras.
+  for (const parte of texto.split(/\b(?:anexos?|anx|extensi[oó]n|ext|interno|int|opci[oó]n|opc|fax)\b\.?\s*:?\s*[\d\s-]*\d|\b(?:anexos?|anx|extensi[oó]n|ext|interno|int|opci[oó]n|opc|fax)\b\.?/i)) {
     // Cada tirada de cifras con sus espacios, guiones, puntos y paréntesis.
-    for (const hallado of parte.matchAll(/\+?\(?\d[\d\s().\-–—]*\d/g)) {
+    // «(+51) 999…» empieza en el paréntesis, para que el texto no quede con uno suelto.
+    for (const hallado of parte.matchAll(/\(?\+?\(?\d[\d\s().\-–—]*\d/g)) {
       const candidato = hallado[0]
       const antes = parte.slice(0, hallado.index)
       // «RPM #948123» y «*123456» son claves de la red de antes, no números: no se marcan desde cualquier teléfono.
       if (/[#*]\s*$/.test(antes)) continue
       if (/\b(?:rpm|rpc)\b\W*$/i.test(antes) && soloCifras(candidato).length !== 9) continue
       const porGuion = candidato.split(/\s*[-–—]\s*/).filter(Boolean)
-      // «4455667-123» y «999000111-12»: un número entero y, tras el guion, su anexo.
-      if (!candidato.startsWith('+') && porGuion.length === 2 && [7, 9].includes(soloCifras(porGuion[0]).length) && soloCifras(porGuion[1]).length <= 4) {
+      // «4455667-123» y «999000111-12»: un número entero y, tras el guion, su anexo. Solo si lo de
+      // antes del guion ya es un número completo: en «51 (01) 445-5667», «51 (01) 445» no lo es.
+      const antesDelGuion = porGuion[0]?.trim() ?? ''
+      const completo = /^\d{7}$/.test(antesDelGuion) || /^[09]\d{8}$/.test(soloCifras(antesDelGuion))
+      if (!candidato.startsWith('+') && porGuion.length === 2 && completo && soloCifras(porGuion[1]).length <= 4) {
         sumar(porGuion[0])
         continue
       }

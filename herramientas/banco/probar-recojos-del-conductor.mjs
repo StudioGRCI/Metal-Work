@@ -22,7 +22,8 @@
  * las emite y programa y Gerencia las aprueba, con las funciones de la base) y
  * las sigue por su número. Al terminar, también si la prueba se cae, cierra el
  * circuito con las funciones de la base: las que quedan sin recoger salen de la
- * lista, y la que el conductor tiene encima la deja en almacén.
+ * lista y Gerencia las anula con su motivo, y la que el conductor tiene encima
+ * la deja en almacén.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE, CAPTURAS y
  * los correos de cada cuenta si no son las `*.local@metalwork.test`.
  */
@@ -81,7 +82,8 @@ async function rucLibre() {
     if (ruc) return ruc.n
   }
 }
-const DIRECCION = `Av. Argentina 3458, Callao ${SUFIJO}`
+// Datos inventados: ni la dirección ni los números son de nadie.
+const DIRECCION = `Calle Prueba 3458, Callao ${SUFIJO}`
 // La dirección fiscal no es adonde va el conductor: va a la de recojo.
 const [{ id: conDosNumeros }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, direccion_recojo, telefono, contacto)
@@ -90,7 +92,7 @@ const [{ id: conDosNumeros }] = await consulta(
 )
 // El padrón dice más que el número: el anexo no se marca y lo escrito se sigue leyendo.
 // El padrón guarda hasta 40 letras.
-const TELEFONO_CON_ANEXO = 'en caja: (01) 445-5667 anexo 205'
+const TELEFONO_CON_ANEXO = 'en caja: (01) 000-0111 anexo 205'
 const [{ id: conAnexo }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. Los Pernos 45, Ate', $3) returning id`,
   [await rucLibre(), `PERNOS DE RUTA ${SUFIJO}`, TELEFONO_CON_ANEXO],
@@ -133,6 +135,13 @@ function limpiar() {
       await como('conductor', en)
       await en(`select public.marcar_compra_recogida(id) from ordenes_compra_materiales where id = any($1) and recojo = 'EN_RECOJO'`, [sembradas])
       await en(`select public.marcar_compra_dejada_almacen(id) from ordenes_compra_materiales where id = any($1) and recojo = 'RECOGIDO'`, [sembradas])
+      // Las que nadie recogió no se borran (un documento numerado no se borra): Gerencia las anula con su motivo.
+      await como('gerencia', en)
+      await en(
+        `select public.anular_orden_compra(id, 'Compra sembrada por la prueba de la ruta del conductor: no es una compra real.')
+           from ordenes_compra_materiales where id = any($1) and recojo = 'POR_RECOGER'`,
+        [sembradas],
+      )
     } finally {
       await propia.end().catch(() => {})
     }
@@ -219,7 +228,7 @@ try {
 
     const c = tarjeta(pagina, ocC)
     const hrefsC = await c.locator('a[href^="tel:"]').evaluateAll((l) => l.map((x) => x.getAttribute('href')))
-    comprobar(hrefsC.length === 1 && hrefsC[0] === 'tel:014455667', `${donde}: «${TELEFONO_CON_ANEXO}» da un solo «Llamar», sin el anexo: ${hrefsC.join(', ')}`)
+    comprobar(hrefsC.length === 1 && hrefsC[0] === 'tel:010000111', `${donde}: «${TELEFONO_CON_ANEXO}» da un solo «Llamar», sin el anexo: ${hrefsC.join(', ')}`)
     comprobar((await texto(c)).includes(TELEFONO_CON_ANEXO), `${donde}: y lo que dice el padrón, con el anexo, se sigue leyendo`)
     comprobar((await c.getByRole('link', { name: /Abrir en el mapa/ }).count()) === 1, `${donde}: ${ocC} sí abre su dirección en el mapa`)
 

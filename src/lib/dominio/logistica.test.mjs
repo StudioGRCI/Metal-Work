@@ -25,12 +25,34 @@ test('el teléfono del proveedor se parte en los números que se pueden marcar',
   assert.equal(telefonosParaLlamar('1111111, 2222222, 3333333, 4444444').length, 4)
 })
 
+// Desde un celular, un fijo no entra sin el código de la ciudad.
+test('el fijo de Lima escrito sin el 01 se marca con el 01, y se lee como está escrito', () => {
+  assert.deepEqual(telefonosParaLlamar('445-5667'), [{ texto: '445-5667', numero: '014455667' }])
+  // El mismo con y sin el 01, o con el 51, es uno solo.
+  assert.deepEqual(telefonosParaLlamar('4455667 / (01) 4455667').map((n) => n.numero), ['014455667'])
+  assert.deepEqual(telefonosParaLlamar('999111222 / +51 999 111 222').map((n) => n.numero), ['999111222'])
+  // Seis u ocho cifras no dicen de qué ciudad son, o son un DNI: sin botón.
+  assert.deepEqual(telefonosParaLlamar('234567'), [])
+  assert.deepEqual(telefonosParaLlamar('DNI 45678912'), [])
+  assert.deepEqual(telefonosParaLlamar('123456789'), [])
+})
+
+// Segunda pasada del auditor de funcionamiento: «51 (01) 445» se tomaba por número entero y «5667» por su anexo.
+test('el 51 del país delante de un fijo con guion no se confunde con un anexo', () => {
+  const marca = (t) => telefonosParaLlamar(t).map((n) => n.numero)
+  assert.deepEqual(marca('51 (01) 445-5667'), ['+5114455667'])
+  assert.deepEqual(marca('51 01 4455667'), ['+5114455667'])
+  assert.deepEqual(marca('Fax 4455667'), [])
+  assert.deepEqual(marca('Fax 445-5667 / Cel. 999111222'), ['999111222'])
+  assert.deepEqual(telefonosParaLlamar('(+51) 999 111 222'), [{ texto: '(+51) 999 111 222', numero: '+51999111222' }])
+})
+
 // Un botón que marca otro número es peor que no tener botón: lo dudoso no se marca.
 test('el anexo, la clave RPM y el RUC no se marcan como si fueran el teléfono', () => {
   const marca = (t) => telefonosParaLlamar(t).map((n) => n.numero)
   assert.deepEqual(marca('(01) 445-5667 anexo 205'), ['014455667'])
   assert.deepEqual(marca('01 445 5667 ext 3 / 999 111 222'), ['014455667', '999111222'])
-  assert.deepEqual(marca('4455667-123'), ['4455667'])
+  assert.deepEqual(marca('4455667-123'), ['014455667'])
   assert.deepEqual(marca('999111222 opción 2'), ['999111222'])
   assert.deepEqual(marca('Cel. 999111222 RPM #948123'), ['999111222'])
   assert.deepEqual(marca('RPM 948123'), [])
@@ -42,7 +64,7 @@ test('el anexo, la clave RPM y el RUC no se marcan como si fueran el teléfono',
   assert.deepEqual(marca('51 999 111 222'), ['+51999111222'])
   assert.deepEqual(marca('+51 (01) 445-5667'), ['+5114455667'])
   // Dos números pegados son dos.
-  assert.deepEqual(marca('4455667-4455668'), ['4455667', '4455668'])
+  assert.deepEqual(marca('4455667-4455668'), ['014455667', '014455668'])
   assert.deepEqual(marca('999 111 222 988 777 666'), ['999111222', '988777666'])
 })
 
