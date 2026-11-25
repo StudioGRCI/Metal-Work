@@ -91,10 +91,10 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     return Boolean(q && ot && coincide(palabras, [ot.numero, ot.cliente]))
   }
   const hoy = hoyLima()
-  const limite = await limitePorVencer()
 
   const veOt = puede(perfil, 'ordenes.ver')
-  const [planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
+  const [limite, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
+    limitePorVencer(),
     planosDeCodigo(null),
     etapasDeCodigo(null),
     // La base solo se los da a Maestranza y Producción (`puede_ver_dxf`): para Acabados sale vacío.
