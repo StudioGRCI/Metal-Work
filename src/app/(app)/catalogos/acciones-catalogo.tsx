@@ -35,6 +35,8 @@ export function AccionesCatalogo({
    * demás (`contents`) y el aviso baja a su propia línea sin ensanchar la
    * columna. Al lado de los botones, en Carrocerías a 1280 px el aviso corría
    * la tabla 150 px y quedaba fuera de la vista (auditoría del 2026-11-25).
+   * Tampoco pinta «Inactivo»: entre los botones mandaba «Reactivar» a otro
+   * renglón. La pantalla lo dice junto al nombre, que es donde se lee primero.
    */
   enFila?: boolean
 }) {
@@ -51,7 +53,7 @@ export function AccionesCatalogo({
 
   return (
     <div className={enFila ? 'contents' : 'flex flex-wrap items-center gap-2'}>
-      {!activo && <span className="rounded-full bg-superficie-2 px-2 py-1 text-xs text-texto-suave">Inactivo</span>}
+      {!activo && !enFila && <span className="rounded-full bg-superficie-2 px-2 py-1 text-xs text-texto-suave">Inactivo</span>}
       {puedeEditar && (
         // Sin borde, como «Eliminar»: en listas de 34 filas pesaba igual que «Editar».
         <Boton type="button" tamano="sm" variante="fantasma" cargando={estado.enviando} onClick={() => estado.ejecutar(datos(true))}>

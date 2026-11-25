@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -156,7 +156,22 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {c.telefono ?? '—'}
-                      {c.correo && <p className="text-xs">{c.correo}</p>}
+                      {/* A 12 px el correo, que no tiene dónde partirse, ensanchaba la tabla
+                          12 px en una tableta: si no entra, baja después de la arroba. */}
+                      {c.correo && (
+                        <p className="text-xs">
+                          {c.correo.split('@').map((parte, i) => (
+                            <Fragment key={i}>
+                              {i > 0 && (
+                                <>
+                                  @<wbr />
+                                </>
+                              )}
+                              {parte}
+                            </Fragment>
+                          ))}
+                        </p>
+                      )}
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
                     <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>

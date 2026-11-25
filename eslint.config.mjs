@@ -27,7 +27,7 @@ const eslintConfig = defineConfig([
       "no-restricted-syntax": [
         "error",
         ...["Literal[value=", "TemplateElement[value.raw="].map((nodo) => ({
-          selector: `${nodo}/text-\\[(?:(?:[0-9]|1[01])(?:\\.[0-9]+)?px|0?\\.(?:[0-6][0-9]*|7|7[0-4][0-9]*)r?em)\\]/]`,
+          selector: `${nodo}/text-\\[(?:length:)?(?:(?:[0-9]|1[01])(?:\\.[0-9]+)?px|0?\\.(?:[0-6][0-9]*|7|7[0-4][0-9]*)r?em)\\]/]`,
           message: "La letra más chica es de 12 px: usa text-xs (skill diseno › Texto).",
         })),
       ],

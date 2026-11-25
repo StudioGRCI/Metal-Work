@@ -61,9 +61,10 @@ export function BarraInferior({
 
   const clasePestana = (activo: boolean) =>
     cn(
-      // A 12 px como todo el sistema. Con `px-1`, «Subcontratos» se cortaba en
-      // «Subcontra…» en un teléfono de 390; con `px-0.5` entran las de los 16 puestos.
-      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-0.5 text-xs font-medium transition-colors',
+      // A 12 px como todo el sistema, y sin relleno a los lados: con `px-1`,
+      // «Subcontratos» (72,9 px) se cortaba en «Subcontra…» a 390 px. Así entra
+      // desde 365 px; a 360 se corta por 1 px, como ya pasaba a 11 px.
+      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors',
       activo ? 'text-acento' : 'text-texto-suave hover:text-texto',
     )
   const claseIcono = (activo: boolean) =>

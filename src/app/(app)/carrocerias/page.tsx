@@ -71,7 +71,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
         acciones={
           <div className="flex items-center gap-2">
             {puedeEditar && <NuevaCarroceria />}
-            <Link href={incluirInactivas ? '/carrocerias' : '/carrocerias?estado=inactivas'} className="text-sm text-acento hover:underline">
+            <Link href={incluirInactivas ? '/carrocerias' : '/carrocerias?estado=inactivas'} className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0">
               {incluirInactivas ? 'Ver activas' : 'Ver también desactivadas'}
             </Link>
           </div>
@@ -111,6 +111,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                     <span className="ml-1 rounded bg-superficie-2 px-1 text-xs font-semibold text-texto-suave">
                       {c.codigo}
                     </span>
+                    {!c.activo && <Insignia className="ml-1.5">Inactivo</Insignia>}
                     {verDetalleTecnico && (
                       <span className="block text-xs text-texto-suave">
                         {resumenMedidas(c) ?? 'Sin medidas técnicas'}

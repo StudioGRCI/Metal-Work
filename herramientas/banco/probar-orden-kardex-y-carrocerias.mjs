@@ -170,11 +170,16 @@ for (const [puesto, esperados] of [['diseno', ['Editar', 'Medidas', 'Desactivar'
           desliza: caja.scrollWidth - caja.clientWidth,
           fuera: [...caja.querySelectorAll('tbody button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().right > borde + 1).length,
           desborde: document.documentElement.scrollWidth - window.innerWidth,
+          // Filas cuyos botones no van en un solo renglón: es lo que se apilaba.
+          apiladas: [...caja.querySelectorAll('tbody tr')].filter((tr) => {
+            const altos = [...tr.querySelectorAll('button')].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0).map((r) => Math.round(r.top + r.height / 2))
+            return altos.length > 1 && Math.max(...altos) - Math.min(...altos) > 4
+          }).length,
         }
       })
-      if (m.desliza > 1 || m.fuera > 0 || m.desborde > 0) malos.push(`${ancho}: ${JSON.stringify(m)}`)
+      if (m.desliza > 1 || m.fuera > 0 || m.desborde > 0 || m.apiladas > 0) malos.push(`${ancho}: ${JSON.stringify(m)}`)
     }
-    comprobar(malos.length === 0, `${ruta.includes('inactivas') ? 'con las desactivadas' : 'las activas'}: no se desliza ni deja botones fuera`, malos.join(' · '))
+    comprobar(malos.length === 0, `${ruta.includes('inactivas') ? 'con las desactivadas' : 'las activas'}: no se desliza, no deja botones fuera y van en un renglón`, malos.join(' · '))
   }
   await contexto.close()
 }

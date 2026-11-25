@@ -29,7 +29,9 @@ En `src/components/ui/`:
   usa primero y con `contorno`, lo que casi nunca (desactivar, eliminar) al
   final y `fantasma`. Nunca apilados en un `space-y-*`. La columna lleva su
   ancho en la cabecera (`md:w-80`) para que quepan; no se fuerza con
-  `flex-nowrap`, que corre la tabla cuando aparece un aviso. Lo de
+  `flex-nowrap`, que corre la tabla cuando aparece un aviso. El estado de la
+  fila («Inactivo») va junto al nombre, no entre los botones: ahí mandaba
+  «Reactivar» a otro renglón. Lo de
   desactivar y eliminar es **provisional**: DKS decidió que vayan dentro de
   un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
   todavía no existe.
