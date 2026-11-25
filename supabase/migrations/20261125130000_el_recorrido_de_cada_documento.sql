@@ -164,7 +164,8 @@ begin
     -- Logística sacó de la lista (`quitar_recojo_de_la_lista` deja la fila sin
     -- posición) vuelve a ser de Logística. Con varias OC en el mismo punto, la
     -- que falta programar va primero: mientras quede una, el RQ es de Logística
-    -- aunque el conductor ya tenga otra.
+    -- aunque el conductor ya tenga otra. Igual lo observado antes que lo que
+    -- Almacén tiene por validar.
     select distinct on (i.rq) i.rq,
            case when i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is null then 'POR_PROGRAMAR' else i.etapa end as etapa,
            case when c.id is not null then public.nombre_de_oc(c.numero, c.referencia) end as oc,
@@ -187,7 +188,11 @@ begin
       left join lateral (select max(p.programado_en) as programado_en from public.programacion_recojo p
                           where p.orden_compra_id = c.id and p.posicion is not null) pr on true
      where i.por_llegar > 0
-     order by i.rq, i.porcentaje, (i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is not null), i.item
+     order by i.rq, i.porcentaje,
+              (i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is not null),
+              -- Al mismo punto (80 %), lo observado antes que lo que Almacén tiene por validar, como la tarjeta.
+              (i.etapa is distinct from 'OBSERVADO'),
+              i.item
   ),
   -- El RQ en compra al que ya no le falta llegar nada, y desde cuándo: lo último que se supo de sus insumos.
   llego as (
