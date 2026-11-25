@@ -284,6 +284,18 @@ const detalle = (codigo) => `${BASE}${RUTA}/codigo?${new URLSearchParams({ codig
   await contexto.close()
 }
 
+// ------------------------------------------------------------------ 5b. Gerencia de Producción, en «Avance»
+{
+  const { pagina, contexto, errores } = await entrar('gerencia.produccion.local@metalwork.test')
+  const enMenu = pagina.locator('nav[aria-label="Menú principal"] a', { hasText: 'Tiempos de entrega' })
+  comprobar((await enMenu.count()) === 1, 'Gerencia de Producción tiene «Tiempos de entrega» en su menú')
+  await enMenu.click()
+  await fila(pagina, 'TDE_VENCIDO').waitFor({ timeout: 60000 })
+  comprobar((await pagina.locator('[data-codigo^="TDE_"]').count()) === 5, 'Gerencia de Producción ve los cinco códigos')
+  comprobar(errores.length === 0, `sin errores de consola como Gerencia de Producción (${errores.join(' · ') || 'ninguno'})`)
+  await contexto.close()
+}
+
 // ------------------------------------------------------------------ 6. Quien no lo lleva no entra
 for (const [correo, puesto] of [
   ['almacen.local@metalwork.test', 'Almacén'],

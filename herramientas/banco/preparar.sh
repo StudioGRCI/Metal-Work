@@ -94,6 +94,8 @@ declare
 begin
   for c in select * from (values
     ('gerencia.local@metalwork.test',       'GERENTE',            'GGE', 'Gerencia'),
+    ('gerencia.comercial.local@metalwork.test', 'GERENTE_COMERCIAL', 'GCO', 'Gerencia Comercial'),
+    ('gerencia.produccion.local@metalwork.test', 'GERENTE_PRODUCCION', 'GOP', 'Gerencia de Producción'),
     ('administracion.local@metalwork.test', 'ADMINISTRACION',     'ADM', 'Administración'),
     ('almacen.local@metalwork.test',        'ALMACENERO',         'ALM', 'Almacén'),
     ('logistica.local@metalwork.test',      'COMPRADOR',          'LOG', 'Logística'),

@@ -846,6 +846,25 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
   },
+  // Desde el 2026-11-25 (migración 20261125200000): sigue el trabajo del Agente
+  // de Ventas sin registrarlo. Las cotizaciones con su precio y el visto de
+  // Gerencia General, los clientes y sus unidades, y las OT que salen de ellas.
+  // No aprueba: eso sigue siendo de Gerencia General.
+  GERENTE_COMERCIAL: {
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes'] }],
+    telefono: ['/cotizaciones/pdf', '/clientes', '/ordenes', '/'],
+  },
+  // Desde el 2026-11-25 (migración 20261125200000): valida el avance. Arriba lo
+  // que espera su visto, el reporte diario de cada supervisor; después cada
+  // código por sus etapas, planos y avance, sin costos. Los tiempos de entrega
+  // de RR. HH. se suman a «Avance» cuando su pantalla entre al catálogo.
+  GERENTE_PRODUCCION: {
+    grupos: [
+      { titulo: 'Por validar', rutas: ['/reportes-diarios'] },
+      { titulo: 'Avance', rutas: ['/seguimiento', '/rrhh/tiempos-de-entrega'] },
+    ],
+    telefono: ['/reportes-diarios', '/seguimiento', '/rrhh/tiempos-de-entrega', '/'],
+  },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
 // (`docs/PERMISOS.md`): lleva su mismo menú. Sin esta línea le salía el

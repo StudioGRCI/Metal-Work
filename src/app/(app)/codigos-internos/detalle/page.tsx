@@ -1295,7 +1295,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </TD>
                       <TD className={`tabular text-right align-top whitespace-nowrap ${aprobada ? '' : 'text-texto-suave'}`}>
                         {moneda(l.monto, l.moneda ?? 'PEN')}
-                        {!aprobada && <p className="text-[11px]">no suma</p>}
+                        {!aprobada && <p className="text-xs">no suma</p>}
                       </TD>
                     </TR>
                   )
