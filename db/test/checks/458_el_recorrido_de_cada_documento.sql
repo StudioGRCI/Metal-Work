@@ -269,8 +269,8 @@ begin
 end $$;
 reset role;
 set local session_replication_role = replica;
-insert into public.programacion_recojo (orden_compra_id, peso_kg, programado_por, programado_en)
-values (pg_temp.id('oc'), 120, pg_temp.id('comprador'), now());
+insert into public.programacion_recojo (orden_compra_id, posicion, peso_kg, programado_por, programado_en)
+values (pg_temp.id('oc'), 1, 120, pg_temp.id('comprador'), now());
 set local session_replication_role = origin;
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -282,6 +282,38 @@ begin
     'programada, la tiene el conductor desde que se programó (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ')');
 end $$;
 reset role;
+-- Logística la saca de la lista del conductor (`quitar_recojo_de_la_lista` deja
+-- la fila sin posición): el conductor ya no la ve, y vuelve a ser de Logística.
+set local session_replication_role = replica;
+update public.programacion_recojo set posicion = null where orden_compra_id = pg_temp.id('oc');
+set local session_replication_role = origin;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Logística' and v.espera = 'POR_PROGRAMAR',
+    'sacada de la lista del conductor, vuelve a Logística (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ')');
+end $$;
+reset role;
+-- En un RQA también la programa Logística: Administración no tiene compras.programar_recojo.
+set local session_replication_role = replica;
+update public.requerimientos set tipo = 'ADMINISTRACION' where id = pg_temp.id('rqb');
+set local session_replication_role = origin;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Logística' and v.espera = 'POR_PROGRAMAR',
+    'en un RQA, la OC sin programar también la tiene Logística (dice ' || coalesce(v.puesto, '?') || ')');
+end $$;
+reset role;
+set local session_replication_role = replica;
+update public.requerimientos set tipo = 'OPERACION' where id = pg_temp.id('rqb');
+set local session_replication_role = origin;
 
 -- La vuelta a compra: el RQ listo que vuelve porque Almacén devolvió parte al
 -- proveedor. Lo hace `reabrir_rq_por_lo_devuelto`; aquí, su misma sentencia con
