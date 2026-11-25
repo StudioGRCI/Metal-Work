@@ -478,7 +478,7 @@ begin
     perform set_config('request.jwt.claim.sub', v_quien::text, true);
     perform public.ssoma_reportar(gen_random_uuid(), 'ACCIDENTE', (select id from public.areas where codigo = 'MTZ'),
       'Plegadora hidráulica',
-      'Al retirar una plancha recién cortada, el operario se hizo un corte en la mano izquierda con la rebaba. Tenía guantes de badana, no los de corte. Se le llevó al tópico.',
+      'Al retirar una plancha recién cortada, la rebaba alcanzó al operario. Tenía guantes de badana, no los de corte. Se le llevó al tópico y se paró la plegadora hasta revisar las planchas.',
       now() - interval '5 hours', true, null, '[]'::jsonb);
   end if;
 

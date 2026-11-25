@@ -14,12 +14,31 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-/** Lo que viaja como JSON en un campo del formulario; si no se puede leer, `null`. */
+/**
+ * Lo que viaja como JSON en un campo del formulario. Si el campo vino y no se
+ * puede leer, `undefined`, y la validación lo rechaza: tomarlo como «sin fotos»
+ * registraba el reporte y dejaba sueltas las que ya había subido.
+ */
 function json(formulario: FormData, nombre: string): unknown {
+  if (!formulario.has(nombre)) return []
   try {
-    return JSON.parse(dato(formulario, nombre) || 'null')
+    return JSON.parse(dato(formulario, nombre))
   } catch {
-    return null
+    return undefined
+  }
+}
+
+/** Lo que dice el verde según a quién le llegó el aviso (`ssoma_a_quien_se_aviso`): nunca «ya le avisamos» si no llegó. */
+function aQuienSeAviso(numero: string, avisado: string | null) {
+  switch (avisado) {
+    case 'SSOMA':
+      return `Reporte ${numero} registrado: ya le avisamos a SSOMA.`
+    case 'GERENCIA':
+      return `Reporte ${numero} registrado. SSOMA todavía no tiene cuenta en el sistema: le avisamos a Gerencia.`
+    case 'TU':
+      return `Reporte ${numero} registrado.`
+    default:
+      return `Reporte ${numero} registrado, pero no hay nadie de SSOMA ni de Gerencia con cuenta para recibir el aviso: cuéntaselo a tu jefe.`
   }
 }
 
@@ -63,7 +82,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
       ocurrido_en: dato(formulario, 'ocurrido_en'),
       hubo_atencion: dato(formulario, 'hubo_atencion'),
       trabajador_id: dato(formulario, 'trabajador_id'),
-      fotos: json(formulario, 'fotos') ?? [],
+      fotos: json(formulario, 'fotos'),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.' }
   const d = analisis.data
@@ -98,7 +117,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
   revalidatePath('/ssoma', 'layout')
   return {
     ok: true,
-    mensaje: `Reporte ${fila.numero_reporte} registrado: ya le avisamos a SSOMA.`,
+    mensaje: aQuienSeAviso(fila.numero_reporte, fila.avisado),
     datos: { id: fila.reporte, numero: fila.numero_reporte },
   }
 }

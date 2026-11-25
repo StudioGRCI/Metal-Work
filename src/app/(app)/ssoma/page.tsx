@@ -17,7 +17,7 @@ import { diasEnEspera, ESTADO_REPORTE_SSOMA, TIPO_REPORTE_SSOMA } from '@/lib/do
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
-import { ReportarIncidente } from './formulario'
+import { EstadoDelReporteSsoma, ReportarIncidente } from './formulario'
 
 export const metadata = { title: 'Seguridad: reportes' }
 
@@ -58,6 +58,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
           ayuda="Cada accidente, incidente o condición insegura que reporta la gente desde su teléfono, con su número RI. Llega aquí y a la campana de SSOMA apenas se envía. Un reporte no se borra: si está mal, SSOMA lo anula con su motivo."
           migas={[{ titulo: 'SSOMA' }]}
           acciones={boton}
+          estado={<EstadoDelReporteSsoma />}
         />
         <Vistas
           etiqueta="Vista"
@@ -99,6 +100,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
         ayuda="Tu reporte le llega a SSOMA al instante, con su número. Aquí ves cómo va cada uno de los tuyos. Quién reportó lo ven solo SSOMA y Gerencia: tu área ve el hecho, no tu nombre."
         migas={[{ titulo: 'SSOMA' }]}
         acciones={boton}
+        estado={<EstadoDelReporteSsoma />}
       />
       <div className="space-y-5">
         <Tarjeta className="overflow-hidden">
@@ -167,10 +169,11 @@ function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor
   const anulado = r.estado === 'ANULADO'
   const autor = r.reporto ? [r.reporto, r.reporto_puesto].filter(Boolean).join(' · ') : null
   return (
-    <TR className={anulado ? 'opacity-60' : undefined} data-reporte-ssoma={r.numero}>
+    <TR data-reporte-ssoma={r.numero} data-anulado={anulado || undefined}>
       <TD className="align-top">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Link href={`/ssoma/${r.id}`} className="tabular font-semibold text-acento hover:underline">
+          {/* En el teléfono, un blanco de 44 px de alto: el número es el único camino a la ficha. */}
+          <Link href={`/ssoma/${r.id}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
             {r.numero}
           </Link>
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : r.tipo}
@@ -188,6 +191,7 @@ function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor
             {r.area} · {r.lugar}
           </p>
         </div>
+        {!conAutor && r.a_nombre_de && <p className="mt-1 text-xs text-texto-suave">A nombre de {r.a_nombre_de}</p>}
         {conAutor && autor && (
           <p className="mt-1 text-xs text-texto-suave lg:hidden">
             Reportó {autor}

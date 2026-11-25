@@ -149,6 +149,18 @@ begin
     raise exception 'Lo que dice el reporte % no se corrige: si está mal, SSOMA lo anula con su motivo y se reporta de nuevo.', old.numero
       using errcode = 'check_violation';
   end if;
+  -- La anulación se sella aquí y no solo en la función que anula: quién y cuándo
+  -- los pone la base, y sin motivo no entra, venga de donde venga el UPDATE.
+  if new.estado = 'ANULADO' then
+    if length(btrim(coalesce(new.motivo_anulacion, ''))) < 10 then
+      raise exception 'Para anular el reporte % escribe el motivo (al menos 10 letras).', old.numero using errcode = 'check_violation';
+    end if;
+    new.motivo_anulacion := btrim(new.motivo_anulacion);
+    new.anulado_por := coalesce(public.usuario_actual(), new.anulado_por);
+    new.anulado_en := now();
+  elsif (new.anulado_por, new.anulado_en, new.motivo_anulacion) is distinct from (old.anulado_por, old.anulado_en, old.motivo_anulacion) then
+    raise exception 'El reporte % no está anulado: quién, cuándo y el motivo se anotan solo al anularlo.', old.numero using errcode = 'check_violation';
+  end if;
   return new;
 end;
 $$;
@@ -192,7 +204,9 @@ do $$ begin
       using (exists (select 1 from public.ssoma_reportes r where r.id = reporte_id));
   end if;
 end $$;
--- Se escriben solo por las funciones de abajo.
+-- Se escriben solo por las funciones de abajo (ssoma_reportar, ssoma_anotar_fotos,
+-- ssoma_anular_reporte): por eso no hay políticas de insert, update ni delete, y
+-- authenticated no tiene el grant. Sin política de escritura, RLS no deja escribir.
 revoke all on public.ssoma_reportes from public, anon, authenticated;
 revoke all on public.ssoma_reporte_fotos from public, anon, authenticated;
 grant select on public.ssoma_reportes to authenticated;
@@ -303,7 +317,7 @@ grant execute on function public.ssoma_personal_para_elegir() to authenticated;
 create or replace function public.ssoma_reportar(
   p_id uuid, p_tipo text, p_area uuid, p_lugar text, p_descripcion text, p_ocurrido_en timestamptz,
   p_hubo_atencion boolean, p_trabajador uuid, p_fotos jsonb
-) returns table (reporte uuid, numero_reporte text)
+) returns table (reporte uuid, numero_reporte text, avisado text)
 language plpgsql security definer set search_path to 'public' as $$
 declare
   v_yo      uuid := public.usuario_actual();
@@ -325,7 +339,7 @@ begin
   select * into v_actual from public.ssoma_reportes where id = p_id;
   if found then
     if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'REPORTE_SSOMA', v_envio) then
-      return query select v_actual.id, v_actual.numero;
+      return query select v_actual.id, v_actual.numero, public.ssoma_a_quien_se_aviso(v_actual.id);
       return;
     end if;
     if v_actual.registrado_por = v_yo then
@@ -351,8 +365,9 @@ begin
   if v_cuando > now() + interval '10 minutes' then
     raise exception 'La fecha y la hora del hecho no pueden ser futuras.' using errcode = 'check_violation';
   end if;
-  if v_cuando < now() - interval '30 days' then
-    raise exception 'El hecho se reporta dentro de los 30 días: si es más antiguo, avísale a SSOMA.' using errcode = 'check_violation';
+  -- El plazo es para la gente; SSOMA registra fuera de plazo lo que se le contó tarde.
+  if v_cuando < now() - interval '30 days' and not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
+    raise exception 'Desde aquí se reporta lo que pasó en los últimos 30 días. Si es más antiguo, cuéntaselo a SSOMA: SSOMA sí lo puede registrar.' using errcode = 'check_violation';
   end if;
   if p_hubo_atencion is not null and p_tipo <> 'ACCIDENTE' then
     raise exception 'La atención médica se anota solo en un accidente.' using errcode = 'check_violation';
@@ -372,19 +387,46 @@ begin
   perform public.ssoma_anotar_fotos(p_id, p_fotos);
   perform public.anotar_envio(p_id, 'REPORTE_SSOMA', v_envio);
 
-  v_clase := case p_tipo when 'ACCIDENTE' then 'Accidente' when 'INCIDENTE' then 'Incidente' else 'Condición insegura' end;
+  v_clase := case p_tipo when 'ACCIDENTE' then 'Accidente reportado' when 'INCIDENTE' then 'Incidente reportado' else 'Condición insegura reportada' end;
   perform public.avisar_a_permiso('ssoma.gestionar',
-    v_clase || ' reportado en ' || v_area.nombre || ': ' || v_numero,
+    v_clase || ' en ' || v_area.nombre || ': ' || v_numero,
     v_lugar || ' · ' || left(v_que, 200),
     '/ssoma/' || p_id::text, 'ssoma_reportes', p_id);
+  -- Sin nadie de SSOMA con cuenta activa, el aviso no puede perderse en el aire:
+  -- le llega a Gerencia, y la pantalla dice a quién llegó (avisado).
+  if not exists (select 1 from public.notificaciones n where n.origen_tabla = 'ssoma_reportes' and n.origen_id = p_id)
+     and not public.tiene_permiso('ssoma.gestionar') then
+    perform public.avisar_a_permiso('ssoma.ver',
+      v_clase || ' en ' || v_area.nombre || ': ' || v_numero || ' (SSOMA todavía no tiene cuenta)',
+      v_lugar || ' · ' || left(v_que, 200),
+      '/ssoma/' || p_id::text, 'ssoma_reportes', p_id);
+  end if;
 
-  return query select p_id, v_numero;
+  return query select p_id, v_numero, public.ssoma_a_quien_se_aviso(p_id);
 end;
 $$;
 comment on function public.ssoma_reportar(uuid, text, uuid, text, text, timestamptz, boolean, uuid, jsonb) is
   'Cualquier cuenta activa reporta un accidente, un incidente o una condición insegura, con sus fotos ya en Storage; da el número RI-… y avisa a SSOMA. A nombre de un trabajador sin cuenta exige ssoma.reportar_por_otro.';
 revoke all on function public.ssoma_reportar(uuid, text, uuid, text, text, timestamptz, boolean, uuid, jsonb) from public, anon;
 grant execute on function public.ssoma_reportar(uuid, text, uuid, text, text, timestamptz, boolean, uuid, jsonb) to authenticated;
+
+-- 8b. A quién le llegó el aviso de un reporte, para que la pantalla no diga
+-- «ya le avisamos a SSOMA» cuando no había nadie de SSOMA con cuenta:
+--   TU · quien reporta es de SSOMA;  SSOMA · a alguien de SSOMA;
+--   GERENCIA · no había SSOMA y le llegó a Gerencia;  NADIE · a nadie.
+create or replace function public.ssoma_a_quien_se_aviso(p_reporte uuid)
+returns text language sql stable security definer set search_path to 'public' as $$
+  select case
+    when public.tiene_permiso('ssoma.gestionar') then 'TU'
+    when exists (select 1 from public.notificaciones n
+                   join public.usuarios u on u.id = n.usuario_id
+                   join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'ssoma.gestionar'
+                  where n.origen_tabla = 'ssoma_reportes' and n.origen_id = p_reporte) then 'SSOMA'
+    when exists (select 1 from public.notificaciones n
+                  where n.origen_tabla = 'ssoma_reportes' and n.origen_id = p_reporte) then 'GERENCIA'
+    else 'NADIE' end;
+$$;
+revoke all on function public.ssoma_a_quien_se_aviso(uuid) from public, anon, authenticated;
 
 -- Un reporte mal hecho no se borra: SSOMA lo anula, y a quien lo reportó le llega el aviso.
 create or replace function public.ssoma_anular_reporte(p_id uuid, p_motivo text)
@@ -401,7 +443,12 @@ begin
   end if;
   select * into v_rep from public.ssoma_reportes where id = p_id for update;
   if not found then raise exception 'Ese reporte no existe.' using errcode = 'check_violation'; end if;
-  if v_rep.estado = 'ANULADO' then return p_id; end if;
+  if v_rep.estado = 'ANULADO' then
+    -- El mismo pedido repetido (se perdió la respuesta) entra; con otro motivo se dice, no se finge.
+    if v_rep.motivo_anulacion = btrim(p_motivo) then return p_id; end if;
+    raise exception 'El reporte % ya estaba anulado, con este motivo: «%». No se cambia.', v_rep.numero, v_rep.motivo_anulacion
+      using errcode = 'check_violation';
+  end if;
   update public.ssoma_reportes
      set estado = 'ANULADO', anulado_por = v_yo, anulado_en = now(), motivo_anulacion = btrim(p_motivo)
    where id = p_id;

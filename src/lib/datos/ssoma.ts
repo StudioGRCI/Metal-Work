@@ -75,7 +75,7 @@ export async function listarReportesSsoma(): Promise<ReporteSsoma[]> {
   const { data, error } = await supabase
     .rpc('ssoma_reportes_visibles', { p_id: null })
     .order('creado_en', { ascending: false })
-    .order('id')
+    .order('numero', { ascending: false })
     .range(0, MAXIMO_REPORTES_SSOMA - 1)
   if (error) throw new Error(`No se pudieron leer los reportes de seguridad: ${error.message}`)
   return ((data ?? []) as Fila[]).flatMap((f) => aReporte(f) ?? [])
@@ -112,8 +112,12 @@ async function enlacesDeFotos(rutas: string[]) {
   if (rutas.length === 0) return {} as Record<string, string>
   const supabase = await createClient()
   const { data, error } = await supabase.storage.from(BUCKET_FOTOS_SSOMA).createSignedUrls(rutas, 3600)
-  // Sin enlaces la pantalla igual sirve: el reporte se lee sin las fotos.
-  if (error || !data) return {} as Record<string, string>
+  // Sin enlaces la pantalla igual sirve y lo dice en cada foto («no se pudo abrir
+  // ahora»); el motivo queda en el registro del servidor, no se traga.
+  if (error || !data) {
+    console.error('No se pudieron firmar las fotos del reporte de seguridad:', error?.message ?? 'sin respuesta')
+    return {} as Record<string, string>
+  }
   const enlaces: Record<string, string> = {}
   for (const item of data) if (item.path && item.signedUrl) enlaces[item.path] = item.signedUrl
   return enlaces

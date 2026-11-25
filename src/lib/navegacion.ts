@@ -708,7 +708,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     principal: ['/codigos-internos'],
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
-      { titulo: 'Consultas', rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
+      { titulo: 'Consultas', rutas: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/ssoma'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },

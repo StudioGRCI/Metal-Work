@@ -194,13 +194,31 @@ let delSupervisor = null
   // Una fecha futura: el navegador la deja pasar y la base la rechaza.
   await v.locator('#ssoma-cuando').fill('2099-01-01T10:00')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-formulario-390.png'), fullPage: true })
-  const antes = acciones.n
   const enviar = v.getByRole('button', { name: 'Enviar el reporte' })
+  // El campo lleva hasta la hora de ahora: el navegador ni la manda.
+  const antesDelTope = acciones.n
   await tresToques(enviar)
-  const aviso = await hasta(() => v.locator('[role="alert"]').first().innerText().catch(() => ''), (t) => t.length > 0)
+  await quieta(pagina)
+  comprobar(
+    acciones.n === antesDelTope && (await v.locator('#ssoma-cuando').evaluate((el) => el.validity.rangeOverflow)),
+    `[Almacén 390] una fecha futura la frena el campo, sin enviar: ${acciones.n - antesDelTope} envío`,
+  )
+  // Con la hora del teléfono mal puesta el tope no basta: decide la base, y lo dice junto al campo.
+  await v.locator('#ssoma-cuando').evaluate((el) => el.removeAttribute('max'))
+  const antes = acciones.n
+  await tresToques(enviar)
+  const aviso = await hasta(() => v.locator('#ssoma-cuando').evaluate((el) => {
+    const id = el.getAttribute('aria-describedby')
+    return id ? (document.getElementById(id)?.textContent ?? '') : ''
+  }), (t) => /futuras/.test(t))
   await quieta(pagina)
   comprobar(acciones.n - antes === 1, `[Almacén 390] tres toques con un dato que la base rechaza: ${acciones.n - antes} envío`)
-  comprobar(/no pueden ser futuras/.test(aviso), `[Almacén 390] el rechazo lo dice la base: «${limpio(aviso)}»`)
+  comprobar(/no pueden ser futuras/.test(aviso), `[Almacén 390] el rechazo lo dice la base, junto a la fecha: «${limpio(aviso)}»`)
+  comprobar(
+    await hasta(() => pagina.evaluate(() => document.activeElement?.id === 'ssoma-cuando'), Boolean, 5000),
+    '[Almacén 390] el cursor vuelve a la fecha, que es la que está mal',
+  )
+  comprobar(!/futuras/.test(await v.locator('#ssoma-error').innerText().catch(() => '')), '[Almacén 390] el rechazo de la fecha no se repite abajo')
   comprobar((await v.locator('#ssoma-descripcion').inputValue()) === TEXTO, '[Almacén 390] lo escrito sigue en el campo tras el rechazo')
   comprobar((await reportes('r.lugar = $1', [LUGAR])).length === 0, '[Almacén 390] el rechazado no dejó ningún reporte')
 
@@ -244,7 +262,45 @@ let delSupervisor = null
   comprobar(fotoVista, '[Almacén 390] ve la foto de su reporte')
   comprobar((await pagina.locator('[data-anular-reporte]').count()) === 0, '[Almacén 390] no se le ofrece anular')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-detalle-almacen-390.png'), fullPage: true })
-  comprobar(errores.length === 0, `[Almacén 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+
+  // No llegó la respuesta, «Cancelar» y volver a abrir: la ventana pregunta por
+  // el anterior y dice que entró, en vez de dejar que el mismo hecho saque otro RI.
+  const lugarPerdido = `Escalera sin pasamanos ${sello}`
+  let cortar = true
+  await pagina.route('**/*', async (ruta) => {
+    const pedido = ruta.request()
+    if (cortar && pedido.method() === 'POST' && pedido.headers()['next-action'] && (pedido.postData() ?? '').includes(lugarPerdido)) {
+      cortar = false
+      // Llega al servidor y la respuesta se pierde en el camino.
+      await ruta.fetch().catch(() => {})
+      return ruta.abort('failed')
+    }
+    return ruta.continue()
+  })
+  await ir(pagina, `${BASE}/ssoma`)
+  await pagina.locator('[data-reportar-incidente]').click()
+  const v2 = ventanaDe(pagina)
+  await v2.waitFor({ timeout: 10000 })
+  await v2.locator('input[name="tipo"][value="CONDICION_INSEGURA"]').check()
+  await v2.locator('#ssoma-lugar').fill(lugarPerdido)
+  await v2.locator('#ssoma-descripcion').fill(`La escalera al altillo no tiene pasamanos (${sello}).`)
+  await v2.getByRole('button', { name: 'Enviar el reporte' }).click()
+  const perdida = await hasta(() => v2.locator('#ssoma-error').innerText().catch(() => ''), (t) => t.length > 0)
+  comprobar(/llegó la respuesta/i.test(perdida), `[Almacén 390] sin respuesta, la ventana lo dice: «${limpio(perdida)}»`)
+  await v2.getByRole('button', { name: 'Cancelar' }).click()
+  await pagina.locator('[data-reportar-incidente]').click()
+  await ventanaDe(pagina).waitFor({ timeout: 10000 })
+  const [elPerdido] = await reportes('r.lugar = $1', [lugarPerdido])
+  const dice = await hasta(() => pagina.locator('[role="dialog"]').innerText().catch(() => ''), (t) => t.includes(elPerdido?.numero ?? '—'), 15000)
+  comprobar(Boolean(elPerdido) && dice.includes(elPerdido.numero), `[Almacén 390] al volver a abrir, la ventana dice que el ${elPerdido?.numero} sí entró: «${limpio(dice).slice(0, 160)}»`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-reabrir-tras-respuesta-perdida-390.png'), fullPage: true })
+  await ventanaDe(pagina).getByRole('button', { name: 'Cancelar' }).click()
+  const yaEnLista = await hasta(() => pagina.locator(`[data-reporte-ssoma="${elPerdido?.numero}"]`).count(), (n) => n === 1, 15000)
+  comprobar(yaEnLista === 1, '[Almacén 390] y «Tus reportes» ya lo muestra, sin recargar')
+  comprobar((await reportes('r.lugar = $1', [lugarPerdido])).length === 1, '[Almacén 390] el hecho quedó con un solo RI')
+  await pagina.unroute('**/*')
+  const ajenos = errores.filter((e) => !/Failed to fetch|ERR_FAILED|net::/.test(e))
+  comprobar(ajenos.length === 0, `[Almacén 390] sin errores de consola ajenos al corte${ajenos.length ? `: ${ajenos[0]}` : ''}`)
   await contexto.close()
 }
 
@@ -271,7 +327,7 @@ let delSupervisor = null
   comprobar((await v.locator('#ssoma-area').inputValue()) !== '', '[Producción 390] el área de la cuenta ya viene elegida')
   const lugar = `Mesa de soldadura ${sello}`
   await v.locator('#ssoma-lugar').fill(lugar)
-  await v.locator('#ssoma-descripcion').fill(`Se quemó el antebrazo con una chispa al soldar sin manga (${sello}).`)
+  await v.locator('#ssoma-descripcion').fill(`Una chispa alcanzó al soldador, que trabajaba sin manga (${sello}).`)
   await v.locator('input[name="hubo_atencion"][value="SI"]').check()
   await v.locator('#ssoma-trabajador').click()
   await pagina.getByPlaceholder('Nombre, cargo o área…').fill(apellido)

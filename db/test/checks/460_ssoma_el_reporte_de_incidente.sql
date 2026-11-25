@@ -33,6 +33,7 @@ select set_config('prueba.almacen2', :'almacen2_id', true);
 select set_config('prueba.sup', :'sup_id', true);
 select set_config('prueba.vendedor', :'vendedor_id', true);
 select set_config('prueba.rrhh', :'rrhh_id', true);
+select set_config('prueba.admin', :'admin_id', true);
 select set_config('prueba.alm', (select id::text from public.areas where codigo = 'ALM'), true);
 select set_config('prueba.prd', (select id::text from public.areas where codigo = 'PRD'), true);
 select set_config('prueba.r1', gen_random_uuid()::text, true);
@@ -230,7 +231,7 @@ begin
        from public.ssoma_personal_para_elegir() where id = current_setting('prueba.trabajador')::uuid),
     'el supervisor elige al operario de la lista de RR. HH.: nombre, cargo y área, nada más');
   execute pg_temp.reportar(current_setting('prueba.r2'), 'ACCIDENTE', current_setting('prueba.prd'), 'Nave 1, zona de soldadura',
-      'Corte en la mano izquierda al cambiar el disco de la amoladora', (now() - interval '2 hours')::text, 'true',
+      'Se soltó el disco de la amoladora al cambiarlo y alcanzó al operario', (now() - interval '2 hours')::text, 'true',
       current_setting('prueba.trabajador'), '[]');
   reset role;
   perform test.afirmar(
@@ -321,6 +322,8 @@ end $$;
 
 -- ============================================================ 4. No se borra ni se corrige: se anula
 do $$
+declare
+  v_r record;
 begin
   -- Ni por debajo, sin sesión.
   perform test.debe_fallar(format('delete from public.ssoma_reportes where id = %L', current_setting('prueba.r1')),
@@ -349,13 +352,16 @@ begin
   perform test.debe_fallar(format('select public.ssoma_anular_reporte(%L, %L)', current_setting('prueba.r1'), 'corto'),
     'sin motivo no se anula', 'por qué se anula');
   perform public.ssoma_anular_reporte(current_setting('prueba.r1')::uuid, '  Se reportó dos veces el mismo hecho  ');
-  perform public.ssoma_anular_reporte(current_setting('prueba.r1')::uuid, 'Otro motivo que ya no entra');
+  -- El mismo pedido repetido (la respuesta se perdió) entra; con otro motivo se dice, no se finge.
+  perform public.ssoma_anular_reporte(current_setting('prueba.r1')::uuid, 'Se reportó dos veces el mismo hecho');
+  perform test.debe_fallar(format('select public.ssoma_anular_reporte(%L, %L)', current_setting('prueba.r1'), 'Otro motivo que ya no entra'),
+    'anularlo otra vez con otro motivo no finge que se guardó', 'ya estaba anulado');
   reset role;
   perform test.afirmar(
     (select estado = 'ANULADO' and anulado_por = current_setting('prueba.ssoma')::uuid and anulado_en is not null
             and motivo_anulacion = 'Se reportó dos veces el mismo hecho' and numero like 'RI-0001-%'
        from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid),
-    'quedó anulado con su motivo, quién y cuándo, y conserva su número; anularlo otra vez no cambia nada');
+    'quedó anulado con su motivo, quién y cuándo, y conserva su número; repetir el pedido no cambia nada');
   perform test.afirmar(
     exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.almacen')::uuid
                and origen_id = current_setting('prueba.r1')::uuid and titulo like 'SSOMA anuló tu reporte RI-0001-%'),
@@ -386,6 +392,49 @@ begin
   perform test.afirmar(
     (select numero like 'RI-0003-%' from public.ssoma_reportes where id = current_setting('prueba.r3')::uuid),
     'Ventas, que no es de Almacén, reporta igual; el número sigue en 3, sin reusar el anulado');
+
+  -- Sin nadie de SSOMA con cuenta activa, el aviso le llega a Gerencia y la
+  -- función lo dice: la pantalla no puede decir «ya le avisamos a SSOMA».
+  -- El armazón (apagar la cuenta de SSOMA) lo hace el administrador.
+  perform test.como_usuario(current_setting('prueba.admin')::uuid);
+  update public.usuarios set activo = false where id = current_setting('prueba.ssoma')::uuid;
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  perform set_config('prueba.r4', gen_random_uuid()::text, true);
+  execute pg_temp.reportar(current_setting('prueba.r4'), 'CONDICION_INSEGURA', current_setting('prueba.alm'), 'Puerta de despacho',
+      'Extintor vencido junto a la puerta de despacho', null, null, null, '[]') into v_r;
+  reset role;
+  perform test.afirmar(v_r.avisado = 'GERENCIA'
+      and exists (select 1 from public.notificaciones where origen_id = current_setting('prueba.r4')::uuid
+                     and usuario_id = current_setting('prueba.gerente')::uuid and titulo like 'Condición insegura reportada en Almacén: RI-%'),
+    'sin SSOMA con cuenta, le avisa a Gerencia, con «reportada» en femenino, y dice a quién avisó');
+  perform test.como_usuario(current_setting('prueba.admin')::uuid);
+  update public.usuarios set activo = true where id = current_setting('prueba.ssoma')::uuid;
+
+  -- El plazo de 30 días es para la gente: SSOMA registra lo que le contaron tarde.
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  perform set_config('prueba.r5', gen_random_uuid()::text, true);
+  execute pg_temp.reportar(current_setting('prueba.r5'), 'INCIDENTE', current_setting('prueba.alm'), 'Pasillo 3',
+      'Se cayó una plancha del estante; nos lo contaron hoy', (now() - interval '35 days')::text, null, null, '[]') into v_r;
+  reset role;
+  perform test.afirmar(v_r.avisado = 'TU' and v_r.numero_reporte like 'RI-%', 'SSOMA registra un hecho de hace 35 días, y la función sabe que es de SSOMA');
+
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  -- La anulación la sella el disparador, no solo la función: por debajo de ella
+  -- (una migración, el administrador en el editor) no entra sin motivo, ni con
+  -- quién y cuándo inventados, ni se anota un motivo a un reporte vigente.
+  perform test.debe_fallar(format('update public.ssoma_reportes set estado = ''ANULADO'', anulado_por = %L, anulado_en = now() where id = %L',
+      current_setting('prueba.vendedor'), current_setting('prueba.r3')), 'sin motivo no se anula, ni por debajo', 'escribe el motivo');
+  perform test.debe_fallar(format('update public.ssoma_reportes set motivo_anulacion = ''Un motivo suelto sin anular'' where id = %L',
+      current_setting('prueba.r3')), 'a un reporte vigente no se le anota motivo', 'se anotan solo al anularlo');
+  update public.ssoma_reportes
+     set estado = 'ANULADO', anulado_por = current_setting('prueba.almacen')::uuid, anulado_en = '2020-01-01', motivo_anulacion = '  Prueba del sello por debajo  '
+   where id = current_setting('prueba.r3')::uuid;
+  perform test.afirmar(
+    (select anulado_en = now() and anulado_por = current_setting('prueba.vendedor')::uuid and motivo_anulacion = 'Prueba del sello por debajo'
+       from public.ssoma_reportes where id = current_setting('prueba.r3')::uuid),
+    'quién y cuándo de la anulación los pone la base: la cuenta de la sesión y la hora, no los que vienen en el UPDATE');
 end $$;
 
 rollback;

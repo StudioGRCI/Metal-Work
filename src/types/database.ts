@@ -17158,6 +17158,12 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_a_quien_se_aviso: {
+        Args: {
+          p_reporte: string | null
+        }
+        Returns: string
+      }
       ssoma_anotar_fotos: {
         Args: {
           p_reporte: string | null
@@ -17202,6 +17208,7 @@ export type Database = {
         Returns: {
           reporte: string | null
           numero_reporte: string | null
+          avisado: string | null
         }[]
       }
       ssoma_reportes_visibles: {
