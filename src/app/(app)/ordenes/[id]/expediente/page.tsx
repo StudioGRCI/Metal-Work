@@ -95,7 +95,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // Las llaves de `fijar_presupuesto_ot`: decidir y, además, ver costo y precio.
   const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo
-  // abren Gerencia, Administración y Tesorería.
+  // abren Gerencia (la General y la Comercial), Administración y Tesorería.
   const verCotizacion = ['GERENTE', 'GERENTE_COMERCIAL', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
 
   // Con código interno, el costo de la unidad es el de su código (el mismo de

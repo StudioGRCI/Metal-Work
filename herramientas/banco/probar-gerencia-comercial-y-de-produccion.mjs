@@ -55,6 +55,22 @@ const [rep] = (await base.query(
    returning id`,
   [sup.id],
 )).rows
+// Una cotización de Ventas, aprobada por Gerencia General, con su OT: la que
+// Gerencia Comercial sigue hasta el taller. Se reusa la OT 0001-2026 de la demostración.
+const [ventas] = (await base.query("select id from public.usuarios where correo = 'ventas.local@metalwork.test'")).rows
+const [gerente] = (await base.query("select id from public.usuarios where correo = 'gerencia.local@metalwork.test'")).rows
+const [ot] = (await base.query("select id, numero, cliente_id, tipo_carroceria_id from public.ordenes_trabajo where numero = '0001-2026'")).rows
+// Un número por corrida: la serie no deja repetirlo.
+const NUMERO = `4${String(Date.now()).slice(-3)}-2026`
+const [cot] = (await base.query(
+  `insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, registrado_por,
+     revisado_por, revisado_en, moneda, monto_venta)
+   select g.id, $5, $1, $2, 'APROBADA', 'cotizacion-4600.pdf', 'cot/' || g.id || '/cotizacion-4600.pdf', $3, $4, now(), 'PEN', 48500
+     from (select gen_random_uuid() as id) g
+   returning id`,
+  [ot.cliente_id, ot.tipo_carroceria_id, ventas.id, gerente.id, NUMERO],
+)).rows
+await base.query('update public.ordenes_trabajo set cotizacion_pdf_id = $1 where id = $2', [cot.id, ot.id])
 await base.query('commit')
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -116,7 +132,24 @@ async function foto(pagina, nombre) {
     comprobar(await abre(pagina, ruta), `Gerencia Comercial abre ${ruta}`)
     const botones = await registra(pagina)
     comprobar(botones.length === 0, `y no registra nada ahí${botones.length ? `: ${botones.join(', ')}` : ''}`)
-    if (ruta === '/cotizaciones/pdf') await foto(pagina, 'gco-1440-cotizaciones')
+    if (ruta === '/cotizaciones/pdf') {
+      comprobar((await pagina.getByText(NUMERO).count()) > 0, 'la cotización aprobada sale en su lista')
+      await foto(pagina, 'gco-1440-cotizaciones')
+    }
+  }
+  // De la cotización a su OT: el enlace lleva a la orden, y en ella ve el documento comercial.
+  await abre(pagina, '/cotizaciones/pdf')
+  const enlaceOt = pagina.locator(`main a[href="/ordenes/${ot.id}"]`).first()
+  comprobar((await enlaceOt.count()) === 1, `la cotización lleva a su OT ${ot.numero}`)
+  if (await enlaceOt.count()) {
+    await enlaceOt.click()
+    await pagina.waitForURL(`**/ordenes/${ot.id}`, { timeout: 30000 }).catch(() => {})
+    await pagina.waitForLoadState('networkidle')
+    comprobar(new URL(pagina.url()).pathname === `/ordenes/${ot.id}`, 'y la OT abre')
+    const cotizacion = pagina.locator('main').getByText(new RegExp(`Cotización\\s+${NUMERO}`))
+    await cotizacion.first().waitFor({ timeout: 15000 }).catch(() => {})
+    comprobar((await cotizacion.count()) > 0, 'con su cotización a la vista')
+    await foto(pagina, 'gco-1440-ot-con-cotizacion')
   }
   for (const ruta of ['/reportes-diarios', '/seguimiento', '/codigos-internos']) {
     comprobar(!(await abre(pagina, ruta)), `Gerencia Comercial no abre ${ruta}`)
@@ -157,7 +190,28 @@ async function foto(pagina, nombre) {
   for (const ruta of ['/cotizaciones/pdf', '/clientes', '/codigos-internos', '/ordenes']) {
     comprobar(!(await abre(pagina, ruta)), `Gerencia de Producción no abre ${ruta}`)
   }
+  comprobar(!(await abre(pagina, `/ordenes/${ot.id}`)), 'ni la OT con su cotización')
   comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
+  await contexto.close()
+}
+// Gerencia General con el reporte abierto desde antes del visto de Producción:
+// al pulsar, la pantalla dice de quién es el visto que quedó, no «registrado».
+{
+  await base.query('update public.reportes_diarios set visto_gerencia_por = null, visto_gerencia_en = null where id = $1', [rep.id])
+  const { pagina, contexto } = await entrar('gerencia.local@metalwork.test', 1440)
+  await abre(pagina, `/reportes-diarios/${rep.id}`)
+  const [yo] = (await base.query('select id from public.usuarios where correo = $1', [PRODUCCION])).rows
+  await base.query('update public.reportes_diarios set visto_gerencia_por = $1, visto_gerencia_en = now() where id = $2', [yo.id, rep.id])
+  await pagina.locator('[data-validar="GERENCIA"]').click()
+  const aviso = pagina.getByText('ya tenía el visto de Gerencia, de Gerencia de Producción')
+  // Y aunque el aviso se lea, la línea de Gerencia dice de quién es el visto.
+  await aviso.first().waitFor({ timeout: 15000 }).catch(() => {})
+  comprobar((await aviso.count()) > 0, 'Gerencia General, tarde, lee que el visto ya era de Gerencia de Producción')
+  const [fila] = (await base.query('select visto_gerencia_por from public.reportes_diarios where id = $1', [rep.id])).rows
+  comprobar(fila.visto_gerencia_por === yo.id, 'y el visto sigue a nombre de Gerencia de Producción')
+  await pagina.reload({ waitUntil: 'networkidle' })
+  comprobar((await pagina.getByText('Visto bueno de Gerencia de Producción').count()) > 0, 'y la pantalla dice de quién es el visto')
+  await foto(pagina, 'ggr-1440-visto-ya-dado')
   await contexto.close()
 }
 {

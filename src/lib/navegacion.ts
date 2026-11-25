@@ -848,7 +848,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // No aprueba: eso sigue siendo de Gerencia General.
   GERENTE_COMERCIAL: {
     grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes'] }],
-    telefono: ['/cotizaciones/pdf', '/clientes', '/ordenes', '/unidades'],
+    telefono: ['/cotizaciones/pdf', '/clientes', '/ordenes', '/'],
   },
   // Desde el 2026-11-25 (migración 20261125200000): valida el avance. Arriba lo
   // que espera su visto, el reporte diario de cada supervisor; después cada

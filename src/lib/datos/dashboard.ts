@@ -773,14 +773,27 @@ const CIFRAS = {
       const observados = cuenta('OBSERVADO')
       const porValidar = cuenta('POR_VALIDAR')
       const validados = cuenta('VALIDADO')
+      // Quien da solo el visto de Gerencia (Gerencia General y la de Producción)
+      // ve primero lo que espera el suyo: «por validar» cuenta también lo que ya
+      // tiene su visto y espera a RR. HH.
+      const soloGerencia = puede(c.perfil, 'reporte_diario.validar_gerencia') && !puede(c.perfil, 'reporte_diario.validar_rrhh')
+      const faltaGerencia = filas.filter((f) => estadoDeReporte(f) === 'POR_VALIDAR' && !f.visto_gerencia_en).length
       const pie = [
+        soloGerencia ? `${plural(faltaGerencia, 'espera', 'esperan')} el visto de Gerencia` : null,
         observados > 0 ? plural(observados, 'observado', 'observados') : null,
         porValidar > 0 ? `${porValidar} por validar` : null,
         plural(validados, 'validado', 'validados'),
       ]
         .filter(Boolean)
         .join(' · ')
-      return { titulo: 'Reportes diarios del mes', valor: String(filas.length), pie, icono: ClipboardList, tono: observados > 0 ? 'aviso' : 'neutro' }
+      return {
+        titulo: 'Reportes diarios del mes',
+        valor: String(filas.length),
+        pie,
+        icono: ClipboardList,
+        tono: observados > 0 || (soloGerencia && faltaGerencia > 0) ? 'aviso' : 'neutro',
+        ...(soloGerencia && faltaGerencia > 0 ? { href: '/reportes-diarios?estado=falta-gerencia' } : {}),
+      }
     },
   },
   planos_del_area: {
@@ -894,7 +907,7 @@ const CIFRAS = {
       return {
         titulo: 'En revisión de Gerencia',
         valor: String(r.count ?? 0),
-        pie: deTodos ? 'de Ventas' : 'de las que subiste',
+        pie: deTodos ? 'de todo Ventas' : 'de las que subiste',
         icono: Clock,
         ...(deTodos ? { href: '/cotizaciones/pdf?estado=POR_REVISAR' } : {}),
       }
@@ -932,7 +945,7 @@ const CIFRAS = {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
         pie: [
-          montos.length > 0 ? `${deTodos ? 'de Ventas' : 'de las que subiste'}, por ${montos.join(' y ')}` : deTodos ? 'de Ventas' : 'de las que subiste',
+          montos.length > 0 ? `${deTodos ? 'de todo Ventas' : 'de las que subiste'}, por ${montos.join(' y ')}` : deTodos ? 'de todo Ventas' : 'de las que subiste',
           parteAprobada !== null ? `${porcentaje(parteAprobada)} de ${plural(delMes.length, 'subida', 'subidas')} este mes` : null,
         ]
           .filter(Boolean)

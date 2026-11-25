@@ -100,6 +100,9 @@ begin
     if exists (select 1 from auth.users where lower(email) = v_c.correo) then
       continue;
     end if;
+    if not exists (select 1 from public.areas where codigo = v_c.area) then
+      raise exception 'Falta el área % en el organigrama: la cuenta % la necesita.', v_c.area, v_c.correo;
+    end if;
 
     v_id := gen_random_uuid();
     insert into auth.users (id, email, encrypted_password, raw_user_meta_data)

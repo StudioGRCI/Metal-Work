@@ -35,6 +35,13 @@ set local session_replication_role = replica;
 insert into public.clientes (id, razon_social, tipo_documento, numero_documento)
 values ('46000000-0000-4000-8000-000000000001', 'CLIENTE PRUEBA 460 SAC', 'RUC', '20460460460')
 on conflict do nothing;
+insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, estado, nombre_archivo, ruta_storage, registrado_por)
+values ('46000000-0000-4000-8000-000000000003', '4600-2026', '46000000-0000-4000-8000-000000000001',
+        (select id from public.tipos_carroceria order by codigo limit 1), 'APROBADA', 'cotizacion-4600.pdf', 'cot/46000000-0000-4000-8000-000000000003/cotizacion-4600.pdf',
+        (select id from public.usuarios where correo = 'gerencia.comercial@metalworkperusac.com'));
+insert into public.ordenes_trabajo (id, sede_id, descripcion, cliente_id)
+values ('46000000-0000-4000-8000-000000000004', (select id from public.sedes order by creado_en limit 1), 'OT de prueba 460',
+        '46000000-0000-4000-8000-000000000001');
 insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, registrado_por)
 values ('46000000-0000-4000-8000-000000000002', (now() at time zone 'America/Lima')::date, 'CHK460', 'Prueba', 'Armado del cajón',
         (select id from public.usuarios where correo = 'gerencia.comercial@metalworkperusac.com'));
@@ -45,6 +52,13 @@ select test.como_usuario(:'gco_id');
 set local role authenticated;
 select test.afirmar((select count(*) from public.clientes where id = '46000000-0000-4000-8000-000000000001') = 1,
   'Gerencia Comercial ve los clientes');
+select test.afirmar((select count(*) from public.cotizaciones_pdf where id = '46000000-0000-4000-8000-000000000003') = 1,
+  'Gerencia Comercial ve la cotización');
+select test.afirmar((select count(*) from public.ordenes_trabajo where id = '46000000-0000-4000-8000-000000000004') = 1,
+  'y la OT');
+select test.debe_fallar(
+  $q$update public.cotizaciones_pdf set estado = 'RECHAZADA', observacion = 'Prueba 460' where id = '46000000-0000-4000-8000-000000000003'$q$,
+  'Gerencia Comercial no aprueba ni rechaza cotizaciones', 'No tienes permiso');
 do $$
 declare v integer;
 begin
@@ -71,10 +85,12 @@ select test.afirmar((select visto_gerencia_por from public.reportes_diarios wher
 select test.debe_fallar(
   $q$select public.validar_reporte_diario('46000000-0000-4000-8000-000000000002', 'RRHH')$q$,
   'pero no el de RR. HH.');
-select test.afirmar((select count(*) from public.cotizaciones_pdf) = 0,
+select test.afirmar((select count(*) from public.cotizaciones_pdf where id = '46000000-0000-4000-8000-000000000003') = 0,
   'Gerencia de Producción no ve las cotizaciones');
-select test.afirmar((select count(*) from public.clientes) = 0,
+select test.afirmar((select count(*) from public.clientes where id = '46000000-0000-4000-8000-000000000001') = 0,
   'ni los clientes');
+select test.afirmar((select count(*) from public.ordenes_trabajo where id = '46000000-0000-4000-8000-000000000004') = 0,
+  'ni las OT');
 select test.debe_fallar($q$select * from public.codigos_internos_costo()$q$,
   'ni el costo de los códigos');
 reset role;
