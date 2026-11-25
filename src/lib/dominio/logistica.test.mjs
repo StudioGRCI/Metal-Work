@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { diaLima } from '../format.ts'
 import { enlaceAlMapa, pasosDelDia, telefonoDiceMas, telefonosParaLlamar } from './logistica.ts'
 
 // El teléfono del padrón es texto libre. Antes se juntaban todos sus dígitos en
@@ -76,4 +77,20 @@ test('lo de hoy sale en el orden en que pasó, y lo de otro día no', () => {
     ['OC-3 DEJADO', 'OC-1 RECOGIDO', 'OC-2 RECOGIDO', 'OC-1 DEJADO'],
   )
   assert.deepEqual(pasosDelDia(compras, '2026-11-26', diaDe), [])
+})
+
+// El día es el del taller, no el de UTC: a las 8 de la noche en Lima ya es mañana en UTC.
+test('lo de hoy cuenta por el día de Lima, también de noche', () => {
+  const compras = [
+    { id: 'a', nombre: 'OC-1', proveedor: 'ACEROS', recogido_en: '2026-11-26T00:30:00Z', dejado_en: '2026-11-26T05:10:00Z' },
+    { id: 'b', nombre: 'OC-2', proveedor: 'PERNOS', recogido_en: '2026-11-25T04:59:00Z', dejado_en: null },
+  ]
+  assert.deepEqual(
+    pasosDelDia(compras, '2026-11-25', diaLima).map((p) => `${p.nombre} ${p.paso}`),
+    ['OC-1 RECOGIDO'],
+  )
+  assert.deepEqual(
+    pasosDelDia(compras, '2026-11-24', diaLima).map((p) => `${p.nombre} ${p.paso}`),
+    ['OC-2 RECOGIDO'],
+  )
 })

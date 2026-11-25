@@ -1,17 +1,17 @@
 import { FileText, MapPin, Phone, Receipt, Scale, User } from 'lucide-react'
 import Link from 'next/link'
+import { Fragment } from 'react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { BASE_BOTON, TAMANOS, VARIANTES } from '@/components/ui/boton'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
-import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, telefonosParaLlamar } from '@/lib/dominio/logistica'
+import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, telefonoDiceMas, telefonosParaLlamar } from '@/lib/dominio/logistica'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { cantidad, diaLima, fecha, fechaHora, hora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
-import { cn } from '@/lib/utils'
 
 import { PasoRecojo } from './paso-recojo'
 
@@ -36,6 +36,7 @@ export default async function PaginaRecojos() {
   const dejadas = recojos.filter((r) => r.recojo === 'DEJADO')
   // Lo recogido y lo dejado hoy, con su hora: sale de las horas que ya guarda cada compra.
   const deHoy = pasosDelDia(recojos, hoyLima(), diaLima)
+  const codigoDe = new Map(recojos.map((r) => [r.id, r.codigo_interno]))
 
   return (
     <>
@@ -81,25 +82,31 @@ export default async function PaginaRecojos() {
 
         <section className="space-y-3" aria-labelledby="recojos-de-hoy">
           <h2 id="recojos-de-hoy" className="text-base font-semibold text-texto">
-            Recogido y dejado hoy <span className="tabular text-texto-suave">({deHoy.length})</span>
+            Recogido y dejado hoy
           </h2>
           {deHoy.length === 0 ? (
             <p className="text-sm text-texto-suave">
-              {conductor ? 'Todavía no recoges ni dejas nada hoy.' : 'El conductor todavía no recoge ni deja nada hoy.'}
+              {conductor ? 'Todavía no recogiste ni dejaste nada hoy.' : 'El conductor todavía no recogió ni dejó nada hoy.'}
             </p>
           ) : (
             <Tarjeta>
               <ol className="divide-y divide-borde">
-                {deHoy.map((p) => (
-                  <li key={`${p.compra}-${p.paso}`} className="flex items-center gap-3 px-4 py-3 text-sm">
-                    <span className="tabular w-12 shrink-0 font-semibold text-texto">{hora(p.en)}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-texto">{p.nombre}</span>
-                      <span className="block truncate text-xs text-texto-suave">{p.proveedor}</span>
-                    </span>
-                    <Insignia tono={p.paso === 'DEJADO' ? 'exito' : 'info'}>{p.paso === 'DEJADO' ? 'Dejada en almacén' : 'Recogida'}</Insignia>
-                  </li>
-                ))}
+                {deHoy.map((p) => {
+                  const paso = RECOJO_COMPRA[p.paso]
+                  const codigo = codigoDe.get(p.compra)
+                  return (
+                    <li key={`${p.compra}-${p.paso}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+                      <span className="tabular w-12 shrink-0 font-semibold text-texto">{hora(p.en)}</span>
+                      <span className="min-w-0 flex-1 space-y-0.5">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium text-texto">{p.nombre}</span>
+                          {paso && <Insignia tono={paso.tono}>{paso.etiqueta}</Insignia>}
+                        </span>
+                        <span className="block text-xs text-texto-suave">{[p.proveedor, codigo ? `Para ${codigo}` : null].filter(Boolean).join(' · ')}</span>
+                      </span>
+                    </li>
+                  )
+                })}
               </ol>
             </Tarjeta>
           )}
@@ -118,11 +125,21 @@ export default async function PaginaRecojos() {
   )
 }
 
+/**
+ * 44 px o más. En el teléfono cada botón crece hasta llenar su fila desde el ancho de su texto (no desde cero,
+ * que los apretaba en una fila de tres con el texto partido en tres renglones); un número que no cabe en
+ * 320 baja de renglón en vez de salirse.
+ */
+const BOTON_DE_PARADA = 'h-auto min-h-11 flex-auto justify-center whitespace-normal px-4 py-2 text-center sm:flex-none'
+
 function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; conductor: boolean }) {
   const estado = RECOJO_COMPRA[r.recojo]
-  // Llamar y abrir el mapa sirven mientras la compra está en la ruta; ya dejada, quedan los datos.
-  const enRuta = r.recojo !== 'DEJADO'
+  // El conductor, camino al proveedor, llama y abre el mapa con botones grandes. Después, y para Logística,
+  // la dirección y los números quedan como enlaces del texto, como siempre estuvieron.
+  const botones = conductor && (r.recojo === 'POR_RECOGER' || r.recojo === 'EN_RECOJO')
   const telefonos = telefonosParaLlamar(r.proveedor_telefono)
+  // Lo que el padrón dice además del número (un anexo, un nombre, un horario) no se pierde detrás de los botones.
+  const diceMas = telefonoDiceMas(r.proveedor_telefono, telefonos)
   const aQuien = r.proveedor_contacto?.trim() || r.proveedor
   return (
     <Tarjeta>
@@ -144,13 +161,34 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           {r.proveedor_direccion && (
             <li className="flex items-start gap-2">
               <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
-              <span>{r.proveedor_direccion}</span>
+              {botones ? (
+                <span>{r.proveedor_direccion}</span>
+              ) : (
+                <a className="text-acento hover:underline" href={enlaceAlMapa(r.proveedor_direccion)} target="_blank" rel="noreferrer">
+                  {r.proveedor_direccion}
+                </a>
+              )}
             </li>
           )}
-          {r.proveedor_telefono && !(enRuta && telefonos.length > 0) && (
-            <li className="flex items-center gap-2">
-              <Phone aria-hidden className="size-4 shrink-0 text-texto-suave" />
-              <span className="tabular">{r.proveedor_telefono}</span>
+          {r.proveedor_telefono && (!botones || diceMas || telefonos.length === 0) && (
+            <li className="flex items-start gap-2">
+              <Phone aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
+              <span className="tabular">
+                {(diceMas || telefonos.length === 0) && <span>{r.proveedor_telefono}</span>}
+                {!botones && telefonos.length > 0 && (
+                  <>
+                    {diceMas && <span className="text-texto-suave"> · Llamar: </span>}
+                    {telefonos.map((t, i) => (
+                      <Fragment key={t.numero}>
+                        {i > 0 && ' / '}
+                        <a className="text-acento hover:underline" href={`tel:${t.numero}`}>
+                          {t.texto}
+                        </a>
+                      </Fragment>
+                    ))}
+                  </>
+                )}
+              </span>
             </li>
           )}
           {r.proveedor_contacto && (
@@ -192,30 +230,29 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           )}
         </ul>
 
-        {enRuta && (r.proveedor_direccion || telefonos.length > 0) && (
+        {botones && (r.proveedor_direccion || telefonos.length > 0) && (
           <div className="flex flex-wrap gap-2">
+            {/* El nombre que se oye empieza con lo que se lee en el botón; lo de quién, solo para el lector. */}
             {r.proveedor_direccion && (
-              <a
-                className={cn(BASE_BOTON, VARIANTES.contorno, TAMANOS.lg, 'flex-1 justify-center px-4 sm:flex-none')}
+              <EnlaceBoton
+                variante="contorno"
+                tamano="lg"
+                className={BOTON_DE_PARADA}
                 href={enlaceAlMapa(r.proveedor_direccion)}
                 target="_blank"
                 rel="noreferrer"
-                aria-label={`Abrir en el mapa la dirección de ${r.proveedor}`}
+                prefetch={false}
               >
-                <MapPin aria-hidden className="size-4" />
-                Abrir en el mapa
-              </a>
+                <MapPin aria-hidden className="size-4 shrink-0" />
+                Abrir en el mapa<span className="sr-only">: {r.proveedor}</span>
+              </EnlaceBoton>
             )}
             {telefonos.map((t) => (
-              <a
-                key={t.numero}
-                className={cn(BASE_BOTON, VARIANTES.contorno, TAMANOS.lg, 'tabular flex-1 justify-center px-4 sm:flex-none')}
-                href={`tel:${t.numero}`}
-                aria-label={`Llamar a ${aQuien} al ${t.texto}`}
-              >
-                <Phone aria-hidden className="size-4" />
+              <EnlaceBoton key={t.numero} variante="contorno" tamano="lg" className={`tabular ${BOTON_DE_PARADA}`} href={`tel:${t.numero}`} prefetch={false}>
+                <Phone aria-hidden className="size-4 shrink-0" />
                 Llamar {t.texto}
-              </a>
+                <span className="sr-only">, {aQuien}</span>
+              </EnlaceBoton>
             ))}
           </div>
         )}
