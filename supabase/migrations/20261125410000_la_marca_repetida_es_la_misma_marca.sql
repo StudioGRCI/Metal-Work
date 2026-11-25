@@ -28,7 +28,7 @@ begin
   if huella is null then
     raise exception 'Falta la función marcar_asistencia: esta base no tiene las migraciones anteriores.';
   end if;
-  if huella not in ('ec56f2e5aeb1fae87ed0272e80b60350', '4e52a0f7e26d5be713da3430e5b0a51e') then
+  if huella not in ('ec56f2e5aeb1fae87ed0272e80b60350', '539eceab910e2360700368767b2257e4') then
     raise exception 'La función marcar_asistencia no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', huella;
   end if;
 end $$;
@@ -60,22 +60,25 @@ begin
   if p_observacion is not null and char_length(p_observacion) > 300 then
     raise exception 'La observación pasa de 300 caracteres.' using errcode = 'check_violation';
   end if;
-  select * into v_trab from public.trabajadores where id = p_trabajador_id;
-  if not found or not v_trab.activo then
-    raise exception 'Esa persona no está en el personal activo: pídele a Recursos Humanos que la registre.' using errcode = 'check_violation';
-  end if;
 
   perform pg_advisory_xact_lock(hashtextextended(p_trabajador_id::text, 0));
   -- El mismo envío otra vez: misma persona, mismo tipo, misma observación, la
-  -- misma cuenta que lo registró y todavía vigente. Si no, ese envío ya fue
+  -- misma cuenta que lo registró, el mismo día y todavía vigente. Si no, ese envío ya fue
   -- otra marca y esta no entra.
   select * into v_previa from public.asistencias where id = p_id;
   if found then
     if v_previa.trabajador_id = p_trabajador_id and v_previa.tipo = p_tipo
        and coalesce(v_previa.observacion, '') = coalesce(nullif(btrim(coalesce(p_observacion, '')), ''), '')
        and v_previa.registrado_por = public.usuario_actual()
+       and v_previa.fecha = v_fecha
        and v_previa.anulado_en is null then
       return p_id;
+    end if;
+    -- Pasada la medianoche, la que entró ayer no es la marca de hoy.
+    if v_previa.trabajador_id = p_trabajador_id and v_previa.tipo = p_tipo and v_previa.fecha <> v_fecha then
+      raise exception 'Esa marca ya había entrado el %, otro día: la de hoy no entró. Márcala otra vez si la persona está en la puerta.',
+        to_char(v_previa.fecha, 'DD/MM/YYYY')
+        using errcode = 'unique_violation';
     end if;
     if v_previa.anulado_en is not null then
       raise exception 'Esa marca ya había entrado y después se anuló: esta no entró. Mira el motivo de la anulación antes de marcarla otra vez.'
@@ -85,6 +88,13 @@ begin
     raise exception 'Esa marca ya había entrado como % de %: esta no entró.',
       case v_previa.tipo when 'INGRESO' then 'el ingreso' else 'la salida' end, coalesce(v_de, 'otra persona')
       using errcode = 'unique_violation';
+  end if;
+
+  -- Después del mismo envío: el que entró antes de que RR. HH. diera de baja a
+  -- la persona sigue siendo esa marca, no un rechazo.
+  select * into v_trab from public.trabajadores where id = p_trabajador_id;
+  if not found or not v_trab.activo then
+    raise exception 'Esa persona no está en el personal activo: pídele a Recursos Humanos que la registre.' using errcode = 'check_violation';
   end if;
 
   select * into v_previa from public.asistencias

@@ -1,6 +1,7 @@
 'use client'
 
 import { Ban, CircleCheck, LogIn, LogOut, RotateCw, Search, WifiOff } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -19,9 +20,11 @@ import {
   motivoDelFallo,
   partida,
   quedoEnDuda,
+  refrescarSiEsDeLaPestana,
   SIN_RESPUESTA,
   useCursorAlRechazo,
   useEnvio,
+  yaSeResolvio,
   type Partida,
 } from '@/lib/envio'
 import { hora as horaDe } from '@/lib/format'
@@ -63,6 +66,10 @@ type Pendiente = { id: string; tipo: Tipo; persona: Persona; error?: string }
 
 const nombreDe = (p: Persona) => `${p.nombres} ${p.apellidos}`
 const queEs = (tipo: Tipo) => (tipo === 'INGRESO' ? 'el ingreso' : 'la salida')
+/** Lo que la línea de arriba dice de esa persona si su marca vuelve con la portería ya en otra pantalla. */
+const siSeVaDe = (p: Persona) => ({ que: `la marca de ${nombreDe(p)}`, enlace: 'Volver a Asistencia' })
+/** De qué es esa línea: la marca siguiente de la persona que entra la quita (`yaSeResolvio`). */
+const lineaDe = (p: Pick<Persona, 'id'>) => `marca-${p.id}`
 
 /**
  * La hora de Lima, «HH:MM», al día cada minuto: «Pasó su hora» no se queda con
@@ -172,6 +179,13 @@ export function Marcador({
     }
   }, [dni, intentoDni])
 
+  // Al volver a Asistencia, la línea de arriba que decía que no se sabía si la
+  // marca de alguien quedó se quita si la lista ya la trae vigente.
+  useEffect(() => {
+    if (!esHoy) return
+    for (const m of marcas) if (m.anulado_en === null) yaSeResolvio(lineaDe({ id: m.trabajador_id }))
+  }, [esHoy, marcas])
+
   const porPersona = new Map<string, Marca[]>()
   for (const m of marcas) porPersona.set(m.trabajador_id, [...(porPersona.get(m.trabajador_id) ?? []), m])
   const vigente = (p: Persona, tipo: Tipo) => (porPersona.get(p.id) ?? []).find((m) => m.tipo === tipo && m.anulado_en === null)
@@ -228,6 +242,8 @@ export function Marcador({
     const antes = tarjeta?.getBoundingClientRect()
     const aLaVista = Boolean(antes && antes.top >= 56 && antes.bottom <= window.innerHeight)
     const desdeArriba = Boolean(tarjeta?.closest('[data-sin-confirmar]'))
+    // La línea de arriba que decía que no se sabía si quedó ya no vale.
+    yaSeResolvio(lineaDe(persona))
     flushSync(() => {
       setUltima({ ...guardada, persona, tipo, busqueda })
       setPendientes((previos) => previos.filter((x) => !(x.persona.id === persona.id && x.tipo === tipo)))
@@ -553,7 +569,7 @@ function PendienteDeMarca({
     // La respuesta ya trae la pantalla al día (`revalidatePath`): otra ida
     // después del ok, con la señal que va y viene, caía en la página sin
     // conexión y se llevaba la confirmación y lo que estaba sin confirmar.
-    { documento: `pendiente-${x.id}`, refrescar: false },
+    { documento: `pendiente-${x.id}`, refrescar: false, siSeVa: siSeVaDe(x.persona) },
   )
   const definitivo = x.error ?? (envio.error && !quedoEnDuda(envio.error) ? envio.error : null)
 
@@ -746,7 +762,7 @@ function TarjetaPersona({
   // aplicación lo dice; en la misma pantalla lo dice «Sin confirmar», y esa
   // línea calla (sin `de`, `decirElRechazoSiSeFue` solo habla si se pidió otra
   // pantalla). Con las dos, la duda se decía dos veces.
-  const siSeVa = { que: `la marca de ${nombreDe(p)}`, enlace: 'Volver a Asistencia' }
+  const siSeVa = siSeVaDe(p)
   const enviar = async (previo: unknown, datos: FormData): Promise<ResultadoAccion<MarcaGuardada>> => {
     const r = await marcarAsistencia(previo, datos)
     const fue = enviado.current
@@ -754,7 +770,7 @@ function TarjetaPersona({
       alGastar(fue.id)
       // Sin tarjeta, el rechazo va a la lista de arriba, que no se desmonta.
       if (!montada.current) alQuedarEnDuda({ id: fue.id, tipo: fue.tipo, persona: p, error: r.error })
-      decirElRechazoSiSeFue(fue.desde, r.error, siSeVa)
+      decirElRechazoSiSeFue(fue.desde, r.error, siSeVa, { documento: lineaDe(p) })
     }
     return r
   }
@@ -784,7 +800,7 @@ function TarjetaPersona({
         const id = datos.get('marca_id')
         const tipo = datos.get('tipo')
         if (typeof id === 'string' && (tipo === 'INGRESO' || tipo === 'SALIDA')) alQuedarEnDuda({ id, tipo, persona: p })
-        decirElRechazoSiSeFue(desde, SIN_RESPUESTA, siSeVa)
+        decirElRechazoSiSeFue(desde, SIN_RESPUESTA, siSeVa, { documento: lineaDe(p) })
       },
     },
   )
@@ -904,8 +920,30 @@ function LineaMarca({ marca: m, anula, de }: { marca: Marca; anula: boolean; de:
  */
 function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'id' | 'tipo' | 'hora'>; de: string; conTexto?: boolean }) {
   const [abierta, setAbierta] = useState(false)
-  // La respuesta ya trae la pantalla al día: ver `PendienteDeMarca`.
-  const envio = useEnvio(anularAsistencia, () => setAbierta(false), { refrescar: false })
+  const router = useRouter()
+  // Lo que salió sin respuesta: al cerrar la ventana, la pantalla se pone al
+  // día, porque la marca pudo quedar anulada. Tras el ok no hace falta: la
+  // respuesta ya trae la pantalla (ver `PendienteDeMarca`).
+  const dudo = useRef(false)
+  const envio = useEnvio(
+    anularAsistencia,
+    () => {
+      dudo.current = false
+      setAbierta(false)
+    },
+    {
+      refrescar: false,
+      alQuedarEnDuda: () => {
+        dudo.current = true
+      },
+    },
+  )
+  function cerrar() {
+    setAbierta(false)
+    if (!dudo.current) return
+    dudo.current = false
+    refrescarSiEsDeLaPestana(router)
+  }
   const que = `${queEs(m.tipo as Tipo)} de ${de}, de las ${horaCorta(m.hora)}`
   const campo = `anular-${conTexto ? 'confirmada-' : ''}${m.id}`
   const aviso = useRef<HTMLParagraphElement>(null)
@@ -926,7 +964,7 @@ function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'i
       )}
       <Ventana
         abierta={abierta}
-        alCerrar={() => setAbierta(false)}
+        alCerrar={cerrar}
         titulo={`Anular ${que}`}
         descripcion="Para una marca que se hizo a la persona equivocada o por error. No se borra: queda con su motivo, y después se puede volver a marcar."
         ancho="sm"
@@ -942,7 +980,7 @@ function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'i
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
+            <Boton type="button" variante="contorno" onClick={cerrar}>
               Cancelar
             </Boton>
             <Boton type="submit" variante="peligro" cargando={envio.enviando}>

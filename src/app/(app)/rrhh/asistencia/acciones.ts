@@ -78,10 +78,12 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
           datos: { ...vigente, ya_estaba: true },
         }
       }
-      // Ese envío ya fue otra marca, o se anuló: la lista al día dice cuál y,
-      // si se anuló, con qué motivo.
-      revalidatePath('/rrhh/asistencia')
     }
+    // Todo rechazo de la base pone la lista al día: el envío que ya fue otra
+    // marca o se anuló (con su motivo), el ingreso que RR. HH. anuló mientras la
+    // salida esperaba en «Sin confirmar», la persona que se dio de baja. Con la
+    // lista vieja, la tarjeta seguía ofreciendo lo que la base ya no acepta.
+    revalidatePath('/rrhh/asistencia')
     return { ok: false, error: mensajeDeError(error) }
   }
   if (data !== d.marca_id) return { ok: false, error: 'La marca no quedó registrada. Recarga la pantalla.' }

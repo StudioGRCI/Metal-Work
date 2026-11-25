@@ -32,6 +32,10 @@
  *      lista llegan con la respuesta.
  *   9. Lo que estaba sin confirmar y RR. HH. anuló entretanto: «Reintentar» no
  *      la marca otra vez y dice que entró, que se anuló y con qué motivo.
+ *  11. «Anular» sin respuesta: al cerrar la ventana, la pantalla se pone al
+ *      día y dice que la marca quedó anulada.
+ *  12. La salida espera en «Sin confirmar» y RR. HH. anula el ingreso: el
+ *      rechazo pone la lista al día y la tarjeta ya no muestra ese ingreso.
  *  10. Quien se va a otra pantalla con la marca en camino y la respuesta se pierde:
  *      arriba se dice que no se sabe si la marca quedó.
  *
@@ -464,7 +468,65 @@ try {
   comprobar(true, 'en la otra pantalla, arriba dice que no se sabe si la marca quedó')
   comprobar((await marcasDe(p10)).length === 1, 'y la marca sí estaba en la base (se perdió solo la respuesta)')
   await tercera.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-8-se-fue.png` })
+  // De vuelta en Asistencia, la lista trae la marca: la línea ya no vale y se va.
+  await tercera.getByRole('link', { name: 'Volver a Asistencia' }).first().click()
+  await tercera.waitForURL(/\/rrhh\/asistencia/, { timeout: 20000 })
+  await tercera.getByRole('heading', { name: 'Asistencia de hoy' }).waitFor({ timeout: 20000 })
+  await tercera.waitForTimeout(800)
+  comprobar((await linea.count()) === 0, 'de vuelta en Asistencia, con la marca en la lista, la línea de arriba se va')
   await tercera.close()
+
+  // ---------------------------------------------- 11. anular sin respuesta
+  console.log('\n11. «Anular» sin respuesta: al cerrar la ventana, la pantalla se pone al día')
+  const libres11 = []
+  for (const p of relleno.slice(0, 6)) if ((await marcasDe(p)).length === 0) libres11.push(p)
+  const [p11, p12] = libres11
+  const quinta = await contexto.newPage()
+  quinta.on('pageerror', (e) => errores.push(e.message.slice(0, 300)))
+  await quinta.goto(`${BASE}/rrhh/asistencia`, { waitUntil: 'networkidle' })
+  await quinta.getByRole('searchbox').fill(p11.nombres)
+  await tarjetaEn(quinta, p11).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  const conf5 = quinta.locator('[data-confirmacion-de-marca]')
+  await conf5.getByText('Ingreso marcado').waitFor({ timeout: 20000 })
+  await conf5.getByRole('button', { name: 'Anular esta marca' }).click()
+  const ventana11 = quinta.getByRole('dialog')
+  await ventana11.getByLabel('Motivo').fill(`Prueba ${sello}: se marcó a quien no era`)
+  await perderLaRespuestaDelProximoEnvio(quinta)
+  await ventana11.getByRole('button', { name: 'Anular', exact: true }).click()
+  await ventana11.getByText(/No llegó la respuesta|no se sabe/i).first().waitFor({ timeout: 20000 })
+  comprobar((await marcasDe(p11))[0]?.anulada === true, 'la base ya la tiene anulada, aunque la respuesta no llegó')
+  await ventana11.getByRole('button', { name: 'Cancelar' }).click()
+  await conf5.getByText('Ingreso anulado').waitFor({ timeout: 20000 })
+  comprobar(true, 'al cerrar la ventana, la confirmación pasa a «Ingreso anulado» con la lista al día')
+  comprobar((await conf5.getByRole('button', { name: 'Anular esta marca' }).count()) === 0, 'y ya no ofrece anularla otra vez')
+
+  // ---------------------------------------------- 12. la salida espera y RR. HH. anula el ingreso
+  console.log('\n12. La salida espera en «Sin confirmar» y RR. HH. anula el ingreso')
+  await quinta.getByRole('searchbox').fill(p12.nombres)
+  await tarjetaEn(quinta, p12).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await conf5.getByText(p12.nombres).waitFor({ timeout: 20000 })
+  await tarjetaEn(quinta, p12).getByText(/Ingreso \d\d:\d\d/).waitFor({ timeout: 20000 })
+  await contexto.setOffline(true)
+  await tarjetaEn(quinta, p12).getByRole('button', { name: /Marcar la salida/ }).click()
+  const pendiente12 = quinta.locator(`[data-pendiente-de="${p12.id}"]`)
+  await pendiente12.getByRole('button', { name: /Reintentar/ }).waitFor({ timeout: 20000 })
+  const [ingreso12] = await marcasDe(p12)
+  await base.query('begin')
+  await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+  await base.query('set local role authenticated')
+  await base.query('select public.anular_asistencia($1, $2)', [ingreso12.id, `RR. HH. corrige ${sello}: no vino`])
+  await base.query('commit')
+  await contexto.setOffline(false)
+  await pendiente12.getByRole('button', { name: /Reintentar/ }).click()
+  await pendiente12.getByText(/marca primero el ingreso/).waitFor({ timeout: 20000 })
+  await tarjetaEn(quinta, p12).getByText('Sin ingreso').waitFor({ timeout: 20000 })
+  const tarjeta12 = limpio(await tarjetaEn(quinta, p12).innerText())
+  console.log(`     tarjeta: «${tarjeta12.slice(0, 140)}»`)
+  comprobar(/anulada: RR\. HH\. corrige/.test(tarjeta12), 'el rechazo puso la lista al día: la tarjeta dice «Sin ingreso» y el ingreso anulado con su motivo')
+  comprobar(!(await tarjetaEn(quinta, p12).getByRole('button', { name: /Marcar el ingreso/ }).isDisabled()), 'y vuelve a ofrecer «Ingreso»')
+  comprobar((await marcasDe(p12)).filter((m) => m.tipo === 'SALIDA').length === 0, 'en la base no hay salida')
+  await quinta.close()
+
   comprobar(errores.length === 0, `sin errores de la página${errores.length ? `: ${errores[0]}` : ''}`)
 } catch (e) {
   fallas.push(`se cortó: ${e.message.split('\n')[0]}`)
@@ -473,9 +535,20 @@ try {
 } finally {
   await navegador.close()
   // Si no se pudo dar de baja, que se sepa: quedaría personal de prueba en la lista.
-  await base
-    .query(`update public.trabajadores set activo = false where id = any($1)`, [todos.map((p) => p.id)])
-    .catch((e) => fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`))
+  // Como RR. HH., con su fecha de baja, como lo haría la pantalla de Personal.
+  try {
+    await base.query('begin')
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+    await base.query('set local role authenticated')
+    for (const id of todos.map((p) => p.id)) {
+      const [{ activo }] = await consulta('select activo from public.trabajadores where id = $1', [id])
+      if (activo) await base.query(`select public.rrhh_dar_de_baja_trabajador($1, (now() at time zone 'America/Lima')::date)`, [id])
+    }
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback').catch(() => {})
+    fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`)
+  }
   await base.end()
 }
 

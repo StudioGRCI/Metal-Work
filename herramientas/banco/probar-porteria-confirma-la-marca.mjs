@@ -330,9 +330,20 @@ try {
 } finally {
   await navegador.close()
   // El personal de la prueba no se queda en la lista del banco.
-  await base
-    .query(`update public.trabajadores set activo = false where id = any($1)`, [[ana.id, beto.id, tomas.id]])
-    .catch((e) => fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`))
+  // Como RR. HH., con su fecha de baja, como lo haría la pantalla de Personal.
+  try {
+    await base.query('begin')
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+    await base.query('set local role authenticated')
+    for (const id of [ana.id, beto.id, tomas.id]) {
+      const [{ activo }] = await consulta('select activo from public.trabajadores where id = $1', [id])
+      if (activo) await base.query(`select public.rrhh_dar_de_baja_trabajador($1, (now() at time zone 'America/Lima')::date)`, [id])
+    }
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback').catch(() => {})
+    fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`)
+  }
   await base.end()
 }
 

@@ -82,5 +82,35 @@ select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRE
   'un segundo ingreso del día no entra', 'ya marcó su ingreso hoy a las');
 reset role;
 
+-- La marca de Beto entra sin que llegue la respuesta y RR. HH. lo da de baja:
+-- el reintento sigue siendo esa marca, no «no está en el personal activo».
+select set_config('prueba.beto_ingreso', gen_random_uuid()::text, true);
+select test.como_usuario(:'portero_id');
+set local role authenticated;
+select public.marcar_asistencia(current_setting('prueba.beto_ingreso')::uuid, current_setting('prueba.beto')::uuid, 'INGRESO', null);
+reset role;
+select test.como_usuario(:'rrhh_id');
+set local role authenticated;
+select public.rrhh_dar_de_baja_trabajador(current_setting('prueba.beto')::uuid, (now() at time zone 'America/Lima')::date);
+reset role;
+select test.como_usuario(:'portero_id');
+set local role authenticated;
+select test.afirmar(public.marcar_asistencia(current_setting('prueba.beto_ingreso')::uuid, current_setting('prueba.beto')::uuid, 'INGRESO', null)
+  = current_setting('prueba.beto_ingreso')::uuid, 'el reintento de una marca que entró antes de la baja contesta su id');
+select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'SALIDA', null)$q$, gen_random_uuid(), current_setting('prueba.beto')),
+  'una marca nueva de quien se dio de baja no entra', 'no está en el personal activo');
+reset role;
+
+-- Pasada la medianoche, la marca de ayer no es la de hoy (la fecha se corre a ayer).
+reset role;
+alter table public.asistencias disable trigger user;
+update public.asistencias set fecha = fecha - 1 where id = current_setting('prueba.otro')::uuid;
+alter table public.asistencias enable trigger user;
+select test.como_usuario(:'portero_id');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', null)$q$, current_setting('prueba.otro'), current_setting('prueba.ana')),
+  'el reintento de la marca de ayer no se da por la de hoy', 'otro día: la de hoy no entró');
+reset role;
+
 select 'check 471: la marca repetida es la misma marca' as ok;
 rollback;
