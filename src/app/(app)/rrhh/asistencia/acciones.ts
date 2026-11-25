@@ -27,7 +27,7 @@ const COLUMNAS_MARCA_GUARDADA = 'id, hora, es_tardanza, tardanza_minutos'
  * `marcar_asistencia`. Devuelve la hora que puso la base, para decirla en
  * grande apenas entra: la lee de `asistencias`, que la portería ya ve. Que el
  * mismo envío entre una vez, y solo como la marca que era, lo decide la base
- * (migración 20261125100000).
+ * (migración 20261125410000).
  */
 export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<MarcaGuardada>> {
   const perfil = await exigirSesion()
