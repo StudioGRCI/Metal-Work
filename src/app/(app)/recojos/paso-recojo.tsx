@@ -25,7 +25,19 @@ type Paso = 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO'
  * confirmar: después Almacén recibe el ingreso y el paso no se deshace. Antes
  * de tenerla, «No se pudo recoger» la devuelve a Logística con su motivo.
  */
-export function PasoRecojo({ id, nombre, paso, cuentaId }: { id: string; nombre: string; paso: Paso; cuentaId: string }) {
+export function PasoRecojo({
+  id,
+  nombre,
+  paso,
+  cuentaId,
+  programadoEn,
+}: {
+  id: string
+  nombre: string
+  paso: Paso
+  cuentaId: string
+  programadoEn: string | null
+}) {
   // Lo que dijo la base al marcarla recogida. El botón que se tocó se va con el
   // paso: el cursor pasa a «La dejé en almacén» (`data-cursor-vuelve`) y esta
   // línea, siempre montada, dice lo que entró.
@@ -41,7 +53,7 @@ export function PasoRecojo({ id, nombre, paso, cuentaId }: { id: string; nombre:
         ) : (
           <LaDejeEnAlmacen id={id} nombre={nombre} marca={marca} />
         )}
-        {paso !== 'DEJADO' && <NoSePudoRecoger id={id} nombre={nombre} />}
+        {paso !== 'DEJADO' && <NoSePudoRecoger id={id} nombre={nombre} programadoEn={programadoEn} />}
       </div>
       <p role="status" className={recogida ? 'text-sm text-exito' : 'sr-only'}>
         {recogida}
@@ -233,10 +245,14 @@ function LaDejeEnAlmacen({ id, nombre, marca }: { id: string; nombre: string; ma
  * envío vive aquí, fuera del formulario: tras «No llegó la respuesta», volver a
  * abrir lleva el mismo y la base dice si ya quedó (`useIdDelEnvio`).
  */
-function NoSePudoRecoger({ id, nombre }: { id: string; nombre: string }) {
+function NoSePudoRecoger({ id, nombre, programadoEn }: { id: string; nombre: string; programadoEn: string | null }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useIdDelEnvio(undefined, undefined, `no-se-pudo-recoger:${id}`)
+  // El id pendiente es de esta programación. Si la respuesta se perdió y
+  // Logística la vuelve a programar, el aviso nuevo es otro envío: con el de
+  // antes, la base decía «ya quedó» y el segundo no entraba (auditor de
+  // funcionamiento, 5.2).
+  const envio = useIdDelEnvio(undefined, undefined, `no-se-pudo-recoger:${id}:${programadoEn ?? 'sin-lista'}`)
   // La tarjeta se va de la lista con la compra: lo que entró lo dice la página.
   const [, avisar] = useEstadoCompartido<LoQueEntro | null>(CLAVE_LO_QUE_ENTRO, null)
   return (

@@ -225,7 +225,7 @@ begin
     end if;
     select * into v_objeto from storage.objects where bucket_id = 'fotos-recojo' and name = v_ruta;
     if not found or v_objeto.owner_id is distinct from v_yo::text
-       or v_objeto.metadata->>'mimetype' not in ('image/jpeg', 'image/png', 'image/webp')
+       or coalesce(v_objeto.metadata->>'mimetype', '') not in ('image/jpeg', 'image/png', 'image/webp')
        or coalesce((v_objeto.metadata->>'size')::bigint, 0) not between 1 and 5242880 then
       raise exception 'La foto % no terminó de subir: quítala y vuelve a ponerla.', v_n using errcode = 'check_violation';
     end if;
@@ -351,7 +351,7 @@ begin
       return p_compra;
     end if;
     if v_compra.recogido_por = v_yo then
-      raise exception 'La % ya quedó marcada como recogida la primera vez que lo enviaste: lo que cambiaste en las fotos no se guardó. Recarga la pantalla para ver cómo quedó.',
+      raise exception 'La % ya quedó marcada como recogida la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.',
         v_nombre using errcode = 'check_violation';
     end if;
     raise exception 'La % ya figura recogida por otra cuenta: las fotos de ahora no se guardaron. Recarga la pantalla.',
@@ -422,7 +422,7 @@ begin
       return p_id;
     end if;
     if v_antes.registrado_por = v_yo then
-      raise exception 'Ese aviso de que no se pudo recoger ya quedó registrado la primera vez que lo enviaste: lo que cambiaste después no se guardó. Recarga la pantalla para ver cómo quedó.'
+      raise exception 'Ese aviso de que no se pudo recoger ya quedó registrado la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.'
         using errcode = 'check_violation';
     end if;
     raise exception 'Ese aviso ya existe con otros datos: recarga la pantalla y vuelve a enviarlo.' using errcode = 'unique_violation';

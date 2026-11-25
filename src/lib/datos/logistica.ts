@@ -213,6 +213,8 @@ export type CompraParaRecojo = {
   codigo_interno: string | null
   /** Si Logística la puso en la lista del conductor. */
   en_lista: boolean
+  /** Cuándo Logística la puso en la lista: cambia cada vez que la vuelve a programar. */
+  programado_en: string | null
   /** 1.º, 2.º… entre las pendientes de recojo que están en la lista; vacío si no. */
   lugar: number | null
   /** El peso que puso Logística; se queda aunque la saque de la lista. */
@@ -297,6 +299,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     comprobante_adjunto: c.comprobante_adjunto === true,
     codigo_interno: c.codigo_interno,
     en_lista: c.en_lista === true,
+    programado_en: c.programado_en ?? null,
     lugar: c.lugar,
     peso_kg: c.peso_kg === null ? null : Number(c.peso_kg),
     guia:

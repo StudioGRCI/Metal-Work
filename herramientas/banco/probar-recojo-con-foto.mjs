@@ -343,6 +343,26 @@ try {
     await contexto.close()
   }
 
+  // ------------------------------------------------ 3b. El conductor en el monitor
+  {
+    const { pagina, contexto, errores } = await entrar(CUENTAS.conductor, 1440, 2)
+    await pagina.goto(`${BASE}/recojos`, { waitUntil: 'networkidle' })
+    const donde = 'conductor a 1440'
+    const a = tarjeta(pagina, ocA)
+    await a.waitFor({ timeout: 15000 })
+    comprobar(await fotoQueAbre(pagina, a), `${donde}: la recogida muestra su foto`)
+    await a.scrollIntoViewIfNeeded()
+    await pagina.screenshot({ path: `${CAPTURAS}/5-2-conductor-1440-1-recogida-con-foto.png` })
+    const hoy = pagina.locator('section[aria-labelledby="recojos-de-hoy"]')
+    comprobar((await hoy.locator('li').filter({ hasText: 'No se pudo · volvió a Logística' }).count()) === 2, `${donde}: «Recogido y dejado hoy» lista los dos intentos que no se pudieron`)
+    // En el banco el día puede venir largo: se enseña el último intento que no se pudo.
+    await hoy.locator('li').filter({ hasText: 'No se pudo · volvió a Logística' }).last().evaluate((li) => li.scrollIntoView({ block: 'center' }))
+    await pagina.screenshot({ path: `${CAPTURAS}/5-2-conductor-1440-2-lo-de-hoy.png` })
+    await sinDesborde(pagina, donde)
+    comprobar(errores.length === 0, `${donde}: sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
+    await contexto.close()
+  }
+
   // ------------------------------------------------ 4 y 5. Logística recibe el aviso y ve el motivo y la foto
   {
     const avisos = await consulta(

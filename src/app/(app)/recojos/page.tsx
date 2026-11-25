@@ -305,7 +305,7 @@ function TarjetaRecojo({ recojo: r, conductor, cuentaId }: { recojo: CompraParaR
 
         {/* Sale a recoger solo lo que Logística le programó; la base también lo exige. */}
         {conductor && SIGUIENTE_PASO[r.recojo] && (r.recojo !== 'POR_RECOGER' || r.en_lista) && (
-          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} cuentaId={cuentaId} />
+          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} cuentaId={cuentaId} programadoEn={r.programado_en} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>
