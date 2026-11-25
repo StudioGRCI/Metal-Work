@@ -108,3 +108,50 @@ export const NUMERO_GUIA = /^[A-Z0-9]{1,4}-[0-9]{1,10}$/
 export function normalizarNumeroGuia(texto: string) {
   return texto.trim().replace(/\s+/g, '').toUpperCase()
 }
+
+/**
+ * Los números a los que el conductor puede llamar, sacados del teléfono del
+ * padrón, que es texto libre: «940 843 031 - 980 926 670», «(01) 445-5667 / 999
+ * 111 222». Cada uno con lo que se lee y lo que marca el teléfono. Juntar todos
+ * los dígitos en un solo `tel:` marcaba un número que no existe.
+ */
+export function telefonosParaLlamar(texto: string | null | undefined): { texto: string; numero: string }[] {
+  if (!texto) return []
+  const vistos = new Set<string>()
+  const numeros: { texto: string; numero: string }[] = []
+  // Separan dos números: la barra, la coma, el punto y coma, la «y», y el guion o la raya con espacios a los lados.
+  for (const parte of texto.split(/\s*[/,;|]\s*|\s+[-–—]\s+|\s+y\s+/i)) {
+    const limpio = parte.trim().replace(/^[^\d+(]+|[^\d)]+$/g, '')
+    const digitos = limpio.replace(/\D/g, '')
+    if (digitos.length < 6 || digitos.length > 15) continue
+    const numero = (limpio.startsWith('+') ? '+' : '') + digitos
+    if (vistos.has(numero)) continue
+    vistos.add(numero)
+    numeros.push({ texto: limpio, numero })
+  }
+  return numeros.slice(0, 3)
+}
+
+/** La dirección del proveedor en el mapa del teléfono: abre la aplicación de mapas si la hay, o el navegador. */
+export function enlaceAlMapa(direccion: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`
+}
+
+/**
+ * Lo que el conductor recogió y dejó en un día, en el orden en que pasó. Sale
+ * de las horas que ya guarda cada compra; no hay otra tabla.
+ */
+export type PasoDelDia = { compra: string; nombre: string; proveedor: string; paso: 'RECOGIDO' | 'DEJADO'; en: string }
+
+export function pasosDelDia(
+  compras: { id: string; nombre: string; proveedor: string; recogido_en: string | null; dejado_en: string | null }[],
+  dia: string,
+  diaDe: (instante: string) => string,
+): PasoDelDia[] {
+  const pasos: PasoDelDia[] = []
+  for (const c of compras) {
+    if (c.recogido_en && diaDe(c.recogido_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'RECOGIDO', en: c.recogido_en })
+    if (c.dejado_en && diaDe(c.dejado_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'DEJADO', en: c.dejado_en })
+  }
+  return pasos.sort((a, b) => new Date(a.en).getTime() - new Date(b.en).getTime())
+}

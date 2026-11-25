@@ -2,14 +2,16 @@ import { FileText, MapPin, Phone, Receipt, Scale, User } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { BASE_BOTON, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
-import { RECOJO_COMPRA } from '@/lib/dominio/logistica'
+import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, telefonosParaLlamar } from '@/lib/dominio/logistica'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { cantidad, diaLima, fecha, fechaHora, hora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { PasoRecojo } from './paso-recojo'
 
@@ -32,6 +34,8 @@ export default async function PaginaRecojos() {
   const pendientes = recojos.filter((r) => r.recojo === 'EN_RECOJO' || r.recojo === 'RECOGIDO' || (r.recojo === 'POR_RECOGER' && r.en_lista))
   const sinProgramar = recojos.filter((r) => r.recojo === 'POR_RECOGER' && !r.en_lista)
   const dejadas = recojos.filter((r) => r.recojo === 'DEJADO')
+  // Lo recogido y lo dejado hoy, con su hora: sale de las horas que ya guarda cada compra.
+  const deHoy = pasosDelDia(recojos, hoyLima(), diaLima)
 
   return (
     <>
@@ -39,8 +43,8 @@ export default async function PaginaRecojos() {
         titulo="Recojos"
         ayuda={
           conductor
-            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
-            : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, y lo que ya dejó en almacén.'
+            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo. En cada parada puedes llamar al proveedor y abrir su dirección en el mapa; abajo queda lo que recogiste y dejaste hoy, con su hora.'
+            : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, lo que recogió y dejó hoy con su hora, y lo que ya dejó en almacén esta semana.'
         }
       />
 
@@ -75,6 +79,32 @@ export default async function PaginaRecojos() {
           )}
         </section>
 
+        <section className="space-y-3" aria-labelledby="recojos-de-hoy">
+          <h2 id="recojos-de-hoy" className="text-base font-semibold text-texto">
+            Recogido y dejado hoy <span className="tabular text-texto-suave">({deHoy.length})</span>
+          </h2>
+          {deHoy.length === 0 ? (
+            <p className="text-sm text-texto-suave">
+              {conductor ? 'Todavía no recoges ni dejas nada hoy.' : 'El conductor todavía no recoge ni deja nada hoy.'}
+            </p>
+          ) : (
+            <Tarjeta>
+              <ol className="divide-y divide-borde">
+                {deHoy.map((p) => (
+                  <li key={`${p.compra}-${p.paso}`} className="flex items-center gap-3 px-4 py-3 text-sm">
+                    <span className="tabular w-12 shrink-0 font-semibold text-texto">{hora(p.en)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-texto">{p.nombre}</span>
+                      <span className="block truncate text-xs text-texto-suave">{p.proveedor}</span>
+                    </span>
+                    <Insignia tono={p.paso === 'DEJADO' ? 'exito' : 'info'}>{p.paso === 'DEJADO' ? 'Dejada en almacén' : 'Recogida'}</Insignia>
+                  </li>
+                ))}
+              </ol>
+            </Tarjeta>
+          )}
+        </section>
+
         {dejadas.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-texto">Dejadas en almacén esta semana</h2>
@@ -90,6 +120,10 @@ export default async function PaginaRecojos() {
 
 function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; conductor: boolean }) {
   const estado = RECOJO_COMPRA[r.recojo]
+  // Llamar y abrir el mapa sirven mientras la compra está en la ruta; ya dejada, quedan los datos.
+  const enRuta = r.recojo !== 'DEJADO'
+  const telefonos = telefonosParaLlamar(r.proveedor_telefono)
+  const aQuien = r.proveedor_contacto?.trim() || r.proveedor
   return (
     <Tarjeta>
       <TarjetaCabecera
@@ -110,22 +144,13 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           {r.proveedor_direccion && (
             <li className="flex items-start gap-2">
               <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
-              <a
-                className="text-acento hover:underline"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.proveedor_direccion)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {r.proveedor_direccion}
-              </a>
+              <span>{r.proveedor_direccion}</span>
             </li>
           )}
-          {r.proveedor_telefono && (
+          {r.proveedor_telefono && !(enRuta && telefonos.length > 0) && (
             <li className="flex items-center gap-2">
               <Phone aria-hidden className="size-4 shrink-0 text-texto-suave" />
-              <a className="tabular text-acento hover:underline" href={`tel:${r.proveedor_telefono.replace(/[^\d+]/g, '')}`}>
-                {r.proveedor_telefono}
-              </a>
+              <span className="tabular">{r.proveedor_telefono}</span>
             </li>
           )}
           {r.proveedor_contacto && (
@@ -166,6 +191,34 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             <li className="text-xs text-texto-suave">El proveedor no tiene dirección ni teléfono en el padrón: pídeselos a Logística.</li>
           )}
         </ul>
+
+        {enRuta && (r.proveedor_direccion || telefonos.length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            {r.proveedor_direccion && (
+              <a
+                className={cn(BASE_BOTON, VARIANTES.contorno, TAMANOS.lg, 'flex-1 justify-center px-4 sm:flex-none')}
+                href={enlaceAlMapa(r.proveedor_direccion)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Abrir en el mapa la dirección de ${r.proveedor}`}
+              >
+                <MapPin aria-hidden className="size-4" />
+                Abrir en el mapa
+              </a>
+            )}
+            {telefonos.map((t) => (
+              <a
+                key={t.numero}
+                className={cn(BASE_BOTON, VARIANTES.contorno, TAMANOS.lg, 'tabular flex-1 justify-center px-4 sm:flex-none')}
+                href={`tel:${t.numero}`}
+                aria-label={`Llamar a ${aQuien} al ${t.texto}`}
+              >
+                <Phone aria-hidden className="size-4" />
+                Llamar {t.texto}
+              </a>
+            ))}
+          </div>
+        )}
 
         <ul className="divide-y divide-borde rounded-md border border-borde">
           {r.lineas.map((l, i) => (
