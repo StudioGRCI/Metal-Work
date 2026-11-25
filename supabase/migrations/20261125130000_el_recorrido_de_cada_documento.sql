@@ -160,7 +160,11 @@ begin
   atrasado as (
     -- La OC aprobada que Logística todavía no programó con el conductor es de
     -- Logística (`POR_PROGRAMAR`): el conductor no la ve en sus recojos hasta
-    -- que tiene su fila en `programacion_recojo`.
+    -- que está en su lista, con posición, en `programacion_recojo`. La que
+    -- Logística sacó de la lista (`quitar_recojo_de_la_lista` deja la fila sin
+    -- posición) vuelve a ser de Logística. Con varias OC en el mismo punto, la
+    -- que falta programar va primero: mientras quede una, el RQ es de Logística
+    -- aunque el conductor ya tenga otra.
     select distinct on (i.rq) i.rq,
            case when i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is null then 'POR_PROGRAMAR' else i.etapa end as etapa,
            case when c.id is not null then public.nombre_de_oc(c.numero, c.referencia) end as oc,
@@ -171,13 +175,19 @@ begin
              when 'EN_RECOJO' then c.en_recojo_en
              when 'RECOGIDO' then c.recogido_en
              when 'EN_STOCK' then null
+             -- Lo observado lo tiene quien compra desde que Almacén lo observó, no desde que se dejó.
+             when 'OBSERVADO' then coalesce(
+               (select max(ip.validado_en) from public.ingresos_pendientes_almacen ip
+                 where ip.orden_compra_id = c.id and ip.estado = 'OBSERVADO'),
+               c.dejado_en, c.entregado_almacen_en)
              else coalesce(c.dejado_en, c.entregado_almacen_en)
            end as desde
       from insumos i
       left join public.ordenes_compra_materiales c on c.id = i.orden_compra_id
-      left join lateral (select max(p.programado_en) as programado_en from public.programacion_recojo p where p.orden_compra_id = c.id) pr on true
+      left join lateral (select max(p.programado_en) as programado_en from public.programacion_recojo p
+                          where p.orden_compra_id = c.id and p.posicion is not null) pr on true
      where i.por_llegar > 0
-     order by i.rq, i.porcentaje, i.item
+     order by i.rq, i.porcentaje, (i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is not null), i.item
   ),
   -- El RQ en compra al que ya no le falta llegar nada, y desde cuándo: lo último que se supo de sus insumos.
   llego as (
@@ -219,7 +229,7 @@ begin
              -- La compra entró y no alcanzó: el resto no va en ninguna orden y lo pide de nuevo quien hizo el RQ.
              when t.etapa in ('EN_KARDEX', 'EN_STOCK') then coalesce(public.puesto_de(q.creado_por), 'Quien lo pidió')
              when t.etapa = 'OC_POR_APROBAR' then 'Gerencia'
-             when t.etapa = 'POR_PROGRAMAR' and q.tipo = 'ADMINISTRACION' then 'Administración'
+             -- Programar el recojo es solo de Logística (compras.programar_recojo), también el de un RQA.
              when t.etapa = 'POR_PROGRAMAR' then 'Logística'
              when t.etapa in ('PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO') then 'Conductor de Logística'
              when t.etapa = 'POR_VALIDAR' then 'Almacén'
@@ -344,7 +354,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_requerimientos(uuid[]) is
-  'El recorrido de cada requerimiento, un paso por fila: lo hecho con el puesto de quien lo hizo y su fecha; quién lo tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Lo lee quien ve los requerimientos. Sin importes ni datos de RR. HH.';
+  'El recorrido de cada requerimiento, un paso por fila: lo hecho con el puesto de quien lo hizo y su fecha; quién lo tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Lo lee quien ve los requerimientos. En compra, el detalle lleva la OC del insumo más atrasado ya nombrada con nombre_de_oc(numero, referencia). Sin importes ni datos de RR. HH.';
 
 revoke all on function public.recorrido_de_requerimientos(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_requerimientos(uuid[]) to authenticated;
