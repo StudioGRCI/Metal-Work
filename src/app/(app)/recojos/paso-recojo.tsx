@@ -1,7 +1,7 @@
 'use client'
 
 import { CircleSlash, Package, PackageCheck, Truck } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { EstadoDelEnvio, fotosParaEnviar, hayFallidas, haySubiendo, SelectorFotos, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -10,9 +10,11 @@ import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { BUCKET_FOTOS_RECOJO, MAXIMO_FOTOS_RECOJO, MAXIMO_MB_FOTO_RECOJO, MOTIVO_NO_LOGRADO } from '@/lib/dominio/logistica'
-import { useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { useAccion, useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { avisarQueNoSePudoRecoger, marcarRecogida, marcarRecojo } from './acciones'
+import { CLAVE_LO_QUE_ENTRO, type LoQueEntro } from './lo-que-entro'
 
 type Paso = 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO'
 
@@ -24,16 +26,26 @@ type Paso = 'EN_RECOJO' | 'RECOGIDO' | 'DEJADO'
  * de tenerla, «No se pudo recoger» la devuelve a Logística con su motivo.
  */
 export function PasoRecojo({ id, nombre, paso, cuentaId }: { id: string; nombre: string; paso: Paso; cuentaId: string }) {
+  // Lo que dijo la base al marcarla recogida. El botón que se tocó se va con el
+  // paso: el cursor pasa a «La dejé en almacén» (`data-cursor-vuelve`) y esta
+  // línea, siempre montada, dice lo que entró.
+  const [recogida, setRecogida] = useState('')
+  const marca = `paso-recojo:${id}`
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
-      {paso === 'EN_RECOJO' ? (
-        <SalgoARecoger id={id} />
-      ) : paso === 'RECOGIDO' ? (
-        <YaLaRecogi id={id} nombre={nombre} cuentaId={cuentaId} />
-      ) : (
-        <LaDejeEnAlmacen id={id} nombre={nombre} />
-      )}
-      {paso !== 'DEJADO' && <NoSePudoRecoger id={id} nombre={nombre} />}
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+        {paso === 'EN_RECOJO' ? (
+          <SalgoARecoger id={id} />
+        ) : paso === 'RECOGIDO' ? (
+          <YaLaRecogi id={id} nombre={nombre} cuentaId={cuentaId} marca={marca} alRecoger={setRecogida} />
+        ) : (
+          <LaDejeEnAlmacen id={id} nombre={nombre} marca={marca} />
+        )}
+        {paso !== 'DEJADO' && <NoSePudoRecoger id={id} nombre={nombre} />}
+      </div>
+      <p role="status" className={recogida ? 'text-sm text-exito' : 'sr-only'}>
+        {recogida}
+      </p>
     </div>
   )
 }
@@ -72,12 +84,27 @@ function SalgoARecoger({ id }: { id: string }) {
  * quedan con ese envío y lo que conteste se dice junto al botón
  * (`useFotosDelEnvio`, como la salida del vehículo).
  */
-function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuentaId: string }) {
+function YaLaRecogi({
+  id,
+  nombre,
+  cuentaId,
+  marca,
+  alRecoger,
+}: {
+  id: string
+  nombre: string
+  cuentaId: string
+  marca: string
+  alRecoger: (mensaje: string) => void
+}) {
   const [abierta, setAbierta] = useState(false)
   const delEnvio = useFotosDelEnvio(BUCKET_FOTOS_RECOJO)
   const { fotos, setFotos } = delEnvio
-  const envio = useEnvio(delEnvio.conFotos(marcarRecogida), () => {
-    if (!delEnvio.seCerroAlEnviar()) setAbierta(false)
+  const envio = useEnvio(delEnvio.conFotos(marcarRecogida), (resultado) => {
+    // Cerrada mientras se enviaba, lo dice `EstadoDelEnvio`; aquí no se repite.
+    if (delEnvio.seCerroAlEnviar()) return
+    alRecoger(resultado.mensaje ?? 'Marcada como recogida.')
+    setAbierta(false)
   })
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
@@ -96,6 +123,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
         tamano="lg"
         className="w-full justify-center sm:w-auto"
         ocupado={ocupado}
+        data-cursor-vuelve={marca}
         aria-describedby={delEnvio.sigue ? delEnvio.idDelEstado : undefined}
         onClick={() => {
           envio.limpiar()
@@ -111,7 +139,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
         abierta={abierta}
         alCerrar={cerrar}
         titulo={`¿Ya recogiste la ${nombre}?`}
-        descripcion="Si quieres dejar constancia, toma una foto de la guía firmada o del bulto. Es opcional: puedes marcarla sin fotos."
+        descripcion="Es opcional: puedes marcarla sin fotos."
         ancho="md"
       >
         <form
@@ -121,7 +149,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
           <input type="hidden" name="id" value={id} />
           {/* Trabado mientras se envía: una foto elegida o quitada entonces no iba con el recojo. */}
           <fieldset disabled={envio.enviando} className="min-w-0 space-y-1">
-            <legend className="text-sm font-medium text-texto">Fotos del recojo (opcional)</legend>
+            <legend className="text-sm font-medium text-texto">Fotos del recojo</legend>
             <p className="text-xs text-texto-suave">La guía firmada o el bulto.</p>
             <SelectorFotos
               fotos={fotos}
@@ -129,7 +157,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
               prefijoRuta={`${cuentaId}/${id}`}
               maximo={MAXIMO_FOTOS_RECOJO}
               bucket={BUCKET_FOTOS_RECOJO}
-              comprimir
+              comprimir="siempre"
               maximoMb={MAXIMO_MB_FOTO_RECOJO}
               titulo={null}
             />
@@ -150,7 +178,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
   )
 }
 
-function LaDejeEnAlmacen({ id, nombre }: { id: string; nombre: string }) {
+function LaDejeEnAlmacen({ id, nombre, marca }: { id: string; nombre: string; marca: string }) {
   const [confirmando, setConfirmando] = useState(false)
   const accion = useAccion(marcarRecojo, () => setConfirmando(false), { documento: id })
 
@@ -163,7 +191,7 @@ function LaDejeEnAlmacen({ id, nombre }: { id: string; nombre: string }) {
 
   return (
     <div className="space-y-2">
-      <Boton type="button" tamano="lg" className="w-full justify-center sm:w-auto" onClick={() => setConfirmando(true)}>
+      <Boton type="button" tamano="lg" className="w-full justify-center sm:w-auto" data-cursor-vuelve={marca} onClick={() => setConfirmando(true)}>
         <PackageCheck aria-hidden className="size-4" />
         La dejé en almacén
       </Boton>
@@ -209,6 +237,8 @@ function NoSePudoRecoger({ id, nombre }: { id: string; nombre: string }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
   const envio = useIdDelEnvio(undefined, undefined, `no-se-pudo-recoger:${id}`)
+  // La tarjeta se va de la lista con la compra: lo que entró lo dice la página.
+  const [, avisar] = useEstadoCompartido<LoQueEntro | null>(CLAVE_LO_QUE_ENTRO, null)
   return (
     <>
       <Boton
@@ -233,7 +263,18 @@ function NoSePudoRecoger({ id, nombre }: { id: string; nombre: string }) {
         ancho="md"
       >
         <EnvioAnterior texto={envio.anterior} />
-        {envio.id && <FormularioNoSePudo key={vez} envio={envio} compra={id} alCancelar={() => setAbierta(false)} alTerminar={() => setAbierta(false)} />}
+        {envio.id && (
+          <FormularioNoSePudo
+            key={vez}
+            envio={envio}
+            compra={id}
+            alCancelar={() => setAbierta(false)}
+            alTerminar={() => {
+              avisar({ vez: Date.now(), texto: `Avisado: la ${nombre} volvió a Logística con tu motivo y salió de tu lista.` })
+              setAbierta(false)
+            }}
+          />
+        )}
       </Ventana>
     </>
   )
@@ -251,6 +292,11 @@ function FormularioNoSePudo({
   alTerminar: () => void
 }) {
   const id = envio.id ?? ''
+  const campo = useRef<HTMLTextAreaElement>(null)
+  // Un motivo que no alcanza se dice en su campo, no en el pie: antes de enviar,
+  // si se ve desde aquí (diez espacios y un punto pasan el `minLength` del
+  // navegador), y si lo rechaza el servidor o la base por lo mismo.
+  const [motivoCorto, setMotivoCorto] = useState<string | null>(null)
   const { alEnviar, enviando, error } = useEnvio(
     (previo: unknown, datos: FormData) => {
       envio.salio()
@@ -262,8 +308,27 @@ function FormularioNoSePudo({
     },
     { alYaEntrar: envio.otro },
   )
+  const delMotivo = error && /^(Escribe por qué no se pudo recoger|El motivo pasa de)/.test(error) ? error : null
+  const errorDelMotivo = motivoCorto ?? delMotivo
+  useCursorAlRechazo(enviando, delMotivo, () => campo.current)
   return (
-    <form onSubmit={alEnviar} className="space-y-4">
+    <form
+      onSubmit={(e) => {
+        const motivo = String(new FormData(e.currentTarget).get('motivo') ?? '')
+          .trim()
+          .replace(/\s+/g, ' ')
+        // Cuenta como la base: sin los espacios de los bordes y con uno solo entre palabras.
+        if (motivo.length < MOTIVO_NO_LOGRADO.minimo) {
+          e.preventDefault()
+          setMotivoCorto(`Escribe por qué no se pudo recoger, con al menos ${MOTIVO_NO_LOGRADO.minimo} letras: Logística lo lee para volver a programarla.`)
+          campo.current?.focus()
+          return
+        }
+        setMotivoCorto(null)
+        alEnviar(e)
+      }}
+      className="space-y-4"
+    >
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="compra" value={compra} />
       <fieldset disabled={enviando} className="min-w-0">
@@ -272,9 +337,12 @@ function FormularioNoSePudo({
           htmlFor={`no-se-pudo-${id}`}
           requerido
           ayuda="Lo lee Logística para volver a programarla: qué pasó y, si lo sabes, cuándo se puede."
+          error={errorDelMotivo ?? undefined}
         >
           <AreaTexto
+            ref={campo}
             id={`no-se-pudo-${id}`}
+            onChange={() => setMotivoCorto(null)}
             name="motivo"
             required
             minLength={MOTIVO_NO_LOGRADO.minimo}
@@ -284,7 +352,7 @@ function FormularioNoSePudo({
           />
         </Campo>
       </fieldset>
-      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto="Devolver a Logística" />
+      <PieDeVentana error={delMotivo ? null : error} enviando={enviando} alCancelar={alCancelar} texto="Devolver a Logística" />
     </form>
   )
 }

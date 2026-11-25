@@ -144,6 +144,8 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
         acciones={
           <>
             {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
+            {/* Entre las que esperan programarse, la que devolvió el conductor se distingue sin leer el recuadro. */}
+            {pendiente && !c.en_lista && c.no_logrado && <Insignia tono="aviso">Devuelta por el conductor</Insignia>}
             {c.recojo !== 'DEJADO' &&
               (c.guia ? <Insignia tono="exito">Con guía</Insignia> : c.peso_kg !== null ? <Insignia tono="aviso">Sin guía</Insignia> : null)}
           </>

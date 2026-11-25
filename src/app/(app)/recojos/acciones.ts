@@ -75,9 +75,13 @@ export async function marcarRecogida(_previo: unknown, datos: FormData): Promise
   const analisis = z
     .object({
       id: z.guid(),
-      fotos: z.array(z.string().min(1).max(300)).max(MAXIMO_FOTOS_RECOJO, `Van hasta ${MAXIMO_FOTOS_RECOJO} fotos del recojo.`),
+      fotos: z
+        .array(z.string().min(1).max(300), { error: 'Las fotos no llegaron bien: vuelve a cargar la pantalla y ponlas otra vez.' })
+        .max(MAXIMO_FOTOS_RECOJO, `Van hasta ${MAXIMO_FOTOS_RECOJO} fotos del recojo.`),
     })
-    .safeParse({ id: datos.get('id'), fotos: json(datos, 'fotos') ?? [] })
+    // Sin el campo, va sin fotos (son opcionales). Con el campo mal escrito no se
+    // marca: entraría recogida sin las fotos que el conductor eligió, y diría ok.
+    .safeParse({ id: datos.get('id'), fotos: datos.get('fotos') === null ? [] : json(datos, 'fotos') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()

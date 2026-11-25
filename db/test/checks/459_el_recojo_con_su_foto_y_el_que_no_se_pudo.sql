@@ -1,4 +1,4 @@
--- El recojo con su foto y el que no se pudo (migración 20261125100000, Plan 5
+-- El recojo con su foto y el que no se pudo (migración 20261125500000, Plan 5
 -- «Conductor de Logística», entrega 5.2). Con la cuenta de cada puesto —nunca
 -- ADMIN— y `set local role authenticated`:
 --
@@ -22,6 +22,7 @@
 --      precios. Logística las lee; Almacén, ni tablas ni funciones.
 --   7. La puerta nueva del disparador se abre solo desde la función: a mano,
 --      la compra en recojo no vuelve a pendiente.
+--   8. Gerencia, que lee la auditoría, no ve por ella los motivos ni las fotos.
 -- Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
@@ -37,9 +38,9 @@ begin
                            'CONDUCTOR:LOG:conductor2', 'ALMACENERO:ALM:almacenero', 'VENDEDOR:VEN:vendedor'] loop
     v_id := gen_random_uuid();
     v_clave := split_part(v, ':', 3);
-    insert into auth.users (id, email) values (v_id, v_clave || '.458@prueba.local');
+    insert into auth.users (id, email) values (v_id, v_clave || '.459@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, initcap(v_clave), 'Check 458', v_clave || '.458@prueba.local', r.id,
+    select v_id, initcap(v_clave), 'Check 459', v_clave || '.459@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     if not found then raise exception 'Falta el rol %', split_part(v, ':', 1); end if;
@@ -49,11 +50,11 @@ begin
   perform set_config('prueba.cat', (select id::text from public.categorias_material
                                      where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1), true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK458-PLA', 'Plancha LAF 2 mm 4x8 (458)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid)
+  values ('CHK459-PLA', 'Plancha LAF 2 mm 4x8 (459)', current_setting('prueba.cat')::uuid, current_setting('prueba.und')::uuid)
   returning id::text into v;
   perform set_config('prueba.mat', v, true);
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  values ('20600000340', 'Proveedor de prueba 458', 'Av. Argentina 458, Lima', '999 000 458')
+  values ('20600000340', 'Proveedor de prueba 459', 'Av. Argentina 459, Lima', '999 000 459')
   returning id::text into v;
   perform set_config('prueba.proveedor', v, true);
   foreach v in array array['oc1', 'oc2', 'oc3', 'oc4', 'oc5', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'suelta', 'ajena',
@@ -92,8 +93,8 @@ $$;
 -- ============================================ 0. Cinco OC aprobadas; Logística programa cuatro
 select pg_temp.como('comprador');
 set local role authenticated;
-select public.emitir_compra_directa(pg_temp.oc(o), current_setting('prueba.proveedor')::uuid, 'COT-458-' || o,
-         'Reposición del almacén, check 458',
+select public.emitir_compra_directa(pg_temp.oc(o), current_setting('prueba.proveedor')::uuid, 'COT-459-' || o,
+         'Reposición del almacén, check 459',
          jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat'), 'cantidad', 3, 'precio', 120.50)),
          current_date + 5, 'CONTADO', 0, 'PEN', false, 'PLANTA')
   from unnest(array['oc1', 'oc2', 'oc3', 'oc4', 'oc5']) o;
@@ -284,7 +285,7 @@ select test.debe_fallar($q$select public.marcar_compra_en_recojo(pg_temp.oc('oc3
 select test.afirmar(
   (select count(*) from public.recojos_no_logrados_en_gestion() n where n.orden_compra_id = pg_temp.oc('oc3')
       and n.motivo = 'El proveedor estaba cerrado por inventario' and n.salio_en is not null
-      and n.registrado_por_nombre = 'Conductor Check 458') = 1
+      and n.registrado_por_nombre = 'Conductor Check 459') = 1
   and (select g.recojo = 'POR_RECOGER' and not g.en_lista and g.en_recojo_en is null
          from public.compras_en_gestion() g where g.id = pg_temp.oc('oc3'))
   and (select g.lugar from public.compras_en_gestion() g where g.id = pg_temp.oc('oc4')) = 1,
@@ -390,5 +391,21 @@ select test.afirmar(
   and (select not public from storage.buckets where id = 'fotos-recojo'),
   'sin sesión no se ejecuta ni se lee nada, nadie escribe las tablas directo y el bucket es privado');
 
-do $$ begin raise notice 'OK 458: el recojo queda con sus fotos, y el que no se pudo vuelve a Logística con su motivo'; end $$;
+-- Gerencia tiene `auditoria.ver` y no lee estas tablas: tampoco las lee por
+-- la auditoría, porque no se auditan (la copia de la fila sacaba el motivo).
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Gerencia consulta la auditoría');
+select test.afirmar(
+  (select count(*) from public.recojo_fotos) = 0 and (select count(*) from public.recojos_no_logrados) = 0
+  and (select count(*) from public.audit_log where tabla in ('recojo_fotos', 'recojos_no_logrados')) = 0,
+  'Gerencia no lee las fotos ni los motivos del recojo, tampoco por la auditoría');
+reset role;
+select test.afirmar(
+  (select count(*) from public.recojo_fotos) > 0
+  and not exists (select 1 from pg_trigger where not tgisinternal and tgname = 'trg_auditoria'
+                   and tgrelid in ('public.recojo_fotos'::regclass, 'public.recojos_no_logrados'::regclass)),
+  'las tablas del recojo no copian sus filas a la auditoría');
+
+do $$ begin raise notice 'OK 459: el recojo queda con sus fotos, y el que no se pudo vuelve a Logística con su motivo'; end $$;
 rollback;

@@ -9,12 +9,13 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
-import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, telefonoDiceMas, telefonosParaLlamar } from '@/lib/dominio/logistica'
+import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, RECOJO_NO_LOGRADO, telefonoDiceMas, telefonosParaLlamar } from '@/lib/dominio/logistica'
 import { CODIGO_SIN_AVANCE } from '@/lib/dominio/codigos-internos'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
 import { cantidad, diaLima, fecha, fechaHora, hora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { LoQueEntroEnRecojos } from './lo-que-entro'
 import { PasoRecojo } from './paso-recojo'
 
 export const metadata = { title: 'Recojos' }
@@ -56,6 +57,7 @@ export default async function PaginaRecojos() {
           <h2 className="text-base font-semibold text-texto">
             Por hacer <span className="tabular text-texto-suave">({pendientes.length})</span>
           </h2>
+          {conductor && <LoQueEntroEnRecojos />}
           {pendientes.length === 0 ? (
             <Tarjeta>
               <SinDatos
@@ -94,7 +96,7 @@ export default async function PaginaRecojos() {
             <Tarjeta>
               <ol className="divide-y divide-borde">
                 {deHoy.map((p) => {
-                  const paso = RECOJO_COMPRA[p.paso]
+                  const paso = p.paso === 'NO_LOGRADO' ? RECOJO_NO_LOGRADO : RECOJO_COMPRA[p.paso]
                   const para = paraQuien.get(p.compra)
                   return (
                     <li key={`${p.compra}-${p.paso}`} className="flex items-start gap-3 px-4 py-3 text-sm">

@@ -70,8 +70,10 @@ create table if not exists public.recojo_fotos (
 comment on table public.recojo_fotos is
   'Hasta tres fotos que el conductor suma al marcar «Ya la recogí» (la guía firmada, el bulto), en el bucket fotos-recojo con la ruta {cuenta}/{oc}/{foto}. Opcionales. No se cambian ni se borran: son la evidencia del recojo. Las escribe marcar_compra_recogida_con_fotos; las pantallas las leen por recojo_fotos_en_gestion.';
 
+-- Sin `activar_auditoria`: la auditoría la lee `auditoria.ver` (Gerencia), que
+-- no lee esta tabla, y copiaría cada fila. Tampoco hace falta: la fila no se
+-- cambia ni se borra, y ya dice quién la subió y cuándo.
 select public.activar_timestamps('recojo_fotos');
-select public.activar_auditoria('recojo_fotos');
 select public.activar_registro_de_prueba('recojo_fotos');
 
 -- 2. Los recojos que no se pudieron hacer ----------------------------------------------------
@@ -102,8 +104,8 @@ comment on column public.recojos_no_logrados.salio_en is
 comment on column public.recojos_no_logrados.programado_en is
   'Cuándo Logística la había puesto en la lista del conductor: dice de cuál de sus programaciones es este intento.';
 
+-- Sin `activar_auditoria`, por lo mismo que las fotos: el motivo no sale por `audit_log`.
 select public.activar_timestamps('recojos_no_logrados');
-select public.activar_auditoria('recojos_no_logrados');
 select public.activar_registro_de_prueba('recojos_no_logrados');
 
 -- Lo anotado es evidencia: ni se cambia ni se borra, tampoco por el administrador.
@@ -116,12 +118,11 @@ end;
 $$;
 revoke all on function public.fn_recojo_evidencia_guardia() from public, anon, authenticated;
 
-drop trigger if exists trg_recojo_foto_guardia on public.recojo_fotos;
-create trigger trg_recojo_foto_guardia
+-- Sin `drop`: en Supabase un DROP cuelga la migración (skill `datos` › Trampas).
+create or replace trigger trg_recojo_foto_guardia
   before update or delete on public.recojo_fotos
   for each row execute function public.fn_recojo_evidencia_guardia();
-drop trigger if exists trg_recojo_no_logrado_guardia on public.recojos_no_logrados;
-create trigger trg_recojo_no_logrado_guardia
+create or replace trigger trg_recojo_no_logrado_guardia
   before update or delete on public.recojos_no_logrados
   for each row execute function public.fn_recojo_evidencia_guardia();
 
@@ -131,11 +132,21 @@ create trigger trg_recojo_no_logrado_guardia
 -- pantalla. Escribir, solo por las funciones.
 alter table public.recojo_fotos enable row level security;
 alter table public.recojos_no_logrados enable row level security;
-drop policy if exists ver_recojo_fotos on public.recojo_fotos;
-create policy ver_recojo_fotos on public.recojo_fotos for select to authenticated
+-- Las políticas, sin `drop` (cuelga la migración en Supabase): se crean si
+-- faltan y se dejan con su condición con `alter policy`, que vale también al
+-- volver a correrla.
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'recojo_fotos' and policyname = 'ver_recojo_fotos') then
+    create policy ver_recojo_fotos on public.recojo_fotos for select to authenticated using (false);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'recojos_no_logrados' and policyname = 'ver_recojos_no_logrados') then
+    create policy ver_recojos_no_logrados on public.recojos_no_logrados for select to authenticated using (false);
+  end if;
+end $$;
+alter policy ver_recojo_fotos on public.recojo_fotos
   using ((select public.es_admin()) or (select public.tiene_permiso('compras.programar_recojo')));
-drop policy if exists ver_recojos_no_logrados on public.recojos_no_logrados;
-create policy ver_recojos_no_logrados on public.recojos_no_logrados for select to authenticated
+alter policy ver_recojos_no_logrados on public.recojos_no_logrados
   using ((select public.es_admin()) or (select public.tiene_permiso('compras.programar_recojo')));
 revoke all on public.recojo_fotos from public, anon, authenticated;
 revoke all on public.recojos_no_logrados from public, anon, authenticated;
@@ -158,7 +169,7 @@ $$;
 revoke all on function public.foto_de_recojo_anotada(text) from public, anon;
 grant execute on function public.foto_de_recojo_anotada(text) to authenticated;
 comment on function public.foto_de_recojo_anotada(text) is
-  'Si algún recojo nombra la foto de esa ruta. La usan las políticas del bucket fotos-recojo (migración 20261125100000).';
+  'Si algún recojo nombra la foto de esa ruta. La usan las políticas del bucket fotos-recojo (migración 20261125500000).';
 
 -- La ruta es {cuenta}/{oc}/{foto}: cada cuenta sube solo a su carpeta y solo
 -- quien marca recojos. La foto la ve quien la subió (para quitarla del
@@ -166,20 +177,29 @@ comment on function public.foto_de_recojo_anotada(text) is
 -- política) y, ya anotada, el conductor y Logística. Una suelta (subida y
 -- quitada, o de una ventana que se cerró) la retira su dueño mientras ningún
 -- recojo la nombre; la anotada no la quita nadie.
-drop policy if exists recojo_subir_foto on storage.objects;
-create policy recojo_subir_foto on storage.objects for insert to authenticated with check (
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'recojo_subir_foto') then
+    create policy recojo_subir_foto on storage.objects for insert to authenticated with check (false);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'recojo_ver_foto') then
+    create policy recojo_ver_foto on storage.objects for select to authenticated using (false);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'recojo_quitar_foto_suelta') then
+    create policy recojo_quitar_foto_suelta on storage.objects for delete to authenticated using (false);
+  end if;
+end $$;
+alter policy recojo_subir_foto on storage.objects with check (
   bucket_id = 'fotos-recojo' and owner_id = (select auth.uid())::text
   and split_part(name, '/', 1) = (select auth.uid())::text
   and (select public.tiene_permiso('compras.recojo')));
-drop policy if exists recojo_ver_foto on storage.objects;
-create policy recojo_ver_foto on storage.objects for select to authenticated using (
+alter policy recojo_ver_foto on storage.objects using (
   bucket_id = 'fotos-recojo'
   and (owner_id = (select auth.uid())::text
        or (((select public.es_admin()) or (select public.tiene_permiso('compras.recojo'))
             or (select public.tiene_permiso('compras.programar_recojo')))
            and public.foto_de_recojo_anotada(name))));
-drop policy if exists recojo_quitar_foto_suelta on storage.objects;
-create policy recojo_quitar_foto_suelta on storage.objects for delete to authenticated using (
+alter policy recojo_quitar_foto_suelta on storage.objects using (
   bucket_id = 'fotos-recojo' and owner_id = (select auth.uid())::text
   and not public.foto_de_recojo_anotada(name));
 
@@ -220,7 +240,8 @@ $$;
 revoke all on function public.recojo_anotar_fotos(uuid, jsonb) from public, anon, authenticated;
 
 -- 6. El disparador deja volver a Logística la compra que no se pudo recoger ---------------
--- Igual que la vigente (20261015140000 con los textos de 20261022220000), con
+-- Igual que la vigente (la de 20261020171000, con la anulación de 20261022150000
+-- y los textos de 20261022220000), con
 -- una sola puerta nueva: de EN_RECOJO a POR_RECOGER, soltando la hora de
 -- «Salgo a recoger», cuando lo hace marcar_recojo_no_logrado para esa misma
 -- compra (la señal `metalwork.recojo_no_logrado`, como `metalwork.anulando_oc`
@@ -360,7 +381,7 @@ $$;
 revoke all on function public.marcar_compra_recogida_con_fotos(uuid, jsonb) from public, anon;
 grant execute on function public.marcar_compra_recogida_con_fotos(uuid, jsonb) to authenticated;
 comment on function public.marcar_compra_recogida_con_fotos(uuid, jsonb) is
-  '«Ya la recogí» del conductor, con hasta tres fotos opcionales ya subidas a fotos-recojo. Exige compras.recojo y que la compra esté en la lista que programó Logística. El mismo envío repetido devuelve lo de la primera vez (migración 20261125100000).';
+  '«Ya la recogí» del conductor, con hasta tres fotos opcionales ya subidas a fotos-recojo. Exige compras.recojo y que la compra esté en la lista que programó Logística. El mismo envío repetido devuelve lo de la primera vez (migración 20261125500000).';
 
 -- «No se pudo recoger»: la compra vuelve a «Por programar» de Logística con su
 -- motivo. p_id es el id del envío: el mismo otra vez devuelve lo de antes.
@@ -454,9 +475,10 @@ begin
   end loop;
 
   v_con_guia := exists (select 1 from public.guias_remision_compra g where g.orden_compra_id = p_compra and g.anulada_en is null);
+  -- El punto va después de las comillas; el del final del motivo sobraría («…a las 10.».).
   perform public.avisar_a_quien_tiene('compras.programar_recojo',
     'No se pudo recoger: ' || v_nombre,
-    v_compra.proveedor || '. El conductor dice: «' || v_motivo || '». Volvió a «Por programar»: ponla otra vez en su lista cuando se pueda recoger.'
+    v_compra.proveedor || '. El conductor dice: «' || rtrim(v_motivo, '.') || '». Volvió a «Por programar»: ponla otra vez en su lista cuando se pueda recoger.'
       || case when v_con_guia then ' Su guía de remisión sigue cargada.' else '' end,
     '/compras/gestion', p_compra);
   return p_id;
@@ -465,7 +487,7 @@ $$;
 revoke all on function public.marcar_recojo_no_logrado(uuid, uuid, text) from public, anon;
 grant execute on function public.marcar_recojo_no_logrado(uuid, uuid, text) to authenticated;
 comment on function public.marcar_recojo_no_logrado(uuid, uuid, text) is
-  '«No se pudo recoger» del conductor, con su motivo: la compra programada o a la que ya salió vuelve a «Por programar» de Logística, que recibe el aviso. Exige compras.recojo. El mismo envío (p_id) repetido devuelve lo de la primera vez (migración 20261125100000).';
+  '«No se pudo recoger» del conductor, con su motivo: la compra programada o a la que ya salió vuelve a «Por programar» de Logística, que recibe el aviso. Exige compras.recojo. El mismo envío (p_id) repetido devuelve lo de la primera vez (migración 20261125500000).';
 
 -- 8. Lo que leen las pantallas ----------------------------------------------------------------
 -- Las mismas compras que compras_en_gestion y el mismo permiso: Logística y el
@@ -489,7 +511,7 @@ $$;
 revoke all on function public.recojo_fotos_en_gestion() from public, anon;
 grant execute on function public.recojo_fotos_en_gestion() to authenticated;
 comment on function public.recojo_fotos_en_gestion() is
-  'Las fotos de los recojos que hoy muestra la gestión de compras (lo recogido y lo dejado esta semana): la OC, el orden y la ruta en fotos-recojo. Para Logística y el conductor (migración 20261125100000).';
+  'Las fotos de los recojos que hoy muestra la gestión de compras (lo recogido y lo dejado esta semana): la OC, el orden y la ruta en fotos-recojo. Para Logística y el conductor (migración 20261125500000).';
 
 -- Los intentos de las compras que siguen en la gestión, el más reciente primero.
 create or replace function public.recojos_no_logrados_en_gestion()
@@ -515,4 +537,4 @@ $$;
 revoke all on function public.recojos_no_logrados_en_gestion() from public, anon;
 grant execute on function public.recojos_no_logrados_en_gestion() to authenticated;
 comment on function public.recojos_no_logrados_en_gestion() is
-  'Los recojos que no se pudieron hacer, de las compras que siguen en la gestión: el motivo, cuándo, a qué hora había salido y quién lo registró. Para Logística y el conductor (migración 20261125100000).';
+  'Los recojos que no se pudieron hacer, de las compras que siguen en la gestión: el motivo, cuándo, a qué hora había salido y quién lo registró. Para Logística y el conductor (migración 20261125500000).';

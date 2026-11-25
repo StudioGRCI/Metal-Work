@@ -245,6 +245,15 @@ try {
     await pagina.screenshot({ path: `${CAPTURAS}/5-2-conductor-390-2-con-su-foto.png` })
     await enviar.click()
     await a.getByRole('button', { name: 'La dejé en almacén' }).waitFor({ timeout: 20000 })
+    // El botón tocado se fue con el paso: el cursor pasa al siguiente y la tarjeta dice lo que entró.
+    const alSiguiente = await pagina
+      .waitForFunction(() => document.activeElement?.textContent?.includes('La dejé en almacén'), null, { timeout: 5000 })
+      .then(() => true, () => false)
+    comprobar(alSiguiente, `${donde}: tras marcarla, el cursor queda en «La dejé en almacén»`)
+    comprobar(
+      (await a.getByRole('status').filter({ hasText: 'Marcada como recogida, con su foto' }).count()) === 1,
+      `${donde}: la tarjeta dice «Marcada como recogida, con su foto»`,
+    )
 
     const fa = await fila(`select recojo, recogido_por from ordenes_compra_materiales where id = $1`, [idA])
     const fotos = await consulta(`select ruta, subida_por, mime_type from recojo_fotos where orden_compra_id = $1`, [idA])
@@ -278,6 +287,14 @@ try {
     await pagina.waitForTimeout(800)
     const [corto] = await consulta(`select count(*)::int as n from recojos_no_logrados where orden_compra_id = $1`, [idB])
     comprobar(corto.n === 0 && (await ventana.isVisible()), `${donde}: con «cerrado» (7 letras) no entra y la ventana sigue abierta`)
+    // Diez espacios y un punto pasan el `minLength` del navegador: lo dice el campo, con el cursor en él.
+    await motivo.fill('          .')
+    await ventana.getByRole('button', { name: 'Devolver a Logística' }).click()
+    await pagina.waitForTimeout(800)
+    const [espacios] = await consulta(`select count(*)::int as n from recojos_no_logrados where orden_compra_id = $1`, [idB])
+    const enElCampo = await motivo.evaluate((t) => t.getAttribute('aria-invalid') === 'true' && document.activeElement === t)
+    comprobar(espacios.n === 0 && enElCampo, `${donde}: con espacios y un punto no entra, y lo dice el campo con el cursor en él`)
+    comprobar((await ventana.getByText('al menos 10 letras').count()) === 1, `${donde}: el motivo corto se dice una vez, junto al campo`)
     await motivo.fill(MOTIVO_B)
     await pagina.screenshot({ path: `${CAPTURAS}/5-2-conductor-390-3-no-se-pudo.png` })
     // Dos toques seguidos: entra una vez.
@@ -292,6 +309,14 @@ try {
     comprobar(intentos[0]?.motivo === MOTIVO_B && intentos[0]?.registrado_por === ids[CUENTAS.conductor] && intentos[0]?.salio_en === null, 'el aviso queda con su motivo y quién lo dio, sin hora de salida')
     comprobar(fb.recojo === 'POR_RECOGER' && fb.posicion === null, `${ocB} volvió a «Por programar»: pendiente y fuera de la lista`)
     comprobar((await tarjeta(pagina, ocB).count()) === 0, `${donde}: ${ocB} sale de la lista del conductor`)
+    // La tarjeta se fue: lo que entró lo dice la página, con el cursor en el aviso, y queda en el día.
+    const avisado = pagina.getByRole('status').filter({ hasText: `Avisado: la ${ocB} volvió a Logística` })
+    comprobar((await avisado.count()) === 1, `${donde}: la página dice que ${ocB} volvió a Logística`)
+    comprobar(await avisado.evaluate((p) => document.activeElement === p).catch(() => false), `${donde}: con el cursor en ese aviso`)
+    const hoy = pagina.locator('section[aria-labelledby="recojos-de-hoy"] li').filter({ hasText: ocB })
+    comprobar((await hoy.filter({ hasText: 'No se pudo · volvió a Logística' }).count()) === 1, `${donde}: «Recogido y dejado hoy» lo lista como «No se pudo · volvió a Logística»`)
+    await avisado.scrollIntoViewIfNeeded().catch(() => {})
+    await pagina.screenshot({ path: `${CAPTURAS}/5-2-conductor-390-4-avisado.png` })
     comprobar(errores.length === 0, `${donde}: sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }
@@ -326,8 +351,8 @@ try {
     )
     comprobar(avisos.length === 2, `a Logística le llegan los dos avisos por la campana (${avisos.length})`)
     comprobar(
-      avisos.some((a) => a.titulo.includes(ocB) && a.cuerpo.includes(MOTIVO_B) && a.ruta === '/compras/gestion'),
-      'el aviso nombra la OC, trae el motivo y lleva a Gestión de compras',
+      avisos.some((a) => a.titulo.includes(ocB) && a.cuerpo.includes(`«${MOTIVO_B.replace(/\.$/, '')}».`) && a.ruta === '/compras/gestion'),
+      'el aviso nombra la OC, trae el motivo (sin punto doble) y lleva a Gestión de compras',
     )
     const [alConductor] = await consulta(
       `select count(*)::int as n from notificaciones where usuario_id = $1 and origen_id = any($2) and titulo like 'No se pudo recoger:%'`,
@@ -344,6 +369,7 @@ try {
       const enPorProgramar = await pagina.locator('section[aria-labelledby="titulo-por-programar"]').getByRole('heading', { name: new RegExp(ocB) }).count()
       comprobar(enPorProgramar === 1, `${donde}: ${ocB} está en «Por programar»`)
       comprobar((await texto(b)).includes('No se pudo recoger') && (await texto(b)).includes(MOTIVO_B), `${donde}: con lo que dijo el conductor`)
+      comprobar((await b.getByText('Devuelta por el conductor').count()) === 1, `${donde}: con la insignia «Devuelta por el conductor»`)
       const a = tarjeta(pagina, ocA)
       comprobar(await fotoQueAbre(pagina, a), `${donde}: ve la foto del recojo de ${ocA}, que abre`)
       comprobar((await pagina.getByRole('button', { name: /No se pudo recoger|Ya la recogí|Salgo a recoger/ }).count()) === 0, `${donde}: sin los botones del conductor`)

@@ -231,6 +231,9 @@ export type CompraParaRecojo = {
  * remisión (migración 20261015140000). La misma lista la leen Logística, que la
  * programa; Contabilidad, que carga la guía; y el conductor, que la recoge.
  */
+/** PostgREST no conoce la función (PGRST202), o Postgres no la tiene (42883). */
+const faltaLaFuncion = (e: { code?: string }) => e.code === 'PGRST202' || e.code === '42883'
+
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
   // Las fotos y los intentos van en sus funciones, con el mismo permiso: no cambian las columnas de compras_en_gestion.
@@ -240,8 +243,10 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     supabase.rpc('recojos_no_logrados_en_gestion'),
   ])
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
-  if (fotos.error) throw new Error(`No se pudieron leer las fotos de los recojos: ${fotos.error.message}`)
-  if (intentos.error) throw new Error(`No se pudo leer qué recojos no se lograron: ${intentos.error.message}`)
+  // Si el despliegue llega antes que la migración 20261125500000, la lista se
+  // sigue viendo sin fotos ni intentos, en vez de caerse la pantalla entera.
+  if (fotos.error && !faltaLaFuncion(fotos.error)) throw new Error(`No se pudieron leer las fotos de los recojos: ${fotos.error.message}`)
+  if (intentos.error && !faltaLaFuncion(intentos.error)) throw new Error(`No se pudo leer qué recojos no se lograron: ${intentos.error.message}`)
   const [insumos, enlaces] = await Promise.all([
     insumosPorCompra(supabase, (data ?? []).flatMap((c) => (c.id && !c.codigo_interno ? [c.id] : []))),
     enlacesDeFotosDeRecojo(supabase, (fotos.data ?? []).flatMap((f) => (f.ruta ? [f.ruta] : []))),

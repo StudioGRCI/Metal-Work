@@ -21,6 +21,9 @@ export const RECOJO_COMPRA: Record<string, Def> = {
   DEJADO: { etiqueta: 'En almacén', tono: 'exito', descripcion: 'El conductor la dejó; Almacén valida el ingreso.' },
 }
 
+/** El intento que no se pudo: la compra volvió a «Por programar» de Logística. */
+export const RECOJO_NO_LOGRADO: Def = { etiqueta: 'No se pudo · volvió a Logística', tono: 'aviso', descripcion: 'El conductor avisó que no se pudo recoger, con su motivo.' }
+
 /** El estado del servicio. La aprobación de Gerencia va aparte, en `APROBACION_COMPRA`. */
 export const ESTADO_SERVICIO: Record<string, Def> = {
   EMITIDA: { etiqueta: 'Emitida', tono: 'neutro', descripcion: 'Emitida; se inicia cuando Gerencia la aprueba.' },
@@ -222,7 +225,7 @@ export function telefonoDiceMas(texto: string | null | undefined, numeros: Telef
 /**
  * Las fotos que el conductor suma al marcar «Ya la recogí»: la guía firmada o el
  * bulto. Opcionales, hasta tres y de hasta 5 MB, como exige la base (migración
- * 20261125100000). Van en `{cuenta}/{compra}/` del bucket privado.
+ * 20261125500000). Van en `{cuenta}/{compra}/` del bucket privado.
  */
 export const BUCKET_FOTOS_RECOJO = 'fotos-recojo'
 export const MAXIMO_FOTOS_RECOJO = 3
@@ -240,10 +243,22 @@ export function enlaceAlMapa(direccion: string) {
  * Lo que el conductor recogió y dejó en un día, en el orden en que pasó. Sale
  * de las horas que ya guarda cada compra; no hay otra tabla.
  */
-export type PasoDelDia = { compra: string; nombre: string; proveedor: string; paso: 'RECOGIDO' | 'DEJADO'; en: string }
+export type PasoDelDia = { compra: string; nombre: string; proveedor: string; paso: 'RECOGIDO' | 'DEJADO' | 'NO_LOGRADO'; en: string }
 
+/**
+ * También el último «No se pudo recoger» de hoy (`no_logrado`): la compra sale
+ * de la lista del conductor y, sin esta línea, no quedaba en ningún lado de su
+ * pantalla que lo avisó.
+ */
 export function pasosDelDia(
-  compras: { id: string; nombre: string; proveedor: string; recogido_en: string | null; dejado_en: string | null }[],
+  compras: {
+    id: string
+    nombre: string
+    proveedor: string
+    recogido_en: string | null
+    dejado_en: string | null
+    no_logrado?: { registrado_en: string } | null
+  }[],
   dia: string,
   diaDe: (instante: string) => string,
 ): PasoDelDia[] {
@@ -251,6 +266,8 @@ export function pasosDelDia(
   for (const c of compras) {
     if (c.recogido_en && diaDe(c.recogido_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'RECOGIDO', en: c.recogido_en })
     if (c.dejado_en && diaDe(c.dejado_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'DEJADO', en: c.dejado_en })
+    const intento = c.no_logrado?.registrado_en
+    if (intento && diaDe(intento) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'NO_LOGRADO', en: intento })
   }
   return pasos.sort((a, b) => new Date(a.en).getTime() - new Date(b.en).getTime())
 }

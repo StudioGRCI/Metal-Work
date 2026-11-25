@@ -2,7 +2,7 @@ import { CircleSlash } from 'lucide-react'
 
 import { Miniaturas } from '@/components/avance/miniaturas'
 import type { CompraParaRecojo } from '@/lib/datos/logistica'
-import { fechaHora } from '@/lib/format'
+import { fechaHora, hora } from '@/lib/format'
 
 /**
  * Las fotos que el conductor tomó al recogerla. Las ven el conductor y
@@ -40,7 +40,8 @@ export function NoSeLogroRecoger({ compra }: { compra: Pick<CompraParaRecojo, 'n
         <span className="font-medium">
           No se pudo recoger{n.veces > 1 ? ` (${n.veces} veces)` : ''}.
         </span>{' '}
-        {n.quien ?? 'El conductor'} el {fechaHora(n.registrado_en)}: «{n.motivo}»
+        {n.quien ?? 'El conductor'} el {fechaHora(n.registrado_en)}
+        {n.salio_en ? `, había salido a las ${hora(n.salio_en)}` : ''}: «{n.motivo}»
       </p>
     </div>
   )
