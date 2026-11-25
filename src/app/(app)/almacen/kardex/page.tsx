@@ -5,6 +5,7 @@ import { SeparadoPara } from '@/components/almacen/separado-para'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { TituloConAyuda } from '@/components/estructura/titulo-con-ayuda'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
@@ -22,11 +23,13 @@ import { cantidad, fechaHora } from '@/lib/format'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
+import { cn } from '@/lib/utils'
 
 import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
 import { DevolverAlProveedor, EsperanReposicion } from './devolucion-proveedor'
 import { FiltroMaterial } from './filtro-material'
+import { IrALaConsulta } from './ir-a-la-consulta'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
@@ -173,7 +176,10 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       />
 
       {/* Las acciones van en su propia fila, a todo el ancho, y no en las del
-          encabezado: así «Sin internet» queda en la esquina derecha. */}
+          encabezado: así «Sin internet» queda en la esquina derecha. Primero lo
+          de todos los días —salida e ingreso—, después lo de vez en cuando; el
+          conteo inicial, que se hace una vez, va al final (iba segundo y
+          empujaba «Registrar ingreso» al cuarto lugar). */}
       {(puedeSalida || puedeIngreso) && (
         <div className="-mt-3 mb-4 flex flex-wrap items-start gap-2">
           {puedeSalida && (
@@ -204,12 +210,6 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               }))}
             />
           )}
-          {puedeIngreso && <ConteoInicial />}
-          {puedeIngreso && catalogo && (
-            <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
-              ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
-            }))} />
-          )}
           {puedeIngreso && catalogo && (
             <NuevoIngreso
               materiales={catalogo.catalogoAlmacen}
@@ -221,6 +221,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             />
           )}
           {puedeIngreso && <DevolverAlProveedor ingresos={paraDevolver} />}
+          {puedeIngreso && catalogo && (
+            <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
+              ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
+            }))} />
+          )}
+          {puedeIngreso && <ConteoInicial />}
           {/* En la esquina, aparte del trabajo diario: se usa solo cuando se cae la señal. */}
           <div className="ml-auto">
             <SinInternet />
@@ -228,29 +234,117 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </div>
       )}
 
+      {/* Primero lo que espera al almacenero, después lo que se consulta. El
+          tablero y los filtros iban arriba: en el teléfono lo pendiente empezaba
+          a 1 230 px, tres pantallas más abajo (revisión de diseño del 2026-11-25). */}
+      {!elegido && (porValidar.length > 0 || puedeIngreso) && (
+        <Tarjeta id="por-validar" className="mb-4">
+          <TarjetaCabecera
+            titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
+            ayuda="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
+            acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && (porReponer.length > 0 || puedeIngreso) && (
+        <Tarjeta id="por-reponer" className="mb-4">
+          <TarjetaCabecera
+            titulo={porReponer.length === 0 ? 'Esperan reposición' : `Esperan reposición · ${porReponer.length === 1 ? '1 devolución' : `${porReponer.length} devoluciones`}`}
+            ayuda="Lo devuelto al proveedor que dijo que lo repone. Cuando llegue, recíbelo aquí; si ya no viene, lo que falta vuelve a la lista de Logística."
+            acciones={porReponer.length > 0 ? <Insignia tono="aviso">Por reponer</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            {porReponer.length === 0 && (
+              <SinDatos compacto titulo="Nada devuelto espera reposición" descripcion="Cuando devuelvas algo que el proveedor repone, aparece aquí para recibirlo." />
+            )}
+            <EsperanReposicion devoluciones={porReponer} puedeRecibir={puedeIngreso} puedeDejar={puedeIngreso} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && (porCerrar.length > 0 || puedeSalida) && (
+        <Tarjeta id="por-cerrar" className="mb-4">
+          {/* El título y el cuerpo cuentan lo mismo: lo del almacén elegido (decía «2 salidas» y abajo «ninguna»). */}
+          <TarjetaCabecera
+            titulo={porCerrarDelAlmacen.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrarDelAlmacen.length === 1 ? '1 salida' : `${porCerrarDelAlmacen.length} salidas`}`}
+            ayuda="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
+            acciones={porCerrarDelAlmacen.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
+          />
+          <TarjetaCuerpo>
+            <SalidasPorCerrar puedeCerrar={puedeSalida} salidas={porCerrarDelAlmacen} almacen={filtros.almacen ?? null} />
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && bajoMinimo.length > 0 && (
+        <Tarjeta className="mb-4">
+          <TarjetaCabecera
+            titulo={bajoMinimo.length === 1 ? '1 material bajo su stock mínimo' : `${bajoMinimo.length} materiales bajo su stock mínimo`}
+            ayuda="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
+            acciones={<Insignia tono="peligro">Reponer</Insignia>}
+          />
+          <TarjetaCuerpo>
+            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {bajoMinimo.slice(0, 30).map((m) => (
+                <li key={m.material_id} className="rounded-[var(--radius-base)] border border-borde px-3 py-2">
+                  <Link href={`/almacen/kardex?material=${m.material_id}`} className="line-clamp-1 text-sm font-medium text-acento hover:underline">{m.descripcion}</Link>
+                  <p className="tabular text-xs text-texto-suave">
+                    <span className="font-mono">{m.codigo}</span> · quedan <span className="font-semibold text-peligro">{cantidad(m.existencia)}</span> de un mínimo de {cantidad(minimos.get(m.material_id))} {m.unidad ?? ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {bajoMinimo.length > 30 && <p className="mt-2 text-xs text-texto-suave">Y {bajoMinimo.length - 30} más.</p>}
+          </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {/* Donde empieza lo que se consulta: `IrALaConsulta` baja hasta aquí al filtrar. */}
+      <div id="consulta" className="scroll-mt-20">
       {!elegido && (
-        <section aria-label="Los cuatro almacenes" className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section aria-label="Los cuatro almacenes" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tablero.map((t) => {
             const activo = filtros.almacen === t.almacen
             return (
-              <Link key={t.almacen} href={activo ? '/almacen/kardex' : `/almacen/kardex?almacen=${t.almacen}`} aria-current={activo ? 'page' : undefined}
-                className={`block rounded-[var(--radius-base)] border bg-superficie px-3 py-2 hover:bg-superficie-2 ${activo ? 'border-acento ring-1 ring-acento' : 'border-borde'}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold">{t.def.etiqueta}</span>
-                  <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
-                </div>
-                <p className="mt-1 text-xs text-texto-suave">{t.def.regla}</p>
-                <p className="mt-1 text-xs">
-                  {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
-                  {t.bajoMinimo > 0 && t.porCerrar > 0 && <span className="text-texto-tenue"> · </span>}
-                  {t.porCerrar > 0 && <span className="font-medium text-aviso">{t.porCerrar === 1 ? '1 salida por cerrar' : `${t.porCerrar} salidas por cerrar`}</span>}
-                  {t.bajoMinimo === 0 && t.porCerrar === 0 && <span className="text-texto-tenue">Sin pendientes</span>}
-                </p>
-              </Link>
+              // La tarjeta entera lleva al almacén (el `::after` del enlace la
+              // cubre) y la «i» queda encima: un botón no puede ir dentro de un
+              // enlace. La regla de cada almacén va detrás de la «i» —sigue
+              // escrita en la salida, donde se aplica—: a la vista, las cuatro
+              // sumaban 450 px en el teléfono antes de llegar al trabajo.
+              <div key={t.almacen} data-almacen={t.almacen}
+                className={cn('relative rounded-[var(--radius-base)] border bg-superficie px-3 py-2 hover:bg-superficie-2 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-acento', activo ? 'border-acento ring-1 ring-acento' : 'border-borde')}>
+                <TituloConAyuda
+                  nombre={t.def.etiqueta}
+                  ayuda={t.def.regla}
+                  claseAyuda="relative text-xs"
+                  descripcion={
+                    <p id={`almacen-${t.almacen}`} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                      <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
+                      <span>
+                        {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
+                        {t.bajoMinimo > 0 && t.porCerrar > 0 && <span className="text-texto-tenue"> · </span>}
+                        {t.porCerrar > 0 && <span className="font-medium text-aviso">{t.porCerrar === 1 ? '1 salida por cerrar' : `${t.porCerrar} salidas por cerrar`}</span>}
+                        {t.bajoMinimo === 0 && t.porCerrar === 0 && <span className="text-texto-tenue">Sin pendientes</span>}
+                      </span>
+                    </p>
+                  }
+                >
+                  <Link href={activo ? '/almacen/kardex' : `/almacen/kardex?almacen=${t.almacen}`} aria-current={activo ? 'page' : undefined}
+                    // El lector de pantalla lee el almacén con sus cuentas, como cuando la tarjeta entera era el enlace.
+                    aria-describedby={`almacen-${t.almacen}`}
+                    className="text-sm font-semibold outline-none after:absolute after:inset-0 after:content-['']">
+                    {t.def.etiqueta}
+                  </Link>
+                </TituloConAyuda>
+              </div>
             )
           })}
           {porClasificar > 0 && (
-            <p className="text-xs text-texto-suave sm:col-span-2 lg:col-span-4">
+            <p className="col-span-2 text-xs text-texto-suave lg:col-span-4">
               {porClasificar === 1 ? '1 material con saldo sigue' : `${porClasificar} materiales con saldo siguen`} por clasificar: su categoría no tiene almacén y salen como consumibles hasta que se le asigne uno.
             </p>
           )}
@@ -298,72 +392,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           />
         </TarjetaCuerpo>
       </Tarjeta>
-
-      {!elegido && (porValidar.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-validar" className="mb-4">
-          <TarjetaCabecera
-            titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
-            ayuda="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
-            acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
-          />
-          <TarjetaCuerpo>
-            <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
-
-      {!elegido && (porReponer.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-reponer" className="mb-4">
-          <TarjetaCabecera
-            titulo={porReponer.length === 0 ? 'Esperan reposición' : `Esperan reposición · ${porReponer.length === 1 ? '1 devolución' : `${porReponer.length} devoluciones`}`}
-            ayuda="Lo devuelto al proveedor que dijo que lo repone. Cuando llegue, recíbelo aquí; si ya no viene, lo que falta vuelve a la lista de Logística."
-            acciones={porReponer.length > 0 ? <Insignia tono="aviso">Por reponer</Insignia> : undefined}
-          />
-          <TarjetaCuerpo>
-            {porReponer.length === 0 && (
-              <p className="mb-2 text-sm text-texto-suave">Nada devuelto espera reposición. Cuando devuelvas algo que el proveedor repone, aparece aquí para recibirlo.</p>
-            )}
-            <EsperanReposicion devoluciones={porReponer} puedeRecibir={puedeIngreso} puedeDejar={puedeIngreso} />
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
-
-      {!elegido && (porCerrar.length > 0 || puedeSalida) && (
-        <Tarjeta id="por-cerrar" className="mb-4">
-          {/* El título y el cuerpo cuentan lo mismo: lo del almacén elegido (decía «2 salidas» y abajo «ninguna»). */}
-          <TarjetaCabecera
-            titulo={porCerrarDelAlmacen.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrarDelAlmacen.length === 1 ? '1 salida' : `${porCerrarDelAlmacen.length} salidas`}`}
-            ayuda="Materia prima y EPP salen con formato: imprímelo, fírmenlo el almacenero y quien recibe, y carga el escaneo para cerrar la salida."
-            acciones={porCerrarDelAlmacen.length > 0 ? <Insignia tono="aviso">Formato pendiente</Insignia> : undefined}
-          />
-          <TarjetaCuerpo>
-            <SalidasPorCerrar puedeCerrar={puedeSalida} salidas={porCerrarDelAlmacen} almacen={filtros.almacen ?? null} />
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
-
-      {!elegido && bajoMinimo.length > 0 && (
-        <Tarjeta className="mb-4">
-          <TarjetaCabecera
-            titulo={bajoMinimo.length === 1 ? '1 material bajo su stock mínimo' : `${bajoMinimo.length} materiales bajo su stock mínimo`}
-            ayuda="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
-            acciones={<Insignia tono="peligro">Reponer</Insignia>}
-          />
-          <TarjetaCuerpo>
-            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {bajoMinimo.slice(0, 30).map((m) => (
-                <li key={m.material_id} className="rounded-[var(--radius-base)] border border-borde px-3 py-2">
-                  <Link href={`/almacen/kardex?material=${m.material_id}`} className="line-clamp-1 text-sm font-medium text-acento hover:underline">{m.descripcion}</Link>
-                  <p className="tabular text-xs text-texto-suave">
-                    <span className="font-mono">{m.codigo}</span> · quedan <span className="font-semibold text-peligro">{cantidad(m.existencia)}</span> de un mínimo de {cantidad(minimos.get(m.material_id))} {m.unidad ?? ''}
-                  </p>
-                </li>
-              ))}
-            </ul>
-            {bajoMinimo.length > 30 && <p className="mt-2 text-xs text-texto-suave">Y {bajoMinimo.length - 30} más.</p>}
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
+      </div>
+      <IrALaConsulta
+        filtro={[filtros.almacen, filtros.tipo, filtros.desde, filtros.hasta, filtros.unidad].some(Boolean)
+          ? [filtros.almacen, filtros.tipo, filtros.desde, filtros.hasta, filtros.unidad].join('|')
+          : ''}
+        pagina={pagina}
+      />
 
       {elegido && (
         <>
@@ -400,7 +435,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </>
       )}
 
-      <Tarjeta className="overflow-hidden">
+      <Tarjeta id="historial" className="scroll-mt-20 overflow-hidden">
         <TarjetaCabecera
           titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : filtros.almacen ? `Historial de ${almacenEnFrase(filtros.almacen)}` : 'Historial de movimientos'}
           ayuda={elegido

@@ -356,7 +356,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     )}
 
                     {c.estado === 'APROBADA' && (
-                      <p className="text-[11px] text-texto-tenue">
+                      <p className="text-xs text-texto-tenue">
                         Aprobada por {c.revisado_por_nombre ?? 'Gerencia'}
                         {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}
                       </p>

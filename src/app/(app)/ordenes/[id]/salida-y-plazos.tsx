@@ -297,7 +297,7 @@ export function FechasClave({
             >
               <span>
                 <span className="text-texto">{f.titulo}</span>
-                <span className="block text-[11px] text-texto-tenue">{f.regla}</span>
+                <span className="block text-xs text-texto-tenue">{f.regla}</span>
               </span>
               <span
                 className={cn(

@@ -50,7 +50,7 @@ export function MermaDeOrden({ ordenId, merma, puedeFijar, ordenViva }: {
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="tabular text-2xl font-semibold text-texto">{porcentajeCorto(merma.porcentaje)}</span>
             <span className="min-w-0 flex-1 text-sm text-texto">{merma.motivo}</span>
-            <span className="basis-full text-[11px] text-texto-suave">
+            <span className="basis-full text-xs text-texto-suave">
               {merma.registradoPor ? `${merma.registradoPor} · ` : ''}{fechaHora(merma.registradoEn)}
             </span>
           </div>

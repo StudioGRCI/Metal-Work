@@ -286,7 +286,7 @@ function CorregirCompra({
             <div key={l.detalle_id} className="grid gap-2 rounded-[var(--radius-base)] border border-borde p-3 sm:grid-cols-[minmax(0,1fr)_7rem_8rem]">
               <div className="text-sm">
                 <p className="text-texto">{l.material}</p>
-                <p className="text-[11px] text-texto-suave">{[l.codigo, `línea ${i + 1}`].filter(Boolean).join(' · ')}</p>
+                <p className="text-xs text-texto-suave">{[l.codigo, `línea ${i + 1}`].filter(Boolean).join(' · ')}</p>
               </div>
               <Campo etiqueta={`Cantidad${l.unidad ? ` (${l.unidad})` : ''}`} htmlFor={`corregir-cant-${l.detalle_id}`}>
                 <Entrada

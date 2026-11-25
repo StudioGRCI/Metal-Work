@@ -171,12 +171,12 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
         <p className="text-xs text-texto">{s.subcontratista?.nombre ?? 'Subcontratista'}</p>
         <p className="mt-1 line-clamp-2 text-xs text-texto-suave">{s.descripcion}</p>
         {(s.fecha_inicio || s.fecha_fin) && (
-          <p className="text-[11px] text-texto-suave">
+          <p className="text-xs text-texto-suave">
             {fecha(s.fecha_inicio)} → {fecha(s.fecha_fin)}
           </p>
         )}
         {s.inicio_real && (
-          <p className="text-[11px] text-texto-suave" data-fechas-reales>
+          <p className="text-xs text-texto-suave" data-fechas-reales>
             Real: {fecha(s.inicio_real)} → {s.fin_real ? fecha(s.fin_real) : 'todavía no termina'}
           </p>
         )}
@@ -186,7 +186,7 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
           </p>
         )}
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {s.motivo_anulacion}</p>}
-        <p className="tabular mt-1 text-[11px] font-medium text-texto md:hidden" data-codigo>
+        <p className="tabular mt-1 text-xs font-medium text-texto md:hidden" data-codigo>
           {s.codigo_interno} · <Area codigo={s.area_codigo} />
         </p>
         {/* En el teléfono, lo pactado y en qué va van aquí: la tabla no cabe con sus columnas. */}
@@ -204,7 +204,7 @@ function FilaSubcontrato({ s }: { s: SubcontratoListado }) {
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda)}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap lg:table-cell">
         {moneda(c.recibido, s.moneda)}
-        <p className="text-[11px] text-texto-suave">
+        <p className="text-xs text-texto-suave">
           {c.recibos} {c.recibos === 1 ? 'recibo' : 'recibos'}
         </p>
       </TD>

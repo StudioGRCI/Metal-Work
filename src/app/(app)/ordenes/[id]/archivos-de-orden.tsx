@@ -352,7 +352,7 @@ function FilaAdjunto({
           ) : (
             <p className="truncate text-sm font-medium text-texto">{a.nombre_archivo}</p>
           )}
-          <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-texto-suave">
+          <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-texto-suave">
             {[a.tipo === 'CRONOGRAMA' ? 'Cronograma' : a.tipo === 'FICHA_VEHICULO' ? 'Ficha técnica del vehículo' : 'Orden de trabajo', tamano(a.tamano_bytes)]
               .filter(Boolean)
               .join(' · ')}

@@ -157,7 +157,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-acento">{orden.numero}</span>
                   <span className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-[11px] text-texto-suave">
+                    <span className="flex items-center gap-1 text-xs text-texto-suave">
                       <Punto tono={prioridad.tono} />
                       {prioridad.etiqueta}
                     </span>
@@ -175,7 +175,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                 <div className="mt-3 flex items-end justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
-                    <p className="mt-1 text-[11px] text-texto-suave">
+                    <p className="mt-1 text-xs text-texto-suave">
                       {orden.avance_del_codigo
                         ? `Avance del código ${orden.avance_del_codigo}`
                         : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
@@ -185,7 +185,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       tarjeta tenía la barra de avance de otro largo. */}
                   <div className="w-32 shrink-0 text-right">
                     <p className="text-sm text-texto">{fecha(orden.fecha_entrega_comprometida)}</p>
-                    {plazo && <p className={`text-[11px] ${plazo.clase}`}>{plazo.texto}</p>}
+                    {plazo && <p className={`text-xs ${plazo.clase}`}>{plazo.texto}</p>}
                   </div>
                 </div>
               </Link>
@@ -243,7 +243,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       >
                         {orden.numero}
                       </Link>
-                      <p className="mt-0.5 flex items-center gap-1 text-[11px] text-texto-suave">
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-texto-suave">
                         <Punto tono={prioridad.tono} />
                         {prioridad.etiqueta}
                       </p>
@@ -258,7 +258,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                           <span className="text-aviso">Sin cliente todavía</span>
                         ) : null)}
                       </p>
-                      <p className="text-[11px] text-texto-suave">
+                      <p className="text-xs text-texto-suave">
                         {/* Sin placa el nombre lo pone el código de fábrica o
                             el chasis: va más tenue para que nadie lo lea de
                             lejos como si fuera una matrícula. */}
@@ -275,7 +275,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
                     <TD>
                       <p className="max-w-64 truncate min-[1600px]:max-w-96" title={orden.descripcion ?? undefined}>{orden.descripcion}</p>
-                      <p className="text-[11px] text-texto-suave">
+                      <p className="text-xs text-texto-suave">
                         {definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
                         {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
                       </p>
@@ -287,7 +287,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
                     <TD>
                       <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
-                      <p className="mt-1 text-[11px] text-texto-suave">
+                      <p className="mt-1 text-xs text-texto-suave">
                         {orden.avance_del_codigo
                           ? `Avance del código ${orden.avance_del_codigo}`
                           : `${orden.etapas_terminadas ?? 0} de ${orden.etapas_total ?? 0} etapas`}
@@ -296,7 +296,9 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
                     <TD className="whitespace-nowrap">
                       {fecha(orden.fecha_entrega_comprometida)}
-                      {plazo && <p className={`text-[11px] ${plazo.clase}`}>{plazo.texto}</p>}
+                      {/* A 12 px, «faltan 22 días hábiles de taller» en un renglón ensanchaba la
+                          columna y la tabla se deslizaba 6 px en un monitor de 1440: parte en dos. */}
+                      {plazo && <p className={`max-w-36 text-xs whitespace-normal ${plazo.clase}`}>{plazo.texto}</p>}
                     </TD>
 
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">

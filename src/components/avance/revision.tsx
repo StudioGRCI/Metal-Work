@@ -36,7 +36,7 @@ export function NotaRevision({ r }: { r: DatosRevision }) {
 
   if (r.revision === 'PENDIENTE' && r.observacion && r.corregido_en) {
     return (
-      <p className="text-[11px] text-texto-suave">
+      <p className="text-xs text-texto-suave">
         Corregido el {fecha(r.corregido_en)} a las {hora(r.corregido_en)}, después de la observación «
         {r.observacion}». Espera el visto otra vez.
       </p>
@@ -50,7 +50,7 @@ export function NotaRevision({ r }: { r: DatosRevision }) {
 export function FirmaRevision({ r }: { r: DatosRevision }) {
   if (r.revision !== 'APROBADO' || !r.revisado_en) return null
   return (
-    <p className="text-[11px] text-texto-tenue">
+    <p className="text-xs text-texto-tenue">
       Aprobado por {r.revisado_por_nombre ?? '—'} el {fecha(r.revisado_en)}
     </p>
   )

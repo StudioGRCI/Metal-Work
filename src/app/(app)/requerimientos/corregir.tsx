@@ -207,7 +207,7 @@ function Formulario({
                 <div className="text-sm">
                   <p className="text-xs font-medium text-texto-suave">Insumo {original.item}</p>
                   <p className="text-texto">{original.descripcion}</p>
-                  <p className="text-[11px] text-texto-suave">
+                  <p className="text-xs text-texto-suave">
                     {fijo
                       ? `Va en la ${original.orden_compra}: se corrige la orden de compra.`
                       : 'Almacén ya revisó el stock: el material no cambia.'}
