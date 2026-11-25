@@ -2681,6 +2681,71 @@ export type Database = {
         }
         Relationships: []
       }
+      etapa_responsables: {
+        Row: {
+          id: string
+          etapa_id: string
+          trabajador_id: string
+          asignado_por: string
+          asignado_en: string
+          quitado_por: string | null
+          quitado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          etapa_id: string
+          trabajador_id: string
+          asignado_por?: string
+          asignado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          etapa_id?: string
+          trabajador_id?: string
+          asignado_por?: string
+          asignado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "etapa_responsables_asignado_por_fkey"
+            columns: ["asignado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: true
+            referencedRelation: "codigo_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       etapas_catalogo: {
         Row: {
           id: string
@@ -12065,6 +12130,13 @@ export type Database = {
         }
         Returns: null
       }
+      asignar_responsable_de_etapa: {
+        Args: {
+          p_etapa: string | null
+          p_trabajador: string | null
+        }
+        Returns: string
+      }
       asignar_responsables_ot: {
         Args: {
           p_orden_id: string | null
@@ -15559,6 +15631,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      puede_ver_responsables_de_etapa: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_subcontratos: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -15627,6 +15703,12 @@ export type Database = {
           p_compra: string | null
         }
         Returns: string
+      }
+      quitar_responsable_de_etapa: {
+        Args: {
+          p_etapa: string | null
+        }
+        Returns: boolean
       }
       reabrir_costeo_codigo: {
         Args: {
@@ -16328,6 +16410,19 @@ export type Database = {
           p_respuesta: string | null
         }
         Returns: string
+      }
+      responsables_de_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          etapa_id: string | null
+          codigo: string | null
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          asignado_en: string | null
+        }[]
       }
       restar_dias_habiles: {
         Args: {
@@ -17347,6 +17442,38 @@ export type Database = {
           nota: string | null
           ultimo_reporte: string | null
           avance_reportado: number | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
+      tiempos_de_entrega_por_persona: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          codigo: string | null
+          etapa_id: string | null
+          etapa: string | null
+          area_etapa: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
+      tiempos_de_entrega_por_persona_calculado: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          codigo: string | null
+          etapa_id: string | null
+          etapa: string | null
+          area_etapa: string | null
+          fin_plan: string | null
+          inicio_real: string | null
           semaforo: string | null
           dias_habiles: number | null
         }[]
