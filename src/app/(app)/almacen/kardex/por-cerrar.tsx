@@ -4,6 +4,7 @@ import { FileCheck2, Printer } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
@@ -41,31 +42,33 @@ const TIPOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
 export function SalidasPorCerrar({ salidas, puedeCerrar, almacen = null }: { salidas: SalidaParaCerrar[]; puedeCerrar: boolean; almacen?: string | null }) {
   // El aviso de la salida que se cerró vive aquí y no en su fila: al ponerse al
   // día la pantalla, la salida cerrada sale de la lista y se llevaba el aviso
-  // con ella. Siempre montado (`role="status"` vacío), para que se anuncie; la
-  // `key` de cada cierre hace que dos avisos iguales seguidos se oigan los dos.
-  const [cerrada, setCerrada] = useState<{ texto: string; vez: number } | null>(null)
+  // con ella. Se pinta donde estaba la fila (`indice`) y se lleva el cursor y la
+  // vista (`AvisoEnfocado`): arriba de la lista quedaba 560 px por encima de la
+  // pantalla en el teléfono, y el cursor caía en la página con el botón que se
+  // desmontó. La `key` de cada cierre lo vuelve a enfocar y a anunciar.
+  const [cerrada, setCerrada] = useState<{ texto: string; vez: number; indice: number } | null>(null)
   // Con un almacén elegido lo dice, para que no parezca que no hay ninguna en los demás.
   const donde = almacen && esAlmacen(almacen) ? ` en ${ALMACENES[almacen].etiqueta}` : ''
+  const filas = salidas.map((s, i) => (
+    <Salida key={s.id} salida={s} puedeCerrar={puedeCerrar}
+      alEmpezar={() => setCerrada(null)}
+      alCerrar={(texto) => setCerrada((c) => ({ texto, vez: (c?.vez ?? 0) + 1, indice: i }))} />
+  ))
+  if (cerrada) {
+    filas.splice(Math.min(cerrada.indice, filas.length), 0, (
+      <li key={`cerrada-${cerrada.vez}`} className="py-3">
+        <AvisoEnfocado>
+          <FileCheck2 aria-hidden className="mr-1 inline size-4" />
+          {cerrada.texto}
+        </AvisoEnfocado>
+      </li>
+    ))
+  }
   return (
     <div className="space-y-2">
-      <p role="status" className={cerrada ? 'text-sm text-exito' : 'sr-only'}>
-        {cerrada && (
-          <span key={cerrada.vez}>
-            <FileCheck2 aria-hidden className="mr-1 inline size-4" />
-            {cerrada.texto}
-          </span>
-        )}
-      </p>
-      {salidas.length === 0 ? (
+      {filas.length > 0 && <ul className="divide-y divide-borde">{filas}</ul>}
+      {salidas.length === 0 && (
         <p className="text-sm text-texto-suave">Ninguna salida abierta{donde}: las de materia prima y EPP tienen su formato firmado.</p>
-      ) : (
-        <ul className="divide-y divide-borde">
-          {salidas.map((s) => (
-            <Salida key={s.id} salida={s} puedeCerrar={puedeCerrar}
-              alEmpezar={() => setCerrada(null)}
-              alCerrar={(texto) => setCerrada((c) => ({ texto, vez: (c?.vez ?? 0) + 1 }))} />
-          ))}
-        </ul>
       )}
     </div>
   )

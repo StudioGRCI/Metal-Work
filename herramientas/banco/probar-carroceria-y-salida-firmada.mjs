@@ -3,12 +3,14 @@
  * (2026-11-25), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Ventas edita una carrocería con un nombre de dos letras: el aviso sale en
- *      castellano («El nombre de la carrocería debe tener entre 3 y 120
- *      caracteres.»), no «Too small: expected string to have >=3 characters».
+ *      castellano («Escribe un nombre de al menos 3 letras.»), junto al campo,
+ *      no «Too small: expected string to have >=3 characters».
  *   2. Ventas le cambia el nombre y la desactiva: el código de la carrocería se
  *      queda (migración 20261125300000). Antes `editar_carroceria_ventas` lo
  *      volvía a armar del nombre: VPC pasaba a TOLVA_VOLQUETE_PISO_CIRCULAR.
- *      Diseño, que corrige la fila directo, tampoco lo cambia.
+ *      Diseño, que corrige la fila directo, tampoco lo cambia. Y como el código
+ *      ya no sigue al nombre, el alta busca «ya estaba» por el nombre: el de
+ *      antes da de alta otra, el de ahora encuentra la que hay.
  *   3. Almacén carga el formato firmado de una salida de EPP en el
  *      Kardex: la salida sale de «Salidas por cerrar» y el aviso de que se
  *      cerró se queda después de que la pantalla se pone al día (antes vivía
@@ -78,6 +80,12 @@ const [salida] = await consulta(`insert into public.movimientos_materiales (id, 
   select gen_random_uuid(), 'SALIDA', $1::uuid, 3, 'SALIDA_GENERAL', $2, u.id, 'Soldador del banco', 'PLANTA' from public.usuarios u where u.correo = $3
   returning id::text, formato_cerrado_en`, [plancha.id, `VALE BANCO FIR ${sufijo}`, CUENTAS.almacen])
 comprobar(salida.formato_cerrado_en === null, 'la salida de EPP sembrada queda abierta')
+// Seis salidas abiertas más, para que la lista sea larga y la cerrada quede abajo.
+for (let i = 1; i <= 6; i++) {
+  await consulta(`insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, recibido_por_nombre, codigo_unidad)
+    select gen_random_uuid(), 'SALIDA', $1::uuid, 0.1, 'SALIDA_GENERAL', $2, u.id, 'Soldador del banco', 'PLANTA' from public.usuarios u where u.correo = $3`,
+  [plancha.id, `VALE BANCO FIR-OTRA${i} ${sufijo}`, CUENTAS.almacen])
+}
 console.log(`    sembrados: carrocería ${CODIGO} «${carroceria.nombre}», salida de ${plancha.descripcion}`)
 
 const formato = join(CAPTURAS, `formato-firmado-${sufijo}.pdf`)
@@ -126,8 +134,11 @@ if (SOLO !== 'salida') {
   await alerta.waitFor({ timeout: 15000 })
   const dice = await texto(alerta)
   console.log(`    con «ab»: «${dice}»`)
-  comprobar(dice === 'El nombre de la carrocería debe tener entre 3 y 120 caracteres.', 'el nombre corto se rechaza en castellano')
+  comprobar(dice === 'Escribe un nombre de al menos 3 letras.', 'el nombre corto se rechaza en castellano')
   comprobar(!/too small|expected|characters/i.test(dice), 'sin el aviso en inglés de zod')
+  const nombreCampo = ventana.getByLabel('Nombre')
+  comprobar((await nombreCampo.getAttribute('aria-invalid')) === 'true', 'el campo «Nombre» queda marcado')
+  comprobar(await nombreCampo.evaluate((e) => e === document.activeElement), 'el cursor vuelve al campo «Nombre»')
   await pagina.screenshot({ path: join(CAPTURAS, 'carroceria-nombre-corto.png') })
   comprobar((await deLaCarroceria()).nombre === carroceria.nombre, 'la base no cambió con el rechazo')
 
@@ -141,10 +152,51 @@ if (SOLO !== 'salida') {
   await fila.filter({ hasText: nuevo }).waitFor({ timeout: 15000 })
   comprobar(true, 'la lista muestra el nombre nuevo con el mismo código')
 
+  // Otro la desactiva mientras Ventas tiene la ventana abierta: guardar el nombre no la reactiva.
+  await pagina.goto(`${BASE}/carrocerias`, { waitUntil: 'networkidle' })
+  await fila.getByRole('button', { name: 'Editar' }).click()
+  await ventana.waitFor()
+  await consulta('update public.tipos_carroceria set activo = false where id = $1', [carroceria.id])
+  await ventana.getByLabel('Nombre').fill(`${nuevo} bis`)
+  await ventana.getByRole('button', { name: 'Guardar cambios' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 15000 })
+  const sigue = await deLaCarroceria()
+  comprobar(sigue.nombre === `${nuevo} bis` && !sigue.activo && sigue.codigo === CODIGO,
+    'desactivada por otro con la ventana abierta, guardar el nombre no la reactiva (antes mandaba la de cuando se pintó la página)')
+  await consulta('update public.tipos_carroceria set activo = true where id = $1', [carroceria.id])
+  await pagina.goto(`${BASE}/carrocerias`, { waitUntil: 'networkidle' })
+
   await fila.getByRole('button', { name: 'Desactivar' }).click()
   for (let i = 0; i < 30 && (await deLaCarroceria()).activo; i++) await pagina.waitForTimeout(500)
   const desactivada = await deLaCarroceria()
   comprobar(!desactivada.activo && desactivada.codigo === CODIGO, `desactivada por Ventas, conserva su código (${desactivada.codigo})`)
+
+  // 1c. El alta decide «ya estaba» por el nombre, no por el código armado:
+  // otra carrocería, con otro nombre, ya usa el código que armaría el nombre de antes.
+  const armado = `TOLVA_DEL_BANCO_${sufijo}`
+  await consulta(`insert into public.tipos_carroceria (codigo, nombre, orden_secuencia, activo) values ($1, $2, 99, true)`,
+    [armado, `Otra carrocería del banco ${sufijo}`])
+  async function agregar(nombre) {
+    await pagina.goto(`${BASE}/carrocerias`, { waitUntil: 'networkidle' })
+    await pagina.getByRole('button', { name: 'Nuevo tipo de carrocería' }).click()
+    const alta = pagina.getByRole('dialog')
+    await alta.waitFor()
+    await alta.getByLabel('Nombre').fill(nombre)
+    await alta.getByRole('button', { name: 'Agregar al catálogo' }).click()
+    const dice = alta.getByRole('status').or(alta.getByRole('alert')).filter({ hasText: /\S/ })
+    await dice.first().waitFor({ timeout: 15000 })
+    return texto(dice.first())
+  }
+  const conNombre = async (nombre) => consulta('select codigo, activo from public.tipos_carroceria where nombre = $1 order by creado_en', [nombre])
+  const conElDeAntes = await agregar(carroceria.nombre)
+  console.log(`    alta con el nombre de antes: «${conElDeAntes}»`)
+  const nueva = await conNombre(carroceria.nombre)
+  comprobar(/agregado/i.test(conElDeAntes) && nueva.length === 1 && nueva[0].codigo === `${armado}_2`,
+    `el nombre que la carrocería ya no tiene da de alta otra, con su código sin chocar (${nueva.map((x) => x.codigo).join(', ')})`)
+  const conElDeAhora = await agregar(`${nuevo} bis`)
+  console.log(`    alta con el nombre de ahora: «${conElDeAhora}»`)
+  comprobar(conElDeAhora.includes('ya estaba') && (await conNombre(`${nuevo} bis`)).length === 1,
+    'el nombre que la carrocería tiene ahora la encuentra y no la repite')
   comprobar(errores.length === 0, `sin errores de consola como Ventas ${errores.join(' | ')}`)
   await contexto.close()
 }
@@ -156,7 +208,7 @@ if (SOLO !== 'salida') {
   const ventana = await editar(pagina, 'x')
   const alerta = ventana.getByRole('alert')
   await alerta.waitFor({ timeout: 15000 })
-  comprobar((await texto(alerta)) === 'El nombre de la carrocería debe tener entre 3 y 120 caracteres.', 'a Diseño también se lo dice en castellano')
+  comprobar((await texto(alerta)) === 'Escribe un nombre de al menos 3 letras.', 'a Diseño también se lo dice en castellano')
   const nuevo = `Tolva corregida por Diseño ${sufijo}`
   await ventana.getByLabel('Nombre').fill(nuevo)
   await ventana.getByRole('button', { name: 'Guardar cambios' }).click()
@@ -179,7 +231,13 @@ for (const ancho of [1440, 390]) {
   const { pagina, contexto, errores } = await entrar(CUENTAS.almacen, ancho)
   await pagina.goto(`${BASE}/almacen/kardex`, { waitUntil: 'networkidle' })
   const tarjeta = pagina.locator('#por-cerrar')
-  const fila = tarjeta.locator('li', { hasText: plancha.descripcion }).filter({ hasText: ancho === 390 ? '2 UND' : '3 UND' })
+  // La fila de la salida es la que trae «Imprimir formato»: el aviso de la cerrada nombra lo mismo.
+  const filaDe = () => tarjeta.locator('li', { has: pagina.getByRole('link', { name: 'Imprimir formato' }) })
+    .filter({ hasText: plancha.descripcion }).filter({ hasText: ancho === 390 ? '2 UND' : '3 UND' })
+  const fila = filaDe()
+  // Lo que cuenta el servidor en el título: cuando baja, la pantalla ya se puso al día.
+  const cuantas = async () => Number((await texto(pagina.getByText(/^Salidas por cerrar/).first())).match(/· (\d+) salida/)?.[1] ?? 0)
+  const antes = await cuantas()
   await fila.getByRole('button', { name: 'Cargar firmado' }).click()
   await fila.locator('input[type="file"]').setInputFiles(formato)
   await fila.getByRole('button', { name: 'Cerrar salida' }).click()
@@ -188,13 +246,17 @@ for (const ancho of [1440, 390]) {
   const aviso = tarjeta.getByRole('status').filter({ hasText: 'Salida cerrada con su formato firmado' })
   await aviso.waitFor({ timeout: 15000 })
   // Tras ponerse al día la pantalla (revalidatePath), el aviso sigue ahí.
-  await pagina.waitForLoadState('networkidle')
-  await pagina.waitForTimeout(2500)
+  for (let i = 0; i < 40 && (await cuantas()) >= antes; i++) await pagina.waitForTimeout(500)
+  comprobar((await cuantas()) === antes - 1, `[${ancho}] el título de la tarjeta ya cuenta una salida menos (${antes} → ${await cuantas()})`)
   const dice = (await aviso.count()) === 1 ? await texto(aviso) : ''
   console.log(`    [${ancho}] aviso: «${dice}»`)
+  const caja = await aviso.boundingBox()
+  const alto = pagina.viewportSize().height
+  comprobar(caja !== null && caja.y >= 0 && caja.y + caja.height <= alto, `[${ancho}] el aviso queda dentro de la vista (y = ${Math.round(caja?.y ?? -1)} de ${alto})`)
+  comprobar(await aviso.evaluate((e) => e === document.activeElement), `[${ancho}] el cursor está en el aviso, no en la página`)
   comprobar(dice.includes(plancha.descripcion) && dice.includes('Salida cerrada con su formato firmado'),
     `[${ancho}] el aviso de la salida cerrada sigue a la vista después de ponerse al día la pantalla`)
-  comprobar((await tarjeta.locator('li', { hasText: plancha.descripcion }).filter({ hasText: ancho === 390 ? '2 UND' : '3 UND' }).count()) === 0,
+  comprobar((await filaDe().count()) === 0,
     `[${ancho}] la salida cerrada ya no está en la lista`)
   const [cerrada] = await consulta('select formato_cerrado_en, formato_ruta from public.movimientos_materiales where id = $1', [id])
   const [objeto] = cerrada.formato_ruta

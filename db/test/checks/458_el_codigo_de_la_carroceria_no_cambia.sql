@@ -63,6 +63,28 @@ select test.debe_fallar(
   'Sin nombre no entra',
   'El nombre de la carrocería debe tener entre 3 y 120 caracteres'
 );
+select test.debe_fallar(
+  format('select public.editar_carroceria_ventas(%L::uuid, %L, null, true)', current_setting('prueba.carroceria'), ' — · — '),
+  'Un nombre sin letras ni números no entra',
+  'El nombre debe incluir letras o números'
+);
+reset role;
+
+-- 4b. Quien no cotiza no la edita: Almacén no tiene cotizaciones.crear.
+do $$
+declare v_almacen uuid;
+begin
+  v_almacen := test.crear_usuario('Almacén', 'Check 458', 'almacen.458@prueba.local', 'ALMACENERO');
+  perform set_config('prueba.almacen', v_almacen::text, true);
+end $$;
+select set_config('request.jwt.claim.sub', current_setting('prueba.almacen'), true),
+       set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.almacen'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+select test.debe_fallar(
+  format('select public.editar_carroceria_ventas(%L::uuid, %L, null, true)', current_setting('prueba.carroceria'), 'Nombre de Almacén'),
+  'Almacén no edita carrocerías',
+  'cotizaciones.crear'
+);
 reset role;
 select test.afirmar(
   (select codigo = 'C58' and nombre = 'Tolva del check 458' from public.tipos_carroceria where id = current_setting('prueba.carroceria')::uuid),

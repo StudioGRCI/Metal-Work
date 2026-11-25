@@ -25,7 +25,8 @@ export function NuevaCarroceria({
   onCreada?: (carroceria: { id: string; nombre: string }, como: { elegir: boolean }) => void
   /**
    * El alta volvió sin decir si entró: quien guarda la lista la busca por su
-   * código, que sale del nombre y no se repite (como en `NuevaUnidad`).
+   * nombre, como hace el alta para no repetirla. Por el código no: el de la
+   * empresa no sigue al nombre cuando se renombra.
    */
   alQuedarEnDuda?: (enviado: { nombre: string }) => void
 }) {

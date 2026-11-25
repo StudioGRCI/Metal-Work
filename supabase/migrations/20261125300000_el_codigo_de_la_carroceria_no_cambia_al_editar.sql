@@ -35,7 +35,7 @@ begin
     raise exception 'Falta la función editar_carroceria_ventas: esta base no tiene las migraciones anteriores.';
   end if;
   -- La del 28/09 (rehace el código) o esta misma, si la migración se vuelve a correr.
-  if huella not in ('7867c83f4434d82169c5789f23a1bea4', '426acab86832017e692fa91762b6730e') then
+  if huella not in ('7867c83f4434d82169c5789f23a1bea4', '2c6f10ded8063e616853f103f57a6d16') then
     raise exception 'La función editar_carroceria_ventas no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.';
   end if;
 end $$;
@@ -52,6 +52,9 @@ begin
   perform public.exigir_permiso('cotizaciones.crear');
   if p_nombre is null or length(btrim(p_nombre)) < 3 or length(btrim(p_nombre)) > 120 then
     raise exception 'El nombre de la carrocería debe tener entre 3 y 120 caracteres.' using errcode = '22023';
+  end if;
+  if regexp_replace(upper(public.unaccent(btrim(p_nombre))), '[^A-Z0-9]+', '', 'g') = '' then
+    raise exception 'El nombre debe incluir letras o números.' using errcode = '22023';
   end if;
   -- El código no se toca: es el de la empresa y lo nombran las unidades.
   update public.tipos_carroceria
