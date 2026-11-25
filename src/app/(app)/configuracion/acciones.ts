@@ -211,11 +211,15 @@ export async function crearCarroceria(
   return { ok: true, mensaje: 'Tipo de carrocería agregado. Diseño e Ingeniería completa sus medidas en Carrocerías.', datos: data }
 }
 
+// Cada regla lleva su aviso: sin él, zod contesta en inglés («Too small:
+// expected string to have >=3 characters») y eso es lo que leía la persona.
 const esquemaEditarCarroceria = z.object({
-  id: z.guid(),
-  nombre: z.string().trim().min(3).max(120),
-  descripcion: z.string().trim().max(1000).optional(),
-  activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  id: z.guid('No se reconoció la carrocería: vuelve a cargar la pantalla.'),
+  nombre: z.string('Ponle nombre a la carrocería.').trim()
+    .min(3, 'El nombre de la carrocería debe tener entre 3 y 120 caracteres.')
+    .max(120, 'El nombre de la carrocería debe tener entre 3 y 120 caracteres.'),
+  descripcion: z.string().trim().max(1000, 'La descripción va en 1000 caracteres como máximo.').optional(),
+  activo: z.enum(['true', 'false'], 'No se reconoció si la carrocería está activa: vuelve a cargar la pantalla.').transform((v) => v === 'true'),
 })
 
 export async function editarCarroceria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
