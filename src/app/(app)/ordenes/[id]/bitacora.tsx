@@ -107,12 +107,12 @@ export function Bitacora({
                       <time
                         dateTime={evento.ocurrido_en}
                         title={fechaHora(evento.ocurrido_en)}
-                        className="text-[11px] text-texto-tenue"
+                        className="text-xs text-texto-tenue"
                       >
                         {tiempoRelativo(evento.ocurrido_en)}
                       </time>
                       {evento.usuario && (
-                        <span className="text-[11px] text-texto-tenue">· {evento.usuario}</span>
+                        <span className="text-xs text-texto-tenue">· {evento.usuario}</span>
                       )}
                     </div>
                     <p className="mt-1 text-sm text-texto">{evento.titulo}</p>

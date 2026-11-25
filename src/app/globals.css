@@ -375,6 +375,55 @@ h1, h2, h3 {
   background-attachment: local, local, scroll, scroll;
 }
 
+/* -----------------------------------------------------------------------------
+   UNA TABLA QUE EN EL TELÉFONO ES UNA LISTA DE FICHAS
+   `<Tabla apilada>`: por debajo de `md` (768 px) cada fila es un bloque y sus
+   celdas se apilan; la cabecera se va y la celda con `data-rotulo` lo lleva
+   encima, en la letra de las cabeceras. El `display` va en `base` para que las
+   utilidades de la celda le ganen: `hidden md:table-cell` sigue escondiendo la
+   columna que en el teléfono no va. Por eso mismo, en una tabla apilada la
+   columna que se esconde reaparece desde `md` o más, nunca desde `sm`: un
+   `sm:table-cell` volvería celda a un bloque entre 640 y 767. Sin esto,
+   Carrocerías apretaba sus fichas técnicas en una columna de 100 px, una
+   palabra por renglón, y la página medía 9 856 px de alto en un teléfono. */
+@layer base {
+  @media (width < 48rem) {
+    .tabla-apilada,
+    .tabla-apilada > tbody,
+    .tabla-apilada > tbody > tr,
+    .tabla-apilada > tbody > tr > td {
+      display: block;
+    }
+    .tabla-apilada > thead {
+      display: none;
+    }
+    .tabla-apilada > tbody > tr {
+      padding-block: 0.5rem;
+    }
+    .tabla-apilada > tbody > tr > td[data-rotulo]::before {
+      content: attr(data-rotulo);
+      display: block;
+      margin-bottom: 0.125rem;
+      font-size: 0.75rem;
+      line-height: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--texto-suave);
+    }
+  }
+}
+
+/* El aire de la ficha va fuera de capa, y por eso le gana al `py-2` de `TD` y
+   a cualquier `py-*` que la celda traiga: apilada, cada celda es un renglón de
+   la misma ficha, y con el aire de una fila de tabla la ficha de Ventas medía
+   más que la fila que reemplazaba. La celda con `colspan` —el estado vacío de
+   `SinDatos`— queda fuera y conserva su aire. */
+@media (width < 48rem) {
+  .tabla-apilada > tbody > tr > td:not([colspan]) {
+    padding-block: 0.25rem;
+  }
+}
+
 /* Una rejilla sin columnas en el teléfono (`grid sm:grid-cols-2`) tiene una
    sola columna `auto`, y esa columna crece hasta el texto más largo que no se
    parte: el nombre de un insumo con `truncate`, un cliente con razón social

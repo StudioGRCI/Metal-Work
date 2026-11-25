@@ -130,7 +130,7 @@ function FilaServicio({
         <p className="tabular font-semibold text-texto">{s.numero}</p>
         <p className="text-xs text-texto">{s.proveedor}</p>
         <p className="mt-1 text-xs text-texto-suave">{s.descripcion}</p>
-        <p className="text-[11px] text-texto-suave">
+        <p className="text-xs text-texto-suave">
           {[
             s.referencia ? `Ref. ${s.referencia}` : null,
             condicionDePago(s.condicion_pago, s.dias_credito),
@@ -143,7 +143,7 @@ function FilaServicio({
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
         <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
-        <p className="mt-1 text-[11px] text-texto-suave md:hidden">
+        <p className="mt-1 text-xs text-texto-suave md:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
           </span>
@@ -223,7 +223,7 @@ function EnQueVa({ servicio: s }: { servicio: OrdenServicioListada }) {
         {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
             renglón corría la tabla de costado en el teléfono. */}
         <Insignia tono={detraccion.tono} className="whitespace-normal">{detraccion.texto}</Insignia>
-        {detraccion.detalle && <p className="mt-0.5 max-w-64 text-[11px] text-texto-suave">{detraccion.detalle}</p>}
+        {detraccion.detalle && <p className="mt-0.5 max-w-64 text-xs text-texto-suave">{detraccion.detalle}</p>}
       </div>
     </>
   )

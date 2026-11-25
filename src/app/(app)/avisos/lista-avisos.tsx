@@ -44,7 +44,7 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
               <>
                 <p className={cn('text-sm', leido(a) ? 'text-texto-suave' : 'font-semibold text-texto')}>{a.titulo}</p>
                 {a.cuerpo && <p className="mt-0.5 text-xs leading-snug text-texto-suave">{a.cuerpo}</p>}
-                <p className="mt-0.5 text-[11px] text-texto-tenue">{fechaHora(a.creado_en)}</p>
+                <p className="mt-0.5 text-xs text-texto-tenue">{fechaHora(a.creado_en)}</p>
               </>
             )
             const clase = cn('block w-full px-4 py-3 text-left hover:bg-superficie-2', !leido(a) && 'bg-acento-suave/40')

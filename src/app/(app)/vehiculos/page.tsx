@@ -114,14 +114,14 @@ function FilaVehiculo({
         <Link href={`/vehiculos/${r.id}`} className="tabular font-semibold text-acento hover:underline">
           {r.placa ?? (r.chasis ? `Chasis ${r.chasis}` : r.codigo_interno)}
         </Link>
-        {r.placa && r.chasis && <p className="tabular text-[11px] text-texto-suave">Chasis {r.chasis}</p>}
-        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-[11px] text-texto-suave">{r.codigo_interno}</p>}
+        {r.placa && r.chasis && <p className="tabular text-xs text-texto-suave">Chasis {r.chasis}</p>}
+        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-xs text-texto-suave">{r.codigo_interno}</p>}
         <p className="text-xs text-texto">
           {r.unidad} · {r.empresa}
         </p>
-        <p className="text-[11px] text-texto-suave md:hidden">{motivo?.etiqueta ?? r.motivo}</p>
+        <p className="text-xs text-texto-suave md:hidden">{motivo?.etiqueta ?? r.motivo}</p>
         {(r.fotos_ingreso > 0 || r.fotos_salida > 0) && (
-          <Link href={`/vehiculos/${r.id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] text-texto-suave hover:text-texto">
+          <Link href={`/vehiculos/${r.id}`} className="mt-1 inline-flex items-center gap-1 text-xs text-texto-suave hover:text-texto">
             <Camera aria-hidden className="size-3.5" />
             {[
               r.fotos_ingreso > 0 && `${r.fotos_ingreso} al entrar`,
@@ -148,13 +148,13 @@ function FilaVehiculo({
       </TD>
       <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
-        {r.observacion_ingreso && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_ingreso}</p>}
+        {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
       <TD className="hidden align-top sm:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
-            {r.observacion_salida && <p className="mt-1 max-w-xs text-[11px] text-texto-suave">{r.observacion_salida}</p>}
+            {r.observacion_salida && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_salida}</p>}
           </>
         ) : (
           <Situacion registro={r} estado={estado} />

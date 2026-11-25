@@ -363,16 +363,16 @@ function Verificacion({
             <table className="w-full text-sm">
               <thead className="border-b border-borde bg-superficie-2">
                 <tr>
-                  <th className="w-10 px-2 py-2 text-right text-[11px] font-semibold text-texto-suave uppercase">
+                  <th className="w-10 px-2 py-2 text-right text-xs font-semibold text-texto-suave uppercase">
                     N.º
                   </th>
-                  <th className="px-3 py-2 text-left text-[11px] font-semibold text-texto-suave uppercase">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-texto-suave uppercase">
                     Descripción
                   </th>
-                  <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
+                  <th className="w-20 px-2 py-2 text-center text-xs font-semibold text-texto-suave uppercase">
                     Supervisión de Producción
                   </th>
-                  <th className="w-20 px-2 py-2 text-center text-[11px] font-semibold text-texto-suave uppercase">
+                  <th className="w-20 px-2 py-2 text-center text-xs font-semibold text-texto-suave uppercase">
                     Supervisión de Maestranza
                   </th>
                 </tr>
@@ -405,7 +405,7 @@ function Verificacion({
                             type="button"
                             disabled={guardando}
                             onClick={() => setAnotando(paso.id)}
-                            className="mt-1 inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-texto-tenue sm:min-h-0"
+                            className="mt-1 inline-flex min-h-11 items-center text-xs text-texto-tenue hover:text-acento disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-texto-tenue sm:min-h-0"
                           >
                             {paso.observaciones ? 'Editar observación' : 'Anotar observación'}
                           </button>
@@ -537,12 +537,12 @@ function Casilla({
         }}
       />
       {marcado && (
-        <p className="mt-0.5 text-[10px] text-texto-tenue">
+        <p className="mt-0.5 text-xs text-texto-tenue">
           {actor ? `${actor.nombres} ${actor.apellidos}` : 'Registro anterior · autor sin identificar'}
           {cuando ? ` · ${fecha(cuando)}` : ''}
         </p>
       )}
-      {!marcado && <p className="mt-0.5 text-[10px] text-texto-tenue">Pendiente</p>}
+      {!marcado && <p className="mt-0.5 text-xs text-texto-tenue">Pendiente</p>}
     </td>
   )
 }
@@ -603,7 +603,7 @@ function Visto({
       </button>
 
       {error && (
-        <p role="alert" className="mt-0.5 text-[10px] leading-tight text-peligro">
+        <p role="alert" className="mt-0.5 text-xs leading-tight text-peligro">
           {error}
         </p>
       )}
@@ -743,10 +743,10 @@ function Accesorios({
                 <span className="flex-1 text-sm text-texto">
                   {a.descripcion}
                   {!a.incluye_el_accesorio && (
-                    <span className="ml-2 text-[11px] text-aviso">(no incluye el accesorio)</span>
+                    <span className="ml-2 text-xs text-aviso">(no incluye el accesorio)</span>
                   )}
                   {a.verificado && a.verificador && (
-                    <span className="ml-2 text-[11px] text-texto-tenue">
+                    <span className="ml-2 text-xs text-texto-tenue">
                       V°B° {puesto(a.verificador)}
                       {a.verificado_en ? ` · ${fecha(a.verificado_en)}` : ''}
                     </span>

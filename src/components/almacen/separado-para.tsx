@@ -20,7 +20,7 @@ export function SeparadoPara({ material: m, className }: { material: MaterialEnS
             {cantidad(c.cantidad)} {m.unidad}
           </span>
           {c.requerimientos.length > 0 && (
-            <span className="tabular block text-[11px] text-texto-suave">
+            <span className="tabular block text-xs text-texto-suave">
               {c.requerimientos.map((n, i) => (
                 <Fragment key={n}>
                   {i > 0 && ', '}
@@ -31,7 +31,7 @@ export function SeparadoPara({ material: m, className }: { material: MaterialEnS
           )}
           {/* El accesorio que entró para la unidad y ningún RQ tomó: quien pide para ese código lo puede usar. */}
           {c.cantidad > c.de_requerimientos && (
-            <span className="tabular block text-[11px] text-texto-suave" data-para-la-unidad>
+            <span className="tabular block text-xs text-texto-suave" data-para-la-unidad>
               {cantidad(redondearCantidad(c.cantidad - c.de_requerimientos))} {m.unidad} para la unidad, sin RQ
             </span>
           )}

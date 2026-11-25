@@ -189,7 +189,7 @@ function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor
         </div>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{r.descripcion}</p>
         {r.fotos > 0 && (
-          <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-texto-suave">
+          <p className="mt-1 inline-flex items-center gap-1 text-xs text-texto-suave">
             <Camera aria-hidden className="size-3.5" />
             {r.fotos} {r.fotos === 1 ? 'foto' : 'fotos'}
           </p>

@@ -8,6 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SinDatos } from '@/components/ui/tabla'
 import { ALMACENES, esAlmacen } from '@/lib/dominio/almacen'
 import { SIN_RESPUESTA, useEnvio } from '@/lib/envio'
 import { cantidad, fechaHora } from '@/lib/format'
@@ -42,7 +43,7 @@ export function SalidasPorCerrar({ salidas, puedeCerrar, almacen = null }: { sal
   if (salidas.length === 0) {
     // Con un almacén elegido lo dice, para que no parezca que no hay ninguna en los demás.
     const donde = almacen && esAlmacen(almacen) ? ` en ${ALMACENES[almacen].etiqueta}` : ''
-    return <p className="text-sm text-texto-suave">Ninguna salida abierta{donde}: las de materia prima y EPP tienen su formato firmado.</p>
+    return <SinDatos compacto titulo={`Ninguna salida abierta${donde}`} descripcion="Las de materia prima y EPP tienen su formato firmado." />
   }
   return (
     <ul className="divide-y divide-borde">

@@ -561,7 +561,7 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
           {mov.tipo === 'EGRESO' ? '−' : '+'}
           {moneda(mov.monto, m)}
         </span>
-        <span className="block text-[11px] text-texto-suave">{mov.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'}</span>
+        <span className="block text-xs text-texto-suave">{mov.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'}</span>
       </TD>
       <TD className="hidden text-xs text-texto-suave sm:table-cell">{mov.registrado_por ?? '—'}</TD>
       {abierta && (
