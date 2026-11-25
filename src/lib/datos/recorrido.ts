@@ -5,7 +5,7 @@ import type { PasoDelRecorrido, SituacionDelPaso } from '@/lib/dominio/recorrido
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * El recorrido de cada documento, por su id (migración 20261125100000): lo
+ * El recorrido de cada documento, por su id (migración 20261125130000): lo
  * hecho con su puesto, su nombre y su hora; quién lo tiene ahora y hace cuántos
  * días; y lo que falta. La función de cada documento decide quién lo lee: quien
  * ya ve el documento. Las frases se ponen con `src/lib/dominio/recorrido.ts`.

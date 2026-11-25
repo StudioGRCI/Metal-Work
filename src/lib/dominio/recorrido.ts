@@ -1,6 +1,6 @@
 /**
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
- * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125100000).
+ * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
  * `recorrido_de_cotizaciones`); las frases viven aquí. Un documento nuevo suma
  * su función con la misma forma y su mapa de pasos en este archivo.

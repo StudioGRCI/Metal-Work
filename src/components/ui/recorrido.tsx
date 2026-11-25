@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 /**
  * El recorrido de un documento numerado, plegado dentro de su tarjeta: los pasos
  * del circuito en orden, quién hizo cada uno y cuándo, quién lo tiene ahora y
- * hace cuántos días, y lo que falta (migración 20261125100000).
+ * hace cuántos días, y lo que falta (migración 20261125130000).
  *
  * Cerrado ya dice lo que más se pregunta: quién lo tiene y hace cuánto. Los
  * días los cuenta la base por fecha de Lima; aquí no se calcula nada. Todavía

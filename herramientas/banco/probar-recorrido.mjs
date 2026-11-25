@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la migración 20261125100000: el recorrido de cada documento.
+ * Clic real sobre la migración 20261125130000: el recorrido de cada documento.
  * Con la cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Requerimientos, Almacén, Logística y Gerencia abren un RQ de cada estado
@@ -167,6 +167,22 @@ async function contrastar(tarjeta, esperado, quien, cual) {
   return cerrado
 }
 
+/**
+ * La pantalla entera en una captura. En el teléfono la barra de abajo es fija:
+ * con la captura de página entera saldría cruzada a media pantalla, así que la
+ * ventana se estira a lo alto del contenido. Sin la marca de `next dev`, que no
+ * es de la aplicación.
+ */
+async function capturar(pagina, archivo) {
+  await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
+  const ventana = pagina.viewportSize()
+  const alto = await pagina.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))
+  await pagina.setViewportSize({ width: ventana.width, height: Math.max(alto, ventana.height) })
+  await pagina.evaluate(() => window.scrollTo(0, 0))
+  await pagina.screenshot({ path: `${CAPTURAS}/${archivo}` })
+  await pagina.setViewportSize(ventana)
+}
+
 async function sinDesborde(pagina, donde) {
   const sobra = await pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
@@ -231,6 +247,26 @@ for (const puesto of ['requerimientos', 'almacen', 'logistica', 'gerencia']) {
     const conRecorrido = await pagina.locator('[data-rq] details[data-recorrido]').count()
     const sinLeer = await pagina.locator('[data-recorrido="sin-leer"]').count()
     comprobar(tarjetas > 0 && conRecorrido === tarjetas && sinLeer === 0, `en la lista entera cada RQ trae su recorrido (${conRecorrido} de ${tarjetas}; sin leer: ${sinLeer})`)
+    // El recorrido no contradice a su tarjeta: lo que ella llama «Ya llegó todo»
+    // lo tiene Almacén, no quien compra.
+    const pares = await pagina.locator('[data-rq]').evaluateAll((ts) =>
+      ts.map((t) => ({
+        numero: t.dataset.rq,
+        tarjeta: t.innerText.replace(/\s+/g, ' '),
+        paso: t.querySelector('ol[aria-label^="En qué va"] [aria-current="step"]')?.dataset.paso ?? null,
+        recorrido: t.querySelector('details[data-recorrido] summary')?.innerText.replace(/\s+/g, ' ').trim() ?? '',
+      })),
+    )
+    const yaLlego = pares.filter((p) => p.tarjeta.includes('Ya llegó todo'))
+    comprobar(
+      yaLlego.every((p) => p.recorrido.includes('Lo tiene Almacén')),
+      `los ${yaLlego.length} RQ que su tarjeta da por «Ya llegó todo» los tiene Almacén (${yaLlego.map((p) => `${p.numero}: ${p.recorrido}`).join(' | ') || 'ninguno en el banco'})`,
+    )
+    const listos = pares.filter((p) => p.paso === 'EN_ALMACEN' && !p.tarjeta.includes('Ya llegó todo'))
+    comprobar(
+      listos.every((p) => !/Lo tiene (Logística|Gerencia|Conductor)/.test(p.recorrido)),
+      `los ${listos.length} RQ que su tarjeta pone «Para recoger» no los tiene quien compra (${listos.map((p) => `${p.numero}: ${p.recorrido}`).join(' | ') || 'ninguno'})`,
+    )
   }
   await contexto.close()
 }
@@ -297,13 +333,13 @@ for (const ancho of [390, 1440]) {
       const { pagina, contexto } = await entrar(puesto, ancho)
       await ir(pagina, `/requerimientos?rq=${rq.id}`)
       const recorrido = pagina.locator(`[data-rq="${rq.numero}"] details[data-recorrido]`)
-      await pagina.screenshot({ path: `${CAPTURAS}/recorrido-rq-${puesto}-cerrado-${ancho}.png`, fullPage: true })
+      await capturar(pagina, `recorrido-rq-${puesto}-cerrado-${ancho}.png`)
       await recorrido.locator('summary').click()
       await recorrido.scrollIntoViewIfNeeded()
       await sinDesborde(pagina, `el RQ con su recorrido abierto, ${puesto} a ${ancho}`)
       const pasos = await pasosEnPantalla(recorrido)
       console.log(`     ${puesto} a ${ancho}, ${rq.numero}:\n${pasos.map((p) => `       - [${p.situacion}] ${p.texto}`).join('\n')}`)
-      await pagina.screenshot({ path: `${CAPTURAS}/recorrido-rq-${puesto}-abierto-${ancho}.png`, fullPage: true })
+      await capturar(pagina, `recorrido-rq-${puesto}-abierto-${ancho}.png`)
       await contexto.close()
     }
   }
@@ -322,7 +358,7 @@ for (const ancho of [390, 1440]) {
       await sinDesborde(pagina, `la cotización con su recorrido abierto, ${puesto} a ${ancho}`)
       const pasos = await pasosEnPantalla(recorrido)
       console.log(`     ${puesto} a ${ancho}, ${c.numero}:\n${pasos.map((p) => `       - [${p.situacion}] ${p.texto}`).join('\n')}`)
-      await pagina.screenshot({ path: `${CAPTURAS}/recorrido-cotizacion-${puesto}-abierto-${ancho}.png`, fullPage: true })
+      await capturar(pagina, `recorrido-cotizacion-${puesto}-abierto-${ancho}.png`)
       await contexto.close()
     }
   }

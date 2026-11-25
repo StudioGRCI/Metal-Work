@@ -1,4 +1,4 @@
--- El recorrido de cada documento (migración 20261125100000).
+-- El recorrido de cada documento (migración 20261125130000).
 --
 --   1. `dias_en_espera` cuenta por fecha de Lima: lo de ayer a las 11:59 p. m.
 --      lleva un día, no cero; sin hora, vacío.
