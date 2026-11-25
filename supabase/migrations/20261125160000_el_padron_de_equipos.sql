@@ -322,6 +322,10 @@ begin
     raise exception 'El equipo % no se borra: se da de baja con su motivo.', old.codigo
       using errcode = 'check_violation';
   end if;
+  if tg_table_name = 'equipo_bajas' then
+    raise exception 'La historia de bajas de un equipo no se borra: es la evidencia.'
+      using errcode = 'check_violation';
+  end if;
   raise exception 'La categoría % no se borra: se deja de usar.', old.nombre
     using errcode = 'check_violation';
 end;
@@ -472,6 +476,10 @@ create or replace trigger trg_equipo_historia_de_bajas
   for each row when (old.activo is distinct from new.activo)
   execute function public.fn_equipo_historia_de_bajas();
 
+create or replace trigger trg_equipo_bajas_bloquear_borrado
+  before delete on public.equipo_bajas
+  for each row execute function public.fn_equipo_bloquear_borrado();
+
 select public.activar_timestamps('equipo_bajas');
 select public.activar_auditoria('equipo_bajas');
 select public.activar_registro_de_prueba('equipo_bajas');
@@ -498,6 +506,9 @@ returns table (codigo text, ya_estaba boolean)
 language plpgsql security invoker set search_path to 'public' as $$
 declare
   v_codigo text;
+  v_por    uuid;
+  v_motivo text;
+  v_quien  text;
 begin
   perform public.exigir_permiso('equipos.gestionar');
   if char_length(btrim(coalesce(p_motivo, ''))) < 5 then
@@ -516,6 +527,19 @@ begin
   select e.codigo into v_codigo from public.equipos e where e.id = p_equipo and e.activo;
   if v_codigo is null then
     raise exception 'Ese equipo no está en el padrón o no puedes reactivarlo.' using errcode = 'no_data_found';
+  end if;
+  -- Ya está en uso. Es el mismo envío otra vez solo si la última reactivación
+  -- la hizo esta cuenta con este mismo motivo; si no, se dice quién y por qué.
+  select b.reactivado_por, b.reactivacion_motivo, coalesce(btrim(concat_ws(' ', u.nombres, u.apellidos)), 'otra cuenta')
+    into v_por, v_motivo, v_quien
+    from public.equipo_bajas b
+    left join public.usuarios u on u.id = b.reactivado_por
+   where b.equipo_id = p_equipo and b.reactivado_en is not null
+   order by b.reactivado_en desc
+   limit 1;
+  if v_por is distinct from public.usuario_actual() or v_motivo is distinct from btrim(p_motivo) then
+    raise exception 'El equipo % ya volvió al padrón: lo reactivó % por «%».', v_codigo, coalesce(v_quien, 'otra cuenta'), coalesce(v_motivo, 'sin motivo anotado')
+      using errcode = 'check_violation';
   end if;
   return query select v_codigo, true;
 end;

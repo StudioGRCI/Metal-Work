@@ -176,6 +176,12 @@ begin
   select * into r from public.equipo_reactivar(pg_temp.id('eq2'), 'Se reparó el motor en el taller');
   perform test.afirmar(r.ya_estaba and (select count(*) = 1 from public.equipo_bajas where equipo_id = pg_temp.id('eq2')),
     'el mismo envío otra vez no cambia nada y lo dice');
+  begin
+    perform * from public.equipo_reactivar(pg_temp.id('eq2'), 'Otro motivo distinto');
+    perform test.afirmar(false, 'un envío parecido no se da por bueno');
+  exception when check_violation then
+    perform test.afirmar(sqlerrm like '%ya volvió al padrón%Se reparó el motor%', 'un envío parecido dice quién lo reactivó y por qué: ' || sqlerrm);
+  end;
   perform public.equipo_cambiar_a_cargo(pg_temp.id('eq2'), 'rosa díaz');
   perform test.afirmar((select a_cargo_de = 'ROSA DÍAZ' from public.equipos where id = pg_temp.id('eq2')),
     'Mantenimiento también cambia quién lo tiene');
@@ -283,6 +289,9 @@ select test.debe_fallar(
 select test.debe_fallar(
   $$delete from public.equipo_categorias where id = pg_temp.id('otros')$$,
   'ni una categoría', 'no se borra');
+select test.debe_fallar(
+  $$delete from public.equipo_bajas where equipo_id = pg_temp.id('eq2')$$,
+  'ni la historia de bajas', 'no se borra');
 
 -- 7. Las puertas ---------------------------------------------------------------------
 select test.afirmar(

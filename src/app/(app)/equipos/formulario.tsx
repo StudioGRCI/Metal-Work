@@ -1,7 +1,7 @@
 'use client'
 
 import { Archive, Pencil, Plus, RotateCcw, Tags, UserRound, Wrench } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -18,18 +18,43 @@ import { cambiarACargoDe, cambiarEstadoEquipo, crearCategoria, darDeBajaEquipo, 
  * Lo que dijo la base al guardar, en una sola región de la pantalla: el equipo
  * dado de baja o reactivado se va de la lista, y sin esto se iba callado.
  */
-type Aviso = { texto: string; vez: number } | null
+type Aviso = { texto: string; vez: number; llevarAlAviso: boolean } | null
 function useAvisoDelPadron() {
   const [aviso, setAviso] = useEstadoCompartido<Aviso>('equipos:aviso', null)
-  const avisar = useCallback((texto: string | undefined) => setAviso(texto ? { texto, vez: Date.now() } : null), [setAviso])
+  const avisar = useCallback(
+    (texto: string | undefined, llevarAlAviso = false) => setAviso(texto ? { texto, vez: Date.now(), llevarAlAviso } : null),
+    [setAviso],
+  )
   return [aviso, avisar] as const
 }
 
-/** Siempre montada: la región que nace ya con su texto no se anuncia. */
+/**
+ * Siempre montada: la región que nace ya con su texto no se anuncia. Cuando la
+ * fila se va de la lista (baja, reactivación) o la ventana se abrió lejos (el
+ * alta), el cursor y la vista suben al aviso: en el teléfono quedaba miles de
+ * píxeles arriba y la fila desaparecía sin explicación a la vista.
+ */
 export function AvisoDelPadron() {
   const [aviso] = useAvisoDelPadron()
+  const region = useRef<HTMLParagraphElement>(null)
+  const vez = aviso?.llevarAlAviso ? aviso.vez : null
+  useEffect(() => {
+    if (vez === null) return
+    // Dos cuadros: primero la ventana devuelve el cursor a su botón, si sigue ahí.
+    let segundo = 0
+    const primero = requestAnimationFrame(() => {
+      segundo = requestAnimationFrame(() => {
+        region.current?.focus({ preventScroll: true })
+        region.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+    })
+    return () => {
+      cancelAnimationFrame(primero)
+      cancelAnimationFrame(segundo)
+    }
+  }, [vez])
   return (
-    <p role="status" className={aviso ? 'mb-3 text-sm text-exito' : 'sr-only'}>
+    <p ref={region} role="status" tabIndex={-1} className={aviso ? 'mb-3 text-sm text-exito outline-none' : 'sr-only'}>
       {aviso && <span key={aviso.vez}>{aviso.texto}</span>}
     </p>
   )
@@ -124,6 +149,8 @@ function FormularioEquipo({
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="alta" value={equipo ? 'no' : 'si'} />
+      {/* La versión que se corrige: si otra cuenta la cambió entretanto, no se pisa. */}
+      {equipo && <input type="hidden" name="version" value={equipo.actualizado_en} />}
 
       <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
         <Campo etiqueta="Categoría" htmlFor={`${prefijo}-categoria`} requerido>
@@ -166,7 +193,7 @@ function FormularioEquipo({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Campo etiqueta="Marca" htmlFor={`${prefijo}-marca`}>
-          <Entrada id={`${prefijo}-marca`} name="marca" defaultValue={equipo?.marca ?? ''} maxLength={80} />
+          <Entrada id={`${prefijo}-marca`} name="marca" defaultValue={equipo?.marca ?? ''} maxLength={80} className="uppercase" />
         </Campo>
         <Campo etiqueta="Serie de máquina" htmlFor={`${prefijo}-serie`}>
           <Entrada id={`${prefijo}-serie`} name="serie_maquina" defaultValue={equipo?.serie_maquina ?? ''} maxLength={60} autoComplete="off" className="uppercase" />
@@ -262,7 +289,7 @@ export function NuevoEquipo({ categorias, areas, siguientes }: Catalogos & { sig
           alTerminar={(mensaje) => {
             setId(crypto.randomUUID())
             setAbierta(false)
-            avisar(mensaje ?? 'Equipo registrado.')
+            avisar(mensaje ?? 'Equipo registrado.', true)
           }}
         />
       </Ventana>
@@ -411,6 +438,11 @@ export function AccionesEquipo({
     setAbierta(null)
     avisar(mensaje)
   }
+  // La fila se va de la lista: el aviso recibe el cursor.
+  const terminarYSalir: AlTerminar = (mensaje) => {
+    setAbierta(null)
+    avisar(mensaje, true)
+  }
   const abrir = (cual: Exclude<Abierta, null>) => {
     avisar(undefined)
     setAbierta(cual)
@@ -431,14 +463,15 @@ export function AccionesEquipo({
           descripcion="Vuelve al padrón en uso. La baja no se pierde: queda en su historia con el motivo de ahora."
           ancho="md"
         >
-          <Reactivar equipo={equipo} alCerrar={cerrar} alTerminar={terminar} />
+          <Reactivar equipo={equipo} alCerrar={cerrar} alTerminar={terminarYSalir} />
         </Ventana>
       </>
     )
   }
 
   return (
-    <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+    // En el teléfono, de a dos por renglón: tres apilados alargaban cada fila.
+    <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
       {gestiona && (
         <>
           <Boton type="button" tamano="sm" variante="contorno" aria-label={`Estado de ${equipo.codigo}`} onClick={() => abrir('estado')}>
@@ -482,7 +515,7 @@ export function AccionesEquipo({
         descripcion="No se borra: queda en el padrón con el motivo, quién y cuándo, y deja de ofrecerse. Si fue un error, se reactiva diciendo por qué."
         ancho="md"
       >
-        <DarDeBaja equipo={equipo} alCerrar={cerrar} alTerminar={terminar} />
+        <DarDeBaja equipo={equipo} alCerrar={cerrar} alTerminar={terminarYSalir} />
       </Ventana>
     </div>
   )

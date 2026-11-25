@@ -31,6 +31,7 @@ export type Equipo = Pick<
   | 'activo'
   | 'baja_motivo'
   | 'dado_de_baja_en'
+  | 'actualizado_en'
 > & {
   estado: EstadoEquipo
   categoria: { nombre: string } | null
@@ -44,7 +45,7 @@ export type AreaDeEquipo = { id: string; codigo: string; nombre: string }
 export const EQUIPOS_POR_PAGINA = 25
 
 const COLUMNAS =
-  'id, codigo, descripcion, categoria_id, marca, serie_maquina, serie_cabezal, area_id, ubicacion, a_cargo_de, estado, estado_nota, estado_desde, observaciones, activo, baja_motivo, dado_de_baja_en, categoria:equipo_categorias(nombre), area:areas(codigo, nombre), baja:usuarios!equipos_baja_por_fkey(nombres, apellidos)'
+  'id, codigo, descripcion, categoria_id, marca, serie_maquina, serie_cabezal, area_id, ubicacion, a_cargo_de, estado, estado_nota, estado_desde, observaciones, activo, baja_motivo, dado_de_baja_en, actualizado_en, categoria:equipo_categorias(nombre), area:areas(codigo, nombre), baja:usuarios!equipos_baja_por_fkey(nombres, apellidos)'
 
 export type FiltrosDeEquipos = {
   busqueda?: string

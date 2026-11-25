@@ -41,6 +41,7 @@ const esquemaEquipo = z
     observaciones: texto(1000, 'Las observaciones'),
     estado: z.enum(ESTADOS_EQUIPO).optional(),
     estado_nota: texto(300, 'El motivo del estado'),
+    version: z.string().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.alta === 'no' && v.codigo === '') {
@@ -102,14 +103,21 @@ export async function guardarEquipo(_previo: unknown, datos: FormData): Promise<
 
   if (v.alta === 'no') {
     // Con `.select()`: un UPDATE que el RLS esconde afecta cero filas sin error.
-    const { data, error } = await supabase
-      .from('equipos')
-      .update({ ...fila, codigo: v.codigo })
-      .eq('id', v.id)
-      .select('codigo')
-      .maybeSingle()
+    // Con la versión pintada: si otra cuenta lo corrigió entretanto, no se pisa.
+    let consulta = supabase.from('equipos').update({ ...fila, codigo: v.codigo }).eq('id', v.id)
+    if (v.version) consulta = consulta.eq('actualizado_en', v.version)
+    const { data, error } = await consulta.select('codigo').maybeSingle()
     if (error) return { ok: false, error: errorDeEquipo(error) }
-    if (!data) return { ok: false, error: NO_TOCO_NADA }
+    if (!data) {
+      const { data: hoy } = await supabase.from('equipos').select('codigo, activo').eq('id', v.id).maybeSingle()
+      if (hoy?.activo && v.version) {
+        return {
+          ok: false,
+          error: `Alguien más cambió el equipo ${hoy.codigo} mientras lo tenías abierto. Cierra, recarga la pantalla y vuelve a corregirlo.`,
+        }
+      }
+      return { ok: false, error: NO_TOCO_NADA }
+    }
     revalidatePath('/equipos')
     return { ok: true, mensaje: `Equipo ${data.codigo} actualizado.`, datos: data }
   }
