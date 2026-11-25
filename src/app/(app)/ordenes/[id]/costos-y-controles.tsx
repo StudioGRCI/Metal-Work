@@ -263,9 +263,8 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
             <Campo etiqueta="Observación de ingreso" htmlFor="cv-oi"><AreaTexto id="cv-oi" name="observacion_ingreso" rows={2} defaultValue={c?.observacion_ingreso ?? ''} readOnly={ingresoCerrado} /></Campo>
             <Campo etiqueta="Observación de salida" htmlFor="cv-os"><AreaTexto id="cv-os" name="observacion_salida" rows={2} defaultValue={c?.observacion_salida ?? ''} /></Campo>
           </div>
-          {['CABINA_EXTERIOR','ACCESORIOS','CABINA_INTERIOR','HERRAMIENTAS'].map(cat => <details key={cat} className="rounded-[var(--radius-base)] border border-borde p-3">
-            <summary className="cursor-pointer font-medium">{({ CABINA_EXTERIOR: 'Cabina exterior', ACCESORIOS: 'Accesorios', CABINA_INTERIOR: 'Cabina interior', HERRAMIENTAS: 'Herramientas' } as Record<string,string>)[cat]}</summary>
-            <div className="mt-3 space-y-3">{datos.items.filter(i => i.categoria === cat).map(i => {
+          {['CABINA_EXTERIOR','ACCESORIOS','CABINA_INTERIOR','HERRAMIENTAS'].map(cat => <Pliegue key={cat} enCaja titulo={({ CABINA_EXTERIOR: 'Cabina exterior', ACCESORIOS: 'Accesorios', CABINA_INTERIOR: 'Cabina interior', HERRAMIENTAS: 'Herramientas' } as Record<string,string>)[cat]}>
+            <div className="space-y-3">{datos.items.filter(i => i.categoria === cat).map(i => {
               const estados = c?.items && typeof c.items === 'object' && !Array.isArray(c.items) ? Reflect.get(c.items, i.codigo) : null
               return <div key={i.codigo} className="grid gap-2 border-b border-borde pb-3 sm:grid-cols-[1fr_10rem_10rem]">
                 <span className="self-center text-sm">{i.nombre}</span>
@@ -276,7 +275,7 @@ function FichaVehicular({ ordenId, datos, editable }: { ordenId: string; datos: 
                 </label>)}
               </div>
             })}</div>
-          </details>)}
+          </Pliegue>)}
         </fieldset>
         {error && <p role="alert" className="text-sm text-peligro">{error}</p>}
         {resultado?.ok && <p role="status" className="text-sm text-exito">{resultado.mensaje}</p>}

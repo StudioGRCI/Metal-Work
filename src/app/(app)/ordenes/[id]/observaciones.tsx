@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import type { Observacion } from '@/lib/datos/observaciones'
 import { useEnvio } from '@/lib/envio'
 import { fechaHora } from '@/lib/format'
@@ -110,18 +111,15 @@ export function Observaciones({
       )}
 
       {resueltas.length > 0 && (
-        <details className="group rounded-[var(--radius-base)] border border-borde">
-          <summary className="cursor-pointer px-3 py-2 text-sm text-texto-suave hover:text-texto">
-            {resueltas.length === 1 ? 'Ver la observación resuelta' : `Ver las ${resueltas.length} observaciones resueltas`}
-          </summary>
-          <ul className="space-y-3 border-t border-borde p-3">
+        <Pliegue enCaja titulo={resueltas.length === 1 ? 'Ver la observación resuelta' : `Ver las ${resueltas.length} observaciones resueltas`}>
+          <ul className="space-y-3">
             {resueltas.map((o) => (
               <li key={o.id}>
                 <ItemObservacion ordenId={ordenId} observacion={o} />
               </li>
             ))}
           </ul>
-        </details>
+        </Pliegue>
       )}
     </section>
   )

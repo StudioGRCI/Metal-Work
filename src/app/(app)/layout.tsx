@@ -1,5 +1,5 @@
 import { BarraInferior } from '@/components/estructura/barra-inferior'
-import { ContextoOrden } from '@/components/estructura/contexto-orden'
+import { ContextoMenu } from '@/components/estructura/contexto-menu'
 import { BarraLateral } from '@/components/estructura/barra-lateral'
 import { BarraSuperior } from '@/components/estructura/barra-superior'
 import { CuentaDeLaPestana } from '@/components/estructura/cuenta-de-la-pestana'
@@ -23,7 +23,7 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
   const [pendientes, sinLeer] = await Promise.all([pendientesGlobales(perfil), avisosSinLeer()])
 
   return (
-    <ContextoOrden><div className="flex min-h-dvh flex-col">
+    <ContextoMenu><div className="flex min-h-dvh flex-col">
       <CuentaDeLaPestana usuario={perfil.id} puesto={perfil.puesto} nombre={`${perfil.nombres} ${perfil.apellidos}`} />
       <BarraSuperior />
       <AvisoInstalar />
@@ -46,6 +46,6 @@ export default async function LayoutAplicacion({ children }: LayoutProps<'/'>) {
       <BarraInferior permisos={perfil.permisos} esAdmin={esAdmin} rolCodigo={perfil.rol.codigo} pendientes={pendientes.porRuta} sinComprobar={pendientes.sinComprobar}>
         <PerfilMenu puesto={perfil.puesto} rol={perfil.rol.nombre} />
       </BarraInferior>
-    </div></ContextoOrden>
+    </div></ContextoMenu>
   )
 }

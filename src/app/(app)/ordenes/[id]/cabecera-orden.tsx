@@ -168,10 +168,7 @@ export function CabeceraDeOrden({ orden, perfil, vista, secciones, contadores, c
 
       <GarantiaDeOrden orden={orden} perfil={perfil} />
 
-      {/* En el monitor las secciones viven en la barra lateral: el contenedor
-          se oculta pero el componente se monta igual, porque es el que las
-          publica allí. */}
-      <div className="mb-4 lg:hidden"><Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={contadores} visibles={secciones} /></div>
+      <div className="mb-4"><Pestanas ordenId={orden.id} numero={orden.numero} activa={vista} contadores={contadores} visibles={secciones} /></div>
       <Tarjeta className={esResumen?'overflow-hidden border-acento/20':'border-borde shadow-none'}>
         <TarjetaCuerpo className={esResumen?'grid items-center gap-6 bg-gradient-to-r from-acento-suave/50 to-superficie p-5 sm:grid-cols-[minmax(0,1fr)_auto]':'flex flex-wrap items-center gap-x-6 gap-y-3 py-3'}>
           <div className={esResumen?'flex min-w-0 items-center gap-4':'flex min-w-44 flex-1 items-center gap-3'}>

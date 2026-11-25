@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
@@ -369,11 +370,8 @@ function EsperanNotaCredito({
         </ul>
         {sinFactura.length > 0 && (
           // Las que todavía no tienen factura no se pueden atender aquí: plegadas, para que no empujen la lista de facturas.
-          <details className="mt-3 border-t border-borde pt-3 text-sm">
-            <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto sm:min-h-0">
-              {sinFactura.length === 1 ? 'Una espera' : `${sinFactura.length} esperan`} que se registre la factura de su OC
-            </summary>
-            <ul className="mt-2 space-y-1.5 text-xs text-texto-suave" aria-label="Devoluciones cuya OC no tiene factura registrada">
+          <Pliegue className="mt-3 border-t border-borde pt-1" titulo={`${sinFactura.length === 1 ? 'Una espera' : `${sinFactura.length} esperan`} que se registre la factura de su OC`}>
+            <ul className="space-y-1.5 text-xs text-texto-suave" aria-label="Devoluciones cuya OC no tiene factura registrada">
               {sinFactura.map((d) => (
                 <li key={d.devolucion_id} data-espera-nota={d.compra}>
                   {d.compra} · {d.proveedor} · {d.material}: <span className="tabular">{Number(d.cantidad)}</span> {d.unidad} ·{' '}
@@ -381,7 +379,7 @@ function EsperanNotaCredito({
                 </li>
               ))}
             </ul>
-          </details>
+          </Pliegue>
         )}
       </TarjetaCuerpo>
     </Tarjeta>

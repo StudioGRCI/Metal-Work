@@ -6,7 +6,7 @@ import { Download, FileText } from 'lucide-react'
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -193,15 +193,18 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </>
             )}
 
-            <PastillaFiltro
-              ruta="/codigos-internos/detalle"
-              clave="vista"
-              params={params}
-              activo={vista === 'avance' ? null : vista}
-              etiqueta="Secciones del código"
-              opciones={vistas.map((v) => ({
-                valor: v.valor === 'avance' ? null : v.valor,
-                etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+            {/* La fila de secciones común a los documentos, como la de la OT. Va
+                después de las cifras, que valen para todas las secciones, y cada
+                enlace vuelve a ella: así, al cambiar de sección, lo que cambió
+                queda a la vista y no tres pantallas más abajo en el teléfono. */}
+            <SeccionesDelDocumento
+              id="secciones"
+              etiqueta={`Secciones del código ${codigo}`}
+              activa={vista}
+              secciones={vistas.map((v) => ({
+                clave: v.valor,
+                titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+                href: `${enlaceCodigo(codigo, v.valor)}#secciones`,
               }))}
             />
 

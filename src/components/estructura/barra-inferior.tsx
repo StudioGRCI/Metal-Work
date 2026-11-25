@@ -4,7 +4,7 @@ import { LayoutGrid } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { type ReactNode } from 'react'
-import { useContextoOrden } from './contexto-orden'
+import { useContextoMenu } from './contexto-menu'
 
 import { InstalarApp } from '@/components/estructura/instalar-app'
 import { Ventana } from '@/components/ui/ventana'
@@ -41,7 +41,7 @@ export function BarraInferior({
   children: ReactNode
 }) {
   const ruta = usePathname()
-  const { abierto, abrir: setAbierto } = useContextoOrden()
+  const { abierto, abrir: setAbierto } = useContextoMenu()
 
   const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
   const pestanas = pestanasDe(permisos, esAdmin, rolCodigo)
