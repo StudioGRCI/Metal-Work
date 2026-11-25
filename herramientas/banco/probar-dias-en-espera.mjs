@@ -52,7 +52,7 @@ function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
   if (!cond) fallas.push(texto)
 }
-const haceDias = (d) => (d <= 0 ? 'hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
+const haceDias = (d) => (d <= 0 ? 'desde hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
 const correoDe = (puesto) => `${puesto}.local@metalwork.test`
 
 /** Lo que da la base con la sesión de esa cuenta y el rol authenticated. */
