@@ -202,9 +202,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
         acciones={<BotonImprimir />}
       />
 
-      <div className="mb-4">
-        <Pestanas ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={pestanas} />
-      </div>
+      <Pestanas className="mb-4" ordenId={orden.id} numero={orden.numero} activa="expediente" contadores={toca.contadores} visibles={pestanas} />
 
       {/* Lo que la hoja impresa necesita y la pantalla ya dice arriba. */}
       <p className="mb-4 hidden text-xs text-texto-suave print:block">

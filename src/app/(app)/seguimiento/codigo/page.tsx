@@ -49,7 +49,7 @@ export default async function PaginaSeguimientoDeCodigo({ searchParams }: PagePr
         <SeccionesDelDocumento
           etiqueta={`Secciones del código ${codigo}`}
           activa={vista}
-          className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 bg-fondo py-2"
+          pegada
           secciones={VISTAS_SEGUIMIENTO.map((v) => ({
             clave: v.valor,
             titulo: v.etiqueta,
@@ -81,7 +81,7 @@ export default async function PaginaSeguimientoDeCodigo({ searchParams }: PagePr
           </div>
         )}
 
-        <div id="seccion-elegida" className="scroll-mt-32 space-y-5">
+        <div id="seccion-elegida" className="space-y-5">
           {vista === 'materiales' ? (
             <VistaMateriales codigo={codigo} />
           ) : vista === 'planos' ? (

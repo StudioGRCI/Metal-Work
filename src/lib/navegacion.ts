@@ -64,10 +64,12 @@ export type ItemNavegacion = {
 
 /**
  * Cómo se pliega un grupo del menú lateral (decisión 7 del plan de orden y
- * diseño, 2026-11-25): `fijo` va siempre abierto y sin botón —«Principal», lo
- * que se aprueba—; `abierto` nace abierto y se puede plegar, y es lo que vale si
- * falta; `plegado` nace cerrado. Cada persona lo deja como quiera y el menú lo
- * recuerda en su navegador; el grupo donde está la pantalla abierta se abre solo.
+ * diseño, 2026-11-25): `fijo` va siempre abierto y sin botón —«Principal», y el
+ * grupo único de un puesto—; `abierto` nace abierto y se puede plegar, y es lo
+ * que vale si falta, salvo en «Consultas», que nace `plegado`. Cada persona lo
+ * deja como quiera y el menú lo recuerda en una cookie por puesto; el grupo
+ * donde está la pantalla abierta se abre solo. Lo que aprueba Gerencia lo fija
+ * el menú de Gerencia General (PR 190).
  */
 export type Pliegue = 'fijo' | 'abierto' | 'plegado'
 
@@ -746,6 +748,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
       {
         titulo: 'Consultas',
+        // Abierto: el tipo de cambio lo registra cada día, aunque viva aquí.
+        pliegue: 'abierto',
         rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],

@@ -12,7 +12,7 @@
  *      la pantalla que se abre dentro de él lo abre solo; y al recargar en una
  *      ventana baja, la entrada activa queda a la vista sin mover la página.
  *   3. La OT, en el monitor: sus secciones van en la fila de arriba, no en la
- *      barra lateral.
+ *      barra lateral, y la fila se queda pegada bajo la barra al bajar.
  *   4. El código interno, en el teléfono: la fila se ve al entrar, y al
  *      cambiar de sección queda pegada arriba con la sección a la vista.
  *
@@ -68,6 +68,8 @@ if (!orden || !unidad) {
   process.exit(1)
 }
 
+// Lo de abajo va en try/finally: un tiempo vencido no deja el código sembrado.
+try {
 const fallas = []
 function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
@@ -207,6 +209,16 @@ console.log(`3. La OT ${orden.numero}, en el monitor`)
     (await fila.locator('a[aria-current="page"]').textContent()).startsWith('Historial'),
     'tocar «Historial» la marca elegida',
   )
+  // Pegada bajo la barra: al bajar por una sección larga, la fila sigue a mano.
+  await pagina.setViewportSize({ width: 1440, height: 500 })
+  await pagina.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await pagina.waitForTimeout(300)
+  const pegada = await fila.boundingBox()
+  const bajo = await pagina.evaluate(() => window.scrollY)
+  comprobar(bajo === 0 || (pegada && pegada.y >= 50 && pegada.y <= 70), `al bajar ${bajo} px, la fila sigue pegada bajo la barra (${Math.round(pegada?.y ?? -1)} px)`)
+  const reserva = await pagina.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop)
+  comprobar(parseFloat(reserva) >= 110, `la página reserva el alto de la barra y la fila para el foco (${reserva})`)
+  await pagina.setViewportSize({ width: 1440, height: 900 })
   await pagina.screenshot({ path: join(CAPTURAS, 'menu-y-secciones-3-ot.png') })
   comprobar(errores.length === 0, `sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
@@ -244,10 +256,11 @@ console.log(`4. El código interno ${unidad.codigo_interno}, en el teléfono`)
 }
 
 await navegador.close()
-if (sembrada) await base.query('update public.unidades set codigo_interno = null where id = $1', [sembrada])
-await base.end()
 if (fallas.length) {
   console.log(`\n${fallas.length} fallas:\n- ${fallas.join('\n- ')}`)
-  process.exit(1)
+  process.exitCode = 1
+} else console.log('\nTodo pasa.')
+} finally {
+  if (sembrada) await base.query('update public.unidades set codigo_interno = null where id = $1', [sembrada])
+  await base.end()
 }
-console.log('\nTodo pasa.')

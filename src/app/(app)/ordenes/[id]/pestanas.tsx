@@ -25,17 +25,18 @@ function rutaDe(ordenId: string, clave: string) {
  * 2026-11-25 en el monitor colgaban de la barra lateral, bajo «Órdenes de
  * trabajo», y alargaban el menú seis entradas.
  */
-export function Pestanas({ ordenId, numero, activa, contadores, visibles }: {
+export function Pestanas({ ordenId, numero, activa, contadores, visibles, className }: {
   ordenId: string
   numero: string
   activa: string
   contadores?: Record<string, number>
   visibles: string[]
+  className?: string
 }) {
   const secciones = SECCIONES.filter((s) => visibles.includes(s.clave)).map((s) => ({
     ...s,
     href: rutaDe(ordenId, s.clave),
     pendientes: contadores?.[s.clave] ?? 0,
   }))
-  return <SeccionesDelDocumento etiqueta={`Secciones de la OT ${numero}`} secciones={secciones} activa={activa} />
+  return <SeccionesDelDocumento pegada etiqueta={`Secciones de la OT ${numero}`} secciones={secciones} activa={activa} className={className} />
 }

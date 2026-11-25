@@ -34,12 +34,10 @@ export function SeccionDesplegable({ id, titulo, descripcion, children, abierta 
  * 44 px de alto para el dedo; cada uno tenía su triángulo y su tamaño (en RR. HH.
  * convivían cuatro, uno de 20 px). `enCaja` lo enmarca cuando abre un formulario.
  */
-export function Pliegue({ titulo, children, enCaja = false, abierto = false, className, ...datos }: {
+export function Pliegue({ titulo, children, enCaja = false, className, ...datos }: {
   titulo: ReactNode; children: ReactNode; enCaja?: boolean; className?: string
-  /** Cómo sale al cargar, con la misma regla que `abierta` en `SeccionDesplegable`. */
-  abierto?: boolean
 } & { [dato: `data-${string}`]: string | undefined }) {
-  return <details {...datos} open={abierto || undefined} className={cn('group/pliegue', enCaja && 'rounded-[var(--radius-base)] border border-borde', className)}>
+  return <details {...datos} className={cn('group/pliegue', enCaja && 'rounded-[var(--radius-base)] border border-borde', className)}>
     <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--radius-base)] text-sm font-medium text-acento focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento [&::-webkit-details-marker]:hidden', enCaja && 'px-3')}>
       <span className="min-w-0">{titulo}</span>
       <ChevronDown aria-hidden className="size-4 shrink-0 transition-transform group-open/pliegue:rotate-180" />

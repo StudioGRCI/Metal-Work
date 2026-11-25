@@ -182,7 +182,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             <SeccionesDelDocumento
               etiqueta={`Secciones del código ${codigo}`}
               activa={vista}
-              className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 bg-fondo py-2"
+              pegada
               secciones={vistas.map((v) => ({
                 clave: v.valor,
                 titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
@@ -210,7 +210,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </>
             )}
 
-            <div id="seccion-elegida" className="scroll-mt-32 space-y-5">
+            <div id="seccion-elegida" className="space-y-5">
               {aTodos && vista === 'avance' ? (
                 <RepartoPorMes filas={reparto} c={resumen} />
               ) : (

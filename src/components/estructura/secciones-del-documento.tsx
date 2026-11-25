@@ -32,6 +32,7 @@ export function SeccionesDelDocumento({
   secciones,
   activa,
   id,
+  pegada = false,
   className,
 }: {
   /** Qué documento recorre; lo lee el lector de pantalla. */
@@ -40,6 +41,13 @@ export function SeccionesDelDocumento({
   activa: string
   /** Para que un `href` con `#id` deje la fila arriba de la pantalla al cambiar de sección. */
   id?: string
+  /**
+   * Se queda pegada bajo la barra de arriba al deslizar: en el teléfono una
+   * sección de la OT mide hasta 3 000 px y había que subirla entera para
+   * cambiar. `globals.css` reserva su alto (`scroll-padding`) para que el
+   * foco del teclado y los saltos a un `#id` no caigan debajo de ella.
+   */
+  pegada?: boolean
   className?: string
 }) {
   const filaRef = useRef<HTMLUListElement>(null)
@@ -55,8 +63,19 @@ export function SeccionesDelDocumento({
   }, [activa])
 
   return (
-    <nav id={id} aria-label={etiqueta} className={cn('-mx-4 scroll-mt-20 lg:mx-0 print:hidden', className)}>
-      <ul ref={filaRef} className="pestanas-con-corte relative flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:px-0 [&::-webkit-scrollbar]:hidden">
+    <nav
+      id={id}
+      aria-label={etiqueta}
+      data-fila-pegada={pegada || undefined}
+      className={cn(
+        '-mx-4 scroll-mt-20 lg:-mx-1 print:hidden',
+        // El alto de la barra de arriba: 56 px, o su contenido más el borde del iPhone.
+        pegada && 'sticky top-[max(3.5rem,calc(2.8125rem+env(safe-area-inset-top)))] z-20 bg-fondo py-1',
+        className,
+      )}
+    >
+      {/* `py-1` y `lg:px-1`: el anillo del foco no se corta en el borde de la fila que desliza. */}
+      <ul ref={filaRef} className="pestanas-con-corte relative flex gap-1.5 overflow-x-auto px-4 py-1 [scrollbar-width:none] lg:px-1 [&::-webkit-scrollbar]:hidden">
         {secciones.map((s) => {
           const esActiva = s.clave === activa
           const n = s.pendientes ?? 0

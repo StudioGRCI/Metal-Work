@@ -76,7 +76,7 @@ En `src/components/ui/`:
   pagado, la configuración que se toca poco) y `Pliegue` (el chico, dentro de
   una tarjeta o un formulario: «Ver los días», «Revisiones anteriores», una
   categoría de la ficha; `enCaja` lo enmarca). Los dos con el chevron a la
-  derecha y 44 px para el dedo; `abierta`/`abierto` deciden solo cómo salen al
+  derecha y 44 px para el dedo; `abierta` decide solo cómo sale la sección al
   cargar, y `Pliegue` pasa los `data-*` que buscan las pruebas. No se escribe
   un `<details>` a mano para eso: el 2026-11-25 había quince, cada uno con su
   triángulo y su alto (de 20 a 44 px). Lo que queda a mano son **filas que se
@@ -94,10 +94,12 @@ en el server component. Hasta la entrega 2 del plan de orden y diseño
 código interno las ponía en pastillas que en el teléfono eran una lista
 desplegable: dos formas de moverse dentro de un documento. La fila va
 arriba, bajo el encabezado: bajo las cifras del código interno empezaba a
-1 028 px en el teléfono y nadie sabía que había secciones. Si entre la fila y
-la sección hay algo que vale para todas (esas cifras), la fila se pega bajo
-la barra al deslizar (`sticky`) y cada `href` baja con un `#id` a donde
-empieza la sección, para que cambiar no devuelva la página arriba. La pestaña
+1 028 px en el teléfono y nadie sabía que había secciones. La fila va
+`pegada`: se queda bajo la barra al deslizar, porque una sección de la OT
+mide hasta 3 000 px en el teléfono, y `globals.css` reserva su alto con
+`scroll-padding` para que el foco no quede debajo. Si entre la fila y la
+sección hay algo que vale para todas (las cifras del código), cada `href`
+baja con `#seccion-elegida` a donde empieza la sección. La pestaña
 elegida se trae a la vista solo de costado: `scrollIntoView` movía también
 la página y entrar era caer a media pantalla.
 
@@ -1072,9 +1074,10 @@ en un check con `set local role authenticated`.
   Administración dejaba cuatro entradas bajo el borde y, con una OT abierta,
   seis más; se mide a 760 px, lo que deja de alto un monitor de 900 con el
   navegador. Cada grupo de `MENU_POR_PUESTO` puede llevar su `pliegue`: `fijo`
-  (no se pliega: «Principal», «Por aprobar» de Gerencia), `abierto` (lo que
-  vale si falta) o `plegado`. «Consultas» nace plegado si el puesto no dice
-  otra cosa, y un puesto con un solo grupo además de «Principal» lo lleva fijo
+  (no se pliega: «Principal»; «Por aprobar» de Gerencia, con el PR 190),
+  `abierto` (lo que vale si falta) o `plegado`. «Consultas» nace plegado si el
+  puesto no dice otra cosa (Contabilidad lo deja `abierto`: el tipo de cambio
+  es de todos los días), y un puesto con un solo grupo además de «Principal» lo lleva fijo
   (plegarlo escondería todo su trabajo). Va en una cookie por puesto
   (`cookieDelMenu`) que el layout lee, para que el servidor pinte el menú ya
   plegado: con `localStorage` se pintaba abierto y saltaba al hidratar. El
